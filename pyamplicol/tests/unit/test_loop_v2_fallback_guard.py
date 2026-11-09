@@ -1408,7 +1408,7 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     with small cached estimates: the report's guard-miss finding.) 16
     digits at the target 1e-6 (the limit stays 1e-5): point 1 is accepted
     and point 2 rejected typed on every route
-    (estimates 1.6e-6..3.7e-6 and 3.8e-3..1.8e-2 at pin 5b6a8f57,
+    (estimates 1.6e-6..3.7e-6 and 3.8e-3..1.8e-2 at NinjaRS 5b6a8f57 and 71eddb15,
     ``tmp/lit-fallback-guard/fix3/probe9.json``)."""
 
     from pyamplicol import Runtime

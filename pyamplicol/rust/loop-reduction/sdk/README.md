@@ -117,13 +117,14 @@ output), and a point whose estimate exceeds the target below, never below
 one reason (`reduction_policy::fallback_rejected`: the fallback, TIRust's
 failure, the arithmetic, the estimate and the limit). A binary64 fallback
 point is served unguarded. An explicit `"ninjars"` or
-`"tirust"` has no fallback and no guard. NinjaRS (pin 5b6a8f57) can return
-finite, badly wrong values with status AccuracyNotEstablished at near-planar
+`"tirust"` has no fallback and no guard. NinjaRS before 71eddb15 (pin
+5b6a8f57) returned finite, badly wrong values with status AccuracyNotEstablished at near-planar
 2 -> 3 points of rank-n pentagon families (all-vector quark loops), in
 binary64 and double-double; a binary64 NinjaRS value without monitoring (an
 explicit `"ninjars"` call's or the `"auto"` fallback's) and every explicit
 double-double or arbitrary-precision NinjaRS call (which the SDKs do not
-monitor) stay exposed until the NinjaRS fix is pinned (windows, records and
+monitor) were exposed until NinjaRS's conditioning bound (71eddb15) refuses
+such lanes typed (windows, records and
 the estimates of each check: `docs/user/python-api.md`, "Near-planar NinjaRS
 hazard"). An explicit backend the library is built without (TIRust needs
 the default cargo feature `tir`; without it `"auto"` takes NinjaRS) is refused

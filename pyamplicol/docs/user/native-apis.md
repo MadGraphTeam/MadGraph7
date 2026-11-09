@@ -850,8 +850,8 @@ or `"tirust"` has no fallback and no guard, nor has a TIR-only artifact
 (NinjaRS refused typed); a library built without TIRust takes NinjaRS under
 `"auto"`, with the reason, and refuses `"tirust"`.
 
-NinjaRS (pin 5b6a8f57) can return finite, badly wrong values with status
-`AccuracyNotEstablished` at near-planar 2 -> 3 points of pentagon families
+NinjaRS before 71eddb15 (pin 5b6a8f57) returned finite, badly wrong values
+with status `AccuracyNotEstablished` at near-planar 2 -> 3 points of pentagon families
 whose rank equals their propagator count (all-vector quark loops: measured
 on loop-induced g g > z z z, z z g, z g g, a a g, a g g and W+ W- g), in
 binary64 and in double-double; the measured windows, the records and the
@@ -863,8 +863,9 @@ points, a Python API record: `workspace/tmp/ninjars-dd-zzz/C/out/tilt.json`
 'nj_b64_chk'); in double-double and arbitrary precision the SDKs run no
 monitoring (`AccuracyNotEstablished`, no estimate), so an explicit
 `"ninjars"` call there, or any NinjaRS value in binary64 without monitoring
-(the `"auto"` fallback's included), stays exposed until the NinjaRS fix (a
-conditioning bound in NinjaRS) is pinned. The target accuracy
+(the `"auto"` fallback's included), was exposed until NinjaRS's conditioning
+bound (71eddb15, M-LIT lit-ninja-planar), which refuses such lanes typed
+(status Failed). The target accuracy
 `rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
 `set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
 default 1e-5, the relative accuracy of each point's result) sets the

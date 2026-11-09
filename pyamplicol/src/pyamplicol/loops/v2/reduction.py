@@ -25,7 +25,7 @@ chooses the effective backend once per call and carrier, never per point:
   with both reasons. In the extended carriers (double-double, arbitrary
   precision; ``fallback_guarded``) every point the fallback serves is
   GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and
-  11:53): NinjaRS (pin 5b6a8f57) can return finite, badly wrong values as
+  11:53): NinjaRS before 71eddb15 (pin 5b6a8f57) returned finite, badly wrong values as
   success at near-planar 2 -> 3 points of rank-n pentagon families, so the
   fallback's value runs the reduction-direction re-reduction (the
   cached-master check of ``stability.REDUCTION``, never its rescaled

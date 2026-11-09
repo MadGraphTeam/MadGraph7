@@ -354,10 +354,9 @@ point's `VirtualReduction.guard_estimate` (a rejected point's too); a point
 within the limit keeps the fallback's value unchanged, and the result's
 `stability` stays what the call's own checks give (none without checks).
 In binary64 the fallback's value is served unguarded, with no estimate
-recorded: there the protection is a conditioning bound in NinjaRS's own fast
-engine (pending: until it is pinned, the binary64 near-planar window below
-applies to the fallback too), and stability checks or the rescue stack
-flag such values.
+recorded: there the protection is the conditioning bound in NinjaRS's own
+fast engine (NinjaRS 71eddb15, below), and stability checks or the rescue
+stack flag what it serves.
 When the call's checks run that cached check it is reused; beside other
 checks (rotations, or the rescaled variant of the recommended checks and of
 every default rescue level) the served points are evaluated once more with
@@ -373,11 +372,18 @@ largest ratio is the point's `guard_estimate`. Points TIRust serves run
 nothing more.
 The estimate is a sampled measure, not a proven bound.
 
-**Near-planar NinjaRS hazard.** NinjaRS (pin 5b6a8f57) can return finite,
-badly wrong values reported as success at near-planar 2 -> 3 points (the
-event plane contains the beam: the pentagon Gram determinant nearly
-vanishes) of pentagon families whose rank equals their propagator count
-(all-vector quark loops), in every arithmetic, unless stability checks run.
+**Near-planar NinjaRS hazard.** NinjaRS before 71eddb15 (pin 5b6a8f57)
+returned finite, badly wrong values reported as success at near-planar
+2 -> 3 points (the event plane contains the beam: the pentagon Gram
+determinant nearly vanishes) of pentagon families whose rank equals their
+propagator count (all-vector quark loops), in every arithmetic, unless
+stability checks ran. Since 71eddb15 (M-LIT lit-ninja-planar) its box
+mu-expansion's conditioning bound refuses such lanes typed (`Unstable`;
+the generic engine's `CutFailed { SingularParameter }`): in double-double
+it refuses g g > z z z stream points 44 / 57 and the tilt points eps 0,
+1e-14 and 1e-13 below (`workspace/tmp/lit-fallback-guard/fix3/probe14.json`),
+so the fallback fails them typed; the guard stays as defence in depth on
+what the fallback still serves. The records at 5b6a8f57:
 Measured on g g > z z z stream point 44 tilted out of its plane by an angle
 eps, and on constructed planar points of six loop-induced rows (records in
 `workspace/tmp/ninjars-dd-zzz/C/out/`; truth: TIRust at 78 digits on the
@@ -412,8 +418,15 @@ points):
   (`C/out/tilt.json` 'nj_b64_chk'; 3.0 at eps 1e-7, error 2e-2).
 
 An explicit `reduction="ninjars"` without stability checks (and the native
-SDKs' NinjaRS calls without monitoring) stays exposed until the NinjaRS fix,
-a conditioning bound in NinjaRS, is pinned.
+SDKs' NinjaRS calls without monitoring) was exposed to this hazard until the
+conditioning bound (NinjaRS 71eddb15); the guard does not cover explicit
+calls. A value the bound does not flag is no more verified than before:
+e.g. at near-forward g g > h h points NinjaRS returns the suppressed
+helicity rows of `evaluate_resolved` far off in every arithmetic (a
+systematic error of 2 -> 2 boxes, which neither the bound nor the guard's
+cached check sees; `workspace/reports/engine-v2/m-lit/lit-fallback-guard-report.md`
+§0); stability checks with the rescaled variant or a rescue stack are the
+tools for such calls.
 `"tirust"` is served in every arithmetic (binary64, double-double and
 arbitrary precision, also on every level of a rescue stack). An explicit
 backend that cannot serve the call is refused before any point is evaluated

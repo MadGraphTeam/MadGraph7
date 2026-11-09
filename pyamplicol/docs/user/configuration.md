@@ -868,8 +868,8 @@ unguarded), recorded per point
 return badly wrong values as success at near-planar 2 -> 3 points of rank-n
 pentagon families in every arithmetic, the "Near-planar NinjaRS hazard",
 with the measured windows). An explicit `"ninjars"` or `"tirust"` has no
-fallback and no guard (explicit `"ninjars"` without stability checks stays
-exposed to that hazard until the NinjaRS fix is pinned), and neither has a
+fallback and no guard (explicit `"ninjars"` without stability checks was
+exposed to that hazard until NinjaRS's conditioning bound, 71eddb15), and neither has a
 TIR-only artifact. An explicitly requested backend that cannot serve
 the call is refused before any point is evaluated (`ReductionUnavailable`, a
 `CompatibilityError` with key `reduction-unavailable`), never switched
