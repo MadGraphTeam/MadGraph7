@@ -86,12 +86,14 @@ def test_streams_are_exact_distinct_and_start_with_the_campaign(key):
     # loop-induced g g > h h h): momentum conservation exact, mass shells to
     # the printed 30 digits.
     supplied = stream["construction"].startswith("supplied_points")
+    # A decay (loop-induced h > g g, z > g g g, ...): one incoming particle.
+    incoming = stream.get("initial", 2)
     for point in points:
         if not supplied:
-            exact_points.check(point, masses, 2)
+            exact_points.check(point, masses, incoming)
             continue
         for mu in range(4):
-            assert sum(p[mu] for p in point[:2]) == sum(p[mu] for p in point[2:])
+            assert sum(p[mu] for p in point[:incoming]) == sum(p[mu] for p in point[incoming:])
         for p, m in zip(point, masses, strict=True):
             assert abs(exact_points._dot(p, p) - m * m) <= p[0] ** 2 / 10**27
     assert streams.campaign_agreement(key, stream) in (True, None)
