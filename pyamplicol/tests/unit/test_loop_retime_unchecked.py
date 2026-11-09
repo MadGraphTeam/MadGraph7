@@ -83,6 +83,8 @@ def test_the_dry_run_prints_the_units_and_launches_nothing(tmp_path, capsys):
     ]
     for unit, process in zip(units, ("li_gg_hgg", "li_gg_emepmupmumg"), strict=True):
         assert unit[:2] == ["systemd-run", "--user"] and "--collect" in unit
+        # A property is its own argument after -p (systemd-run refuses " X=").
+        assert unit[unit.index("-p") + 1] == "MemoryMax=150G"
         shell = unit[-1]
         assert f"row {process}" in shell
         assert "taskset -c" in shell and "RAYON_NUM_THREADS=1" in shell
