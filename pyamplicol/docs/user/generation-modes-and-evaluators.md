@@ -360,7 +360,7 @@ family at runtime and therefore ignores this materialized-layout setting.
 
 ## Validation and current reuse
 
-Generation has three distinct checks; they should not be confused:
+Generation has four distinct checks; they should not be confused:
 
 1. **Artifact writing** always validates the schema, confined references,
    declared payload sizes, and digests.
@@ -370,13 +370,31 @@ Generation has three distinct checks; they should not be confused:
    [application restrictions](configuration.md#numerical-current-reuse).
 3. **Post-build validation** optionally reopens the completed artifact and
    compares native f64 optimized and resolved evaluation.
+4. **Loop-induced probes** optionally check every loop-induced process at
+   one point. They test that its poles vanish, that it satisfies the Ward
+   identity of each external gluon and photon, and, in a 't Hooft-Feynman
+   gauge request, the Goldstone-equivalence identity. They run in binary64,
+   with double-double only for a probe that fails or is refused in binary64.
+   A failure refuses the process
+   ([details](configuration.md)).
 
-Post-build validation is off by default because it does not change the written
-artifact and can be disproportionately expensive for large resolved axes.
-Enable it when an immediate runtime smoke is useful:
+Post-build validation and the loop-induced probes are off by default for the
+same reason: neither changes the written artifact (the loop-induced plan and
+its values are bitwise the same with and without the probes). Post-build
+validation can also be disproportionately expensive for large resolved axes,
+and the probes cost up to a few generations of the process. Enable post-build
+validation when an immediate runtime smoke is useful:
 
 ```console
 pyamplicol generate ... --post-build-validation
+```
+
+Enable the loop-induced probes when you generate from a new or edited loop UFO:
+they catch a missing or wrong R2 vertex (which changes only the finite part),
+a missing loop family, and wrong Goldstone-side vertices or counterterms:
+
+```console
+pyamplicol generate ... --loop-induced-probes
 ```
 
 Ordinary generation validation defaults to two deterministic samples. Current

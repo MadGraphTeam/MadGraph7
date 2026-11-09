@@ -89,9 +89,7 @@ def test_native_benchmark_duration_is_retained_as_publication_evidence() -> None
             "evaluator_time_raw_seconds_per_point": 1.0e-6,
             "evaluator_time_status": "measured",
             "evaluator_time_ratio_eligible": True,
-            "evaluator_time_source": (
-                "runtime_profile_core_evaluator_call_time"
-            ),
+            "evaluator_time_source": ("runtime_profile_core_evaluator_call_time"),
             "compiled_direct_arena_active": False,
             "evaluator_sample_count": 5,
             "native_profile_points_per_sample": 128,
@@ -167,10 +165,7 @@ def test_unavailable_execution_requires_authenticated_arena_boundary() -> None:
         **{field: 0 for field in ZERO_ARENA_COUNTER_FIELDS},
         **{field: 0.0 for field in ZERO_ARENA_PHASE_TIME_FIELDS},
         **{field: [] for field in EMPTY_ARENA_PHASE_VECTOR_FIELDS},
-        **{
-            field: 0
-            for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS
-        },
+        **{field: 0 for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS},
         "compiled_direct_arena_engine_count": 1,
         "compiled_direct_arena_call_count": 128,
         "evaluator_backend_call_count": 128,
@@ -191,9 +186,7 @@ def test_unavailable_execution_requires_authenticated_arena_boundary() -> None:
         "native_profile_points_per_sample": 128,
         "repetitions_per_sample": 1,
         "batch_size": 128,
-        "sample_contract": (
-            "paired_unprofiled_headline_profiled_attribution_v1"
-        ),
+        "sample_contract": ("paired_unprofiled_headline_profiled_attribution_v1"),
         "profile_protocol": "arena",
         "profile_sample_pass": "runtime._profile_arena_repeated",
         "profile_boundary": (
@@ -208,9 +201,7 @@ def test_unavailable_execution_requires_authenticated_arena_boundary() -> None:
         "identical_repetitions": True,
         "execution_mode": "compiled",
         "warmed_boundary_wall_seconds_per_point": 2.1e-6,
-        "arena_profile_evidence_sha256": digest_arena_profile_value(
-            arena_evidence
-        ),
+        "arena_profile_evidence_sha256": digest_arena_profile_value(arena_evidence),
     }
     assert not any(
         issue.field == "execution_seconds_per_point"
@@ -251,8 +242,7 @@ def test_missing_or_mismatched_source_tree_is_rejected() -> None:
     provenance["report_source_clean"] = False
 
     fields = {
-        issue.field
-        for issue in publication_measurement_policy_issues(measurement)
+        issue.field for issue in publication_measurement_policy_issues(measurement)
     }
 
     assert "provenance.report_measured_source_tree" in fields
@@ -297,7 +287,9 @@ def test_loop_report_renders_only_the_two_summary_files() -> None:
         "data/summary-li.json",
         "data/summary.json",
     ]
-    assert not re.search(r"#(?:include|import)\b|\b(?:read|csv|yaml|toml|image)\(", code)
+    assert not re.search(
+        r"#(?:include|import)\b|\b(?:read|csv|yaml|toml|image)\(", code
+    )
 
 
 def test_loop_report_holds_the_summary_tables_first_and_only_their_readers() -> None:
@@ -326,11 +318,13 @@ def test_loop_report_tables_state_their_provenance_in_one_line() -> None:
     for field in ("li-meta.date", "li-hosts", "native-of(li-engine)", "native-of(x)"):
         assert field in table2
     assert "li-head" in table2.split("table.header(")[1]
-    # Table 2's provenance names pyAmpliCol's host, its generation cell the
-    # generation-time probes (the full production generate cost).
+    # Table 2's provenance names pyAmpliCol's host; its generation cell shows
+    # the engine's generation and, apart and with their carrier, the
+    # optional generation-time probes where a record ran them (lit-probe).
     assert "li-our-hosts" in table2 and "timing.host" in code
     generation = code[code.index("#let li-generation") : code.index("#let li-timing")]
-    assert "m.probes_seconds" in generation and "m.probe_share" in generation
+    assert "m.validation.seconds" in generation
+    assert "m.validation.carrier" in generation and "probe_share" not in generation
 
 
 def test_loop_report_head_line_labels_table_1_and_names_the_report() -> None:
@@ -355,4 +349,3 @@ def test_loop_report_readme_states_the_essentials_rule() -> None:
     for label in LOOP_REPORT_ITEMS:
         assert f"`<{label}>`" in readme
     assert "The essentials rule" in readme
-

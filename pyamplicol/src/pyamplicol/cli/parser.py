@@ -428,6 +428,18 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--loop-induced-probes",
+        dest="generation.loop_induced_probes",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: run the generation-time finiteness, Ward "
+            "and Goldstone probes (binary64, double-double where a binary64 "
+            "probe fails or is refused; off by default: the artifact does not "
+            "depend on them); a failure refuses the process"
+        ),
+    )
+    parser.add_argument(
         "--allow-failed-probes",
         dest="generation.allow_failed_probes",
         action=argparse.BooleanOptionalAction,
@@ -435,7 +447,7 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "loop-induced processes: store a process whose generation-time "
             "finiteness or Ward probe failed, refused by default; recorded in "
-            "the artifact"
+            "the artifact (acts only with --loop-induced-probes)"
         ),
     )
     parser.add_argument(
