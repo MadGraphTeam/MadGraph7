@@ -1047,9 +1047,14 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
     TIRust's conditioning gates refuse a row and then its method choice
     refuses it too ("refused by the gates, then by the method choice"), so
     explicit "tirust" fails the point typed in the Python API and the C ABI;
-    "auto" serves it on NinjaRS (its value bitwise the explicit NinjaRS one,
-    its record NinjaRS and the fallback's reason), the C ABI's diagnostics
-    naming it under "fallbacks", bitwise the Python API's values."""
+    "auto" evaluates it on NinjaRS (its record NinjaRS and the fallback's
+    reason), the C ABI's diagnostics naming it under "fallbacks", bitwise the
+    Python API's values. Every point the fallback serves is guarded (m-lit
+    lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1)): within the target
+    its value is bitwise the explicit NinjaRS one; above it (its binary64
+    reduction-direction estimate; points 0..2 here, 3.7e-5..9.3e-5 at pin
+    5b6a8f57) the point fails typed with the guard's reason, in the Python
+    API and the C ABI alike, with the same estimate."""
 
     from fractions import Fraction
 
@@ -1087,7 +1092,14 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
                 in (lane.reduction.reason)
                 or p not in refused
             )
-            assert repr(auto.values[p]) == repr(ninjars.values[p]), p
+            guard = lane.reduction.guard_estimate
+            assert guard is not None, p
+            if guard <= 1e-5:
+                assert repr(auto.values[p]) == repr(ninjars.values[p]), p
+            else:
+                # The guard rejects the fallback's value (DECISIONS 05:56 (1)).
+                assert auto.values[p] is None, p
+                assert "reduction-direction check" in lane.reduction.reason, p
         else:
             assert lane.reduction.effective == "tirust", p
             assert repr(auto.values[p]) == repr(tirust.values[p]), p
@@ -1102,9 +1114,16 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
         assert record["reduction"]["fallback"] == "ninjars"
         moved = sorted(int(key) for key in record["fallbacks"])
         assert moved == [p for p, v in enumerate(tirust.values) if v is None]
-        for key in record["fallbacks"]:
-            assert record["fallbacks"][key]["effective"] == "ninjars"
-        assert found["statuses"] == [SUCCESS_STATUS] * count
+        for key, item in record["fallbacks"].items():
+            lane = auto.diagnostics[int(key)]
+            served = auto.values[int(key)] is not None
+            assert item["effective"] == ("ninjars" if served else None), key
+            assert item["guard_estimate"] == lane.reduction.guard_estimate, key
+            assert item["reason"] == lane.reduction.reason, key
+        assert found["statuses"] == [
+            SUCCESS_STATUS if value is not None else FAILED_STATUS
+            for value in auto.values
+        ]
         assert sdk.rusticol_virtual_set_reduction(handle, b"tirust") == 0
         explicit = _evaluate(sdk, handle, points, scales)
         assert [s == FAILED_STATUS for s in explicit["statuses"]] == [
