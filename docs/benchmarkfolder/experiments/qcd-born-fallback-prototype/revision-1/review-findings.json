@@ -1,0 +1,10 @@
+{
+  "scope": "Uncompiled original source draft, preserved before independent-review corrections. No native result.",
+  "findings": [
+    "Mixed-kind SIGN(1Q0,BEAMPOL) intrinsic",
+    "Duplicate COMMON-block DATA initializers",
+    "QP GOODHEL/NTRY cache can miss later parameter resets",
+    "Persistent H3 can survive an early filtered-helicity exit without a current QP loop check",
+    "Failed Born attempts can advance host initialization counters/filter publication before rejection"
+  ]
+}

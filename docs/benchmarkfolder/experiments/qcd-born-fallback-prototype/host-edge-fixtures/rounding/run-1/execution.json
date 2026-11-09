@@ -1,0 +1,134 @@
+{
+  "compiler": {
+    "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+    "version": "GNU Fortran (GCC) 15.2.0"
+  },
+  "complete": false,
+  "cpu": 11,
+  "error": {
+    "message": "Fixture compilation failed: original-O0",
+    "type": "ValueError"
+  },
+  "limitations": [
+    "This fixture tests wrapper control and IEEE state, not physical matrix elements or reducer accuracy.",
+    "QP stubs use exact constants; the rounding-sensitive operation is the actual wrapper conversion from QP to DP.",
+    "The enabled trap policy tests preservation of divide-by-zero halting without deliberately triggering it.",
+    "Sticky entry flags are underflow/inexact; failed-DP invalid is deliberately discarded, and new QP conversion flags are checked.",
+    "Executables/module files remain in ignored work/; their hashes and exact commands are retained."
+  ],
+  "native_reducers": false,
+  "performance_eligible": false,
+  "physical_amplitudes": false,
+  "preparation_sha256": "e4f6235e7c7d3d337c567a0acd248cfa49daaaa4d265f842f4ebf5a54a81602f",
+  "protected_inputs_unchanged": true,
+  "raw_files": [
+    {
+      "bytes": 227,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/run-1/compiler-version.txt",
+      "sha256": "ce5c82b1d51b8e2d727a945fab540ae918b3a8b87659de2713be2fadad1442da"
+    },
+    {
+      "bytes": 707,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/run-1/original-O0-build.stderr",
+      "sha256": "33b033c76a4248799c53e66eeb7a12e8f2b256cb478fb0f92201c5cef91fe79b"
+    },
+    {
+      "bytes": 0,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/run-1/original-O0-build.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "runs": [
+    {
+      "compile_command": [
+        "/run/current-system/sw/bin/taskset",
+        "-c",
+        "11",
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-frounding-math",
+        "-fno-unsafe-math-optimizations",
+        "-fcheck=all",
+        "-ffixed-line-length-none",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-1/original-O0",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-1/original-O0",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/rounding_driver.f90",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/wrapper-used.f",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-1/original-O0/check-rounding"
+      ],
+      "compile_cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "compile_returncode": 1,
+      "mutation": false,
+      "name": "original-O0"
+    }
+  ],
+  "schema": 1,
+  "scope": "Source-derived wrapper IEEE policy fixture with explicit DP/QP stubs.",
+  "source_inputs": {
+    "mutation-changed-rounding.f": {
+      "bytes": 2159,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/mutation-changed-rounding.f",
+      "sha256": "2acd3999d497a73b95fcc962d259d93720824acc06e7ca7d73bd5ceb7f02c226"
+    },
+    "mutation-missing-final-restore.f": {
+      "bytes": 2070,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/mutation-missing-final-restore.f",
+      "sha256": "c5cab072d8a529a2a5124293dfd122bd546f66ff4a0c75ef16b6532eece9352e"
+    },
+    "preparation-used.json": {
+      "bytes": 2813,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/preparation-used.json",
+      "sha256": "e4f6235e7c7d3d337c567a0acd248cfa49daaaa4d265f842f4ebf5a54a81602f"
+    },
+    "rounding_driver.f90": {
+      "bytes": 9339,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/rounding_driver.f90",
+      "sha256": "924a62cbb430e7edfe2eb263115a792b70880d44a5ffa9a8fbb44491876669e9"
+    },
+    "run_rounding.py": {
+      "bytes": 11353,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/run_rounding.py",
+      "sha256": "4a4ab723cdfa724fe3d08b2423356c4dc00cbba3a238152b76f71a63f6d0d044"
+    },
+    "wrapper-used.f": {
+      "bytes": 2111,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/wrapper-used.f",
+      "sha256": "be514aaffe9e478ce86bbfe1d83f6fdc7f08ff249b66898a7aba4a440787cfb0"
+    }
+  },
+  "source_inputs_after": {
+    "mutation-changed-rounding.f": {
+      "bytes": 2159,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/mutation-changed-rounding.f",
+      "sha256": "2acd3999d497a73b95fcc962d259d93720824acc06e7ca7d73bd5ceb7f02c226"
+    },
+    "mutation-missing-final-restore.f": {
+      "bytes": 2070,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/mutation-missing-final-restore.f",
+      "sha256": "c5cab072d8a529a2a5124293dfd122bd546f66ff4a0c75ef16b6532eece9352e"
+    },
+    "preparation-used.json": {
+      "bytes": 2813,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/preparation-used.json",
+      "sha256": "e4f6235e7c7d3d337c567a0acd248cfa49daaaa4d265f842f4ebf5a54a81602f"
+    },
+    "rounding_driver.f90": {
+      "bytes": 9339,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/rounding_driver.f90",
+      "sha256": "924a62cbb430e7edfe2eb263115a792b70880d44a5ffa9a8fbb44491876669e9"
+    },
+    "run_rounding.py": {
+      "bytes": 11353,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/run_rounding.py",
+      "sha256": "4a4ab723cdfa724fe3d08b2423356c4dc00cbba3a238152b76f71a63f6d0d044"
+    },
+    "wrapper-used.f": {
+      "bytes": 2111,
+      "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/wrapper-used.f",
+      "sha256": "be514aaffe9e478ce86bbfe1d83f6fdc7f08ff249b66898a7aba4a440787cfb0"
+    }
+  },
+  "wrapper_sha256": "be514aaffe9e478ce86bbfe1d83f6fdc7f08ff249b66898a7aba4a440787cfb0"
+}

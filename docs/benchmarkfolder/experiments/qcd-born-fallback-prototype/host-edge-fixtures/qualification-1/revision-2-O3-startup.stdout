@@ -1,0 +1,9 @@
+FAILED_BORN        1       0       4       2       0       0
+FAILED_BORN        2       0       4       2       0       0
+FAILED_BORN        3       0       4       2       0       0
+FAILED_BORN        4       0       4       2       0       0
+FAILED_BORN        5       0       4       2       0       0
+FAILED_BORN        6       0       4       2       0       0
+FAILED_BORN        7       0       4       2       0       0
+FAILED_BORN        8       0       4       2       0       0
+PASS repeated failure preserves first valid initialization

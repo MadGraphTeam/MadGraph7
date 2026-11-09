@@ -1,0 +1,41 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 2433,
+      "sha256": "5023c7da22cde13fd9b2fd73ba8cb60c6b699d798daf98876ce8002c0df75ab4"
+    },
+    "aggregate-derivation.patch": {
+      "bytes": 3109,
+      "sha256": "e9eabf229916871e5f475832265a626d77afe5d9f569022006ec38fadfb71d91"
+    },
+    "born_fallback.f": {
+      "bytes": 16185,
+      "sha256": "89ab9ed6d08a53f2ae36e49c905fa056f90f335311fffe5f90bbee17120eb92a"
+    },
+    "born_rescue.f": {
+      "bytes": 1958,
+      "sha256": "e7dbcb10672dd04ddf09477cb8f12846de434185b2ba5479f75041ace7e929b1"
+    },
+    "host-derivation.patch": {
+      "bytes": 2344,
+      "sha256": "da3549cba399775ec304062ad843d188b52292e1e872b5c0ccae5c3d17d31ce3"
+    },
+    "loop_matrix.f": {
+      "bytes": 101709,
+      "sha256": "017bc476045cc2e7dcb59197a5859cf8b113a6be5575d22e99970e70ecb77e77"
+    },
+    "preparation.json": {
+      "bytes": 2746,
+      "sha256": "246600bcca6e784d8a67db40998beb41755fe82124684b9b3a1354fe03c18ae4"
+    },
+    "prepare.py": {
+      "bytes": 7067,
+      "sha256": "a61799f09b5296427049299c57a5c3b144db6b8eaecaaec6a088d9b7df1aa7f8"
+    },
+    "review-findings.json": {
+      "bytes": 495,
+      "sha256": "660504f1bd9b1a51a571c87c6febf3e43b6ce58b988a6e5ad968f8e883d14f8b"
+    }
+  },
+  "schema": 1
+}

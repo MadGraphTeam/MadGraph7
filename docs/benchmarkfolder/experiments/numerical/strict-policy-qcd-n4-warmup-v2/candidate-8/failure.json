@@ -1,0 +1,7 @@
+{
+  "backend": 8,
+  "error": "BlockingIOError(11, 'Resource temporarily unavailable')",
+  "performance_eligible": false,
+  "source": "candidate",
+  "status": "failed"
+}

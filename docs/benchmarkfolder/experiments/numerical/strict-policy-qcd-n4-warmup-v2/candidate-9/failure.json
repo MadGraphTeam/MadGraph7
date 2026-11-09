@@ -1,0 +1,7 @@
+{
+  "backend": 9,
+  "error": "ProtocolError('Worker protocol timeout; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/numerical/strict-policy-qcd-n4-warmup-v2/candidate-9/candidate-output.txt')",
+  "performance_eligible": false,
+  "source": "candidate",
+  "status": "failed"
+}

@@ -1,0 +1,404 @@
+{
+  "schema": 1,
+  "scope": "Extracted generated host policy with explicit Born/cache/loop stubs; no native reducer or physical amplitude.",
+  "production_edited": false,
+  "native_reducer_executed": false,
+  "performance_eligible": false,
+  "source_hashes_before_and_after": {
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/preparation.json": "e4f6235e7c7d3d337c567a0acd248cfa49daaaa4d265f842f4ebf5a54a81602f",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/loop_matrix.f": "8c09cb06d2d087403ce0603e99dede30f22c4d7f450b5158043a7932047733b0",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/revision-1/loop_matrix.f": "017bc476045cc2e7dcb59197a5859cf8b113a6be5575d22e99970e70ecb77e77"
+  },
+  "dimensions": {
+    "nexternal": 5,
+    "ncomb": 48,
+    "nloopgroups": 116,
+    "nsquaredso": 1,
+    "nsqso_born": 1
+  },
+  "sources": {
+    "revision-2": {
+      "original": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/loop_matrix.f",
+      "original_sha256": "8c09cb06d2d087403ce0603e99dede30f22c4d7f450b5158043a7932047733b0",
+      "slices": [
+        {
+          "name": "rotation-through-selected-helicity",
+          "first_line": 718,
+          "last_line": 939,
+          "sha256": "9aff308e73039cbb783d1e6b9a12b16ac42121fcbd3c7ffffd5d56757e90af64"
+        },
+        {
+          "name": "current-call-QP-certificate-and-status",
+          "first_line": 1517,
+          "last_line": 1533,
+          "sha256": "f51029275d9b59c7899558d8d54895bdbc94025461d0e6ee5221c646ce9b0a09"
+        },
+        {
+          "name": "final-cleanup-and-acceptance",
+          "first_line": 1764,
+          "last_line": 1842,
+          "sha256": "c830951a9eb4ad98c8db89f503fdd4f2d2fa851bdc17fa6988dfb95bd3fd40fc"
+        }
+      ],
+      "retained_source": "revision-2.f",
+      "retained_sha256": "3a0446866b81c5df0080f4c80f09482366fe7fc3b7b143bd4e8e7bbdd9e975f3"
+    },
+    "revision-1-negative": {
+      "original": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/revision-1/loop_matrix.f",
+      "original_sha256": "017bc476045cc2e7dcb59197a5859cf8b113a6be5575d22e99970e70ecb77e77",
+      "slices": [
+        {
+          "name": "rotation-through-selected-helicity",
+          "first_line": 718,
+          "last_line": 933,
+          "sha256": "f4703c6a2f18dd56baf1e9829636acf7949cbc65cf9500c8707f7872c982b222"
+        },
+        {
+          "name": "current-call-QP-certificate-and-status",
+          "first_line": 1511,
+          "last_line": 1521,
+          "sha256": "22ddb9c0393fcc95245de9f524da4613b19b9ece1f293e03c1a8aec001a95c58"
+        },
+        {
+          "name": "final-cleanup-and-acceptance",
+          "first_line": 1752,
+          "last_line": 1835,
+          "sha256": "a50066fd77c7483237b05e9593389421e2ea5436be6b631f33c644908e046c9e"
+        }
+      ],
+      "retained_source": "revision-1-negative.f",
+      "retained_sha256": "89a8d447eb2716d903063daf4b1c011117f260da0dceef45c9b43cff5d8f9de8"
+    }
+  },
+  "compiler": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+  "runs": [
+    {
+      "source": "revision-2",
+      "optimization": "-O0",
+      "build": {
+        "argv": [
+          "taskset",
+          "-c",
+          "11",
+          "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+          "-O0",
+          "-g",
+          "-fcheck=all",
+          "-fbacktrace",
+          "-ffixed-line-length-132",
+          "-ffree-line-length-none",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/policy-state.f90",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/qualification-1/revision-2.f",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/policy-driver.f90",
+          "-o",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0/host-policy"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0",
+        "returncode": 0,
+        "expected_returncode": 0,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "executable_sha256": "b2995c699f1c95853143c33ae4d8b4f09ba27075c484131d227d75dfeb4aa9da",
+      "cases": [
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0/host-policy",
+            "startup"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0/startup",
+          "returncode": 0,
+          "expected_returncode": 0,
+          "stdout_sha256": "935aa63b9a177304bb28897653bd3a54d8d7579bfebbd16818786c6aec667b66",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "scenario": "startup",
+          "published_filter_files": []
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0/host-policy",
+            "stale"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0/stale",
+          "returncode": 0,
+          "expected_returncode": 0,
+          "stdout_sha256": "bc15dddebd896d7ad488107e208fa49d637b189360c2962abf12e71525ee292c",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "scenario": "stale",
+          "published_filter_files": []
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0/host-policy",
+            "certificate"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0/certificate",
+          "returncode": 0,
+          "expected_returncode": 0,
+          "stdout_sha256": "6fa92401882224dd5315315472380e757fecd29c2acb2349a922eb3d083e5052",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "scenario": "certificate",
+          "published_filter_files": []
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0/host-policy",
+            "bypass"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O0/bypass",
+          "returncode": 0,
+          "expected_returncode": 0,
+          "stdout_sha256": "7f39d7a40cf2a0df37323ab99ec895a8dfa80ac6fca482c75bf4dac010f1e172",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "scenario": "bypass",
+          "published_filter_files": []
+        }
+      ]
+    },
+    {
+      "source": "revision-1-negative",
+      "optimization": "-O0",
+      "build": {
+        "argv": [
+          "taskset",
+          "-c",
+          "11",
+          "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+          "-O0",
+          "-g",
+          "-fcheck=all",
+          "-fbacktrace",
+          "-ffixed-line-length-132",
+          "-ffree-line-length-none",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/policy-state.f90",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/qualification-1/revision-1-negative.f",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/policy-driver.f90",
+          "-o",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O0/host-policy"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O0",
+        "returncode": 0,
+        "expected_returncode": 0,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "executable_sha256": "a67f885d2ccb0b146055704b8dea826e56234ccde2c3bc0fcedb96e4adb7efc7",
+      "cases": [
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O0/host-policy",
+            "startup"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O0/startup",
+          "returncode": 71,
+          "expected_returncode": 71,
+          "stdout_sha256": "79552146ecdb7f0acf5088d57dc7a45d00969be319370069101563ac5c253aa7",
+          "stderr_sha256": "60878fcaac2d6de32c0d8fca272804943a56ed52146b33aa4f17830315240c26",
+          "scenario": "startup",
+          "published_filter_files": [
+            "hel-filter.dat",
+            "loop-filter.dat"
+          ]
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O0/host-policy",
+            "stale"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O0/stale",
+          "returncode": 72,
+          "expected_returncode": 72,
+          "stdout_sha256": "84e04c4df1fc56d0eabd9fe78e51d0beef9724c6afb3bf12415411c9e78efdfb",
+          "stderr_sha256": "75e0318787c1b6d4e4399b192c74705442aa52ae37a44d4c4cee92692cfde9fc",
+          "scenario": "stale",
+          "published_filter_files": []
+        }
+      ]
+    },
+    {
+      "source": "revision-2",
+      "optimization": "-O3",
+      "build": {
+        "argv": [
+          "taskset",
+          "-c",
+          "11",
+          "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+          "-O3",
+          "-g",
+          "-fcheck=all",
+          "-fbacktrace",
+          "-ffixed-line-length-132",
+          "-ffree-line-length-none",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/policy-state.f90",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/qualification-1/revision-2.f",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/policy-driver.f90",
+          "-o",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3/host-policy"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3",
+        "returncode": 0,
+        "expected_returncode": 0,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "executable_sha256": "e99bc1778f38abaeaf8a325e4215ba720d3910390fc6c88d870bbd3b10050801",
+      "cases": [
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3/host-policy",
+            "startup"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3/startup",
+          "returncode": 0,
+          "expected_returncode": 0,
+          "stdout_sha256": "935aa63b9a177304bb28897653bd3a54d8d7579bfebbd16818786c6aec667b66",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "scenario": "startup",
+          "published_filter_files": []
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3/host-policy",
+            "stale"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3/stale",
+          "returncode": 0,
+          "expected_returncode": 0,
+          "stdout_sha256": "bc15dddebd896d7ad488107e208fa49d637b189360c2962abf12e71525ee292c",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "scenario": "stale",
+          "published_filter_files": []
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3/host-policy",
+            "certificate"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3/certificate",
+          "returncode": 0,
+          "expected_returncode": 0,
+          "stdout_sha256": "6fa92401882224dd5315315472380e757fecd29c2acb2349a922eb3d083e5052",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "scenario": "certificate",
+          "published_filter_files": []
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3/host-policy",
+            "bypass"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-2-O3/bypass",
+          "returncode": 0,
+          "expected_returncode": 0,
+          "stdout_sha256": "7f39d7a40cf2a0df37323ab99ec895a8dfa80ac6fca482c75bf4dac010f1e172",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "scenario": "bypass",
+          "published_filter_files": []
+        }
+      ]
+    },
+    {
+      "source": "revision-1-negative",
+      "optimization": "-O3",
+      "build": {
+        "argv": [
+          "taskset",
+          "-c",
+          "11",
+          "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+          "-O3",
+          "-g",
+          "-fcheck=all",
+          "-fbacktrace",
+          "-ffixed-line-length-132",
+          "-ffree-line-length-none",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/policy-state.f90",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/qualification-1/revision-1-negative.f",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/policy-driver.f90",
+          "-o",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O3/host-policy"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O3",
+        "returncode": 0,
+        "expected_returncode": 0,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "executable_sha256": "3ec66843d39b53239a589a8e0e9c25581d974b4784dedf509979204b21475dbe",
+      "cases": [
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O3/host-policy",
+            "startup"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O3/startup",
+          "returncode": 71,
+          "expected_returncode": 71,
+          "stdout_sha256": "79552146ecdb7f0acf5088d57dc7a45d00969be319370069101563ac5c253aa7",
+          "stderr_sha256": "60878fcaac2d6de32c0d8fca272804943a56ed52146b33aa4f17830315240c26",
+          "scenario": "startup",
+          "published_filter_files": [
+            "hel-filter.dat",
+            "loop-filter.dat"
+          ]
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "11",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O3/host-policy",
+            "stale"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-host-edge-fixtures/qualification-1/revision-1-negative-O3/stale",
+          "returncode": 72,
+          "expected_returncode": 72,
+          "stdout_sha256": "84e04c4df1fc56d0eabd9fe78e51d0beef9724c6afb3bf12415411c9e78efdfb",
+          "stderr_sha256": "75e0318787c1b6d4e4399b192c74705442aa52ae37a44d4c4cee92692cfde9fc",
+          "scenario": "stale",
+          "published_filter_files": []
+        }
+      ]
+    }
+  ],
+  "source_inputs": {
+    "run_policy.py": "dd2454f15bae816cf06b5c273f40fd3724f37af306179fe89b305300270a5f83",
+    "policy-state.f90": "6daba29b4ba506a27a53a00437fe76b7816ffc2c9035b7f74fecdbdcff98f7be",
+    "policy-driver.f90": "ff4316edeb042aacb0bd2f2e0d9dba4c0560581fc6d2a3493ef0b4df58ded2f7"
+  },
+  "result": "PASS: revision 2 policy scenarios; revision 1 counterexamples detected at both compiler levels."
+}

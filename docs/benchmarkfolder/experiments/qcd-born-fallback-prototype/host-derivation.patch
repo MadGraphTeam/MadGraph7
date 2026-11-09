@@ -1,0 +1,80 @@
+--- original/loop_matrix.f
++++ prototype/loop_matrix.f
+@@ -46,9 +46,11 @@
+       USE ML5_0_POLYNOMIAL_CONSTANTS
+       USE ALOHA_OBJECT
+ C     
+-      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
++      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE,
++     $ IEEE_VALUE,IEEE_QUIET_NAN
+       IMPLICIT NONE
+       LOGICAL NRS_RETRY_MODE,NRS_RETRY_USED
++      LOGICAL BORN_RESCUED,BORN_OK,BORN_QP_CHECKED
+       INTEGER NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL
+       INTEGER NRS_RETRY_HARD_SKIP
+       REAL*8 NRS_NATIVE_ACC,NRS_COMP_ACC
+@@ -804,7 +806,25 @@
+       DO I=0,NSQSO_BORN
+         BORNBUFF(I)=0.0D0
+       ENDDO
+-      CALL ML5_0_SMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))
++      CALL ML5_0_BORN_WITH_RESCUE(P_USER,USERHEL,IC,BORNBUFF,
++     $ BORN_RESCUED,BORN_OK)
++      BORN_QP_CHECKED=.FALSE.
++      IF (.NOT.BORN_OK) THEN
++        NROTATIONS_DP=NROTATIONS_DP_BU
++        NROTATIONS_QP=NROTATIONS_QP_BU
++        MP_DONE=.FALSE.
++        MP_DONE_ONCE=.TRUE.
++        MP_PS_SET=.FALSE.
++        RET_CODE_H=4
++        RET_CODE_T=2
++        RET_CODE_U=0
++        ANS=IEEE_VALUE(0D0,IEEE_QUIET_NAN)
++        ACCURACY=1D0
++        IF(AUTOMATIC_CACHE_CLEARING) CALL ML5_0_CLEAR_CACHES()
++        CALL ML5_0_SET_COLLIER_GLOBAL_CACHE(.FALSE.)
++        RETURN
++      ENDIF
++
+       DO I=0,NSQSO_BORN
+         ANS(0,I)=BORNBUFF(I)
+       ENDDO
+@@ -1502,6 +1522,12 @@
+           DO I=0,NSQUAREDSO
+             ACCURACY(I)=ACC(I)
+           ENDDO
++C         A current-call certificate, never inherited from COMMON status.
++          IF(BORN_RESCUED) THEN
++            BORN_QP_CHECKED=ALL(IEEE_IS_FINITE(ACC)).AND.
++     $        ALL(IEEE_IS_FINITE(ANS)).AND.
++     $        MAXVAL(ACC).LT.MLSTABTHRES.AND..NOT.FPE_IN_QP_REDUCTION
++          ENDIF
+           RET_CODE_H=3
+           RET_CODE_U=SET_RET_CODE_U(MLREDUCTIONLIB(I_LIB),.TRUE.
+      $     ,.TRUE.)
+@@ -1581,6 +1607,8 @@
+           ENDIF
+         ELSEIF(.NOT.DOING_QP_EVALS)THEN
+           CALL ML5_0_COMPUTE_ACCURACY(DP_RES,N_DP_EVAL,ACC,ANS)
++C         A recovered Born requires the checked QP loop rescue path.
++          IF(BORN_RESCUED) FPE_IN_DP_REDUCTION=.TRUE.
+ C         If a floating point exception was encountered during the
+ C          reduction,
+ C         the result cannot be trusted at all and we hardset all
+@@ -1801,6 +1829,15 @@
+ C     Now make sure to turn off the global COLLIER cache if applicable
+       CALL ML5_0_SET_COLLIER_GLOBAL_CACHE(.FALSE.)
+ 
++C     A recovered Born requires a genuine checked QP loop in this call.
++C     Keep intentionally unchecked H1 behavior; reject stale checked codes.
++      IF(BORN_RESCUED.AND.(RET_CODE_H.EQ.2.OR.RET_CODE_H.EQ.3)
++     $   .AND..NOT.BORN_QP_CHECKED) THEN
++        RET_CODE_H=4
++        RET_CODE_U=0
++        ACCURACY=1D0
++      ENDIF
++
+       END
+ 
+       SUBROUTINE ML5_0_CLEAR_CACHES()

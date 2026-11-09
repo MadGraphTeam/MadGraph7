@@ -1,0 +1,47 @@
+{
+  "diagnostic_timing": {
+    "baseline_median_microseconds": 64.34735000000005,
+    "bootstrap95_ratio": [
+      0.9952564600657491,
+      1.0097709103169303
+    ],
+    "cpu": 11,
+    "formal_eligible": false,
+    "limitations": [
+      "Born-only repeated ordinary point, not full n1 amplitude.",
+      "Recovered shared-host load retained in execution.json.",
+      "No production performance claim or optimization promotion."
+    ],
+    "median_paired_added_microseconds": 0.4346499999999476,
+    "paired_geometric_ratio": 1.0029341435889099,
+    "pairs": 7,
+    "traversals_per_batch": 20000,
+    "wrapper_median_microseconds": 64.21395
+  },
+  "entry_invalid_flag_preserved": true,
+  "evidence_sha256": {
+    "execution.json": "127e752377c4def9153a9d9f824614c8a2519d64193bc847ccede18162da7ef4",
+    "qualify.log": "d2f3cb8c7d8616aeb3c1cc247ff24326b2d1fb5960b2a75b1a2b903b89e6920a",
+    "timing.log": "e7f10cbb9882629d7c5f49fd1e6d63dca11374750636adaa5240cce06a850216",
+    "trap-fallback.log": "2930ac76f07164036b98b78ac341c6c7e13f0bc9f94c2e94252bbe096110c7de",
+    "trap-original.log": "2d1744358be7496d4cd0cc1ce88103c42a625077163853a0148e4a85debe54d8"
+  },
+  "invalid_qp_rejected": true,
+  "ordinary_bit_and_flag_cases": 147,
+  "original_input_unchanged": true,
+  "passed": true,
+  "qp_to_dp_overflow_rejected": true,
+  "remaining": [
+    "Full host edge fixtures",
+    "Whole checked amplitude and pole normalization",
+    "n1 guard overhead"
+  ],
+  "repeated_original_stress_rescues": 25,
+  "schema": 1,
+  "scope": "Standalone QCD n3 Born-only fallback; no reducer calls, no whole-amplitude or performance acceptance claim.",
+  "stress_born_as_binary64": 4.307464894260975e+19,
+  "trap_modes": {
+    "trap-fallback": -8,
+    "trap-original": -8
+  }
+}

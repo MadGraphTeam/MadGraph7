@@ -1,0 +1,9 @@
+FAILED_BORN        1       1       4       2       0       2
+FAILED_BORN        2       2       4       2       0       4
+FAILED_BORN        3       3       4       2       0       6
+FAILED_BORN        4       4       4       2       0      11
+FAILED_BORN        5       5       4       2       0      16
+FAILED_BORN        6       6       4       2       0      21
+FAILED_BORN        7       7       4       2       0      26
+FAILED_BORN        8       8       4       2       0      31
+DETECTED_FAILED_BORN_STARTUP_PUBLICATION 31

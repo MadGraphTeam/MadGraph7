@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "reason": "Keep all generated binaries/modules/bytecode outside the portable report namespace.",
+  "numerical_logs_changed": false,
+  "historical_commands_keep_original_paths": true,
+  "runner_before_sha256": "5fcf02f3d16943c53aab0010ec7db72c716b9ba2d3167f22b61c2abcc5bc029b",
+  "runner_after_sha256": "eddabf3da53daeaded73441396b5b7a98636193eb772d2c6ac7e63df4b8e8fc9",
+  "previous_inventory_hashes": {
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/evidence-index.json": "865c53eb1f0b629c25badee641d06820c6a1203a5588e7664f1ec2f966a4462f",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/evidence-index.json": "22e705b1f60774555fb7a271add1c734c2126f2930188cc1aeb587dd3e8b8c7e"
+  },
+  "relocated_files": [
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-2/missing-final-restore/check-rounding",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-2/missing-final-restore/check-rounding",
+      "bytes": 48536,
+      "sha256": "21b8632e6aaaf7a6080a31cbcf38a88f655c9dfc733cb5a6ba767d4acd522239"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-2/missing-final-restore/rounding_fixture.mod",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-2/missing-final-restore/rounding_fixture.mod",
+      "bytes": 14277,
+      "sha256": "ed594650fc7e000f970300237fdbb85ed90129d3073cdc335237f37a0264c963"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-2/original-O0/check-rounding",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-2/original-O0/check-rounding",
+      "bytes": 48520,
+      "sha256": "eda591583055142bbad126d1695924805cc5b55fb6a16411b05c2f4a4f07b50e"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-2/original-O0/rounding_fixture.mod",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-2/original-O0/rounding_fixture.mod",
+      "bytes": 14277,
+      "sha256": "ed594650fc7e000f970300237fdbb85ed90129d3073cdc335237f37a0264c963"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-2/original-O3/check-rounding",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-2/original-O3/check-rounding",
+      "bytes": 36120,
+      "sha256": "5954c92050855087d8ee121b0a095c92ca34135c4b4cf7591b520710bd62c3b5"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-2/original-O3/rounding_fixture.mod",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-2/original-O3/rounding_fixture.mod",
+      "bytes": 14277,
+      "sha256": "ed594650fc7e000f970300237fdbb85ed90129d3073cdc335237f37a0264c963"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-3/conversion-rounding/check-rounding",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-3/conversion-rounding/check-rounding",
+      "bytes": 48536,
+      "sha256": "476c39369391e2bd72dc19920901abebec7af4673b7cf3939f7b4a1047117dec"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-3/conversion-rounding/rounding_fixture.mod",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-3/conversion-rounding/rounding_fixture.mod",
+      "bytes": 14277,
+      "sha256": "ed594650fc7e000f970300237fdbb85ed90129d3073cdc335237f37a0264c963"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-3/missing-qp-flag-merge/check-rounding",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-3/missing-qp-flag-merge/check-rounding",
+      "bytes": 48536,
+      "sha256": "842a486165b880e48b47498f5352b9c946185d364c2808db184e38eceffa2c1b"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-3/missing-qp-flag-merge/rounding_fixture.mod",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-3/missing-qp-flag-merge/rounding_fixture.mod",
+      "bytes": 14277,
+      "sha256": "ed594650fc7e000f970300237fdbb85ed90129d3073cdc335237f37a0264c963"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-3/original-O0/check-rounding",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-3/original-O0/check-rounding",
+      "bytes": 48520,
+      "sha256": "eda591583055142bbad126d1695924805cc5b55fb6a16411b05c2f4a4f07b50e"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-3/original-O0/rounding_fixture.mod",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-3/original-O0/rounding_fixture.mod",
+      "bytes": 14277,
+      "sha256": "ed594650fc7e000f970300237fdbb85ed90129d3073cdc335237f37a0264c963"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-3/original-O3/check-rounding",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-3/original-O3/check-rounding",
+      "bytes": 36120,
+      "sha256": "5954c92050855087d8ee121b0a095c92ca34135c4b4cf7591b520710bd62c3b5"
+    },
+    {
+      "old_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/rounding/work/run-3/original-O3/rounding_fixture.mod",
+      "new_path": ".tirust-build/born-host-edge-fixtures/rounding/run-3/original-O3/rounding_fixture.mod",
+      "bytes": 14277,
+      "sha256": "ed594650fc7e000f970300237fdbb85ed90129d3073cdc335237f37a0264c963"
+    }
+  ],
+  "removed_generated_bytecode": [
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-edge-fixtures/__pycache__/run_policy.cpython-313.pyc"
+  ]
+}
