@@ -1817,6 +1817,24 @@ def probe_carriers(precision: Any = None) -> tuple[Any, ...]:
     return (Precision.double(), Precision.double_double())
 
 
+def probe_lanes(runs: int) -> int:
+    """The lanes of a probe executor: the smallest power of two holding its
+    largest batch (``runs`` probe points, or their rotated copies under
+    ``stability.RECOMMENDED_CHECKS``), at most the executor's default. A
+    binary64 chunk costs its full lane count however few points it holds
+    (``NativeExecutor.lanes_for``); the other carriers already size their
+    lanes to the batch, so they run as before."""
+
+    from .plan_export import DEFAULT_LANES
+    from .stability import RECOMMENDED_CHECKS
+
+    batch = runs * max(1, len(RECOMMENDED_CHECKS.rotations))
+    lanes = 1
+    while lanes < min(batch, DEFAULT_LANES):
+        lanes *= 2
+    return lanes
+
+
 def _fallback(result: Any) -> dict[str, Any]:
     """Why a probe's run in one carrier did not decide it (the next carrier
     re-runs it): the backend's refusal, or the ratio of its failed verdict."""
@@ -1930,14 +1948,6 @@ def generation_probes(
             key=lambda i: float("inf") if lifted[i][1] is None else lifted[i][1],
         )
         point, distance = lifted[index]
-        executor = NativeExecutor(target, forward=False, inputs="native")
-        scale = _point_scale(
-            point, sum(1 for leg in blocks.process.legs if leg.is_initial)
-        )
-        seconds["point"] = time.perf_counter() - clock
-        clock = time.perf_counter()
-        floors, floors_record = probe_floors(executor, point, scale)
-        seconds["floors"] = time.perf_counter() - clock
         # One Ward probe per external gauge-boson species (its first leg;
         # Bose symmetry relates the others) at c = 1: the amplitude is
         # linear in the substituted vector, so c = i (needed where an
@@ -1949,6 +1959,16 @@ def generation_probes(
             first.setdefault(species[leg], leg)
         legs = sorted(first.values())
         wards = [None, *(gauge_ward(leg, (1, 0), point) for leg in legs)]
+        executor = NativeExecutor(
+            target, forward=False, inputs="native", lanes=probe_lanes(len(wards))
+        )
+        scale = _point_scale(
+            point, sum(1 for leg in blocks.process.legs if leg.is_initial)
+        )
+        seconds["point"] = time.perf_counter() - clock
+        clock = time.perf_counter()
+        floors, floors_record = probe_floors(executor, point, scale)
+        seconds["floors"] = time.perf_counter() - clock
         entries: list[dict[str, Any]] = [{"probe": "finiteness"}] + [
             {"probe": "ward", "leg": leg} for leg in legs
         ]
@@ -2112,8 +2132,12 @@ def _goldstone_probes(
         slices[str(leg)] = time.perf_counter() - clock
         clock = time.perf_counter()
         if vector is None:
-            vector = NativeExecutor(target, forward=False, inputs="native")
-        partner_executor = NativeExecutor(side, forward=False, inputs="native")
+            vector = NativeExecutor(
+                target, forward=False, inputs="native", lanes=probe_lanes(1)
+            )
+        partner_executor = NativeExecutor(
+            side, forward=False, inputs="native", lanes=probe_lanes(1)
+        )
         runs: list[Any] = []
         for carrier in carriers:
             try:
@@ -2241,6 +2265,7 @@ __all__ = [
     "probe",
     "probe_carriers",
     "probe_floors",
+    "probe_lanes",
     "probe_point",
     "probe_request",
     "probe_results",
