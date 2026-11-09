@@ -2200,14 +2200,15 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     assert hh["gate"] == {"status": "reported", "label": "no gate (2->2)"}
     assert hh["ratio_to_fastest"] == pytest.approx(0.002 / 0.01)
     assert rows["gg_hh"]["providers"]["fastest"]["key"] == "openloops"
-    # Generation: the full production cost, generate + plan export + the
-    # mandatory generation-time probes (m-lit Q12), their share named; its
-    # multiplier against the provider's generation takes the full cost.
+    # Generation: the engine's generation (generate + filter + plan export),
+    # its multiplier against the provider's generation formed on it; the
+    # optional generation-time probes (validation, off by default since
+    # lit-probe) apart, with their carrier (from their split).
     gen = rows["gg_hh"]["generation"]
-    assert gen["status"] == "measured" and gen["seconds"] == 15.0
-    assert gen["generate_seconds"] == 12.0 and gen["probes_seconds"] == 3.0
-    assert gen["probe_share"] == pytest.approx(0.2)
-    assert gen["ratio_to_fastest"] == pytest.approx(15.0 / 60.0)
+    assert gen["status"] == "measured" and gen["seconds"] == 12.0
+    assert gen["validation"] == {"seconds": 3.0, "carrier": "double-double"}
+    assert "probe_share" not in gen and "probes_seconds" not in gen
+    assert gen["ratio_to_fastest"] == pytest.approx(12.0 / 60.0)
     assert gen["host"] == hh["host"] == "testhost"
     # The newest revision's default backend, the other backend beside it;
     # below 5 ms not gated.
@@ -2253,14 +2254,33 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
     assert hhh["providers"]["status"] == "recorded"
     assert hhh["providers"]["providers"]["madloop"]["status"] == "not timed"
     assert hhh["timing"]["gate"]["label"] == "no provider time yet"
-    # A record without its probe time holds no full production cost: not
-    # recorded (never a partial generation); a record without its host is
-    # refused.
-    del timing["records"][-1]["generation"]["probes_seconds"]
+    # A record without the probes (off by default) is measured: the engine's
+    # generation, no validation; one with them names their carrier from
+    # their split (the engine's per-carrier passes, or lit-perf's double-
+    # double "probe runs"); a record without its host is refused.
+    generation = timing["records"][-1]["generation"]
+    for split, carrier in (
+        ({"double": 1.0, "probe_slice": 2.0}, "binary64"),
+        ({"double": 1.0, "double-double": 2.0}, "binary64, double-double fallback"),
+        ({"double-double": 2.0}, "double-double"),
+        ({"probe runs (double-double)": 2.0, "probe slice": 1.0}, "double-double"),
+        ({}, "no probe ran"),
+    ):
+        generation["probes_split_seconds"] = split
+        (data / "li-timing.json").write_text(json.dumps(timing))
+        rows, _ = build()
+        assert rows["gg_hhh"]["generation"]["validation"]["carrier"] == carrier
+    generation["probes_seconds"] = None
     (data / "li-timing.json").write_text(json.dumps(timing))
     rows, _ = build()
-    assert rows["gg_hhh"]["generation"]["status"] == "not recorded"
-    assert "probe time" in rows["gg_hhh"]["generation"]["reason"]
+    off = rows["gg_hhh"]["generation"]
+    assert off["status"] == "measured" and off["seconds"] == 12.0
+    assert "validation" not in off
+    del generation["probes_seconds"], generation["probes_split_seconds"]
+    (data / "li-timing.json").write_text(json.dumps(timing))
+    rows, _ = build()
+    assert rows["gg_hhh"]["generation"]["status"] == "measured"
+    assert "validation" not in rows["gg_hhh"]["generation"]
     del timing["records"][-1]["host"]
     (data / "li-timing.json").write_text(json.dumps(timing))
     with pytest.raises(ValueError, match="names no host"):
@@ -2595,7 +2615,9 @@ def test_report_builder_loop_induced_cell_is_the_auto_record_never_a_failed_one(
     assert other["failed_points"] == [128, 128] and other["served_fraction"] == 0.0
     assert other["causes"] == {ruling_d: 128} and "seconds_per_point" not in other
     assert other["label"] == f"failed closed on every point (128/128), {ruling_d}"
-    assert rows["gg_hgg"]["generation"]["seconds"] == 15.0
+    # The engine's generation; the probes' 3 s apart (lit-probe).
+    assert rows["gg_hgg"]["generation"]["seconds"] == 12.0
+    assert rows["gg_hgg"]["generation"]["validation"]["seconds"] == 3.0
     hh = rows["gg_hh"]["timing"]["other_backend"]
     assert hh["failed_points"] == [43, 43] and not hh["every_point"]
     assert hh["served_fraction"] == pytest.approx(85 / 128)
@@ -2874,6 +2896,113 @@ def test_one_helicity_arms_select_one_row_for_one_call():
     assert pyamplicol_v2._arm_label(arm) == "tirust B=128 helicity row 0"
     with pyamplicol_v2.InducedRun._one_row(run, {"backend": backend, "size": 1}):
         assert executor.row_mask is None
+
+
+def test_the_harness_probe_stage_follows_the_option_with_the_engines_record(
+    monkeypatch,
+):
+    """lit-probe (DECISIONS 2026-11-08 22:34 (3)): the loop-induced harness's
+    generation records the probes off by default (no time, never added to
+    the generation's); with the option the engine's own probe record gives
+    their time, split, carriers and fallbacks, and no timer wraps the probes'
+    internals; the gate tool reads the off stage as no probe time."""
+
+    import types
+
+    from pyamplicol.loops.v2 import goldstone, induced, ward
+    from tools.loop_benchmark import pyamplicol_v2
+
+    internals = [
+        (induced, "probe_point"),
+        (induced, "_probe_runs"),
+        (induced, "_goldstone_probes"),
+        (ward, "ward_slice"),
+        (goldstone, "goldstone_slice"),
+    ]
+    originals = [getattr(owner, name) for owner, name in internals]
+    calls = []
+    record = {
+        "status": "run",
+        "carriers": ["double", "double-double"],
+        "fallbacks": 1,
+        "seconds": {
+            "probe_slice": 4.0,
+            "double": 1.0,
+            "double-double": 2.0,
+            "total": 7.5,
+        },
+    }
+
+    def probes(slice_, compiled, native, candidates):
+        assert [getattr(o, n) for o, n in internals] == originals
+        calls.append(candidates)
+        return record
+
+    monkeypatch.setattr(induced, "generation_probes", probes)
+    process = types.SimpleNamespace(slice=object())
+    off, error = pyamplicol_v2.probe_stage(
+        types.SimpleNamespace(), process, None, None, [[0.0]]
+    )
+    assert off == {"status": "off", "seconds": None} and error is None
+    assert not calls
+    on, error = pyamplicol_v2.probe_stage(
+        types.SimpleNamespace(loop_induced_probes=True), process, None, None, [[0.0]]
+    )
+    assert error is None and calls == [[[0.0]]]
+    assert on["seconds"] == 7.5 and on["record"] is record
+    assert on["split_seconds"] == {
+        "probe_slice": 4.0,
+        "double": 1.0,
+        "double-double": 2.0,
+    }
+    assert on["carriers"] == ["double", "double-double"] and on["fallbacks"] == 1
+    # The gate tool's li-timing records: the generation's time never holds
+    # the probes'; off reads as no probe time (the builder: measured, no
+    # validation), on as the engine record's time and split.
+    batch = {
+        "blocks": 1,
+        "median_seconds_per_point": 0.01,
+        "samples_seconds_per_point": [0.01],
+        "stages_per_point": {},
+        "gate": {"status": "pass"},
+    }
+    for probes_stage, expected in ((off, None), (on, 7.5)):
+        config = {
+            "reduction": {"requested": "auto", "effective": "ninjars", "reason": "r"},
+            "revision": "0" * 40,
+            "host": "testhost",
+            "generation": {
+                "generate": {"seconds": 1.0, "peak_gib": 0.5},
+                "export": {"seconds": 0.5},
+                "filter": {"seconds": 0.25},
+                "probes": probes_stage,
+            },
+            "batches": {"128": batch},
+        }
+        document = {
+            "processes": [
+                {
+                    "key": "li_gg_emepmupmum",
+                    "loop_induced": True,
+                    "pyamplicol": {"native/full/auto": config},
+                }
+            ]
+        }
+        (converted,) = gate.li_timing_records(
+            document,
+            [
+                {
+                    "key": "gg_emepmupmum",
+                    "ids": ["LI-43"],
+                    "process": "g g > e+ e- mu+ mu-",
+                }
+            ],
+        )
+        generation = converted["generation"]
+        assert generation["seconds"] == 1.75
+        assert generation["probes_seconds"] == expected
+        if expected is not None:
+            assert generation["probes_split_seconds"] == on["split_seconds"]
 
 
 def _induced_run(seconds: list[float], failed: list[int], values: dict) -> dict:

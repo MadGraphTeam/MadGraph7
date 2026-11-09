@@ -93,6 +93,7 @@ _VIRTUAL_ONLY_LEAVES = frozenset(
         "evaluation.stability.relative_tolerance",
         "generation.particle_veto",
         "generation.allow_anomalous_veto",
+        "generation.loop_induced_probes",
         "generation.allow_failed_probes",
         "generation.helicity_filter_failure_probability",
         "loop.alpha_s_parameter",

@@ -930,9 +930,14 @@ class GenerationConfig:
     # from cancelling but that cancel without it (an anomalous veto, e.g. one
     # breaking a quark doublet); refused by default. Recorded in the artifact.
     allow_anomalous_veto: bool = field(default=False, metadata=_setting("bool"))
+    # m-lit Q12 (DECISIONS 2026-11-08 22:34 (3)): run the generation-time
+    # finiteness, Ward and Goldstone probes of loop-induced processes
+    # (binary64, double-double where a binary64 probe fails or is refused);
+    # off by default: the artifact and its values do not depend on them.
+    loop_induced_probes: bool = field(default=False, metadata=_setting("bool"))
     # m-lit Q12: store a loop-induced process whose generation-time
     # finiteness or Ward probe failed (refused by default); the failure is
-    # recorded in the artifact.
+    # recorded in the artifact. Acts only when loop_induced_probes is on.
     allow_failed_probes: bool = field(default=False, metadata=_setting("bool"))
     # m-lit Q10 (LIT-R2): the stated failure probability of the exact
     # helicity-zero filter of loop-induced processes (that it drops a row
@@ -966,6 +971,11 @@ class GenerationConfig:
         if not isinstance(self.allow_anomalous_veto, bool):
             raise ConfigurationError(
                 "generation.allow_anomalous_veto must be a boolean"
+            )
+        if not isinstance(self.loop_induced_probes, bool):
+            # The card's message too (``resolver``): one message per route.
+            raise ConfigurationError(
+                "generation.loop_induced_probes must be true or false"
             )
         if not isinstance(self.allow_failed_probes, bool):
             raise ConfigurationError("generation.allow_failed_probes must be a boolean")

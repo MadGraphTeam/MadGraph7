@@ -23,8 +23,10 @@ li``, MadLoop / Recola / OpenLoops and the mpmath oracles of
   own estimates on the per-row term floor (m-lit DECISIONS 2026-11-06
   ~09:00 (1)), whose native and Python forms agree; a non-gauge vector
   fails the Ward probe (it discriminates); the generation-time probes
-  (double-double, zero widths, full kernels) pass, and a failed one refuses
-  generation unless allowed;
+  (binary64, double-double where a binary64 probe fails or is refused; zero
+  widths, full kernels) pass, and a failed one refuses generation unless
+  allowed (they run only with ``generation.loop_induced_probes``,
+  ``test_loop_v2_induced_probes.py``);
 * the result transport is O(rows x T) per point: no reduction lanes reach
   Python unless requested;
 * h > g a is an exact colour zero with its record (every loop has a single
@@ -802,15 +804,17 @@ def test_ward_probe_passes_and_discriminates(li):
 def test_generation_probes_pass_at_zero_widths_on_the_full_kernels(
     li, process, orders, name, legs
 ):
-    """m-lit Q12 / Q7, PLAN §2.a.7: the generation-time probes at the
-    model's widths (none fixed): on a probe slice with the widths fixed to
-    zero on the full tree kernels, in double-double at the candidate
-    farthest from the tree poles (lifted to exact momentum conservation),
-    the finiteness probe and the Ward probe of one leg per gauge-boson
-    species pass within ten times their estimates."""
+    """m-lit Q12 / Q7, PLAN §2.a.7, DECISIONS 2026-11-08 22:34 (3): the
+    generation-time probes at the model's widths (none fixed): on a probe
+    slice with the widths fixed to zero on the full tree kernels, at the
+    candidate farthest from the tree poles (lifted once to exact momentum
+    conservation at the double-double fallback's digits), the finiteness
+    probe and the Ward probe of one leg per gauge-boson species pass within
+    ten times their estimates in binary64, with no double-double fallback,
+    on NinjaRS (recorded)."""
 
     from pyamplicol.loops.v2 import induced
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
 
     compiled = li.model("no_b_mass")
     slice_ = LoopSlice.generate(
@@ -821,20 +825,29 @@ def test_generation_probes_pass_at_zero_widths_on_the_full_kernels(
     points = _fixture(name)["points"]
     candidates = [[[float(x) for x in p] for p in point] for point in points]
     record = induced.generation_probes(slice_, compiled, li.native, candidates)
-    assert record["precision"] == "double-double" and record["widths"] == "zero"
+    assert record["status"] == "run" and record["widths"] == "zero"
+    assert record["carriers"] == ["double", "double-double"]
+    assert record["reduction"]["effective"] == "ninjars"
     assert record["zeroed_widths"] == ["WH", "WT", "WW", "WZ"]
+    assert record["lift_digits"] == 2 * Precision.double_double().working_digits
     distances = [induced.probe_point(slice_, point, 64)[1] for point in candidates]
     assert record["candidate"] == distances.index(max(distances))
     assert record["finiteness"]["passed"] and record["ward"]["passed"]
     assert record["ward"]["legs"] == legs and "failed" not in record
+    assert record["fallbacks"] == 0 and record["floors"] == {"carrier": "double"}
+    assert {entry["carrier"] for entry in record["probes"]} == {"double"}
+    assert record["seconds"]["probe_slice"] > 0
+    assert "double-double" not in record["seconds"]
 
 
 @pytest.mark.loop_physics
 def test_a_failed_generation_probe_refuses_unless_allowed(li, monkeypatch):
     """A non-gauge vector in place of c p_j / E_j fails the Ward probe of
-    g g > h: generation refuses (``ProbeFailure``, the internal key
+    g g > h in binary64 and in its double-double fallback (a defect, not
+    rounding): generation refuses (``ProbeFailure``, the internal key
     ``loop-induced-probe``) unless the failure is allowed, which records
-    it; the exact colour zero h > g a has nothing to probe."""
+    it with the carrier that decided and the binary64 ratio; the finiteness
+    probe passes in binary64 alone."""
 
     from pyamplicol.loops.v2 import induced, ward
     from pyamplicol.loops.v2.refusals import LoopEngineRefusal, keyed_error
@@ -853,6 +866,13 @@ def test_a_failed_generation_probe_refuses_unless_allowed(li, monkeypatch):
     )
     assert allowed["allowed_failure"] and allowed["failed"]
     assert allowed["finiteness"]["passed"] and not allowed["ward"]["passed"]
+    assert allowed["finiteness"]["carrier"] == "double"
+    assert allowed["ward"]["carriers"] == {"1": "double-double"}
+    (ward_entry,) = (e for e in allowed["probes"] if e["probe"] == "ward")
+    assert ward_entry["fallback"]["reason"] == "verdict"
+    assert ward_entry["fallback"]["carrier"] == "double"
+    assert ward_entry["fallback"]["worst"] > 1e6 and ward_entry["worst"] > 1e6
+    assert allowed["fallbacks"] == 1
 
 
 @pytest.mark.loop_physics
@@ -969,14 +989,15 @@ def test_public_route_generates_loads_and_relocates(li, li_artifact, tmp_path):
     assert manifest["runtime"]["required_runtime_capabilities"] == [
         "rusticol.loop-runtime.v5"
     ]
-    # m-lit Q12: the generation-time probes, recorded per process.
+    # m-lit Q12, DECISIONS 2026-11-08 22:34 (3): the generation-time probes
+    # are off by default and recorded as not run (never a pass); an exact
+    # colour zero keeps its record (``test_loop_v2_induced_probes.py`` runs
+    # them).
     records = {
         record["id"]: record["filters"]
         for record in manifest["extensions"]["generation"]["concrete_processes"]
     }
-    probes = records["gg_h"]["loop_induced_probes"]
-    assert probes["finiteness"]["passed"] and probes["ward"]["passed"]
-    assert probes["ward"]["legs"] == [1]
+    assert records["gg_h"]["loop_induced_probes"] == {"status": "off"}
     assert records["h_ga"]["loop_induced_probes"] == {"exact_colour_zero": True}
     point, scale, parameters = li.point("li_gg_h")
     runtime = Runtime.load(output, process="gg_h", model_parameters=parameters)

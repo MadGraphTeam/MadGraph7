@@ -65,6 +65,7 @@ compatibility = "gmu_particle_anti"
 [generation]
 output = {json.dumps(str(output))}
 emit_api_bundle = false
+loop_induced_probes = true
 [generation.validation]
 post_build_validation = false
 """
@@ -76,10 +77,12 @@ def test_public_route_records_the_width_policy_and_the_goldstone_probe(
     """Generator -> artifact -> Runtime: a a > z z [QED] at the model's
     default widths (m-lit Q7, Q12). The artifact records the fixed-tree-width
     policy (the s-channel Higgs of h h -> Z Z blocks propagates with W_H; loop
-    propagators widthless) and the generation-time probes, run at zero widths
-    in double-double: finiteness, the Ward probe of the photon species and
-    the Goldstone-equivalence probe of the Z species (eta = -i), all within
-    ten times their estimates. The stored process evaluates at the
+    propagators widthless) and the generation-time probes (enabled here,
+    ``generation.loop_induced_probes``), run at zero widths in binary64 with
+    the double-double fallback: finiteness, the Ward probe of the photon
+    species and the Goldstone-equivalence probe of the Z species (eta =
+    -i), all within ten times their estimates, the probe slice's and the
+    Goldstone slice's generation timed. The stored process evaluates at the
     references' zero widths equal to MadLoop."""
 
     from pyamplicol import Runtime
@@ -112,7 +115,10 @@ def test_public_route_records_the_width_policy_and_the_goldstone_probe(
     assert policy["loop_propagators"] == "widthless"
     assert policy["tree_widths"] == {"H": "WH"}
     probes = filters["loop_induced_probes"]
+    assert probes["status"] == "run" and probes["carriers"][0] == "double"
     assert probes["widths"] == "zero" and "failed" not in probes
+    assert set(probes["goldstone"]["carriers"]) == {"3"}
+    assert set(probes["seconds"]["goldstone_slices"]) == {"3"}
     assert {"WZ", "WW", "WT", "WH"} <= set(probes["zeroed_widths"])
     assert probes["finiteness"]["passed"] and probes["ward"]["passed"]
     assert probes["ward"]["legs"] == [1]

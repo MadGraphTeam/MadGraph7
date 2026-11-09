@@ -1576,7 +1576,8 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         backend, context, process, request, candidates, correlators
                     )
                     # m-lit Q12: the generation-time probes of a loop-induced
-                    # process (None for a virtual).
+                    # process, run only with generation.loop_induced_probes
+                    # (its record; None for a virtual).
                     probes = _loop_induced_probes(
                         backend, context, process, native, candidates
                     )
@@ -1881,22 +1882,33 @@ def _loop_induced_filter(backend, context, process, request, candidates, correla
 
 
 def _loop_induced_probes(backend, context, process, native, candidates):
-    """The generation-time probes of a loop-induced process (m-lit Q12,
-    ``induced.generation_probes``) on the generation's validation points of
-    the process (``_loop_induced_candidates``); None for a virtual. A
-    failure refuses the process (``loop-induced-probe``) unless
-    ``generation.allow_failed_probes``."""
-
-    from pyamplicol.loops.v2.induced import generation_probes
+    """The record of the generation-time probes of a loop-induced process
+    (m-lit Q12; None for a virtual). Off by default (DECISIONS 2026-11-08
+    22:34 (3)): the record is ``{"status": "off"}`` (not run, never a pass;
+    an exact colour zero keeps its record) and nothing of the probes runs.
+    With ``generation.loop_induced_probes`` they run
+    (``induced.generation_probes``: binary64, double-double where a binary64
+    probe fails or is refused) on the generation's validation points of the
+    process (``_loop_induced_candidates``), and a failure refuses the
+    process (``loop-induced-probe``) unless
+    ``generation.allow_failed_probes``. The written plan never depends on
+    them (it is the generated process's, formed before)."""
 
     if candidates is None:
         return None
+    generation = backend._run_config.generation
+    if process.slice.amplitude.colour_zero:
+        return {"exact_colour_zero": True}
+    if not generation.loop_induced_probes:
+        return {"status": "off"}
+    from pyamplicol.loops.v2.induced import generation_probes
+
     return generation_probes(
         process.slice,
         context.resolved.compiled,
         native,
         candidates,
-        allow_failure=backend._run_config.generation.allow_failed_probes,
+        allow_failure=generation.allow_failed_probes,
     )
 
 
