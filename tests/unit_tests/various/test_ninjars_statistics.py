@@ -11,7 +11,8 @@ from xml.dom.minidom import parseString
 
 from madgraph import MG5DIR
 from madgraph.iolibs.file_writers import FortranWriter
-from madgraph.madevent.sum_html import RunStatistics, decode_madloop_backend_usage
+from madgraph.madevent.sum_html import (
+    MADLOOP_BACKEND_LABELS, RunStatistics, decode_madloop_backend_usage)
 from madgraph.interface.amcatnlo_run_interface import aMCatNLOCmd
 
 
@@ -109,14 +110,16 @@ class TestNinjaRSStatistics(unittest.TestCase):
 class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
     """Run actual Fortran tally/writer blocks through both Python readers."""
 
-    # Every legacy units bucket plus ordinary and initialization NinjaRS calls.
+    # Every legacy units bucket plus ordinary and initialization Rust calls.
     # Unequal counts expose alias swaps and accidental double counting.
     samples = [(100, 1), (211, 2), (212, 3), (213, 4), (214, 5),
                (215, 6), (216, 7), (217, 8), (328, 9), (329, 10),
-               (218, 11), (238, 12), (322, 13), (342, 14)]
+               (218, 11), (238, 12), (322, 13), (342, 14),
+               (219, 15), (239, 16), (323, 17), (343, 18)]
     expected = {'CutTools_DP': 2, 'PJFry': 3, 'IREGI': 4, 'Golem': 5,
                 'Samurai': 6, 'Ninja': 7, 'COLLIER': 8, 'Ninja_QP': 9,
-                'CutTools_QP': 10, 'NinjaRS_DP': 23, 'NinjaRS_QP': 27}
+                'CutTools_QP': 10, 'NinjaRS_DP': 23, 'NinjaRS_QP': 27,
+                'TIRust_DP': 31, 'TIRust_QP': 35}
 
     def run_producer(self, work, tally, writer):
         codes = [code for code, count in self.samples for _ in range(count)]
@@ -125,11 +128,14 @@ class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
       implicit none
       integer i,j,u,t,h,return_code,ret_code,outUnit
       integer NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      integer TIRUST_DP_USAGE,TIRUST_QP_USAGE
       integer U_RETURN_CODES(0:9),T_RETURN_CODES(0:9)
       integer H_RETURN_CODES(0:9),n1(0:9)
       integer ntot,nsun,nsps,nups,neps,nddp,nqdp,nini,n100,n10
       NINJARS_DP_USAGE=0
       NINJARS_QP_USAGE=0
+      TIRUST_DP_USAGE=0
+      TIRUST_QP_USAGE=0
       U_RETURN_CODES=0
       T_RETURN_CODES=0
       H_RETURN_CODES=0
@@ -210,17 +216,107 @@ class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
                     path.write_text(output)
                     _, report = aMCatNLOCmd.compile_advanced_stats(
                         SimpleNamespace(me_dir=directory), [str(path)], [], '')
-                    for label, count in [
-                            ('Not identified (CTModeRun != -1)', 1),
-                            ('CutTools (double precision)', 2), ('PJFry++', 3),
-                            ('IREGI', 4), ('Golem95', 5), ('Samurai', 6),
-                            ('Ninja (double precision)', 7), ('COLLIER', 8),
-                            ('Ninja (quadruple precision)', 9),
-                            ('CutTools (quadruple precision)', 10),
-                            ('NinjaRS (double precision)', 23),
-                            ('NinjaRS (quadruple precision)', 27)]:
-                        self.assertRegex(report, re.escape(label) +
+                    expected = dict(self.expected, unidentified=1)
+                    for backend, count in expected.items():
+                        self.assertRegex(report, re.escape(
+                            MADLOOP_BACKEND_LABELS[backend]) +
                                          r'\s+' + str(count) + r'(?:\n|$)')
+
+
+class TestTIRustStatistics(unittest.TestCase):
+    @staticmethod
+    def xml(extra=''):
+        xml = TestNinjaRSStatistics.xml(extra)
+        xml.getElementsByTagName('u_return_code')[0].childNodes[0].data = (
+            '0,0,7,19,0,0,0,0,11,17')
+        xml.getElementsByTagName('n_evals')[0].childNodes[0].data = '54'
+        return xml
+
+    def test_old_xml_preserves_cuttools_qp_and_iregi(self):
+        stats = RunStatistics()
+        stats.load_statistics(self.xml())
+        self.assertEqual(stats['CutTools_QP_usage'], 17)
+        self.assertEqual(stats['IREGI_usage'], 19)
+        self.assertEqual(stats['TIRust_DP_usage'], 0)
+        self.assertEqual(stats['TIRust_QP_usage'], 0)
+
+    def test_mixed_xml_aggregation_and_optional_counter_reset(self):
+        stats = RunStatistics()
+        stats.load_statistics(self.xml(
+            '<ninjars_dp_usage>9</ninjars_dp_usage>'
+            '<ninjars_qp_usage>5</ninjars_qp_usage>'
+            '<tirust_dp_usage>13</tirust_dp_usage>'
+            '<tirust_qp_usage>11</tirust_qp_usage>'))
+        self.assertEqual(tuple(stats[key + '_usage'] for key in (
+            'PJFry', 'Ninja_QP', 'CutTools_QP', 'IREGI',
+            'NinjaRS_DP', 'NinjaRS_QP', 'TIRust_DP', 'TIRust_QP')),
+            (2, 2, 4, 8, 9, 5, 13, 11))
+        self.assertIn('TIRust_DP', stats.nice_output('test'))
+        self.assertIn('TIRust_QP', stats.nice_output('test'))
+        old = RunStatistics()
+        old.load_statistics(self.xml())
+        stats.aggregate_statistics(old)
+        self.assertEqual(stats['CutTools_QP_usage'], 21)
+        self.assertEqual(stats['IREGI_usage'], 27)
+        self.assertEqual(stats['TIRust_DP_usage'], 13)
+        self.assertEqual(stats['TIRust_QP_usage'], 11)
+        for extra, expected in [
+                ('<tirust_dp_usage>13</tirust_dp_usage>', (4, 19, 13, 0)),
+                ('<tirust_qp_usage>11</tirust_qp_usage>', (17, 8, 0, 11)),
+                ('', (17, 19, 0, 0))]:
+            stats.load_statistics(self.xml(extra))
+            self.assertEqual(tuple(stats[key + '_usage'] for key in (
+                'CutTools_QP', 'IREGI', 'TIRust_DP', 'TIRust_QP')), expected)
+            self.assertEqual(stats['NinjaRS_DP_usage'], 0)
+            self.assertEqual(stats['NinjaRS_QP_usage'], 0)
+
+    def test_decoder_conserves_total_and_input_for_all_aliases(self):
+        units = [0, 0, 7, 19, 0, 0, 0, 0, 11, 17]
+        original = units[:]
+        for _ in range(2):
+            usage = decode_madloop_backend_usage(units, 9, 5, 13, 11)
+            self.assertEqual(tuple(usage[key] for key in (
+                'Ninja_QP', 'PJFry', 'CutTools_QP', 'IREGI')),
+                (2, 2, 4, 8))
+            self.assertEqual(sum(usage.values()), sum(units))
+            self.assertEqual(units, original)
+
+    def test_nlo_log_aggregation_with_legacy_and_mixed_backends(self):
+        log = '''Statistics from MadLoop:
+ Total points tried: 54
+ Stability unknown: 0
+ Stable PS point: 54
+ Unstable PS point (and rescued): 0
+ Exceptional PS point (unstable and not rescued): 0
+ Double precision used: 30
+ Quadruple precision used: 24
+ Initialization phase-space points: 0
+ Unknown return code (100): 0
+ Unknown return code (10): 0
+ #Unit 2 = 7
+ #Unit 3 = 19
+ #Unit 8 = 11
+ #Unit 9 = 17
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            old = Path(directory) / 'old.log'
+            mixed = Path(directory) / 'mixed.log'
+            old.write_text(log)
+            mixed.write_text(log + '#NinjaRS DP = 9\n#NinjaRS QP = 5\n'
+                             '#TIRust DP = 13\n#TIRust QP = 11\n')
+            _, legacy_report = aMCatNLOCmd.compile_advanced_stats(
+                SimpleNamespace(me_dir=directory), [str(old)], [], '')
+            self.assertNotIn('TIRust', legacy_report)
+            _, report = aMCatNLOCmd.compile_advanced_stats(
+                SimpleNamespace(me_dir=directory),
+                [str(old), str(mixed)], [], '')
+            expected = {'PJFry': 9, 'Ninja_QP': 13, 'CutTools_QP': 21,
+                        'IREGI': 27, 'NinjaRS_DP': 9, 'NinjaRS_QP': 5,
+                        'TIRust_DP': 13, 'TIRust_QP': 11}
+            for backend, count in expected.items():
+                self.assertRegex(report, re.escape(
+                    MADLOOP_BACKEND_LABELS[backend]) +
+                    r'\s+' + str(count) + r'(?:\n|$)')
 
 
 if __name__ == "__main__":

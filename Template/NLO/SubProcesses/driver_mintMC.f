@@ -74,6 +74,8 @@ c Vegas stuff
 c statistics for MadLoop      
       INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
       COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
 
@@ -137,6 +139,8 @@ c
       enddo
       NINJARS_DP_USAGE=0
       NINJARS_QP_USAGE=0
+      TIRUST_DP_USAGE=0
+      TIRUST_QP_USAGE=0
 
       call setrun                !Sets up run parameters
       call setpara('param_card.dat')   !Sets up couplings and masses
@@ -346,6 +350,8 @@ c Randomly pick the contribution that will be written in the event file
          enddo
          write(*,*) '#NinjaRS DP = ',NINJARS_DP_USAGE
          write(*,*) '#NinjaRS QP = ',NINJARS_QP_USAGE
+         write(*,*) '#TIRust DP = ',TIRUST_DP_USAGE
+         write(*,*) '#TIRust QP = ',TIRUST_QP_USAGE
       endif
 
       write (*,*) 'counters for the granny resonances'

@@ -50,14 +50,18 @@ MADLOOP_UNIT_BACKENDS = (
 MADLOOP_BACKEND_LABELS = dict(MADLOOP_UNIT_BACKENDS + (
     ('NinjaRS_DP', 'NinjaRS (double precision)'),
     ('NinjaRS_QP', 'NinjaRS (quadruple precision)'),
+    ('TIRust_DP', 'TIRust (double precision)'),
+    ('TIRust_QP', 'TIRust (quadruple precision)'),
 ))
 
 
-def decode_madloop_backend_usage(unit_counts, ninjars_dp=0, ninjars_qp=0):
+def decode_madloop_backend_usage(unit_counts, ninjars_dp=0, ninjars_qp=0,
+                                tirust_dp=0, tirust_qp=0):
     """Decode a legacy units histogram and its optional contextual counters.
 
     All units slots are occupied. To preserve the public three-digit return
-    codes, NinjaRS uses (hundreds, units) = (2, 8) for DP and (3, 2) for QP.
+    codes, NinjaRS uses (hundreds, units) = (2, 8) for DP and (3, 2) for QP;
+    TIRust uses (2, 9) for DP and (3, 3) for QP.
     Producers count these calls in both the units histogram and dedicated
     counters. Split those aliases here, once, for both statistics formats.
     Missing dedicated counters mean an old file with only legacy backends.
@@ -67,7 +71,9 @@ def decode_madloop_backend_usage(unit_counts, ninjars_dp=0, ninjars_qp=0):
              for unit, (backend, _) in enumerate(MADLOOP_UNIT_BACKENDS)}
     for backend, alias, count in (
             ('NinjaRS_DP', 'Ninja_QP', ninjars_dp),
-            ('NinjaRS_QP', 'PJFry', ninjars_qp)):
+            ('NinjaRS_QP', 'PJFry', ninjars_qp),
+            ('TIRust_DP', 'CutTools_QP', tirust_dp),
+            ('TIRust_QP', 'IREGI', tirust_qp)):
         usage[backend] = count
         usage[alias] -= count
     return usage
@@ -99,6 +105,8 @@ class RunStatistics(dict):
           'Ninja_QP_usage'     : 0,
           'NinjaRS_DP_usage'   : 0,
           'NinjaRS_QP_usage'   : 0,
+          'TIRust_DP_usage'    : 0,
+          'TIRust_QP_usage'    : 0,
           'COLLIER_usage'      : 0,
           'max_precision'      : 1.0e99,
           'min_precision'      : 0.0,
@@ -156,14 +164,15 @@ class RunStatistics(dict):
         
         u_return_code = xml_node.getElementsByTagName('u_return_code')
         u_codes = [int(_) for _ in getData(u_return_code[0]).split(',')]
-        ninjars_usage = {}
-        for precision in ('DP', 'QP'):
-            nodes = xml_node.getElementsByTagName(
-                'ninjars_%s_usage' % precision.lower())
-            ninjars_usage[precision] = int(getData(nodes[0])) if nodes else 0
+        contextual_usage = {}
+        for backend in ('ninjars', 'tirust'):
+            for precision in ('dp', 'qp'):
+                key = '%s_%s' % (backend, precision)
+                nodes = xml_node.getElementsByTagName(key + '_usage')
+                contextual_usage[key] = int(getData(nodes[0])) if nodes else 0
         self.update((backend + '_usage', count) for backend, count in
                     decode_madloop_backend_usage(
-                        u_codes, ninjars_usage['DP'], ninjars_usage['QP']).items()
+                        u_codes, **contextual_usage).items()
                     if backend != 'unidentified')
         t_return_code = xml_node.getElementsByTagName('t_return_code')
         t_codes = [int(_) for _ in getData(t_return_code[0]).split(',')]
@@ -225,7 +234,9 @@ class RunStatistics(dict):
           ('Ninja_DP',float(self['Ninja_usage'])/self['n_madloop_calls']),
           ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls']),
           ('NinjaRS_DP',float(self['NinjaRS_DP_usage'])/self['n_madloop_calls']),
-          ('NinjaRS_QP',float(self['NinjaRS_QP_usage'])/self['n_madloop_calls'])]
+          ('NinjaRS_QP',float(self['NinjaRS_QP_usage'])/self['n_madloop_calls']),
+          ('TIRust_DP',float(self['TIRust_DP_usage'])/self['n_madloop_calls']),
+          ('TIRust_QP',float(self['TIRust_QP_usage'])/self['n_madloop_calls'])]
 
         tools_used = [(_[0],'%.3g'%(100.0*_[1])) for _ in tools_used if _[1] > 0.0 ]
 

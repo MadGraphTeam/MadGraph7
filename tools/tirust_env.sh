@@ -29,6 +29,7 @@ _tirust_find_tool c++ '*-gcc-wrapper-15.2.0' '*-gcc-wrapper-*' || return 1
 _tirust_find_tool gfortran '*-gfortran-wrapper-15.2.0' '*-gfortran-wrapper-*' || return 1
 _tirust_find_tool ar '*-binutils-wrapper-*' || return 1
 _tirust_find_tool make '*-gnumake-4.4.1' '*-gnumake-*' || return 1
+_tirust_find_tool patch '*-patch-*' || return 1
 _tirust_find_tool m4 '*-gnum4-*' '*-m4-*' || return 1
 _tirust_find_tool cmake '*-cmake-*' || return 1
 _tirust_find_tool pkg-config '*-pkg-config-wrapper-*' || return 1

@@ -3511,16 +3511,19 @@ RESTART = %(mint_mode)s
     
         RetUnit_finder =re.compile(
                            r"#Unit\s*(?P<unit>\d+)\s*=\s*(?P<n_occurences>\d+)")
-        ninjars_finder = re.compile(r"#NinjaRS\s+(DP|QP)\s*=\s*(\d+)")
-        ninjars_usage = {'DP': 0, 'QP': 0}
+        contextual_finder = re.compile(
+            r"#(NinjaRS|TIRust)\s+(DP|QP)\s*=\s*(\d+)")
+        contextual_usage = dict.fromkeys(
+            ('ninjars_dp', 'ninjars_qp', 'tirust_dp', 'tirust_qp'), 0)
     #Unit
     
         for gv_log in log_GV_files:
             channel_name = '/'.join(gv_log.split('/')[-5:-1])
             with open(gv_log, 'r') as stream:
                 log = stream.read()
-            for precision, count in ninjars_finder.findall(log):
-                ninjars_usage[precision] += int(count)
+            for backend, precision, count in contextual_finder.findall(log):
+                key = '%s_%s' % (backend.lower(), precision.lower())
+                contextual_usage[key] += int(count)
             UPS_stats = re.search(UPS_stat_finder,log)
             for retunit_stats in re.finditer(RetUnit_finder, log):
                 if channel_name not in list(stats['UPS'].keys()):
@@ -3561,7 +3564,7 @@ RESTART = %(mint_mode)s
             nTot1  = [sum([chan[10][i] for chan in stats['UPS'].values()],0) \
                                                              for i in range(10)]
             backend_usage = sum_html.decode_madloop_backend_usage(
-                nTot1, ninjars_usage['DP'], ninjars_usage['QP'])
+                nTot1, **contextual_usage)
             UPSfracs = [(chan[0] , 0.0 if chan[1][0]==0 else \
               safe_float(chan[1][4]*100)/chan[1][0]) for chan in stats['UPS'].items()]
             maxUPS = max(UPSfracs, key = lambda w: w[1])

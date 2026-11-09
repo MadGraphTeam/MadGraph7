@@ -45,6 +45,8 @@ c statistics for MadLoop
       double precision avgPoleRes(2),PoleDiff(2)
       INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
       COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
       parameter (nbadmax = 5)
@@ -501,6 +503,10 @@ c Update the statistics using the MadLoop return code (ret_code)
      $     NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
       if (ret_code/100.eq.3.and.mod(ret_code,10).eq.2)
      $     NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
+      if (ret_code/100.eq.2.and.mod(ret_code,10).eq.9)
+     $     TIRUST_DP_USAGE=TIRUST_DP_USAGE+1
+      if (ret_code/100.eq.3.and.mod(ret_code,10).eq.3)
+     $     TIRUST_QP_USAGE=TIRUST_QP_USAGE+1
 
 c Write out the unstable, non-rescued phase-space points (MadLoop return
 c code is in the four hundreds) or the ones that are found by the pole
