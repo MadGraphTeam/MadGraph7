@@ -270,7 +270,7 @@ def _run(command, cwd, log, environment):
                                  "See %s" % (error, log)) from error
 
 
-def _publish(installed, destination, stage, prefix):
+def _publish(installed, destination, stage, prefix, on_publish=None):
     """Publish the validated tree and owned aliases as one recoverable update."""
     from madgraph.various import rust_dependency_notices
 
@@ -313,6 +313,10 @@ def _publish(installed, destination, stage, prefix):
             # atomic move, before the next Python instruction executes.
             changed_links.append((link, previous, temporary))
             os.replace(temporary, link)
+        # Configuration saving is part of publication: preserve the old tree
+        # and alias journal until the caller has accepted the new installation.
+        if on_publish is not None:
+            on_publish(str(destination / 'lib'))
     except BaseException as error:
         failures = []
         for link, previous, temporary in reversed(changed_links):
@@ -374,8 +378,14 @@ def save_configuration(command, config_file, libdir):
             temporary.unlink()
 
 
-def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
-    """Install, smoke-test and publish TIRust; return its library directory."""
+def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None,
+            on_publish=None):
+    """Install, smoke-test and publish TIRust; return its library directory.
+
+    An optional ``on_publish(libdir)`` saves caller configuration before the
+    old installation and alias backups are discarded. Its failure rolls back
+    publication. It also runs when reusing an already validated installation.
+    """
     from madgraph.various import rust_dependency_notices
 
     try:
@@ -405,6 +415,8 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
         logger.info("TIRust is already installed in %s; use --update to rebuild "
                     "with this checkout's pinned dependencies.",
                     destination)
+        if on_publish is not None:
+            on_publish(str(destination / 'lib'))
         return str(destination / 'lib')
 
     compiler = fortran_compiler or 'gfortran'
@@ -496,7 +508,7 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
     shutil.copy2(bridge / 'Cargo.lock', installed / 'Cargo.lock')
     shutil.copy2(bridge / 'Cargo.toml', installed / 'Cargo.toml')
 
-    alias_stage = _publish(installed, destination, stage, prefix)
+    alias_stage = _publish(installed, destination, stage, prefix, on_publish=on_publish)
     # Publication has committed. A cleanup error must not turn a working
     # installation into a reported failure or attempt to restore a backup
     # that cleanup may already have partly removed.

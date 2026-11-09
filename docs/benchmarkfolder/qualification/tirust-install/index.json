@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-11-09T20:15:52.670904+00:00",
+  "status": "passed",
+  "scope": "CLI installation, source/notice preservation, native ABI smoke and linkage audit; process numerical/relocation validation is recorded separately",
+  "installer_command": [
+    "env",
+    "CARGO_NET_OFFLINE=true",
+    "python",
+    "bin/madgraph",
+    ".tirust-build/install-tirust.mg5"
+  ],
+  "commands": [
+    {
+      "argv": [
+        "nm",
+        "-D",
+        "--defined-only",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "returncode": 0,
+      "output": "native-exports.txt"
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "returncode": 0,
+      "output": "dynamic-section.txt"
+    },
+    {
+      "argv": [
+        "python",
+        "-m",
+        "unittest",
+        "tests.unit_tests.various.test_tirust_install",
+        "tests.unit_tests.various.test_ninjars_install",
+        "tests.unit_tests.various.test_rust_dependency_notices",
+        "tests.unit_tests.various.test_tirust_process_checks",
+        "tests.unit_tests.various.test_ninjars_integration_boundaries",
+        "-q"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "returncode": 0,
+      "output": "unit-tests.log"
+    }
+  ],
+  "source_sha256": {
+    "madgraph/various/tirust_install.py": "687b47be05580bc287bb58529e73c0197f3207f1ed9c10228bfe4166de5381a6",
+    "madgraph/various/ninjars_install.py": "628cb57dfce7e1c70ce0ef8e5062fddb462c21ba4c905073187a6eb3a1d48fd3",
+    "madgraph/various/rust_dependency_notices.py": "ebbe06f17d5687b86c331098ac517ff967d522015b939ad716bd9c67947680c1",
+    "madgraph/interface/madgraph_interface.py": "fe595ab41a5997bb2c08450f1f487f33ca8c26284bc7eec81878c040d56e00a7",
+    "madgraph/interface/loop_interface.py": "dfa44594ca78dd9afebaa53bddd5248e96f4d7108d233fca29503b764d42e7a2",
+    "madgraph/various/banner.py": "75a63aa51c5224fa9d3d3cf7c69f1e2ae5f070cf2310a3fb7bcef40493796f13",
+    "madgraph/various/process_checks.py": "5a9682c482d7d8fad907f3bfd74aaac1871f4a03fa532c874dfe85b53536c4a7"
+  },
+  "artifacts": {
+    "Cargo.lock": {
+      "sha256": "8be809d137651ec217157388a909a2e9976e83470ffe4f08ce5f259a4d3f4517",
+      "size": 35709
+    },
+    "Cargo.toml": {
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+      "size": 1074
+    },
+    "README.md": {
+      "sha256": "6cf57fed6b9e72dbe7f29fda4cf4a165a66792ba4d88122638e11bb0e762e2d0",
+      "size": 2436
+    },
+    "check-installation.json": {
+      "sha256": "fcf804fe459a2b169acd7ee2418cc0c5bab2cf6ee5dc07b90d801705497c1e8b",
+      "size": 4862
+    },
+    "cli.log": {
+      "sha256": "16968d7aa7439a662e93c0543119211a9cc5f4ce26b7c5cd64a5f4a446eab0ed",
+      "size": 5861
+    },
+    "configuration-transaction-audit.json": {
+      "sha256": "8b6b8927b5cbba7c68220ff3fcd1632cd259c1f661bf21792043901c59ad94ee",
+      "size": 2093
+    },
+    "configuration-transaction-tests.log": {
+      "sha256": "e39235726500daa918bb978c6ebafc0e6dc4a0840c54437e251f8379f69bbe91",
+      "size": 420
+    },
+    "dynamic-section.txt": {
+      "sha256": "676debcbc8e6bfd0120c103d956960b9b094fedaa69dd616f61653a4287cecd9",
+      "size": 1955
+    },
+    "install-command.mg5": {
+      "sha256": "f72e73aaf65336388fb4bab5b2d1024394a48f6e7cb995d5a342c5fb64582e6b",
+      "size": 178
+    },
+    "install.log": {
+      "sha256": "fa6adf9b4c23c21f4830d50d8328cd5c8c07da1b7acb371d744b7e6cdd981e4c",
+      "size": 850430
+    },
+    "native-exports.txt": {
+      "sha256": "9796c13e388314114726d4365e85c488218d6f1f44b726e4d88b5345abe18160",
+      "size": 515
+    },
+    "production-source-identity.json": {
+      "sha256": "ce9db7d2dfe9457fabdc5a30435e0bd6d6ebbd04c5f6010eebbab68ccd6e1b02",
+      "size": 2535
+    },
+    "test-only-amendment.diff": {
+      "sha256": "f4d76bb6f410f20720733cca1b1dfb0287c9444a48dc254258a2526f9e071e5d",
+      "size": 798
+    },
+    "test-only-amendment.json": {
+      "sha256": "40f1e076940813f39494d4da88589fd6f728108de1a9b2ac59f34b8bd0a3cfd9",
+      "size": 1334
+    },
+    "tirust-NOTICES.txt": {
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+      "size": 717
+    },
+    "tirust-config.json": {
+      "sha256": "000ac5255c1ba3fa268f17524b4d30bcd5a231c38f13a10b820d7b4a208711da",
+      "size": 5723
+    },
+    "tirust-dependency-notices.tar.gz": {
+      "sha256": "fd455e7c9ca05ba553f70961b03d3ac6a242a7cfa0639b112e274f2847f1702a",
+      "size": 849305
+    },
+    "tirust-dependency-provenance.json": {
+      "sha256": "394073803fdbedf11bae627709bb9060a8fd156fa3d35816af0cf070d79a7b9f",
+      "size": 538179
+    },
+    "toolchain.json": {
+      "sha256": "9eb276dd6d12ca60c7152f5dfc285e6e1f5a1a59e204b887a07a523f2bc14d52",
+      "size": 2526
+    },
+    "unit-tests.log": {
+      "sha256": "8ba192cb1b113f5c30a81166847a7576f2f7620ffc21ff34a4642648bb4cbccb",
+      "size": 420
+    },
+    "validated-patch-manifest.json": {
+      "sha256": "f9344679b2d7081d03b34aefc112a64837e868d58527fd944951f5345ef27167",
+      "size": 1050
+    }
+  },
+  "post_install_changes": [
+    {
+      "record": "configuration-transaction-audit.json",
+      "source_sha256": {
+        "madgraph/various/tirust_install.py": "352052637afbd82ab84f27508eda1bdfd9abc6115409adc23f8262e94c38d370",
+        "madgraph/interface/madgraph_interface.py": "29c06f709fd6c5d60e4dbdf08a9497232dbe1a61e41b704f91e8c5e20a8a9dc9",
+        "tests/unit_tests/various/test_tirust_install.py": "e92c4526030d6fa242b8be00a477c354376e6c0ebb58ff18d9b8492e0fca61db"
+      },
+      "native_artifacts_unchanged": true,
+      "published_configuration_unchanged": true
+    }
+  ]
+}

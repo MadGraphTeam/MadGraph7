@@ -1,0 +1,7 @@
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/madgraph/interface/extended_cmd.py:2259: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpdvdjkmtn/configuration.txt' mode='r' encoding='UTF-8'>
+  for line in open(basefile):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+----------------------------------------------------------------------
+Ran 66 tests in 0.758s
+
+OK

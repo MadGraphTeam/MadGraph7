@@ -8670,20 +8670,21 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             from madgraph.various import tirust_install
             prefix, config_file = self.heptools_install_target(
                 self.options['heptools_install_dir'])
+            def save_tirust_configuration(libdir):
+                _, target_config = self.heptools_install_target(
+                    os.path.dirname(os.path.dirname(libdir)))
+                try:
+                    tirust_install.save_configuration(self, target_config, libdir)
+                except Exception as error:
+                    raise MadGraph5Error('TIRust configuration could not be saved; '
+                        'the installation update was not committed: %s' % error) from error
             libdir = tirust_install.install(
                 MG5DIR, prefix,
                 arguments=install_options['options_for_HEPToolsInstaller'] + add_options,
                 fortran_compiler=self.options['fortran_compiler'],
-                jobs=self.options['nb_core'])
+                jobs=self.options['nb_core'],
+                on_publish=save_tirust_configuration)
             if libdir is not None:
-                _, config_file = self.heptools_install_target(
-                    os.path.dirname(os.path.dirname(libdir)))
-                try:
-                    tirust_install.save_configuration(self, config_file, libdir)
-                except Exception as error:
-                    raise MadGraph5Error('TIRust was installed in %s but its configuration could not be saved. '
-                        'Run "set tirust %s" and save options after resolving: %s' %
-                        (libdir, libdir, error)) from error
                 self.options['tirust'] = libdir
             return
         elif args[0] == 'cuttools_iregi':

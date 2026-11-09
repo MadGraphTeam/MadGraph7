@@ -1,0 +1,5 @@
+set automatic_html_opening False
+set auto_update 0
+set nb_core 4
+install tirust --source=../references/TIRust --oneloop-source=../references/oneloopmaster --jobs=4 --update
+quit

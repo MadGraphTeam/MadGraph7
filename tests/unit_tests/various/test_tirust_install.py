@@ -262,7 +262,10 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
             'fortran_compiler':'gfortran', 'nb_core':2}, split_arg=lambda value:value.split(),
             check_install=lambda args:{'options_for_HEPToolsInstaller':args[1:]},
             heptools_install_target=lambda prefix:(prefix, 'config.txt'), exec_cmd=mock.Mock())
-        with mock.patch.object(tirust_install, 'install', return_value='/installed/tirust/lib') as install, \
+        def installed(*args, **kwargs):
+            kwargs['on_publish']('/installed/tirust/lib')
+            return '/installed/tirust/lib'
+        with mock.patch.object(tirust_install, 'install', side_effect=installed) as install, \
                 mock.patch.object(tirust_install, 'save_configuration') as save:
             MadGraphCmd.do_install(cmd, 'tirust --update --jobs=3')
         self.assertEqual(cmd.options['tirust'], '/installed/tirust/lib')
@@ -280,11 +283,73 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
             check_install=lambda args: {'options_for_HEPToolsInstaller': args[1:]},
             heptools_install_target=lambda prefix: (prefix, 'config.txt'),
             exec_cmd=mock.Mock(side_effect=OSError('read-only config')))
-        with mock.patch.object(tirust_install, 'install', return_value='/new/tirust/lib'), \
+        def installed(*args, **kwargs):
+            kwargs['on_publish']('/new/tirust/lib')
+            return '/new/tirust/lib'
+        with mock.patch.object(tirust_install, 'install', side_effect=installed), \
                 mock.patch.object(tirust_install, 'save_configuration', side_effect=OSError('read-only config')):
-            with self.assertRaisesRegex(MadGraph5Error, 'installed.*configuration could not be saved'):
+            with self.assertRaisesRegex(MadGraph5Error, 'configuration could not be saved'):
                 MadGraphCmd.do_install(cmd, 'tirust --update')
         self.assertEqual(cmd.options['tirust'], '/previous/lib')
+
+    def test_cli_configuration_failure_restores_installation_aliases_and_configuration(self):
+        with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(tirust_install, '_run', side_effect=self.fake_run):
+            self.install()
+        previous = self.prefix / 'tirust'
+        (previous / 'previous-installation-marker').write_text('must survive failed update\n')
+        installed_before = self.snapshot(previous)
+        aliases_before = self.snapshot(self.prefix / 'lib')
+        config = self.root / 'configuration.txt'
+        config.write_text('tirust = /previous/configured/lib\nother = preserved\n')
+        config_before = config.read_bytes()
+        def fail_config_write(path, *args):
+            # The new candidate has passed smoke and is visible when saving.
+            self.assertTrue(tirust_install.is_available(previous / 'lib'))
+            self.assertFalse((previous / 'previous-installation-marker').exists())
+            self.assertTrue(list(self.prefix.glob('.tirust-build-*/previous')))
+            Path(path).write_text('partial new configuration')
+            raise OSError('simulated configuration write failure')
+        cmd = SimpleNamespace(options={'heptools_install_dir': str(self.prefix),
+            'fortran_compiler': 'gfortran', 'nb_core': 2, 'tirust': '/previous/configured/lib'},
+            split_arg=lambda value: value.split(),
+            check_install=lambda args: {'options_for_HEPToolsInstaller': args[1:]},
+            heptools_install_target=lambda prefix: (prefix, str(config)),
+            write_configuration=fail_config_write)
+        with mock.patch('madgraph.interface.madgraph_interface.MG5DIR', str(self.root)), \
+                mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(tirust_install, '_run', side_effect=self.fake_run) as run:
+            with self.assertRaisesRegex(MadGraph5Error, 'configuration could not be saved'):
+                MadGraphCmd.do_install(cmd, 'tirust --source=%s --update' % self.source)
+        self.assertTrue(any(Path(call.args[0][0]).name == 'smoke' for call in run.call_args_list))
+        self.assertEqual(self.snapshot(previous), installed_before)
+        self.assertEqual(self.snapshot(self.prefix / 'lib'), aliases_before)
+        self.assertEqual(config.read_bytes(), config_before)
+        self.assertEqual(cmd.options['tirust'], '/previous/configured/lib')
+        self.assertEqual(list(self.root.glob('.tirust_configuration_*')), [])
+
+    def test_configuration_callback_runs_for_new_and_existing_install(self):
+        callback = mock.Mock()
+        with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(tirust_install, '_run', side_effect=self.fake_run) as run:
+            lib = tirust_install.install(self.root, self.prefix, self.arguments, on_publish=callback)
+            callback.assert_called_once_with(lib)
+            callback.reset_mock()
+            count = run.call_count
+            self.assertEqual(tirust_install.install(
+                self.root, self.prefix, self.arguments, on_publish=callback), lib)
+            callback.assert_called_once_with(lib)
+            self.assertEqual(run.call_count, count)
+
+    def test_first_install_configuration_failure_removes_candidate_and_aliases(self):
+        with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(tirust_install, '_run', side_effect=self.fake_run) as run:
+            with self.assertRaisesRegex(OSError, 'configuration save failed'):
+                tirust_install.install(self.root, self.prefix, self.arguments,
+                    on_publish=mock.Mock(side_effect=OSError('configuration save failed')))
+        self.assertTrue(any(Path(call.args[0][0]).name == 'smoke' for call in run.call_args_list))
+        self.assertFalse((self.prefix / 'tirust').exists())
+        self.assertFalse((self.prefix / 'lib').exists())
 
     def test_configuration_failure_does_not_truncate_original(self):
         config = self.root / 'configuration.txt'
