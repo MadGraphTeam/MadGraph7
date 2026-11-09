@@ -847,7 +847,9 @@ NinjaRS: zero stability thresholds; only points without a finite value
 fail); `"auto"` keeps its backend and its per-point fallback, which then
 acts only on those points; the stability monitoring stays its own setting;
 `"reduction"` in `diagnostics_json` records `"unchecked"`, and any other
-value is an invalid argument. It is off by default. The fallback, the target
+value is an invalid argument. It is off by default, a timing and benchmark
+mode with no accuracy certificate (the measured accuracy per process:
+[Python API](python-api.md), "Unchecked reductions"). The fallback, the target
 and the unchecked setting need no Symbolica licence: a
 binary64 call on NinjaRS or TIRust touches no Symbolica state, and a
 double-double or arbitrary-precision fallback runs under the package key as

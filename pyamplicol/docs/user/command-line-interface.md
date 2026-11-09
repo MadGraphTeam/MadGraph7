@@ -457,8 +457,9 @@ acceptance and refusal checks: TIRust's gates and method choice select the
 method without re-checking its values, plain Passarino-Veltman at gate 0
 serves what they refuse, NinjaRS runs with zero stability thresholds; only
 points without a finite value still fail, `auto` keeps its backend choice and
-its fallback acts on those only ([Python API](python-api.md), "Unchecked
-reductions"). The JSON output's lane diagnostics name the requested and
+its fallback acts on those only. It is a timing and benchmark mode with no
+accuracy certificate (the measured accuracy per process: [Python
+API](python-api.md), "Unchecked reductions"). The JSON output's lane diagnostics name the requested and
 effective backends, the reason, the fallback, the target and the unchecked
 setting. A
 loop-induced artifact (`contribution: "loop-induced"` in the JSON, empty

@@ -125,7 +125,9 @@ backends' own acceptance and refusal checks, as the Python API's
 and method choice as method selection without the acceptance pass, plain PV
 at gate 0 as its last resort; NinjaRS's zero stability thresholds); `"auto"`
 keeps its backend and per-point fallback; each result records `"unchecked"`
-in its `"reduction"` diagnostics; any other value is an invalid argument.
+in its `"reduction"` diagnostics; any other value is an invalid argument. It
+is a timing and benchmark mode with no accuracy certificate (measured
+accuracy per process: `docs/user/python-api.md`, "Unchecked reductions").
 
 The ordinary package builds the tree and virtual APIs into one
 `librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,

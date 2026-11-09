@@ -395,9 +395,10 @@ value for, the way the one-loop providers' most optimistic settings run
   its affine-relation variants), a non-finite output (TIRust's "nonfinite
   direct-engine coefficient", a non-finite numerator, NinjaRS's `NonFinite`),
   a master failure (TIRust's `MasterFailure`, NinjaRS's `MasterFailed`),
-  TIRust's `InvalidInput` and a NaN lane of NinjaRS (e.g. a cut whose two
-  momenta span a Euclidean plane). A family outside TIRust's capability stays
-  a call-level `ReductionUnavailable`.
+  TIRust's `InvalidInput` and a NinjaRS lane whose tested quantity is exactly
+  zero or NaN (its `Unstable` status, e.g. a cut whose two momenta span a
+  Euclidean plane). A family outside TIRust's capability stays a call-level
+  `ReductionUnavailable`. A served value is not thereby accurate: see below.
 * `"auto"` keeps its rule, each backend in its unchecked form: TIRust for a
   loop-induced process, NinjaRS for a Born-interfered one, TIRust without a
   fallback on a TIR-only artifact, NinjaRS where the native extension has no
@@ -418,10 +419,46 @@ value for, the way the one-loop providers' most optimistic settings run
 
 The setting is recorded in every lane diagnostic
 (`VirtualReduction.unchecked`) and in the SDKs' `"reduction"` diagnostics.
-It is a user choice for speed, not a production default: without it, the
-default `"auto"` serves loop-induced processes on TIRust at the checked
-target accuracy above with the per-point NinjaRS fallback. A value that is
-not a bool is refused (`ValueError`).
+It is a **timing and benchmark mode with no accuracy certificate**, not a
+production default: without it, the default `"auto"` serves loop-induced
+processes on TIRust at the checked target accuracy above with the per-point
+NinjaRS fallback. A value that is not a bool is refused (`ValueError`).
+
+Measured accuracy of the setting (M-LIT `lit-unchecked`, 2026-11-08/09;
+record `docs/performance_reports/loop/data/li-unchecked-accuracy.json`):
+binary64 finite part through this API (`Runtime.load(artifact,
+reduction_unchecked=True)`, `evaluate(points, mu_r2=..., poles="none",
+on_failure="return", reduction="tirust" | "ninjars")`) on each row's first
+stream points against TIRust at 256 bits with supplied invariants; the
+largest relative error over the points, then the points above 1e-5 and the
+points that fail. TIRust's errors above 1e-5 all come from rows its last
+resort serves (plain PV at gate 0 below the conditioning gate); NinjaRS's
+zero thresholds return finite values off by up to 1e64 where its checks
+refuse the point, and keep its few points off by up to 3e-3 that the checked
+mode serves as well.
+
+| process | points | TIRust unchecked | NinjaRS unchecked |
+|---|---|---|---|
+| g g > h h | 128 | 3.4e-9 | 8.8e-11 |
+| e+ e- > g g g | 128 | 3.5e-7 | 4.6e-10 |
+| g g > h h h | 128 | 7.6e-7 | 4.5e64: 2 above 1e-5 (the checked mode refuses them) |
+| g g > h g g | 128 | 9.2e-10 | 8.0e-10 |
+| g g > z z g | 128 | 1.2e-2: 18 above 1e-5 (all on the last resort) | 5.0e-8 |
+| g g > a a g | 128 | 7.0e-6 | 3.1e-3: 1 above 1e-5 (also when checked) |
+| g g > W+ W- g | 128 | 1.4e-2: 24 above 1e-5 (all on the last resort) | 6.2e-8 |
+| g g > z z z | 128 | 2.2e-8 | 7.0e33: 2 above 1e-5 (the checked mode refuses them); 18 fail (`Unstable`) |
+| g g > h z g | 128 | 8.2e-9 | 3.0e-8; 2 fail (`MasterFailed`, `Unstable`) |
+| g g > a g g | 128 | 3.3e-6 | 6.8e-4: 1 above 1e-5 (also when checked) |
+| g g > z g g | 128 | 3.1e-5: 3 above 1e-5 (all on the last resort) | 6.2e-6 |
+| u u~ > h g g | 128 | 3.7e-9 | 3.5e-8 |
+| u u~ > d d~ h | 128 | 4.1e-10 | 4.3e-9 |
+| g g > h h g g | 32 | 7.1e-7 | 1.8e-6 |
+| g g > h g g g | 32 | 5.9e-8 | 4.4e-5: 2 above 1e-5 (also when checked) |
+| g g > e+ e- mu+ mu- | 32 | 5.4e-12 | 4.9e-10 |
+| g g > e+ e- mu+ mu- g | 16 | 8.3e-9 | 9.5e-8 |
+
+Other processes and points are not measured: check a sample against the
+default (checked) call before relying on the setting.
 
 `VirtualStabilityChecks(..., cross_backend=True)` adds the cross-backend
 check: every point is evaluated a second time on the other backend (TIRust
