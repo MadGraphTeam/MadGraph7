@@ -836,9 +836,8 @@ def test_generation_probes_pass_at_zero_widths_on_the_full_kernels(
     assert record["ward"]["legs"] == legs and "failed" not in record
     assert record["fallbacks"] == 0 and record["floors"] == {"carrier": "double"}
     assert {entry["carrier"] for entry in record["probes"]} == {"double"}
-    assert record["seconds"]["probe_slice"] > 0 and "double-double" not in (
-        record["seconds"]
-    )
+    assert record["seconds"]["probe_slice"] > 0
+    assert "double-double" not in record["seconds"]
 
 
 @pytest.mark.loop_physics
