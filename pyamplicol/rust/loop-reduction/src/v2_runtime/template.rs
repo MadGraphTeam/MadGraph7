@@ -30,6 +30,10 @@ use super::*;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
+/// A row's seed-weight column per (colour component, sector, plan): rows
+/// with equal ones form a row class.
+type Signature = BTreeMap<(Option<usize>, usize, usize), usize>;
+
 /// The key prefix of the template's columns (one per row class).
 pub const TEMPLATE: &str = "selection-template";
 
@@ -393,8 +397,7 @@ impl SelectionTemplate {
         let plan_count = resolved.overlays.len();
         // Per row: the seed-weight column of each (colour component, sector,
         // plan); rows with equal ones form a row class.
-        let mut weights: Vec<BTreeMap<(Option<usize>, usize, usize), usize>> =
-            vec![BTreeMap::new(); every];
+        let mut weights: Vec<Signature> = vec![BTreeMap::new(); every];
         let mut seen = vec![false; every];
         for (k, item) in resolved.items.iter().enumerate() {
             let b = basis_of(item)?;
@@ -413,7 +416,7 @@ impl SelectionTemplate {
         if seen.iter().any(|seen| !seen) {
             return Err(invalid("the resolved set lacks a Born row"));
         }
-        let mut classes: Vec<(&BTreeMap<_, _>, Vec<usize>)> = Vec::new();
+        let mut classes: Vec<(&Signature, Vec<usize>)> = Vec::new();
         for (h, signature) in weights.iter().enumerate() {
             match classes.iter_mut().find(|(known, _)| *known == signature) {
                 Some((_, hs)) => hs.push(h),

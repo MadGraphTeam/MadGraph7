@@ -106,8 +106,12 @@ pub(super) struct Observables {
     template: Option<template::SelectionTemplate>,
     /// The kept (rows, basis elements) of the latest resolved selection's
     /// columns (the set `resolved-selection`).
-    subset: Option<(Option<Vec<usize>>, Option<Vec<usize>>)>,
+    subset: Option<SubsetKey>,
 }
+
+/// The kept rows and basis elements of a resolved selection (None keeps
+/// every one of that axis).
+type SubsetKey = (Option<Vec<usize>>, Option<Vec<usize>>);
 
 /// One leading-colour flow of the stored catalogue (`selection.Flow`): its
 /// ID and its Born basis element (None: no Born amplitude of that flow).
