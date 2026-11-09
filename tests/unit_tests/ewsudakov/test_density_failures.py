@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
+from madgraph.interface import reweight_interface
 from madgraph.interface.reweight_interface import ReweightInterface
 from madgraph.various import fxfx_ewsudakov as fx
 from madgraph.various import misc
@@ -25,6 +26,10 @@ class TestDensityLibraries(unittest.TestCase):
         self.interface.me_dir = str(self.root)
         self.interface.rwgt_dir = None
         self.interface.keep_ordering = True
+        self.interface.f2py_suffix = {}
+        names = mock.patch.object(reweight_interface, 'loaded_f2py_names', set())
+        names.start()
+        self.addCleanup(names.stop)
         self.interface.banner = SimpleNamespace(get=lambda *args: 3)
         self.interface.fxfx_clustered_decay_processes = {(24, (-13, 14))}
         self.interface.density_prod_dirname = 'rw_me_density_prod'
@@ -74,6 +79,28 @@ class TestDensityLibraries(unittest.TestCase):
         self.assertEqual(set(self.interface.density_prod_f2pylib), {('rw_me_density_prod', 2)})
         self.assertIn(((2, -2), (24, -24)), self.interface.density_prod_id_to_path)
         self.assertIn(((24,), (-13, 14)), self.interface.density_decay_id_to_path)
+
+    def test_density_rebuild_uses_new_module_and_library_names(self):
+        self.make_directories()
+        reweight_interface.loaded_f2py_names.update(self.modules)
+        with mock.patch.object(self.interface, 'compile_SubProcess_dir') as compile_dir:
+            self.interface._compile_density_subprocesses()
+        self.assertEqual(compile_dir.call_args_list, [
+            mock.call(str(self.root / name / 'SubProcesses'), '_r2') for name in self.modules])
+        imports = []
+
+        def importer(name):
+            imports.append(name)
+            if not name.endswith('all_matrix2py_r2'):
+                raise ImportError('optional loop module absent')
+            return self.modules[name.split('.')[0]]
+
+        self.load(importer)
+        for name, module in self.modules.items():
+            self.assertIn(name + '.SubProcesses.all_matrix2py_r2', imports)
+            self.assertIn(name + '_r2', reweight_interface.loaded_f2py_names)
+        self.assertIs(self.interface.density_prod_f2pylib['rw_me_density_prod', 2],
+                      self.modules['rw_me_density_prod'])
 
     def test_mappings_come_from_tree_even_if_loop_module_loads(self):
         self.make_directories()

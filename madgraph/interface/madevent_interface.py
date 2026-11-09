@@ -4688,6 +4688,13 @@ already exists and is not a fifo file."""%fifo_path)
             # Also make sure to use the shower starting scales specified in the LHE
             # unless the user specified it
             PY8_Card.systemSet('Beams:setProductionScalesFromLHEF',True)
+            # Pythia8 then starts the initial-state shower from the largest
+            # pt_clust. Without this, a sample with no light parton in the final
+            # state (0 jets) radiates up to the kinematic limit regardless. The
+            # mg7 output writes the event's hardest scale for the non-jet
+            # particles (beam.mlm_shower_start), so its shower starts there;
+            # madevent writes sqrt(s) for them, where this changes nothing.
+            PY8_Card.MadGraphSet('SpaceShower:pTmaxMatch', 1)
 
 
             if PY8_Card['SysCalc:qCutList']!='auto':
@@ -6650,10 +6657,12 @@ tar -czf split_$1.tar.gz split_$1
             self.make_opts_var['pdlabel1'] = 'eva'
         if self.run_card['pdlabel2'] in ['eva', 'iww']:
             self.make_opts_var['pdlabel2'] = 'eva'
-        if self.run_card['pdlabel1'] in ['edff','chff']:
+        if banner_mod.is_upc_label(self.run_card['pdlabel1']):
             self.make_opts_var['pdlabel1'] = self.run_card['pdlabel1']
-        if self.run_card['pdlabel2'] in ['edff','chff']:
+        if banner_mod.is_upc_label(self.run_card['pdlabel2']):
             self.make_opts_var['pdlabel2'] = self.run_card['pdlabel2']
+        # also in RunCard.check_validity (only a warning on some read paths): stop before compiling
+        banner_mod.check_upc_neutron_tagging(self.run_card, self.run_card['pdlabel1'])
 
 
         # set  lhapdf.

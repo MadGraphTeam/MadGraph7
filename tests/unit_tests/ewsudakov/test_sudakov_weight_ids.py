@@ -64,6 +64,7 @@ class TestSudakovWeightIds(unittest.TestCase):
         driver.rwgt_mode = 'LO'
         driver.output_type = 'default'
         driver.f2pylib = {}
+        driver.f2py_suffix = {}
         driver.mother = None
         driver.systematics = False
         driver.multicore = False

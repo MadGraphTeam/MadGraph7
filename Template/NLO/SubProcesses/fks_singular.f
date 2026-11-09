@@ -1744,8 +1744,11 @@ c terms.
      $     ,f_sc_MC_S,f_sc_MC_H,f_MC_S,f_MC_H
       ! prefactors for the PDF scheme
       double precision prefact_pdfsch_d,prefact_pdfsch_p,prefact_pdfsch_l
+      double precision xilim_pdfsch
       double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
+      logical use_evpr
+      common /to_use_evpr/use_evpr
       double precision pmass(nexternal)
       include 'pmass.inc'
       call cpu_time(tBefore)
@@ -1811,14 +1814,33 @@ c equal to ione, so no need to define separate factors.
             f_dsc(4)=( prefact_deg+prefact_deg_sxi )*jac_cnt(2)/(shat
      &           /(32*pi**2))*fkssymmetryfactorDeg
      &           *vegas_wgt
-            ! prefactor for the PDF scheme
-            prefact_pdfsch_d=xinorm_cnt(1)/xiScut_used/deltaS
+            ! prefactor for the PDF scheme: delta(xi) spread over the
+            ! range of the soft-collinear counterterm, and the log of
+            ! its end, which turn [1/xi] and [log(xi)/xi] into the plus
+            ! distributions in z=1-xi. The range ends at xiimax_cnt(1)
+            ! where that is below xiScut_used (large Bjorken x).
+            ! Lepton beams with event projection keep xiScut_used. Their
+            ! counter-events take the electron density with the Born
+            ! omx_ee, and with the full range the Delta-scheme cross
+            ! sections come out unphysical.
+            ! TODO: check the PDF-scheme prefactors and the counter-events
+            ! of lepton beams with event projection again. The NLL MSbar
+            ! set is also negative there (e+ e- > mu+ mu- at 240 GeV,
+            ! see PR 415), so the range of xi may not be the only issue.
+            xilim_pdfsch=min(xiimax_cnt(1),xiScut_used)
+            if (use_evpr .and. j_fks.le.nincoming) then
+               if (abs(lpp(j_fks)).eq.3 .or. abs(lpp(j_fks)).eq.4)
+     &              xilim_pdfsch=xiScut_used
+            endif
+            prefact_pdfsch_d=xinorm_cnt(1)/xilim_pdfsch/deltaS
             f_pdfsch_d=prefact_pdfsch_d*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
-            prefact_pdfsch_p=xinorm_cnt(1)*dlog(xiScut_used)/xiScut_used/deltaS
+            prefact_pdfsch_p=xinorm_cnt(1)*dlog(xilim_pdfsch)
+     &           /xilim_pdfsch/deltaS
             f_pdfsch_p=prefact_pdfsch_p*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
-            prefact_pdfsch_l=xinorm_cnt(1)*dlog(xiScut_used)**2/2d0/xiScut_used/deltaS
+            prefact_pdfsch_l=xinorm_cnt(1)*dlog(xilim_pdfsch)**2/2d0
+     &           /xilim_pdfsch/deltaS
             f_pdfsch_l=prefact_pdfsch_l*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
          else
@@ -5276,7 +5298,7 @@ c
           write(6,*)'Error in xkplus: wrong j_fks', j_fks
           stop
         endif
-        xkk(1)=0d0
+        xkk(:)=0d0
         if(dabs(ch1).gt.0d0.and.dabs(ch2).gt.0d0
      $      .and.dabs(ch1).eq.dabs(ch2)) then ! gamma -> f^* (ch1) fbar (ch2)
           xkk(2)=-abs(col1)*ch1**2*(1d0-x)*(x**2+(1d0-x)**2)

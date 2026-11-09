@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 from madgraph.interface.reweight_interface import ReweightInterface
+from madgraph.interface import reweight_interface
 from madgraph.various import fxfx_ewsudakov as fx
 from tests.unit_tests.ewsudakov import test_sudakov_factor_limits as limits
 
@@ -28,6 +29,10 @@ class TestDensityInitialization(unittest.TestCase):
         self.interface.me_dir = str(self.root)
         self.interface.rwgt_dir = None
         self.interface.keep_ordering = True
+        self.interface.f2py_suffix = {}
+        names = mock.patch.object(reweight_interface, 'loaded_f2py_names', set())
+        names.start()
+        self.addCleanup(names.stop)
         self.interface.options = {}
         self.interface.banner = SimpleNamespace(get=lambda *args: 3)
         self.interface.model = None
