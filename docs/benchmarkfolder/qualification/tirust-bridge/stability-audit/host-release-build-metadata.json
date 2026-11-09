@@ -1,0 +1,30 @@
+{
+  "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/host-rescue-audit-release/libtirust_host_rescue.so",
+  "compiler": "GNU Fortran (GCC) 15.2.0",
+  "policy_source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc",
+  "policy_start_line": 1713,
+  "policy_end_line": 2006,
+  "eligibility_source": ".tirust-build/adapter-export/release-external/SubProcesses/P0_uux_z/loop_matrix.f",
+  "eligibility_initialization": "Verbatim generated availability filters and QP index construction",
+  "source_hashes": {
+    "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/build_host_rescue.py": "2cf3370b175bf5ea21255dd9dba53835eeca22d59731cca4de2fd10a9fc96aed",
+    "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/host_rescue_driver.f": "a3070568351c003608cd716e8d4c8e7e712eb9628be787dbf98488b57c51eb55",
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+    "Template/loop_material/StandAlone/SubProcesses/MadLoopCommons.inc": "2c45aae1b048204c679eca303def57e2c2be9c512a405ac08465adedeecf5232",
+    "Template/loop_material/StandAlone/SubProcesses/MadLoopParams.inc": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+    ".tirust-build/stability-audit-release/libtirust_stability_audit.so": "22ecfe0d691635153a3f96c6a3a558da501a435dfd005cb79ddca09603d924a6",
+    ".tirust-build/adapter-export/release-external/SubProcesses/P0_uux_z/loop_matrix.f": "82f44e79fe23b1fd7a892e67e3682d666f47fa6d5d13ebf7e4e87d77323707db",
+    ".tirust-build/host-rescue-audit-release/production-eligibility.inc": "0d7a68fdea5368ebb6c9957dfe35d15867c0b633d29761afd2b23bf049e7e976",
+    ".tirust-build/host-rescue-audit-release/production-policy.inc": "702273b7a33b5b70c2b6e7606723c285277e44862f1ad0fbfe3b07dc477e9499",
+    ".tirust-build/host-rescue-audit-release/production-retcode.inc": "c3cc089a1b26d58d329d1769f4f6004ff2188e2c0d639dd025fcdbda6a264e06",
+    ".tirust-build/host-rescue-audit-release/host_rescue.f": "573b4141f29995483c3de70a89bc6e6d761c07d98b6e74f121f6e00d2df2dfa7",
+    ".tirust-build/host-rescue-audit-release/libtirust_host_rescue.so": "fd91192dc05db72c9af91b716f09877a84df92d36c69b0293afe12adb3e9ae25"
+  },
+  "physics_callback": "Injected N4R5 production diagnostic adapter at labels 200 and 300",
+  "rotations": "Callbacks select caller-provided original, rotation1 and rotation2 fixture arrays",
+  "limitations": [
+    "The full SLOOPMATRIX physics/filter initialization pipeline is not executed.",
+    "Real and imaginary projections are independent synthetic interference diagnostics.",
+    "This executes the production automatic branch and native accuracy/return-code functions."
+  ]
+}

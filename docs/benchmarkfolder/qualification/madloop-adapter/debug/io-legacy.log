@@ -1,0 +1,14 @@
+CRITICAL:root:file tests.unit_tests.various.test_mg7_plots takes a long time to load (0.4438s)
+loading test takes 0.806950569152832s
+ err = [0m <urlopen error [Errno -3] Temporary failure in name resolution> [1;30m[import_ufo.py at line 171][0m
+ err = [0m <urlopen error [Errno -3] Temporary failure in name resolution> [1;30m[import_ufo.py at line 171][0m
+[SKIP] IOTestMadLoopSquaredOrdersExport.setUp: Model not found locally and Impossible to connect any of us servers.
+        Please check your internet connection or retry later
+
+== [1;32mOperational mode[0m : file [1;34mTESTING[0m ==
+
+Processing [1;32mgg_ttx[0m in [1;34mshort_ML_SMQCD_default[0m
+Processing [1;32mddx_ttx[0m in [1;34mshort_ML_SMQCD_default[0m
+Processing [1;32mgg_hh[0m in [1;34mshort_ML_SMQCD_LoopInduced[0m
+[1;32m
+3 IOTests [0msuccessfully tested in [1;34m4.97s[0m.

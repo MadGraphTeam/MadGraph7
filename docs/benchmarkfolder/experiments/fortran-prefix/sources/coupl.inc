@@ -1,0 +1,2 @@
+      REAL*8 MU_R
+      COMMON/COUPLING/MU_R

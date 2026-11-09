@@ -1,0 +1,79 @@
+{
+  "compiler": "GNU Fortran (GCC) 15.2.0",
+  "profile": "TIRust debug DSO + NinjaRS release static archive",
+  "link_before": "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a -lgcc_s",
+  "results": [
+    {
+      "link_order": "tirust-first",
+      "initialization_order": "tirust-first",
+      "exit_code": 0,
+      "elapsed_seconds": 1.6600114097818732
+    },
+    {
+      "link_order": "tirust-first",
+      "initialization_order": "ninjars-first",
+      "exit_code": 0,
+      "elapsed_seconds": 1.7978142169304192
+    },
+    {
+      "link_order": "ninjars-first",
+      "initialization_order": "tirust-first",
+      "exit_code": 0,
+      "elapsed_seconds": 1.6799068730324507
+    },
+    {
+      "link_order": "ninjars-first",
+      "initialization_order": "ninjars-first",
+      "exit_code": 0,
+      "elapsed_seconds": 1.4602520042099059
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "vendor/tirust/mtirust.f90",
+      "sha256": "12295dca6b64a96dbd4f184cf67ed702f38c9fd82658e196fa4c5b7135fee10e",
+      "bytes": 15812
+    },
+    {
+      "path": ".tirust-build/mixed-link/smoke.f90",
+      "sha256": "1b7adb89e655a84362aec2990affbe0e2e1acc29e373ce6ad34c2eefd254c400",
+      "bytes": 4630
+    },
+    {
+      "path": ".tirust-build/mixed-link/run.sh",
+      "sha256": "bddf2b861e335f10f90b5aa70d277f68249f663fd9cc39f63bdfa79ea45f2ae4",
+      "bytes": 3085
+    },
+    {
+      "path": ".tirust-build/mixed-link/tirust-first",
+      "sha256": "8c12eb98b80ae53595497a5bf808d9fe427143621b1c4e74e964ae5c6d8e4ada",
+      "bytes": 69839824
+    },
+    {
+      "path": ".tirust-build/mixed-link/ninjars-first",
+      "sha256": "2c9c04fc0e338dcfa099dcb1820ac23ad373ee4fbf7eb777a93fb693351e9dcc",
+      "bytes": 69839832
+    },
+    {
+      "path": ".tirust-build/cargo-build/debug/deps/libmadloop_tirust.so",
+      "sha256": "9d5903a6baaa35923c42aadebd919a9fffaa5abefef614b1abb723b058b10c23",
+      "bytes": 540650480
+    },
+    {
+      "path": "HEPTools/ninjars/lib/libninjars.a",
+      "sha256": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6",
+      "bytes": 298293528
+    },
+    {
+      "path": "HEPTools/ninjars/lib/ninjars-link-before.txt",
+      "sha256": "ef7dc598f2fee7b363feabeaf30bd352dbc67456f2ba8ea5b176d70ec9ed9abe",
+      "bytes": 117
+    },
+    {
+      "path": "HEPTools/ninjars/lib/ninjars-native-libs.txt",
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "bytes": 48
+    }
+  ],
+  "note": "Initial first process hit restricted Symbolica concurrency limit; identical process and all four serial reruns passed. No license configuration changes."
+}

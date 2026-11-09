@@ -1,0 +1,163 @@
+{
+  "compiler": "GNU Fortran (GCC) 15.2.0",
+  "cuttools": {
+    "version": "1.9.3",
+    "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/cuttools/includects/libcts.a",
+    "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+    "source": "repository vendor/CutTools",
+    "smoke": "rank-six example0 stable=T n_unst=0",
+    "log": ".tirust-build/cuttools-smoke.log"
+  },
+  "oneloop": {
+    "version": "3.6",
+    "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/libavh_olo.a",
+    "sha256": "10acae25536d5f7580d60980290e21033eb7413224554f167f031d2c809bab48",
+    "source": "https://madgraph.mi.infn.it/Downloads/OneLOop-3.6.tgz",
+    "source_archive": ".tirust-build/dependency-sources/OneLOop-3.6.tgz",
+    "source_sha256": "5a3c05e491b3734239ed83a5ec1d4e4d669e760e21db4ee2f20f02b60fcd1153"
+  },
+  "ninja": {
+    "version": "1.2.1",
+    "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.a",
+    "sha256": "4d9aa36adc1df40eae062d82d3fb930a5cd64040252df5af68dc1a3e247f8fb9",
+    "precision": [
+      "DP",
+      "QP"
+    ],
+    "source": "https://github.com/peraro/ninja/releases/download/v1.2.1/ninja-latest.tar.gz",
+    "smoke": "simple_test and quadninja_test completed",
+    "logs": [
+      ".tirust-build/ninja-dp-smoke.log",
+      ".tirust-build/ninja-qp-smoke.log"
+    ],
+    "source_archive": ".tirust-build/dependency-sources/ninja-1.2.1.tar.gz",
+    "source_sha256": "cc2d7f0c2a92f082e4f5fc4417dfe95c35cdaf6a8148bceb6ede8f50ea7c1789"
+  },
+  "collier": {
+    "version": "1.2.9",
+    "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.a",
+    "sha256": "70891c9d04fd5e109838a701df1ee616ab2092599c5a615d24b5f9cd33c96a07",
+    "source": "https://collier.hepforge.org/downloads/collier-1.2.9.tar.gz",
+    "smoke": "8 cases / 455 tensor components; all status=0; historical reference max relative deviation 4.859694008141881e-15",
+    "log": ".tirust-build/collier-smoke.log",
+    "source_archive": ".tirust-build/dependency-sources/collier-1.2.9.tar.gz",
+    "source_sha256": "98d14f638d6dda826303f24720715af8c23f1185ddaffd46533c61a92a7fcb54"
+  },
+  "installer": {
+    "version": "168",
+    "environment_adjustments": [
+      "Downloaded ignored shell scripts use actual Nix bash path instead of unavailable /bin/bash",
+      "Pass --mg5_path for MadGraph version detection",
+      "Compile CutTools serially due missing Fortran module dependencies",
+      "Link Ninja C++ example drivers explicitly with GNU Fortran runtime"
+    ],
+    "source_archive": ".tirust-build/dependency-sources/HEPToolsInstaller_V168.tar.gz",
+    "source_sha256": "f4759cf3deeeb8eb5a95ac6150eb4dd2b8510c106e7ad548844fa0210025365f"
+  },
+  "ninjars": {
+    "version": "41a4c00e7635e3ab188fc26bacf0aae6941e8082",
+    "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a",
+    "sha256": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6",
+    "available": true,
+    "quad_precision": true,
+    "compiler_runtime": "gnu-linux-static-libgcc-before-rust",
+    "link_before": [
+      "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a",
+      "-lgcc_s"
+    ],
+    "build_provenance": {
+      "manifest_sha256": "168b0a7239e1fffb23594b19dfaa7938410022015aeed49e99ae5e1ae12d8e95",
+      "lock_sha256": "a0db06134fe266f080e0ecf0e4590de19932213cec12908c893e5380e40d549b",
+      "git_dependencies": [
+        {
+          "name": "dot-parser",
+          "version": "0.5.1",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "feynkit-kinematics",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "gammaloop-workspace-hack",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "graphica",
+          "version": "3.0.1",
+          "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+        },
+        {
+          "name": "linnet",
+          "version": "0.17.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "ninjars",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
+        },
+        {
+          "name": "ninjars-positional",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
+        },
+        {
+          "name": "ninjars-symbolica",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
+        },
+        {
+          "name": "numerica",
+          "version": "3.0.1",
+          "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+        },
+        {
+          "name": "oneloop",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/oneloopmaster.git?rev=5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5#5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5"
+        },
+        {
+          "name": "spenso",
+          "version": "0.6.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "spenso-macros",
+          "version": "0.3.2",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "symbolica",
+          "version": "3.0.1",
+          "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+        },
+        {
+          "name": "symbolica-typst-plugin",
+          "version": "0.1.0",
+          "source": "git+https://github.com/symbolica-dev/symbolica-typst-plugin?rev=57b7455b37c30f4f87353c0073e49f5225e937ab#57b7455b37c30f4f87353c0073e49f5225e937ab"
+        },
+        {
+          "name": "symbolica-utils",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        }
+      ]
+    },
+    "smoke": "Transactional ABI4 DP, binary128-input rescue, UV/IR and directed-rounding smoke passed",
+    "log": "HEPTools/ninjars/install.log"
+  },
+  "coexistence": {
+    "backends": [
+      1,
+      6,
+      7,
+      8
+    ],
+    "status": "passed",
+    "source": ".tirust-build/comparison-coexistence.f90",
+    "log": ".tirust-build/comparison-coexistence.log"
+  }
+}

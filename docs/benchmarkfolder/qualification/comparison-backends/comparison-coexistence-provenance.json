@@ -1,0 +1,59 @@
+{
+  "source": "comparison-coexistence.f90",
+  "source_sha256": "767d1df87690de8ee2a3bc54433232fb17ce4931eb32f15af9b58de7fc8ae8b4",
+  "build_command": [
+    "gfortran",
+    "-IHEPTools/.ninjars-build-5qmlt4km/install/lib",
+    "-IHEPTools/ninja/include",
+    "-IHEPTools/collier/include",
+    ".tirust-build/comparison-coexistence.f90",
+    "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a",
+    "HEPTools/.ninjars-build-5qmlt4km/install/lib/libninjars.a",
+    "HEPTools/cuttools/includects/libcts.a",
+    "-LHEPTools/ninja/lib",
+    "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib",
+    "-lninja",
+    "-LHEPTools/collier",
+    "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier",
+    "-lcollier",
+    "-ldl",
+    "-lgcc_s",
+    "-lutil",
+    "-lrt",
+    "-lpthread",
+    "-lm",
+    "-ldl",
+    "-lc",
+    "-lstdc++",
+    "-o",
+    ".tirust-build/comparison-coexistence"
+  ],
+  "execution_command": [
+    ".tirust-build/comparison-coexistence"
+  ],
+  "exit_status": 0,
+  "executable_sha256": "7e8b7cbdcb65474176b03ec483911f7599036fc942752ab46cf9af8ccdc2ac10",
+  "linked_numerical_libraries_and_compiler_archive": [
+    {
+      "path": "HEPTools/.ninjars-build-5qmlt4km/install/lib/libninjars.a",
+      "sha256": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6"
+    },
+    {
+      "path": "HEPTools/cuttools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d"
+    },
+    {
+      "path": "HEPTools/ninja/lib/libninja.so",
+      "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+    },
+    {
+      "path": "HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+    },
+    {
+      "path": "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a",
+      "sha256": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396"
+    }
+  ],
+  "note": "NinjaRS came from the retained initial installation staging tree, manually linked with the subsequently adopted compiler-runtime correction; the installer rerun separately qualified the published installation."
+}

@@ -1,0 +1,27 @@
+[package]
+name = "madloop-pole-patch-check"
+version = "0.1.0"
+edition = "2024"
+[workspace]
+[dependencies]
+iregi-rust = { path = "../pole-development/crates/iregi-rust" }
+symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "serde", "tracing_max_level_info"] }
+[patch."https://github.com/alphal00p/oneloopmaster.git"]
+oneloop = { path = "../scalar-poles/oneloopmaster" }
+[patch.crates-io]
+symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+[profile.dev]
+opt-level = 2
+
+[dev-dependencies]
+iregi-masters = { path = "../pole-development/crates/iregi-masters" }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+oneloop = { path = "../scalar-poles/oneloopmaster", default-features = false, features = ["rust-codegen", "generated-evaluators"] }
+[[test]]
+name = "pole_only"
+path = "../pole-development/crates/iregi-rust/tests/pole_only.rs"
+[[test]]
+name = "pole_numeric"
+path = "../pole-development/crates/iregi-rust/src/direct/numeric.rs"

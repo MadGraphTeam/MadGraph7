@@ -1,0 +1,289 @@
+{
+  "purpose": "Release correctness/ABI/linkage/relocation smoke; not performance data",
+  "implementation_commit": "c91cb85f3aa942c90299b3518bb1f195f55334a5",
+  "reference_coefficients": {
+    "FIN": 5.18788882126276,
+    "1EPS": -8.324577356963767,
+    "2EPS": -5.5497182379758465
+  },
+  "results": {
+    "external": [
+      {
+        "backend": 1,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119144E+000\n1EPS        -3.999999999999999E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627601     \n SO_Loop 1EPS   -8.3245773569637667     \n SO_Loop 2EPS   -5.5497182379758465     \n",
+        "coefficients": {
+          "FIN": 5.18788882126276,
+          "1EPS": -8.324577356963767,
+          "2EPS": -5.5497182379758465
+        },
+        "max_symmetric_relative_difference_to_cuttools": 0.0
+      },
+      {
+        "backend": 6,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119147E+000\n1EPS        -3.999999999999999E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627645     \n SO_Loop 1EPS   -8.3245773569637667     \n SO_Loop 2EPS   -5.5497182379758465     \n",
+        "coefficients": {
+          "FIN": 5.1878888212627645,
+          "1EPS": -8.324577356963767,
+          "2EPS": -5.5497182379758465
+        },
+        "max_symmetric_relative_difference_to_cuttools": 8.560114242038995e-16
+      },
+      {
+        "backend": 7,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119144E+000\n1EPS        -4.000000000000002E+000\n2EPS        -2.666666666666671E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627601     \n SO_Loop 1EPS   -8.3245773569637720     \n SO_Loop 2EPS   -5.5497182379758536     \n",
+        "coefficients": {
+          "FIN": 5.18788882126276,
+          "1EPS": -8.324577356963772,
+          "2EPS": -5.549718237975854
+        },
+        "max_symmetric_relative_difference_to_cuttools": 1.2803221808595037e-15
+      },
+      {
+        "backend": 8,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119146E+000\n1EPS        -3.999999999999999E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627636     \n SO_Loop 1EPS   -8.3245773569637667     \n SO_Loop 2EPS   -5.5497182379758456     \n",
+        "coefficients": {
+          "FIN": 5.187888821262764,
+          "1EPS": -8.324577356963767,
+          "2EPS": -5.549718237975846
+        },
+        "max_symmetric_relative_difference_to_cuttools": 6.848091393631196e-16
+      },
+      {
+        "backend": 9,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119146E+000\n1EPS        -4.000000000000000E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627636     \n SO_Loop 1EPS   -8.3245773569637684     \n SO_Loop 2EPS   -5.5497182379758474     \n",
+        "coefficients": {
+          "FIN": 5.187888821262764,
+          "1EPS": -8.324577356963768,
+          "2EPS": -5.549718237975847
+        },
+        "max_symmetric_relative_difference_to_cuttools": 6.848091393631196e-16
+      },
+      {
+        "backend": 9,
+        "mode": 2,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119146E+000\n1EPS        -4.000000000000000E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627636     \n SO_Loop 1EPS   -8.3245773569637684     \n SO_Loop 2EPS   -5.5497182379758474     \n",
+        "coefficients": {
+          "FIN": 5.187888821262764,
+          "1EPS": -8.324577356963768,
+          "2EPS": -5.549718237975847
+        },
+        "max_symmetric_relative_difference_to_cuttools": 6.848091393631196e-16
+      },
+      {
+        "backend": 9,
+        "mode": 4,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119145E+000\n1EPS        -4.000000000000001E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 120\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627610     \n SO_Loop 1EPS   -8.3245773569637702     \n SO_Loop 2EPS   -5.5497182379758474     \n",
+        "coefficients": {
+          "FIN": 5.187888821262761,
+          "1EPS": -8.32457735696377,
+          "2EPS": -5.549718237975847
+        },
+        "max_symmetric_relative_difference_to_cuttools": 4.2677406028650155e-16
+      },
+      {
+        "backend": 9,
+        "mode": 5,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119145E+000\n1EPS        -4.000000000000001E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 120\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627610     \n SO_Loop 1EPS   -8.3245773569637702     \n SO_Loop 2EPS   -5.5497182379758474     \n",
+        "coefficients": {
+          "FIN": 5.187888821262761,
+          "1EPS": -8.32457735696377,
+          "2EPS": -5.549718237975847
+        },
+        "max_symmetric_relative_difference_to_cuttools": 4.2677406028650155e-16
+      }
+    ],
+    "internal": [
+      {
+        "backend": 1,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119144E+000\n1EPS        -3.999999999999999E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627601     \n SO_Loop 1EPS   -8.3245773569637667     \n SO_Loop 2EPS   -5.5497182379758465     \n",
+        "coefficients": {
+          "FIN": 5.18788882126276,
+          "1EPS": -8.324577356963767,
+          "2EPS": -5.5497182379758465
+        },
+        "max_symmetric_relative_difference_to_cuttools": 0.0
+      },
+      {
+        "backend": 8,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119146E+000\n1EPS        -3.999999999999999E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627636     \n SO_Loop 1EPS   -8.3245773569637667     \n SO_Loop 2EPS   -5.5497182379758456     \n",
+        "coefficients": {
+          "FIN": 5.187888821262764,
+          "1EPS": -8.324577356963767,
+          "2EPS": -5.549718237975846
+        },
+        "max_symmetric_relative_difference_to_cuttools": 6.848091393631196e-16
+      },
+      {
+        "backend": 9,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119146E+000\n1EPS        -4.000000000000000E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627636     \n SO_Loop 1EPS   -8.3245773569637684     \n SO_Loop 2EPS   -5.5497182379758474     \n",
+        "coefficients": {
+          "FIN": 5.187888821262764,
+          "1EPS": -8.324577356963768,
+          "2EPS": -5.549718237975847
+        },
+        "max_symmetric_relative_difference_to_cuttools": 6.848091393631196e-16
+      },
+      {
+        "backend": 9,
+        "mode": 2,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119146E+000\n1EPS        -4.000000000000000E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627636     \n SO_Loop 1EPS   -8.3245773569637684     \n SO_Loop 2EPS   -5.5497182379758474     \n",
+        "coefficients": {
+          "FIN": 5.187888821262764,
+          "1EPS": -8.324577356963768,
+          "2EPS": -5.549718237975847
+        },
+        "max_symmetric_relative_difference_to_cuttools": 6.848091393631196e-16
+      },
+      {
+        "backend": 9,
+        "mode": 4,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119145E+000\n1EPS        -4.000000000000001E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 120\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627610     \n SO_Loop 1EPS   -8.3245773569637702     \n SO_Loop 2EPS   -5.5497182379758474     \n",
+        "coefficients": {
+          "FIN": 5.187888821262761,
+          "1EPS": -8.32457735696377,
+          "2EPS": -5.549718237975847
+        },
+        "max_symmetric_relative_difference_to_cuttools": 4.2677406028650155e-16
+      },
+      {
+        "backend": 9,
+        "mode": 5,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119145E+000\n1EPS        -4.000000000000001E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 120\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD\n Loop_SO_Results 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627610     \n SO_Loop 1EPS   -8.3245773569637702     \n SO_Loop 2EPS   -5.5497182379758474     \n",
+        "coefficients": {
+          "FIN": 5.187888821262761,
+          "1EPS": -8.32457735696377,
+          "2EPS": -5.549718237975847
+        },
+        "max_symmetric_relative_difference_to_cuttools": 4.2677406028650155e-16
+      }
+    ],
+    "nlo": [
+      {
+        "backend": 1,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119143E+000\n1EPS        -3.999999999999999E+000\n2EPS        -2.666666666666666E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0 2\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD QED\n Loop_SO_Results 2 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627565     \n SO_Loop 1EPS   -8.3245773569637667     \n SO_Loop 2EPS   -5.5497182379758438     \n",
+        "coefficients": {
+          "FIN": 5.1878888212627565,
+          "1EPS": -8.324577356963767,
+          "2EPS": -5.549718237975844
+        },
+        "max_symmetric_relative_difference_to_cuttools": 6.848091393631201e-16
+      },
+      {
+        "backend": 9,
+        "mode": 1,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119144E+000\n1EPS        -3.999999999999999E+000\n2EPS        -2.666666666666666E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 110\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0 2\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD QED\n Loop_SO_Results 2 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627583     \n SO_Loop 1EPS   -8.3245773569637649     \n SO_Loop 2EPS   -5.5497182379758438     \n",
+        "coefficients": {
+          "FIN": 5.187888821262758,
+          "1EPS": -8.324577356963765,
+          "2EPS": -5.549718237975844
+        },
+        "max_symmetric_relative_difference_to_cuttools": 4.801208178223142e-16
+      },
+      {
+        "backend": 9,
+        "mode": 4,
+        "status": 0,
+        "result": "PS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000        4.559400000000000E+001\nPS         4.559400000000000E+001        0.000000000000000E+000        0.000000000000000E+000       -4.559400000000000E+001\nPS         9.118800000000000E+001        0.000000000000000E+000        0.000000000000000E+000        0.000000000000000E+000\nEXP   2\nBORN         1.108153858850734E+002\nFIN         2.492805868119145E+000\n1EPS        -4.000000000000000E+000\n2EPS        -2.666666666666667E+000\nASO2PI         1.878028328484365E-002\n Export_Format Default\nRETCODE 120\nACC -.1000E+01\n Born_kept T\n Loop_kept T\n Born_SO_Results 0 2\n SO_Born BORN    110.81538588507335     \n Split_Orders_Names QCD QED\n Loop_SO_Results 2 2\n SO_Loop ACC    -1.0000000000000000     \n SO_Loop FIN     5.1878888212627610     \n SO_Loop 1EPS   -8.3245773569637684     \n SO_Loop 2EPS   -5.5497182379758456     \n",
+        "coefficients": {
+          "FIN": 5.187888821262761,
+          "1EPS": -8.324577356963768,
+          "2EPS": -5.549718237975846
+        },
+        "max_symmetric_relative_difference_to_cuttools": 2.1338703014325077e-16
+      }
+    ]
+  },
+  "artifacts": {
+    ".tirust-build/adapter-export/release-external/SubProcesses/P0_uux_z/TIR_interface.f": "b5d5487df140ea69aed722086dc853e5fa26cdacdd5af7785efa3590ef3c2d5f",
+    ".tirust-build/adapter-export/release-external/SubProcesses/P0_uux_z/TIRUST_interface.f": "2f348e7e2fb39d9fd8f701c7de0f45e1b66b883a0502762d4cedb18a16c349ec",
+    ".tirust-build/adapter-export/release-external/SubProcesses/P0_uux_z/loop_matrix.f": "82f44e79fe23b1fd7a892e67e3682d666f47fa6d5d13ebf7e4e87d77323707db",
+    ".tirust-build/adapter-export/release-external/SubProcesses/P0_uux_z/check": "30d7399f6af6fc20a239677cd8881f77a76ad732d704bc6ca53661d8e8ee3bcc",
+    ".tirust-build/adapter-export/release-relocated/SubProcesses/P0_uux_z/TIR_interface.f": "d1f49c026c403d9a0f95dc1b3c30290d5d00a416b0753a552514a2a292713547",
+    ".tirust-build/adapter-export/release-relocated/SubProcesses/P0_uux_z/TIRUST_interface.f": "2f348e7e2fb39d9fd8f701c7de0f45e1b66b883a0502762d4cedb18a16c349ec",
+    ".tirust-build/adapter-export/release-relocated/SubProcesses/P0_uux_z/loop_matrix.f": "fe1b83ebb2de0c2749ae2639856d22a71b65c5521b0fa9e9ac2a067fbae54103",
+    ".tirust-build/adapter-export/release-relocated/SubProcesses/P0_uux_z/check": "a1b6da5de5d780ed2849facc82e53eb3a89345d6f25d739c752e2bdb5c3e4438",
+    ".tirust-build/adapter-export/release-relocated/lib/tirust-NOTICES.txt": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+    ".tirust-build/adapter-export/release-relocated/lib/tirust-dependency-notices.tar.gz": "fd455e7c9ca05ba553f70961b03d3ac6a242a7cfa0639b112e274f2847f1702a",
+    ".tirust-build/adapter-export/release-relocated/lib/tirust-dependency-provenance.json": "394073803fdbedf11bae627709bb9060a8fd156fa3d35816af0cf070d79a7b9f",
+    ".tirust-build/adapter-export/release-relocated/lib/ninjars-NOTICES.txt": "6d82540c9a7bd21647da949b892f956603bf69f6ec90dca1d390f17e69de2352",
+    ".tirust-build/adapter-export/release-relocated/lib/ninjars-dependency-notices.tar.gz": "67696adaa31e58b35ee4404d02d66194a0496f45126651a6a57ad715b2bad6b8",
+    ".tirust-build/adapter-export/release-relocated/lib/ninjars-dependency-provenance.json": "231dd32ac82cf432835410970024eb48f47023a4709a10b7cadc67720e0dbaae",
+    ".tirust-build/adapter-export/release-nlo/SubProcesses/P0_uux_z/V0_uux_z/TIR_interface.f": "ebedd6b1dbc095a8b24052c25f7c7ac0ad12f2b6d5ab2922c7ebcd3325e60ec7",
+    ".tirust-build/adapter-export/release-nlo/SubProcesses/P0_uux_z/V0_uux_z/TIRUST_interface.f": "626bfd006b92343e81d0bb8be119d8a4e21e58c3c923782e06333fc892dc7905",
+    ".tirust-build/adapter-export/release-nlo/SubProcesses/P0_uux_z/V0_uux_z/loop_matrix.f": "e71ce305e2809da547aafb16fd7cf7f901311a1479b0fcce43d63bad152589cf",
+    ".tirust-build/adapter-export/release-nlo/SubProcesses/P0_uux_z/V0_uux_z/check": "dc352fe4360dbf2527ed48c7370a9dc2f833bc8175685ce5b1fda22da2e8fbb3",
+    ".tirust-build/adapter-export/release-nlo/lib/tirust-NOTICES.txt": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+    ".tirust-build/adapter-export/release-nlo/lib/tirust-dependency-notices.tar.gz": "fd455e7c9ca05ba553f70961b03d3ac6a242a7cfa0639b112e274f2847f1702a",
+    ".tirust-build/adapter-export/release-nlo/lib/tirust-dependency-provenance.json": "394073803fdbedf11bae627709bb9060a8fd156fa3d35816af0cf070d79a7b9f",
+    ".tirust-build/adapter-export/release-nlo/lib/ninjars-NOTICES.txt": "6d82540c9a7bd21647da949b892f956603bf69f6ec90dca1d390f17e69de2352",
+    ".tirust-build/adapter-export/release-nlo/lib/ninjars-dependency-notices.tar.gz": "67696adaa31e58b35ee4404d02d66194a0496f45126651a6a57ad715b2bad6b8",
+    ".tirust-build/adapter-export/release-nlo/lib/ninjars-dependency-provenance.json": "231dd32ac82cf432835410970024eb48f47023a4709a10b7cadc67720e0dbaae"
+  },
+  "tirust_dso_sha256": "49af12f0b88252a2d06420a2ea8768529eb5ab51de34e3db2257ee61cd71ca12",
+  "maximum_comparison_error": 1.2803221808595037e-15,
+  "nlo_partial_rejection_exit_code": 1,
+  "relocation_source_prefix_removed": true,
+  "portable_evidence_sha256": {
+    "generate-release-internal.log": "45722200b5e99cc505aa715562fa09034e9e82c1e9084107e7fb180e67ad7346",
+    "generate-release-internal.mg5": "4dcec9501eab5957eb906a788e748325868d2a934d3a13e0e550f31c64ffd649",
+    "generate-release-nlo.log": "9cda5ea3d2e1b3f665f7f2d56e82b18e9f858f6989673751f82e33a774cca958",
+    "generate-release-nlo.mg5": "7893a0cd3cb0c837496d289698accea1884074e900cdcfab03e4f95615bd6f4e",
+    "generate-release.log": "5f58976e035b2c9bc37b0b39e5bc6ff9215f43c440d1867c4a26a62561069e81",
+    "generate-release.mg5": "fba57cbe4730f369cfc0cf49067ccff42f0415fbebd88e01a8f1008f24a85438",
+    "make-release-final.log": "879163d8bf0c8cee341dac7777ec4bc264d621b6ae8cea0d1079fb2daf32a2a0",
+    "make-release-internal.log": "73ceef67abed31209ebcca61c0dfe95acb7d21b4ade0aaa05ac2f9b724845a26",
+    "make-release-nlo-check.log": "b39cc416e376c6561efcf901136a9b3228d68d806b01553acbe06bdf9fa99456",
+    "make-release-nlo-model.log": "e9ae2961aa35dc5cc2d4c178d1ea37784b4ddd93fee784cf7944450e87c2ba0e",
+    "make-release-nlo-virtual.log": "6b1500e88a093d3b1b282eb0495adb111c4d2617d64d3e4c7f4fa3c047581aae",
+    "release-external-check-1-1.log": "c4c7e91f3d97a3fe9526d57339c1fbed97cd73439ee71041c8a79d73fb3001ef",
+    "release-external-check-6-1.log": "6cc857ce5d062f5f36f60dcbcd348a59626789f105db4e5b8df990c8006c3d71",
+    "release-external-check-7-1.log": "1cc113004c518cb4ce3b949b8318d1ba4e655e773ff8714e465914c6259d9b4c",
+    "release-external-check-8-1.log": "cd2b4f4d9d35c969b4c42ec6a39f3550f25f74263676de4c1f51ea5521e2105f",
+    "release-external-check-9-1.log": "0671301c041b8ff943b9425ebd3ddfe8420fc50dbd8565bf249bc6a63e07d80d",
+    "release-external-check-9-2.log": "92a921b3fe2d7d82d2bd531f0dcb0c0ac11a32b6adfb9fedd12ac6f391dfbcaf",
+    "release-external-check-9-4.log": "1d71435c5324718cc7d57ef376c209871dfea433280739571cd8c8c6efa6a37a",
+    "release-external-check-9-5.log": "1e553104de550b5cf19c707443d9d7e5b3da23b0bf2900f7097a4f718e72fa40",
+    "release-external-smoke.json": "355b506aee7fdc8b7e2884ce634c7be320f232a08d3a98e8706781a8ee5360ae",
+    "release-internal-check-1-1.log": "c4c7e91f3d97a3fe9526d57339c1fbed97cd73439ee71041c8a79d73fb3001ef",
+    "release-internal-check-8-1.log": "cd2b4f4d9d35c969b4c42ec6a39f3550f25f74263676de4c1f51ea5521e2105f",
+    "release-internal-check-9-1.log": "0671301c041b8ff943b9425ebd3ddfe8420fc50dbd8565bf249bc6a63e07d80d",
+    "release-internal-check-9-2.log": "92a921b3fe2d7d82d2bd531f0dcb0c0ac11a32b6adfb9fedd12ac6f391dfbcaf",
+    "release-internal-check-9-4.log": "1d71435c5324718cc7d57ef376c209871dfea433280739571cd8c8c6efa6a37a",
+    "release-internal-check-9-5.log": "1e553104de550b5cf19c707443d9d7e5b3da23b0bf2900f7097a4f718e72fa40",
+    "release-internal-smoke.json": "e395e4b798adddeb18003aba06afce410a279a844d712f63b8e8b2f7085c450c",
+    "release-nlo-check-1-1.log": "2cebda270052eb4d309a71b7db5522d054c9c6b1cec4653da5573a1876398e10",
+    "release-nlo-check-9-1.log": "c07c4f7b5d11f93ff13b8a53229c84921b4b5e040af7213ca7663652d5d42d63",
+    "release-nlo-check-9-4.log": "5d0351d20ce5735783dc6f51ea7e2d1f17f568eb26bb201bf2418295d6340c5e",
+    "release-nlo-partial-rejected.log": "085e39077bfbe15bd7124190cfe8ee1203efb632375d2ff77139e7a9afe9a77e",
+    "release-nlo-smoke.json": "46dedc2c937e8f3965b51a7e62e772e43754854569d506dd412aaec327f06d12",
+    "run-release-external.py": "e80e3913c51b382e8557697293816a0c3c647fcf97af84837403ee8cf738c99a",
+    "run-release-internal.py": "0b3cff030d5d33f3e89ee16fd1506e1777d6b2f3df7e434fa8b0186a419cb6ca",
+    "run-release-nlo.py": "1f8784dc6a2a2ee3c7b1ae391aeadb98b562863e4dfaee8c000112dad35e8253",
+    "tirust-config.json": "000ac5255c1ba3fa268f17524b4d30bcd5a231c38f13a10b820d7b4a208711da"
+  }
+}

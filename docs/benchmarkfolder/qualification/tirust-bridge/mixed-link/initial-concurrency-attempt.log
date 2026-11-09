@@ -1,0 +1,44 @@
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: warning: 2759c6e58623ef3d-x86_64.o: missing .note.GNU-stack section implies executable stack
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: warning: 2759c6e58623ef3d-x86_64.o: missing .note.GNU-stack section implies executable stack
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+tirust-first tirust-first exit -6
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Cannot start another restricted Symbolica thread while this user's thread allowance is in use.   │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Program received signal SIGABRT: Process abort signal.
+
+Backtrace for this error:
+#0  0x777c31770655 in ???
+#1  0x777c3176f645 in ???
+#2  0x777c31492d9f in ???
+#3  0x777c314eef1c in ???
+#4  0x777c31492ced in ???
+#5  0x777c31479940 in ???
+#6  0x5e15a484d999 in ???
+#7  0x5e15a484cf68 in ???
+#8  0x5e15a6c2fced in ???
+#9  0x5e15a6cd0bce in ???
+#10  0x5e15a6cd09da in ???
+#11  0x5e15a70a82e1 in ???
+#12  0x5e15a56a5190 in ???
+#13  0x5e15a52950cb in ???
+#14  0x5e15a5204d8e in ???
+#15  0x5e15a521448a in ???
+#16  0x5e15a4923265 in ???
+#17  0x5e15a5219a6a in ???
+#18  0x5e15a7beb8e1 in ???
+#19  0x777c314ece3b in ???
+#20  0x777c315756cb in ???
+#21  0xffffffffffffffff in ???
+
+tirust-first ninjars-first exit 0
+ Mixed TIRust/NinjaRS DP, binary128, poles, lifecycle and rounding passed: ninjars-first
+
+ninjars-first tirust-first exit 0
+ Mixed TIRust/NinjaRS DP, binary128, poles, lifecycle and rounding passed: tirust-first
+
+ninjars-first ninjars-first exit 0
+ Mixed TIRust/NinjaRS DP, binary128, poles, lifecycle and rounding passed: ninjars-first
+

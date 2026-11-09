@@ -1,0 +1,10 @@
+patching file Cargo.toml
+patching file crates/iregi-rust/Cargo.toml
+patching file crates/iregi-rust/src/lib.rs
+patching file crates/iregi-rust/src/direct.rs
+patching file crates/iregi-rust/src/direct/numeric.rs
+patching file crates/iregi-rust/src/direct/exec.rs
+patching file crates/iregi-rust/src/direct/exec/gram.rs
+patching file crates/iregi-rust/src/direct/poles.rs
+patching file crates/iregi-rust/tests/pole_only.rs
+PASS: source hashes, patch SHA256 and zero-fuzz roundtrip agree for all9 files.

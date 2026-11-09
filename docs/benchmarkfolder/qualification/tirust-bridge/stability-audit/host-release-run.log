@@ -1,0 +1,59 @@
+Waiting for numerical-tests lock
+Acquired numerical-tests lock
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+{"threshold": 0.001, "rotations": 0, "projection": "real", "return_code": 219, "accuracy": 3.7983320394218526e-05, "modes": [1, 2], "relative_error_to_same_input_qp": 0.0003050723935867658}
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+{"threshold": 0.001, "rotations": 0, "projection": "imaginary", "return_code": 219, "accuracy": 0.0002170826856529698, "modes": [1, 2], "relative_error_to_same_input_qp": 0.0014047726900723793}
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+{"threshold": 0.001, "rotations": 2, "projection": "real", "return_code": 219, "accuracy": 3.798332047279537e-05, "modes": [1, 2, 1, 1], "relative_error_to_same_input_qp": 0.0003050723936028197}
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+{"threshold": 0.001, "rotations": 2, "projection": "imaginary", "return_code": 219, "accuracy": 0.00021708268571636472, "modes": [1, 2, 1, 1], "relative_error_to_same_input_qp": 0.001404772690087909}
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+{"threshold": 1e-06, "rotations": 0, "projection": "real", "return_code": 323, "accuracy": 0.0, "modes": [1, 2, 4, 5], "relative_error_to_same_input_qp": 0.0}
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+{"threshold": 1e-06, "rotations": 0, "projection": "imaginary", "return_code": 323, "accuracy": 0.0, "modes": [1, 2, 4, 5], "relative_error_to_same_input_qp": 0.0}
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+{"threshold": 1e-06, "rotations": 2, "projection": "real", "return_code": 323, "accuracy": 0.0, "modes": [1, 2, 1, 1, 4, 5, 4, 4], "relative_error_to_same_input_qp": 0.0}
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+At line 262 of file /shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90
+Fortran runtime warning: An array temporary was created for argument 'output' of procedure 'evaluate_dp'
+{"threshold": 1e-06, "rotations": 2, "projection": "imaginary", "return_code": 323, "accuracy": 0.0, "modes": [1, 2, 1, 1, 4, 5, 4, 4], "relative_error_to_same_input_qp": 0.0}
+docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/host-dispatch-release.json

@@ -1,0 +1,57 @@
+All commands run from /shared/external/madloop_tirust/madgraph7_madloop_tirust.
+Environment setup:
+
+source tools/tirust_env.sh
+
+Initial scalar build and regression command (optimized development profile):
+
+CARGO_TARGET_DIR="$TIRUST_MG_ROOT/.tirust-build/scalar-poles/target" CARGO_BUILD_BUILD_DIR="$TIRUST_MG_ROOT/.tirust-build/scalar-poles/build" cargo test --offline --manifest-path .tirust-build/scalar-poles/bootstrap/Cargo.toml --test scalar_poles -- --nocapture
+
+Original warm scalar-only benchmark command, whose CSV is copied unchanged:
+
+CARGO_TARGET_DIR="$TIRUST_MG_ROOT/.tirust-build/scalar-poles/target" CARGO_BUILD_BUILD_DIR="$TIRUST_MG_ROOT/.tirust-build/scalar-poles/build" cargo run --offline --manifest-path .tirust-build/scalar-poles/bootstrap/Cargo.toml --example benchmark_poles -- 20000 > .tirust-build/scalar-poles/benchmark-dev-opt2.csv
+
+The temporary bootstrap Cargo.toml is reproduced in generation-provenance.txt.
+It sets [profile.dev] opt-level=2; debug information remains enabled.
+The CSV is neither a release benchmark nor an end-to-end MadLoop benchmark.
+It is one warm dev-opt2 benchmark invocation, with 20000 repeated evaluations
+per internal timing batch and the median of 7 such batches reported. It has
+no confidence interval and is illustrative, nonacceptance evidence. These
+data do not justify promoting any evaluation mode.
+Massless C0 and D0 are slower in these measurements; the provenance file gives
+the absolute differences and must accompany the CSV when it is reported.
+
+Actual numerical commands rerun during packaging, serialized with the shared
+advisory lock (stdout/stderr captured in scalar-regression.log and
+generation-reproducibility.txt):
+
+python3 - <<'PY'
+import fcntl
+import subprocess
+with open('.tirust-build/numerical-tests.lock', 'a') as guard:
+    fcntl.flock(guard, fcntl.LOCK_EX)
+    subprocess.run([
+        '.tirust-build/scalar-poles/build/debug/deps/scalar_poles-2774c99a5706de70',
+        '--nocapture', '--test-threads=1'
+    ], check=True)
+    subprocess.run([
+        '.tirust-build/scalar-poles/target/debug/madloop-pole-bootstrap',
+        '.tirust-build/scalar-poles/qualification-regenerated'
+    ], check=True)
+PY
+
+Byte-identical regeneration check and source hash check:
+
+for generated in vendor/tirust/pole-kernels/src/generated_*; do
+    cmp "$generated" ".tirust-build/scalar-poles/qualification-regenerated/${generated##*/}" || exit
+done
+sha256sum -c docs/benchmarkfolder/qualification/poles-only/generation-SHA256SUMS.txt
+
+Portable maintenance entrypoints for a fresh checkout (documented alternatives,
+not the temporary-bootstrap commands used for the recorded measurements):
+
+cargo test --locked --manifest-path vendor/tirust/pole-kernels/maintenance/Cargo.toml --test scalar_poles
+cargo run --locked --release --manifest-path vendor/tirust/pole-kernels/maintenance/Cargo.toml --bin generate-poles -- vendor/tirust/pole-kernels/src
+
+The second command intentionally regenerates the committed sources; use a
+temporary output directory instead when only checking reproducibility.

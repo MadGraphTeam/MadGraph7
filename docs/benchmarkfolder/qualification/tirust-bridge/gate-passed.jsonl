@@ -1,0 +1,13 @@
+{"label": "gg_gggg full p1 N=4 massless", "precision": "dp", "status": 0, "relative_error": 6.969656545474188e-10}
+{"label": "gg_gggg full p1 N=4 massless", "precision": "qp", "status": 0, "relative_error": 4.733630781508955e-16}
+{"label": "gg_gggg full p1 N=4 massive", "precision": "dp", "status": 0, "relative_error": 9.08832181685955e-09}
+{"label": "gg_gggg full p1 N=4 massive", "precision": "qp", "status": 0, "relative_error": 8.231198206801094e-16}
+{"label": "li-rows.json LI-32 N4-massive R4 row 21 R=5 lane 63", "precision": "dp", "status": 0, "relative_error": 3.5252238221604598e-06}
+{"label": "li-rows.json LI-32 N4-massive R4 row 21 R=5 lane 63", "precision": "qp", "status": 0, "relative_error": 1.0043632402561455e-15}
+{"label": "li-rows.json LI-32 N4-massive R4 row 57 R=5 lane 44", "precision": "dp", "status": 0, "relative_error": 6.958943498811447e-06}
+{"label": "li-rows.json LI-32 N4-massive R4 row 57 R=5 lane 44", "precision": "qp", "status": 0, "relative_error": 3.5148270968783686e-15}
+{"label": "li-rambo-rows.json LI-33 N5-massive R5 row 93 R=6 lane 40", "precision": "dp", "status": 0, "relative_error": 6.366600915085593e-07}
+{"label": "li-rambo-rows.json LI-33 N5-massive R5 row 93 R=6 lane 40", "precision": "qp", "status": 0, "relative_error": 4.155135127974464e-15}
+{"label": "li-rambo-rows.json LI-33 N5-massless R5 row 93 R=6 lane 7", "precision": "dp", "status": 0, "relative_error": 3.6498855501094115e-08}
+{"label": "li-rambo-rows.json LI-33 N5-massless R5 row 93 R=6 lane 7", "precision": "qp", "status": 0, "relative_error": 3.1472372402916927e-15}
+{"passed": true, "evaluations": 12}

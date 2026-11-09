@@ -1,0 +1,26 @@
+[
+  {
+    "link_order": "tirust-first",
+    "initialization_order": "tirust-first",
+    "exit_code": 0,
+    "elapsed_seconds": 1.6600114097818732
+  },
+  {
+    "link_order": "tirust-first",
+    "initialization_order": "ninjars-first",
+    "exit_code": 0,
+    "elapsed_seconds": 1.7978142169304192
+  },
+  {
+    "link_order": "ninjars-first",
+    "initialization_order": "tirust-first",
+    "exit_code": 0,
+    "elapsed_seconds": 1.6799068730324507
+  },
+  {
+    "link_order": "ninjars-first",
+    "initialization_order": "ninjars-first",
+    "exit_code": 0,
+    "elapsed_seconds": 1.4602520042099059
+  }
+]

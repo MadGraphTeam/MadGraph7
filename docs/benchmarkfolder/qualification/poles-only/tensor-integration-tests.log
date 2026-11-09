@@ -1,0 +1,16 @@
+Command: /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-test-build/debug/deps/pole_only-77d4feb025e51710 --test-threads=1
+Executable SHA256: 0b25e1d0ef4b5bacef92c993cd6e24e37e62d3f62d521f00c359fe3b60003b11
+
+running 9 tests
+test all_topologies_rank_six_binary64_match_full_and_cache ... ok
+test double_ir_poles_and_normalization_match_full ... ok
+test extended_precision_poles_preserve_the_carrier ... ok
+test partial_rescue_executes_in_pole_mode_and_reuses_dd_masters ... ok
+test physical_massless_boxes_pentagons_hexagons_have_matching_ir_poles ... ok
+test pole_rotation_and_changed_scale_cache_are_independent ... ok
+test scaleless_lightlike_residues_and_mode_isolation ... ok
+test small_gram_pole_rescue_keeps_partial_execution ... ok
+test unsupported_requests_do_not_fall_back_to_full ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+

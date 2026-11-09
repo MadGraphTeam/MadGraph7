@@ -1,0 +1,98 @@
+{
+  "status": "complete",
+  "lock_released": true,
+  "profile": "final installed release bridge through native adapter",
+  "provenance": "Production rescue IF/GOTO block and H/T/U finalization rendered verbatim; backend eligibility and QP-index construction copied from generated uux_z process.",
+  "results": {
+    "cases": 8,
+    "default_threshold_return_code": 219,
+    "diagnostic_threshold_return_code": 323,
+    "thresholds": [
+      0.001,
+      1e-06
+    ],
+    "no_rotation_modes": {
+      "default": [
+        1,
+        2
+      ],
+      "diagnostic": [
+        1,
+        2,
+        4,
+        5
+      ]
+    },
+    "two_rotation_modes": {
+      "default": [
+        1,
+        2,
+        1,
+        1
+      ],
+      "diagnostic": [
+        1,
+        2,
+        1,
+        1,
+        4,
+        5,
+        4,
+        4
+      ]
+    },
+    "all_default_kept_dp": true,
+    "all_diagnostic_rescued_qp": true
+  },
+  "limitations": [
+    "The full SLOOPMATRIX physics/filter initialization pipeline is not executed.",
+    "Real and imaginary projections are independent synthetic interference diagnostics.",
+    "This executes the production automatic branch and native accuracy/return-code functions."
+  ],
+  "files": {
+    "host-release-build.log": {
+      "sha256": "a06cc88fc64db2d187b9c532c9a5901a7b1d59b2816e2bb1a835f02e48a496a2",
+      "bytes": 1754
+    },
+    "host-release-run.log": {
+      "sha256": "714ea78f97bf0caa989fe307bbf7548f637cf11962b7d39e10b26326b26f2af6",
+      "bytes": 6596
+    },
+    "host-release-build-metadata.json": {
+      "sha256": "e0ef1982177116022fd7b89c8dd446f42a2a4bb84ab96ecae8b15e2bcf3d3fc6",
+      "bytes": 2789
+    },
+    "host-production-policy.inc": {
+      "sha256": "702273b7a33b5b70c2b6e7606723c285277e44862f1ad0fbfe3b07dc477e9499",
+      "bytes": 9982
+    },
+    "host-production-retcode.inc": {
+      "sha256": "c3cc089a1b26d58d329d1769f4f6004ff2188e2c0d639dd025fcdbda6a264e06",
+      "bytes": 1680
+    },
+    "host-production-eligibility.inc": {
+      "sha256": "0d7a68fdea5368ebb6c9957dfe35d15867c0b633d29761afd2b23bf049e7e976",
+      "bytes": 2964
+    },
+    "host-release-rendered.f": {
+      "sha256": "573b4141f29995483c3de70a89bc6e6d761c07d98b6e74f121f6e00d2df2dfa7",
+      "bytes": 24204
+    },
+    "build_host_rescue.py": {
+      "sha256": "2cf3370b175bf5ea21255dd9dba53835eeca22d59731cca4de2fd10a9fc96aed",
+      "bytes": 6201
+    },
+    "host_rescue_driver.f": {
+      "sha256": "a3070568351c003608cd716e8d4c8e7e712eb9628be787dbf98488b57c51eb55",
+      "bytes": 6697
+    },
+    "run_host_rescue.py": {
+      "sha256": "9d2dabe227514cf0909ee808a6d9a95bc5af11b1c78d2169baa76ed5b65e614a",
+      "bytes": 6936
+    },
+    "host-dispatch-release.json": {
+      "sha256": "e77c9380f6af78f0da125e931f7ddd538dfb06912af2fffc1351600b51a41c01",
+      "bytes": 14556
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "upstream_revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
+  "patch_sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5",
+  "zero_fuzz_apply": "passed",
+  "source_integrity": "passed",
+  "roundtrip_matches_tested_source": "passed",
+  "patched_file_sha256": {
+    "Cargo.toml": "ff958f661d463bca4ea3b361b3abd23f7b9dfd6bbe4cb5b062bccf85c7be2018",
+    "crates/iregi-rust/Cargo.toml": "6bf1486a8760db43ab57317b00ea11ca0fb53861b54fe9b6d18da005a2990550",
+    "crates/iregi-rust/src/lib.rs": "bd57b4b8c7771220ea528a97f22d517839452c8ca5877d9043a568a05d100121",
+    "crates/iregi-rust/src/direct.rs": "71f78f5b1ed56890371a5adb9081753e2a28306847957bf1a315e39189689b46",
+    "crates/iregi-rust/src/direct/numeric.rs": "c4189f1e59f0746ea4413319b9a85df926789c3b1c95f9e1461bf7088879ebee",
+    "crates/iregi-rust/src/direct/exec.rs": "255b250f6997cfd08f017a9962ac79e6a4a87421f1f2d9f7ddb6a8bc1129eace",
+    "crates/iregi-rust/src/direct/exec/gram.rs": "4565a5075e6abae10dc062be4119a206855fa533eeab09ea1767cdd4e9631858",
+    "crates/iregi-rust/src/direct/poles.rs": "dee900330fea61ff4a05626b28a5195e209e3538a29332b70af8f9dec7908a9b",
+    "crates/iregi-rust/tests/pole_only.rs": "2debd7fc064a9ed28f13135ac8ca75e163ee2e372554da505d99469e15cc5cca"
+  }
+}

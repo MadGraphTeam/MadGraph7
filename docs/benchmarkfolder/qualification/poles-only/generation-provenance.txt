@@ -1,0 +1,65 @@
+Packaged UTC: 2026-11-09T20:01:42.629431+00:00
+Working directory: /shared/external/madloop_tirust/madgraph7_madloop_tirust
+Git HEAD at packaging: 86b394a2e9cca0e5f0aa26651c4aa6b39ab9933f
+Rust: rustc 1.97.1 (8bab26f4f 2026-07-14) (built from a source tarball)
+Cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+Platform: Linux-6.18.45-x86_64-with-glibc2.42
+oneloopmaster revision: bd703d09a78f7849a6b86a07096e6f222fc01193
+Symbolica revision: dfe6bd97b974b1028dc63071ea165136cd2b0ef5
+Initial bootstrap used a clean copy of the supplied oneloopmaster reference tree.
+Production generator and kernels are in vendor/tirust/pole-kernels.
+vendor/tirust/pole-kernels/maintenance/Cargo.toml provides the pinned reproducible standalone workspace.
+The numerical library, generator and regression executable were built using the temporary bootstrap manifest below.
+No binaries are included in this qualification package.
+
+Regression: 4 tests; 96 scalar points x 3 precisions = 288 pole comparisons against full NativeEvaluator.
+Precisions: f64 (53 bits), DoubleFloat (106 bits), Float (192 bits).
+Includes A0/B0/C0 scaleless totals, bubble thresholds/small momentum, triangle permutations, soft/collinear box permutations, complex masses, invalid inputs, and explicit rejection of an undefined collapsed D0.
+
+Microbenchmark qualification:
+The copied CSV is the original scalar-only measurement; it was not retimed during packaging.
+Build profile: development, opt-level=2, debug information enabled. These are not release or end-to-end MadLoop timings.
+Each row is the median of 7 warmed samples of 20000 calls after 100 warm-up calls, using binary64.
+This is one warm dev-opt2 benchmark invocation. No confidence interval is available; the data are illustrative, nonacceptance evidence and do not justify promoting any evaluation mode.
+full_ns uses upstream NativeEvaluator; poles_ns uses ScalarPoleEvaluator; speedup = full_ns / poles_ns.
+Neither evaluator has a last-input/result cache. NativeEvaluator stores reusable constants and a precision-conversion buffer, and evaluate_row calls family_values unconditionally (oneloopmaster src/native/mod.rs, lines 94-119 and 254-264). ScalarPoleEvaluator likewise evaluates its generated kernel on every call. Warm here means initialized constants and warm processor/code state, not an integral-cache hit.
+Massless C0 is slower: 72.901 ns vs 48.563 ns (+24.338 ns, speedup 0.666).
+Massless D0 is slower: 128.775 ns vs 54.910 ns (+73.865 ns, speedup 0.426).
+These simple-sector slowdowns must remain visible; no overall MadLoop performance claim follows from this CSV.
+Generated kernels still omit finite roots and dilogarithms; exact public-expression specializations were investigated only and are not enabled.
+
+Generation manifest:
+oneloopmaster_revision=bd703d09a78f7849a6b86a07096e6f222fc01193
+laurent_tags=-1,-2
+finite_roots=0
+A0: inputs=2 outputs=2 root_instructions=2 helpers=2 branches=0 bytes=813
+B0: inputs=4 outputs=2 root_instructions=2 helpers=2 branches=0 bytes=1324
+C0: inputs=7 outputs=2 root_instructions=2 helpers=17 branches=20 bytes=112313
+D0: inputs=11 outputs=2 root_instructions=2 helpers=24 branches=57 bytes=681083
+
+Actual temporary bootstrap Cargo.toml:
+[package]
+name = "madloop-pole-bootstrap"
+version = "0.1.0"
+edition = "2024"
+[workspace]
+[dependencies]
+oneloop = { path = "../oneloopmaster", default-features = false, features = ["rust-codegen"] }
+symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "tracing_max_level_info"] }
+[patch.crates-io]
+symbolica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+numerica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+graphica = { git = "https://github.com/ValentinHirschi/symbolica.git", rev = "dfe6bd97b974b1028dc63071ea165136cd2b0ef5" }
+[profile.dev]
+opt-level = 2
+[lib]
+name = "madloop_pole_kernels"
+path = "../../../vendor/tirust/pole-kernels/src/lib.rs"
+[[test]]
+name = "scalar_poles"
+path = "../../../vendor/tirust/pole-kernels/tests/scalar_poles.rs"
+[[example]]
+name = "benchmark_poles"
+path = "../../../vendor/tirust/pole-kernels/examples/benchmark_poles.rs"
+[dev-dependencies]
+oneloop = { path = "../oneloopmaster", default-features = false, features = ["rust-codegen", "generated-evaluators"] }
