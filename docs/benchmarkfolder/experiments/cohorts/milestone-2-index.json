@@ -1,0 +1,410 @@
+{
+  "acceptance_eligible": false,
+  "files": {
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/check_sa.f": {
+      "bytes": 11538,
+      "sha256": "157e30991eb047db37a04c1521d07bf3ed68fe54cfed55b63e662f1b8dc16979"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/cohorts.json": {
+      "bytes": 86577,
+      "sha256": "508995c2a63a2c78ba62c03c4cdb9f16c0ecaa0c373854253d63f835e66cff1e"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/compilation.json": {
+      "bytes": 170232,
+      "sha256": "d83f2c4d2877a0d08247c5d53154563a011c2b2e45ea6bb4695cfab20f9e8ca7"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-00/cohort-calls.dat": {
+      "bytes": 1379400,
+      "sha256": "a13421e07fffd411f6d569744062b87133e681e871a5fdf397611fbb84b14009"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-00/cohort-selection.dat": {
+      "bytes": 296,
+      "sha256": "3db8a2c06a16acef3f7f9a10d68c7f7b444f90fe303e0c495ff2c9246bdcf2e2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-00/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-00/request.json": {
+      "bytes": 47907,
+      "sha256": "6d995606bf8785779fe57af082522910ed68ca7b499c7114b44ebb33adecae2b"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-00/result.json": {
+      "bytes": 350852,
+      "sha256": "a86a8a380fc24975e3019e5e51aac021d587fa2b51aaa2b482eb875c0bb391cb"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-00/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "337d0c3da64e7006a9f2c3d1716347adfe3c8479ff2aaed715addd61d70857c8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-00/timing.dat": {
+      "bytes": 53,
+      "sha256": "e7cdafc690e0c9e14868d15c2797817bced6c776b8248f93d10bdfff6fb03952"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-00/values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-01/cohort-calls.dat": {
+      "bytes": 1379400,
+      "sha256": "a13421e07fffd411f6d569744062b87133e681e871a5fdf397611fbb84b14009"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-01/cohort-selection.dat": {
+      "bytes": 296,
+      "sha256": "3db8a2c06a16acef3f7f9a10d68c7f7b444f90fe303e0c495ff2c9246bdcf2e2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-01/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-01/request.json": {
+      "bytes": 47906,
+      "sha256": "3c577072066190958af90632d868df44b08827be75e4f6ea851a8a6d49fac7eb"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-01/result.json": {
+      "bytes": 350852,
+      "sha256": "1a845768e93b6ccb74ed8154ea19e4f1deef16b1014bc7c4d2dfed7ead2013d2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-01/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "337d0c3da64e7006a9f2c3d1716347adfe3c8479ff2aaed715addd61d70857c8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-01/timing.dat": {
+      "bytes": 53,
+      "sha256": "9d19ca8359c0bac4887e46c99503fee6cc236531c2f748cf0a2c4ababec3f82a"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-01/values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-02/cohort-calls.dat": {
+      "bytes": 1379400,
+      "sha256": "a13421e07fffd411f6d569744062b87133e681e871a5fdf397611fbb84b14009"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-02/cohort-selection.dat": {
+      "bytes": 296,
+      "sha256": "3db8a2c06a16acef3f7f9a10d68c7f7b444f90fe303e0c495ff2c9246bdcf2e2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-02/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-02/request.json": {
+      "bytes": 47906,
+      "sha256": "9945be4965b3031c00e0238f1c0ace0e5f250aabe16a93760830afd821a2c859"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-02/result.json": {
+      "bytes": 350844,
+      "sha256": "1bbd894ee91c1ae57af5806bad4f1466b2e77a12e4277b92cbbf869020850886"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-02/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "337d0c3da64e7006a9f2c3d1716347adfe3c8479ff2aaed715addd61d70857c8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-02/timing.dat": {
+      "bytes": 53,
+      "sha256": "d13e921e46d342faf44d5c648eecbd37a9b24060931ce02aafbabcc51d10d1b7"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-02/values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-03/cohort-calls.dat": {
+      "bytes": 1379400,
+      "sha256": "a13421e07fffd411f6d569744062b87133e681e871a5fdf397611fbb84b14009"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-03/cohort-selection.dat": {
+      "bytes": 296,
+      "sha256": "3db8a2c06a16acef3f7f9a10d68c7f7b444f90fe303e0c495ff2c9246bdcf2e2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-03/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-03/request.json": {
+      "bytes": 47905,
+      "sha256": "40b1a44c5c978d32606d15ec7e6344949d5d447b55a2759b3a7187f6d526c515"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-03/result.json": {
+      "bytes": 350852,
+      "sha256": "08c83623a3ea70a662b40241aa772c40224a432691472ab0664bc03b6ade04d8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-03/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "337d0c3da64e7006a9f2c3d1716347adfe3c8479ff2aaed715addd61d70857c8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-03/timing.dat": {
+      "bytes": 53,
+      "sha256": "25342c12f805d4a256b3172f0c0bb79b9a3b4deeaf1c91614290b1789e3ff340"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-03/values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-04/cohort-calls.dat": {
+      "bytes": 1379400,
+      "sha256": "a13421e07fffd411f6d569744062b87133e681e871a5fdf397611fbb84b14009"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-04/cohort-selection.dat": {
+      "bytes": 296,
+      "sha256": "3db8a2c06a16acef3f7f9a10d68c7f7b444f90fe303e0c495ff2c9246bdcf2e2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-04/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-04/request.json": {
+      "bytes": 47906,
+      "sha256": "f2fefef27efbc4a11c0bc1ece85b79da15838712b8a9602dd48485c64f7b3277"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-04/result.json": {
+      "bytes": 350852,
+      "sha256": "ae3cb9efd4d9c341c9ead47469bb3c6d0e8aca84bcb75ff22f0f560778da6921"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-04/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "337d0c3da64e7006a9f2c3d1716347adfe3c8479ff2aaed715addd61d70857c8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-04/timing.dat": {
+      "bytes": 53,
+      "sha256": "c3cd6990e4b6e8c37e209c48b44e35c46c08f1872b102eab09a64cddfce1704a"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-04/values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-05/cohort-calls.dat": {
+      "bytes": 1379400,
+      "sha256": "a13421e07fffd411f6d569744062b87133e681e871a5fdf397611fbb84b14009"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-05/cohort-selection.dat": {
+      "bytes": 296,
+      "sha256": "3db8a2c06a16acef3f7f9a10d68c7f7b444f90fe303e0c495ff2c9246bdcf2e2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-05/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-05/request.json": {
+      "bytes": 47906,
+      "sha256": "aa1b00ec9ce559ffd9de81de4543fd76afe9d3092c01bc29be250bb9dafda5a8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-05/result.json": {
+      "bytes": 350852,
+      "sha256": "eb3294c07b4d0dabd8bf2abb69be3b84069deb30e1c5d9d782cd5faf3a288472"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-05/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "337d0c3da64e7006a9f2c3d1716347adfe3c8479ff2aaed715addd61d70857c8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-05/timing.dat": {
+      "bytes": 53,
+      "sha256": "500094ecfec88a8d586c05f43278dcf357ccddcc0af4d2479e976b9e484664e8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-05/values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-06/cohort-calls.dat": {
+      "bytes": 1379400,
+      "sha256": "a13421e07fffd411f6d569744062b87133e681e871a5fdf397611fbb84b14009"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-06/cohort-selection.dat": {
+      "bytes": 296,
+      "sha256": "3db8a2c06a16acef3f7f9a10d68c7f7b444f90fe303e0c495ff2c9246bdcf2e2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-06/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-06/request.json": {
+      "bytes": 47906,
+      "sha256": "71f1c638b86e722854a141df28d218327b5a80b0f6096b983b99c74b1734a7f2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-06/result.json": {
+      "bytes": 350852,
+      "sha256": "4821b34e9209677e3ec69e7481d92b55c0d7e219ece9bf8fc7dd5e9821db979e"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-06/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "337d0c3da64e7006a9f2c3d1716347adfe3c8479ff2aaed715addd61d70857c8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-06/timing.dat": {
+      "bytes": 53,
+      "sha256": "551a5762b544e433c6962830eae9527b32670bd9077fd71c1ac10c98eea13130"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/batch-06/values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-0/cohort-calls.dat": {
+      "bytes": 12100,
+      "sha256": "f5f1fb9703e47544272d3e63deff5d58c1738ae0b41a342b64dc023243f75f00"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-0/cohort-selection.dat": {
+      "bytes": 296,
+      "sha256": "3db8a2c06a16acef3f7f9a10d68c7f7b444f90fe303e0c495ff2c9246bdcf2e2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-0/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-0/request.json": {
+      "bytes": 47905,
+      "sha256": "f02625ac76e9d5fbc363b530ee8648edecf40f153482a8d71210d7a3f4f27b99"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-0/result.json": {
+      "bytes": 350844,
+      "sha256": "61abfbd985aff39a4b65834bea4f8f60e862691694667af03182a175081b1aee"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-0/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "bff58649af06ab1c247201d82b53c349beb41432baec138c51d888d316db1d94"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-0/timing.dat": {
+      "bytes": 53,
+      "sha256": "1daebfa358b08f48d56eeac6b26060a0ce428bd5d7b215723203f5612ee6e6da"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-0/values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-1/cohort-calls.dat": {
+      "bytes": 1379400,
+      "sha256": "a13421e07fffd411f6d569744062b87133e681e871a5fdf397611fbb84b14009"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-1/cohort-selection.dat": {
+      "bytes": 296,
+      "sha256": "3db8a2c06a16acef3f7f9a10d68c7f7b444f90fe303e0c495ff2c9246bdcf2e2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-1/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-1/request.json": {
+      "bytes": 47907,
+      "sha256": "9bca5c969a2779e99b0b90a933fbbe694ed76e60e4d879f9dde298f1bdbb540f"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-1/result.json": {
+      "bytes": 350854,
+      "sha256": "ad479be1476a8f9ed9ac453ba8c66b0aa3d7855c9c2f00376c5be824483c88b4"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-1/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "337d0c3da64e7006a9f2c3d1716347adfe3c8479ff2aaed715addd61d70857c8"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-1/timing.dat": {
+      "bytes": 53,
+      "sha256": "7faefc03e66294fa8813ac9e7027a55becb4a9a86a66d488fbfd8bc9b928f39d"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/dp/calibration-1/values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/driver-build-plan.json": {
+      "bytes": 5597,
+      "sha256": "175d1227d569b84d99cfd17b2553cfd4e6f3460b9e2f39b3317abdb202aca3cd"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/driver-build-preflight.log": {
+      "bytes": 2055,
+      "sha256": "ddc2893e7faaa4ab1f1c9d8ca432a4a62b5cd35160ed156d469d45722922f0df"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/driver-build.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/initialization/classification-calls.dat": {
+      "bytes": 12100,
+      "sha256": "f5f1fb9703e47544272d3e63deff5d58c1738ae0b41a342b64dc023243f75f00"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/initialization/classification-timing.dat": {
+      "bytes": 27,
+      "sha256": "38edf1724d8f0da11f738bf469a4ff59203bb1c4f3b5161050d8e85c8edacc75"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/initialization/classification-values.dat": {
+      "bytes": 31000,
+      "sha256": "3ff7dd880f3ad82d61e379b1b9918170dccd4ba8f880baf67471c709528b83c3"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/initialization/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/initialization/warmup-flags.dat": {
+      "bytes": 11009,
+      "sha256": "d04581d119486829aa14a13c3fb8adc8978ed22fe86f0590cb763322853c8c98"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/initialization/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "3a711d7ff07f7635a1bbe14eb72416bf337413fa825aeef13994f3554d4c7f18"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/inputs.json": {
+      "bytes": 333618,
+      "sha256": "8a3845d39a1f2aa050724fba6f0485828f72cc20d83e1168008b16ac9f8e1479"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/original-check_sa.f": {
+      "bytes": 5402,
+      "sha256": "8bdb1f6ff6ead3a6c96dc4ccb3089870d09eb5b515074366fbc3e69830f60ea2"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/original-loop_matrix.f": {
+      "bytes": 93317,
+      "sha256": "82f44e79fe23b1fd7a892e67e3682d666f47fa6d5d13ebf7e4e87d77323707db"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/points.dat": {
+      "bytes": 28953,
+      "sha256": "2ed64c5cba477ce0e7ed3a7bbd642521061b251573ed20957f8e3bc396fa5b35"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/points.json": {
+      "bytes": 58968,
+      "sha256": "fe7029a3932d1f800ebeae6fa6efa907cc132221d27fabd0295762d13cb89d6a"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/results.json": {
+      "bytes": 3233399,
+      "sha256": "2802b6c71766b894fb6739d183250599094a4e5653f182523cb32e15651ac751"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/specification.json": {
+      "bytes": 8998,
+      "sha256": "bd636ed2078408c549a52fe6202de5f5dce45f996f9988054f08c8dbdb911e6e"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/timing-schedule.json": {
+      "bytes": 143,
+      "sha256": "9723eaf926876cb8c35dfe505329091c9c8bb68211e9f6ee743fdf19ef07cb0b"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/tirust_benchmark.py": {
+      "bytes": 87530,
+      "sha256": "a198d2203585766a960f3a5d70829dbc4b7f92d868d38493262b0c8b122b4ad7"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/tirust_benchmark_cohorts.f": {
+      "bytes": 11437,
+      "sha256": "a9e9cf5f35af5d1fdf8aaf1c7ec783c29b56c7a7b1a86378f09bbd060dd0a6f1"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/tirust_benchmark_cohorts.py": {
+      "bytes": 37307,
+      "sha256": "bc7aedc4971c7d2241ce80407a9cd32f51da43ea8906b45a51d60aebc6ef7093"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/tirust_benchmark_compiler.py": {
+      "bytes": 8272,
+      "sha256": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/tirust_benchmark_worker.py": {
+      "bytes": 18869,
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/pilot-qcd-n1-tirust-fpe/worker.log": {
+      "bytes": 4054,
+      "sha256": "7f13e6fea8b0794385feba703ba2a18ed0135a0f750a5ce343bfeaf7b97e1315"
+    },
+    "docs/benchmarkfolder/experiments/cohorts/schema2-n1-qualification.md": {
+      "bytes": 1501,
+      "sha256": "221ae6a560fe77d786806b6476720faae75715499eba4307b6b3f92d5193c583"
+    }
+  },
+  "scope": "Schema2 n1 native trace qualification; all flags false and stable DP membership; short timing batches explicitly ineligible"
+}
