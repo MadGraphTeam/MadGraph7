@@ -18,6 +18,10 @@ class RestrictedLoopDeclarations:
     original: RawLoopModel
     derived: RawLoopModel
     fixed_parameters: Any
+    # The scalar program of ``derived`` when the restriction lowered it (a
+    # card with simplification), else None (``build_covariant_structure``
+    # lowers it).
+    program: Any = None
 
 
 def _exact_card_entries(text):
@@ -102,8 +106,15 @@ def _exact_card_entries(text):
     return entries
 
 
-def prepare_loop_restrictions(raw: RawLoopModel, *, simplify=True):
+def prepare_loop_restrictions(raw: RawLoopModel, *, simplify=True, lower=None):
     """Apply exact card defaults and freeze zeros under the loader convention.
+
+    With simplification the restricted model's scalar program is lowered
+    once (``lower``, default ``scalar_frontend.lower_scalar_program``; a
+    caller may serve it from a store of equal content) to find the exact
+    zeros, and handed over to the returned ``derived`` model
+    (``ScalarFunctionLibrary.rebind``: recording the zeros in the metadata
+    changes no lowering input), so the preparation lowers it only here.
 
     Nonzero values remain adjustable external defaults. With simplification,
     exactly zero external values (including omitted zero defaults) become fixed
@@ -181,18 +192,21 @@ def prepare_loop_restrictions(raw: RawLoopModel, *, simplify=True):
         applied=True, simplify=simplify, ignored_entries=ignored
     )
     derived = RawLoopModel.from_dict(payload)
-    fixed = {}
+    fixed, program = {}, None
     if simplify:
-        from .scalar_frontend import lower_scalar_program
+        if lower is None:
+            from .scalar_frontend import lower_scalar_program as lower
 
-        program = lower_scalar_program(derived)
+        program = lower(derived)
         for record in external:
             definition = program.definitions["parameters", record["id"]]
             if definition.value.expression == 0 and definition.diagnostic == 0:
                 fixed[record["name"]] = ("0", "0")
     payload["metadata"]["restriction"]["fixed_parameters"] = fixed
     derived = RawLoopModel.from_dict(payload)
-    return RestrictedLoopDeclarations(raw, derived, MappingProxyType(fixed))
+    if program is not None:
+        program.library.rebind(derived)
+    return RestrictedLoopDeclarations(raw, derived, MappingProxyType(fixed), program)
 
 
 def restriction_fixed_parameters(raw, additional=None):

@@ -1965,7 +1965,9 @@ class RequestModel(NamedTuple):
     alpha_s_parameter: str | None
 
 
-def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
+def prepare_request_model(
+    compiled: Any, request: SliceRequest, *, memo: Any = None
+) -> RequestModel:
     """The model preparation of ``LoopSlice.generate``, before any tree,
     family or loop generation: the source-colour fixed parameters (LC and
     NLC need a colour declaration), the scale and alpha_s parameters,
@@ -1974,7 +1976,13 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     request (``ew_policy.require_loop_gauge``) and the listed refusal of a
     veto of loop species on unlabelled counterterms
     (``refusals.require_labelled_counterterms_for_veto``). The public dry run
-    (``Generator.plan``) runs it alone to report its refusals."""
+    (``Generator.plan``) runs it alone to report its refusals.
+
+    ``memo`` (a generation's ``preparation_cache.PreparationMemo``, None:
+    prepared here) shares the prepared request model between requests of
+    the same recipe (every input of ``prepare_loop_request_model`` and of
+    the colour continuation) and the lowered declarations between all;
+    the parameters and refusals of each request are decided for it."""
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
 
@@ -2015,22 +2023,43 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         except ValueError:
             if request.alpha_s_parameter is not None:
                 raise
-    prepared = prepare_loop_request_model(
-        compiled,
-        born_order_bounds=dict(request.born_orders),
-        loop_order_bounds=request.loop_order_bounds,
-        fixed_parameters=fixed,
-        compatibility=request.compatibility,
-    )
-    continuation = None
-    if declaration is not None:
+
+    def prepare() -> tuple[Any, Any]:
+        prepared = prepare_loop_request_model(
+            compiled,
+            born_order_bounds=dict(request.born_orders),
+            loop_order_bounds=request.loop_order_bounds,
+            fixed_parameters=fixed,
+            compatibility=request.compatibility,
+            memo=memo,
+        )
+        if declaration is None:
+            return prepared, None
         from pyamplicol.loops.source_color_declaration import (
             prepare_declared_source_color,
         )
 
-        prepared, continuation = prepare_declared_source_color(
+        return prepare_declared_source_color(
             prepared, declaration, scheme=declaration.scheme
         )
+
+    prepared, continuation = (
+        prepare()
+        if memo is None
+        else memo.request_model(
+            compiled,
+            {
+                "born_order_bounds": sorted(request.born_orders.items()),
+                "loop_order_bounds": sorted(request.loop_order_bounds.items()),
+                "fixed_parameters": sorted(fixed.items()),
+                "compatibility": request.compatibility,
+                "colour_declaration": (
+                    None if declaration is None else declaration.to_dict()
+                ),
+            },
+            prepare,
+        )
+    )
     # The gauge scope (WP3.2 EWI-4b, DESIGN §6.8), refused here so that the
     # dry run reports it: loops in which massive vectors can run (an
     # electroweak request, whose gauge ``LoopSlice.generate`` switches, or a
@@ -2274,6 +2303,7 @@ class LoopSlice:
         prune: bool = True,
         native_inputs: bool = False,
         aligned_frames: bool = False,
+        memo: Any = None,
     ) -> LoopSlice:
         """Build every generation object of ``request`` (no diagram is listed).
 
@@ -2289,6 +2319,9 @@ class LoopSlice:
         measurement option, off in production) reads every family of a
         loop-induced slice in an aligned frame (``plan_export.dressed_frames``
         with ``aligned``, recorded in the slice's ``dressed_frames``).
+        ``memo`` (a generation's ``preparation_cache.PreparationMemo``) shares
+        the model preparation (``prepare_request_model``) with the
+        generation's other requests.
 
         Listed loop-admission refusals (``refusals.LOOP_ADMISSION_REFUSALS``,
         typed ``LoopRequestUnsupported``) are raised before the structures they
@@ -2310,6 +2343,7 @@ class LoopSlice:
                 prune=prune,
                 native_inputs=native_inputs,
                 aligned_frames=aligned_frames,
+                memo=memo,
             )
 
     @classmethod
@@ -2322,6 +2356,7 @@ class LoopSlice:
         prune: bool,
         native_inputs: bool,
         aligned_frames: bool = False,
+        memo: Any = None,
     ) -> LoopSlice:
         """``generate`` with full collections deferred."""
 
@@ -2335,7 +2370,7 @@ class LoopSlice:
             raise ValueError(f"unknown counterterm form {request.counterterms!r}")
         request = resolve_request(compiled, request)
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
-            prepare_request_model(compiled, request)
+            prepare_request_model(compiled, request, memo=memo)
         )
         declaration = request.colour_declaration
         structure = prepared.structure

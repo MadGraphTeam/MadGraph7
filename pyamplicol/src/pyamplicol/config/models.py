@@ -454,6 +454,11 @@ class ModelConfig:
     cache_dir: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
     )
+    # The persistent cache of one-loop request-model preparations
+    # (``loops.preparation_cache``), in the model cache's
+    # ``loop-preparations`` subdirectory; off with ``cache`` off too, or
+    # with $PYAMPLICOL_LOOP_PREPARATION_CACHE false.
+    loop_preparation_cache: bool = field(default=True, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, str) or not self.source:
@@ -464,6 +469,8 @@ class ModelConfig:
             raise ConfigurationError("model.simplify must be a boolean")
         if not isinstance(self.cache, bool):
             raise ConfigurationError("model.cache must be a boolean")
+        if not isinstance(self.loop_preparation_cache, bool):
+            raise ConfigurationError("model.loop_preparation_cache must be a boolean")
         object.__setattr__(self, "cache_dir", _path(self.cache_dir, "model.cache_dir"))
 
 

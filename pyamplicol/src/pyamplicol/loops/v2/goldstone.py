@@ -108,7 +108,14 @@ def goldstone_process(slice_: Any, leg: int, goldstone: int) -> str:
 
 
 def goldstone_slice(
-    compiled: Any, request: Any, native: Any, slice_: Any, leg: int, goldstone: int
+    compiled: Any,
+    request: Any,
+    native: Any,
+    slice_: Any,
+    leg: int,
+    goldstone: int,
+    *,
+    memo: Any = None,
 ) -> Any:
     """The probe slice of the Goldstone side: ``request`` (a loop-induced
     probe request of ``slice_``, ``induced.probe_request``) with leg
@@ -116,7 +123,9 @@ def goldstone_slice(
     the full tree kernels like the vector side's Ward slice
     (``ward.ward_slice``) with the Goldstone admitted as an external leg
     (``processes.model.goldstone_legs``). Same loop orders: a Goldstone's
-    vertices carry its vector's coupling orders in the identity."""
+    vertices carry its vector's coupling orders in the identity. ``memo``
+    (the generation's ``preparation_cache.PreparationMemo``) shares the
+    model preparation: a Goldstone side's recipe is its probe slice's."""
 
     from pyamplicol.processes.model import goldstone_legs
 
@@ -124,7 +133,9 @@ def goldstone_slice(
 
     process = goldstone_process(slice_, leg, goldstone)
     with goldstone_legs():
-        return ward_slice(compiled, replace(request, process=process), native)
+        return ward_slice(
+            compiled, replace(request, process=process), native, memo=memo
+        )
 
 
 @dataclass(frozen=True)

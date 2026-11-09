@@ -789,6 +789,7 @@ class ObservableSlice:
         correlators: CorrelatorConfig | None = None,
         ward: bool = False,
         native_inputs: bool = False,
+        memo: Any = None,
     ) -> ObservableSlice:
         correlators = correlators or CorrelatorConfig()
         _refuse_selected_observables(
@@ -811,7 +812,12 @@ class ObservableSlice:
         # LC/NLC colour histories prune with their own seed tables (``of``).
         prune = not correlators.color_correlations
         slice_ = LoopSlice.generate(
-            compiled, request, native, prune=prune, native_inputs=native_inputs
+            compiled,
+            request,
+            native,
+            prune=prune,
+            native_inputs=native_inputs,
+            memo=memo,
         )
         return cls.of(slice_, correlators=correlators, ward=ward)
 

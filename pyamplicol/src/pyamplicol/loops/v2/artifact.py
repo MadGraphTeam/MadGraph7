@@ -1073,6 +1073,8 @@ def generate_process(
     request: Any,
     native: Any,
     correlators: Any = None,
+    *,
+    memo: Any = None,
 ) -> GeneratedProcess:
     """Generate one process through v2 with its declared observables. The
     returned ``GeneratedProcess`` holds the generation objects (the slice,
@@ -1087,7 +1089,8 @@ def generate_process(
     of that slice; with native point inputs the correlated and resolved
     column sets are exported here too and stored with the native process
     (``native_observables.StoredObservables``), so no call of a loaded
-    process regenerates.
+    process regenerates. ``memo`` (a generation's
+    ``preparation_cache.PreparationMemo``) shares the model preparation.
     """
 
     from .assemble import LoopSlice, resolve_request
@@ -1116,16 +1119,25 @@ def generate_process(
             # with its amplitude basis.
             from .induced_observables import declare
 
-            slice_ = LoopSlice.generate(compiled, request, native, native_inputs=True)
+            slice_ = LoopSlice.generate(
+                compiled, request, native, native_inputs=True, memo=memo
+            )
             declare(slice_, compiled, request, correlators)
             observables = ObservableSlice.of(slice_)
         elif declared:
             observables = ObservableSlice.generate(
-                compiled, request, native, correlators=correlators, native_inputs=True
+                compiled,
+                request,
+                native,
+                correlators=correlators,
+                native_inputs=True,
+                memo=memo,
             )
         else:
             observables = ObservableSlice.of(
-                LoopSlice.generate(compiled, request, native, native_inputs=True)
+                LoopSlice.generate(
+                    compiled, request, native, native_inputs=True, memo=memo
+                )
             )
     except NativeExportUnsupported as error:
         raise _not_storable(request, "native point inputs", error) from error

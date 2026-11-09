@@ -41,6 +41,7 @@ def prepare_loop_request_model(
     fixed_parameters=None,
     compatibility=None,
     covariant_multiplets=None,
+    memo=None,
 ):
     """Prepare source declarations once for model-driven process compilation.
 
@@ -50,6 +51,13 @@ def prepare_loop_request_model(
     and existing explicit structural compatibility profiles retain their prior
     semantics; neither is inferred from a model or process display name.
     The v2 engine lowers every counterterm through the tree compiler.
+
+    The restricted declarations and their scalar program are lowered once per
+    preparation (``prepare_loop_restrictions`` hands its program to
+    ``build_covariant_structure``) and, with ``memo`` (a generation's
+    ``preparation_cache.PreparationMemo``), once per raw model for every
+    preparation that shares it: they read neither the order bounds nor the
+    fixed parameters.
     """
     from pyamplicol.models.loading import CompiledModel
 
@@ -69,7 +77,8 @@ def prepare_loop_request_model(
         raise TypeError(
             "loop model preparation requires a CompiledModel or RawLoopModel"
         )
-    declarations = prepare_loop_restrictions(raw, simplify=simplify)
+    restrict = prepare_loop_restrictions if memo is None else memo.restrictions
+    declarations = restrict(raw, simplify=simplify)
     scope = prepare_loop_request_scope(
         declarations.derived,
         born_order_bounds=born_order_bounds,
@@ -84,7 +93,7 @@ def prepare_loop_request_model(
     )
     if repaired is not raw:
         raw = repaired
-        declarations = prepare_loop_restrictions(raw, simplify=simplify)
+        declarations = restrict(raw, simplify=simplify)
         scope = prepare_loop_request_scope(
             declarations.derived,
             born_order_bounds=born_order_bounds,
@@ -92,6 +101,7 @@ def prepare_loop_request_model(
         )
     structure = build_covariant_structure(
         declarations.derived,
+        scalars=declarations.program,
         request_scope=scope,
         fixed_parameters=fixed_parameters,
         compatibility=compatibility,

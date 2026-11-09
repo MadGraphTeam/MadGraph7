@@ -1929,6 +1929,7 @@ def generation_probes(
     *,
     allow_failure: bool = False,
     precision: Any = None,
+    memo: Any = None,
 ) -> dict[str, Any]:
     """The generation-time probes of a loop-induced slice (m-lit Q12, PLAN
     §2.a.7 items 5-6), run only when the user enables them
@@ -1965,7 +1966,10 @@ def generation_probes(
     probe the carrier that decided, its worst ratio, the fallback's reason
     (the binary64 ratio or the refusal) and its time, and the time of each
     stage (``seconds``: the probe slice, the lift, the floors, the native
-    passes per carrier, the Goldstone slices and probes, the total)."""
+    passes per carrier, the Goldstone slices and probes, the total).
+    ``memo`` (the generation's ``preparation_cache.PreparationMemo``)
+    shares the probe and Goldstone slices' model preparation with the
+    generation's."""
 
     import time
 
@@ -1984,7 +1988,7 @@ def generation_probes(
         blocks = slice_.blocks
         if zeroed or getattr(blocks, "kernel_variant", None) != "full":
             clock = time.perf_counter()
-            target = ward_slice(compiled, request, native)
+            target = ward_slice(compiled, request, native, memo=memo)
             seconds["probe_slice"] = time.perf_counter() - clock
         else:
             target = slice_
@@ -2050,7 +2054,15 @@ def generation_probes(
             ]
         decided = _decided(entries, outcomes, carriers)
         goldstones = _goldstone_probes(
-            target, compiled, request, native, point, scale, carriers, floors
+            target,
+            compiled,
+            request,
+            native,
+            point,
+            scale,
+            carriers,
+            floors,
+            memo=memo,
         )
     entries += goldstones["entries"]
     seconds.update(goldstones["seconds"])
@@ -2133,7 +2145,7 @@ def generation_probes(
 
 
 def _goldstone_probes(
-    target, compiled, request, native, point, scale, carriers, physical
+    target, compiled, request, native, point, scale, carriers, physical, memo=None
 ) -> dict[str, Any]:
     """The Goldstone-equivalence probes of a probe slice (``goldstone``,
     m-lit LIT-EW): in a 't Hooft-Feynman gauge slice, one per external
@@ -2174,7 +2186,7 @@ def _goldstone_probes(
         clock = time.perf_counter()
         try:
             side = goldstone.goldstone_slice(
-                compiled, request, native, target, leg, partner
+                compiled, request, native, target, leg, partner, memo=memo
             )
         except LoopRequestUnsupported as error:
             # The listed refusal's text: its key, rule and remedy.

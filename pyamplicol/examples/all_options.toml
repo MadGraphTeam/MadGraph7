@@ -24,6 +24,11 @@ simplify = true
 cache = true
 # model.cache_dir: Optional cache directory. Default is platform-specific/null.
 cache_dir = "cache/models"
+# model.loop_preparation_cache: Reuse the persistent cache of one-loop
+# request-model preparations (the lowered scalar program of a model, in the
+# model cache's loop-preparations subdirectory). Default true; off when
+# model.cache is false or $PYAMPLICOL_LOOP_PREPARATION_CACHE is false.
+loop_preparation_cache = true
 
 [process]
 # process.entries: Typed process expressions with optional unique stable names.

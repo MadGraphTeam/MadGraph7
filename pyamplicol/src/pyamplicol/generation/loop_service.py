@@ -941,11 +941,13 @@ def loop_induced_orders(
     return loops[0] if len(loops) == 1 else tuple(loops)
 
 
-def _loop_induced_request(backend, context, index, member, models):
+def _loop_induced_request(backend, context, index, member, memo):
     """The slice request of one expanded process without a Born amplitude,
     served loop-induced (|A_loop|^2; m-lit LIT-REQ), and its loop orders
-    that are exact colour zeros. ``models`` caches the model preparations
-    of the order inference by recipe.
+    that are exact colour zeros. ``memo`` (the generation's
+    ``preparation_cache.PreparationMemo``) shares the model preparation of
+    the order inference by recipe (every request's refusals run for it)
+    and its lowered declarations with every other preparation.
 
     Full colour only (``loop-induced-colour-accuracy``, Q8). The loop orders
     are inferred (``loop_induced_orders``) from the field-level loop family
@@ -968,7 +970,6 @@ def _loop_induced_request(backend, context, index, member, models):
 
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.v2 import generator_input
-    from pyamplicol.loops.v2.artifact import request_record
     from pyamplicol.loops.v2.assemble import (
         prepare_request_model,
         reachable_loop_orders,
@@ -997,14 +998,10 @@ def _loop_induced_request(backend, context, index, member, models):
         accuracy="full",
         contribution="loop-induced",
     )
-    recipe = request_record(base)
-    del recipe["process"]
-    key = json.dumps(recipe, sort_keys=True)
-    if key not in models:
-        models[key] = prepare_request_model(compiled, base)
+    model = prepare_request_model(compiled, base, memo=memo)
     native = load_loop_native() if "families" in generator_input.NATIVE_STAGES else None
     reachable = reachable_loop_orders(
-        compiled, base, bounds, model=models[key], native=native
+        compiled, base, bounds, model=model, native=native
     )
     if not reachable.orders:
         raise LoopRequestUnsupported(
@@ -1040,7 +1037,7 @@ def _skip_record(entry, error) -> dict[str, str]:
     }
 
 
-def _born_members(backend, context):
+def _born_members(backend, context, memo=None):
     """The slice requests of the expanded processes a request serves, with
     ``context`` restricted to them (and ``colour_zero`` set), their Born
     DAGs (None for a loop-induced one) and the skipped members, routed by
@@ -1071,8 +1068,11 @@ def _born_members(backend, context):
     request left without a member is refused with the key of its records.
     Born members are processed in order exactly as before (``_v2_request``);
     the routing of Born-less members waits for their request's other
-    members."""
+    members. ``memo`` (the generation's ``preparation_cache.PreparationMemo``;
+    None: one for this call) shares the order inference's model
+    preparations."""
 
+    from pyamplicol.loops.preparation_cache import PreparationMemo
     from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
     policy = str(backend._run_config.process.loop_induced)
@@ -1080,7 +1080,7 @@ def _born_members(backend, context):
     skipped: dict[int, dict[str, str]] = {}
     deferred: list[tuple[int, _Member]] = []
     with_born: set[str] = set()
-    models: dict[str, Any] = {}
+    memo = PreparationMemo() if memo is None else memo
     for index, entry in enumerate(context.expanded):
         member = _member(backend, context, index)
         single = entry.source_expansion_size <= 1
@@ -1104,9 +1104,7 @@ def _born_members(backend, context):
         elif single:
             if policy == "skip":
                 raise _no_born(member)
-            request, zero = _loop_induced_request(
-                backend, context, index, member, models
-            )
+            request, zero = _loop_induced_request(backend, context, index, member, memo)
             served[index] = (request, None, zero)
         else:
             deferred.append((index, member))
@@ -1118,9 +1116,7 @@ def _born_members(backend, context):
             skipped[index] = _skip_record(entry, _no_born(member))
             continue
         try:
-            request, zero = _loop_induced_request(
-                backend, context, index, member, models
-            )
+            request, zero = _loop_induced_request(backend, context, index, member, memo)
         except LoopRequestUnsupported as error:
             if error.key != "no-loop-amplitude":
                 raise
@@ -1216,8 +1212,13 @@ def _plan_v2(backend, processes, blockers, *, model=None):
     process names its runtime capability (from its request's contribution:
     v4 Born-interfered, v5 loop-induced); ``runtime_capabilities`` is the
     planned artifact's union, ``runtime_capability`` the one runtime when
-    every process shares it (else None)."""
-    from pyamplicol.loops.v2.artifact import request_record
+    every process shares it (else None). One ``preparation_cache.
+    PreparationMemo`` serves the order inference's and the processes'
+    model preparations (by recipe; every request's refusals run for it),
+    with the persistent store of lowered programs unless it is off
+    (``preparation_cache.store_for``): a dry run fills it when the compiled
+    model is available (it never compiles one)."""
+    from pyamplicol.loops.preparation_cache import PreparationMemo, store_for
     from pyamplicol.loops.v2.assemble import prepare_request_model
     from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
     from pyamplicol.loops.v2.refusals import (
@@ -1241,21 +1242,15 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                     "loop-generation-plan", backend._progress, len(processes.requests)
                 ),
             )
-            context, requests, dags, skipped = _born_members(backend, context)
-            prepared = {}
+            memo = PreparationMemo(store_for(backend._run_config.model))
+            context, requests, dags, skipped = _born_members(backend, context, memo)
             for entry, request, dag, zero in zip(
                 context.expanded, requests, dags, context.colour_zero, strict=True
             ):
-                recipe = request_record(request)
-                del recipe["process"]
-                key = json.dumps(recipe, sort_keys=True)
-                if key not in prepared:
-                    prepared[key] = prepare_request_model(
-                        context.resolved.compiled, request
-                    )
-                _plan_policy_checks(
-                    context.resolved.compiled, request, prepared[key], dag
+                prepared = prepare_request_model(
+                    context.resolved.compiled, request, memo=memo
                 )
+                _plan_policy_checks(context.resolved.compiled, request, prepared, dag)
                 record = (
                     _loop_induced_coverage(backend, context, entry, request, zero)
                     if request.contribution == "loop-induced"
@@ -1278,6 +1273,7 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                 # The process's runtime: from its request's contribution.
                 record["runtime_capability"] = loop_v2_capability(request.contribution)
                 coverage.append(record)
+            _LOGGER.info("loop preparation: %s", json.dumps(memo.report()))
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
             # A listed key first (``refusals.keyed_error``).
             blockers = (str(keyed_error(e)),)
@@ -1485,12 +1481,20 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     is generated on its own. A request's explicit ``ProcessAlias`` records
     are published with its process (the manifest's alias records), and such
     a request is never folded into another (as in the tree engine).
+
+    One ``preparation_cache.PreparationMemo`` serves every model
+    preparation of the call (the order inference, the process slices, the
+    probe and Goldstone slices) and is dropped with it; its persistent store
+    of lowered programs (``preparation_cache.store_for``, unless off) serves
+    them across generations. Its state is logged, never written into the
+    artifact.
     """
     from pyamplicol.artifacts.process_groups import (
         grouping_process,
         initial_process_groups,
     )
     from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.preparation_cache import PreparationMemo, store_for
     from pyamplicol.loops.v2.artifact import generate_process, write_plan
     from pyamplicol.loops.v2.blocks import born_dag_scope
 
@@ -1520,6 +1524,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     )
     started = time.perf_counter()
     grouping = backend._run_config.process.flavor_blind
+    memo = PreparationMemo(store_for(backend._run_config.model))
     stack = ExitStack()
     try:
         with reporter.phase(
@@ -1539,7 +1544,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
             # (``blocks.born_dag_scope``; compiled once per process, R3).
             stack.enter_context(born_dag_scope())
             # Only the scope keeps the Born DAGs (each slice releases its own).
-            context, requests, _released, skipped = _born_members(backend, context)
+            context, requests, _released, skipped = _born_members(
+                backend, context, memo
+            )
             del _released
         native = load_loop_native()
         compiled = context.resolved.compiled
@@ -1563,7 +1570,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         members.setdefault(found[0], []).append((index, found[1]))
                         phase.update(index + 1, message=f"{name} (flavour member)")
                         continue
-                    process = generate_process(compiled, request, native, correlators)
+                    process = generate_process(
+                        compiled, request, native, correlators, memo=memo
+                    )
                     # The validation points of a loop-induced process (None
                     # for a virtual), for its filter and its probes.
                     candidates = _loop_induced_candidates(
@@ -1587,7 +1596,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                     # process, run only with generation.loop_induced_probes
                     # (its record; None for a virtual).
                     probes = _loop_induced_probes(
-                        backend, context, process, native, candidates
+                        backend, context, process, native, candidates, memo
                     )
                     generated[name] = process
                     path = Path(temporary) / f"{name}.pacbin"
@@ -1716,6 +1725,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         )
                     )
                     phase.update(index + 1, message=name)
+            # The preparation memo and store state (log only: the artifact
+            # is the same whatever the cache state).
+            _LOGGER.info("loop preparation: %s", json.dumps(memo.report()))
             process_groups = None
             if grouping:
                 artifacts = [
@@ -1927,7 +1939,7 @@ def _loop_induced_filter(backend, context, process, request, candidates, correla
     return record, process
 
 
-def _loop_induced_probes(backend, context, process, native, candidates):
+def _loop_induced_probes(backend, context, process, native, candidates, memo=None):
     """The record of the generation-time probes of a loop-induced process
     (m-lit Q12; None for a virtual). Off by default (DECISIONS 2026-11-08
     22:34 (3)): the record is ``{"status": "off"}`` (not run, never a pass;
@@ -1960,6 +1972,7 @@ def _loop_induced_probes(backend, context, process, native, candidates):
         native,
         candidates,
         allow_failure=generation.allow_failed_probes,
+        memo=memo,
     )
 
 
