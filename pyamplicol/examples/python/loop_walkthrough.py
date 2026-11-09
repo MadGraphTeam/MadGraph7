@@ -239,15 +239,16 @@ def _selection(runtime: Any, points: Any, scales: Any) -> str:
 
 def _orders(runtime: Any, points: Any, scales: Any, color: bool) -> None:
     """The partial weights per squared coupling order of one evaluation, and
-    their explicit sum against an independent public path at the same
-    settings: the correlated route's "born" history (the ordinary value,
-    formed from the artifact's stored observable columns, not from the
-    inclusive plan) summed over the orders. (The resolved evaluation summed
-    over helicities and colour components is another such path, at a far
-    larger memory cost at full colour.) The deviation is shown in units of
-    the binary64 unit roundoff of the pre-cancellation scale S (the
-    estimate's ``magnitude``): two contractions of the same amplitudes agree
-    to rounding."""
+    their explicit sum against another public path at the same settings that
+    does not read the partials: the correlated route's "born" history summed
+    over the orders (a separate call; where it reads the same contraction as
+    the plain evaluation it agrees bitwise, otherwise to rounding). The
+    deviation is printed in units of the binary64 unit roundoff u of the
+    pre-cancellation scale S (the estimate's ``magnitude``) and must stay
+    within the evaluation's own estimate E (ten times, the project's
+    agreement rule). The resolved evaluation summed over helicities and
+    colour components, a different contraction altogether, is the test
+    suite's check (it costs far more memory at full colour)."""
 
     options = {"mu_r2": scales, "stability_checks": RECOMMENDED}
     view = runtime.evaluate_orders(points, **options)
@@ -268,11 +269,12 @@ def _orders(runtime: Any, points: Any, scales: Any, color: bool) -> None:
             scale = math.fsum(float(m[k]) for m in estimate.magnitude)
             ulps = max(ulps, deviation / (scale * 2.0**-53) if scale else 0.0)
     verdict = "PASS" if worst <= 1 else "FAIL"
-    print(
-        f"sum over orders vs the correlated total: {verdict} (largest deviation "
-        f"{worst:.3g} x the bound 10 E, E the evaluation's own estimate; "
-        f"{ulps:.3g} units of roundoff of the pre-cancellation scale S)"
+    agreement = (
+        "bitwise equal"
+        if ulps == 0
+        else f"largest deviation {ulps:.3g} u S ({worst:.3g} x 10 E)"
     )
+    print(f"sum over orders vs the correlated born total: {verdict}, {agreement}")
     if worst > 1:
         raise SystemExit("the partial weights do not sum to the total")
 

@@ -332,6 +332,11 @@ def virtual_profile_summary(result: Any, *, prettytable: Any, color: bool) -> st
     backend = reduction.get("effective", "N/A")
     if reduction.get("requested") and reduction.get("requested") != backend:
         backend = f"{backend} (requested {reduction['requested']})"
+    lanes = reduction.get("lanes") or {}
+    if len(lanes) > 1:
+        backend += "; lanes per effective backend: " + ", ".join(
+            f"{name} {count}" for name, count in sorted(lanes.items())
+        )
     header = prettytable.PrettyTable(("field", "value"))
     header.title = _paint("pyAmpliCol loop profile", "CYAN", enabled=color, bold=True)
     header.align = "l"

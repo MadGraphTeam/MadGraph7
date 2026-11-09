@@ -184,7 +184,9 @@ def test_rows_without_a_criterion_are_not_run_and_no_sector_is_omitted():
         absolute={first: laurent(0.0, 1e-12, 1e-12)},
         scale={first: laurent(1.0, 1.0, 1.0)},
     )
-    rows = checks._pole_rows_binary64(NS(**{**vars(result), "stability": scoped}), 0, 1e-5)
+    rows = checks._pole_rows_binary64(
+        NS(**{**vars(result), "stability": scoped}), 0, 1e-5
+    )
     assert {row.verdict for row in rows.values()} == {checks.NOT_RUN}
     assert all("binary64 scope" in row.reason for row in rows.values())
     # A sector with neither a pole row nor a listed reason: "no prediction".

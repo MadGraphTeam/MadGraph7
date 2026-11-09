@@ -438,9 +438,11 @@ The walkthrough steps, in order:
 7. **Partial weights per squared coupling order**: `evaluate_orders`, one
    evaluation viewed per sector and Born order, and its explicit sum checked
    against the correlated route's `"born"` total at the same settings summed
-   over the orders (a public path that does not read the partials): it
-   passes within ten times the evaluation's own estimate, and the deviation
-   is printed in units of roundoff of the pre-cancellation scale S.
+   over the orders (a separate call that does not read the partials; bitwise
+   equal where it reads the same contraction as the plain evaluation): the
+   deviation is printed in units of roundoff of the pre-cancellation scale S
+   and must stay within ten times the evaluation's own estimate. The test
+   suite holds the sum against the resolved evaluation to rounding.
 8. **The native SDK** (`make -C native loop`, then `native/loop_client ARTIFACT
    PROCESS MOMENTA.txt [HELICITY]`, which the walkthrough calls with
    `SYMBOLICA_LICENSE` unset): open, `auto` and the other backend, the
@@ -451,8 +453,10 @@ The walkthrough steps, in order:
 
 Times below: this host (an AMD EPYC server shared with other jobs), 2026-11-09,
 generation through the public CLI card with the probes off (default workers),
-`check` at two points, evaluation per point at the walkthrough's two points,
-the profile at a batch of 32 points (median of three calls).
+`check` at two points, evaluation per point on one pinned core at a batch of
+8 points (medians of paired rounds), the profile at a batch of 32 points
+(median of three calls); the walkthrough's own wall time at its two points
+and at the CI smoke test's one point.
 
 ### `u u~ > t t~ g g`, NLO QCD (Born-interfered)
 

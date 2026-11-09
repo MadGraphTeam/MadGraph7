@@ -171,14 +171,18 @@ def _tirust() -> bool:
 def test_the_example_runs_end_to_end(walkthrough, name):
     found = walkthrough(name)
     output = found.stdout
-    assert found.returncode in (0, 1), found.stderr[-4000:]
+    # The walkthrough exits with its check's exit code (0 unless the check
+    # finds a failure: example 2's recorded finding, CHECK_FINDINGS).
+    allowed = (0, 1) if name in CHECK_FINDINGS else (0,)
+    assert found.returncode in allowed, found.stderr[-4000:]
+    assert f"check exit code {found.returncode}" in output, output[-4000:]
     for step in STEPS:
         assert step in output, (step, output[-4000:], found.stderr[-4000:])
     # Both settings of the per-stage profile.
     assert output.count("Time per stage") == 2
     assert "unchecked (timing mode, no accuracy certificate)" in output
     assert "Correlated request: total" in output
-    assert "sum over orders vs the correlated total: PASS" in output
+    assert "sum over orders vs the correlated born total: PASS" in output
     # The native client, without a Symbolica licence.
     assert "SYMBOLICA_LICENSE unset" in output
     assert "auto (checked):" in output and "auto (unchecked):" in output

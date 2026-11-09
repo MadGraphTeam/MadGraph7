@@ -169,23 +169,11 @@ def _read_json(
 
 
 def _virtual_artifact_hint(path: Path) -> bool:
-    """Choose CLI ingress only; the native loader checks the artifact itself.
+    """Choose CLI ingress only; the native loader checks the artifact itself
+    (``benchmarking.is_virtual_artifact``)."""
+    from pyamplicol.benchmarking import is_virtual_artifact
 
-    Any v2 loop runtime makes a virtual artifact (Born-interfered and
-    loop-induced processes, in any mix), as ``Runtime.load`` dispatches."""
-    from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITIES
-    from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
-
-    path = path.expanduser().resolve(strict=False)
-    root = path.parent if path.name == MANIFEST_NAME and path.is_file() else path
-    if not (root / MANIFEST_NAME).is_file():
-        return False
-    manifest = load_manifest(root, verify_payloads=False)
-    return bool(
-        LOOP_V2_RUNTIME_CAPABILITIES.intersection(
-            cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"])
-        )
-    )
+    return is_virtual_artifact(path)
 
 
 def _load_process_output(

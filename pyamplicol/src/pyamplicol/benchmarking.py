@@ -2785,6 +2785,32 @@ class VirtualProfileResult:
     label: str | None = None
 
 
+def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
+    """Whether ``path`` (an artifact directory or its manifest) is a v2
+    virtual artifact: any v2 loop runtime makes one (Born-interfered and
+    loop-induced processes, in any mix), as ``Runtime.load`` dispatches. A
+    hint for choosing the ingress only; the native loader checks the
+    artifact itself."""
+
+    from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITIES
+    from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
+
+    resolved = Path(os.fspath(path)).expanduser().resolve(strict=False)
+    root = (
+        resolved.parent
+        if resolved.name == MANIFEST_NAME and resolved.is_file()
+        else resolved
+    )
+    if not (root / MANIFEST_NAME).is_file():
+        return False
+    manifest = load_manifest(root, verify_payloads=False)
+    return bool(
+        LOOP_V2_RUNTIME_CAPABILITIES.intersection(
+            cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"])
+        )
+    )
+
+
 def is_virtual_target(target: object) -> bool:
     """Whether a profile target is a v2 virtual (loop) artifact or runtime."""
 
@@ -2792,9 +2818,7 @@ def is_virtual_target(target: object) -> bool:
     if kind is not None:
         return kind != "tree"
     if isinstance(target, (str, os.PathLike)):
-        from pyamplicol.cli.handlers import _virtual_artifact_hint
-
-        return _virtual_artifact_hint(Path(os.fspath(target)))
+        return is_virtual_artifact(target)
     return False
 
 
@@ -2870,7 +2894,7 @@ def profile_virtual(
     totals: dict[str, float] = {}
     failed = 0
     contribution = runtime.contribution_kind
-    result: Any = None
+    reductions: list[Any] = []
     for _ in range(max(bench.minimum_samples, 1)):
         with collected_stage_seconds(runtime) as seconds:
             begin = time.perf_counter()
@@ -2880,15 +2904,12 @@ def profile_virtual(
         failed += sum(1 for valid in result.valid if not valid)
         for group, value in profile_stages(seconds or {}, wall, contribution).items():
             totals[group] = totals.get(group, 0.0) + value
-    count = len(batch) * len(walls)
-    reduction = next(
-        (
+        reductions.extend(
             lane.reduction
             for lane in result.diagnostics
             if getattr(lane, "reduction", None) is not None
-        ),
-        None,
-    )
+        )
+    count = len(batch) * len(walls)
     return VirtualProfileResult(
         physics.process_id,
         physics.process,
@@ -2900,22 +2921,33 @@ def profile_virtual(
         min(walls) / len(batch),
         max(walls) / len(batch),
         {group: value / count for group, value in totals.items()},
-        _reduction_record(reduction),
-        bool(getattr(reduction, "unchecked", False)),
+        _reduction_record(reductions),
+        any(bool(getattr(r, "unchecked", False)) for r in reductions),
         failed,
     )
 
 
-def _reduction_record(reduction: Any) -> dict[str, object]:
-    """The requested and effective reduction backend of the profiled calls
-    (the first lane's ``VirtualReduction``) and the reason of the choice."""
+def _reduction_record(reductions: Sequence[Any]) -> dict[str, object]:
+    """The reduction backends of the profiled calls from every lane's
+    ``VirtualReduction`` (``reductions``): the requested backend, the
+    effective one of most lanes with its reason, and the lane count per
+    effective backend (``lanes``: a per-point fallback of "auto" shows as
+    the other backend's lanes)."""
 
-    if reduction is None:
+    if not reductions:
         return {}
+    lanes: dict[str, int] = {}
+    reasons: dict[str, str] = {}
+    for reduction in reductions:
+        effective = str(reduction.effective)
+        lanes[effective] = lanes.get(effective, 0) + 1
+        reasons.setdefault(effective, str(reduction.reason))
+    effective = max(lanes, key=lambda name: lanes[name])
     return {
-        name: str(getattr(reduction, name))
-        for name in ("requested", "effective", "reason")
-        if getattr(reduction, name, None) is not None
+        "requested": str(reductions[0].requested),
+        "effective": effective,
+        "reason": reasons[effective],
+        "lanes": lanes,
     }
 
 

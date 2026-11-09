@@ -7,8 +7,9 @@ public loop profiling route (m-lit lit-examples G4, G5).
   ``evaluate`` call: its sectors and Born orders as they are, the explicit
   sums, and the sum equal to the total of an independent public path (the
   resolved evaluation summed over helicities, colour components and
-  sectors) within ten times the evaluation's own estimate (an identity held
-  to rounding); a loop-induced runtime's view has no Born. The CLI
+  sectors) to rounding: within gamma_n S, the summation bound of its n
+  resolved entries against the pre-cancellation scale S; a loop-induced
+  runtime's view has no Born. The CLI
   ``--orders`` prints the explicit sums apart.
 * ``pyamplicol profile`` / ``BenchmarkRunner`` of a loop artifact returns the
   per-point time and its split into trees, dressing, scatter, reduction and
@@ -189,8 +190,19 @@ def test_evaluate_orders_is_a_view_of_one_evaluation(uux_ddx, monkeypatch):
     monkeypatch.undo()
     # The explicit sum against an independent public path: the resolved
     # evaluation summed over helicities and colour components (``total``)
-    # and over its sectors, within 10 x the summed estimate.
-    total = runtime.evaluate_resolved(points, mu_r2="10000").total()
+    # and over its sectors. An identity held to rounding: within the
+    # summation bound gamma_n S (n the resolved entries summed, u the
+    # binary64 unit roundoff, S the pre-cancellation scale summed over the
+    # sectors), which is far below 10 x the summed estimate here.
+    resolved = runtime.evaluate_resolved(points, mu_r2="10000")
+    total = resolved.total()
+    entries = (
+        len(resolved.helicity_ids)
+        * len(resolved.virtual_color_ids)
+        * len(resolved.sectors)
+    )
+    unit = 2.0**-53
+    gamma = entries * unit / (1 - entries * unit)
     for point, summed in enumerate(view.sum_orders()):
         assert summed == tuple(
             math.fsum(float(sector[k]) for sector in view.evaluation.values[point])
@@ -202,8 +214,9 @@ def test_evaluate_orders_is_a_view_of_one_evaluation(uux_ddx, monkeypatch):
         ]
         estimate = view.evaluation.stability[point]
         for k in range(3):
-            bound = 10 * math.fsum(float(e[k]) for e in estimate.absolute)
-            assert abs(float(summed[k]) - independent[k]) <= bound
+            scale = math.fsum(float(m[k]) for m in estimate.magnitude)
+            deviation = abs(float(summed[k]) - independent[k])
+            assert deviation <= gamma * scale, (point, k, deviation / (unit * scale))
         born = math.fsum(float(x) for x in total.born_values[point])
         assert view.sum_born_orders()[point] == pytest.approx(born, rel=1e-13)
 
@@ -286,6 +299,9 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
         assert profile["batch"] == 4 and profile["samples"] == 2
         assert profile["unchecked"] is bool(setting)
         assert profile["reduction"]["effective"] == "ninjars"
+        # Every lane of every timed call counts (none falls back here).
+        assert set(profile["reduction"]["lanes"]) == {"ninjars"}
+        assert profile["reduction"]["lanes"]["ninjars"] >= 2
         assert profile["seconds_per_point"] > 0 and profile["label"] is None
         assert sum(profile["stages"].values()) > 0
     from pyamplicol.api import BenchmarkRunner
