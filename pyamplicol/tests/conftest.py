@@ -302,9 +302,11 @@ def pytest_configure(config):
 
     Unless ``PYAMPLICOL_CACHE_DIR`` is set, it points to a directory of
     pytest's cache in this checkout, one per marker expression (the tier):
-    compiled models and CT-lowered model IR (``models.loading``) are reused
-    across the runs of one tier. The cache keys hold the compiler's code
-    identity, so a code change pays a cold preparation once per tier.
+    compiled models and CT-lowered model IR (``models.loading``) and the
+    lowered one-loop model programs (``loops.preparation_cache``, its
+    ``models/loop-preparations``) are reused across the runs of one tier.
+    The cache keys hold the code identity, so a code change pays a cold
+    preparation once per tier.
     Without pytest's cache provider (``-p no:cacheprovider``) the directory
     is a fresh temporary one, removed when the session ends.
     """
