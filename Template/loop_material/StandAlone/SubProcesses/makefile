@@ -51,6 +51,7 @@ PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard TIR_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard GOLEM_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard COLLIER_interface.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard TIRUST_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard compute_color_flows.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard mg5_citation.f))
 
@@ -72,6 +73,7 @@ OLP_PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/TIR_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/GOLEM_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/COLLIER_interface.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/TIRUST_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/compute_color_flows.f))
 
 POLYNOMIAL = $(patsubst $(DOTF),$(DOTO),$(wildcard polynomial.f))
@@ -151,7 +153,7 @@ WRAPPER_OBJS := $(patsubst %.f,%.o,$(wildcard */f2py_wrapper.f))
 ALL_DOTF := $(wildcard */polynomial.f */loop_matrix.f */improve_ps.f */born_matrix.f */CT_interface.f \
              */loop_num.f \
              */helas_calls*.f */mp_compute_loop_coefs.f */mp_helas_calls*.f */coef_construction_*.f \
-             */loop_CT_calls_*.f */mp_coef_construction_*.f */TIR_interface.f */COLLIER_interface.f \
+             */loop_CT_calls_*.f */mp_coef_construction_*.f */TIR_interface.f */COLLIER_interface.f */TIRUST_interface.f \
              MadLoopParamReader.f MadLoopCommons.f mg5_citation.f */GOLEM_interface.f */compute_color_flows.f \
              */mp_born_amps_and_wfs.f */jamp?_calls_*.f)
 

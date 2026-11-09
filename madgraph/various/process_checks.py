@@ -852,21 +852,23 @@ class LoopMatrixElementEvaluator(MatrixElementEvaluator):
                                                  'PS.input_%s'%PS_name),PSpoint)        
         # Run ./check
         try:
-            output = subprocess.Popen('./check',
+            result_path = pjoin(dir_name, 'result.dat')
+            if os.path.exists(result_path):
+                os.remove(result_path)
+            check = subprocess.Popen('./check',
                         cwd=dir_name,
-                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout
-            output.read()
-            output.close()
-            if os.path.exists(pjoin(dir_name,'result.dat')):
-                return cls.parse_check_output(open(pjoin(dir_name,\
-                                                   'result.dat')),format=format)  
-            else:
-                logging.warning("Error while looking for file %s"%str(os.path\
-                                           .join(dir_name,'result.dat')))
-                return ((0.0, 0.0, 0.0, 0.0, 0), [])
-        except IOError:
-            logging.warning("Error while executing ./check in %s" % shell_name)
-            return ((0.0, 0.0, 0.0, 0.0, 0), [])
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            output, _ = check.communicate()
+            if check.returncode != 0:
+                raise MadGraph5Error("./check failed in %s (exit %s): %s" %
+                    (dir_name, check.returncode, output.decode(errors='replace')[-2000:]))
+            if not os.path.isfile(result_path):
+                raise MadGraph5Error("./check did not produce a fresh result.dat in %s" % dir_name)
+            with open(result_path) as result:
+                return cls.parse_check_output(result, format=format)
+        except OSError as error:
+            raise MadGraph5Error("Could not execute ./check in %s: %s" %
+                                 (dir_name, error)) from error
 
     @classmethod
     def parse_check_output(cls,output,format='tuple'):
@@ -1391,7 +1393,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                     if (name.endswith(('.a', '.dylib', '.mod')) or
                             re.search(r'\.so(?:\.[0-9]+)*$', name) or
                             name in ('ninjars-config.json', 'ninjars-native-libs.txt',
-                                     'ninjars-link-before.txt')):
+                                     'ninjars-link-before.txt', 'tirust-config.json',
+                                     'tirust-native-libs.txt', 'tirust-link-before.txt')):
                         path = pjoin(directory, name)
                         records[os.path.relpath(path, export_dir)] = timing_file(path)
             for name in ('Source/make_opts', 'SubProcesses/MadLoop_makefile_definitions'):
@@ -1767,22 +1770,22 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             tools=misc.make_unique(tools) # remove the duplication ones
             
         # not self-contained tir libraries
-        tool_var={'pjfry':2,'golem':4,'samurai':5,'ninja':6,'collier':7,'ninjars':8}
-        for tool in ['pjfry','golem','samurai','ninja','collier','ninjars']:
+        tool_var={'pjfry':2,'golem':4,'samurai':5,'ninja':6,'collier':7,'ninjars':8,'tirust':9}
+        for tool in ['pjfry','golem','samurai','ninja','collier','ninjars','tirust']:
             tool_dir='%s_dir'%tool
             if not tool_dir in self.tir_dir:
-                if tool == 'ninjars' and tool_var[tool] in tools:
-                    raise MadGraph5Error("Requested NinjaRS library is unavailable. "
-                                         "Run 'install ninjars'.")
+                if tool in ('ninjars', 'tirust') and tool_var[tool] in tools:
+                    raise MadGraph5Error("Requested %s library is unavailable. Run 'install %s'." %
+                                         (bannermod.MadLoopParam._ID_reduction_tool_map[tool_var[tool]], tool))
                 continue
             tool_libpath=self.tir_dir[tool_dir]
             tool_libname="lib%s.a"%tool
             if (not isinstance(tool_libpath,str)) or (not os.path.exists(tool_libpath)) \
                 or (not os.path.isfile(pjoin(tool_libpath,tool_libname))):
                 if tool_var[tool] in tools:
-                    if tool == 'ninjars':
-                        raise MadGraph5Error("Requested NinjaRS library is unavailable. "
-                                             "Run 'install ninjars'.")
+                    if tool in ('ninjars', 'tirust'):
+                        raise MadGraph5Error("Requested %s library is unavailable. Run 'install %s'." %
+                                             (bannermod.MadLoopParam._ID_reduction_tool_map[tool_var[tool]], tool))
                     tools.remove(tool_var[tool])
         if not tools:
             return None
@@ -2024,8 +2027,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                     dp_accuracy = relative_spread(dp_res)
                     dp_dict['Accuracy'] = dp_accuracy
                     if dp_accuracy>accuracy_threshold:
-                        if tool in [1,6,8]:
-                            # CutTools, Ninja and NinjaRS can use QP
+                        if tool in [1,6,8,9]:
+                            # CutTools, Ninja, NinjaRS and TIRust can use QP
                             UPS = [i,p]
                             qp_res=[]
                             PSPoint = format_PS_point(p,0)
@@ -2518,6 +2521,8 @@ def check_stability(process_definition, param_card = None,cuttools="",tir={},
         # does not work with the way we call independently CTMODERun 1 and 2
         # with the StabilityChecker.
         MLoptions['COLLIERGlobalCache'] = 0
+        # Independent direction/rotation probes must not reuse the original point's cache.
+        MLoptions['TIRustGlobalCache'] = 0
 
         if "MLReductionLib" not in MLOptions:
             MLoptions["MLReductionLib"] = []
@@ -3081,12 +3086,12 @@ The loop direction test power P is computed as follow:
         # Use nicer name for the XML tag in the log file
         xml_toolname = {'GOLEM95':'GOLEM','IREGI':'IREGI',
                         'CUTTOOLS':'CUTTOOLS','PJFRY++':'PJFRY',
-                        'NINJA':'NINJA','NINJARS':'NINJARS','SAMURAI':'SAMURAI',
+                        'NINJA':'NINJA','NINJARS':'NINJARS','TIRUST':'TIRUST','SAMURAI':'SAMURAI',
                         'COLLIER':'COLLIER'}[toolname.upper()]
         if len(UPS)>0:
             res_str_i = "\nDetails of the %d/%d UPS encountered by %s\n"\
                                                         %(len(UPS),nPS,toolname)
-            prefix = 'DP' if toolname in ['CutTools','Ninja','NinjaRS'] else ''
+            prefix = 'DP' if toolname in ['CutTools','Ninja','NinjaRS','TIRust'] else ''
             res_str_i += "|= %s Median inaccuracy.......... %s\n"\
                                     %(prefix,f(median(UPS_stability_DP),'%.2e'))
             res_str_i += "|= %s Max accuracy............... %s\n"\
@@ -3095,7 +3100,7 @@ The loop direction test power P is computed as follow:
                                        %(prefix,f(max(UPS_stability_DP),'%.2e'))
             (pmed,pmin,pfrac)=loop_direction_test_power(\
                                  [stab['DP_stability'][U[0]] for U in UPS])
-            if toolname in ['CutTools','Ninja','NinjaRS']:
+            if toolname in ['CutTools','Ninja','NinjaRS','TIRust']:
                 res_str_i += "|= UPS DP loop_dir test power.... %s,%s\n"\
                                                 %(f(pmed,'%.1f'),f(pmin,'%.1f'))
                 res_str_i += "|= UPS DP fraction with power<-3. %s\n"\

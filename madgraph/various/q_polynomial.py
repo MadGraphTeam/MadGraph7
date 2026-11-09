@@ -366,6 +366,21 @@ C        ARGUMENTS
         
         return '\n'.join(lines)
     
+    def get_TIRUST_mapping(self):
+        """Map MadLoop coefficient indices to the 1-based packed TIRust basis.
+
+        TIRust enumerates decreasing time/x/y exponents within each rank;
+        MadLoop uses its historical polynomial ordering. Components are
+        unweighted: numerator coefficients already contain permutation sums.
+        """
+        packed = {}
+        for rank in range(self.max_rank + 1):
+            for t in range(rank, -1, -1):
+                for x in range(rank - t, -1, -1):
+                    for y in range(rank - t - x, -1, -1):
+                        packed[(t, x, y, rank - t - x - y)] = len(packed) + 1
+        return [packed[exponents] for exponents in self.get_COLLIER_mapping()]
+
     def get_COLLIER_mapping(self):
         """ Returns a list of tuples of the form:
           [ (COLLIER_ind0, COLLIER_ind1, COLLIER_ind2, COLLIER_ind3), ]

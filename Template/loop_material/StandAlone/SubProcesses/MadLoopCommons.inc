@@ -272,7 +272,7 @@ C         Stable with CutTools in double precision.
 C     U == 2
 C         Stable with PJFry++ (H=2), or NinjaRS in quadruple precision (H=3).
 C     U == 3
-C         Stable with IREGI.
+C         Stable with IREGI (H=2), or TIRust in quadruple precision (H=3).
 C     U == 4
 C         Stable with Golem95.
 C     U == 5
@@ -284,7 +284,7 @@ C         Stable with COLLIER.
 C     U == 8
 C         Stable with Ninja in quadruple precision (H=3), or NinjaRS in double precision (H=2).
 C     U == 9
-C         Stable with CutTools in quadruple precision.
+C         Stable with CutTools in quadruple precision (H=3), or TIRust in double precision (H=2).
 C
       IMPLICIT NONE
 C     
@@ -318,14 +318,17 @@ C
          ELSEIF(MLRed.EQ.8)THEN
             SET_RET_CODE_U=2
             RETURN
+         ELSEIF(MLRed.EQ.9)THEN
+            SET_RET_CODE_U=3
+            RETURN
          ELSE
-            STOP 'Only CutTools, Ninja and NinjaRS can use quadruple precision'
+            STOP 'Requested library has no quadruple precision adapter'
          ENDIF
       ENDIF
-      IF(MLRed.GE.1.AND.MLRed.LE.8)THEN
+      IF(MLRed.GE.1.AND.MLRed.LE.9)THEN
          SET_RET_CODE_U=MLRed
       ELSE
-         STOP 'Unknown MadLoop reduction library; supported IDs are 1 through 8'
+         STOP 'Unknown MadLoop reduction library; supported IDs are 1 through 9'
       ENDIF
       END
 
@@ -376,8 +379,10 @@ C Collier
       ELSEIF(LIBNUM.EQ.8)THEN
 C NinjaRS
          CALL DETECT_NINJARS(NLOOPLINE,RANK,complex_mass,LPASS)
+      ELSEIF(LIBNUM.EQ.9)THEN
+         CALL DETECT_TIRUST(NLOOPLINE,RANK,complex_mass,LPASS)
       ELSE
-         STOP 'Unknown MadLoop reduction library; supported IDs are 1 through 8'
+         STOP 'Unknown MadLoop reduction library; supported IDs are 1 through 9'
       ENDIF
       RETURN
       END
@@ -483,6 +488,15 @@ C     It can easily be increased if necessary.
 	    LPASS=.FALSE.
       endif
       RETURN
+      END
+
+      SUBROUTINE DETECT_TIRUST(NLOOPLINE,RANK,complex_mass,LPASS)
+C     The installed bridge qualifies undotted SM tensors through N=R=6.
+      IMPLICIT NONE
+      INTEGER NLOOPLINE,RANK
+      LOGICAL complex_mass,LPASS
+      LPASS=NLOOPLINE.GE.1.AND.NLOOPLINE.LE.6.AND.
+     &      RANK.GE.0.AND.RANK.LE.6
       END
 
       SUBROUTINE DETECT_NINJARS(NLOOPLINE,RANK,complex_mass,LPASS)

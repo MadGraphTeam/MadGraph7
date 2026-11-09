@@ -11,3 +11,7 @@ docs/benchmarkfolder/*.pdf binary
 
 # Preserve raw CLI output and generated cards exactly as measured.
 docs/benchmarkfolder/experiments/** -whitespace
+docs/benchmarkfolder/qualification/** -whitespace
+
+# Patch context includes significant single-space blank lines.
+vendor/tirust/patches/*.patch -whitespace

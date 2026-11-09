@@ -171,6 +171,10 @@ C Ninja is used
 ## }
         ENDIF
 ## }
+## if(tirust_supports_quad_prec){
+      ELSEIF(MLReductionLib(I_LIB).EQ.9.AND.DOING_QP) THEN
+        CALL %(proc_prefix)sMP_TIRUST_LOOP(NLOOPLINE,MP_PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+## }
       ELSE
 C Tensor Integral Reduction is used 
 	CALL %(proc_prefix)sTIRLOOP(SQUAREDSOINDEX,LOOPNUM,I_LIB,NLOOPLINE,PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
@@ -205,6 +209,10 @@ C Tensor Integral Reduction is used
           STOP 'NinjaRS quadruple precision is unavailable'
 ## }
         ENDIF
+## }
+## if(tirust_supports_quad_prec){
+      ELSEIF(MLReductionLib(I_LIB).EQ.9.AND.DOING_QP) THEN
+        CALL %(proc_prefix)sMP_TIRUST_LOOP(NLOOPLINE,MP_PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
 ## }
       ELSE
 C Tensor Integral Reduction is used 

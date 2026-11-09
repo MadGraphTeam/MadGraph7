@@ -9106,7 +9106,8 @@ class MadLoopParam(ConfigFile):
                              5:'Samurai',
                              6:'Ninja',
                              7:'COLLIER',
-                             8:'NinjaRS'}
+                             8:'NinjaRS',
+                             9:'TIRust'}
     
     def default_setup(self):
         """initialize the directory to the default value"""
@@ -9135,6 +9136,10 @@ class MadLoopParam(ConfigFile):
         self.add_param("HelInitStartOver", False)
         self.add_param("UseQPIntegrandForNinja", True)        
         self.add_param("UseQPIntegrandForNinjaRS", True)
+        self.add_param("UseQPIntegrandForTIRust", True)
+        self.add_param("TIRustComputeFinite", True)
+        self.add_param("TIRustGlobalCache", -1)
+        self.add_param("TIRustCacheMaxBytes", 268435456)
         self.add_param("UseQPIntegrandForCutTools", True)
         self.add_param("COLLIERMode", 1)
         self.add_param("COLLIERComputeUVpoles", True)
@@ -9144,6 +9149,23 @@ class MadLoopParam(ConfigFile):
         self.add_param("COLLIERGlobalCache",-1)
         self.add_param("COLLIERUseCacheForPoles",False)
         self.add_param("COLLIERUseInternalStabilityTest",True)
+
+    def validate_tirust(self, production=False):
+        """Reject incomplete amplitudes and invalid cache settings before writing."""
+        backends = [int(value) for value in str(self['MLReductionLib']).split('|') if value.strip()]
+        if 9 not in backends:
+            return
+        if self['TIRustGlobalCache'] < -1:
+            raise MadGraph5Error('TIRustGlobalCache must be -1, 0 or a positive integer.')
+        if not 0 <= self['TIRustCacheMaxBytes'] <= 9223372036854775807:
+            raise MadGraph5Error('TIRustCacheMaxBytes must be between 0 and 9223372036854775807 bytes.')
+        if not self['TIRustComputeFinite']:
+            if self['LoopPoleMode'] == 3:
+                raise MadGraph5Error('TIRust poles-only mode requires UV and/or IR poles.')
+            if backends != [9]:
+                raise MadGraph5Error('TIRust poles-only mode requires MLReductionLib=9 without fallback backends.')
+            if production:
+                raise MadGraph5Error('TIRust poles-only mode is for diagnostics; production requires the finite amplitude.')
 
     def read(self, finput):
         """Read the input file, this can be a path to a file, 
@@ -9168,6 +9190,7 @@ class MadLoopParam(ConfigFile):
         
     
     def write(self, outputpath, template=None,commentdefault=False):
+        self.validate_tirust()
         
         if not template:
             if not MADEVENT:

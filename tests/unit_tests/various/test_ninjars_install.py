@@ -16,11 +16,14 @@ from madgraph import MadGraph5Error
 from madgraph.interface.madgraph_interface import MadGraphCmd
 from madgraph.iolibs.export_fks import ProcessOptimizedExporterFortranFKS
 from madgraph.loop.loop_exporters import LoopProcessOptimizedExporterFortranSA
-from madgraph.various import banner, ninjars_install
+from madgraph.various import banner, ninjars_install, rust_dependency_notices
 
 
 class TestNinjaRSInstaller(unittest.TestCase):
     def setUp(self):
+        notice_patch = mock.patch.object(rust_dependency_notices, 'package', side_effect=self.fake_notices)
+        notice_patch.start()
+        self.addCleanup(notice_patch.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
@@ -40,6 +43,15 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
         (self.bridge / 'Cargo.toml').write_text('[package]\nname = "bridge"\n')
         (self.bridge / 'smoke.f90').write_text('end\n')
 
+    @staticmethod
+    def fake_notices(bridge, libdir, backend, environment):
+        names = [backend + suffix for suffix in (
+            '-dependency-notices.tar.gz', '-dependency-provenance.json', '-NOTICES.txt')]
+        for name in names:
+            (Path(libdir) / name).write_text('fixture dependency notice\n')
+        return {'files': names, 'sha256': {name: hashlib.sha256(
+            (Path(libdir) / name).read_bytes()).hexdigest() for name in names}, 'package_count': 1}
+
     def fake_build(self, command, cwd, log, environment):
         """Emulate compiler output while exercising staging/publish for real."""
         log.write_text('build and smoke log\n')
@@ -51,7 +63,8 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             (lib / 'libninjars.a').write_text('new working archive')
             (lib / 'mninjars.mod').write_text('Fortran module')
             (lib / 'ninjars-native-libs.txt').write_text('-lgmp -lmpfr -lpthread\n')
-            (lib / 'ninjars-link-before.txt').write_text('-lgcc_s\n')
+            (lib / 'ninjars-link-before.txt').write_text(
+                shlex.join(['/compiler runtime/libgcc.a', '-lgcc_s']) + '\n')
 
     @staticmethod
     def snapshot(directory):
@@ -106,7 +119,8 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             config = ninjars_install.read_config(libdir)
             self.assertTrue(config['quad_precision'])
             self.assertEqual(config['native_libs'], ['-lgmp', '-lmpfr', '-lpthread'])
-            self.assertEqual(config['link_before'], ['-lgcc_s'])
+            self.assertEqual(config['link_before'], ['/compiler runtime/libgcc.a', '-lgcc_s'])
+            self.assertEqual(config['compiler_runtime'], 'gnu-linux-static-libgcc-before-rust')
             provenance = config['build_provenance']
             self.assertEqual(provenance['lock_sha256'], hashlib.sha256(
                 (self.bridge/'Cargo.lock').read_bytes()).hexdigest())
@@ -117,6 +131,8 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             self.assertIn('#' + 'b'*40,
                           provenance['git_dependencies'][1]['source'])
             smoke_link = run.call_args_list[1].args[0]
+            self.assertLess(smoke_link.index('/compiler runtime/libgcc.a'),
+                            smoke_link.index('-lgcc_s'))
             self.assertLess(smoke_link.index('-lgcc_s'), next(
                 i for i, arg in enumerate(smoke_link) if arg.endswith('/libninjars.a')))
             self.assertTrue((self.prefix / 'lib' / 'libninjars.a').is_file())

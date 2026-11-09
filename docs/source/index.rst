@@ -25,6 +25,7 @@ If you need a stable release, use the
    :hidden:
 
    installation
+   tirust
    first_steps
    run_card
    custom_functions

@@ -44,7 +44,7 @@ class NinjaRSFortranTest(unittest.TestCase):
       PROGRAM TEST_STATUS
       IMPLICIT NONE
       INTEGER SET_RET_CODE_U,I
-      DO I=1,8
+      DO I=1,9
         IF (SET_RET_CODE_U(I,.FALSE.,.TRUE.).NE.I) STOP 1
         IF (SET_RET_CODE_U(I,.FALSE.,.FALSE.).NE.0) STOP 2
         IF (SET_RET_CODE_U(I,.TRUE.,.FALSE.).NE.0) STOP 3
@@ -52,13 +52,14 @@ class NinjaRSFortranTest(unittest.TestCase):
       IF (SET_RET_CODE_U(1,.TRUE.,.TRUE.).NE.9) STOP 4
       IF (SET_RET_CODE_U(6,.TRUE.,.TRUE.).NE.8) STOP 5
       IF (SET_RET_CODE_U(8,.TRUE.,.TRUE.).NE.2) STOP 6
+      IF (SET_RET_CODE_U(9,.TRUE.,.TRUE.).NE.3) STOP 7
       END
 ''')
         self.compile_run(['status.f'])
 
-    def test_card_eight_libraries_and_terminator(self):
+    def test_card_nine_libraries_and_terminator(self):
         (self.work / 'card.dat').write_text(
-            '#MLReductionLib\n8|7|6|5|4|3|2|1|8\n'
+            '#MLReductionLib\n9|8|7|6|5|4|3|2|1|8|9|8\n'
             '#UseQPIntegrandForNinjaRS\n.FALSE.\n')
         (self.work / 'card.f').write_text('''
       PROGRAM TEST_CARD
@@ -66,11 +67,11 @@ class NinjaRSFortranTest(unittest.TestCase):
       INCLUDE 'MadLoopParams.inc'
       CHARACTER*512 FILENAME
       CALL DEFAULTPARAM()
-      IF(ANY(MLReductionLib(4:9).NE.0)) STOP 1
+      IF(ANY(MLReductionLib(4:10).NE.0)) STOP 1
       IF(.NOT.UseQPIntegrandForNinjaRS) STOP 2
       FILENAME='card.dat'
       CALL MADLOOPPARAMREADER(FILENAME,.FALSE.)
-      IF(ANY(MLReductionLib.NE.(/8,7,6,5,4,3,2,1,0/))) STOP 3
+      IF(ANY(MLReductionLib.NE.(/9,8,7,6,5,4,3,2,1,0/))) STOP 3
       IF(UseQPIntegrandForNinjaRS) STOP 4
       END
 ''')
@@ -84,8 +85,8 @@ class NinjaRSFortranTest(unittest.TestCase):
             writer.writelines('''
       PROGRAM TEST_SELECTION
       IMPLICIT NONE
-      INTEGER NLOOPLIB,QP_NLOOPLIB,I,J,MODE,MLReductionLib(9)
-      PARAMETER (NLOOPLIB=8,QP_NLOOPLIB=3)
+      INTEGER NLOOPLIB,QP_NLOOPLIB,I,J,MODE,MLReductionLib(10)
+      PARAMETER (NLOOPLIB=9,QP_NLOOPLIB=3)
       INTEGER INDEX_QP_TOOLS(QP_NLOOPLIB+1)
       LOGICAL LOCAL_ML_INIT,QP_TOOLS_AVAILABLE
       LOGICAL LOOPLIBS_AVAILABLE(NLOOPLIB)
@@ -230,7 +231,8 @@ C Fill a real coefficient cache with a valid reduction before switching IDs.
                         writer.writelines(source % replacements, context={
                             'AmplitudeReduction': amplitude, 'TIRCaching': caching,
                             'collier_available': True, 'golem_available': False,
-                            'iregi_available': False, 'pjfry_available': False})
+                            'iregi_available': False, 'pjfry_available': False,
+                            'tirust_available': False})
                     (self.work / 'dispatch.f').write_text(
                         driver % {'factor': 1 if amplitude else 2})
                     self.run_command('gfortran', '-ffixed-line-length-132',
@@ -279,6 +281,7 @@ end module
                         writer.writelines(source % {'proc_prefix': 'TEST_'},
                                           context={
                                               'ninjars_available': available,
+                                              'tirust_available': False,
                                               'ComputeColorFlows': color_flows})
                     (self.work / 'exit_driver.f90').write_text(f'''
 program check_exit

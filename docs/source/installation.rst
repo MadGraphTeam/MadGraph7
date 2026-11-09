@@ -14,6 +14,9 @@ installed automatically the first time you launch a run. To build it yourself in
 run ``install madspace`` from the MadGraph7 prompt, or see the
 :doc:`MadSpace installation instructions <madspace/installation>`.
 
+For the optional TIRust/oneloopmaster MadLoop reduction backend, see
+:doc:`TIRust installation and controls <tirust>`.
+
 NinjaRS for MadLoop
 ------------------
 

@@ -15,6 +15,7 @@
 !     6 | Ninja
 !     7 | COLLIER
 !     8 | NinjaRS (oneloopmaster scalar integrals)
+!     9 | TIRust (oneloopmaster scalar integrals)
 !     One can use the combinations to reduce integral,e.g.
 !     1|2|3 means first use CutTools, if it is not stable, use PJFry++, 
 !     if it is still unstable, use IREGI. If it failed, use QP of CutTools.
@@ -27,13 +28,35 @@
 !     Select poles of the bare loop integral, leaving finite terms and
 !     counterterms/R2 unchanged: -1 = legacy backend behavior, 0 = UV+IR,
 !     1 = UV only, 2 = IR only, 3 = no poles.
-!     Modes 1, 2 and 3 require MLReductionLib containing only NinjaRS (8)
+!     Modes 1, 2 and 3 require MLReductionLib containing only TIRust (9), NinjaRS (8)
 !     and/or COLLIER (7), including all rescue backends.
 !     An explicit mode overrides COLLIERComputeUVpoles/IRpoles; -1 keeps
-!     those legacy switches active for COLLIER and both poles for NinjaRS.
+!     those legacy switches active for COLLIER and both poles for NinjaRS/TIRust.
 !     For example, use MLReductionLib=8|7 and LoopPoleMode=1 for UV poles.
 
-!     When using quadruple precision with Ninja, NinjaRS or CutTools, the reduction will
+#TIRustComputeFinite
+!.TRUE.
+! Default :: .TRUE.
+!     False selects accelerated poles-only tensor diagnostics. Finite output
+!     is unevaluated. Ordinary amplitude and Monte Carlo calls reject this
+!     setting. Select only backend 9 and at least one UV/IR pole.
+
+#TIRustGlobalCache
+!-1
+! Default :: -1
+!     -1 caches all supported topologies, 0 disables integral caching,
+!     positive values limit caching to this many propagators.
+
+#TIRustCacheMaxBytes
+!268435456
+! Default :: 268435456
+!     Per-worker byte budget. A full cache stops inserting new entries.
+
+#UseQPIntegrandForTIRust
+!.TRUE.
+! Default :: .TRUE.
+
+!     When using quadruple precision with Ninja, NinjaRS, TIRust or CutTools, the reduction will
 !     always be done in quadruple precision, but the parameters below allow you to
 !     chose if you want to also recompute the *integrand* in quadruple precision.
 !     Doing so is slow but might improve the accuracy in some situation.

@@ -5208,23 +5208,33 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                                               libpath,"lib%s.a"%tir,tir_name=tir)
             setattr(self,tir_dir,libpath)
             if libpath != "":
-                if tir in ['pjfry','ninja','golem', 'samurai','collier','ninjars']:
+                if tir in ['pjfry','ninja','golem', 'samurai','collier','ninjars','tirust']:
                     # We should link dynamically when possible, so we use the original
                     # location of these libraries.
-                    copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
+                    copied_ninjars = tir in ('ninjars', 'tirust') and self.dependencies == 'internal'
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
                         link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                    if tir == 'tirust':
+                        from madgraph.various import tirust_install
+                        link_tir_libs.extend(tirust_install.pre_link_flags(libpath))
                     if copied_ninjars:
-                        link_tir_libs.append('-L$(LIBDIR) -lninjars')
-                        tir_libs.append('$(LIBDIR)libninjars.a')
+                        link_tir_libs.append('-L$(LIBDIR) -l' + tir)
+                        tir_libs.append('$(LIBDIR)lib' + tir + '.a')
                     else:
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
                         tir_libs.append('%s/lib%s.%s' % (
-                            libpath, tir, 'a' if tir == 'ninjars' else '$(libext)'))
+                            libpath, tir, 'a' if tir in ('ninjars', 'tirust') else '$(libext)'))
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
                         link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
+                    if tir == 'tirust':
+                        from madgraph.various import tirust_install
+                        link_tir_libs.extend(tirust_install.native_link_flags(libpath))
+                        if copied_ninjars:
+                            link_tir_libs.append("-Wl,-rpath,'$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../lib:$$ORIGIN/../../../lib'")
+                        else:
+                            link_tir_libs.append('-Wl,-rpath,%s' % libpath)
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
@@ -5234,7 +5244,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
                         tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
                     # We must add the corresponding includes for these TIR
-                    if tir in ['golem','samurai','ninja','collier','ninjars']:
+                    if tir in ['golem','samurai','ninja','collier','ninjars','tirust']:
                         trg_path = pjoin(os.path.dirname(libpath),'include')
                         trg_path2 = pjoin(trg_path,tir)
                         to_include = None
@@ -5244,7 +5254,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         if to_include is None and os.path.isdir(trg_path2):
                             to_include = misc.find_includes_path(trg_path2,
                                                         self.include_names[tir])
-                        if to_include is None and tir == 'ninjars':
+                        if to_include is None and tir in ('ninjars', 'tirust'):
                             to_include = misc.find_includes_path(
                                 libpath, self.include_names[tir])
                         # Special possible location for collier
