@@ -2423,6 +2423,53 @@ def test_report_builder_loop_induced_table_markers_backend_floor_and_reports(
         build()
 
 
+def test_report_builder_loop_induced_untimed_row_prints_its_marker(tmp_path):
+    """A registry row declared ``untimed`` (LI-X1: an execution check without
+    a reference, USER 2026-11-06 ~14:55) prints its explicit marker with the
+    registry's reason in both cells once its package has landed, and a row
+    without any reference expects no provider: never 'pending'."""
+
+    builder = _report_builder()
+    registry = _loop_induced_registry()
+    registry["groups"].append("EFT")
+    registry["gate_classes"]["eft"] = "test"
+    registry["landed"].append("lit-eft")
+    registry["rows"].append(
+        {
+            "key": "li_x1",
+            "process": None,
+            "ids": ["LI-X1"],
+            "corrections": "EFT",
+            "legs": None,
+            "group": "EFT",
+            "gate_class": "eft",
+            "served_by": "lit-eft",
+            "backends": ["tirust"],
+            "references": [],
+            "label": "rank > N+2 EFT row",
+            "untimed": "execution check only (test)",
+        }
+    )
+    ms = _loop_induced_milestone(registry)
+    data = tmp_path / "data"
+    data.mkdir()
+    recency = builder.Recency(tmp_path, ms["ancestry"])
+    out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+    row = {r["key"]: r for g in out["groups"] for r in g["rows"]}["li_x1"]
+    marker = {"status": "not timed", "reason": "execution check only (test)"}
+    assert row["generation"] == marker and row["timing"] == marker
+    assert row["providers"] == {
+        "status": "no reference",
+        "reason": "no reference provider",
+        "expected": [],
+    }
+    # Not landed: pending like every other row of a package not landed.
+    registry["landed"].remove("lit-eft")
+    out = builder.build_loop_induced(ms, recency, data=data, repo=tmp_path)
+    row = {r["key"]: r for g in out["groups"] for r in g["rows"]}["li_x1"]
+    assert row["timing"]["status"] == "pending"
+
+
 def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_provider():
     """Figure 1's loop-induced rows (USER 2026-11-07 ~10:40): every row of the
     loop-induced table with a batched pyAmpliCol time and a matched provider
