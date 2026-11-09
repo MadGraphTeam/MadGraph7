@@ -500,15 +500,21 @@ def read_native(
     amplitude vectors (``native_bare``), with a check their re-test budget
     (``native_budget``: (i/16 pi^2) sum_f |delta Omega_f| per t and k) and,
     when the executor formed it, the term scale (``native_terms``,
-    ``term_values``); binary64 squares natively (``native_square``)."""
+    ``term_values``); binary64 squares natively (``native_square``). A row
+    selection's output carries its kept rows only (``amplitude_rows``, the
+    plan rows in order; lit-dress (H)): those are the evaluation's rows."""
 
     size = exported.amplitude
-    columns = len(exported.rows) * size
+    kept = output.get("amplitude_rows")
+    rows = (
+        tuple(exported.rows) if kept is None else tuple(exported.rows[r] for r in kept)
+    )
+    columns = len(rows) * size
 
     def vectors(slots, read):
         out = {}
         for o, order in enumerate(exported.orders):
-            for r, row in enumerate(exported.rows):
+            for r, row in enumerate(rows):
                 base = o * columns + r * size
                 out[(order, row)] = [read(slots[base + t]) for t in range(size)]
         return out
@@ -531,7 +537,7 @@ def read_native(
         else vectors(terms[index], lambda values: [float(x) for x in values])
     )
     evaluation.native_square = numbers.double
-    evaluation.amplitude_rows = tuple(exported.rows)
+    evaluation.amplitude_rows = rows
     kets = output.get("counterterm_kets")
     if kets is not None:
         evaluation.native_kets = native_kets(
@@ -540,6 +546,7 @@ def read_native(
             carrier(kets[index]),
             numbers,
             width_of(evaluation),
+            rows,
         )
 
 
@@ -572,13 +579,18 @@ def ket_map(slice_: Any, trees: Any) -> list[tuple[int, int, Orders, int]]:
 
 
 def native_kets(
-    slice_: Any, exported: Any, values: Sequence[Any], numbers: Any, width: int
+    slice_: Any,
+    exported: Any,
+    values: Sequence[Any],
+    numbers: Any,
+    width: int,
+    rows: Sequence[rx.Row] | None = None,
 ) -> dict[tuple[Orders, rx.Row], list[list[Any]]]:
     """A^CT per (loop order, row) from a point's native counterterm kets
     (``V2Executor.evaluate``'s ``counterterm_kets``: rows x ket components,
-    the program's layout) on the amplitude basis at N_c = 3 (``ket_map``,
-    or a stored process's recorded map; the native twin of
-    ``counterterm_kets``)."""
+    the program's layout; ``rows``: the rows they carry, every plan row by
+    default) on the amplitude basis at N_c = 3 (``ket_map``, or a stored
+    process's recorded map; the native twin of ``counterterm_kets``)."""
 
     mapping = getattr(slice_.amplitude, "ket_map", None)
     if mapping is None:
@@ -590,7 +602,7 @@ def native_kets(
     zero = numbers.zero
     three = numbers.real(3)
     out: dict[tuple[Orders, rx.Row], list[list[Any]]] = {}
-    for r, row in enumerate(exported.rows):
+    for r, row in enumerate(exported.rows if rows is None else rows):
         for j, (t, k, order, nc) in enumerate(mapping):
             if k >= width:
                 continue
