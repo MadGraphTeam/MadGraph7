@@ -741,7 +741,29 @@ pub struct Family {
     /// another of the same accumulator ([`Dependents`], M-LIT lit-fold
     /// F1d), derived from the plan's exact key vectors by the family's
     /// first reduction and kept (never stored; as [`Walk`]).
-    pub dependents: std::sync::OnceLock<Dependents>,
+    pub dependents: DependentsCache,
+}
+
+/// A family's dependent columns ([`Dependents`]), derived by its first
+/// reduction and kept. Whether it is set is the family's evaluation history,
+/// not its data: its `Debug` form shows nothing of it, so a loaded
+/// program's `Debug` form (its digest) is the same before and after a
+/// reduction.
+#[derive(Clone, Default)]
+pub struct DependentsCache(std::sync::OnceLock<Dependents>);
+
+impl DependentsCache {
+    /// The dependent columns, derived by `derive` on the first call.
+    #[inline]
+    pub fn get_or_init(&self, derive: impl FnOnce() -> Dependents) -> &Dependents {
+        self.0.get_or_init(derive)
+    }
+}
+
+impl std::fmt::Debug for DependentsCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DependentsCache")
+    }
 }
 
 /// The dependent columns of a dressed-row family (M-LIT lit-fold F1d): a
@@ -2638,7 +2660,7 @@ impl LoopProgramV4 {
             row_traces,
             support: None,
             walk: std::sync::OnceLock::new(),
-            dependents: std::sync::OnceLock::new(),
+            dependents: DependentsCache::default(),
         })
     }
 

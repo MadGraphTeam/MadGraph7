@@ -731,7 +731,7 @@ fn prune_family(
         row_traces,
         support: None,
         walk: std::sync::OnceLock::new(),
-        dependents: std::sync::OnceLock::new(),
+        dependents: super::DependentsCache::default(),
     };
     (family, lists)
 }

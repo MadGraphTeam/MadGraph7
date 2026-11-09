@@ -519,7 +519,7 @@ mod tests {
             row_traces: Vec::new(),
             support: None,
             walk: std::sync::OnceLock::new(),
-            dependents: std::sync::OnceLock::new(),
+            dependents: crate::loop_v2::plan::DependentsCache::default(),
         };
         let columns = 5;
         let support = Arc::new(Support {
