@@ -333,6 +333,71 @@ explicit `"ninjars"` or `"tirust"` has no fallback: `reduction="tirust"`
 fails such a point closed with TIRust's reason, and `reduction="ninjars"`
 forces NinjaRS for every point (for instance for a higher accuracy). A
 TIR-only artifact has no fallback (NinjaRS is refused typed there).
+
+Every point the fallback serves is **guarded**: its NinjaRS value runs the
+reduction-direction check (every loop numerator reduced a second time in a
+reversed frame, its coefficients and the cached master integrals reused:
+`VirtualStabilityChecks(reduction_direction=True)` without `rescaled`) in
+the call's own arithmetic (never a higher one), and the point fails typed
+when that check's relative estimate (each squared-order sector against its
+largest Laurent coefficient) exceeds the call's target (`reduction_target`,
+below; a rescue level's own target on that level). The point's one reason
+names the fallback, TIRust's failure, the arithmetic, the estimate and the
+target, e.g. `auto: TIRust refused or failed the point (...); the per-point
+NinjaRS fallback's value failed its reduction-direction check: estimate
+1.4e2 > target 1e-5 (double-double)`; `on_failure="raise"` raises
+`EvaluationError` with it, `"return"` returns the point as a failed lane
+(and a rescue stack escalates it). The estimate is recorded in the point's
+`VirtualReduction.guard_estimate` (a rejected point's too); a point within
+the target keeps the fallback's value unchanged, and the result's
+`stability` stays what the call's own checks give (none without checks).
+When the call's checks run that cached check it is reused; beside other
+checks (rotations, or the rescaled variant of the recommended checks and of
+every default rescue level) the served points are evaluated once more with
+it. On the resolved, correlated and selected outputs the largest estimate
+over the point's outputs decides. Points TIRust serves run nothing more.
+The estimate is a sampled measure, not a proven bound.
+
+**Near-planar NinjaRS hazard.** NinjaRS (pin 5b6a8f57) can return finite,
+badly wrong values reported as success at near-planar 2 -> 3 points (the
+event plane contains the beam: the pentagon Gram determinant nearly
+vanishes) of pentagon families whose rank equals their propagator count
+(all-vector quark loops), in every arithmetic, unless stability checks run.
+Measured on g g > z z z stream point 44 tilted out of its plane by an angle
+eps, and on constructed planar points of six loop-induced rows (records in
+`workspace/tmp/ninjars-dd-zzz/C/out/`; truth: TIRust at 78 digits on the
+same binary64 texts):
+
+* binary64 serves wrong values from eps ~5e-7 (2e-2 off at 1e-7, 3.6e-7 at
+  1e-6) down to at least 1e-12, with a point-dependent lower edge: point 44
+  tilted is refused at eps <= 1e-12 (`tilt.json` 'nj_b64'), the six
+  constructed rows are served 2.8e12 to 1.5e17 off at 1e-12 (`pr-*.json`
+  'nj_b64'), and every measured row is refused at eps 0;
+* double-double is wrong at eps 0 (1.3e7 off at point 44, `tilt.json`
+  'nj_dd'; 3.8e-3 to 1.7e3 on the six constructed rows, `pr-*.json`
+  'nj_dd'), 3.3e-6 off at 1e-14 and within 2.1e-10 from 1e-13 up
+  (`tilt.json` 'nj_dd').
+
+Measured affected: loop-induced g g > z z z, z z g, z g g, a a g, a g g and
+W+ W- g. Measured unaffected: the rank-4 pentagon rows g g > h h h and
+g g > h z g, Born-interfered g g > g g g, and five Born-interfered NLO
+electroweak rows (`workspace/tmp/ninjars-dd-zzz/B.md` §2.3). What flags the
+wrong values, per check and arithmetic (estimates on the measured wrong
+points):
+
+* the guarded `"auto"` fallback above: its check alone (the cached
+  reduction-direction re-reduction) gave 9.7 to 142 in double-double on the
+  four measured wrong stream points (`C/out/checks.json` 'nj_dd_dir');
+* the recommended checks and the rescue levels' checks in double-double:
+  22 to 852 on the 18 served wrong g g > z z z points
+  (`workspace/tmp/ninjars-dd-zzz/A/out/ddcheck.json`) and 27 to 892
+  (`B.md` §2.1, §3); the rescue stack escalates on them (`B.md` §2.1);
+* the recommended checks in binary64: 3.0 to 236 at the wrong tilt points
+  (`C/out/tilt.json` 'nj_b64_chk'; 3.0 at eps 1e-7, error 2e-2).
+
+An explicit `reduction="ninjars"` without stability checks (and the native
+SDKs' NinjaRS calls without monitoring) stays exposed until the NinjaRS fix,
+a conditioning bound in NinjaRS, is pinned.
 `"tirust"` is served in every arithmetic (binary64, double-double and
 arbitrary precision, also on every level of a rescue stack). An explicit
 backend that cannot serve the call is refused before any point is evaluated
@@ -341,9 +406,10 @@ backend that cannot serve the call is refused before any point is evaluated
 call's executor runs: the summed `evaluate` and the resolved, correlated and
 selected outputs each check it, so a result never names a backend that did
 not reduce it. Every lane diagnostic records the requested and effective
-backend, the reason, the call's fallback, target and unchecked setting
+backend, the reason, the call's fallback, target and unchecked setting, and
+on a point the fallback served its guard's estimate
 (`VirtualReduction(requested, effective, reason, fallback, target,
-unchecked)`;
+unchecked, guard_estimate)`;
 [Configuration](configuration.md#reduction-backend)).
 
 TIRust serves at a **target accuracy** (`reduction_target=` on `Runtime.load`
@@ -365,9 +431,11 @@ at the shipped TIRust acceptance, carry binary64's own reduction error
 tighter than about 1e-7 can be missed by construction. The target is a
 calibrated acceptance, not a certificate: request stability checks or a
 rescue stack for an estimate. NinjaRS has no
-setting the target drives, and in double-double and arbitrary precision,
-where TIRust's method choice is off, the target acts on nothing. A value that
-is not a finite positive number is refused (`ValueError`).
+setting the target drives; the target is also the only threshold of the
+per-point fallback's guard (above), in every arithmetic. In double-double
+and arbitrary precision, where TIRust's method choice is off, it acts on
+TIRust's values through nothing else. A value that is not a finite positive
+number is refused (`ValueError`).
 
 **Unchecked reductions** (`reduction_unchecked=True` on `Runtime.load` and on
 every evaluation; `[evaluation] reduction_unchecked = true`; CLI
@@ -404,13 +472,18 @@ value for, the way the one-loop providers' most optimistic settings run
   fallback on a TIR-only artifact, NinjaRS where the native extension has no
   TIRust. Its per-point NinjaRS fallback (unchecked, in the call's
   arithmetic) acts only on the residual failures of the unchecked TIRust,
-  recorded per point; where nothing fails, an `"auto"` call is a pure TIRust
-  call. Explicit `"tirust"` and `"ninjars"` have no fallback.
+  recorded per point, and its served points are guarded as above (the guard
+  is pyAmpliCol's check, not a backend's own: it stays on); where nothing
+  fails, an `"auto"` call is a pure TIRust call. Explicit `"tirust"` and `"ninjars"` have no fallback.
 * Arithmetics: in double-double and arbitrary precision TIRust's method
   choice is off, so there the conditioning gates select and the last resort
-  serves what they refuse. NinjaRS's generic engine (double-double, arbitrary
-  precision, and the binary64 lanes the fast engine routes to it) tests no
-  stability threshold, so the setting changes nothing there.
+  serves what they refuse. The setting changes nothing in NinjaRS's generic
+  engine (double-double, arbitrary precision, and the binary64 lanes the
+  fast engine routes to it): it has no stability threshold to set to zero.
+  That is no accuracy statement: its values are unverified there too, with
+  or without the setting (the near-planar hazard above); stability checks,
+  a rescue stack or the guard of the per-point fallback (which stays on
+  under the setting) check them.
 * pyAmpliCol's own stability checks (`stability_checks=`, the SDKs'
   monitoring) and the rescue stack (`stability=`) stay their own settings:
   combined with the setting they check the unchecked values, and the rescue

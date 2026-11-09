@@ -447,6 +447,16 @@ class V2ObservablesRuntime:
             raise ValueError(f"unknown v2 executor {executor!r}")
         self._observables = observables
         self._catalogue: Any = None
+        # The per-point fallback guard's pass (``reduction.with_fallback``'s
+        # ``guard``): set by the artifact runtime that owns this one
+        # (``V2VirtualRuntime._fallback_guard``: the summed evaluation of
+        # points with the cached reduction-direction check alone), so that
+        # the outputs here are guarded on the point's summed |A|^2 as the
+        # native SDKs guard them; None (a direct runtime, without a
+        # per-point fallback): each output's own estimate decides.
+        self.fallback_guard: (
+            Callable[..., tuple[list[Any], dict[int, list[str]]]] | None
+        ) = None
         self._member = member
         # How the member is served, for messages (the artifact's selector
         # knows it; ``_mapping_kind`` otherwise).
@@ -645,7 +655,29 @@ class V2ObservablesRuntime:
                 with running(None):
                     return (*run(None, checks), {})
             carrier = getattr(options.get("precision"), "arithmetic", "double")
-            return with_fallback(run, reduction, len(points), checks, carrier)
+            summed = self.fallback_guard
+
+            def guard(
+                chosen: list[int],
+            ) -> tuple[list[Any], dict[int, list[str]]]:
+                # The guard's summed pass of the points the fallback served.
+                assert summed is not None
+                return summed(
+                    [points[i] for i in chosen],
+                    [scales[i] for i in chosen],
+                    options.get("parameters"),
+                    options.get("precision"),
+                    options.get("poles"),
+                )
+
+            return with_fallback(
+                run,
+                reduction,
+                len(points),
+                checks,
+                carrier,
+                None if summed is None else guard,
+            )
         if effective is not None:
             # The Python reference executor reduces on the backends the
             # native extension serves (``reduction.native_backends``: its

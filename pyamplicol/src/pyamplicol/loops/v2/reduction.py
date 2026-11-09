@@ -463,7 +463,7 @@ def _guard_estimate(result: Any) -> float:
     the point's checks when they ran others too; the ``"relative"`` metric,
     each squared-order sector against its largest Laurent coefficient;
     largest over a point's outputs). NaN when the point has no such
-    estimate."""
+    estimate or its budget is not a number."""
 
     from .stability import REDUCTION
 
@@ -475,8 +475,14 @@ def _guard_estimate(result: Any) -> float:
         if set(estimate.budgets) != {REDUCTION}:
             estimate = estimate.subset([REDUCTION])
         value = float(estimate.relative)
-        if math.isnan(value):
-            return value
+        # (A NaN budget is no estimate: ``stability.relative``'s largest
+        # ratio would pass over it.)
+        if math.isnan(value) or any(
+            math.isnan(float(x))
+            for budget in estimate.absolute.values()
+            for x in budget.coefficients
+        ):
+            return math.nan
         worst = max(worst, value)
     return worst
 
@@ -505,6 +511,7 @@ def with_fallback(
     count: int,
     checks: Any = None,
     carrier: str = "double",
+    guard: Callable[[list[int]], tuple[list[Any], dict[int, list[str]]]] | None = None,
 ) -> tuple[list[_R | None], dict[int, list[str]], dict[int, VirtualReduction]]:
     """``run`` of a batch on the call's effective backend at its target
     (``running``; ``run(None, checks)``: every point with the call's
@@ -531,9 +538,15 @@ def with_fallback(
     evaluation without checks returns; beside other checks (rotations
     only, or the rescaled variant: ``RECOMMENDED_CHECKS``, every default
     rescue level) the served points are evaluated once more with the cached
-    check alone. A point whose estimate exceeds the call's target
-    (``choice.target``, else the default target; ``fallback_accepted``)
-    fails typed with one reason (``text("rejected")``); an accepted point
+    check alone. A caller whose results are not the summed value (the
+    resolved, correlated and selected outputs) passes ``guard``: the summed
+    evaluation of the points at the given batch indices with the cached
+    check alone, which then decides on every served point (as the native
+    SDKs decide on the point's summed |A|^2). A point the guard's check
+    fails is a point the fallback failed. A point whose estimate exceeds
+    the call's target (``choice.target``, else the default target;
+    ``fallback_accepted``) fails typed with one reason
+    (``text("rejected")``); an accepted point
     keeps the fallback's value and the call's own estimate. The public
     estimate is always the call's checks' own.
 
@@ -577,18 +590,28 @@ def with_fallback(
     reused = enabled and plain.reduction_direction and not plain.rescaled
     target = choice.target if choice.target is not None else default_target()
     with running(fallback, choice.target, choice.unchecked):
-        again, still = run(indices, plain if enabled else _reduction_check(plain))
+        # Without the call's checks (and without a guard pass) the
+        # fallback's evaluation carries the guard's check.
+        merged = guard is None and not enabled
+        again, still = run(indices, _reduction_check(plain) if merged else plain)
+        still = dict(still)
         served = [local for local in range(len(indices)) if local not in still]
-        if reused or not enabled or not served:
+        guarded: dict[int, float] = {}
+        if guard is None and (reused or merged):
             guarded = {local: _guard_estimate(again[local]) for local in served}
-        else:
-            found, missed = run(
-                [indices[local] for local in served], _reduction_check(plain)
+        elif served:
+            chosen = [indices[local] for local in served]
+            found, missed = (
+                run(chosen, _reduction_check(plain)) if guard is None else guard(chosen)
             )
-            guarded = {
-                local: math.nan if k in missed else _guard_estimate(found[k])
-                for k, local in enumerate(served)
-            }
+            for k, local in enumerate(served):
+                if k in missed:
+                    # The guard's check fails the point (as the fallback's
+                    # evaluation with the check does without the call's
+                    # checks): the fallback failed it.
+                    still[local] = list(missed[k])
+                else:
+                    guarded[local] = _guard_estimate(found[k])
     results = list(results)
     failures = dict(failures)
     for local, index in enumerate(indices):
@@ -625,7 +648,7 @@ def with_fallback(
                 guard_estimate=estimate,
             )
             continue
-        results[index] = again[local] if enabled else _without_checks(again[local])
+        results[index] = _without_checks(again[local]) if merged else again[local]
         del failures[index]
         records[index] = VirtualReduction(
             choice.requested,
