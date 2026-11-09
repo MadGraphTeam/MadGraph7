@@ -1,0 +1,6 @@
+{
+  "status": "failed before compile/native call",
+  "error": "FileNotFoundError: subprocess param_card.dat",
+  "correction": "Use original process Cards/param_card.dat",
+  "partial_work_preserved": ".tirust-build/qcd-born-cancellation-audit-preparation-attempt2"
+}

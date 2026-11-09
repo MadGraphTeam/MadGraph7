@@ -1,0 +1,6 @@
+{
+  "status": "failed before compile/native call",
+  "error": "FileNotFoundError: physical-stress/points/qcd_n3_uux_zgg.dat",
+  "correction": "Use existing frozen points/qcd_n3_uux_zgg/selected.dat",
+  "partial_work_preserved": ".tirust-build/qcd-born-cancellation-audit-preparation-attempt1"
+}

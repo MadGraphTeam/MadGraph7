@@ -1,0 +1,42 @@
+{
+  "aggregation": "All48 helicities, unpolarized, fullsingleSO; originalIDEN72,color matrix(16,-4,16)/3 andbroken-symmetryfactor; ordinary originalDP SMATRIX control retained.",
+  "derived_routines": [
+    "GET_AMP",
+    "GET_JAMP",
+    "GET_MATRIX"
+  ],
+  "input_policy": "Read original DAT into binary64 once then exact REAL(...,KIND=16) promotion before all QP arithmetic; no direct decimal-to-QP reinterpretation.",
+  "limits": [
+    "No native trace yet identifies the first nonfinite wavefunction in the original executable.",
+    "Standalone QP is not an automatically checked full-loop amplitude or proof all loop groups are served."
+  ],
+  "schema": 1,
+  "scope": "Private Born-only arithmetic diagnostic; no reducers, no phase-space repair or production modification. QP model parameters are exact lifts of current DP values.",
+  "source_and_link_inputs": {
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Cards/ident_card.dat": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Cards/param_card.dat": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Source/DHELAS/FFV1_2.f": "049b56435f003413c851707c119fcd98f24a35a5f9e83599d783bb550350b062",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Source/DHELAS/MP_FFV1_2.f": "a8fe4ea5ddba2317533ae8128c67505b981667bc2514b69f716a29ec6081c986",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Source/DHELAS/aloha_functions.f": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Source/DHELAS/aloha_object.mod": "aa159422f73f0f6df7c296f6a8fc3b509e488632b81f09df25aead7ee203eb77",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Source/MODEL/coupl.inc": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Source/MODEL/model_object.mod": "b79ac9341e39d818e4b54e8720d7e79b99a7d971dc5a5091313bf8210ded741e",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/born_matrix.f": "c4996302b8b7392a0697da69533b998c0d617e81c53f027e6ae171de3f8a2f0c",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/born_matrix.o": "6a49b3d713b9e208ae1ae20abfe5ece7d161ac0e5a47274c15684d647393330c",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.f": "2846f4d35755abfb7a8709a5bb1560983b3676535fd43b39cd62acac1be6185c",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.f": "f1cb3605c429ae40750127660b69f37870f61b40546e9a6389655f338d6b7469",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_helas_calls_ampb_1.f": "138b9f55da144b18572fa102f1d49a9168002a6a91412f392154697f179925b9",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/lib/libdhelas.a": "461859f8e804fcbc49fa5e5ecde80f95341c9254f19d62ce958c155d8c12f9bb",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/lib/libmodel.a": "d9bbfa43f9a240cb1779904a32e97b32f75352bf5743b148302cc5cf857496cb",
+    "docs/benchmarkfolder/experiments/physical-stress/points/qcd_n3_uux_zgg/selected.dat": "a2d4bb120bf442179ceadd6c3bf8b842732dfa8e3af50f71e30bb7c9948eed9b",
+    "docs/benchmarkfolder/experiments/qcd-born-cancellation-audit/derivation.patch": "97ca5758eee3e97d41d370304fb4c4ef6d92debd1a75a6bc0afdb0f4dd1855dc",
+    "docs/benchmarkfolder/experiments/qcd-born-cancellation-audit/driver.f": "51374a0117effef71bf2005c2cedcb75adc210bcbba6037d247a0084b91a26b3",
+    "docs/benchmarkfolder/experiments/qcd-born-cancellation-audit/prepare.py": "60514b6fa15dff7162e328bf51bb30ddf652a53cdf3edb434448def56dca0207",
+    "docs/benchmarkfolder/experiments/qcd-born-cancellation-audit/qp_born.f": "cb06c3303314eca684583409aa20f8a2f94dd59513b467822cc2eca452e6d73c"
+  },
+  "source_base_sha256": "c4996302b8b7392a0697da69533b998c0d617e81c53f027e6ae171de3f8a2f0c",
+  "symmetry_diagnostics": [
+    "exchange identical finalgluons4and5",
+    "cyclic spatialaxispermutation x,y,z -> y,z,x"
+  ]
+}
