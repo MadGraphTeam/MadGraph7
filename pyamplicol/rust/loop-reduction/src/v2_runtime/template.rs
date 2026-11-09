@@ -840,3 +840,119 @@ pub fn resolved_subset(
         lanes,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A full-colour process of two Born rows (a contracted resolved column
+    /// each, both reading seed-weight column 0) with one seed class and one
+    /// family, as `native_observables.StoredObservables` stores it.
+    fn records() -> (Value, Value, Value, Value) {
+        let key = |h: i32| json!([[[0, h]], null]);
+        let record = json!({
+            "rows": [[[0, -1]], [[0, 1]]],
+            "basis": 2,
+            "sets": {"resolved": {
+                "columns": [
+                    {"key": key(-1), "rows": [[[0, -1]]], "basis": null},
+                    {"key": key(1), "rows": [[[0, 1]]], "basis": null},
+                ],
+                "lanes": [[key(-1), [["QCD", 2]], 0, 0], [key(1), [["QCD", 2]], 1, 1]],
+            }},
+        });
+        let overlay = json!({
+            "columns": 2, "column_rows": [[0], [1]], "column_weights": [0, 0],
+            "born_components": 2,
+        });
+        let columns = json!({"cells": [], "programs": [], "columns": [
+            {"program": 0, "cells": 0, "swapped": null, "rows": [0], "basis": null},
+            {"program": 0, "cells": 0, "swapped": null, "rows": [1], "basis": null},
+        ]});
+        let plan = json!({
+            "seed_classes": [{"columns": [[[0, "1", "0"], [1, "2", "0"]]]}],
+            "seeds": [{"classes": [[0, "1", "0"]]}],
+            "families": [{"leaves": [{"seed": 0}]}],
+        });
+        (record, overlay, columns, plan)
+    }
+
+    #[test]
+    fn a_full_colour_template_masks_rows_only_and_a_subset_keeps_its_columns() {
+        let (record, overlay, columns, plan) = records();
+        let (overlay, columns, plan) = (overlay.to_string(), columns.to_string(), plan.to_string());
+        let records = ResolvedRecords {
+            record: &record,
+            overlay: overlay.as_bytes(),
+            companion_overlay: None,
+            columns: columns.as_bytes(),
+            plan: plan.as_bytes(),
+            companion_plan: None,
+        };
+        let template = SelectionTemplate::form(&records).unwrap();
+        // One row class: one seed column of every row with the contracted
+        // component's weights, one interference column of every row.
+        assert_eq!(template.classes, vec![vec![0, 1]]);
+        let formed: Value = serde_json::from_str(&template.set.overlay).unwrap();
+        assert_eq!(formed["columns"], json!(1));
+        assert_eq!(formed["column_rows"], Value::Null);
+        assert_eq!(
+            formed["seed_classes"][0]["columns"],
+            json!([[[0, "1", "0"], [1, "2", "0"]]])
+        );
+        let interference: Value = serde_json::from_str(&template.set.columns).unwrap();
+        assert_eq!(interference["columns"][0]["rows"], Value::Null);
+        assert_eq!(template.set.lanes, vec![(0, json!([["QCD", 2]]), 0, 0)]);
+        // A selection masks the rows only; no basis element is selectable.
+        let one: BTreeSet<usize> = [1].into();
+        let masks = template.masks(Some(&one), None).unwrap();
+        assert_eq!(masks.rows, Some(vec![false, true]));
+        assert_eq!((masks.basis.clone(), masks.wanted.clone()), (None, vec![0]));
+        assert_eq!(
+            (masks.components.clone(), masks.families.clone()),
+            (vec![None], vec![None])
+        );
+        assert_eq!(template.masks(None, None).unwrap().rows, None);
+        let basis: BTreeSet<usize> = [0].into();
+        assert!(template.masks(None, Some(&basis)).is_err());
+        let call = masks.call(0);
+        let sources = call.sources::<f64>(None, 2).unwrap();
+        assert!(
+            sources
+                .iter()
+                .all(|s| s.rows == Some(vec![false, true]) && s.basis.is_none())
+        );
+        // The resolved selection of row 1: its column alone.
+        let subset = resolved_subset(&records, Some(&one), None).unwrap();
+        assert_eq!(subset.outputs.len(), 1);
+        assert_eq!(subset.outputs[0].key, json!([[[0, 1]], null]));
+        assert_eq!(subset.outputs[0].rows, Some(vec![1]));
+        let formed: Value = serde_json::from_str(&subset.overlay).unwrap();
+        assert_eq!(formed["column_rows"], json!([[1]]));
+        assert_eq!(formed["column_weights"], json!([0]));
+        assert_eq!(subset.lanes, vec![(0, json!([["QCD", 2]]), 0, 0)]);
+        let interference: Value = serde_json::from_str(&subset.columns).unwrap();
+        assert_eq!(
+            interference["columns"],
+            json!([
+                {"program": 0, "cells": 0, "swapped": null, "rows": [1], "basis": null}
+            ])
+        );
+    }
+
+    #[test]
+    fn call_masks_zero_the_unkept_born_components() {
+        let masks = CallMasks {
+            components: Some(vec![true, false]),
+            ..Default::default()
+        };
+        let one = Complex::new(1.0, 2.0);
+        let mut born = vec![vec![one, one, one, one]];
+        masks.mask_born(&mut born, &0.0).unwrap();
+        let zero = Complex::new(0.0, 0.0);
+        assert_eq!(born, vec![vec![one, zero, one, zero]]);
+        let mut odd = vec![vec![one; 3]];
+        assert!(masks.mask_born(&mut odd, &0.0).is_err());
+        assert!(CallMasks::default().is_empty());
+    }
+}
