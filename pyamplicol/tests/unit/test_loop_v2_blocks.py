@@ -682,9 +682,12 @@ ELECTROWEAK_SINGLET_MERGES = [
     # stay out: ``_feynkit_ordering_sign`` counts every fermion of the
     # group, the block pairing sign the coloured endpoints only.
     pytest.param("u c~ > d s~ a", {"QCD": 0, "QED": 3}, id="ucx_dsxa"),
-    pytest.param("u u~ > s s~ t t~", {"QCD": 0, "QED": 4}, id="uux_ssxttx"),
-    pytest.param("u u~ > d d~ a a", {"QCD": 0, "QED": 4}, id="uux_ddxaa"),
 ]
+# Not here: a massive quark line (u u~ > s s~ t t~: this oracle maps external
+# spinors as massless Weyl states) and the four-point contacts (u u~ > d d~ a a
+# at QED 4: FeynKit's contraction grew past 270 GB). Both lanes keep one
+# input order there too (test_loop_v2_native_dag.py: the one-order and the
+# contact-counting tests), and their poles equal Catani's (test_loop_v2_ew_blocks).
 
 
 @pytest.mark.loop_nightly
