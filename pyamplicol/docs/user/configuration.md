@@ -253,13 +253,18 @@ them.
   are right.
 - The Goldstone probe checks the Goldstone-side vertices and counterterms.
 
-Enable them when you generate from a new or edited loop UFO. Their cost on
-loop_sm, measured on the 2->3 and 2->4 rows of the loop-induced benchmark:
-about 4-10 s per 2->3 process (about the engine's own generation, of which
-the probe slice, a second generation of the process, is 3-5 s) and 72 s for
-g g > h g g g (engine generation 8 s). On the electroweak UFOs the probe
-slice and each Goldstone slice generate the process again, so the probes
-cost one generation of the process or more.
+Enable them when you generate from a new or edited loop UFO. Their cost,
+measured on the 2->3 and 2->4 loop-induced rows of loop_sm (one core, a
+loaded host): 3.5-21 s per 2->3 process against 2.5-14 s for the engine's
+own generation (the probe slice, a second generation of the process, is
+3-6 s of it); 27 s and 72 s for g g > h h g g and g g > h g g g (engine
+generation 5 s and 8 s); 161 s and 344 s for g g > a a g g and
+g g > z z z z (engine generation 10 s and 9 s). No probe needed the
+double-double rerun there; double-double alone took 5-191 s per 2->3
+process and 7 and 13 minutes for g g > h h g g and g g > h g g g. On the
+electroweak UFOs the probe slice and each Goldstone slice generate the
+process again, so the probes cost one generation of the process or more
+(e+ e- > g g g: 44 s, of which 39 s is the probe slice, against 43 s).
 
 Generation also drops the helicity rows of a loop-induced process that are
 zero before the loop integration (every numerator vanishes identically),
