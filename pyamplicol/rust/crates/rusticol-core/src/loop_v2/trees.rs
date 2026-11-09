@@ -3272,9 +3272,12 @@ impl TreeProgram {
                 "loop-side sources run the inclusive outputs, not observable columns",
             )?;
         }
-        // A call's row liveness drops rows only its points' sources zero.
+        // A call's row liveness drops rows only its points' sources zero;
+        // amplitude mode's Born components are the plan's units, so a
+        // dropped row there only loses counterterm kets the call does not
+        // read (`TreeProgram::live_rows`).
         require(
-            rows.is_none() || (sources.is_some() && loop_sources.is_none()),
+            rows.is_none() || (loop_sources.is_none() && (sources.is_some() || plan.amplitude)),
             "a row liveness needs the selection's sources",
         )?;
         if let Some(sources) = sources {
