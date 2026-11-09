@@ -54,6 +54,7 @@ use ninjars::fast::tensor_layout::ncoeff;
 pub use packed::{LinkInterner, PackedLinks, SharedLinks};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 use symbolica::domains::rational::Rational;
 
 /// The plan schema version of the seeded (Born-interfered) plans.
@@ -696,6 +697,74 @@ pub struct Family {
     /// Dressed-row plans: per step its per-row closure (trace steps only);
     /// empty for seeded plans.
     pub row_traces: Vec<Option<RowTrace>>,
+    /// Dressed-row plans: the observable columns the family's trace steps
+    /// close into ([`Support`], derived at load and for every row-pruned
+    /// copy, never stored); `None`: every column (seeded plans).
+    pub support: Option<Arc<Support>>,
+}
+
+/// The support of a dressed-row family's accumulators (lit-dress lever D):
+/// the observable columns `(Born row, colour class)` some trace step of the
+/// family closes a row with a link into (the non-zero key weights of
+/// [`KeyColumns`] on the Born rows of those rows). Every other column of the
+/// family is an exact zero, so its accumulators store these columns only.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Support {
+    /// The stored columns, ascending.
+    pub columns: Vec<u32>,
+    /// Per observable column its slot in `columns`, or `u32::MAX`.
+    pub slots: Vec<u32>,
+}
+
+impl Support {
+    /// The support of `family` in a dressed-row plan of `columns`
+    /// observable columns closing through `key_columns`.
+    pub fn of(family: &Family, key_columns: &[KeyColumns], columns: usize) -> Self {
+        let mut stored = vec![false; columns];
+        for (step, trace) in family.steps.iter().zip(&family.row_traces) {
+            let Some(trace) = trace else {
+                continue;
+            };
+            let mut reached = vec![false; trace.rows.len()];
+            match &step.split {
+                None => {
+                    for link in step.edges.iter().flat_map(|edge| &edge.links) {
+                        if let Some(row) = reached.get_mut(link.output as usize) {
+                            *row = true;
+                        }
+                    }
+                }
+                Some(split) => {
+                    for link in split
+                        .parts
+                        .iter()
+                        .flatten()
+                        .flat_map(|part| part.links.iter())
+                    {
+                        if let Some(row) = reached.get_mut(link.output as usize) {
+                            *row = true;
+                        }
+                    }
+                }
+            }
+            let keys = &key_columns[trace.key as usize];
+            for (&h, _) in trace.rows.iter().zip(&reached).filter(|(_, r)| **r) {
+                for &(o, _) in keys.row(h as usize) {
+                    stored[o as usize] = true;
+                }
+            }
+        }
+        let mut slots = vec![u32::MAX; columns];
+        let mut kept = Vec::new();
+        for (o, _) in stored.iter().enumerate().filter(|(_, s)| **s) {
+            slots[o] = u32::try_from(kept.len()).expect("columns exceed u32");
+            kept.push(u32::try_from(o).expect("columns exceed u32"));
+        }
+        Self {
+            columns: kept,
+            slots,
+        }
+    }
 }
 
 impl Family {
@@ -996,6 +1065,21 @@ impl KeyColumns {
 }
 
 impl LoopProgramV4 {
+    /// The accumulator support of `family` ([`Support`]; `None` outside
+    /// dressed-row plans: every column).
+    pub fn support_of(&self, family: &Family) -> Option<Arc<Support>> {
+        self.dressed
+            .then(|| Arc::new(Support::of(family, &self.key_columns, self.columns)))
+    }
+
+    /// Derive every family's accumulator support (at load).
+    fn set_supports(&mut self) {
+        let supports: Vec<_> = self.families.iter().map(|f| self.support_of(f)).collect();
+        for (family, support) in self.families.iter_mut().zip(supports) {
+            family.support = support;
+        }
+    }
+
     /// The observable columns an open-loop object carries per row: one in a
     /// dressed-row plan (its trace steps spread the rows over the columns),
     /// else every observable column.
@@ -2029,6 +2113,7 @@ impl LoopProgramV4 {
         // close the Born rows a column reads (the exact helicity-zero
         // filter's drops are not dressed).
         program.prune_dead_rows(&mut tables.links);
+        program.set_supports();
         program.gathers = Gathers::build(&program);
         Ok(program)
     }
@@ -2217,6 +2302,7 @@ impl LoopProgramV4 {
             vertices: instances.into_iter().collect(),
             currents: currents.into_iter().collect(),
             row_traces,
+            support: None,
         })
     }
 

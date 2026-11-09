@@ -206,6 +206,9 @@ fn own_bytes(family: &Family) -> usize {
         + family.leaves.len() * size_of::<super::Leaf>()
         + (family.factors.len() + family.vertices.len() + family.currents.len())
             * size_of::<usize>()
+        + family.support.as_ref().map_or(0, |support| {
+            (support.columns.len() + support.slots.len()) * size_of::<u32>()
+        })
 }
 
 /// The heap of a family's steps that a pruned copy allocates anew: steps,
@@ -381,6 +384,8 @@ impl LoopProgramV4 {
                     &mut interner,
                     traced.as_deref(),
                 );
+                let mut copy = copy;
+                copy.support = self.support_of(&copy);
                 let (links, whole) = (family_links(&copy), family_links(template));
                 if copy.steps.is_empty() || links * share.1 <= whole * share.0 {
                     let bytes = own_bytes(&copy) + steps_bytes(&copy) + lists;
@@ -694,6 +699,7 @@ fn prune_family(
         vertices: instances.into_iter().collect(),
         currents: currents.into_iter().collect(),
         row_traces,
+        support: None,
     };
     (family, lists)
 }

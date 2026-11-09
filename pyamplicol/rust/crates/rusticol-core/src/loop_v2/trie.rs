@@ -85,7 +85,8 @@ pub fn run_family_on<T: Carrier, const L: usize>(
     let v = lane_vector_len(L);
     let zero = &data.zero;
     let mut pool = Pool::new(zero);
-    let mut numerator = FamilyNumerator::zeros::<L>(index, family, plan.columns, zero);
+    let mut numerator =
+        FamilyNumerator::zeros_on::<L>(index, family, plan.columns, family.support.clone(), zero);
     let mut outputs: Vec<Option<Vec<T>>> = (0..family.steps.len()).map(|_| None).collect();
     let weights: Vec<T> = family
         .leaves
@@ -115,6 +116,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                 inputs,
                 row_trace,
                 &mut numerator.accumulators[accumulator],
+                slots(family),
                 family.rank,
                 &mut trace,
                 data,
@@ -189,6 +191,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                     &mut numerator.accumulators[accumulator],
                     &row_trace.rows,
                     &plan.key_columns[row_trace.key as usize],
+                    slots(family),
                     &vector,
                     family.rank,
                     zero,
@@ -213,6 +216,15 @@ pub fn run_family_on<T: Carrier, const L: usize>(
         numerator,
         peak_reals: pool.peak,
     })
+}
+
+/// The accumulator slot of each observable column of `family` (empty: every
+/// column stored in order; [`super::plan::Support`]).
+fn slots(family: &Family) -> &[u32] {
+    family
+        .support
+        .as_deref()
+        .map_or(&[], |support| support.slots.as_slice())
 }
 
 /// The amplitude vector of a dressed trace step's seed key in the carrier.
@@ -262,6 +274,7 @@ fn close_diagonal<T: Carrier, const L: usize>(
     inputs: &ChunkInputs<T>,
     row_trace: Option<&RowTrace>,
     accumulator: &mut [T],
+    slots: &[u32],
     rank: usize,
     trace: &mut [T],
     data: &LaneData<T, L>,
@@ -347,6 +360,7 @@ fn close_diagonal<T: Carrier, const L: usize>(
                 trace,
                 accumulator,
                 plan.key_columns[row_trace.key as usize].row(row_trace.rows[r] as usize),
+                slots,
                 vector,
                 rank,
                 &mut term,

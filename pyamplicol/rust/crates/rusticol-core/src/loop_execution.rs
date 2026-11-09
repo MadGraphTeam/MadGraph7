@@ -978,24 +978,32 @@ pub mod v2 {
             s_matrix: Vec::new(),
             coefficients: Vec::new(),
         };
+        // One pass over the accumulators gives every lane's finiteness; the
+        // stored columns (a dressed-row family's support, lit-dress lever D)
+        // are those that can be non-zero, read in column order straight into
+        // the lanes (an all-zero column has no lane, as before).
+        let finite = numerator.finite_lanes::<L>();
         for lane in 0..data.active {
             let point = data.points[lane];
             if !failures[point].is_empty() {
                 continue;
             }
-            if !numerator.finite::<L>(lane) {
+            if !finite[lane] {
                 failures[point].push(format!("family {}: non-finite numerator", numerator.family));
                 continue;
             }
             for (k, &order) in family.orders.iter().enumerate() {
-                for column in 0..plan.columns {
-                    let coefficients = numerator.lane::<L>(k, column, lane);
-                    if coefficients
-                        .iter()
-                        .all(|z| z.re.is_fully_zero() && z.im.is_fully_zero())
+                for (slot, column) in numerator.stored() {
+                    let block = numerator.block::<L>(k, slot);
+                    if block
+                        .chunks_exact(v)
+                        .all(|z| z[lane].is_fully_zero() && z[L + lane].is_fully_zero())
                     {
                         continue;
                     }
+                    let coefficients = block
+                        .chunks_exact(v)
+                        .map(|z| Complex::new(z[lane].clone(), z[L + lane].clone()));
                     lanes.points.push(point);
                     lanes.keys.push(LaneKey {
                         family: numerator.family,
