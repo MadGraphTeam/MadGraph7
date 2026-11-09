@@ -4378,12 +4378,16 @@ class _PointEvaluation:
         if self.reduction_backend is None:
             self.reduction_backend = executor_options().get("reduction", "ninjars")
         backend = self.reduction_backend
+        # The unchecked setting of the call (m-lit lit-unchecked; passed only
+        # when set, so a checked call constructs what it did before).
+        unchecked = {"unchecked": True} if executor_options().get("unchecked") else {}
         if backend == "tirust":
-            return self.slice.native.V2TirReducer()
+            return self.slice.native.V2TirReducer(**unchecked)
         return self.slice.native.V2Reducer(
             "double" if numbers.double else "arbitrary",
             None if numbers.double else numbers.precision.digits,
             "fast" if numbers.double else "generic",
+            **unchecked,
         )
 
     def _reduce(
