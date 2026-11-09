@@ -240,7 +240,8 @@ C NUMBER OF INDEPENDENT LOOPCOEFS FOR RANK=RANK
 	  ELSE
 	    TIR_CACHE_INDEX = %(proc_prefix)sTIRCACHE_INDEX(CTMODE)
 C This way whenever the CTMode exceeds the cache size it rolls back to the beginning and MadLoop will have taken care of having re-initialized TIR_DONE between labels 200 and 205 in loop_matrix.f
-		TIR_CACHE_INDEX = MOD(TIR_CACHE_INDEX-1,TIR_CACHE_SIZE)+1 
+C       Keep the constant expression valid when users disable this cache.
+		TIR_CACHE_INDEX = MOD(TIR_CACHE_INDEX-1,MAX(TIR_CACHE_SIZE,1))+1
 	  ENDIF
 
 	  IF(.NOT.TIR_DONE(I_LOOPGROUP,TIR_CACHE_INDEX))THEN
