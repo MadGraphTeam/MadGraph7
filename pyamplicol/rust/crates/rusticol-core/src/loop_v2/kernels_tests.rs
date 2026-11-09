@@ -795,13 +795,16 @@ fn traced_rows_are_bitwise_the_whole_steps_diagonal() {
             .collect();
         SegmentLayout::new(dense.loop_in_dimension(), dense.out_dimension(), entries).unwrap()
     }
+    /// One fused trace edge of a comparison: its segment, layout, factor
+    /// (real and imaginary rows) and row links.
+    type TraceEdge<'a> = (
+        &'a Segment<'a>,
+        &'a SegmentLayout,
+        &'a [Vec<Rational>; 2],
+        &'a [RowLink],
+    );
     fn compare<const LANES: usize>(
-        edges: &[(
-            &Segment<'_>,
-            &SegmentLayout,
-            &[Vec<Rational>; 2],
-            &[RowLink],
-        )],
+        edges: &[TraceEdge<'_>],
         rows: usize,
         d_alpha: usize,
         d_out: usize,
