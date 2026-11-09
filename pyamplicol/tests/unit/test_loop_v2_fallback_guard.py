@@ -1019,10 +1019,12 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
       the fallback's value as the Python API serves it, no guard estimate in
       either record;
     * double-double, z z z points 44 and 57 (the defect): status Failed
-      (not AccuracyNotEstablished), the guard's reason naming the carrier,
-      the guard's estimates in the "fallbacks" record equal to the Python
-      API's (within ``ULPS``; on record 23.14776330598882 vs
-      23.147763305988818 and 31.352350506280747 on both sides);
+      (not AccuracyNotEstablished) as in the Python API: at NinjaRS
+      5b6a8f57 the guard's rejection naming the carrier, its estimates in
+      the "fallbacks" record equal to the Python API's (within ``ULPS``; on
+      record 23.14776330598882 vs 23.147763305988818 and 31.352350506280747
+      on both sides); at 71eddb15 NinjaRS's conditioning bound refuses the
+      points, no estimate on either side;
     * the g g > h h near-forward points in double-double, at 20 digits and
       at 16 digits with the target 1e-6: the Python API's decisions and
       estimates per point, every accepted value bitwise the SDK's explicit
@@ -1333,18 +1335,21 @@ def _route_guard(route: str, sdk_found: dict, lanes: list, arithmetic: str, targ
 
 
 @pytest.mark.loop_physics
-def test_the_guard_on_a_helicity_selection_at_the_defect(zzz, loop_native):
+def test_a_helicity_selection_at_the_defect_returns_no_value(zzz, loop_native):
     """DECISIONS 2026-11-09 14:30 (RULING Q7) at the defect: g g > z z z
-    stream point 44 in double-double (TIRust refuses it at its Gram gate),
-    a one-helicity selection of row h1 in both APIs on the same exact
-    inputs (Python ``evaluate(helicities=["h1"])``, the C ABI's
-    ``rusticol_virtual_evaluate_selected``). The fallback evaluates that
-    row only; NinjaRS's h1 value is 8.6e4 times its truth there (truth:
-    TIRust at 60 digits on the same inputs) and the guard's estimate of the
-    row is 1.4e2 (``tmp/lit-fallback-guard/fix3/probe10.json``): the point
-    fails typed in both APIs with the same estimate, the SDK's status
-    Failed, and ``on_failure="raise"`` raises ``EvaluationError`` with the
-    one reason."""
+    stream point 44 in double-double (TIRust refuses it at its Gram gate), a
+    one-helicity selection of row h1 in both APIs on the same exact inputs
+    (Python ``evaluate(helicities=["h1"])``, the C ABI's
+    ``rusticol_virtual_evaluate_selected``): the fallback evaluates that row
+    only, and the point fails typed in both APIs with the same record (SDK
+    status Failed), never with a value. Before NinjaRS's conditioning bound
+    (pin 5b6a8f57) NinjaRS served the row 8.6e4 times its truth and the
+    guard rejected it on its estimate 1.4e2
+    (``tmp/lit-fallback-guard/fix3/probe10.json``); with the bound (NinjaRS
+    71eddb15, lit-ninja-planar) NinjaRS refuses it (``CutFailed {
+    SingularParameter }``): either way a typed failure, and
+    ``on_failure="raise"`` raises ``EvaluationError`` naming the NinjaRS
+    fallback."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.errors import EvaluationError
@@ -1375,9 +1380,12 @@ def test_the_guard_on_a_helicity_selection_at_the_defect(zzz, loop_native):
     finally:
         sdk.rusticol_virtual_free(handle)
     assert found["status"] == 0, found
-    decided = _route_guard("selected", found, _lanes(python), "double-double", TARGET)
-    assert decided == ([], [0]), _lanes(python)
-    with pytest.raises(EvaluationError, match=ESTIMATE):
+    served, _rejected = _route_guard(
+        "selected", found, _lanes(python), "double-double", TARGET
+    )
+    assert not served and python.values == (None,), _lanes(python)
+    assert "NinjaRS" in python.diagnostics[0].detail
+    with pytest.raises(EvaluationError, match="NinjaRS"):
         runtime.evaluate(same, on_failure="raise", **options)
 
 
@@ -1393,12 +1401,18 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     guard's estimate of the call's outputs is the same (bitwise on record,
     ``ULPS`` allowed) and so is the decision. Double-double: the accepted
     outputs are the explicit NinjaRS call's bitwise (Python ``repr``, the C
-    ABI's decimal record). 16 digits at the target 1e-6 (the limit stays
-    1e-5): point 1 is accepted and point 2 rejected typed on every route
+    ABI's decimal record); the resolved call rejects point 2 on its
+    suppressed +- rows' own estimates, and ``on_failure="raise"`` raises
+    ``EvaluationError`` with the guard's reason. (Accuracy is not this
+    test's claim: those +- rows are far off TIRust's at points 0 and 1 too,
+    with small cached estimates: the report's guard-miss finding.) 16
+    digits at the target 1e-6 (the limit stays 1e-5): point 1 is accepted
+    and point 2 rejected typed on every route
     (estimates 1.6e-6..3.7e-6 and 3.8e-3..1.8e-2 at pin 5b6a8f57,
     ``tmp/lit-fallback-guard/fix3/probe9.json``)."""
 
     from pyamplicol import Runtime
+    from pyamplicol.api.errors import EvaluationError
     from pyamplicol.correlators import CorrelatedRequest
     from tests.unit.test_loop_v2_sdk_extras import _sdk
     from tests.unit.test_loop_v2_sdk_induced import _open
@@ -1469,10 +1483,15 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     sdk_found = sdk_calls(b"double-double", 0, TARGET)
     sdk_explicit = sdk_calls(b"double-double", 0, TARGET, b"ninjars")
     for route, result in found.items():
-        served, _rejected = _route_guard(
+        served, rejected = _route_guard(
             route, sdk_found[route], lanes_of(result), "double-double", TARGET
         )
         assert served, (route, lanes_of(result))
+        if route == "resolved":
+            # Point 2's suppressed +- rows (1.3e-21 of its ++ rows) have
+            # estimates 3.2e-5 / 3.1e-5 on their own magnitudes (fix3/
+            # probe9.json; the summed estimate is 8.2e-11): rejected.
+            assert rejected == [2], lanes_of(result)
         theirs = by_key(explicit[route])
         for key, evaluation in by_key(result).items():
             for p in served:
@@ -1485,6 +1504,9 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
         plain = _decimal_per_point(sdk_explicit[route])
         for p in served:
             assert mine[p] is not None and mine[p] == plain[p], (route, p)
+
+    with pytest.raises(EvaluationError, match=ESTIMATE):
+        runtime.evaluate_resolved(same, **{**options, "on_failure": "raise"})
 
     # 16 digits at the target 1e-6: one point accepted, one rejected typed.
     options = {
