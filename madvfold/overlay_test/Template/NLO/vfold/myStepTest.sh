@@ -83,11 +83,13 @@ fi
 # Define tsts if not yet defined
 if [ "${tsts}" == "" ]; then tsts=${tstsDef}; fi
 
-# Step 14t part 2/2: process-dependent default random seed for all tests, unless ENV_VFOLDTEST_ISEED
+# Step 14t part 2/2: process-dependent default random seed, unless ENV_VFOLDTEST_ISEED
 # is already set (else myLaunch.sh uses 84100, the iseed of the original eebbbb tests)
 # - gg_ttxg (ggttg): 84118, which was chosen so that n20f111k512g1 and n20f841k64g1 include one virt
 #   event in modes S/T/F/C, to test the virtuals (with 84100 they have none: in channel GF10.0 only
 #   about 1% of the events are virt events, so about 20% of the seeds give at least one in 20 events)
+# Step 15d part 1/2: use it only in the n20f* tests, for which it was selected: the longer tests
+# use 84100, so that their virt events are not biased by this selection
 iseedDef=
 if [ "${ENV_VFOLDTEST_ISEED}" == "" ]; then
   if [ -d SubProcesses/P0_gg_ttxg ]; then iseedDef=84118; fi
@@ -180,7 +182,7 @@ for tst in ${tsts}; do
     echo "ERROR! Unknown tst=${tst}" |& tee -a $outL
     exit 1
   fi
-  if [ "${iseedDef}" != "" ]; then env="${env} ENV_VFOLDTEST_ISEED=${iseedDef}"; fi
+  if [ "${iseedDef}" != "" ] && [[ "${tst}" == n20f* ]]; then env="${env} ENV_VFOLDTEST_ISEED=${iseedDef}"; fi
   #====================
   # PART 1: LAUNCH
   #====================
