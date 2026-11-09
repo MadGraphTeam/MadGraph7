@@ -292,6 +292,10 @@ fi
 sed -i "s/.*= nevents/  ${ENV_VFOLDTEST_NEVENTS} = nevents/" Cards/run_card.dat
 sed -i "s/.*= folding/  ${ENV_VFOLDTEST_FOLDING} = folding/" Cards/run_card.dat
 sed -i "s/.*= iseed/  ${randinit} = iseed/" Cards/run_card.dat
+# Step 15d part 2/2 (MadGraph7 only): use the PDF of the mg5amcnlo tests and of their MINT0/1 grids
+# (the MadGraph7 default is NNPDF4.0 through LHAPDF); this has no effect if lpp=0 (e.g. eebbbb)
+sed -i "s/.*= pdlabel/ nn23nlo = pdlabel/" Cards/run_card.dat
+sed -i "s/.*= lhaid/ 244600  = lhaid/" Cards/run_card.dat
 if [ "${ENV_VFOLDTEST_REQACC}" != "" ]; then
   sed -i "s/.*= req_acc /  ${ENV_VFOLDTEST_REQACC} = req_acc /" Cards/run_card.dat
 fi
