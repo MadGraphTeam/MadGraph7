@@ -106,16 +106,29 @@ pub fn trace_into<T: Carrier, const L: usize>(
 ) {
     let v = lane_vector_len(L);
     let n_out = ncoeff(step.rank_out);
-    let n_family = ncoeff(rank);
-    debug_assert!(n_out <= n_family, "a trace step above the family rank");
+    debug_assert!(n_out <= ncoeff(rank), "a trace step above the family rank");
     let row = step.out_row() * v;
     let mut column = vec![zero.clone(); n_out * v];
     for o in 0..columns {
         row_trace(step, &output[o * row..][..row], &mut column);
-        let target = &mut accumulator[o * n_family * v..][..n_family * v];
-        for (t, c) in target.chunks_exact_mut(v).zip(column.chunks_exact(v)) {
-            cadd::<T, L>(t, c);
-        }
+        close_column::<T, L>(&column, accumulator, o, rank);
+    }
+}
+
+/// The closure of one traced object row of a seeded plan into its
+/// observable column `o`: `acc[o][m] += τ[m]` ([`trace_into`]).
+#[inline]
+pub fn close_column<T: Carrier, const L: usize>(
+    trace: &[T],
+    accumulator: &mut [T],
+    o: usize,
+    rank: usize,
+) {
+    let v = lane_vector_len(L);
+    let n_family = ncoeff(rank);
+    let target = &mut accumulator[o * n_family * v..][..n_family * v];
+    for (t, c) in target.chunks_exact_mut(v).zip(trace.chunks_exact(v)) {
+        cadd::<T, L>(t, c);
     }
 }
 
@@ -140,25 +153,48 @@ pub fn trace_rows_into<T: Carrier, const L: usize>(
 ) {
     let v = lane_vector_len(L);
     let n_out = ncoeff(step.rank_out);
-    let n_family = ncoeff(rank);
-    debug_assert!(n_out <= n_family, "a trace step above the family rank");
+    debug_assert!(n_out <= ncoeff(rank), "a trace step above the family rank");
     let row = step.out_row() * v;
     let mut trace = vec![zero.clone(); n_out * v];
     let mut term = vec![zero.clone(); v];
     for (r, &h) in born.iter().enumerate() {
         row_trace(step, &output[r * row..][..row], &mut trace);
-        for &(o, w) in &columns[h as usize] {
-            let (re, im) = &vector[w];
-            let target = &mut accumulator[o * n_family * v..][..n_family * v];
-            for (t, c) in target.chunks_exact_mut(v).zip(trace.chunks_exact(v)) {
-                let (c_re, c_im) = c.split_at(L);
-                let (term_re, term_im) = term.split_at_mut(L);
-                for l in 0..L {
-                    term_re[l] = re.clone() * &c_re[l] - im.clone() * &c_im[l];
-                    term_im[l] = re.clone() * &c_im[l] + im.clone() * &c_re[l];
-                }
-                cadd::<T, L>(t, &term);
+        close_row::<T, L>(
+            &trace,
+            accumulator,
+            &columns[h as usize],
+            vector,
+            rank,
+            &mut term,
+        );
+    }
+}
+
+/// The closure of one traced object row of a dressed-row plan into the
+/// observable columns `(o, w)` of its Born row: `acc[o][m] += u[w] τ[m]`
+/// ([`trace_rows_into`]); `term` is one lane vector of scratch.
+#[inline]
+pub fn close_row<T: Carrier, const L: usize>(
+    trace: &[T],
+    accumulator: &mut [T],
+    columns: &[(usize, usize)],
+    vector: &[(T, T)],
+    rank: usize,
+    term: &mut [T],
+) {
+    let v = lane_vector_len(L);
+    let n_family = ncoeff(rank);
+    for &(o, w) in columns {
+        let (re, im) = &vector[w];
+        let target = &mut accumulator[o * n_family * v..][..n_family * v];
+        for (t, c) in target.chunks_exact_mut(v).zip(trace.chunks_exact(v)) {
+            let (c_re, c_im) = c.split_at(L);
+            let (term_re, term_im) = term.split_at_mut(L);
+            for l in 0..L {
+                term_re[l] = re.clone() * &c_re[l] - im.clone() * &c_im[l];
+                term_im[l] = re.clone() * &c_im[l] + im.clone() * &c_re[l];
             }
+            cadd::<T, L>(t, term);
         }
     }
 }

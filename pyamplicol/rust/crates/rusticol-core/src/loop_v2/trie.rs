@@ -15,12 +15,15 @@
 //! per edge and routing term into one accumulator per vertex tensor, then
 //! `O' += T · V` once per group and target row.
 
-use super::closure::{FamilyNumerator, trace_into, trace_rows_into};
+use super::closure::{FamilyNumerator, close_column, close_row, trace_into, trace_rows_into};
 use super::dress::{Carrier, ChunkInputs, LaneData, Pool, dress_edge};
-use super::kernels::{Segment, lane_vector_len, split_edge, split_vertex};
-use super::plan::{Edge, Family, LoopProgramV4, Source, SplitStep, Step};
+use super::kernels::{
+    DiagonalSchedule, Segment, TraceTerm, lane_vector_len, split_edge, split_vertex, trace_row,
+};
+use super::plan::{Edge, Family, LoopProgramV4, RowTrace, Source, SplitStep, Step};
 use super::seeds::Seeds;
 use crate::{RusticolError, RusticolResult};
+use ninjars::fast::tensor_layout::ncoeff;
 
 /// A family's numerators and the peak of its live open-loop objects (reals).
 pub struct FamilyRun<T> {
@@ -37,6 +40,33 @@ pub fn run_family<T: Carrier, const L: usize>(
     data: &LaneData<T, L>,
 ) -> RusticolResult<FamilyRun<T>> {
     run_family_on(plan, index, &plan.families[index], inputs, seeds, data)
+}
+
+/// The source object of an edge: a weighted leaf seed, or a child's output
+/// (taken: the caller frees it once consumed).
+#[allow(clippy::too_many_arguments)]
+fn source<T: Carrier, const L: usize>(
+    edge: &Edge,
+    family: &Family,
+    seeds: &Seeds<T>,
+    weights: &[T],
+    outputs: &mut [Option<Vec<T>>],
+    pool: &mut Pool<T>,
+) -> RusticolResult<Vec<T>> {
+    match edge.source {
+        Source::Leaf(leaf) => {
+            let mut input = pool.take(seeds.len());
+            seeds.leaf_into::<L>(
+                family.leaves[leaf].seed as usize,
+                &weights[leaf],
+                &mut input,
+            );
+            Ok(input)
+        }
+        Source::Step(child) => outputs[child]
+            .take()
+            .ok_or_else(|| RusticolError::internal("a trie object is consumed twice")),
+    }
 }
 
 /// [`run_family`] on `family`: plan family `index` or its copy pruned to an
@@ -65,29 +95,42 @@ pub fn run_family_on<T: Carrier, const L: usize>(
     // A split part's row links, unpacked (`plan::PackedLinks`).
     let mut links = Vec::new();
     for (s, step) in family.steps.iter().enumerate() {
-        let mut out = pool.take(step.rows * columns * step.out_row() * v);
-        // The source object of an edge: a weighted leaf seed, or a child's
-        // output (freed after this edge).
-        let mut source = |edge: &Edge, pool: &mut Pool<T>| -> RusticolResult<Vec<T>> {
-            match edge.source {
-                Source::Leaf(leaf) => {
-                    let mut input = pool.take(seeds.len());
-                    seeds.leaf_into::<L>(
-                        family.leaves[leaf].seed as usize,
-                        &weights[leaf],
-                        &mut input,
-                    );
-                    Ok(input)
-                }
-                Source::Step(child) => outputs[child]
-                    .take()
-                    .ok_or_else(|| RusticolError::internal("a trie object is consumed twice")),
+        // A fused trace step forms only the diagonal its trace reads
+        // (lit-dress lever A; decided per step from the plan).
+        if let (Some(accumulator), None) = (step.trace, &step.split)
+            && let Some(diagonals) = diagonals(plan, step)
+        {
+            let sources = step
+                .edges
+                .iter()
+                .map(|edge| source::<T, L>(edge, family, seeds, &weights, &mut outputs, &mut pool))
+                .collect::<RusticolResult<Vec<_>>>()?;
+            let mut trace = pool.take(ncoeff(step.rank_out) * v);
+            let row_trace = family.row_traces.get(s).and_then(Option::as_ref);
+            close_diagonal::<T, L>(
+                plan,
+                step,
+                &diagonals,
+                &sources,
+                inputs,
+                row_trace,
+                &mut numerator.accumulators[accumulator],
+                family.rank,
+                &mut trace,
+                data,
+            );
+            pool.give(trace);
+            for input in sources {
+                pool.give(input);
             }
-        };
+            continue;
+        }
+        let mut out = pool.take(step.rows * columns * step.out_row() * v);
         match &step.split {
             None => {
                 for edge in &step.edges {
-                    let input = source(edge, &mut pool)?;
+                    let input =
+                        source::<T, L>(edge, family, seeds, &weights, &mut outputs, &mut pool)?;
                     dress_edge::<T, L>(
                         &plan.contents[edge.content],
                         step.seeded,
@@ -114,7 +157,8 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                     })
                     .collect();
                 for (edge, parts) in step.edges.iter().zip(&split.parts) {
-                    let input = source(edge, &mut pool)?;
+                    let input =
+                        source::<T, L>(edge, family, seeds, &weights, &mut outputs, &mut pool)?;
                     for part in parts {
                         let group = &split.groups[part.group];
                         let segment = split_segment(plan, step, group.vertex, edge.products);
@@ -138,10 +182,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
             (Some(accumulator), Some(Some(row_trace))) => {
                 // Dressed rows: the per-row closure with the amplitude
                 // vector of the step's seed key (decided per step).
-                let vector: Vec<(T, T)> = plan.key_vectors[row_trace.key as usize]
-                    .iter()
-                    .map(|[re, im]| (data.cast(re), data.cast(im)))
-                    .collect();
+                let vector = key_vector(plan, row_trace, data);
                 trace_rows_into::<T, L>(
                     step,
                     &out,
@@ -172,6 +213,147 @@ pub fn run_family_on<T: Carrier, const L: usize>(
         numerator,
         peak_reals: pool.peak,
     })
+}
+
+/// The amplitude vector of a dressed trace step's seed key in the carrier.
+fn key_vector<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    row_trace: &RowTrace,
+    data: &LaneData<T, L>,
+) -> Vec<(T, T)> {
+    plan.key_vectors[row_trace.key as usize]
+        .iter()
+        .map(|[re, im]| (data.cast(re), data.cast(im)))
+        .collect()
+}
+
+/// The diagonal schedules of a fused trace step's edges (lit-dress lever
+/// A), or `None` where an edge has none: the step then forms its whole
+/// output.
+fn diagonals<'a>(plan: &'a LoopProgramV4, step: &Step) -> Option<Vec<&'a DiagonalSchedule>> {
+    step.edges
+        .iter()
+        .map(|edge| {
+            (plan.contents[edge.content].d_out == step.d_out)
+                .then(|| plan.diagonal(edge.content, edge.products, step.seeded, step.d_alpha))
+                .flatten()
+        })
+        .collect()
+}
+
+/// Close a fused trace step from the diagonal of its output (lit-dress
+/// lever A): per traced object row, in row order, its trace
+/// ([`trace_row`]: the diagonal coefficients accumulated over the row's
+/// links in edge and link order, each from zero, then summed over the cut
+/// index in order) and its closure into the accumulator (dressed rows:
+/// [`close_row`] with the row's Born columns; seeded: [`close_column`]),
+/// the operations [`dress_edge`] into a zeroed output followed by
+/// [`trace_rows_into`] or [`trace_into`] perform on what the closure
+/// reads, so the accumulator is bitwise theirs. The traced rows are the row
+/// closure's rows (dressed rows) or the object columns (seeded plans, as
+/// `trace_into`); a link into another row is not formed (no closure reads
+/// it), nor is a row no link reaches closed (it would add exact zeros).
+#[allow(clippy::too_many_arguments)]
+fn close_diagonal<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    step: &Step,
+    diagonals: &[&DiagonalSchedule],
+    sources: &[Vec<T>],
+    inputs: &ChunkInputs<T>,
+    row_trace: Option<&RowTrace>,
+    accumulator: &mut [T],
+    rank: usize,
+    trace: &mut [T],
+    data: &LaneData<T, L>,
+) {
+    let v = lane_vector_len(L);
+    let traced = row_trace.map_or(plan.object_columns(), |r| r.rows.len());
+    // Per edge: its input row and factor row lengths.
+    let shapes: Vec<(usize, usize)> = step
+        .edges
+        .iter()
+        .map(|edge| {
+            let content = &plan.contents[edge.content];
+            let products = &plan.products[edge.products];
+            let input_row = if step.seeded {
+                Segment::new(
+                    1,
+                    1,
+                    1,
+                    content.d_in * content.d_out,
+                    products,
+                    step.rank_out,
+                )
+            } else {
+                Segment::new(
+                    step.d_alpha,
+                    content.d_in,
+                    1,
+                    content.d_out,
+                    products,
+                    step.rank_out,
+                )
+            }
+            .input_row_len();
+            (input_row * v, content.factor_row() * v)
+        })
+        .collect();
+    // The links into each traced row, in edge then link order.
+    let mut starts = vec![0usize; traced + 1];
+    for edge in &step.edges {
+        for link in &edge.links {
+            if let Some(count) = starts.get_mut(link.output as usize + 1) {
+                *count += 1;
+            }
+        }
+    }
+    for r in 0..traced {
+        starts[r + 1] += starts[r];
+    }
+    let mut next = starts.clone();
+    let mut order = vec![(0u32, 0u32); starts[traced]];
+    for (e, edge) in step.edges.iter().enumerate() {
+        for (l, link) in edge.links.iter().enumerate() {
+            let row = link.output as usize;
+            if row < traced {
+                order[next[row]] = (e as u32, l as u32);
+                next[row] += 1;
+            }
+        }
+    }
+    let vector = row_trace.map(|r| key_vector(plan, r, data));
+    let mut term = vec![data.zero.clone(); v];
+    let mut contributions: Vec<TraceTerm<'_, T>> = Vec::new();
+    for r in 0..traced {
+        let links = &order[starts[r]..starts[r + 1]];
+        if links.is_empty() {
+            continue;
+        }
+        contributions.clear();
+        for &(e, l) in links {
+            let edge = &step.edges[e as usize];
+            let link = edge.links[l as usize];
+            let (input_row, factor_row) = shapes[e as usize];
+            contributions.push(TraceTerm {
+                input: &sources[e as usize][link.input as usize * input_row..][..input_row],
+                factor: &inputs.factors.get(edge.factor)[link.block as usize * factor_row..]
+                    [..factor_row],
+                schedule: diagonals[e as usize],
+            });
+        }
+        trace_row::<T, L>(&contributions, trace);
+        match (row_trace, &vector) {
+            (Some(row_trace), Some(vector)) => close_row::<T, L>(
+                trace,
+                accumulator,
+                &plan.row_columns[row_trace.rows[r] as usize],
+                vector,
+                rank,
+                &mut term,
+            ),
+            _ => close_column::<T, L>(trace, accumulator, r, rank),
+        }
+    }
 }
 
 /// The split-form segment of `step` for `vertex`, with products table

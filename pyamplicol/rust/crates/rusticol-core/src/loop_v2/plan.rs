@@ -975,6 +975,23 @@ impl LoopProgramV4 {
     ) -> Option<&super::kernels::GatherSchedule> {
         self.gathers.get(content, products, seeded)
     }
+
+    /// The diagonal schedule of a fused trace step's edge of content
+    /// `content` on products table `products` with `d_alpha` cut indices
+    /// (lit-dress lever A; `None`: the step forms its whole output).
+    #[inline]
+    pub fn diagonal(
+        &self,
+        content: usize,
+        products: usize,
+        seeded: bool,
+        d_alpha: usize,
+    ) -> Option<&super::kernels::DiagonalSchedule> {
+        self.gathers
+            .diagonals
+            .get(&(content, products, seeded, d_alpha))
+            .map(|&id| &self.gathers.diagonal_schedules[id])
+    }
 }
 
 /// The output-stationary schedules ([`super::kernels::GatherSchedule`]) of
@@ -984,6 +1001,11 @@ impl LoopProgramV4 {
 /// receives more than one term: a property of the plan's data, decided once
 /// at load. The schedules change the order of loads and stores only, never a
 /// value; they are derived, so stored plans are unchanged.
+///
+/// The fused trace steps of schedule B also get the diagonal of their
+/// edges' segments ([`super::kernels::DiagonalSchedule`], lit-dress lever
+/// A), one per distinct (content, products table, seeded, cut indices): a
+/// trace step forms only the diagonal its trace reads.
 #[derive(Clone, Debug, Default)]
 pub struct Gathers {
     products: usize,
@@ -991,6 +1013,10 @@ pub struct Gathers {
     /// plus one (0: none).
     index: Vec<u32>,
     schedules: Vec<super::kernels::GatherSchedule>,
+    /// Per `(content, products table, seeded, d_alpha)` of a fused trace
+    /// step's edge, its index in `diagonal_schedules`.
+    diagonals: HashMap<(usize, usize, bool, usize), usize>,
+    diagonal_schedules: Vec<super::kernels::DiagonalSchedule>,
 }
 
 impl Gathers {
@@ -1001,6 +1027,8 @@ impl Gathers {
             products,
             index: vec![0; program.contents.len() * products * 2],
             schedules: Vec::new(),
+            diagonals: HashMap::new(),
+            diagonal_schedules: Vec::new(),
         };
         let mut used = BTreeSet::new();
         let fused = |step: &Step, used: &mut BTreeSet<(usize, usize, bool)>| {
@@ -1035,6 +1063,43 @@ impl Gathers {
                 let slot = gathers.slot(content, table, seeded);
                 gathers.index[slot] =
                     u32::try_from(gathers.schedules.len()).expect("gather schedules exceed u32");
+            }
+        }
+        // The diagonals of schedule B's fused trace steps (the row-pruned
+        // copies of `plan/live.rs` keep their steps' edges, so they read
+        // these too).
+        let mut traced = BTreeSet::new();
+        for family in &program.families {
+            for step in family
+                .steps
+                .iter()
+                .filter(|s| s.trace.is_some() && s.split.is_none())
+            {
+                for edge in &step.edges {
+                    traced.insert((edge.content, edge.products, step.seeded, step.d_alpha));
+                }
+            }
+        }
+        for (content, table, seeded, d_alpha) in traced {
+            let content_ = &program.contents[content];
+            let (layout, cut, incoming) = if seeded {
+                (&content_.seeded, 1, 1)
+            } else {
+                (&content_.open, d_alpha, content_.d_in)
+            };
+            if let Some(schedule) = super::kernels::DiagonalSchedule::new(
+                layout,
+                &program.products[table],
+                cut,
+                incoming,
+                d_alpha,
+                content_.d_out,
+            ) {
+                gathers.diagonals.insert(
+                    (content, table, seeded, d_alpha),
+                    gathers.diagonal_schedules.len(),
+                );
+                gathers.diagonal_schedules.push(schedule);
             }
         }
         gathers
