@@ -645,7 +645,11 @@ class V2ObservablesRuntime:
         from pyamplicol.loops.v2.observables import NativeObservables
 
         with self._lock:
-            if key[0] == lc.SELECTION:
+            if key[0] == lc.SELECTION or (
+                key[0] == "resolved" and not isinstance(key[1], str)
+            ):
+                # An evaluation-time selection, or a resolved selection's
+                # own columns (``_resolved_key``).
                 if self._selections is None:
                     self._selections = lc.SelectionCache()
                 return self._selections.get(key, lambda: self._selection_columns(key))
@@ -670,17 +674,26 @@ class V2ObservablesRuntime:
             return found
 
     def _selection_columns(self, key: tuple[Any, ...]) -> Any:
-        """A leading-colour selection's native runner: a loaded process's
-        column set formed from its stored records, or a slice's one-column
-        executor."""
+        """A selection's native runner: a loaded process's column set formed
+        from its stored records, or a slice's executor of the selection's
+        column (a resolved selection: of its kept resolved columns)."""
 
         from pyamplicol.loops.v2.observables import NativeObservables
 
-        _kind, column = key
+        kind, column = key
         options = {"member": self._member, **self._native_options}
         stored = getattr(self._observables, "native_columns", None)
         if stored is not None:
             return stored(*key, **options)
+        if kind == "resolved":
+            resolution, rows, basis = column
+            columns = [
+                item
+                for item in self._observables.resolved_columns(resolution)
+                if (rows is None or item.key[0] in rows)
+                and (basis is None or item.key[1] in basis)
+            ]
+            return NativeObservables(self._observables, columns, **options)
         return NativeObservables(self._observables, [column], **options)
 
     def _run(
@@ -1244,13 +1257,20 @@ class V2ObservablesRuntime:
         return "helicity", (None,)
 
     def _resolved_key(
-        self, resolution: Any, kept: frozenset[Any] | None
+        self,
+        resolution: Any,
+        kept: frozenset[Any] | None,
+        basis: frozenset[int] | None = None,
     ) -> tuple[Any, ...]:
-        """The native column set of ``evaluate_resolved``: every helicity row
-        (a selection keeps its ``kept`` rows from it)."""
+        """The native column set of ``evaluate_resolved``: every resolved
+        column, or a selection's kept rows' (and at leading colour the kept
+        basis elements') columns only, so an unselected row's column is
+        neither formed, dressed nor reduced (lit-fc-hel (G3); its own column
+        set, kept among the runtime's evaluation-time selections)."""
 
-        del kept
-        return ("resolved", resolution)
+        if kept is None and basis is None:
+            return ("resolved", resolution)
+        return ("resolved", (resolution, kept, basis))
 
     def _colour_ids(
         self, components: Sequence[Any]
@@ -1513,7 +1533,7 @@ class V2ObservablesRuntime:
             rows = tuple(sorted(self._member.row(row) for row in rows))
         resolution, components = self._resolution(color_resolution)
         helicity_ids = tuple(f"h{i}" for i in range(len(rows)))
-        kept = None
+        kept = basis = None
         if helicities or color_flows:
             self._require_selection(helicities, color_flows, resolved=True)
             self._refuse_member_selection()
@@ -1540,7 +1560,7 @@ class V2ObservablesRuntime:
             ).entries
 
         entries, failures, served = self._run(
-            self._resolved_key(resolution, kept),
+            self._resolved_key(resolution, kept, basis),
             python,
             points,
             scales,
@@ -1804,7 +1824,10 @@ class V2InducedObservablesRuntime(V2ObservablesRuntime):
         return choice, tuple(range(len(self._observables.slice.amplitude)))
 
     def _resolved_key(
-        self, resolution: Any, kept: frozenset[Any] | None
+        self,
+        resolution: Any,
+        kept: frozenset[Any] | None,
+        basis: frozenset[int] | None = None,
     ) -> tuple[Any, ...]:
         """A resolved helicity selection's columns read, so dress, the
         selected rows only (the executor's row mask, as

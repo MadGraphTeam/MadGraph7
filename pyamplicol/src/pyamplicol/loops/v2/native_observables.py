@@ -844,6 +844,17 @@ class StoredObservableSlice:
             return _Selection(found, masks.wanted, group=value.key, masks=masks)
         if kind not in KINDS:
             raise ValueError(f"unknown column set {kind!r}")
+        if kind == "resolved" and not isinstance(value, str):
+            # A resolved selection (``resolved_parts``): the kept rows' (and
+            # at leading colour the kept basis elements') resolved columns
+            # only, its own column set (the runtime keeps its most recently
+            # used ones, ``selection.SelectionCache``).
+            resolution, rows, basis = value
+            found = StoredColumns(
+                self, "resolved", member=member, subset=(rows, basis), **options
+            )
+            found.check_resolution(resolution)
+            return _Selection(found, None)
         key = (kind, id(member), tuple(sorted(options.items())))
         found = self._sets.get(key)
         if found is None:
@@ -1166,6 +1177,103 @@ def selection_parts(observables: StoredObservableSlice, column: Any) -> _Selecti
         tuple(out_columns),
         lanes,
         families + (None,) * (2 - len(families)),
+    )
+
+
+def resolved_parts(
+    observables: StoredObservableSlice,
+    rows: frozenset[Any] | None,
+    basis: frozenset[int] | None,
+) -> _SelectionParts:
+    """The stored resolved columns of a resolved selection (lit-fc-hel
+    (G3)): the columns of the kept Born helicity ``rows`` and (leading
+    colour) the kept Born basis elements only, each with its stored seed
+    column, seed weights and interference program, so the set's plan seeds
+    (and its load keeps, ``column_rows``) the kept rows only and an
+    unselected row's column is never formed (None keeps every one of that
+    axis). The column keys and values are the resolved set's."""
+
+    from .observables import Column
+
+    stored = observables.stored
+    meta = stored.record["sets"]["resolved"]
+    base = stored.sets["resolved"]
+    items = meta["columns"]
+    kept = [
+        k
+        for k, item in enumerate(items)
+        if (rows is None or _row(item["rows"][0]) in rows)
+        and (basis is None or _basis_of(item) in basis)
+    ]
+    if not kept:
+        raise ValueError("a selection keeps no resolved column")
+    by_key = {json.dumps(item["key"]): k for k, item in enumerate(items)}
+    chosen = set(kept)
+    used: dict[int, int] = {}
+    lanes: dict[tuple[Any, Orders], tuple[int, int]] = {}
+    for key, sector, direct, swapped in meta["lanes"]:
+        if by_key[json.dumps(key)] not in chosen:
+            continue
+        for column in (int(direct), int(swapped)):
+            used.setdefault(column, len(used))
+        lanes[_key_of(key), _orders_of(sector)] = (
+            used[int(direct)],
+            used[int(swapped)],
+        )
+    order = sorted(used, key=used.get)
+    overlays = [json.loads(base.overlay_json)]
+    if base.companion_overlay_json is not None:
+        overlays.append(json.loads(base.companion_overlay_json))
+    if any(overlay is None for overlay in overlays):
+        raise ValueError("the resolved set stores no seed records of its own")
+    formed = []
+    for overlay in overlays:
+        weights = overlay.get("column_weights") or list(
+            range(int(overlay["columns"]))
+        )
+        column_rows = overlay.get("column_rows")
+        out = {
+            key: overlay[key] for key in ("seed_classes", "seeds") if key in overlay
+        }
+        out.update(
+            {
+                "columns": len(order),
+                "column_rows": None
+                if column_rows is None
+                else [column_rows[c] for c in order],
+                "column_weights": [weights[c] for c in order],
+                "born_components": overlay["born_components"],
+            }
+        )
+        formed.append(out)
+    records = json.loads(base.columns_json)
+    columns_json = json.dumps(
+        {**records, "columns": [records["columns"][k] for k in kept]},
+        separators=(",", ":"),
+    )
+    out_columns = tuple(
+        Column(
+            _key_of(items[k]["key"]),
+            None,
+            frozenset(_row(row) for row in items[k]["rows"]),
+            None if items[k]["basis"] is None else frozenset(items[k]["basis"]),
+        )
+        for k in kept
+    )
+    from .plan_export import dumps
+
+    return _SelectionParts(
+        ObservableSet(
+            dumps(formed[0]),
+            base.plan_components,
+            columns_json,
+            None if len(formed) == 1 else dumps(formed[1]),
+            base.companion_components,
+        ),
+        meta,
+        out_columns,
+        lanes,
+        (None, None),
     )
 
 
@@ -1555,6 +1663,7 @@ class StoredColumns:
         schedule: str = "B",
         selection: Any = None,
         template: bool = False,
+        subset: Any = None,
     ):
         from .plan_export import DEFAULT_LANES
 
@@ -1576,6 +1685,8 @@ class StoredColumns:
         parts = (
             self.template
             if template
+            else resolved_parts(observables, *subset)
+            if subset is not None
             else None
             if selection is None
             else selection_parts(observables, selection)
