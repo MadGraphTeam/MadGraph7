@@ -119,20 +119,24 @@ def test_the_settings_are_the_public_unchecked_call():
 def test_the_stage_split_is_labelled_and_complete():
     module = _module()
     stages = {
-        "backends": [
-            {
+        "backend_runs": {
+            "tirust": {
                 "effective": "tirust",
-                "seconds_per_point": 1.0,
-                "stages_per_point": {
-                    "trees + CT kets": 0.1,
-                    "dressing": 0.5,
-                    "scatter": 0.1,
-                    "reduction": 0.2,
-                    "reduction: tensor moments": 0.15,
-                    "squaring": 0.01,
+                "batches": {
+                    "128": {
+                        "median_seconds_per_point": 1.0,
+                        "stages_per_point": {
+                            "trees + CT kets": 0.1,
+                            "dressing": 0.5,
+                            "scatter": 0.1,
+                            "reduction": 0.2,
+                            "reduction: tensor moments": 0.15,
+                            "squaring": 0.01,
+                        },
+                    }
                 },
             }
-        ]
+        }
     }
     split = module._stage_split(stages, "tirust")
     assert split["label"] == "instrumented run: stage shares, not the timed call"
