@@ -293,9 +293,9 @@ physics rule: every input of the dressing is replaced by a random value and
 each identity is checked in the prime field F_p, p = 2^61 - 1. Its stated
 failure probability is `[generation] helicity_filter_failure_probability`
 (default 1e-12; 0 folds nothing), the same setting as the helicity filter.
-Couplings with an axial part, complex couplings and ratios through an
-irrational constant or a model parameter fail the test, and those chains
-stay unfolded. A group whose weights cancel exactly is dropped. A process
+Chains whose orientations differ by an axial coupling, and ratios that are
+complex or go through an irrational constant or a model parameter, fail the
+test, and those chains stay unfolded. A group whose weights cancel exactly is dropped. A process
 left with no chain and no counterterm is an exact fold zero (`g g > a a a`,
 `g g > h a`): its value is exactly 0, and the result's detail, the runtime's
 `inspect()` record (`exact_fold_zero`, `fold_certificate`) and the native
