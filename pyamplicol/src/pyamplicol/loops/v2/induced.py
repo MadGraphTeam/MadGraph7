@@ -43,6 +43,7 @@ numerically.
 
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -2353,11 +2354,17 @@ def _seconds(value: float) -> float:
     return round(value, 3)
 
 
-def _short(value: float) -> float | str:
-    """A ratio for the artifact record: three significant digits (a JSON
-    number), "inf" for an infinite one."""
+def _short(value: float | None, *, infinite: Any = "inf") -> Any:
+    """A ratio for a record: three significant digits (a JSON number);
+    ``infinite`` for an infinite one ("inf" in the artifact record), None
+    and NaN as they are (``checks._short`` keeps an infinite ratio a
+    float)."""
 
-    return float(f"{value:.3g}") if value != float("inf") else "inf"
+    if value is None:
+        return None
+    if value == float("inf"):
+        return infinite
+    return float(f"{value:.3g}") if value == value else value
 
 
 def _complex_mass(slice_: Any) -> bool:
@@ -2366,11 +2373,26 @@ def _complex_mass(slice_: Any) -> bool:
     return convention_record(slice_.compiled) is not None
 
 
+def initial_invariant(
+    point: Sequence[Sequence[Any]], initial: int, *, exact: bool = True
+) -> Any:
+    """mu_R^2 = s of the initial state, the convention of the probes, of
+    ``pyamplicol check`` and of the loop profile (``benchmarking.
+    profile_virtual``): the squared invariant mass of the first ``initial``
+    momenta, exact (``Fraction`` of the decimal components) or in binary64
+    (each component a ``math.fsum``)."""
+
+    if exact:
+        total = [sum(Fraction(p[mu]) for p in point[:initial]) for mu in range(4)]
+    else:
+        total = [math.fsum(float(p[mu]) for p in point[:initial]) for mu in range(4)]
+    return total[0] ** 2 - total[1] ** 2 - total[2] ** 2 - total[3] ** 2
+
+
 def _point_scale(point: Sequence[Sequence[str]], initial: int) -> Fraction:
     """The probe's mu_R^2: the squared invariant mass of the initial state."""
 
-    total = [sum(Fraction(p[mu]) for p in point[:initial]) for mu in range(4)]
-    return total[0] ** 2 - total[1] ** 2 - total[2] ** 2 - total[3] ** 2
+    return initial_invariant(point, initial)
 
 
 def g_norm(vector: Sequence[Any], gram: Sequence[Sequence[Any]], numbers: Any) -> Any:

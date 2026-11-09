@@ -482,6 +482,12 @@ precision = "auto"
 # config/effective.toml records, which must resolve to the stored model.
 # Default null.
 model = "loop_sm"
+# check.sqrt_s: Optional centre-of-mass energy of a 2 -> n scattering's check
+# points, in the model's mass unit; it must exceed the final-state threshold.
+# null keeps the generation's validation convention (massless beams: sqrt(s) =
+# max(1000, final threshold + 100); massive beams: twice the larger threshold).
+# Default null.
+sqrt_s = 1000.0
 
 [output]
 # output.format: typed API/config provenance default. The CLI uses --json.

@@ -1854,6 +1854,7 @@ def check_loop_requests(
     seed: int,
     precision=None,
     stored=None,
+    sqrt_s=None,
 ):
     """``pyamplicol check`` (``loops.v2.checks``): every process the request
     serves, regenerated IN MEMORY through this service's own preparation
@@ -1861,8 +1862,9 @@ def check_loop_requests(
     ``preparation_cache.PreparationMemo`` shared by the processes' and the
     probe / Goldstone slices; nothing written), checked at ``points`` seeded
     phase-space points of the generation's validation convention
-    (``build_process_validation_point`` at seeds ``seed``, ``seed + 1``,
-    ...: decays at rest, scatterings in the centre-of-mass frame) in the
+    (``_validation_momenta`` at seeds ``seed``, ``seed + 1``, ...: decays at
+    rest, scatterings in the centre-of-mass frame; ``sqrt_s`` replaces a
+    scattering's energy, ``check.sqrt_s``) in the
     carriers of ``induced.probe_carriers(precision)`` (None: binary64, then
     double-double where binary64 fails, is refused or is out of scope).
     ``stored`` (an artifact's manifest, ``artifacts.manifest.
@@ -1898,19 +1900,14 @@ def check_loop_requests(
         compiled = context.resolved.compiled
         for entry, request in zip(context.expanded, requests, strict=True):
             name = entry.request.name
-            momenta = []
-            for sample in range(points):
-                record = build_process_validation_point(
-                    entry.process_ir,
-                    context.resolved.model,
-                    process_id=name,
-                    seed=seed + sample,
-                )
-                if not record.available:
-                    raise GenerationError(
-                        f"check momenta unavailable for {name}: {record.error}"
-                    )
-                momenta.append(record.four_vectors)
+            momenta = _validation_momenta(
+                context,
+                entry,
+                seed=seed,
+                count=points,
+                unavailable=f"check momenta unavailable for {name}",
+                sqrt_s=sqrt_s,
+            )
             checked.append(
                 check_request(
                     name,
@@ -1973,20 +1970,34 @@ def _loop_induced_candidates(context, entry, process, validation, index):
         return None
     if slice_.amplitude.colour_zero:
         return []
-    candidates = []
-    for sample in range(max(validation.samples, 1)):
+    return _validation_momenta(
+        context,
+        entry,
+        seed=validation.seed + index,
+        count=max(validation.samples, 1),
+        unavailable="loop-induced probe momenta unavailable",
+    )
+
+
+def _validation_momenta(context, entry, *, seed, count, unavailable, sqrt_s=None):
+    """``count`` phase-space points of the generation's validation convention
+    (``build_process_validation_point`` at seeds ``seed``, ``seed + 1``,
+    ...; ``sqrt_s`` replaces a scattering's energy): the four-vectors, or
+    ``GenerationError`` "``unavailable``: <why>"."""
+
+    momenta = []
+    for sample in range(count):
         record = build_process_validation_point(
             entry.process_ir,
             context.resolved.model,
             process_id=entry.request.name,
-            seed=validation.seed + index + sample,
+            seed=seed + sample,
+            sqrt_s=sqrt_s,
         )
         if not record.available:
-            raise GenerationError(
-                f"loop-induced probe momenta unavailable: {record.error}"
-            )
-        candidates.append(record.four_vectors)
-    return candidates
+            raise GenerationError(f"{unavailable}: {record.error}")
+        momenta.append(record.four_vectors)
+    return momenta
 
 
 def _loop_induced_filter(backend, context, process, request, candidates, correlators):
@@ -2323,26 +2334,19 @@ def _compare_v2(
 
 
 def _v2_validation_points(context, entry, validation, index):
-    from fractions import Fraction
+    from pyamplicol.loops.v2.induced import initial_invariant
 
     points, scales = [], []
-    for sample in range(validation.samples):
-        record = build_process_validation_point(
-            entry.process_ir,
-            context.resolved.model,
-            process_id=entry.request.name,
-            seed=validation.seed + index + sample,
-        )
-        if not record.available:
-            raise GenerationError(
-                f"virtual validation momenta unavailable: {record.error}"
-            )
-        point = [[repr(float(x)) for x in vector] for vector in record.four_vectors]
+    for vectors in _validation_momenta(
+        context,
+        entry,
+        seed=validation.seed + index,
+        count=validation.samples,
+        unavailable="virtual validation momenta unavailable",
+    ):
+        point = [[repr(float(x)) for x in vector] for vector in vectors]
         initial = len(entry.process_ir.initial_pdgs)
-        total = [
-            sum(Fraction(vector[mu]) for vector in point[:initial]) for mu in range(4)
-        ]
-        scale = total[0] ** 2 - sum(component**2 for component in total[1:])
+        scale = initial_invariant(point, initial)
         if scale <= 0:
             raise GenerationError("virtual validation requires a positive invariant")
         points.append(point)

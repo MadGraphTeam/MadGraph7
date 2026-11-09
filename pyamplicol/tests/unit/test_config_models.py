@@ -10,6 +10,7 @@ from pyamplicol.config import (
     FIELD_REGISTRY,
     Action,
     BenchmarkConfig,
+    CheckConfig,
     ColorAccuracy,
     ColorConfig,
     ColorContraction,
@@ -43,8 +44,16 @@ from pyamplicol.config import (
 )
 
 
+def test_check_energy_must_be_a_positive_finite_number() -> None:
+    assert CheckConfig().sqrt_s is None
+    assert CheckConfig(sqrt_s=2500).sqrt_s == 2500.0
+    for invalid in (0.0, -1.0, float("inf"), float("nan"), "1000", True):
+        with pytest.raises(ConfigurationError, match=r"check\.sqrt_s"):
+            CheckConfig(sqrt_s=invalid)
+
+
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 137
+    assert len(FIELD_REGISTRY) == 138
     # m-lit lit-examples: `pyamplicol check` (the check action's section).
     assert FIELD_REGISTRY["check.points"].default == 3
     assert FIELD_REGISTRY["check.seed"].nullable
@@ -57,6 +66,11 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert "check" in FIELD_REGISTRY["action"].choices
     assert FIELD_REGISTRY["check.model"].nullable
     assert FIELD_REGISTRY["check.model"].default is None
+    # m-lit lit-ew-blocks: the check points' energy override (None: the
+    # generation's validation convention).
+    assert FIELD_REGISTRY["check.sqrt_s"].nullable
+    assert FIELD_REGISTRY["check.sqrt_s"].default is None
+    assert FIELD_REGISTRY["check.sqrt_s"].kind == "float"
     # m-lit lit-unchecked: the unchecked reduction setting, a runtime option
     # (off by default).
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False

@@ -1580,7 +1580,10 @@ class CheckConfig:
     ``generation.validation.seed``), the carriers (``precision``) and the
     model source the request is regenerated from (``model``: None takes
     ``model.source``, or for an artifact the source its
-    ``config/effective.toml`` records; resolved as ``model.source``)."""
+    ``config/effective.toml`` records; resolved as ``model.source``) and the
+    centre-of-mass energy of a scattering's points (``sqrt_s``, in the
+    model's mass unit: None keeps the generation's validation convention,
+    ``generation.validation._build_particles``)."""
 
     points: int = field(default=3, metadata=_setting("int"))
     seed: int | None = field(default=None, metadata=_setting("int", nullable=True))
@@ -1589,9 +1592,18 @@ class CheckConfig:
         metadata=_setting("str", choices=tuple(CheckPrecision)),
     )
     model: str | None = field(default=None, metadata=_setting("str", nullable=True))
+    sqrt_s: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "points", _integer(self.points, "check.points"))
+        if self.sqrt_s is not None:
+            object.__setattr__(
+                self,
+                "sqrt_s",
+                _finite_float(self.sqrt_s, "check.sqrt_s", minimum=0.0, exclusive=True),
+            )
         object.__setattr__(
             self, "seed", _optional_integer(self.seed, "check.seed", minimum=0)
         )

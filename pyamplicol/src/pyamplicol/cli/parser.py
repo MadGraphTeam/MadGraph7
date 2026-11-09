@@ -1101,6 +1101,18 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     check.add_argument(
+        "--sqrt-s",
+        dest="check.sqrt_s",
+        type=float,
+        default=argparse.SUPPRESS,
+        metavar="ENERGY",
+        help=(
+            "centre-of-mass energy of a scattering's points, in the model's "
+            "mass unit (default: the generation's validation convention, "
+            "max(1000, final threshold + 100) for massless beams)"
+        ),
+    )
+    check.add_argument(
         "--model",
         dest="check.model",
         default=argparse.SUPPRESS,
