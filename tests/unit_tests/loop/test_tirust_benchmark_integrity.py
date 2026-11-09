@@ -221,8 +221,10 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
 
     def fake_start(self, close_failure=None, point_mismatch=False, library_mismatch=False):
         self.closed = []
+        self.worker_timeouts = []
 
-        def start(stack, source, case, chain, config, cpu, report):
+        def start(stack, source, case, chain, config, cpu, report, timeout=3600.):
+            self.worker_timeouts.append(timeout)
             child = Mock(directory=self.directories[source], source=source)
 
             def close():
@@ -235,6 +237,7 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
             compilation = json.loads((self.outputs[source] / "compilation.json").read_text())
             checksum = "different" if library_mismatch and source == "candidate" else "same"
             benchmark.dump(report / (source + "-inputs.json"), {
+                "worker_timeout_seconds": timeout,
                 "points_sha256": "different" if point_mismatch and source == "candidate" else benchmark.digest(self.points),
                 "points_path": str(self.points), "points_metadata_sha256": benchmark.digest(self.points.with_suffix(".json")),
                 "numerical_cards": {}, "param_card_sha256": benchmark.digest(self.outputs[source] / "Cards/param_card.dat"),
@@ -271,6 +274,18 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
             self.assertEqual(benchmark.digest(report / "protocol-sources" / name), checksum)
         self.assertTrue((report / "summary.json").exists())
         self.assertFalse((report / "failure.json").exists())
+        self.assertEqual(self.worker_timeouts, [3600., 3600.])
+        self.assertEqual(specification["worker_timeout_seconds"], 3600.)
+
+    def test_case_deadline_is_recorded_and_passed_to_both_workers(self):
+        with patch.object(benchmark, "case_worker_timeout", return_value=14400.), \
+             patch.object(benchmark, "start_worker", side_effect=self.fake_start()), \
+             patch.object(benchmark, "observe", side_effect=self.observation):
+            benchmark.pair(self.case, [1], [9], self.config, 0, "backend-9")
+        self.assertEqual(self.worker_timeouts, [14400., 14400.])
+        specification = json.loads((self.report / "runs/example/backend-9/specification.json").read_text())
+        self.assertEqual(specification["worker_timeout_seconds"], 14400.)
+        self.assertEqual(specification["worker_timeout_binding_version"], 1)
 
     def test_reserved_label_cannot_misidentify_a_chain(self):
         for label in ("tirust-first", "backend-9"):

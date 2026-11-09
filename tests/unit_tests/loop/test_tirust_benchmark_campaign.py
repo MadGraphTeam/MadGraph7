@@ -85,13 +85,15 @@ class TestCampaign(unittest.TestCase):
             "artifact_sha256": {name: digest(self.prefix / "lib" / name)
                                 for name in ("libmadloop_tirust.so", "libtirust.a")}})
 
-    def register(self, name="optimized"):
-        return campaign.register_campaign(self.bench, name, self.prefix, reason="Changed numerical implementation")
+    def register(self, name="optimized", **kwargs):
+        return campaign.register_campaign(self.bench, name, self.prefix,
+                                          reason="Changed numerical implementation", **kwargs)
 
     def test_registration_seeds_private_inputs_without_legacy_writes(self):
         legacy = {str(path): digest(path) for path in self.bench.LEGACY_REPORT.rglob("*") if path.is_file()}
         baseline = self.bench.BASELINE
         manifest = self.register()
+        self.assertEqual(manifest[campaign.TIMEOUT_FIELD], {"example": 3600.0})
         self.assertEqual(manifest["predecessor"]["id"], "legacy")
         self.assertEqual(len(manifest["predecessor"]["qualified_failures"]), 1)
         context = campaign.activate_campaign(self.bench, "optimized")
@@ -356,6 +358,82 @@ class TestCampaign(unittest.TestCase):
                 campaign.verify_campaign(self.bench, stage=stage)
         # Historical evidence remains readable after another campaign fails.
         campaign.verify_campaign(self.bench, stage="summarize")
+
+    def test_administrative_timeout_overrides_bind_all_cases_without_changing_policy(self):
+        config_path = self.bench.LEGACY_REPORT / "cases.json"
+        config = json.loads(config_path.read_text())
+        config["cases"].append({"id": "heavy", "nfinal": 4})
+        write(config_path, config)
+        for suffix in (".dat", ".json"):
+            shutil.copy2(self.bench.LEGACY_REPORT / ("points/example" + suffix),
+                         self.bench.LEGACY_REPORT / ("points/heavy" + suffix))
+        original_config = config_path.read_bytes()
+        manifest = self.register(worker_timeouts={"heavy": 14400})
+        self.assertEqual(manifest[campaign.TIMEOUT_FIELD], {"example": 3600.0, "heavy": 14400.0})
+        self.assertEqual(manifest["shared_inputs"]["policy_sha256"], content_digest(config))
+        campaign.activate_campaign(self.bench, "optimized")
+        self.assertEqual((self.bench.REPORT / "cases.json").read_bytes(), original_config)
+        self.assertEqual(config_path.read_bytes(), original_config)
+        self.assertEqual(campaign.verify_campaign(self.bench)[campaign.TIMEOUT_FIELD],
+                         manifest[campaign.TIMEOUT_FIELD])
+
+    def test_timeout_overrides_reject_unknown_nonfinite_nonpositive_and_boolean_values(self):
+        invalid = [{"unknown": 1}, {"example": True}, {"example": False}, {"example": 0},
+                   {"example": -1}, {"example": float("nan")}, {"example": float("inf")},
+                   {"example": -float("inf")}, {"example": "3600"}, {"example": None},
+                   {"example": 10**1000}, [], 3600]
+        for index, value in enumerate(invalid):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "worker timeout"):
+                self.register("invalid_" + str(index), worker_timeouts=value)
+            self.assertFalse((self.bench.LEGACY_REPORT / "campaigns" / ("invalid_" + str(index))).exists())
+
+    def test_timeout_map_is_inherited_and_individual_values_may_be_overridden(self):
+        first = self.register("first", worker_timeouts={"example": 14400})
+        first_report = self.bench.LEGACY_REPORT / "campaigns/first"
+        write(first_report / "summary.json", {"pending": True})
+        self._install("second optimization DSO\n")
+        second = self.register("second", predecessor="first")
+        self.assertEqual(second[campaign.TIMEOUT_FIELD], first[campaign.TIMEOUT_FIELD])
+        write(self.bench.LEGACY_REPORT / "campaigns/second/summary.json", {"pending": True})
+        self._install("third optimization DSO\n")
+        third = self.register("third", predecessor="second", worker_timeouts={"example": 7200.5})
+        self.assertEqual(third[campaign.TIMEOUT_FIELD], {"example": 7200.5})
+        self.assertEqual(first["shared_inputs"]["policy_sha256"], third["shared_inputs"]["policy_sha256"])
+        campaign.activate_campaign(self.bench, "third")
+
+    def test_missing_or_invalid_timeout_map_is_rejected_on_activation(self):
+        self.register()
+        path = self.bench.LEGACY_REPORT / "campaigns/optimized/manifest.json"
+        original = json.loads(path.read_text())
+        missing = {key: value for key, value in original.items() if key != campaign.TIMEOUT_FIELD}
+        invalid = [missing, *({**original, campaign.TIMEOUT_FIELD: value}
+                              for value in ({}, {"example": True}, {"example": 0},
+                                            {"example": 3600, "unknown": 1}, None))]
+        for value in invalid:
+            write(path, value)
+            with self.subTest(value=value.get(campaign.TIMEOUT_FIELD)), self.assertRaisesRegex(ValueError, "worker timeout"):
+                campaign.activate_campaign(self.bench, "optimized")
+        write(path, original)
+        campaign.activate_campaign(self.bench, "optimized")
+
+    def test_changed_timeout_map_invalidates_the_active_manifest_binding(self):
+        self.register()
+        campaign.activate_campaign(self.bench, "optimized")
+        path = self.bench.REPORT / "manifest.json"
+        value = json.loads(path.read_text())
+        value[campaign.TIMEOUT_FIELD]["example"] = 14400
+        write(path, value)
+        with self.assertRaisesRegex(ValueError, "manifest"):
+            campaign.verify_campaign(self.bench, stage="worker")
+
+    def test_timeout_only_changes_cannot_reset_failed_or_duplicate_identity(self):
+        self._install("original DSO\n")
+        with self.assertRaisesRegex(ValueError, "unchanged numerical identity"):
+            self.register(worker_timeouts={"example": 14400})
+        self._install("optimized DSO\n")
+        self.register("first", worker_timeouts={"example": 3600})
+        with self.assertRaisesRegex(ValueError, "already registered this numerical identity/policy"):
+            self.register("second", worker_timeouts={"example": 14400})
 
     def test_legacy_helpers_are_noops(self):
         self.assertIsNone(campaign.campaign_binding(self.bench))

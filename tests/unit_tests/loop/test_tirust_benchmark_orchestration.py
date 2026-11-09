@@ -1,12 +1,83 @@
 """Keep benchmark configuration local and defer costly unqualified campaigns."""
 from pathlib import Path
+import copy
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools"))
 import tirust_benchmark as benchmark
+import tirust_benchmark_numerical as numerical
+
+
+class TestWorkerTimeoutBinding(unittest.TestCase):
+    case = {"id": "example"}
+
+    def test_manifest_per_case_value_and_legacy_default(self):
+        with patch.object(benchmark, "CAMPAIGN_ID", None):
+            self.assertEqual(benchmark.case_worker_timeout(self.case), 3600.)
+        with patch.object(benchmark, "CAMPAIGN_ID", "new"), \
+             patch.object(benchmark, "CAMPAIGN_MANIFEST", {
+                 "administrative_worker_timeout_seconds": {"example": 14400}}):
+            self.assertEqual(benchmark.case_worker_timeout(self.case), 14400.)
+        for value in (None, {}, {"example": True}, {"example": 0}, {"example": float("nan")}):
+            with self.subTest(value=value), patch.object(benchmark, "CAMPAIGN_ID", "new"), \
+                 patch.object(benchmark, "CAMPAIGN_MANIFEST", {"administrative_worker_timeout_seconds": value}):
+                with self.assertRaises(ValueError):
+                    benchmark.case_worker_timeout(self.case)
+
+    def test_new_protocol_rejects_changed_and_missing_spec_or_worker_bindings(self):
+        spec = {"worker_timeout_binding_version": 1, "worker_timeout_seconds": 3600.}
+        inputs = {role: {"worker_timeout_seconds": 3600.} for role in ("baseline", "candidate")}
+        path = ROOT / "tools/tirust_benchmark.py"
+        benchmark.validate_worker_timeout_binding(spec, inputs, self.case, path)
+        for field in ("worker_timeout_binding_version", "worker_timeout_seconds"):
+            changed = copy.deepcopy(spec)
+            changed.pop(field)
+            with self.subTest(missing=field), self.assertRaises(ValueError):
+                benchmark.validate_worker_timeout_binding(changed, inputs, self.case, path)
+        with self.assertRaises(ValueError):
+            benchmark.validate_worker_timeout_binding({}, inputs, self.case, path)
+        with self.assertRaises(ValueError):
+            benchmark.validate_worker_timeout_binding(dict(spec, worker_timeout_binding_version=True), inputs, self.case, path)
+        for role in inputs:
+            for bad in (None, 14400.):
+                changed = copy.deepcopy(inputs)
+                if bad is None:
+                    changed[role].pop("worker_timeout_seconds")
+                else:
+                    changed[role]["worker_timeout_seconds"] = bad
+                with self.subTest(role=role, bad=bad), self.assertRaises(ValueError):
+                    benchmark.validate_worker_timeout_binding(spec, changed, self.case, path)
+        with self.assertRaises(ValueError):
+            benchmark.validate_worker_timeout_binding(dict(spec, worker_timeout_seconds=14400.), inputs, self.case, path)
+
+    def test_pre_binding_historical_protocol_is_readable_without_new_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "historical.py"
+            path.write_text("HISTORICAL_PROTOCOL = 1\n")
+            with patch.object(benchmark, "CAMPAIGN_ID", None):
+                benchmark.validate_worker_timeout_binding({}, {"baseline": {}, "candidate": {}}, self.case, path)
+            with patch.object(benchmark, "CAMPAIGN_ID", "new"):
+                with self.assertRaises(ValueError):
+                    benchmark.validate_worker_timeout_binding({}, {"baseline": {}, "candidate": {}}, self.case, path)
+
+    def test_numerical_preparation_uses_and_enforces_preregistered_deadline(self):
+        with patch.object(benchmark, "CAMPAIGN_ID", "new"), \
+             patch.object(benchmark, "CAMPAIGN_MANIFEST", {
+                 "administrative_worker_timeout_seconds": {"example": 14400.}}):
+            self.assertEqual(numerical.resolve_worker_timeout(self.case), 14400.)
+            self.assertEqual(numerical.resolve_worker_timeout(self.case, 14400.), 14400.)
+            with self.assertRaisesRegex(ValueError, "preregistered"):
+                numerical.resolve_worker_timeout(self.case, 3600.)
+        with patch.object(benchmark, "CAMPAIGN_ID", None):
+            self.assertEqual(numerical.resolve_worker_timeout(self.case), 3600.)
+            self.assertEqual(numerical.resolve_worker_timeout(self.case, 1800.), 1800.)
+            for invalid in (True, 0, -1, float("inf"), float("nan")):
+                with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                    numerical.resolve_worker_timeout(self.case, invalid)
 
 
 class TestBenchmarkCLI(unittest.TestCase):

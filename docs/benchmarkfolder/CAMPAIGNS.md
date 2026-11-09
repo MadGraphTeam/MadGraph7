@@ -119,3 +119,33 @@ Generated MG command files apply `--no_save` to every configuration-changing
 `set` command. MG can otherwise persist options in its installation's input
 directory even when `XDG_CONFIG_HOME` is private. Historical command files and
 their effects are retained; this protection applies to future exports.
+
+## Administrative worker deadlines
+
+Each new campaign manifest binds a positive deadline for every case, inherited
+from a named predecessor or defaulting to 3,600 seconds. Override selected cases
+only while registering the new namespace, for example:
+
+```sh
+python3 tools/tirust_benchmark.py register-campaign \
+  --campaign optimization-id --tirust-prefix /absolute/qualified/prefix \
+  --reason 'Concrete validated numerical implementation change' \
+  --worker-timeout qcd_n4_uux_zzgg=14400 \
+  --worker-timeout ew_n4_epem_mupmumaa=14400
+```
+
+The proposed final-matrix values are 14,400 seconds for the two four-final-state
+cases and 3,600 seconds elsewhere; registration freezes the actual chosen
+values before any launch. The same per-case value applies to baseline and
+candidate workers, including numerical preparation. Pair specifications and
+worker inputs record it, and resumed measurements reject changed or missing
+bindings. A registered numerical preparation cannot override it with
+`--timeout`; the legacy override remains available for separately labeled
+historical diagnostics.
+
+These are administrative startup/protocol wait limits, not timing targets or
+total campaign wall-time limits. They change neither full-point traversal,
+repetition count, batch-duration requirements, physics policy nor speed gates.
+Timeout-only edits cannot create a new numerical identity or clear a qualified
+predecessor failure. Historical attempts retain their original limits and
+protocols; their evidence is never rewritten to adopt the new values.

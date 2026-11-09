@@ -9,6 +9,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import shutil
@@ -20,6 +21,8 @@ MODEL = "loop_qcd_qed_sm_Gmu"
 NATIVE_NAMES = ("lib/libmadloop_tirust.so", "lib/libtirust.a", "lib/tirust-config.json")
 HISTORICAL_STAGES = {"activate", "summarize", "validate-retained", "summary", "historical"}
 QUALIFIED_LABELS = {"tirust-first", "backend-1", "backend-6", "backend-7", "backend-8"}
+TIMEOUT_FIELD = "administrative_worker_timeout_seconds"
+DEFAULT_WORKER_TIMEOUT = 3600.0
 
 
 def _hash(data):
@@ -28,6 +31,34 @@ def _hash(data):
 
 def _read(path):
     return json.loads(Path(path).read_text())
+
+
+def _validated_worker_timeouts(case_ids, values, complete=False):
+    """Timeouts bound execution only; they never alter numerical identity."""
+    if not isinstance(values, dict):
+        raise ValueError("Administrative worker timeouts must be a case-to-seconds mapping")
+    expected = set(case_ids)
+    if set(values) - expected or (complete and set(values) != expected):
+        raise ValueError("Administrative worker timeout keys must match the frozen campaign cases")
+    result = {}
+    for case_id, seconds in values.items():
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+            raise ValueError(f"Administrative worker timeout must be positive finite seconds: {case_id}")
+        try:
+            number = float(seconds)
+        except (OverflowError, ValueError):
+            raise ValueError(f"Administrative worker timeout must be positive finite seconds: {case_id}") from None
+        if not math.isfinite(number) or number <= 0:
+            raise ValueError(f"Administrative worker timeout must be positive finite seconds: {case_id}")
+        result[case_id] = number
+    return result
+
+
+def _registered_worker_timeouts(manifest, config):
+    if TIMEOUT_FIELD not in manifest:
+        raise ValueError("Campaign manifest lacks administrative worker timeout bindings")
+    return _validated_worker_timeouts([case["id"] for case in config["cases"]],
+                                      manifest[TIMEOUT_FIELD], complete=True)
 
 
 def _id(value):
@@ -368,7 +399,7 @@ def _shared_files(bench, source_report):
     return {name: bench.digest(_inside(source_report, source_report / name)) for name in names}
 
 
-def register_campaign(bench, campaign_id, tirust_prefix, predecessor="legacy", reason=""):
+def register_campaign(bench, campaign_id, tirust_prefix, predecessor="legacy", reason="", worker_timeouts=None):
     """Register one namespace per numerical identity/policy, before any runs."""
     _paths(bench, campaign_id)
     if not isinstance(reason, str) or not reason.strip():
@@ -379,10 +410,10 @@ def register_campaign(bench, campaign_id, tirust_prefix, predecessor="legacy", r
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".registration.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason)
+        return _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason, worker_timeouts)
 
 
-def _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason):
+def _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason, worker_timeouts):
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("Campaign registration requires an optimization reason")
     report, work = _paths(bench, campaign_id)
@@ -394,7 +425,16 @@ def _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason):
     source_model = (Path(bench.LEGACY_WORK) / "models" / MODEL if predecessor == "legacy"
                     else _paths(bench, predecessor)[1] / "models" / MODEL)
     shared = _shared_files(bench, source_report)
-    policy = bench.content_digest(_read(source_report / "cases.json"))
+    configuration = _read(source_report / "cases.json")
+    policy = bench.content_digest(configuration)
+    case_ids = [case["id"] for case in configuration["cases"]]
+    timeouts = {case_id: DEFAULT_WORKER_TIMEOUT for case_id in case_ids}
+    if predecessor != "legacy":
+        prior_manifest = _read(source_report / "manifest.json")
+        if TIMEOUT_FIELD in prior_manifest:
+            timeouts = _registered_worker_timeouts(prior_manifest, configuration)
+    if worker_timeouts is not None:
+        timeouts.update(_validated_worker_timeouts(case_ids, worker_timeouts))
     model_pin = _read(source_report / f"inputs/{MODEL}.json")
     model_files = _inventory(bench, source_model)
     if model_files != model_pin["files"]:
@@ -419,6 +459,7 @@ def _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason):
     if record["revision"] != bench.BASELINE_REVISION:
         raise ValueError("Unexpected shared baseline revision")
     manifest = {"schema": SCHEMA, "id": campaign_id, "created_utc": bench.utc_now(), "reason": reason,
+        TIMEOUT_FIELD: timeouts,
         "predecessor": previous,
         "baseline": {"revision": bench.BASELINE_REVISION, "record_sha256": bench.digest(baseline_record)},
         "shared_inputs": {"files": shared, "policy_sha256": policy, "model_tree": model_files},
@@ -473,6 +514,7 @@ def activate_campaign(bench, campaign_id):
     manifest = _read(manifest_path)
     if manifest.get("schema") != SCHEMA or manifest.get("id") != campaign_id:
         raise ValueError("Campaign manifest identity/schema mismatch")
+    _registered_worker_timeouts(manifest, _read(report / "cases.json"))
     bench.REPORT, bench.WORK, bench.MODEL_ROOT = report, work, work / "models"
     bench.TIRUST_PREFIX = Path(manifest["candidate"]["native"]["prefix"])
     bench.CAMPAIGN_ID, bench.CAMPAIGN_MANIFEST = campaign_id, manifest
@@ -498,6 +540,7 @@ def campaign_summary_fields(bench):
     failures = _registered_failures(previous)
     failures += [record for path, record in _read_discoveries(bench, Path(bench.REPORT))]
     return {"campaign_binding": binding,
+            TIMEOUT_FIELD: dict(manifest[TIMEOUT_FIELD]),
             "campaign_numerical_identity_sha256": manifest["candidate"]["numerical_identity_sha256"],
             "campaign_predecessor": {"id": previous["id"], "manifest_sha256": previous["manifest_sha256"],
                 "summary_sha256": previous["summary_sha256"],
@@ -518,6 +561,7 @@ def verify_campaign(bench, stage="run", inputs=None):
             or bench.digest(report / "manifest.json") != bench.CAMPAIGN_MANIFEST_SHA256
             or _read(report / "manifest.json") != manifest):
         raise ValueError("Campaign manifest or selected namespace changed")
+    _registered_worker_timeouts(manifest, _read(report / "cases.json"))
     if Path(bench.BASELINE).resolve() != (Path(bench.LEGACY_WORK) / "baseline").resolve():
         raise ValueError("Campaign must use the one frozen baseline source")
     if bench.digest(bench.BASELINE_RECORD) != manifest["baseline"]["record_sha256"]:

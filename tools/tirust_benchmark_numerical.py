@@ -11,6 +11,18 @@ import shutil
 import tirust_benchmark as bench
 
 
+def resolve_worker_timeout(case, requested=None):
+    expected = bench.case_worker_timeout(case)
+    if requested is None:
+        return expected
+    if (isinstance(requested, bool) or not isinstance(requested, (int, float))
+            or not bench.math.isfinite(requested) or requested <= 0):
+        raise ValueError("Worker timeout must be positive and finite")
+    if bench.CAMPAIGN_ID is not None and requested != expected:
+        raise ValueError("Numerical worker timeout differs from the preregistered case deadline")
+    return float(requested)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", required=True)
@@ -20,7 +32,8 @@ def main():
                         help="Use the final complete steady warmup stream for correctness; record no timing")
     parser.add_argument("--backends", nargs="+", type=int, default=[1, 6, 7, 8, 9])
     parser.add_argument("--cpu", type=int)
-    parser.add_argument("--timeout", type=float, default=3600.)
+    parser.add_argument("--timeout", type=float,
+                        help="Legacy deadline override; registered campaigns use their immutable case deadline")
     args = parser.parse_args()
     if Path.cwd() != bench.ROOT:
         parser.error(f"Run from {bench.ROOT}")
@@ -33,6 +46,10 @@ def main():
     case = next((value for value in config["cases"] if value["id"] == args.case), None)
     if case is None:
         parser.error("Unknown process")
+    try:
+        args.timeout = resolve_worker_timeout(case, args.timeout)
+    except ValueError as error:
+        parser.error(str(error))
     cpu = bench.select_quiet_cpu() if args.cpu is None else args.cpu
     if cpu not in bench.os.sched_getaffinity(0):
         parser.error("CPU is outside the allowed affinity")

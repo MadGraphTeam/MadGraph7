@@ -7,6 +7,7 @@ timings. A failed child or missing observation is retained and never imputed.
 from __future__ import annotations
 
 import argparse
+import ast
 from contextlib import ExitStack
 import datetime
 import fcntl
@@ -39,6 +40,7 @@ TIRUST_PREFIX = ROOT / "HEPTools/tirust"
 CAMPAIGN_ID = None
 CAMPAIGN_MANIFEST = None
 CAMPAIGN_MANIFEST_SHA256 = None
+WORKER_TIMEOUT_BINDING_VERSION = 1
 GENERATOR_PATHS = ("madgraph", "aloha", "Template", "bin", "models", "input", "vendor")
 sys.path.insert(0, str(ROOT))
 
@@ -73,6 +75,45 @@ def campaign_binding():
 def campaign_fields():
     binding = campaign_binding()
     return {"campaign_binding": binding} if binding is not None else {}
+
+
+def case_worker_timeout(case):
+    """Administrative deadline; never changes point sets or acceptance gates."""
+    if CAMPAIGN_ID is None:
+        return 3600.
+    timeouts = (CAMPAIGN_MANIFEST or {}).get("administrative_worker_timeout_seconds")
+    if not isinstance(timeouts, dict) or case["id"] not in timeouts:
+        raise ValueError("Campaign is missing its per-case administrative worker timeout")
+    value = timeouts[case["id"]]
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        raise ValueError("Invalid administrative worker timeout")
+    return float(value)
+
+
+def validate_worker_timeout_binding(specification, inputs, case, protocol_source):
+    """Require new bindings while keeping pre-binding historical data readable."""
+    parsed = ast.parse(Path(protocol_source).read_text())
+    protocol_version = None
+    for statement in parsed.body:
+        if (isinstance(statement, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id == "WORKER_TIMEOUT_BINDING_VERSION"
+                        for target in statement.targets)):
+            protocol_version = ast.literal_eval(statement.value)
+            break
+    required = (CAMPAIGN_ID is not None or protocol_version is not None
+                or "worker_timeout_binding_version" in specification
+                or "worker_timeout_seconds" in specification)
+    if not required:
+        return
+    declared_version = specification.get("worker_timeout_binding_version")
+    if (type(protocol_version) is not int or protocol_version != WORKER_TIMEOUT_BINDING_VERSION
+            or type(declared_version) is not int or declared_version != WORKER_TIMEOUT_BINDING_VERSION):
+        raise ValueError("Missing or incompatible worker timeout binding version")
+    expected = case_worker_timeout(case)
+    if specification.get("worker_timeout_seconds") != expected:
+        raise ValueError("Worker timeout differs from the preregistered administrative deadline")
+    if any(value.get("worker_timeout_seconds") != expected for value in inputs.values()):
+        raise ValueError("Worker input is missing or differs from its timeout binding")
 
 
 def campaign_guard(stage, inputs=None):
@@ -810,6 +851,8 @@ def verify_observation_inputs(source, case, inputs):
 
 def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600., points_path=None,
                  diagnostic_template=None):
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("Worker timeout must be positive and finite")
     campaign_guard("worker-before")
     from tirust_benchmark_worker import Worker
     from tirust_benchmark_compiler import capture_effective_flags
@@ -860,6 +903,7 @@ def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600.,
     if metadata["inputs"]["count"] != config["points_per_case"]:
         raise RuntimeError("Saved point count differs from the campaign configuration")
     inputs = {**campaign_fields(), "settings": settings, "points_sha256": digest(points),
+         "worker_timeout_seconds": float(timeout),
          "points_path": str(points.resolve()), "points_metadata_sha256": digest(points.with_suffix(".json")),
          "numerical_cards": numerical_card_inputs(output_dir(source, case)),
          "param_card_sha256": parameter_hash, "resolved_parameter_card": str(actual_card.resolve()),
@@ -904,6 +948,7 @@ def observe(worker, chain, loops, destination, count=100):
 
 def pair(case, baseline_chain, candidate_chain, config, cpu, label, attempt_name=None):
     campaign_guard("pair-before")
+    worker_timeout = case_worker_timeout(case)
     from tirust_benchmark_worker import paired_statistics
     from tirust_benchmark_compiler import validate_compiler_equality
     if attempt_name is not None and not re.fullmatch(re.escape(label) + r"-attempt-(?:[2-9]|[1-9][0-9]+)", attempt_name):
@@ -926,6 +971,8 @@ def pair(case, baseline_chain, candidate_chain, config, cpu, label, attempt_name
                      "host_load_before": host_load_snapshot(),
                      "host_exclusivity": "Not assumed; allowed-CPU counters and host load retained for each batch",
                      "calibration_target_seconds": 2. * config["minimum_batch_seconds"],
+                     "worker_timeout_binding_version": WORKER_TIMEOUT_BINDING_VERSION,
+                     "worker_timeout_seconds": worker_timeout,
                      "baseline_chain": baseline_chain, "candidate_chain": candidate_chain,
                      "config_sha256": digest(REPORT / "cases.json"), "status": "running",
                      "protocol_sources": {p.name: digest(retained_protocol / p.name)
@@ -950,7 +997,8 @@ def pair(case, baseline_chain, candidate_chain, config, cpu, label, attempt_name
                 fcntl.flock(lock, fcntl.LOCK_EX)
             workers, settings = {}, {}
             for source, chain in (("baseline", baseline_chain), ("candidate", candidate_chain)):
-                workers[source], settings[source] = start_worker(stack, source, case, chain, config, cpu, report)
+                workers[source], settings[source] = start_worker(stack, source, case, chain, config, cpu, report,
+                                                                 timeout=worker_timeout)
             common = set(settings["baseline"]) & set(settings["candidate"]) - {"mlreductionlib"}
             if any(settings["baseline"][key] != settings["candidate"][key] for key in common):
                 raise RuntimeError("Baseline/candidate numerical parameters differ")
@@ -1134,6 +1182,7 @@ def validate_retained_result(directory, label, case, config):
         raise ValueError("Incomplete measurement protocol source inventory")
     inputs = {source: json.loads((directory / (source + "-inputs.json")).read_text())
               for source in ("baseline", "candidate")}
+    validate_worker_timeout_binding(spec, inputs, case, directory / "protocol-sources/tirust_benchmark.py")
     default = parse_chain(inputs["baseline"]["generation"]["default_chain"])
     expected_chains = {"tirust-first": (default, [9, *default]),
         **{f"backend-{i}": ([i] if i != 9 else [1], [i]) for i in config["backends"]}}
@@ -1439,6 +1488,8 @@ def main():
     parser.add_argument("--tirust-prefix", type=Path, help="Pinned installation prefix for register-campaign")
     parser.add_argument("--predecessor", default="legacy", help="Predecessor campaign ID, or legacy")
     parser.add_argument("--reason", help="Pre-registered concrete optimization for a new campaign")
+    parser.add_argument("--worker-timeout", action="append", default=[], metavar="CASE=SECONDS",
+                        help="Per-case administrative deadline, only during campaign registration")
     parser.add_argument("--source", choices=("baseline", "candidate", "both"), default="both")
     parser.add_argument("--cases", nargs="*", default=[])
     parser.add_argument("--model-source", type=Path)
@@ -1457,12 +1508,22 @@ def main():
         if not args.campaign_id or not args.tirust_prefix or not args.reason:
             parser.error("register-campaign requires --campaign, --tirust-prefix and --reason")
         from tirust_benchmark_campaign import register_campaign
+        worker_timeouts = {}
+        for override in args.worker_timeout:
+            try:
+                case_id, seconds = override.split("=", 1)
+                if case_id in worker_timeouts:
+                    raise ValueError("duplicate case")
+                worker_timeouts[case_id] = float(seconds)
+            except ValueError:
+                parser.error("Use one --worker-timeout CASE=SECONDS per case")
         manifest = register_campaign(sys.modules[__name__], args.campaign_id,
-                                     args.tirust_prefix, predecessor=args.predecessor, reason=args.reason)
+                                     args.tirust_prefix, predecessor=args.predecessor, reason=args.reason,
+                                     worker_timeouts=worker_timeouts)
         print(json.dumps({"id": manifest["id"], "manifest": str(LEGACY_REPORT / "campaigns" / manifest["id"] / "manifest.json")}))
         return
-    if args.tirust_prefix is not None or args.reason is not None or args.predecessor != "legacy":
-        parser.error("Installation prefix, predecessor and reason are immutable registration arguments")
+    if args.tirust_prefix is not None or args.reason is not None or args.predecessor != "legacy" or args.worker_timeout:
+        parser.error("Installation prefix, predecessor, reason and worker deadlines are immutable registration arguments")
     if args.campaign_id:
         from tirust_benchmark_campaign import activate_campaign
         activate_campaign(sys.modules[__name__], args.campaign_id)
