@@ -1,0 +1,123 @@
+{
+  "artifacts": {
+    "Cargo.lock": {
+      "bytes": 35857,
+      "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4"
+    },
+    "Cargo.toml": {
+      "bytes": 1074,
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+    },
+    "README.md": {
+      "bytes": 2659,
+      "sha256": "3f6d476790a0ced35660f3872199f676614f0f7083f41f9d28ee6449312c90d3"
+    },
+    "allow-compilation": {
+      "bytes": 21,
+      "sha256": "435e9a6c6492e0a9f5c8ef452320b5ed668abc6322d1e8b688ddff3082da84d6"
+    },
+    "check-installation.json": {
+      "bytes": 3039,
+      "sha256": "eec847368e0207f27b033de36c173a8310a0b5fe7e3d9e222bb6166ade461aee"
+    },
+    "clean-install-start.json": {
+      "bytes": 1155,
+      "sha256": "ba33a87a67a150cac44a9dc9f0548a1c07b7d5885276b73b30189e4ff6eaefdb"
+    },
+    "cli-attempt-1.log": {
+      "bytes": 4994,
+      "sha256": "dfe212cdafe09844206c08554e51d6518d5f0d9c258dccd6dd2d102ba0d338e3"
+    },
+    "cli-attempt-2-network.log": {
+      "bytes": 6283,
+      "sha256": "50a9e1fb64370c42eb4a0c541e653e23730fdad6419384ea87347f1ec467ae57"
+    },
+    "compiled-module.sha256": {
+      "bytes": 148,
+      "sha256": "951bfd9f4f78f9a386691e30b9ffb1072786c913ec0a4f69ee496ad661c7c47b"
+    },
+    "dynamic-section.txt": {
+      "bytes": 1955,
+      "sha256": "4f40b0af86b6c40572f3c5f31666b4b50f04ad688d7f3596153f00fc617134ca"
+    },
+    "execution-observer.jsonl": {
+      "bytes": 5402,
+      "sha256": "98be32349c6ac9bd13cacbeeccbc9765b3edb6912a5df5365566e3d0b0ff1b71"
+    },
+    "execution-observer.py": {
+      "bytes": 1322,
+      "sha256": "d5783ed373b326ed67793f164b0cdda3d033b2b63d4d13bd02ab69e9be9093be"
+    },
+    "fetched-upstream-revision.txt": {
+      "bytes": 41,
+      "sha256": "06d37af946d18c785b24eb6ec9a2fc6d50c56fe41fbbe496fdbe037d7805b1b6"
+    },
+    "gmp-mpfr-source-build.log": {
+      "bytes": 3038150,
+      "sha256": "8cbe692270c691a54135340f5470de51bc6aac7eb60fd3e56aa0b8c243ab327b"
+    },
+    "host-toolchain.txt": {
+      "bytes": 745,
+      "sha256": "868beea3f979051d989cda7fb24c82aa8ec803e4859bd43b77bb83859180fbaa"
+    },
+    "install-attempt-1-failed-dns.log": {
+      "bytes": 225,
+      "sha256": "13562e7f7a8fe6f6ba27430b51164d94e71a16dc00661c8238ded69686cd1800"
+    },
+    "install.log": {
+      "bytes": 883718,
+      "sha256": "5347f985947ff4d8915bef5c659c4d0d0d80cbe9ce14ef1b2c55d840456062be"
+    },
+    "install.mg5": {
+      "bytes": 124,
+      "sha256": "efdce26ad50135c4ffd44e7b281b2d1083ada3356df775568dfa0bf74a9e09fc"
+    },
+    "isolated-configuration-after.txt": {
+      "bytes": 10727,
+      "sha256": "6159b096fb78ddad638dc43e3791aac0f0614a30f55ec24650ff0952d534b400"
+    },
+    "native-exports.txt": {
+      "bytes": 515,
+      "sha256": "9796c13e388314114726d4365e85c488218d6f1f44b726e4d88b5345abe18160"
+    },
+    "package_evidence.py": {
+      "bytes": 9987,
+      "sha256": "26e1ecc2c28c011ddf01488a418c034088269bd6ba0c8077523c902f33c5d6ff"
+    },
+    "production-after.json": {
+      "bytes": 540,
+      "sha256": "2c263b458d8309599885504774135d30e67de2c9ec9ae09f45f3ce04bb984130"
+    },
+    "production-before.json": {
+      "bytes": 540,
+      "sha256": "fe1a97e9c0c1ebfdb8b38d97b9c5bc3dd7088322ff35d963f14be329101cb0d3"
+    },
+    "resolved-source-hashes.txt": {
+      "bytes": 625,
+      "sha256": "6bae69b6e873093d6bbb08f1b486b86ba7ef3d8db478117a8573e90992cafdd5"
+    },
+    "run.sh": {
+      "bytes": 717,
+      "sha256": "0c04fcac0c5c5dde3d504964d02f964db4603996631869c5687df448ca1df080"
+    },
+    "source-inventory.json": {
+      "bytes": 365863,
+      "sha256": "08065f656361d7d4938ec0b60fed02cb15fa3b582925e0ab092b748d5722b26b"
+    },
+    "source-revision-comparison.json": {
+      "bytes": 2477,
+      "sha256": "b3c0e9d31f14ccbfaeafe16b6679b136bfa4395e6fa34cb50f458afd2df57b5a"
+    },
+    "source-snapshot-amendments/.gitattributes": {
+      "bytes": 760,
+      "sha256": "26d33bad6664679fafadc2877281277c5d963cf7f32657cc71f1378fbc37870e"
+    },
+    "tirust-config.json": {
+      "bytes": 3048,
+      "sha256": "8c7f467dc8e8637cc4ec95d8965384e4c3dc2e4a9a38ab15d1808eb52d444dd2"
+    }
+  },
+  "schema_version": 1,
+  "scope": "Byte-copied pre-split-workspace implementation; source-inventory.json identifies the snapshot. Later bridge edits are not qualified by this run.",
+  "status": "passed"
+}

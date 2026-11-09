@@ -1,0 +1,77 @@
+{
+  "abi_version": 1,
+  "quad_precision": true,
+  "native_libs": [
+    "-lmadloop_tirust"
+  ],
+  "local_sources": {
+    "tirust": {
+      "source": "https://github.com/huashengshao/TIRust",
+      "revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
+      "source_tree_sha256": "5b60209fe4a66cc32b7b228afc46c9d0a42cd095d2ca904dd8dd2285bc4b263a",
+      "source_files": 463,
+      "patch_sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5"
+    },
+    "pole_kernels": {
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/clean-install/mg/HEPTools/.tirust-build-35ys7op5/bridge/pole-kernels",
+      "revision": null,
+      "source_tree_sha256": "2d449d05ab0f52dfeab5b5c7c48fd0cb57c97961fa4608908d111b393dfed2d3",
+      "source_files": 14
+    }
+  },
+  "fortran_compiler": "gfortran",
+  "link_before": [
+    "-lgcc_s"
+  ],
+  "link_order_version": 1,
+  "compiler_runtime": "gnu-linux-shared-rust",
+  "build_provenance": {
+    "manifest_sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+    "lock_sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+    "git_dependencies": [
+      {
+        "name": "graphica",
+        "version": "3.0.1",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+      },
+      {
+        "name": "numerica",
+        "version": "3.0.2",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+      },
+      {
+        "name": "oneloop",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#bd703d09a78f7849a6b86a07096e6f222fc01193"
+      },
+      {
+        "name": "symbolica",
+        "version": "3.0.2",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+      }
+    ]
+  },
+  "runtime_artifacts": [
+    "libmadloop_tirust.so"
+  ],
+  "finite_terms": true,
+  "poles_only": true,
+  "dependency_notices": {
+    "files": [
+      "tirust-dependency-notices.tar.gz",
+      "tirust-dependency-provenance.json",
+      "tirust-NOTICES.txt"
+    ],
+    "sha256": {
+      "tirust-dependency-notices.tar.gz": "1af15be3e6b518a2a0790bb8c5ad03ee2a0e5ff0de11f4dccecd6f612958d7e5",
+      "tirust-dependency-provenance.json": "91f0b29a77c58eea3aafbe8f9b02138a0118c8958dce3cfbf78a4bc8f5acb059",
+      "tirust-NOTICES.txt": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435"
+    },
+    "package_count": 154
+  },
+  "artifact_sha256": {
+    "libtirust.a": "04c2b1ac3b8275dd2d0060416c4147bebd5e9bd62b71509e4cb29ce3d5c47d08",
+    "mtirust.mod": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5",
+    "libmadloop_tirust.so": "36876155c5e097de26198b012988ac996569fefafc60496c7c4ee866e358553e"
+  }
+}

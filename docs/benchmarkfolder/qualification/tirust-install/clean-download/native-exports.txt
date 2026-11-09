@@ -1,0 +1,12 @@
+000000000161c470 T ml_tirust_abi_version
+000000000161c480 T ml_tirust_cache_statistics
+000000000161ca70 T ml_tirust_clear_cache
+000000000161ce90 T ml_tirust_context_create
+000000000161d580 T ml_tirust_context_destroy
+000000000161d7b0 T ml_tirust_evaluate_dp
+000000000161e1c0 T ml_tirust_evaluate_mp
+000000000161ebe0 T ml_tirust_last_error
+000000000161ecb0 T ml_tirust_qp_cache_statistics
+000000000161f160 T ml_tirust_register_plan
+000000000161f5d0 T ml_tirust_set_cache_budget
+000000000161fab0 T ml_tirust_supports

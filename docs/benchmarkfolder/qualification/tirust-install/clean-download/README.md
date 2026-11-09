@@ -1,0 +1,13 @@
+# Clean network installation qualification
+
+The actual copied `bin/madgraph` CLI completed `install tirust --jobs=4` with no local source overrides. Its task-specific Cargo home, target, build, XDG cache and configuration directories started empty. The public pinned TIRust checkout, Symbolica and oneloopmaster dependencies were downloaded, the reviewed final pole patch was applied, dependencies were built from source, and the installed DP/QP/poles smoke passed before publication and configuration saving.
+
+This run uses the byte-copied implementation identified by `source-inventory.json`, captured before the later split-workspace bridge optimization. It qualifies clean installation of that snapshot; it does not qualify later bridge edits or replace the physical-amplitude acceptance campaign. The five recorded production native-artifact and configuration hashes are identical before and after. No native binaries are included here.
+
+`source-revision-comparison.json` compares all 3,227 copied file contents with Git revision `25e513487e3cf152c45070a4fff9fbd5cdc85446`. The isolated copy materializes 43 Git symlinks. Its only different file is `.gitattributes`, retained under `source-snapshot-amendments/`; all copied implementation files match that revision. This supplies a reproducible source base without claiming the original workspace was clean.
+
+The first attempt failed because sandbox DNS could not resolve GitHub. The approved network retry completed successfully. Both CLI logs and the failed installation log are retained; the CLI's zero shell exit on the first attempt is not classified as success. That failure also wrote the ordinary ignored `MG5_debug` diagnostic in the mandated original working directory.
+
+`execution-observer.py` leaves installer source bytes and the underlying command arguments unchanged. It delays `make install` until the separate timing window is released, then prefixes only the real final smoke command with `flock` for the shared numerical-test lock. `execution-observer.jsonl` records those actions. The recorded coordination wait is unrelated to build performance; no installation speed claim is made.
+
+`run.sh` and `install.mg5` retain the exact invocation. They ran from the main MadGraph working directory against the copied CLI, with private configuration and prefix. The command uses the pinned public downloads, not the sibling reference repositories. `host-toolchain.txt` records actual executable versions, `Cargo.lock` identifies resolved dependencies, and `gmp-mpfr-source-build.log` records the native dependency source build. Historical absolute paths describe the original task workspace.

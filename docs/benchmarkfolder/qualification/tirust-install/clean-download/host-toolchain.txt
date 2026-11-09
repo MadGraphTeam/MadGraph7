@@ -1,0 +1,12 @@
+Recorded using the same elevated host environment and tools/tirust_env.sh as the clean installer.
+Command: command -v cargo rustc gfortran python3; cargo --version; rustc --version; gfortran --version | head -1; python3 --version
+/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin/cargo
+/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin/rustc
+/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran
+/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3
+cargo 1.97.0 (c980f4866 2026-06-30)
+rustc 1.97.1 (8bab26f4f 2026-07-14) (built from a source tarball)
+GNU Fortran (GCC) 15.2.0
+Python 3.13.12
+
+The Nix Cargo store name is 1.97.1; the executable reports version 1.97.0 above.

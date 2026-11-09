@@ -1,0 +1,81 @@
+{
+  "actual_cli_source_overrides": false,
+  "available": true,
+  "build_provenance": {
+    "git_dependencies": [
+      {
+        "name": "graphica",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+        "version": "3.0.1"
+      },
+      {
+        "name": "numerica",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+        "version": "3.0.2"
+      },
+      {
+        "name": "oneloop",
+        "source": "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#bd703d09a78f7849a6b86a07096e6f222fc01193",
+        "version": "0.1.0"
+      },
+      {
+        "name": "symbolica",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+        "version": "3.0.2"
+      }
+    ],
+    "lock_sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+    "manifest_sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+  },
+  "checked_utc": "2026-11-09T22:06:21.017119+00:00",
+  "commands": [
+    {
+      "argv": [
+        "nm",
+        "-D",
+        "--defined-only",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/clean-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "output": "native-exports.txt",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/clean-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "output": "dynamic-section.txt",
+      "returncode": 0
+    }
+  ],
+  "copied_source_snapshot_rechecked": true,
+  "empty_initial_caches": {
+    "cargo-build": true,
+    "cargo-home": true,
+    "cargo-target": true
+  },
+  "installed_module_identical_to_smoke_visible_build_module": true,
+  "isolated_configuration_saved": true,
+  "native_artifacts": {
+    "libmadloop_tirust.so": {
+      "bytes": 69093240,
+      "sha256": "36876155c5e097de26198b012988ac996569fefafc60496c7c4ee866e358553e"
+    },
+    "libtirust.a": {
+      "bytes": 26038,
+      "sha256": "04c2b1ac3b8275dd2d0060416c4147bebd5e9bd62b71509e4cb29ce3d5c47d08"
+    },
+    "mtirust.mod": {
+      "bytes": 3432,
+      "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5"
+    }
+  },
+  "native_export_count": 12,
+  "production_artifacts_and_config_unchanged": true,
+  "reproduction_base_revision": "25e513487e3cf152c45070a4fff9fbd5cdc85446",
+  "serialized_real_native_smoke": true,
+  "source_patch_sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5",
+  "source_scope": "Byte-copied pre-split-workspace implementation; source-inventory.json identifies the snapshot. Later bridge edits are not qualified by this run.",
+  "status": "passed"
+}
