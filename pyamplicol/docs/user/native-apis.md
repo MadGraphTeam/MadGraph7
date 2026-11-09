@@ -828,20 +828,23 @@ arithmetic, after the TIRust call (the per-point fallback). The result's
 fallback evaluated again to `{"effective", "reason", "guard_estimate"}`
 (`effective` null: the point failed on NinjaRS too, with both backends'
 reasons in `"failures"`, or its guard rejected it; such a point's
-cross-backend check is in `not_run`). Every point the fallback serves is
-guarded, as in the Python API: its NinjaRS value runs the
-reduction-direction check (the reversed re-test frame, cached masters) in
-the call's own arithmetic, binary64, double-double or arbitrary precision,
-whether the binary64 monitoring is on or not (a monitoring whose checks run
-that cached check is reused; beside a rotation-only or rescaled monitoring
-the point is evaluated once more with it), and its relative estimate (each
-sector against its largest Laurent coefficient) is the entry's
-`"guard_estimate"`. A point whose estimate exceeds the call's target
-(below) has status `Failed`, not `AccuracyNotEstablished`, with one reason
-naming the fallback, TIRust's failure, the arithmetic, the estimate and the
-target; a point within it keeps the fallback's value unchanged. On the
-resolved, correlated and selected calls the guard decides on the point's
-summed |A|² (the SDKs estimate no single output). An explicit `"ninjars"`
+cross-backend check is in `not_run`). In double-double and arbitrary
+precision every point the fallback serves is guarded, as in the Python API:
+its NinjaRS value runs the reduction-direction check (the reversed re-test
+frame, cached masters) in the call's own arithmetic (on the summed calls
+within the fallback's own evaluation of the point; on the resolved,
+correlated and selected calls one more evaluation of it), and its relative
+estimate (each sector against its largest Laurent coefficient) is the
+entry's `"guard_estimate"`. A point whose estimate exceeds the guard's
+limit, the call's target (below) never below 1e-5, has status `Failed`, not
+`AccuracyNotEstablished`, with one reason naming the fallback, TIRust's
+failure, the arithmetic, the estimate and the limit; a point within it keeps
+the fallback's value unchanged. On the resolved, correlated and selected
+calls the guard decides on the point's summed |A|² (the SDKs estimate no
+single output). On the same exact inputs the guard's estimates are the
+Python API's, bitwise or one unit in the last place apart (the SDK forms
+the colour-metric norms in binary64). In binary64 the fallback's value is
+served unguarded (`"guard_estimate"` null), as before the guard. An explicit `"ninjars"`
 or `"tirust"` has no fallback and no guard, nor has a TIR-only artifact
 (NinjaRS refused typed); a library built without TIRust takes NinjaRS under
 `"auto"`, with the reason, and refuses `"tirust"`.
@@ -852,17 +855,22 @@ whose rank equals their propagator count (all-vector quark loops: measured
 on loop-induced g g > z z z, z z g, z g g, a a g, a g g and W+ W- g), in
 binary64 and in double-double; the measured windows, the records and the
 estimates of each check are in the [Python API](python-api.md),
-"Near-planar NinjaRS hazard". The SDKs' binary64 monitoring flags them
-(the recommended checks gave 3.0 to 236 at the measured wrong binary64
-points); in double-double and arbitrary precision the SDKs run no
+"Near-planar NinjaRS hazard". The SDKs' binary64 monitoring is the Python
+API's binary64 estimate, bitwise, and flags them as the Python API's checks
+do (the recommended checks gave 3.0 to 236 at the measured wrong binary64
+points, a Python API record: `workspace/tmp/ninjars-dd-zzz/C/out/tilt.json`
+'nj_b64_chk'); in double-double and arbitrary precision the SDKs run no
 monitoring (`AccuracyNotEstablished`, no estimate), so an explicit
-`"ninjars"` call there, or one in binary64 without monitoring, stays exposed
-until the NinjaRS fix (a conditioning bound in NinjaRS) is pinned. The target accuracy
+`"ninjars"` call there, or any NinjaRS value in binary64 without monitoring
+(the `"auto"` fallback's included), stays exposed until the NinjaRS fix (a
+conditioning bound in NinjaRS) is pinned. The target accuracy
 `rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
 `set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
 default 1e-5, the relative accuracy of each point's result) sets the
 calibrated acceptance of TIRust's checked method choice, as the Python API's
-`reduction_target=`, and is the fallback guard's only threshold; a value that is not a finite positive number is an
+`reduction_target=`, and in double-double and arbitrary precision the
+fallback guard's threshold, never below 1e-5; a value that is not a finite
+positive number is an
 invalid argument. The unchecked setting
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
 `set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,
@@ -872,16 +880,17 @@ own acceptance and refusal checks (TIRust: its gates and method choice as
 method selection, no acceptance pass, plain PV at gate 0 as the last resort;
 NinjaRS: zero stability thresholds; only points without a finite value
 fail); `"auto"` keeps its backend and its per-point fallback, which then
-acts only on those points, each served one guarded as above; the stability
+acts only on those points, each served one guarded as above in double-double
+and arbitrary precision; the stability
 monitoring stays its own setting;
 `"reduction"` in `diagnostics_json` records `"unchecked"`, and any other
 value is an invalid argument. It is off by default, a timing and benchmark
 mode with no accuracy certificate (the measured accuracy per process:
 [Python API](python-api.md), "Unchecked reductions"). The fallback, its
 guard, the target and the unchecked setting need no Symbolica licence: a
-binary64 call on NinjaRS or TIRust (and the binary64 guard) touches no
-Symbolica state, and a double-double or arbitrary-precision fallback and its
-guard run under the package key as any SDK call in that arithmetic.
+binary64 call on NinjaRS or TIRust touches no Symbolica state, and a
+double-double or arbitrary-precision fallback and its guard run under the
+package key as any SDK call in that arithmetic.
 
 ## Common setup failures
 
