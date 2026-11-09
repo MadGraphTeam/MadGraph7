@@ -703,7 +703,8 @@ def test_gate_document_applies_the_floor_and_reads_no_old_root(tmp_path, no_old_
         providers,
         {**providers, "process": "gg_ggg"},
         _pyamplicol_record("uux_ddxg", [0.0026, 0.0027, 0.0028]),
-        _pyamplicol_record("gg_ggg", [0.0060, 0.0061, 0.0062]),
+        # A Born-interfered run of the harness names its backend (a string).
+        _pyamplicol_record("gg_ggg", [0.0060, 0.0061, 0.0062], reduction="ninjars"),
     ]
     records[1]["providers"] = {
         name: {k: v for k, v in result.items() if k != "export"}
