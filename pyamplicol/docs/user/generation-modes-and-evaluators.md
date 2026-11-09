@@ -459,9 +459,14 @@ the first generation of a model fills it, later ones read it. A dry run fills it
 too, but only when the compiled model is already cached (a dry run never
 compiles a UFO or JSON model; a first generation compiles it). On
 `e+ e- > g g g` with `loop_qcd_qed_sm_Gmu` the whole public generation takes
-about 50 s with the cache empty or off and about 47 s with it filled, against
-about 90 s before the preparation was shared (one core of a loaded host; the
-compiled model cached in every case); the cache changes no artifact byte.
+about 50 s with the cache empty or off and about 45 s with it filled, against
+about 94 s before the preparation was shared; its model preparation (two
+preparations: the loop-order inference and the process) takes about 15 s,
+13 s filled, against 59 s before (medians of three runs on one core of a
+loaded host, the compiled model cached in every case). Most of what remains
+is the process's own generation (trees, loop families, the kernel catalogue,
+the export), which no model-level cache can prepare. The cache changes no
+artifact byte.
 
 ## Decision guide
 
