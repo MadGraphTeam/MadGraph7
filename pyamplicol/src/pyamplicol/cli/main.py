@@ -215,7 +215,13 @@ def run_cli(
             stream=output_stream,
             color=color,
         )
-        return 130 if bool(getattr(result, "interrupted", False)) else 0
+        if bool(getattr(result, "interrupted", False)):
+            return 130
+        from pyamplicol.loops.v2.checks import CheckReport
+
+        # ``pyamplicol check`` carries its own exit status: 0 iff every
+        # applicable check passed (``CheckReport.exit_code``).
+        return result.exit_code if isinstance(result, CheckReport) else 0
     except (PyAmpliColError, OSError, RuntimeError, TypeError, ValueError) as exc:
         close_progress_sink(sink)
         sink = None

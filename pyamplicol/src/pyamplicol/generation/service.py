@@ -3422,6 +3422,29 @@ class GenerationBackend:
             self._progress.emit(ProgressEnd(task_id))
         return result
 
+    def check(
+        self,
+        processes: ProcessSet,
+        *,
+        model: ModelSource | CompiledModel | None = None,
+        points: int,
+        seed: int,
+        precision=None,
+    ):
+        """``pyamplicol check`` of a one-loop request (``loop_service.
+        check_loop_requests``): one ``checks.ProcessCheck`` per process."""
+
+        if not self._loop_execution_enabled:
+            raise GenerationError(
+                "check serves one-loop requests (process.loop_coupling_orders): "
+                "its pole and Ward checks are the one-loop engine's"
+            )
+        from .loop_service import check_loop_requests
+
+        return check_loop_requests(
+            self, processes, model=model, points=points, seed=seed, precision=precision
+        )
+
     def generate(
         self,
         processes: ProcessSet,

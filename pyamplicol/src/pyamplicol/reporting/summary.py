@@ -3340,6 +3340,13 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
 
         return virtual_evaluation_summary(value, prettytable=prettytable)
 
+    from pyamplicol.loops.v2.checks import CheckReport
+
+    if isinstance(value, CheckReport):
+        from .checks import check_report_summary
+
+        return check_report_summary(value, prettytable=prettytable, color=color)
+
     if isinstance(value, Mapping) and value:
         from pyamplicol.correlators import CorrelatedValue
 

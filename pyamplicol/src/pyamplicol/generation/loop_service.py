@@ -1827,6 +1827,78 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     )
 
 
+def check_loop_requests(
+    backend, processes, *, model=None, points: int, seed: int, precision=None
+):
+    """``pyamplicol check`` (``loops.v2.checks``): every process the request
+    serves, regenerated IN MEMORY through this service's own preparation
+    (``_prepare`` and ``_born_members``, as ``generate``; nothing written),
+    checked at ``points`` seeded phase-space points of the generation's
+    validation convention (``build_process_validation_point`` at seeds
+    ``seed``, ``seed + 1``, ...: decays at rest, scatterings in the
+    centre-of-mass frame) in the carriers of ``induced.probe_carriers(
+    precision)`` (None: binary64, then double-double where binary64 fails,
+    is refused or is out of scope). Returns one ``checks.ProcessCheck`` per
+    served process."""
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.blocks import born_dag_scope
+    from pyamplicol.loops.v2.checks import check_request
+    from pyamplicol.loops.v2.induced import probe_carriers
+
+    blockers = _blocked(backend, processes)
+    if blockers:
+        first = blockers[0]
+        if len(blockers) == 1:
+            raise first.error()
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            first.key, first.message + "; also: " + "; ".join(blockers[1:])
+        )
+    carriers = probe_carriers(precision)
+    checked = []
+    with born_dag_scope():
+        context = _prepare(
+            backend,
+            processes,
+            model or backend._configured_model_source(),
+            planning=False,
+            phase=PhaseHandle("loop-check", backend._progress, len(processes.requests)),
+        )
+        context, requests, _dags, _skipped = _born_members(backend, context)
+        del _dags
+        native = load_loop_native()
+        compiled = context.resolved.compiled
+        for entry, request in zip(context.expanded, requests, strict=True):
+            name = entry.request.name
+            momenta = []
+            for sample in range(points):
+                record = build_process_validation_point(
+                    entry.process_ir,
+                    context.resolved.model,
+                    process_id=name,
+                    seed=seed + sample,
+                )
+                if not record.available:
+                    raise GenerationError(
+                        f"check momenta unavailable for {name}: {record.error}"
+                    )
+                momenta.append(record.four_vectors)
+            checked.append(
+                check_request(
+                    name,
+                    entry.request.expression,
+                    compiled,
+                    request,
+                    native,
+                    momenta,
+                    carriers,
+                )
+            )
+    return checked
+
+
 def _loop_induced_candidates(context, entry, process, validation, index):
     """The generation's validation points of a loop-induced process
     (``generation.validation.samples`` candidates, at least one): the

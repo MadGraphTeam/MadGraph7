@@ -47,6 +47,8 @@ class CliServices(Protocol):
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object: ...
 
+    def check(self, config: RunConfig, progress: ProgressSink) -> object: ...
+
     def inspect(
         self,
         config: RunConfig,
@@ -92,6 +94,8 @@ def dispatch(
         return services.evaluate(config, progress)
     if config.action == "benchmark":
         return services.benchmark(config, progress)
+    if config.action == "check":
+        return services.check(config, progress)
     if config.action == "inspect":
         if full_physics:
             return services.inspect(config, progress, full_physics=True)
@@ -578,6 +582,32 @@ class DefaultCliServices:
         return BenchmarkRunner(config=config, progress=progress).run(
             config.evaluation.artifact,
             points=points,
+        )
+
+    def check(self, config: RunConfig, progress: ProgressSink) -> object:
+        """``pyamplicol check``: the artifact given (``evaluation.artifact``),
+        else the configuration's own request."""
+
+        from pyamplicol.api.services import check
+
+        target: Path | RunConfig | ConfigResolution
+        if config.evaluation.artifact is not None:
+            target = config.evaluation.artifact
+        elif config.process.entries:
+            target = self._generation_config(config)
+        else:
+            raise ConfigurationError(
+                "check requires a one-loop run card (its process entries) or an "
+                "artifact directory"
+            )
+        return check(
+            target,
+            points=config.check.points,
+            seed=config.check.seed,
+            precision=cast(
+                Literal["auto", "double", "double-double"], str(config.check.precision)
+            ),
+            progress=progress,
         )
 
     def inspect(

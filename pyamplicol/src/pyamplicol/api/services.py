@@ -74,6 +74,7 @@ _runtime_loader: RuntimeLoader | None = None
 _benchmark_factory: BenchmarkFactory | None = None
 
 if TYPE_CHECKING:
+    from pyamplicol.loops.v2.checks import CheckReport
     from pyamplicol.runtime.correlations import CorrelatorCatalogue, CorrelatorEvaluator
 
 
@@ -1691,6 +1692,117 @@ def generate(
 load = Runtime.load
 
 
+def check(
+    target: os.PathLike[str] | str | RunConfig | ConfigResolution,
+    *,
+    points: int | None = None,
+    seed: int | None = None,
+    precision: Literal["auto", "double", "double-double"] | None = None,
+    progress: ProgressSink | None = None,
+) -> CheckReport:
+    """The pole and Ward checks of a one-loop request (``pyamplicol check``):
+    ``target`` is a run card (its generation request), a resolved run
+    configuration, or a generated artifact directory (the request its
+    ``config/effective.toml`` records). Every process is regenerated in
+    memory through the generation service (nothing is written) on the full
+    tree kernels, widths zeroed outside the complex-mass scheme, and checked
+    at ``points`` seeded phase-space points (``seed``; defaults: the
+    configuration's ``check`` section, the seed falling back to
+    ``generation.validation.seed``): Born-interfered poles against Catani's
+    operator and Ward identities, loop-induced finiteness and Ward probes,
+    Goldstone-equivalence probes where they apply (``loops.v2.checks``).
+    ``precision`` "auto" runs binary64 first and double-double only where
+    binary64 fails, is refused or is out of scope. Returns a ``CheckReport``
+    whose ``exit_code`` is 0 iff every process passed."""
+
+    import time
+
+    from pyamplicol.config import CheckPrecision
+    from pyamplicol.config.resolver import resolve_config
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.checks import CheckReport
+
+    started = time.perf_counter()
+    kind = "config"
+    source = "configuration"
+    resolution: RunConfig | ConfigResolution
+    if isinstance(target, (RunConfig, ConfigResolution)):
+        resolution = target
+    else:
+        path = Path(os.fspath(target)).expanduser().resolve(strict=False)
+        source = str(path)
+        if path.is_dir():
+            kind = "artifact"
+            card = path / "config" / "effective.toml"
+            if not card.is_file():
+                raise ArtifactError(
+                    f"{path} records no generation configuration "
+                    "(config/effective.toml): check regenerates the artifact's "
+                    "request from it"
+                )
+            resolution = resolve_config(card, action=Action.CHECK)
+        else:
+            kind = "card"
+            resolution = resolve_config(path, action=Action.CHECK)
+    run = (
+        resolution.effective if isinstance(resolution, ConfigResolution) else resolution
+    )
+    if not run.process.entries:
+        raise GenerationError("check requires the process entries of a request")
+    count = run.check.points if points is None else int(points)
+    if count < 1:
+        raise ValueError("check needs at least one point")
+    first = (
+        seed
+        if seed is not None
+        else run.check.seed
+        if run.check.seed is not None
+        else run.generation.validation.seed
+    )
+    carrier = CheckPrecision(str(precision or run.check.precision))
+    explicit = (
+        None
+        if carrier is CheckPrecision.AUTO
+        else Precision.double()
+        if carrier is CheckPrecision.DOUBLE
+        else Precision.double_double()
+    )
+    from pyamplicol.loops.v2.induced import probe_carriers
+
+    generator = Generator(config=resolution, progress=progress)
+    generator._resolve_generation_resources()
+    backend = generator._implementation()
+    operation = getattr(backend, "check", None)
+    if operation is None:
+        raise GenerationError("generator backend does not support check")
+    processes = _process_set(
+        tuple(
+            ProcessRequest.parse(entry.expression, name=entry.name)
+            for entry in run.process.entries
+        )
+    )
+    checked = operation(
+        processes,
+        model=ModelSource.from_config(run.model),
+        points=count,
+        seed=first,
+        precision=explicit,
+    )
+    return CheckReport(
+        source,
+        kind,
+        count,
+        first,
+        str(carrier),
+        tuple(c.arithmetic for c in probe_carriers(explicit)),
+        tuple(checked),
+        "in memory through the generation service (nothing written): the "
+        "request on the full tree kernels, widths zeroed outside the "
+        "complex-mass scheme",
+        round(time.perf_counter() - started, 3),
+    )
+
+
 def benchmark(
     target: Runtime | os.PathLike[str] | str,
     *,
@@ -1708,6 +1820,7 @@ __all__ = [
     "Generator",
     "Runtime",
     "benchmark",
+    "check",
     "generate",
     "install_backend_factories",
     "load",

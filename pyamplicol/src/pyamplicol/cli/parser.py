@@ -1016,6 +1016,50 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_profile_options(benchmark)
 
+    check = subparsers.add_parser(
+        "check",
+        parents=[common],
+        help=(
+            "Check the poles (Catani; loop-induced: finiteness) and Ward "
+            "identities of a one-loop request, regenerated in memory."
+        ),
+    )
+    check.add_argument(
+        "_check_target",
+        type=Path,
+        nargs="?",
+        default=None,
+        metavar="CARD_OR_ARTIFACT",
+        help=(
+            "a run card (its generation request) or a generated one-loop "
+            "artifact directory (the request its config/effective.toml records)"
+        ),
+    )
+    check.add_argument(
+        "--points",
+        dest="check.points",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="seeded phase-space points per process (default 3)",
+    )
+    check.add_argument(
+        "--seed",
+        dest="check.seed",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="seed of the first point (default: generation.validation.seed)",
+    )
+    check.add_argument(
+        "--precision",
+        dest="check.precision",
+        choices=("auto", "double", "double-double"),
+        default=argparse.SUPPRESS,
+        help=(
+            "auto (default): binary64 first, double-double only where binary64 "
+            "fails, is refused or is out of scope; or one carrier alone"
+        ),
+    )
+
     inspect = subparsers.add_parser(
         "inspect",
         parents=[common],
@@ -1250,6 +1294,18 @@ def _namespace_to_invocation(
     positional_target = raw.pop("target", None)
     if positional_target != argparse.SUPPRESS and positional_target is not None:
         raw["evaluation.artifact"] = positional_target
+    check_target = raw.pop("_check_target", None)
+    if check_target != argparse.SUPPRESS and check_target is not None:
+        resolved_target = Path(os.fspath(check_target)).expanduser()
+        if resolved_target.is_file():
+            if card is not None:
+                raise ConfigurationError(
+                    "check takes a run card or an artifact: give the card "
+                    "either as CARD_OR_ARTIFACT or with --card"
+                )
+            card = resolved_target.resolve(strict=False)
+        else:
+            raw["evaluation.artifact"] = check_target
     positional_source = raw.pop("source", None)
     if positional_source != argparse.SUPPRESS and positional_source is not None:
         raw["model.source"] = positional_source
