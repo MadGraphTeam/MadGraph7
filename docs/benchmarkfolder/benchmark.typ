@@ -1,5 +1,12 @@
 #import "style.typ": *
-#let d = json("summary.json")
+#let summary-path = sys.inputs.at("summary", default: "summary.json")
+#let manifest-path = sys.inputs.at("manifest", default: "")
+#let context-path = sys.inputs.at("context", default: "")
+#let d = json(summary-path)
+#let campaign = if manifest-path == "" { none } else { json(manifest-path) }
+#let report = if context-path == "" {
+  (cases_path: "cases.json", predecessors: (), ratio_figure: d.at("ratio_figure", default: none))
+} else { json(context-path) }
 #let pilots = json("experiments/numerical/completed-pilots-index.json")
 #let env = json("implementation-start.json")
 #show: body => report-style(body, date: d.at("date", default: "9 November 2026"),
@@ -48,6 +55,11 @@
   #text(8pt, fill: luma(110))[Starting MadLoop revision #raw(d.baseline_revision.slice(0,12)) · one pinned CPU · full helicity/color sums]
 ]
 #v(7pt)
+#if campaign != none {
+  text(8pt, fill: ink2)[Selected campaign: #raw(campaign.id). Current numerical identity:
+    #raw(campaign.candidate.numerical_identity_sha256.slice(0,16)).]
+  v(4pt)
+}
 #note(fill: if d.gate.complete and d.gate.passed { pale } else { warm })[
   *Main campaign acceptance: #cell-status(if d.gate.complete and d.gate.passed { "pass" } else if d.gate.complete or known-failures { "fail" } else { "incomplete" }).* #if known-failures and not d.gate.complete { [The remaining campaign is incomplete.] }
   Every main process requires five-backend agreement, an upper 95% paired runtime-ratio bound no greater than 1.05, and passing existing-backend regression checks. Unmeasured cells are shown as —. A failed or incomplete row is not a speedup claim.
@@ -87,6 +99,33 @@
 #v(5pt)
 #text(8pt, fill: ink2)[This study measures the new integration against the untouched starting branch, which already includes NinjaRS and earlier Fortran optimizations. It does not attribute those earlier improvements to TIRust.]
 
+#if report.predecessors.len() > 0 {
+  pagebreak()
+  heading(level: 1)[Retained predecessor failures]
+  [The following qualified failures belong to earlier candidate implementations.
+  They remain authoritative for those numerical sources and fixed policies.
+  Results for the selected campaign appear in the main matrix; a new campaign
+  does not replace or erase a previous candidate's failure.]
+  v(7pt)
+  figure(table-style(table(columns: (1.1fr, 1.3fr, 1.1fr, 1.5fr),
+    inset: (x: 4pt, y: 7pt), stroke: table-stroke, fill: table-fill,
+    table.header([Process · comparison], [Previous candidate source],
+      [Retained ratio · 95% interval], [Retained failure evidence]),
+    ..report.predecessors.map(p => (
+      [#process-label(p)#linebreak()#text(7pt)[#raw(p.label)]],
+      [#raw(p.predecessor_id)#linebreak()
+       #text(7pt)[revision #raw(p.revision.slice(0,12))#linebreak()
+         source SHA #raw(p.source_sha256.slice(0,16))]],
+      [#if p.geometric_mean_ratio != none { [#fixed(p.geometric_mean_ratio,5)#linebreak()] }
+       #if p.lower_95 != none and p.upper_95 != none {
+         [#fixed(p.lower_95,5)–#fixed(p.upper_95,5)#linebreak()]
+       }
+       #cell-status("fail")],
+      [#text(6.7pt)[#raw(p.directory)]],
+    )).flatten(),
+  )), caption: [All retained qualified ancestor failures, including discovered and unselected attempts. Source identities and every read evidence file are bound in the report build manifest.])
+}
+
 #pagebreak()
 = Five-backend numerical agreement
 
@@ -117,6 +156,10 @@ The same saved momenta, model parameters, coupling orders and scale are evaluate
 = Completed physical pilot checks
 
 These eight separately retained checks each evaluate 100 saved physical points with all five reducers. They use the common strict stability policy and pass the #raw("3e-6") regression criterion. Their timings are ineligible for performance acceptance, and they do not fill the pending timing-campaign rows above. An independent audit reparsed 4,800 evaluations and checked the retained inputs, executable provenance and raw statuses.
+
+#if campaign != none {
+  note(fill: warm)[These historical pilots retain their original candidate sources in the pilot index. They do not establish numerical acceptance for the selected campaign #raw(campaign.id).]
+}
 
 #figure(table-style(table(columns: (1.5fr, .7fr, .8fr, 1fr, .9fr),
   inset: (x: 4pt, y: 8pt), stroke: table-stroke, fill: table-fill,
@@ -161,8 +204,8 @@ Values below are warmed full-amplitude times in µs per point. Initialization, c
   )).flatten(),
 )), caption: [Per-backend timing observations. Missing measurements are not represented as zero.])
 
-#if d.at("ratio_figure", default: none) != none {
-  figure(image(d.ratio_figure, width: 100%),
+#if report.ratio_figure != none {
+  figure(image(report.ratio_figure, width: 100%),
     caption: [Paired candidate/baseline ratios and 95% intervals; the acceptance limit is 1.05.])
 }
 
@@ -191,6 +234,8 @@ Each cell gives the first-amplitude initialization plus complete-stream warmup t
     }),
   )).flatten(),
 )), caption: [Cold intervals and final accepted precision. Exact backend/precision counts and point-level results accompany the raw observations.])
+
+#include "poles-timing.typ"
 
 #pagebreak()
 = Methods and qualification
@@ -239,7 +284,7 @@ Pole-only tests prove that finite evaluators and finite tensor arithmetic are sk
 
 == Reproduction and provenance
 
-The accompanying #raw("cases.json") fixes the matrix and thresholds; #raw("summary.json") is derived from retained observations. The source plan, baseline manifest, dependency revisions, build environment, and raw measurement paths accompany this report. Rebuilding the PDF does not rerun numerical measurements.
+The accompanying #raw(report.cases_path) fixes the matrix and thresholds; #raw(summary-path) is derived from retained observations. #if campaign != none { [The selected manifest is #raw(manifest-path). Its ancestor summary snapshots and qualified failures retain the previous candidates' identities separately.] } The source plan, baseline manifest, dependency revisions, build environment, and raw measurement paths accompany this report. Rebuilding the PDF does not rerun numerical measurements.
 
 #table-style(table(columns: (1fr, 3fr), inset: 5pt, stroke: table-stroke, fill: table-fill,
   table.header([Component], [Recorded environment]),
