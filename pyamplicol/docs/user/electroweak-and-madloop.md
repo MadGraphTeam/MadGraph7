@@ -182,7 +182,7 @@ key with its remedy:
 | `ufo-value-writes` | a UFO that writes declared values after their constructors (e.g. the UFOmodeldb issue-1 patch of `loop_qcd_qed_sm_Gmu` as published; the shipped copy has them folded) |
 | `process-group-analysis` | a numerical process-group analysis of a one-loop request (permutation aliases and exact flavour members are served, see [Process grouping](process-grouping.md#one-loop-virtual-artifacts)) |
 | `direct-r2`, `fft-basis-trace`, `colour-selectors`, `relation-discovery`, `evaluator-backend`, `evaluator-tuning`, `covariant-multiplets` | settings the one-loop engine does not take (each message names the setting) |
-| `fermion-sign`, `reading-sign`, `unlowered-counterterm`, `counterterm-coupling`, `loop-kernel-catalogue`, `counterterm-completeness`, `loop-induced-probe` | internal: an engine condition met during generation |
+| `fermion-sign`, `reading-sign`, `unlowered-counterterm`, `counterterm-coupling`, `loop-kernel-catalogue`, `counterterm-completeness`, `loop-induced-probe`, `block-colour-flow` | internal: an engine condition met during generation |
 
 A process whose point inputs the native export does not cover is refused
 with the export's key (`NativeExportRefused`, e.g. `plane-mismatch`). See
