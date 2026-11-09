@@ -1,0 +1,49 @@
+                 U _GLOBAL_OFFSET_TABLE_
+                 U __addtf3
+                 U __divtf3
+                 U __extenddftf2
+                 U __getf2
+                 U __gttf2
+                 U __ml5_0_polynomial_constants_MOD_ncoef_r
+                 U __mtirust_MOD_tensor_dp
+                 U __mtirust_MOD_tensor_mp
+                 U __mtirust_MOD_tirust_clear_cache
+                 U __mtirust_MOD_tirust_context_generation
+                 U __mtirust_MOD_tirust_finalize
+                 U __mtirust_MOD_tirust_register_plan
+                 U __mtirust_MOD_tirust_set_cache_budget
+                 U __mtirust_MOD_tirust_supports
+                 U __multf3
+                 U __subtf3
+                 U __trunctfdf2
+                 U __unordtf2
+                 U _gfortran_ieee_procedure_entry
+                 U _gfortran_ieee_procedure_exit
+0000000000000080 0000000000000080 C couplings_
+0000000000000208 0000000000000208 C madloop_
+0000000000000048 0000000000000048 C masses_
+                 U ml5_0_build_kinematic_matrix_
+0000000000010911 0000000000000044 T ml5_0_clear_tirust_cache_
+0000000000000016 0000000000000016 C ml5_0_ct_
+0000000000010955 0000000000000057 T ml5_0_finalize_tirust_
+0000000000000008 0000000000000008 C ml5_0_fpe_in_reduction_
+0000000000005240 0000000000000148 T ml5_0_initialize_tirust_
+0000000000000012 0000000000000012 C ml5_0_loop_
+                 U ml5_0_mp_build_kinematic_matrix_
+0000000000000480 0000000000000480 C ml5_0_mp_lcoefs_
+                 U ml5_0_mp_switch_order_
+0000000000000707 0000000000004533 T ml5_0_mp_tirust_diagnostic_work_
+0000000000009545 0000000000001366 T ml5_0_mp_tirust_loop_
+0000000000000000 0000000000000355 T ml5_0_mp_tirust_tensor_diagnostic_
+                 U ml5_0_switch_order_
+0000000000005388 0000000000004049 T ml5_0_tirust_diagnostic_work_
+0000000000000000 0000000000000004 D ml5_0_tirust_init_
+0000000000000000 0000000000000008 B ml5_0_tirust_init_data_
+0000000000000355 0000000000000352 T ml5_0_tirust_tensor_diagnostic_
+0000000000009437 0000000000000108 T ml5_0_tirustloop_
+0000000000000016 0000000000000016 C rscale_
+0000000000000016 0000000000000016 C strong_
+0000000000000096 0000000000000060 d tirust_map.0
+0000000000000032 0000000000000060 d tirust_map.1
+0000000000000032 0000000000000032 C weak_
+0000000000000032 0000000000000032 C widths_

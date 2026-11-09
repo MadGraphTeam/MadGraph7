@@ -1,0 +1,77 @@
+{
+  "object_sha256": "2e48e93befe502df577a2333f19a4f407db6fc377906d71b4874085868fa2f8d",
+  "routines": [
+    {
+      "routine": "ml5_0_tirust_tensor_diagnostic_",
+      "malloc_calls": 0,
+      "free_calls": 0,
+      "pack_calls": [],
+      "relocated_calls": [
+        "2b9: R_X86_64_PLT32\tml5_0_tirust_diagnostic_work_-0x4"
+      ]
+    },
+    {
+      "routine": "ml5_0_mp_tirust_tensor_diagnostic_",
+      "malloc_calls": 0,
+      "free_calls": 0,
+      "pack_calls": [],
+      "relocated_calls": [
+        "159: R_X86_64_PLT32\tml5_0_mp_tirust_diagnostic_work_-0x4"
+      ]
+    },
+    {
+      "routine": "ml5_0_tirust_diagnostic_work_",
+      "malloc_calls": 0,
+      "free_calls": 0,
+      "pack_calls": [],
+      "relocated_calls": [
+        "1555: R_X86_64_PLT32\t_gfortran_ieee_procedure_entry-0x4",
+        "16ff: R_X86_64_PLT32\t__mtirust_MOD_tirust_supports-0x4",
+        "171f: R_X86_64_PLT32\tml5_0_initialize_tirust_-0x4",
+        "1761: R_X86_64_PLT32\t__mtirust_MOD_tirust_set_cache_budget-0x4",
+        "184b: R_X86_64_PLT32\tml5_0_switch_order_-0x4",
+        "1c73: R_X86_64_PLT32\tml5_0_build_kinematic_matrix_-0x4",
+        "2093: R_X86_64_PLT32\t__mtirust_MOD_tensor_dp-0x4",
+        "24c7: R_X86_64_PLT32\t_gfortran_ieee_procedure_exit-0x4"
+      ]
+    },
+    {
+      "routine": "ml5_0_mp_tirust_diagnostic_work_",
+      "malloc_calls": 0,
+      "free_calls": 0,
+      "pack_calls": [],
+      "relocated_calls": [
+        "30c: R_X86_64_PLT32\t_gfortran_ieee_procedure_entry-0x4",
+        "4d0: R_X86_64_PLT32\t__mtirust_MOD_tirust_supports-0x4",
+        "4f0: R_X86_64_PLT32\tml5_0_initialize_tirust_-0x4",
+        "532: R_X86_64_PLT32\t__mtirust_MOD_tirust_set_cache_budget-0x4",
+        "5ba: R_X86_64_PLT32\t__extenddftf2-0x4",
+        "5e1: R_X86_64_PLT32\t__extenddftf2-0x4",
+        "63e: R_X86_64_PLT32\tml5_0_mp_switch_order_-0x4",
+        "726: R_X86_64_PLT32\t__addtf3-0x4",
+        "793: R_X86_64_PLT32\t__addtf3-0x4",
+        "808: R_X86_64_PLT32\t__getf2-0x4",
+        "862: R_X86_64_PLT32\t__gttf2-0x4",
+        "8a0: R_X86_64_PLT32\t__gttf2-0x4",
+        "8d7: R_X86_64_PLT32\t__multf3-0x4",
+        "910: R_X86_64_PLT32\t__getf2-0x4",
+        "952: R_X86_64_PLT32\t__divtf3-0x4",
+        "95f: R_X86_64_PLT32\t__gttf2-0x4",
+        "9f2: R_X86_64_PLT32\t__addtf3-0x4",
+        "b41: R_X86_64_PLT32\tml5_0_mp_build_kinematic_matrix_-0x4",
+        "bcd: R_X86_64_PLT32\t__addtf3-0x4",
+        "c13: R_X86_64_PLT32\t__addtf3-0x4",
+        "c4c: R_X86_64_PLT32\t__extenddftf2-0x4",
+        "c55: R_X86_64_PLT32\t__multf3-0x4",
+        "f8f: R_X86_64_PLT32\t__mtirust_MOD_tensor_mp-0x4",
+        "1088: R_X86_64_PLT32\t__unordtf2-0x4",
+        "10a2: R_X86_64_PLT32\t__gttf2-0x4",
+        "1122: R_X86_64_PLT32\t__unordtf2-0x4",
+        "113c: R_X86_64_PLT32\t__gttf2-0x4",
+        "137a: R_X86_64_PLT32\t__addtf3-0x4",
+        "1396: R_X86_64_PLT32\t__addtf3-0x4",
+        "1462: R_X86_64_PLT32\t_gfortran_ieee_procedure_exit-0x4"
+      ]
+    }
+  ]
+}

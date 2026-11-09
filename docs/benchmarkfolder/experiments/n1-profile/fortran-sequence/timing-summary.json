@@ -1,0 +1,126 @@
+{
+  "performance_eligible": false,
+  "source_sha256": "94345ae9ef8baa52fe304688be29c079a2daefbd9d489175509fbd3b897261c4",
+  "cpu": 9,
+  "points_sha256": "2ed64c5cba477ce0e7ed3a7bbd642521061b251573ed20957f8e3bc396fa5b35",
+  "candidate_library": {
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/split-bridge/libmadloop_tirust.so",
+    "sha256": "1c3688011fb0b423142ab4ac4c832f5b71d8e4409ef323087dfac5ceb2075cd7"
+  },
+  "build_metadata": {
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/n1-profile/bridge/split-build-metadata.json",
+    "sha256": "149835d8587a1b61d8d2bb2b0bd6d10f79d31a3954e17475da2a9575ef62cf4e"
+  },
+  "original_uses_candidate_library": true,
+  "fortran_build_metadata": {
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/n1-profile/fortran-sequence/adapter-sequence-build/build-metadata.json",
+    "sha256": "a66eb864d2e8f67175f5b4eaa18c534d04694b954a93c3d092470d1a96473c4c"
+  },
+  "paired_statistics": {
+    "original_over_baseline": {
+      "pairs": 7,
+      "geometric_mean_ratio": 1.1084138358738491,
+      "lower_95": 1.1016947079539245,
+      "upper_95": 1.1151739430956422,
+      "log_ratio_standard_error": 0.0024849192975216123,
+      "student_t_critical": 2.446912,
+      "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+      "threshold": 1.05,
+      "minimum_pairs": 7,
+      "passed": false,
+      "minimum_pair_count_satisfied": true,
+      "performance_eligible": false,
+      "note": "Diagnostic comparison, not an acceptance campaign."
+    },
+    "split_over_baseline": {
+      "pairs": 7,
+      "geometric_mean_ratio": 1.1092187263910758,
+      "lower_95": 1.1022090646422822,
+      "upper_95": 1.1162729671216691,
+      "log_ratio_standard_error": 0.0025908209361592,
+      "student_t_critical": 2.446912,
+      "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+      "threshold": 1.05,
+      "minimum_pairs": 7,
+      "passed": false,
+      "minimum_pair_count_satisfied": true,
+      "performance_eligible": false,
+      "note": "Diagnostic comparison, not an acceptance campaign."
+    },
+    "split_over_original": {
+      "pairs": 7,
+      "geometric_mean_ratio": 1.0007261642639025,
+      "lower_95": 0.9901387246089185,
+      "upper_95": 1.0114268141950447,
+      "log_ratio_standard_error": 0.004346752370670531,
+      "student_t_critical": 2.446912,
+      "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+      "threshold": 1.05,
+      "minimum_pairs": 7,
+      "passed": true,
+      "minimum_pair_count_satisfied": true,
+      "performance_eligible": false,
+      "note": "Diagnostic comparison, not an acceptance campaign."
+    }
+  },
+  "improvement_established_by_diagnostic_interval": false,
+  "wall_microseconds_per_amplitude": {
+    "baseline": {
+      "values": [
+        93.4178309,
+        92.92545679999999,
+        92.98339304999999,
+        93.3393535,
+        93.82867955,
+        93.36678215,
+        92.89285914999999
+      ],
+      "median": 93.3393535,
+      "minimum": 92.89285914999999,
+      "maximum": 93.82867955
+    },
+    "original": {
+      "values": [
+        102.88493565,
+        103.9576656,
+        103.12463715,
+        102.358525,
+        104.27957995,
+        103.67632495000001,
+        103.24877965
+      ],
+      "median": 103.24877965,
+      "minimum": 102.358525,
+      "maximum": 104.27957995
+    },
+    "split": {
+      "values": [
+        104.0287829,
+        103.3757547,
+        103.07219745,
+        104.4588542,
+        103.0841005,
+        102.66374524999999,
+        103.37072115
+      ],
+      "median": 103.37072115,
+      "minimum": 102.66374524999999,
+      "maximum": 104.4588542
+    }
+  },
+  "all_original_split_bit_identical": true,
+  "maximum_original_split_relative_error": 0.0,
+  "all_measured_and_calibration_parity_passed": true,
+  "all_expected_backend_usage": true,
+  "limits": [
+    "Diagnostic triads with concurrent ordinary CutTools work and explicit host-load records.",
+    "This CPU differs from prior attribution; do not subtract their absolute stage times.",
+    "Profiling bridge has disabled timer branches in the main comparisons.",
+    "Enabled-timer stages are inclusive and cannot be added to full-amplitude or nested timings."
+  ],
+  "variant_descriptions": {
+    "baseline": "Frozen NinjaRS-first baseline executable and libraries",
+    "original": "Split-workspace DSO with original Fortran adapter",
+    "split": "Same split-workspace DSO with adapter-only explicit-shape worker with fixed local scratch; original compiler flags"
+  }
+}

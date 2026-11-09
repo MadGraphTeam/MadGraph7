@@ -1,0 +1,7 @@
+{
+  "output": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/fortran-sequence/adapter-sequence-build",
+  "changed_objects": [
+    "TIRUST_interface.o"
+  ],
+  "executable_sha256": "e9043c3989ecd84e655a528447ab8e6cec08ee194a6826c5f168401b28dc94ed"
+}

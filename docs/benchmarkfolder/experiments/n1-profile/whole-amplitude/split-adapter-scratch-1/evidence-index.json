@@ -1,0 +1,11 @@
+{
+  "scope": "Separate isolated adapter diagnostic, not performance acceptance",
+  "source_namespace": "fortran-scratch",
+  "source_index_sha256": "cae4b21d95072a8617d4f43610275ac17273c5006708b118579fb6fe457890c1",
+  "result_sha256": "7f4a96f1cfaeb057d97f1eabb4c55ecbabcb8551520de0c1489ba00fcb69973f",
+  "summary_sha256": "5c1d3a3af2d4cd1652630468aad499af8f2ce96a8b949e055a4d5b16d9631682",
+  "decision": "Do not promote: numerical parity passed, but no whole-amplitude runtime benefit established.",
+  "all_numerical_parity_passed": true,
+  "all_expected_backend_statuses": true,
+  "performance_eligible": false
+}

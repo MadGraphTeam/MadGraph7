@@ -1,0 +1,55 @@
+{
+  "median_microseconds_per_amplitude": {
+    "baseline": 93.3393535,
+    "original": 103.24877965,
+    "split": 103.37072115
+  },
+  "paired_statistics": {
+    "original_over_baseline": {
+      "pairs": 7,
+      "geometric_mean_ratio": 1.1084138358738491,
+      "lower_95": 1.1016947079539245,
+      "upper_95": 1.1151739430956422,
+      "log_ratio_standard_error": 0.0024849192975216123,
+      "student_t_critical": 2.446912,
+      "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+      "threshold": 1.05,
+      "minimum_pairs": 7,
+      "passed": false,
+      "minimum_pair_count_satisfied": true,
+      "performance_eligible": false,
+      "note": "Diagnostic comparison, not an acceptance campaign."
+    },
+    "split_over_baseline": {
+      "pairs": 7,
+      "geometric_mean_ratio": 1.1092187263910758,
+      "lower_95": 1.1022090646422822,
+      "upper_95": 1.1162729671216691,
+      "log_ratio_standard_error": 0.0025908209361592,
+      "student_t_critical": 2.446912,
+      "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+      "threshold": 1.05,
+      "minimum_pairs": 7,
+      "passed": false,
+      "minimum_pair_count_satisfied": true,
+      "performance_eligible": false,
+      "note": "Diagnostic comparison, not an acceptance campaign."
+    },
+    "split_over_original": {
+      "pairs": 7,
+      "geometric_mean_ratio": 1.0007261642639025,
+      "lower_95": 0.9901387246089185,
+      "upper_95": 1.0114268141950447,
+      "log_ratio_standard_error": 0.004346752370670531,
+      "student_t_critical": 2.446912,
+      "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+      "threshold": 1.05,
+      "minimum_pairs": 7,
+      "passed": true,
+      "minimum_pair_count_satisfied": true,
+      "performance_eligible": false,
+      "note": "Diagnostic comparison, not an acceptance campaign."
+    }
+  },
+  "all_original_split_bit_identical": true
+}
