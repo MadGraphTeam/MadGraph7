@@ -29,7 +29,7 @@ from madgraph.mg7.observables import CutItem, HistItem, build_observable, clean_
 from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
 from madgraph.mg7.subprocess_amplicol import (
-    AmplicolSubprocess, amplicol_subproc_args, event_flavors, is_amplicol)
+    AmplicolSubprocess, amplicol_subproc_args, event_flavors, is_amplicol, quark_lines)
 from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
 # From this many subprocess directories to compile, the standard headers are
@@ -93,6 +93,7 @@ class MadgraphProcess:
                 self.merged_subprocess_data = json.load(f)
         else:
             self.merged_subprocess_data = None
+            self.drop_amplicol_without_lc_flavors()
 
         self.init_decay_mode()
         self.init_me_frame()
@@ -231,6 +232,26 @@ class MadgraphProcess:
             for meta in self.subprocess_data
             for single in _single_flavor_metas(meta)
         ]
+
+    def drop_amplicol_without_lc_flavors(self) -> None:
+        """Remove the [amplicol] subprocesses whose flavours all have more than
+        two quark lines under lc_flavors = two_lines(_resample): they are
+        neglected, or reached by the flavour switch of the other subprocesses."""
+        if self.run_card["amplicol"]["lc_flavors"] == "all":
+            return
+        kept = [
+            meta for meta in self.subprocess_data
+            if not is_amplicol(meta)
+            or any(quark_lines(f["options"][0]) <= 2 for f in meta["flavors"])
+        ]
+        if len(kept) < len(self.subprocess_data):
+            logger.info(
+                "lc_flavors = %s: %d [amplicol] subprocesses without a flavour of "
+                "at most two quark lines are skipped",
+                self.run_card["amplicol"]["lc_flavors"],
+                len(self.subprocess_data) - len(kept),
+            )
+        self.subprocess_data = kept
 
     def drop_closed_channels(self) -> None:
         """Remove subprocesses the decaying particle is too light to produce.

@@ -122,6 +122,14 @@ class AmplicolExportTest(unittest.TestCase):
                                       {'mp0': ['u', 'd'], 'mp1': ['u~', 'd~']}))
         self.assertEqual(len(processes), 4)
 
+    def test_restricted_quark_flavours_keep_the_gluon(self):
+        self.cmd.exec_cmd('define p = g u d u~ d~', printcmd=False, precmd=True)
+        self.cmd.exec_cmd('define j = g u d u~ d~', printcmd=False, precmd=True)
+        _, (expression, multiparticles), _ = self.export('p p > e+ ve j j')
+        self.assertEqual(expression, 'mp0 mp0 > e+ ve mp0 mp0')
+        self.assertEqual(sorted(multiparticles['mp0']),
+                         sorted(['g', 'u', 'd', 'u~', 'd~']))
+
     def test_multiparticles(self):
         name, (expression, multiparticles), processes = self.export('p p > j j')
         self.assertEqual(name, 'pp_jj')
@@ -465,3 +473,15 @@ class AmplicolLeadingColourFlavoursTest(unittest.TestCase):
              'flavors': [], 'switch_resonance_pdgs': [[[24]]]},
             lambda pid: 0.0, lambda pid: 0.0)
         self.assertEqual(resonances['switch_resonance_pdgs'], [[[]]])
+
+    def test_subprocesses_without_lc_flavours_are_skipped(self):
+        from types import SimpleNamespace
+        from madgraph.mg7.madgraph_process import MadgraphProcess
+        three = {'backend': 'amplicol', 'flavors': [{'options': [[2, -2, 1, -1, 3, -3]]}]}
+        two = {'backend': 'amplicol', 'flavors': self.meta['flavors']}
+        other = {'flavors': [{'options': [[2, -2, 1, -1, 3, -3]]}]}
+        for mode, kept in [('all', 3), ('two_lines', 2), ('two_lines_resample', 2)]:
+            process = SimpleNamespace(run_card={'amplicol': {'lc_flavors': mode}},
+                                      subprocess_data=[three, two, other])
+            MadgraphProcess.drop_amplicol_without_lc_flavors(process)
+            self.assertEqual(len(process.subprocess_data), kept)
