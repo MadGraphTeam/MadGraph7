@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import platform
@@ -2749,6 +2750,207 @@ def _sample_statistics(samples: list[float]) -> tuple[float, float, float, float
     return mean, deviation, error, relative_error
 
 
+# ------------------------------------------------------ loop artifacts
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualProfileResult:
+    """The profile of a v2 virtual (loop) runtime (``pyamplicol profile`` of a
+    loop artifact, :class:`pyamplicol.BenchmarkRunner`): ``samples`` timed
+    calls of one batch of ``batch`` points (the validation points repeated,
+    or the caller's), finite part only, at the runtime's reduction setting.
+    ``seconds_per_point`` is the median call's wall time per point (``low``
+    and ``high`` the fastest and slowest call's); ``stages`` splits the
+    timed calls' total wall time per point into the groups of
+    ``runtime.virtual.PROFILE_GROUPS`` from the executor's always-on stage
+    reports of the same calls, every native batch of a call counted
+    (``runtime.virtual.collected_stage_seconds``; no other timer runs, so
+    ``label`` is None).
+    ``reduction`` is the requested, effective backend and reason of the
+    last call; ``unchecked`` the reduction_unchecked setting."""
+
+    process_id: str
+    process_expression: str | None
+    contribution: str
+    batch: int
+    samples: int
+    warmup: int
+    seconds_per_point: float
+    low: float
+    high: float
+    stages: Mapping[str, float]
+    reduction: Mapping[str, object]
+    unchecked: bool
+    failed_points: int
+    label: str | None = None
+
+
+def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
+    """Whether ``path`` (an artifact directory or its manifest) is a v2
+    virtual artifact: any v2 loop runtime makes one (Born-interfered and
+    loop-induced processes, in any mix), as ``Runtime.load`` dispatches. A
+    hint for choosing the ingress only; the native loader checks the
+    artifact itself."""
+
+    from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITIES
+    from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
+
+    resolved = Path(os.fspath(path)).expanduser().resolve(strict=False)
+    root = (
+        resolved.parent
+        if resolved.name == MANIFEST_NAME and resolved.is_file()
+        else resolved
+    )
+    if not (root / MANIFEST_NAME).is_file():
+        return False
+    manifest = load_manifest(root, verify_payloads=False)
+    return bool(
+        LOOP_V2_RUNTIME_CAPABILITIES.intersection(
+            cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"])
+        )
+    )
+
+
+def is_virtual_target(target: object) -> bool:
+    """Whether a profile target is a v2 virtual (loop) artifact or runtime."""
+
+    kind = getattr(target, "contribution_kind", None)
+    if kind is not None:
+        return kind != "tree"
+    if isinstance(target, (str, os.PathLike)):
+        return is_virtual_artifact(target)
+    return False
+
+
+def _initial_invariant(point: Sequence[Sequence[object]], initial: int) -> str:
+    total = [
+        math.fsum(float(cast(Any, p[mu])) for p in point[:initial]) for mu in range(4)
+    ]
+    return repr(total[0] ** 2 - total[1] ** 2 - total[2] ** 2 - total[3] ** 2)
+
+
+def profile_virtual(
+    target: Any,
+    config: RunConfig | BenchmarkConfig | None,
+    *,
+    points: Momenta | None = None,
+) -> VirtualProfileResult:
+    """Profile a loop artifact path or a loaded virtual :class:`Runtime`
+    (``VirtualProfileResult``). Settings: ``benchmark.batch_size``,
+    ``warmup_runs`` and ``minimum_samples``; ``evaluation.process``,
+    ``reduction``, ``reduction_target`` and ``reduction_unchecked`` when a path
+    is loaded; ``evaluation.mu_r2`` (default: per point the squared
+    invariant mass of its initial state)."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
+
+    run = config if isinstance(config, RunConfig) else None
+    bench = run.benchmark if run is not None else config or BenchmarkConfig()
+    evaluation = run.evaluation if run is not None else None
+    if isinstance(target, Runtime):
+        runtime = target
+        artifact = None
+    else:
+        artifact = Path(os.fspath(target)).expanduser().resolve(strict=False)
+        options: dict[str, Any] = {}
+        if evaluation is not None:
+            if evaluation.reduction is not None:
+                options["reduction"] = str(evaluation.reduction)
+            if evaluation.reduction_target is not None:
+                options["reduction_target"] = evaluation.reduction_target
+            if evaluation.reduction_unchecked:
+                options["reduction_unchecked"] = True
+        runtime = Runtime.load(
+            artifact,
+            process=None if evaluation is None else evaluation.process,
+            **options,
+        )
+    physics = runtime.physics
+    if points is None:
+        if artifact is None:
+            raise EvaluationError(
+                "profiling a loaded virtual runtime needs its points (points=)"
+            )
+        record = json.loads(
+            (
+                artifact / "processes" / physics.process_id / "validation-momenta.json"
+            ).read_text()
+        )
+        points = [[entry["momentum"] for entry in point] for point in record["points"]]
+    if not points:
+        raise EvaluationError("profiling needs at least one phase-space point")
+    batch = _benchmark_batch(points, bench.batch_size)
+    initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
+    scales: Any = (
+        evaluation.mu_r2
+        if evaluation is not None and evaluation.mu_r2 is not None
+        else [_initial_invariant(point, initial) for point in batch]
+    )
+    options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    for _ in range(bench.warmup_runs):
+        runtime.evaluate(batch, **options)
+    walls: list[float] = []
+    totals: dict[str, float] = {}
+    failed = 0
+    contribution = runtime.contribution_kind
+    reductions: list[Any] = []
+    for _ in range(max(bench.minimum_samples, 1)):
+        with collected_stage_seconds(runtime) as seconds:
+            begin = time.perf_counter()
+            result = runtime.evaluate(batch, **options)
+            wall = time.perf_counter() - begin
+        walls.append(wall)
+        failed += sum(1 for valid in result.valid if not valid)
+        for group, value in profile_stages(seconds or {}, wall, contribution).items():
+            totals[group] = totals.get(group, 0.0) + value
+        reductions.extend(
+            lane.reduction
+            for lane in result.diagnostics
+            if getattr(lane, "reduction", None) is not None
+        )
+    count = len(batch) * len(walls)
+    return VirtualProfileResult(
+        physics.process_id,
+        physics.process,
+        contribution,
+        len(batch),
+        len(walls),
+        bench.warmup_runs,
+        statistics.median(walls) / len(batch),
+        min(walls) / len(batch),
+        max(walls) / len(batch),
+        {group: value / count for group, value in totals.items()},
+        _reduction_record(reductions),
+        any(bool(getattr(r, "unchecked", False)) for r in reductions),
+        failed,
+    )
+
+
+def _reduction_record(reductions: Sequence[Any]) -> dict[str, object]:
+    """The reduction backends of the profiled calls from every lane's
+    ``VirtualReduction`` (``reductions``): the requested backend, the
+    effective one of most lanes with its reason, and the lane count per
+    effective backend (``lanes``: a per-point fallback of "auto" shows as
+    the other backend's lanes)."""
+
+    if not reductions:
+        return {}
+    lanes: dict[str, int] = {}
+    reasons: dict[str, str] = {}
+    for reduction in reductions:
+        effective = str(reduction.effective)
+        lanes[effective] = lanes.get(effective, 0) + 1
+        reasons.setdefault(effective, str(reduction.reason))
+    effective = max(lanes, key=lambda name: lanes[name])
+    return {
+        "requested": str(reductions[0].requested),
+        "effective": effective,
+        "reason": reasons[effective],
+        "lanes": lanes,
+    }
+
+
 def create_benchmark_backend(
     config: BenchmarkConfig | RunConfig | None,
     progress: ProgressSink | None,
@@ -2756,4 +2958,10 @@ def create_benchmark_backend(
     return BenchmarkBackend(config, progress)
 
 
-__all__ = ["BenchmarkBackend", "create_benchmark_backend"]
+__all__ = [
+    "BenchmarkBackend",
+    "VirtualProfileResult",
+    "create_benchmark_backend",
+    "is_virtual_target",
+    "profile_virtual",
+]

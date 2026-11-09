@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: generate g g > e+ e- m+ m-, loop-induced |A_loop|^2, complex-mass scheme.
+# Walkthrough: python python/loop_walkthrough.py loop_gg_epemmpmm_generate.toml (README, One-Loop Examples).
+
+schema_version = 1
+action = "generate"
+
+[model]
+source = "loop_qcd_qed_sm_Gmu"
+restriction = "default"
+
+[process]
+entries = [{ expression = "g g > e+ e- m+ m-", name = "gg_epemmpmm" }]
+loop_coupling_orders = ["QCD"]
+
+[loop]
+r2_strategy = "model"
+
+[loop.preparation]
+# Complex Z, W, H and top masses in the propagators; the external leptons
+# are stable.
+fixed_parameters = { WT = "1.37758", WZ = "2.49877", WW = "2.09291", WH = "0.00407468" }
+
+[loop.model.scheme]
+mass_scheme = "complex-mass"
+
+[generation]
+output = "artifacts/loop_gg_epemmpmm"

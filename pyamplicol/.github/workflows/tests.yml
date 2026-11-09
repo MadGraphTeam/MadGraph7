@@ -245,8 +245,9 @@ jobs:
   # as much physical memory), leaving the OS and the runner service ~3 GiB of
   # its ~15.6 GiB; above it the watchdog stops the step with its process-tree
   # diagnostics instead of the runner dying (16.25 GiB in Tests run
-  # 42193403733, shard 3). Peaks there: <= 8.1 GiB per shard, native build
-  # 5.9 GiB.
+  # 42193403733, shard 3). Peaks there: <= 8.2 GiB per shard (the loop
+  # examples' smoke file tests/integration/test_loop_examples.py 8.16 GiB),
+  # native build 5.9 GiB.
   licence:
     name: Symbolica licence gate (loop jobs)
     runs-on: ubuntu-24.04
@@ -332,7 +333,7 @@ jobs:
   # The loop Python default tier: every loop-marked test (LOOP_MARKERS) but
   # loop_nightly, which tests/conftest.py skips without the licence, one
   # process per test file (test_loop_v2_ct_closure.py one per test id), one
-  # at a time (process-tree peaks up to ~8.1 GiB, a test process and its
+  # at a time (process-tree peaks up to ~8.2 GiB, a test process and its
   # children together; the N_c scans' processes run at most one per CPU,
   # tests/unit/loop_nc_scan.run_bounded), in 8 shards balanced
   # by the wall times of tools/ci/loop_durations.json (4.4 h serial locally).

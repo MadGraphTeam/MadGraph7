@@ -43,6 +43,7 @@ numerically.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
@@ -1309,11 +1310,17 @@ class ProbeResult:
     (``amplitude_estimates``) and whether every ratio is within
     ``ESTIMATE_FACTOR`` (the x10 rule; pass/fail from the probe's own
     estimate, never a fixed tolerance, m-lit Q12); ``scales`` are the
-    physical amplitude's row term floors the estimates stand on."""
+    physical amplitude's row term floors the estimates stand on;
+    ``relative`` holds, per (loop order, row), the residue and E over the
+    term floor S_k(h) of the coefficient with the largest ratio (the
+    measured sizes ``pyamplicol check`` reports; no verdict reads them)."""
 
     kind: str
     ratios: Mapping[tuple[Orders, rx.Row], float]
     scales: Mapping[tuple[Orders, rx.Row], Sequence[float]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    relative: Mapping[tuple[Orders, rx.Row], tuple[float, float]] = field(
         default_factory=lambda: MappingProxyType({})
     )
 
@@ -1619,17 +1626,28 @@ def probe_results(
         )
         first = 0 if ward is not None else 1
         ratios = {}
+        relative = {}
         for key, entries in estimates.items():
             ratio = 0.0
-            for residue, estimate in entries[first:]:
-                if residue:
-                    ratio = max(ratio, residue / estimate if estimate else float("inf"))
+            floor = floors.get(key, ())
+            for k, (residue, estimate) in enumerate(entries):
+                if k < first or not residue:
+                    continue
+                found = residue / estimate if estimate else float("inf")
+                if found >= ratio:
+                    ratio = found
+                    size = floor[k] if k < len(floor) else 0.0
+                    relative[key] = (
+                        residue / size if size else float("inf"),
+                        estimate / size if size else float("inf"),
+                    )
             ratios[key] = ratio
         out.append(
             ProbeResult(
                 "ward" if ward is not None else "finiteness",
                 ratios,
                 MappingProxyType(physical),
+                MappingProxyType(relative),
             )
         )
     return out
@@ -1654,12 +1672,18 @@ def probe_request(slice_: Any) -> tuple[Any, tuple[str, ...]]:
     fail spuriously); under the complex-mass scheme the widths stay (the
     scheme is gauge invariant). The production artifact keeps its widths."""
 
+    return probe_request_of(slice_.compiled, slice_.request)
+
+
+def probe_request_of(compiled: Any, request: Any) -> tuple[Any, tuple[str, ...]]:
+    """``probe_request`` of a slice request on its compiled model, before any
+    slice exists (``pyamplicol check`` generates only the probe slice)."""
+
     from dataclasses import replace
 
     from .ew_policy import probe_widths
 
-    request = slice_.request
-    fixed, zeroed = probe_widths(slice_.compiled, request.fixed_parameters)
+    fixed, zeroed = probe_widths(compiled, request.fixed_parameters)
     if not zeroed:
         return request, ()
     return replace(request, fixed_parameters=fixed), zeroed
@@ -1884,6 +1908,76 @@ def _decided(
     return out
 
 
+def probe_legs(target: Any) -> list[int]:
+    """The legs of the amplitude-level Ward probes of a probe slice: one per
+    external gauge-boson species (its first leg; Bose symmetry relates the
+    others; ``ward.gauge_legs``: gluons and photons)."""
+
+    from .ward import gauge_legs
+
+    species = {int(leg.label): int(leg.pdg) for leg in target.blocks.process.legs}
+    first: dict[int, int] = {}
+    for leg in gauge_legs(target):
+        first.setdefault(species[leg], leg)
+    return sorted(first.values())
+
+
+def point_probes(
+    executor: Any,
+    point: Sequence[Sequence[Any]],
+    scale: Any,
+    legs: Sequence[int],
+    carriers: Sequence[Any],
+    floors: Mapping,
+    seconds: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], list[Any]]:
+    """The finiteness probe and the Ward probe of every leg of ``legs``
+    (``probe_legs``) at one lifted point (``probe_point``) of a probe
+    slice's executor, in ``carriers`` in order (``probe_carriers``): a probe
+    whose run fails its verdict or is refused runs again in the next one
+    only. The Ward probes are at c = 1: the amplitude is linear in the
+    substituted vector, so c = i (needed where an interference takes a real
+    part, ``ward.WARD_FACTORS``) has the same norm. ``floors`` are the
+    point's physical row floors (``probe_floors``); ``seconds`` gets each
+    carrier's pass time. Returns the per-probe record entries (``_decided``)
+    and each probe's deciding result (a ``ProbeResult`` or a refusal text),
+    finiteness first."""
+
+    from .ward import gauge_ward
+
+    wards = [None, *(gauge_ward(leg, (1, 0), point) for leg in legs)]
+    entries: list[dict[str, Any]] = [{"probe": "finiteness"}] + [
+        {"probe": "ward", "leg": leg} for leg in legs
+    ]
+    outcomes: list[list[Any]] = [[] for _ in wards]
+    pending = list(range(len(wards)))
+    for carrier in carriers:
+        if not pending:
+            break
+        clock = time.perf_counter()
+        found = probe_results(
+            executor,
+            point,
+            scale,
+            [wards[i] for i in pending],
+            precision=carrier,
+            physical=floors,
+        )
+        elapsed = time.perf_counter() - clock
+        if seconds is not None:
+            seconds[carrier.arithmetic] = elapsed
+        for i, result in zip(pending, found, strict=True):
+            outcomes[i].append(result)
+            # The probes of one pass share its native batches.
+            entries[i]["seconds"] = _seconds(entries[i].get("seconds", 0.0) + elapsed)
+        pending = [
+            i
+            for i in pending
+            if isinstance(outcomes[i][-1], str) or not outcomes[i][-1].passed
+        ]
+    return entries, _decided(entries, outcomes, carriers)
+
+
 def generation_probes(
     slice_: Any,
     compiled: Any,
@@ -1934,11 +2028,9 @@ def generation_probes(
     shares the probe and Goldstone slices' model preparation with the
     generation's."""
 
-    import time
-
     from .plan_export import NativeExecutor
     from .reduction import running
-    from .ward import gauge_legs, gauge_ward, ward_slice
+    from .ward import ward_slice
 
     if slice_.amplitude.colour_zero:
         return {"exact_colour_zero": True}
@@ -1964,19 +2056,9 @@ def generation_probes(
             key=lambda i: float("inf") if lifted[i][1] is None else lifted[i][1],
         )
         point, distance = lifted[index]
-        # One Ward probe per external gauge-boson species (its first leg;
-        # Bose symmetry relates the others) at c = 1: the amplitude is
-        # linear in the substituted vector, so c = i (needed where an
-        # interference takes a real part, ``ward.WARD_FACTORS``) has the
-        # same norm.
-        species = {int(leg.label): int(leg.pdg) for leg in target.blocks.process.legs}
-        first: dict[int, int] = {}
-        for leg in gauge_legs(target):
-            first.setdefault(species[leg], leg)
-        legs = sorted(first.values())
-        wards = [None, *(gauge_ward(leg, (1, 0), point) for leg in legs)]
+        legs = probe_legs(target)
         executor = NativeExecutor(
-            target, forward=False, inputs="native", lanes=probe_lanes(len(wards))
+            target, forward=False, inputs="native", lanes=probe_lanes(1 + len(legs))
         )
         scale = _point_scale(
             point, sum(1 for leg in blocks.process.legs if leg.is_initial)
@@ -1985,37 +2067,9 @@ def generation_probes(
         clock = time.perf_counter()
         floors, floors_record = probe_floors(executor, point, scale)
         seconds["floors"] = time.perf_counter() - clock
-        entries: list[dict[str, Any]] = [{"probe": "finiteness"}] + [
-            {"probe": "ward", "leg": leg} for leg in legs
-        ]
-        outcomes: list[list[Any]] = [[] for _ in wards]
-        pending = list(range(len(wards)))
-        for carrier in carriers:
-            if not pending:
-                break
-            clock = time.perf_counter()
-            found = probe_results(
-                executor,
-                point,
-                scale,
-                [wards[i] for i in pending],
-                precision=carrier,
-                physical=floors,
-            )
-            elapsed = time.perf_counter() - clock
-            seconds[carrier.arithmetic] = elapsed
-            for i, result in zip(pending, found, strict=True):
-                outcomes[i].append(result)
-                # The probes of one pass share its native batches.
-                entries[i]["seconds"] = _seconds(
-                    entries[i].get("seconds", 0.0) + elapsed
-                )
-            pending = [
-                i
-                for i in pending
-                if isinstance(outcomes[i][-1], str) or not outcomes[i][-1].passed
-            ]
-        decided = _decided(entries, outcomes, carriers)
+        entries, decided = point_probes(
+            executor, point, scale, legs, carriers, floors, seconds
+        )
         goldstones = _goldstone_probes(
             target,
             compiled,
@@ -2107,45 +2161,43 @@ def generation_probes(
     return record
 
 
-def _goldstone_probes(
-    target, compiled, request, native, point, scale, carriers, physical, memo=None
-) -> dict[str, Any]:
-    """The Goldstone-equivalence probes of a probe slice (``goldstone``,
-    m-lit LIT-EW): in a 't Hooft-Feynman gauge slice, one per external
-    massive-vector species with a Goldstone partner, at the probe point,
-    with the physical row floors of its finiteness probe, in ``carriers``
-    in order (``probe_carriers``; None: binary64, then double-double): a
-    probe whose run fails its verdict or is refused (``ProbePointRefused``)
-    runs again in the next one. Returns the (leg, ``GoldstoneResult`` or
-    refusal text) pairs, the per-probe record entries, the stage times and
-    the record (None without such a leg); a Goldstone side the engine
-    refuses is recorded as skipped, never a silent pass, and when every
-    side is refused the probe did not run: the record is ``status``
-    "not-run" with the refusals, and no ``passed``."""
-
-    import time
+def goldstone_applicability(target: Any) -> str | None:
+    """None where the Goldstone-equivalence probe (``goldstone``) serves a
+    probe slice, else why it does not: it needs the Goldstone vertices
+    ('t Hooft-Feynman gauge, the gauge of every electroweak request) and an
+    external massive vector with a Goldstone partner."""
 
     from . import goldstone
-    from .plan_export import NativeExecutor
+
+    if not goldstone.massive_vector_legs(target):
+        return "no external massive vector with a Goldstone partner"
+    if str(target.compiled.ir.gauge) != "feynman":
+        return (
+            f"a {target.compiled.ir.gauge}-gauge request has no Goldstone "
+            "vertices (the identity k.A(V) = eta M_V A(G) needs 't Hooft-Feynman "
+            "gauge, the gauge of an electroweak request)"
+        )
+    return None
+
+
+def goldstone_sides(
+    target: Any, compiled: Any, request: Any, native: Any, *, memo: Any = None
+) -> tuple[dict[int, Any], dict[str, str], dict[str, float]]:
+    """The Goldstone sides of a probe slice served by the probe
+    (``goldstone_applicability``): per external massive-vector leg (one per
+    species) its Goldstone slice (``goldstone.goldstone_slice``), the legs
+    whose side the engine refuses with the refusal's text (key, rule and
+    remedy), and each side's generation time. ``memo`` (the generation's
+    ``preparation_cache.PreparationMemo``) shares the model preparation:
+    a Goldstone side's recipe is its probe slice's."""
+
+    from . import goldstone
     from .refusals import LoopRequestUnsupported
 
-    empty: dict[str, Any] = {
-        "results": [],
-        "entries": [],
-        "seconds": {},
-        "record": None,
-    }
-    if str(target.compiled.ir.gauge) != "feynman":
-        return empty
-    massive = goldstone.massive_vector_legs(target)
-    if not massive:
-        return empty
-    carriers = probe_carriers() if carriers is None else tuple(carriers)
-    vector = None
-    results, phases, skipped, entries = [], {}, {}, []
+    sides: dict[int, Any] = {}
+    skipped: dict[str, str] = {}
     slices: dict[str, float] = {}
-    probes_seconds: dict[str, float] = {}
-    for leg, partner in massive.items():
+    for leg, partner in goldstone.massive_vector_legs(target).items():
         clock = time.perf_counter()
         try:
             side = goldstone.goldstone_slice(
@@ -2156,20 +2208,50 @@ def _goldstone_probes(
             skipped[str(leg)] = str(error)
             continue
         slices[str(leg)] = time.perf_counter() - clock
+        sides[leg] = side
+    return sides, skipped, slices
+
+
+def goldstone_point(
+    target: Any,
+    sides: Mapping[int, Any],
+    point: Sequence[Sequence[Any]],
+    scale: Any,
+    carriers: Sequence[Any],
+    physical: Mapping,
+    executors: dict[Any, Any],
+) -> tuple[list[Any], list[dict[str, Any]], dict[str, Any], dict[str, float]]:
+    """The Goldstone-equivalence probe of every side of ``sides``
+    (``goldstone_sides``) at one lifted point, with the point's physical row
+    floors, in ``carriers`` in order: a probe whose run fails its verdict or
+    is refused runs again in the next one. ``executors`` caches the native
+    executors (the vector's under "vector", each side's under its leg)
+    across points. Returns the (leg, result or refusal text) pairs, the
+    per-probe record entries, the phases read and each probe's time."""
+
+    from . import goldstone
+    from .plan_export import NativeExecutor
+
+    results: list[Any] = []
+    entries: list[dict[str, Any]] = []
+    phases: dict[str, Any] = {}
+    probes_seconds: dict[str, float] = {}
+    for leg, side in sides.items():
         clock = time.perf_counter()
-        if vector is None:
-            vector = NativeExecutor(
+        if "vector" not in executors:
+            executors["vector"] = NativeExecutor(
                 target, forward=False, inputs="native", lanes=probe_lanes(1)
             )
-        partner_executor = NativeExecutor(
-            side, forward=False, inputs="native", lanes=probe_lanes(1)
-        )
+        if leg not in executors:
+            executors[leg] = NativeExecutor(
+                side, forward=False, inputs="native", lanes=probe_lanes(1)
+            )
         runs: list[Any] = []
         for carrier in carriers:
             try:
                 result = goldstone.probe(
-                    vector,
-                    partner_executor,
+                    executors["vector"],
+                    executors[leg],
                     point,
                     scale,
                     leg,
@@ -2192,6 +2274,40 @@ def _goldstone_probes(
         results.append((leg, result))
         if not isinstance(result, str) and result.phase is not None:
             phases[str(leg)] = [_short(x) for x in result.phase]
+    return results, entries, phases, probes_seconds
+
+
+def _goldstone_probes(
+    target, compiled, request, native, point, scale, carriers, physical, memo=None
+) -> dict[str, Any]:
+    """The Goldstone-equivalence probes of a probe slice (``goldstone``,
+    m-lit LIT-EW): in a 't Hooft-Feynman gauge slice, one per external
+    massive-vector species with a Goldstone partner, at the probe point,
+    with the physical row floors of its finiteness probe, in ``carriers``
+    in order (``probe_carriers``; None: binary64, then double-double): a
+    probe whose run fails its verdict or is refused (``ProbePointRefused``)
+    runs again in the next one. Returns the (leg, ``GoldstoneResult`` or
+    refusal text) pairs, the per-probe record entries, the stage times and
+    the record (None without such a leg); a Goldstone side the engine
+    refuses is recorded as skipped, never a silent pass, and when every
+    side is refused the probe did not run: the record is ``status``
+    "not-run" with the refusals, and no ``passed``."""
+
+    empty: dict[str, Any] = {
+        "results": [],
+        "entries": [],
+        "seconds": {},
+        "record": None,
+    }
+    if goldstone_applicability(target) is not None:
+        return empty
+    carriers = probe_carriers() if carriers is None else tuple(carriers)
+    sides, skipped, slices = goldstone_sides(
+        target, compiled, request, native, memo=memo
+    )
+    results, entries, phases, probes_seconds = goldstone_point(
+        target, sides, point, scale, carriers, physical, {}
+    )
     seconds = (
         {"goldstone_slices": slices, "goldstone": probes_seconds} if slices else {}
     )
@@ -2292,16 +2408,22 @@ __all__ = [
     "finiteness",
     "g_norm",
     "generation_probes",
+    "goldstone_applicability",
+    "goldstone_point",
+    "goldstone_sides",
     "kappa",
     "loop_sectors",
     "metric",
     "physical_floors",
+    "point_probes",
     "probe",
     "probe_carriers",
     "probe_floors",
     "probe_lanes",
+    "probe_legs",
     "probe_point",
     "probe_request",
+    "probe_request_of",
     "probe_results",
     "probes",
     "rotation_errors",

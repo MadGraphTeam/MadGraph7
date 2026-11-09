@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: profile the uux_ddxepem artifact (time per stage, checked
+# default; add --reduction-unchecked for the unchecked timing mode).
+
+schema_version = 1
+action = "benchmark"
+
+[evaluation]
+artifact = "artifacts/loop_uux_ddxepem"
+momenta = "data/loop_uux_ddxepem_momenta.json"
+
+[benchmark]
+batch_size = 32
+warmup_runs = 1
+minimum_samples = 3
