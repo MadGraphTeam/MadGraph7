@@ -110,7 +110,7 @@ def _ratio(library, handle, point, channel, flavour, helicity):
             *(ct.cast(value, ct.c_void_p) for value in inputs.values())
         ),
         1,
-        (ct.c_int * 1)(10),
+        (ct.c_int * 1)(12),  # UMAMI_OUT_MATRIX_ELEMENT_RATIO
         (ct.c_void_p * 1)(ct.cast(output, ct.c_void_p)),
     )
     return status, output[0]
