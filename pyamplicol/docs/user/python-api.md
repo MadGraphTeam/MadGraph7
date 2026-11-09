@@ -450,7 +450,7 @@ refuse the point (g g > h h h: a box whose three momenta are linearly
 dependent, which only its noise tests catch), and keep its few points off by
 up to 3e-3 that the checked mode serves as well (a triangle cut with a small
 Gram determinant); its conditioning bound refuses the near-planar g g > z z z
-points in both modes (NinjaRS columns re-measured at NinjaRS a1108daf,
+points in both modes (NinjaRS columns re-measured at NinjaRS 71eddb15,
 M-LIT `lit-ninja-planar`).
 
 | process | points | TIRust unchecked | NinjaRS unchecked |
