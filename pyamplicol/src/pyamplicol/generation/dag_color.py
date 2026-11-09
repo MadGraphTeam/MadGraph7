@@ -1575,6 +1575,20 @@ class ColorEngine:
         distinct terms of the stage they replace a leg of; a closing that
         takes the auxiliary on the right keeps the pattern whose replaced
         input has the larger first label (``synthesize_u1_projections``).
+
+        So does a merge of two colour singlets into a colour singlet whose
+        inputs both carry coloured labels (WWA, WWZ or HZZ joining bosons of
+        different quark lines, or a four-point contact's partial or final
+        merge): both orders concatenate the same complete strings into two
+        words of one colour factor, which the loop seeds read as two blocks
+        of one current, each holding the vertex's trees. It keeps the smaller
+        first coloured label on the left, as a closing does. A merge of two
+        colour singlets with an input without coloured labels keeps one order
+        by ``_singlet_order_allowed``, so each merge of a four-point
+        colour-singlet contact (into its auxiliary and out of it) keeps one
+        order, and the contact enters a block current once per assignment of
+        its legs, as in the Born (``_singlet_contact_orientation_allowed``).
+        U(1)-projection singlets keep both orders here too.
         """
 
         left = self._coloured(left_index.ordered_external_labels)
@@ -1597,14 +1611,19 @@ class ColorEngine:
                 return bool(left and right) and min(left) < min(right)
             return True
         if (
-            left
-            and right
-            and result not in self._fundamental_line_auxiliary_ids
-            and _known_color_representation(self.model, result) == 1
-            and all(
-                _known_color_representation(self.model, pdg) == 8
-                for pdg in vertex.particles[:2]
-            )
+            not left
+            or not right
+            or result in self._fundamental_line_auxiliary_ids
+            or _known_color_representation(self.model, result) != 1
+        ):
+            return True
+        inputs = [
+            _known_color_representation(self.model, pdg)
+            for pdg in vertex.particles[:2]
+        ]
+        if inputs == [8, 8] or (
+            inputs == [1, 1]
+            and not any(self._is_u1_projection_singlet(pdg) for pdg in vertex.particles)
         ):
             return min(left) < min(right)
         return True

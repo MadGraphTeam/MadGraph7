@@ -300,13 +300,19 @@ impl<'a> ColourEngine<'a> {
             }
             return true;
         }
-        if !left.is_empty()
-            && !right.is_empty()
-            && !result.fla
-            && result.rep == Some(1)
-            && vertex.particles[..2]
-                .iter()
-                .all(|p| particles[*p as usize].rep == Some(8))
+        if left.is_empty() || right.is_empty() || result.fla || result.rep != Some(1) {
+            return true;
+        }
+        let inputs = [
+            &particles[vertex.particles[0] as usize],
+            &particles[vertex.particles[1] as usize],
+        ];
+        // Two adjoint inputs closing into a colour singlet, or two colour
+        // singlets that both carry coloured labels (WWA, WWZ, HZZ between
+        // quark lines, a four-point contact's partial or final merge): one
+        // input order, as the oracle keeps it.
+        if inputs.iter().all(|p| p.rep == Some(8))
+            || (inputs.iter().all(|p| p.rep == Some(1) && !p.u1_singlet) && !result.u1_singlet)
         {
             return min_less();
         }
