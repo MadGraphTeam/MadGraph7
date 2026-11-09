@@ -336,6 +336,7 @@
      ],
      "provider_timing_records": [
       "required/li/timing/li_gg_hh-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hh-providers-optimistic.json",
       "required/li/timing/li_gg_hh-providers.json"
      ],
      "provider_ms_per_point": {
@@ -595,6 +596,7 @@
      ],
      "provider_timing_records": [
       "required/li/timing/li_gg_hh-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hh-providers-optimistic.json",
       "required/li/timing/li_gg_hh-providers.json"
      ],
      "provider_ms_per_point": {
@@ -933,6 +935,7 @@
      },
      "provider_timing_records": [
       "required/li/timing/li_emep_ggg-providers-madloop-opp.json",
+      "required/li/timing/li_emep_ggg-providers-optimistic.json",
       "required/li/timing/li_emep_ggg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -970,6 +973,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_hhh-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hhh-providers-optimistic.json",
       "required/li/timing/li_gg_hhh-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1008,6 +1012,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_hgg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hgg-providers-optimistic.json",
       "required/li/timing/li_gg_hgg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1046,6 +1051,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_zzg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_zzg-providers-optimistic.json",
       "required/li/timing/li_gg_zzg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1071,6 +1077,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_aag-providers-madloop-opp.json",
+      "required/li/timing/li_gg_aag-providers-optimistic.json",
       "required/li/timing/li_gg_aag-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1096,6 +1103,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_wpwmg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_wpwmg-providers-optimistic.json",
       "required/li/timing/li_gg_wpwmg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1134,6 +1142,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_zzz-providers-madloop-opp.json",
+      "required/li/timing/li_gg_zzz-providers-optimistic.json",
       "required/li/timing/li_gg_zzz-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1172,6 +1181,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_hzg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hzg-providers-optimistic.json",
       "required/li/timing/li_gg_hzg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1197,6 +1207,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_agg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_agg-providers-optimistic.json",
       "required/li/timing/li_gg_agg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1224,6 +1235,7 @@
      },
      "provider_timing_records": [
       "required/li/timing/li_gg_zgg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_zgg-providers-optimistic.json",
       "required/li/timing/li_gg_zgg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1261,6 +1273,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_uux_hgg-providers-madloop-opp.json",
+      "required/li/timing/li_uux_hgg-providers-optimistic.json",
       "required/li/timing/li_uux_hgg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1286,6 +1299,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_uux_ddxh-providers-madloop-opp.json",
+      "required/li/timing/li_uux_ddxh-providers-optimistic.json",
       "required/li/timing/li_uux_ddxh-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1369,6 +1383,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_hhgg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hhgg-providers-optimistic.json",
       "required/li/timing/li_gg_hhgg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1407,6 +1422,7 @@
      "status": "pass",
      "provider_timing_records": [
       "required/li/timing/li_gg_hggg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_hggg-providers-optimistic.json",
       "required/li/timing/li_gg_hggg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1447,6 +1463,7 @@
      },
      "provider_timing_records": [
       "required/li/timing/li_gg_emepmupmum-providers-madloop-opp.json",
+      "required/li/timing/li_gg_emepmupmum-providers-optimistic.json",
       "required/li/timing/li_gg_emepmupmum-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1493,6 +1510,7 @@
      },
      "provider_timing_records": [
       "required/li/timing/li_gg_aagg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_aagg-providers-optimistic.json",
       "required/li/timing/li_gg_aagg-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1531,6 +1549,7 @@
      ],
      "provider_timing_records": [
       "required/li/timing/li_gg_zzzz-providers-madloop-opp.json",
+      "required/li/timing/li_gg_zzzz-providers-optimistic.json",
       "required/li/timing/li_gg_zzzz-providers.json"
      ],
      "provider_ms_per_point": {
@@ -1583,6 +1602,7 @@
      },
      "provider_timing_records": [
       "required/li/timing/li_gg_emepmupmumg-providers-madloop-opp.json",
+      "required/li/timing/li_gg_emepmupmumg-providers-optimistic.json",
       "required/li/timing/li_gg_emepmupmumg-providers.json"
      ],
      "provider_ms_per_point": {
