@@ -47,7 +47,7 @@ from fractions import Fraction
 
 import pytest
 
-from tests.unit.loop_v2_induced_observables_rows import ROWS, generate
+from tests.unit.loop_v2_induced_observables_rows import ROWS, fold_record, generate
 from tests.unit.test_loop_v2_induced import _Rows
 
 pytestmark = pytest.mark.loop_physics
@@ -147,10 +147,38 @@ def test_executor_selections_run_their_row_restriction(li, forms):
     selection formed every row's trees and counterterm kets, and a selection
     in the split form failed on the rows it dropped)."""
 
-    from pyamplicol.loops.v2.assemble import Precision
+    _selections_run_their_row_restriction(
+        li, "li_gg_hh", _executor(li, "li_gg_hh", forms)
+    )
+
+
+def test_folded_selections_run_their_row_restriction(li):
+    """M-LIT lit-fold F1f (USER 2026-11-08 ~22:39, DECISIONS 22:39: helicity
+    selection tested on folded plans): on the folded g g > h h (its quark
+    loop's orientation pairs dressed once) each selection's counts and
+    values are the row-restricted folded plan's, as on the unfolded plan."""
+
+    from pyamplicol.loops.v2 import fold
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
 
     name = "li_gg_hh"
-    executor = _executor(li, name, forms)
+    slice_ = li.slice(name)
+    folded = fold.fold_slice(slice_)
+    assert folded.verdict.groups > 0
+    slice_.fold = folded
+    try:
+        executor = NativeExecutor(slice_, forward=False, inputs="native")
+    finally:
+        slice_.fold = None
+    assert len(executor.exported.stored()) < len(
+        NativeExecutor(slice_, forward=False, inputs="native").exported.stored()
+    )
+    _selections_run_their_row_restriction(li, name, executor)
+
+
+def _selections_run_their_row_restriction(li, name, executor):
+    from pyamplicol.loops.v2.assemble import Precision
+
     rows = len(executor.exported.rows)
     points, scales, parameters = [], [], None
     for index in range(3):
@@ -271,6 +299,8 @@ def test_api_selections_run_their_row_restriction(artifacts):
 
     name = "li_gg_hgg"
     runtime = _runtime(artifacts, name)
+    # Folded (M-LIT lit-fold F1f: helicity selection on folded plans).
+    assert fold_record(artifacts[name])["groups"] > 0
     fixture = _fixture(name)
     points = fixture["points"][:2]
     scales = [str(Fraction(mu) ** 2) for mu in fixture["mu_r"][:2]]

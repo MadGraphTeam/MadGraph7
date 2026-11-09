@@ -32,13 +32,20 @@ a2^dag G b0]: the finite part of |a|^2 is exact only if the amplitude's
 poles vanish (its O(eps) terms are not computed), which the finiteness
 diagnostic checks (PLAN §2.a.7 "Pole shape").
 
-**Exact zeros** (RULED Q13): the only exact zero is the colour zero, by
-colour algebra alone: at a requested loop order no seed class has a
+**Exact zeros** (RULED Q13, relaxed by the USER ~22:39 for zeros the
+engine's exact algebra proves): two mechanisms, never a physics rule
+(Furry, C-parity, Landau-Yang, J_z are never assumed). (1) The colour zero,
+by colour algebra alone: at a requested loop order no seed class has a
 nonzero colour coefficient at N_c = 3 and no counterterm ket carries a
 colour tensor (``bind``: the classes' coefficients vanish, or no family is
 routed because every loop has a single coloured attachment, Tr T^a = 0 in
-any model; ``LoopSlice.colour_zero_orders``); every other zero is evaluated
-numerically.
+any model; ``LoopSlice.colour_zero_orders``). (2) The fold zero (M-LIT
+lit-fold, ``fold``): the exact test certifies chains exactly proportional
+and their combined weights cancel exactly, so a loop order (or the whole
+request) is left with no chain and no counterterm ket (``StoredAmplitude.
+fold_zero``: the certificate, its failure probability and bound; e.g.
+g g > a a a and g g > h a). Every other zero is evaluated numerically and
+reported within its absolute estimate.
 """
 
 from __future__ import annotations
@@ -179,6 +186,11 @@ class StoredAmplitude:
     # resolved ``CorrelatorConfig`` and each colour history's matrix on the
     # basis; None without a declaration.
     correlators: Any = None
+    # The fold zero (M-LIT lit-fold, ``fold``; module docs "Exact zeros"):
+    # ``exact_fold_zero`` (the whole request), ``fold_zero_loop_orders`` and
+    # the ``certificate`` (prime, seed, points, degree bound, identities,
+    # failure probability and bound); None without a fold zero.
+    fold_zero: Mapping[str, Any] | None = None
 
     def __len__(self) -> int:
         return self.size
@@ -214,6 +226,7 @@ class StoredAmplitude:
             correlators_from_record(record["correlators"])
             if "correlators" in record
             else None,
+            dict(record["fold_zero"]) if "fold_zero" in record else None,
         )
 
 
@@ -257,6 +270,30 @@ def amplitude_record(slice_: Any, exported: Any) -> dict[str, Any]:
             if (declared := getattr(slice_, "amplitude_correlators", None)) is not None
             else {}
         ),
+        # A fold zero only (M-LIT lit-fold): a record without one keeps its
+        # bytes.
+        **({"fold_zero": zero} if (zero := fold_zero_record(slice_)) else {}),
+    }
+
+
+def fold_zero_record(slice_: Any) -> dict[str, Any] | None:
+    """The fold-zero record of a folded loop-induced slice (``fold``; module
+    docs "Exact zeros"): whether the whole request is an exact fold zero,
+    its exact fold-zero loop orders and the certificate; None when the fold
+    left no exact zero."""
+
+    folded = getattr(slice_, "fold", None)
+    if folded is None:
+        return None
+    verdict = folded.verdict
+    if not verdict.exact_zero and not verdict.zero_orders:
+        return None
+    return {
+        "exact_fold_zero": verdict.exact_zero,
+        "fold_zero_loop_orders": [
+            [[name, power] for name, power in order] for order in verdict.zero_orders
+        ],
+        "certificate": verdict.certificate(),
     }
 
 

@@ -36,7 +36,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit.loop_v2_induced_observables_rows import ROWS, generate
+from tests.unit.loop_v2_induced_observables_rows import ROWS, fold_record, generate
 from tests.unit.test_loop_v2_induced import _fixture
 from tests.unit.test_loop_v2_sdk_extras import (
     _agree,
@@ -188,6 +188,11 @@ def test_loop_induced_sdk_values_equal_the_python_api(artifacts, loop_native, na
     from pyamplicol import Runtime
 
     artifact = artifacts[name]
+    # The artifact is folded (M-LIT lit-fold F1f, USER 2026-11-08 ~22:39:
+    # the SDK outputs are tested on folded plans): its orientation pairs are
+    # dressed once.
+    record = fold_record(artifact)
+    assert record["groups"] > 0 and record["chains_after"] < record["chains"]
     runtime = Runtime.load(artifact, process="p")
     points, scales = _inputs(name)
     exact_points, exact_scales = _exact(points, scales)
@@ -254,6 +259,53 @@ def test_loop_induced_sdk_values_equal_the_python_api(artifacts, loop_native, na
             assert found["decimal"]["born"] == []
             assert _agree(values, literals), (arithmetic, values, literals)
             assert found["virtual"] == [float(Decimal(x)) for x in literals]
+    finally:
+        sdk.rusticol_virtual_free(handle)
+
+
+def test_the_sdk_serves_an_exact_fold_zero_with_its_certificate(tmp_path):
+    """M-LIT lit-fold (USER 2026-11-08 ~22:39 "allow exact zeros"): g g > a
+    a a folds to no chain (the exact test certifies the quark loop's
+    orientations and their weights cancel exactly); the C ABI serves exactly
+    0, equal to the Python API's 0, and its capabilities record carries the
+    fold zero and its certificate beside the colour zero (none)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from tests.unit.test_loop_v2_induced import _card
+
+    name = "li_gg_aaa"
+    fixture = _fixture(name)
+    card = tmp_path / "card.toml"
+    card.write_text(_card(tmp_path / "artifact", (("p", "g g > a a a"),), fixture))
+    Generator(resolve_config(card)).generate(
+        ProcessSet((ProcessRequest.parse("g g > a a a", name="p"),)),
+        tmp_path / "artifact",
+    )
+    artifact = tmp_path / "artifact"
+    runtime = Runtime.load(artifact, process="p")
+    points, scales = _inputs(name)
+    exact_points, exact_scales = _exact(points, scales)
+    expected = runtime.evaluate(exact_points, mu_r2=exact_scales, poles="none")
+    # poles="none": the absent poles are NaN in the SDK's layout.
+    finite = [x for x in _python_flat(expected) if not math.isnan(x)]
+    assert finite and all(x == 0 for x in finite)
+    sdk = _sdk()
+    handle = _open(sdk, artifact)
+    try:
+        capabilities = _json(sdk, sdk.rusticol_virtual_capabilities_json, handle)
+        assert capabilities["colour_zero"]["exact_colour_zero"] is False
+        zero = capabilities["fold_zero"]
+        assert zero["exact_fold_zero"] is True
+        assert zero["fold_zero_loop_orders"] == [{"QCD": 2, "QED": 3}]
+        certificate = zero["certificate"]
+        assert certificate["failure_bound"] <= certificate["failure_probability"]
+        assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0
+        found = _evaluate(sdk, handle, points, scales)
+        assert found["statuses"] == [SUCCESS_STATUS] * len(points)
+        assert all(x == 0 for x in found["virtual"] if not math.isnan(x))
+        assert _same(found["virtual"], _python_flat(expected))
     finally:
         sdk.rusticol_virtual_free(handle)
 

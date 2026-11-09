@@ -66,3 +66,20 @@ def generate(root: Path, name: str, expression: str, aliases=()):
         correlators=correlators,
     )
     return root / "artifact"
+
+
+def fold_record(artifact: Path, name: str = "p") -> dict:
+    """Process ``name``'s fold record in ``artifact`` (M-LIT lit-fold, F1:
+    folding is on by default, so the artifacts of ``generate`` are folded
+    wherever the exact test certifies a group; their consumer tests run on
+    folded plans, USER 2026-11-08 ~22:39, DECISIONS 22:39)."""
+
+    import json
+
+    manifest = json.loads((artifact / "artifact.json").read_text())
+    (filters,) = (
+        record["filters"]
+        for record in manifest["extensions"]["generation"]["concrete_processes"]
+        if record["id"] == name
+    )
+    return filters["loop_induced_fold"]
