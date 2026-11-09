@@ -225,6 +225,107 @@ class TestLaunchModelReload(unittest.TestCase):
         self.launch(False).assert_not_called()
 
 
+class TestReweightSetupPlugin(unittest.TestCase):
+    """The no-argument setup hook and explicit launch names remain compatible."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+
+    def interface(self, cls=None, sudakov=False):
+        from madgraph.interface.reweight_interface import ReweightInterface
+
+        cls = cls or ReweightInterface
+        interface = cls.__new__(cls)
+        interface.exitted = True
+        interface.inc_sudakov = sudakov
+        interface.has_standalone_dir = False
+        interface.multicore = False
+        interface.me_dir = str(self.root)
+        interface.rwgt_dir = None
+        interface.mg5cmd = None
+        interface.lhe_input = True
+        interface.options = {'rwgt_name': None, 'rwgt_info': None}
+        interface.banner = SimpleNamespace(get=lambda *args: 'sm')
+        interface.rwgt_mode = 'LO'
+        interface._ensure_fxfx_cluster_catalogue = mock.Mock()
+        interface._collect_sudakov_weight_sources = mock.Mock()
+        interface._prepare_sudakov_weight_ids = mock.Mock(return_value=['2001'])
+        interface.load_model = mock.Mock()
+        interface.load_module = mock.Mock()
+        interface.load_density_modules = mock.Mock()
+        interface.handle_param_card = mock.Mock(
+            side_effect=lambda *args: ([], interface.options['rwgt_name']))
+        interface.launch_actual_reweighting = mock.Mock(return_value='completed')
+        return interface
+
+    def plugin(self, stop):
+        from madgraph.interface.reweight_interface import ReweightInterface
+
+        class Plugin(ReweightInterface):
+            def setup_f2py_interface(self):
+                self.name_seen_by_plugin = self.options['rwgt_name']
+                return stop
+
+        return self.interface(Plugin)
+
+    def test_original_plugin_hook_can_stop_the_launch(self):
+        interface = self.plugin(stop=True)
+        self.assertIsNone(interface.do_launch('--rwgt_name=requested'))
+        self.assertEqual(interface.name_seen_by_plugin, 'requested')
+        interface.handle_param_card.assert_not_called()
+        interface.launch_actual_reweighting.assert_not_called()
+
+    def test_original_plugin_hook_can_continue_the_launch(self):
+        interface = self.plugin(stop=False)
+        self.assertEqual(interface.do_launch('--rwgt_name=requested'), 'completed')
+        self.assertEqual(interface.name_seen_by_plugin, 'requested')
+        self.assertEqual(interface.launch_actual_reweighting.call_args.args[1], 'requested')
+
+    def write_cached_settings(self):
+        from madgraph.iolibs import save_load_object
+
+        directory = self.root / 'rw_me'
+        directory.mkdir(exist_ok=True)
+        save_load_object.save_to_file(str(directory / 'rwgt.pkl'), {
+            'id_to_path': {}, 'id_to_path_second': {}, 'all_cross_section': {},
+            'processes': [], 'second_process': None, 'second_model': None,
+            'merged_map': {(21, 21): 21}, 'merged_particles': None,
+            'rwgt_dir': str(self.root), 'has_nlo': False, 'rwgt_mode': 'LO',
+            'rwgt_name': 'cached_name', 'allow_missing_finalstate': False,
+            'identical_particle_in_prod_and_decay': 'average', 'nb_library': 1,
+            'sudakov_source_ids': {'1001'},
+        })
+
+    def test_explicit_name_survives_cached_setup_and_worker_setup(self):
+        self.write_cached_settings()
+        for sudakov in (False, True):
+            for worker in (False, True):
+                with self.subTest(sudakov=sudakov, worker=worker):
+                    interface = self.interface(sudakov=sudakov)
+                    interface._sudakov_source_ids = {'1001'}
+                    if worker:
+                        interface.multicore = 'wait'
+                    else:
+                        interface.rwgt_dir = str(self.root)
+                    self.assertEqual(interface.do_launch(
+                        '--rwgt_name=requested --rwgt_info=description'), 'completed')
+                    self.assertTrue(interface.has_standalone_dir)
+                    self.assertEqual(interface.options['rwgt_name'], 'requested')
+                    self.assertEqual(interface.options['rwgt_info'], 'description')
+                    self.assertEqual(interface.launch_actual_reweighting.call_args.args[1], 'requested')
+                    interface.load_module.assert_called_once_with()
+
+    def test_cached_name_is_not_reused_without_an_explicit_name(self):
+        self.write_cached_settings()
+        interface = self.interface()
+        interface.rwgt_dir = str(self.root)
+        self.assertEqual(interface.do_launch(''), 'completed')
+        self.assertIsNone(interface.options['rwgt_name'])
+        self.assertIsNone(interface.launch_actual_reweighting.call_args.args[1])
+
+
 class TestClusteringBuffers(unittest.TestCase):
     """The <clustering> line of a long history fits the Fortran buffers."""
 
@@ -268,8 +369,8 @@ class TestClusteringBuffers(unittest.TestCase):
         self.assertEqual(len(pairstr), 1)
         self.assertLessEqual(len(",".join(str(10 + i) for i in range(14))), pairstr[0])
         temp = self.declared_length("cluster.f", r"^\s+CHARACTER\*(\d+) temp$")
-        clusterstring = self.declared_length(
-            "cluster.f", r"^\s+CHARACTER\*\((\d+)\) clusterstring$"
+        clusterstrings = self.declared_length(
+            "cluster.f", r"^\s+CHARACTER\*\((\d+)\) clusterstrings\(0:MAXFKSLOC\)$"
         )
         readers = [
             self.declared_length(
@@ -278,11 +379,11 @@ class TestClusteringBuffers(unittest.TestCase):
             for routine in ("read_lhef_event", "read_lhef_event_catch")
         ]
         self.assertEqual(len(temp), 1)
-        self.assertEqual(len(clusterstring), 1)
+        self.assertEqual(len(clusterstrings), 1)
         self.assertEqual([len(r) for r in readers], [1, 1])
         readers = [r[0] for r in readers]
         self.assertLess(len(line), temp[0])
-        self.assertLess(len(line), clusterstring[0])
+        self.assertLess(len(line), clusterstrings[0])
         for length in readers:
             self.assertLess(len(line), length)
 

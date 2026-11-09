@@ -47,7 +47,7 @@ class TestSudakovWeightIds(unittest.TestCase):
         driver.lhe_input = lhe_parser.EventFile(str(path))
         self.addCleanup(driver.lhe_input.close)
         driver.fxfx_catalogue_source = None
-        driver.sudakov_xi_scan = [0.5, 1.5]
+        driver.sudakov_xi_scan = [1., 1.5]
         driver.mW2_cluster_scale = 1.5
         driver._sudakov_source_ids = set().union(*(set(e.parse_reweight() or {'1001': e.wgt}) for e in events))
         driver._collect_sudakov_weight_sources()
@@ -93,8 +93,8 @@ class TestSudakovWeightIds(unittest.TestCase):
     def test_numeric_allocation_is_deterministic(self):
         sources = ['1001', '1101', '10000', 'pdf_member', '2001', '010001']
         a, b = fx.FxFxEWSudakovMixin(), fx.FxFxEWSudakovMixin()
-        a._configure_sudakov_weight_ids(sources, [0.5, 1.5])
-        b._configure_sudakov_weight_ids(reversed(sources), [0.5, 1.5])
+        a._configure_sudakov_weight_ids(sources, [1., 1.5])
+        b._configure_sudakov_weight_ids(reversed(sources), [1., 1.5])
         self.assertEqual(a._sudakov_weight_map, b._sudakov_weight_map)
         self.assertNotIn('10001', a._sudakov_weight_metadata)
 
@@ -184,7 +184,7 @@ class TestSudakovWeightIds(unittest.TestCase):
 
     def test_extended_xi_scan_reserves_all_candidate_ids(self):
         driver = fx.FxFxEWSudakovMixin()
-        driver._configure_sudakov_weight_ids(['1001', '1101'], list(range(20)))
+        driver._configure_sudakov_weight_ids(['1001', '1101'], list(range(1, 21)))
         self.assertEqual(len(driver._sudakov_weight_metadata), 120)
         self.assertEqual(driver._sudakov_weight_map[16, 0, '1001'], '10001')
         self.assertNotEqual(driver._sudakov_weight_map[0, 0, '1101'], '10001')

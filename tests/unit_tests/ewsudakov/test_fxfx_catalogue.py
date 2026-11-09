@@ -1,5 +1,6 @@
 """Process coverage for complete FxFx inputs and xi scans."""
 
+import gzip
 import math
 import shlex
 from pathlib import Path
@@ -26,7 +27,7 @@ class CatalogueDriver(fx.FxFxEWSudakovMixin):
         self.fxfx_clustered_final_states = set()
         self.fxfx_clustered_decay_processes = set()
         self._fxfx_cluster_catalog_ready = False
-        self.sudakov_xi_scan = [.01, 1.5]
+        self.sudakov_xi_scan = [1., 1.5]
         self.mW2_cluster_scale = 1.5
 
     def _init_pole_masses_from_banner(self):
@@ -38,8 +39,10 @@ class TestFxFxCatalogue(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.first = ww_event([np.array([50., 20, 10, math.sqrt(2000)])])
-        self.second = ww_event([np.array([50., 20, 10, math.sqrt(2000)])])
+        # The smallest invariant is 8000 GeV^2, between M_W^2 and
+        # 1.5 M_W^2, so the allowed scan still covers both topologies.
+        self.first = ww_event([np.array([50., 20, math.sqrt(336), 42.])])
+        self.second = ww_event([np.array([50., 20, math.sqrt(336), 42.])])
         self.second[0].pid, self.second[1].pid = 1, -1
         self.second.tag = '<clustering step_1="(1,5);mom=1"></clustering>'
         self.full = self.write_events('complete.lhe', [self.first, self.second])
@@ -55,7 +58,15 @@ class TestFxFxCatalogue(unittest.TestCase):
 
     def test_complete_input_covers_all_channels_and_xis(self):
         self.driver.fxfx_catalogue_source = str(self.full)
-        self.driver._ensure_fxfx_cluster_catalogue()
+        with mock.patch.object(self.driver, '_apply_forced_clustering',
+                               wraps=self.driver._apply_forced_clustering) as forced, \
+                mock.patch.object(fx, 'FXFX_CLUSTER_STEP_RE', wraps=fx.FXFX_CLUSTER_STEP_RE) as pattern, \
+                mock.patch.object(lhe_parser.Event, '__str__',
+                                  side_effect=AssertionError('Clustering must not serialize events')):
+            self.driver._ensure_fxfx_cluster_catalogue()
+        self.assertEqual(forced.call_count, 2)
+        self.assertEqual(pattern.findall.call_count, 2)
+        self.assertIsNone(self.driver._fxfx_event_cache)
         expected = {(initial, final) for initial in ((2, -2), (1, -1))
                     for final in ((-24, 21, 24), (-24, 24))}
         self.assertEqual(self.driver.fxfx_clustered_final_states, expected)
@@ -78,7 +89,7 @@ class TestFxFxCatalogue(unittest.TestCase):
             self.driver._ensure_fxfx_cluster_catalogue()
 
     def test_xi_change_collects_required_processes(self):
-        self.driver.sudakov_xi_scan = [.01]
+        self.driver.sudakov_xi_scan = [1.]
         self.driver._ensure_fxfx_cluster_catalogue()
         self.assertEqual(self.driver.fxfx_clustered_final_states, {((2, -2), (-24, 21, 24))})
         self.driver.sudakov_xi_scan = [1.5]
@@ -90,6 +101,53 @@ class TestFxFxCatalogue(unittest.TestCase):
         self.driver.fxfx_catalogue_source = str(self.full)
         self.driver._ensure_fxfx_cluster_catalogue()
         self.assertEqual(len(self.driver.fxfx_clustered_final_states), 4)
+
+    def test_missing_gzip_uses_full_uncompressed_source_and_its_cache(self):
+        self.driver.fxfx_catalogue_source = str(self.full) + '.gz'
+        self.driver._ensure_fxfx_cluster_catalogue()
+        expected = {(initial, final) for initial in ((2, -2), (1, -1))
+                    for final in ((-24, 21, 24), (-24, 24))}
+        self.assertEqual(self.driver.fxfx_clustered_final_states, expected)
+        # Both spellings name the same physical source and share its cache.
+        self.driver.fxfx_catalogue_source = str(self.full)
+        with mock.patch.object(self.driver, '_cluster_fxfx_event',
+                               side_effect=AssertionError('Unexpected rescan')):
+            self.driver._ensure_fxfx_cluster_catalogue()
+
+    def test_existing_gzip_takes_precedence_and_removal_refreshes_catalogue(self):
+        compressed = Path(str(self.full) + '.gz')
+        with gzip.open(compressed, 'wt') as stream:
+            stream.write(self.chunk.read_text())
+        self.driver.fxfx_catalogue_source = str(compressed)
+        self.driver._ensure_fxfx_cluster_catalogue()
+        self.assertEqual(self.driver.fxfx_clustered_final_states,
+                         {((2, -2), (-24, 21, 24)), ((2, -2), (-24, 24))})
+        compressed.unlink()
+        self.driver._ensure_fxfx_cluster_catalogue()
+        self.assertEqual(len(self.driver.fxfx_clustered_final_states), 4)
+
+    def test_uncompressed_fallback_uses_original_path_before_resolving_symlinks(self):
+        alias = Path(self.temp.name) / 'alias.lhe'
+        alias.symlink_to(self.full)
+        Path(str(alias) + '.gz').symlink_to(Path(self.temp.name) / 'missing.lhe.gz')
+        self.driver.fxfx_catalogue_source = str(alias) + '.gz'
+        self.driver._ensure_fxfx_cluster_catalogue()
+        self.assertEqual(len(self.driver.fxfx_clustered_final_states), 4)
+        self.driver.fxfx_catalogue_source = str(self.full)
+        with mock.patch.object(self.driver, '_cluster_fxfx_event',
+                               side_effect=AssertionError('Unexpected rescan')):
+            self.driver._ensure_fxfx_cluster_catalogue()
+
+    def test_genuinely_missing_catalogue_source_still_raises(self):
+        for name in ('missing.lhe', 'missing.lhe.gz'):
+            with self.subTest(source=name):
+                source = str(Path(self.temp.name) / name)
+                self.driver.fxfx_catalogue_source = source
+                with self.assertRaises(FileNotFoundError) as raised:
+                    self.driver._ensure_fxfx_cluster_catalogue()
+                self.assertEqual(raised.exception.filename, source)
+                self.assertFalse(self.driver._fxfx_cluster_catalog_ready)
+                self.assertFalse(self.driver.lhe_input.closed)
 
     def test_compiled_library_requires_complete_coverage(self):
         self.driver.fxfx_catalogue_source = str(self.full)

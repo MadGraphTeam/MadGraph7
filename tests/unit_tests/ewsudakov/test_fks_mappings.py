@@ -12,6 +12,7 @@ import os
 import random
 import sys
 import unittest
+from unittest import mock
 
 _REPO_ROOT = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir, os.pardir)
@@ -957,6 +958,130 @@ class TestISRMapping(unittest.TestCase):
         momenta = beams + [p_a, rad]
         with self.assertRaises(ValueError):
             fx._fks_isr_mapping(0, 3, [{"number": 1, "id": 1}], momenta)
+
+
+class TestClusteringInvariants(unittest.TestCase):
+    """Cross original LHE constituents without changing the mapped momenta."""
+
+    def setUp(self):
+        self.driver = fx.FxFxEWSudakovMixin()
+        self.driver.model = None
+
+    def cluster(self, event):
+        source = str(event)
+        clustered, tag, groups = self.driver._cluster_fxfx_event(event, return_groups=True)
+        scalar, scalar_tag = self.driver._cluster_fxfx_event(event)
+        self.assertEqual(tag, scalar_tag)
+        self.assertEqual(clustered.fks_methods, scalar.fks_methods)
+        for actual, expected in zip(clustered, scalar):
+            for comp in ("E", "px", "py", "pz"):
+                self.assertEqual(getattr(actual, comp), getattr(expected, comp))
+        self.assertEqual(str(event), source)
+        self.assertEqual([p.status for p in clustered[:2]], [-1, -1])
+        self.assertTrue(all(p.E > 0 for p in clustered))
+        clustered.check_kinematics_only()
+        return clustered, groups
+
+    def test_hard_massless_pairs_stop_clustering(self):
+        # All |s_ij| >= 1e6/3 GeV^2. Negative beam-final invariants must
+        # not trigger clustering when their magnitudes are above threshold.
+        energy = 1000.0 / 3
+        event = _mk_event([
+            (2, -1, 500, 0, 0, 500),
+            (-2, -1, 500, 0, 0, -500),
+            (21, 1, energy, energy, 0, 0),
+            (21, 1, energy, -energy / 2, math.sqrt(3) * energy / 2, 0),
+            (21, 1, energy, -energy / 2, -math.sqrt(3) * energy / 2, 0),
+        ])
+        for pair, mother in (("1,3", 2), ("2,3", -2), ("3,4", 21)):
+            with self.subTest(pair=pair):
+                event.tag = '<clustering step_1="(%s);mom=%d"></clustering>' % (pair, mother)
+                clustered, groups = self.cluster(event)
+                self.assertEqual(clustered.fks_methods, [])
+                self.assertEqual(groups, [{1}, {2}, {3}, {4}, {5}])
+
+    def test_isr_group_can_absorb_another_emission(self):
+        # After the first collinear ISR, the beam energy is 250 GeV.
+        # Its invariant with label 4 is 5000, not 15000 GeV^2; all other
+        # pairs are above threshold. A transverse first emission exercises
+        # the same constituent signs while the mapped spectators recoil.
+        for direction, beam in ((1, 1), (-1, 2)):
+            for radiated_px in (0, 20):
+                with self.subTest(beam=beam, radiated_px=radiated_px):
+                    radiated_pz = math.sqrt(250**2 - radiated_px**2)
+                    near_px = math.sqrt(100**2 - 90**2)
+                    recoil_px = -(radiated_px + near_px) / 2
+                    recoil_pz = -(radiated_pz + 90) / 2
+                    recoil_py = math.sqrt(325**2 - recoil_px**2 - recoil_pz**2)
+                    event = _mk_event([
+                        (2, -1, 500, 0, 0, 500),
+                        (-2, -1, 500, 0, 0, -500),
+                        (21, 1, 250, radiated_px, 0, direction * radiated_pz),
+                        (21, 1, 100, near_px, 0, direction * 90),
+                        (21, 1, 325, recoil_px, recoil_py, direction * recoil_pz),
+                        (21, 1, 325, recoil_px, -recoil_py, direction * recoil_pz),
+                    ])
+                    mother = 2 if beam == 1 else -2
+                    event.tag = ('<clustering step_1="(%d,3);mom=%d" '
+                                 'step_2="(%d,4);mom=%d"></clustering>'
+                                 % (beam, mother, beam, mother))
+                    clustered, groups = self.cluster(event)
+                    self.assertEqual(clustered.fks_methods, ["fks_isr_cm_boost"] * 2)
+                    self.assertEqual(groups[beam - 1], {beam, 3, 4})
+                    self.assertEqual(len(clustered), 4)
+
+    def forward_bosons(self, direction=1, decayed=False):
+        mass = fx.MW_POLE if decayed else fx.MZ_POLE
+        pz = math.sqrt(500**2 - mass**2)
+        event = _mk_event([
+            (2, -1, 500, 0, 0, 500),
+            (-2, -1, 500, 0, 0, -500),
+            (24 if decayed else 23, 2 if decayed else 1, 500, 0, 0, direction * pz),
+            (-24 if decayed else 23, 1, 500, 0, 0, -direction * pz),
+        ])
+        if decayed:
+            for pid, px in ((-13, mass / 2), (14, -mass / 2)):
+                child = _mk_particle(event, pid, 1, 250, px, 0, direction * pz / 2)
+                child.mother1 = child.mother2 = event[2]
+                event.append(child)
+        return event
+
+    def test_massive_beam_final_invariant_is_crossed(self):
+        # |(p_beam - p_Z)^2| is small for a forward Z, whereas
+        # (p_beam + p_Z)^2 exceeds 2 M_Z^2 and misses the threshold.
+        for direction, beam in ((1, 1), (-1, 2)):
+            with self.subTest(beam=beam):
+                event = self.forward_bosons(direction)
+                event.tag = '<clustering step_1="(%d,3);mom=%d"></clustering>' % (
+                    beam, 2 if beam == 1 else -2)
+                clustered, groups = self.cluster(event)
+                self.assertEqual(clustered.fks_methods, ["fks_isr_cm_boost"])
+                self.assertEqual(groups[beam - 1], {beam, 3})
+
+    def test_madspin_group_excludes_intermediate_momentum(self):
+        # The restored W group contains its mother and both daughters.
+        # Counting the mother again would hide the small beam-W invariant.
+        for direction, beam in ((1, 1), (-1, 2)):
+            with self.subTest(beam=beam):
+                event = self.forward_bosons(direction, decayed=True)
+                event.tag = '<clustering step_1="(%d,3);mom=%d"></clustering>' % (
+                    beam, 1 if beam == 1 else -1)
+                clustered, groups = self.cluster(event)
+                self.assertEqual(clustered.fks_methods,
+                                 ["fks_fsr_massive_onshell", "fks_isr_cm_boost"])
+                self.assertEqual(groups[beam - 1], {beam, 3, 5, 6})
+
+    def test_pair_selection_uses_invariant_magnitudes(self):
+        event = self.forward_bosons()
+        event.tag = '<clustering step_1="(1,2,3,4);mom=2"></clustering>'
+        # With several candidate parents, choose the nearly collinear
+        # beam-Z pair, rather than the most negative (hard) invariant.
+        with mock.patch.object(fx, "fxfx_merge_particles_kinematics",
+                               side_effect=RuntimeError("pair selected")) as merge:
+            with self.assertRaisesRegex(RuntimeError, "pair selected"):
+                self.driver._cluster_fxfx_event(event)
+        merge.assert_called_once()
+        self.assertEqual(merge.call_args.args[1:3], (0, 2))
 
 
 class TestDecayTransform(unittest.TestCase):

@@ -30,7 +30,6 @@ import logging
 import math
 import os
 import re
-import sys
 import warnings
 from collections import Counter
 from dataclasses import dataclass
@@ -50,10 +49,20 @@ except ImportError:  # only the EW Sudakov reweighting itself needs numpy
 
 FourMomentum = lhe_parser.FourMomentum
 logger = logging.getLogger("madgraph.various.fxfx_ewsudakov")
+# ReweightInterface.do_launch mutes the general MadGraph logger.
+reweight_logger = logging.getLogger("decay.stdout")
 
 
 class MissingSudakovProcessError(Exception):
     """The compiled Sudakov library does not contain a required process."""
+
+
+class FxFxClusteringError(RuntimeError):
+    """This event has no usable clustering; its Sudakov factors should be one."""
+
+
+class DensityLibraryError(RuntimeError):
+    """A density library required for spin-correlated reweighting is unavailable."""
 
 # Event counter set by reweight_interface.py during the event loop (1-based).
 CURRENT_EVENT_ID = 0
@@ -64,6 +73,18 @@ _DIM_OVERFLOW_WARNED = False
 MAX_DENSITY_DIM = 36
 MAX_DENSITY_RESONANCES = 10
 MAX_DENSITY_ALLOW_HEL = 300
+
+
+def validate_sudakov_xi(values):
+    """Return finite clustering factors, each at least one."""
+    message = "sudakov_xi requires one or more finite values >= 1."
+    try:
+        xis = [float(value) for value in values]
+    except (TypeError, ValueError, OverflowError) as error:
+        raise ValueError(message) from error
+    if not xis or any(not math.isfinite(xi) or xi < 1. for xi in xis):
+        raise ValueError(message)
+    return xis
 
 
 def limit_sudakov_factors(factors, accounting_key=None):
@@ -127,6 +148,15 @@ def _count_fks_event(name):
         _FKS_QUALITY_EVENT_IDS[name] = CURRENT_EVENT_ID
 
 
+def _report_density_fallback(stage, error, xi=None):
+    """Log the original event error; count each event once across xi values."""
+    _count_fks_event("events_density_scalar_fallback")
+    _count_fks_event("events_density_fallback_" + stage)
+    context = "event %d" % CURRENT_EVENT_ID if CURRENT_EVENT_ID > 0 else "setup/event"
+    reweight_logger.warning("FxFx density fallback (%s, xi=%s, %s); using scalar factors: %s: %s",
+                            context, xi, stage, type(error).__name__, error)
+
+
 def fks_reset_accounting():
     """Reset the per-launch counters (called at the start of each event loop)."""
     global _FKS_COUNT_ACTIVE, _FKS_COUNTED_UPTO
@@ -160,13 +190,10 @@ def fks_accounting_summary():
     return "\n".join(lines)
 
 
-# Pole masses in GeV: defaults, overridden from the param_card by
-# _init_pole_masses_from_banner().
-MW_POLE = 80.385
-MZ_POLE = 91.1876
-MT_POLE = 173.3
-MH_POLE = 125.0
-_POLE_MASSES_INITIALIZED = False
+# Pole masses in GeV used by the kinematic helpers. Each interface caches
+# its input banner's masses and activates them in _init_pole_masses_from_banner.
+_DEFAULT_POLE_MASSES = (80.385, 91.1876, 173.3, 125.0)
+MW_POLE, MZ_POLE, MT_POLE, MH_POLE = _DEFAULT_POLE_MASSES
 
 
 @dataclass
@@ -292,7 +319,7 @@ def _fix_mother_sign_global(model, buff_event, pos_i, pos_j, mother_pdg, tol=1e-
 
     Tries mother_pdg, then -mother_pdg, then the other flavours of its family
     (the LHE coin flip can pick a different flavour than the FxFx clustering).
-    Returns (pdg, changed); raises RuntimeError if no candidate conserves charge.
+    Returns (pdg, changed); raises FxFxClusteringError if no candidate conserves charge.
     """
     if mother_pdg is None:
         return mother_pdg, False
@@ -337,7 +364,7 @@ def _fix_mother_sign_global(model, buff_event, pos_i, pos_j, mother_pdg, tol=1e-
         f"With mother={mother_pdg}: Q_init={q_init_after:.6f}, Q_final={q_final_after:.6f}; "
         f"with mother={flipped}: Q_init={q_init_flip:.6f}, Q_final={q_final_flip:.6f}"
     )
-    raise RuntimeError(msg)
+    raise FxFxClusteringError(msg)
 
 
 def suggest_mothers_from_interactions(model, perts, child_i, child_j, emitter_state):
@@ -1382,7 +1409,12 @@ class DensityHelper:
         self.number_combinations = None
         self.spins = None
         self.flag_particle_in_density_matrix = True
-        self._initialized_modules = set()
+        # Helpers are recreated for B and each C_r. Initialization belongs to
+        # the interface's loaded libraries and survives events and xi values.
+        cache = getattr(reweight_interface, "_density_initialized_modules", None)
+        if cache is None:
+            cache = reweight_interface._density_initialized_modules = {}
+        self._initialized_modules = cache
 
     @staticmethod
     def invert_momenta(p):
@@ -1482,21 +1514,20 @@ class DensityHelper:
 
         prefix = all_prefixes[proc_idx]
 
-        # Load the param card once per module: Pdir is <me_dir>/SubProcesses,
-        # the card <me_dir>/Cards/param_card.dat (me_dir: rw_me_density_prod or
-        # rw_me_density_decay).
-        module_id = id(module)
-        if module_id not in self._initialized_modules:
+        # INITIALISE sets the shared model parameters through SETPARA, as do
+        # the subprocess INITIALISEMODEL routines. Use one entry point, once
+        # per loaded module (or per prefix if only subprocess entries exist).
+        init_name = "initialise" if getattr(module, "initialise", None) else prefix + "initialisemodel"
+        cache_key = (id(module), init_name)
+        if cache_key not in self._initialized_modules:
             density_me_dir = os.path.dirname(Pdir)
-            Card_dir = os.path.join(density_me_dir, "Cards", "param_card.dat")
-            if os.path.exists(Card_dir):
-                Initialise = getattr(module, "initialise", None)
-                if Initialise:
-                    Initialise(Card_dir)
-                InitModel = getattr(module, prefix + "initialisemodel", None)
-                if InitModel:
-                    InitModel(Card_dir)
-            self._initialized_modules.add(module_id)
+            card_path = os.path.join(density_me_dir, "Cards", "param_card.dat")
+            if os.path.exists(card_path):
+                initializer = getattr(module, init_name, None)
+                if initializer:
+                    initializer(card_path)
+            # Retain the module object so its id cannot be reused in the cache.
+            self._initialized_modules[cache_key] = module
 
         # GET_DENSITY via F2PY, in one of two conventions (tried in this order):
         #   <prefix>get_density(p, pos, n_changing, allow_hel, n_comb, alphas),
@@ -1856,26 +1887,26 @@ class FxFxEWSudakovMixin:
     """
 
     def _init_pole_masses_from_banner(self):
-        """Set the module pole masses from the banner's param_card.
+        """Read masses once per imported banner and activate this run's values.
 
-        Runs once per process; a default stays if the banner or its MASS
-        entry is unavailable.
+        The input card is fixed during a run; do_import replaces the banner
+        for a new input. Repeated calls only restore the cached snapshot for
+        the module-level kinematic helpers, even after another interface ran.
+        Missing MASS entries use defaults rather than another run's masses.
         """
-        global MW_POLE, MZ_POLE, MT_POLE, MH_POLE, _POLE_MASSES_INITIALIZED
-        if _POLE_MASSES_INITIALIZED:
-            return
-        _POLE_MASSES_INITIALIZED = True
-
+        global MW_POLE, MZ_POLE, MT_POLE, MH_POLE
         banner = getattr(self, 'banner', None)
-        if banner is None:
-            return
-        mass_map = {24: 'MW_POLE', 23: 'MZ_POLE', 6: 'MT_POLE', 25: 'MH_POLE'}
-        for pdg, name in mass_map.items():
-            try:
-                val = float(banner.get_detail('param_card', 'mass', pdg).value)
-                globals()[name] = val
-            except Exception:
-                pass
+        cache = getattr(self, '_fxfx_pole_mass_cache', None)
+        if cache is None or cache[0] is not banner:
+            masses = list(_DEFAULT_POLE_MASSES)
+            if banner is not None:
+                for index, pdg in enumerate((24, 23, 6, 25)):
+                    try:
+                        masses[index] = float(banner.get_detail('param_card', 'mass', pdg).value)
+                    except Exception:
+                        pass
+            cache = self._fxfx_pole_mass_cache = (banner, tuple(masses))
+        MW_POLE, MZ_POLE, MT_POLE, MH_POLE = cache[1]
 
     # -------------------------------------------------------------------------
     # MadSpin forced clustering (applied before the FxFx clustering)
@@ -2194,13 +2225,32 @@ class FxFxEWSudakovMixin:
     # FxFx clustering from the <clustering> history
     # -------------------------------------------------------------------------
 
+    @contextlib.contextmanager
+    def _fxfx_event_preparation(self, event):
+        """Reuse xi-independent preparation only while processing this event."""
+        previous = getattr(self, "_fxfx_event_cache", None)
+        if previous is not None and previous["event"] is event:
+            yield
+            return
+        self._fxfx_event_cache = {"event": event}
+        try:
+            yield
+        finally:
+            self._fxfx_event_cache = previous
+
     def _fxfx_parse_clustering(self, event):
         """Parse the FxFx <clustering ...> block: its attributes and 'steps'.
 
         'steps' is [{'n', 'idxs', 'mom'}] sorted by n; None without a block.
         """
-        ev_lines = str(event).splitlines()
-        for line in ev_lines:
+        cache = getattr(self, "_fxfx_event_cache", None)
+        if cache is not None and cache["event"] is not event:
+            cache = None
+        if cache is not None and "clustering" in cache:
+            return cache["clustering"]
+        # Event keeps the LHE metadata here; serializing particles and weights
+        # is unnecessary and can itself modify parsed event metadata.
+        for line in event.tag.splitlines():
             if "<clustering" not in line:
                 continue
             attrs = dict(FXFX_CLUSTER_ATTR_RE.findall(line))
@@ -2234,7 +2284,11 @@ class FxFxEWSudakovMixin:
                 steps.append({"n": step_int, "idxs": idxs, "mom": mom_pdg})
             steps.sort(key=lambda s: s["n"])
             attrs["steps"] = steps
+            if cache is not None:
+                cache["clustering"] = attrs
             return attrs
+        if cache is not None:
+            cache["clustering"] = None
         return None
 
     def _cluster_fxfx_event(self, event, record_tag=False, return_groups=False):
@@ -2258,34 +2312,48 @@ class FxFxEWSudakovMixin:
         else:
             _FKS_COUNT_ACTIVE = False
 
-        decayed_resonances = ResonanceIdentifier.find_decayed_resonances(event)
+        try:
+            return self._cluster_fxfx_event_with_decays(event, record_tag, return_groups)
+        except FxFxClusteringError as error:
+            _count_fks_event("events_clustering_failed")
+            context = "event %d" % CURRENT_EVENT_ID if CURRENT_EVENT_ID > 0 else "catalogue/setup"
+            logger.warning("FxFx clustering failed (%s); using unit Sudakov factors: %s",
+                           context, error)
+            return None
 
-        if decayed_resonances:
+    def _cluster_fxfx_event_with_decays(self, event, record_tag=False, return_groups=False):
+        """Reverse decays and apply FxFx clustering, propagating failures to the caller."""
+        cache = getattr(self, "_fxfx_event_cache", None)
+        if cache is not None and cache["event"] is event:
+            if "forced_clustering" not in cache:
+                # A density-to-scalar fallback can share this preparation.
+                cache["forced_clustering"] = self._prepare_fxfx_forced_clustering(
+                    event, track_decays=True)
+            # Recoil and CM preparation must not change the cached hard process.
+            forced = copy.deepcopy(cache["forced_clustering"])
+        else:
+            forced = self._prepare_fxfx_forced_clustering(event, track_decays=return_groups)
 
-            decay_tree = self._build_madspin_decay_tree(event)
-
-            forced_steps = self._generate_forced_cluster_steps(event, decay_tree)
-
-            if forced_steps:
-                hard_event, forced_groups = self._apply_forced_clustering(
-                    event, forced_steps, track_decays=return_groups,
-                )
-
-                return self._cluster_fxfx_event_internal(
-                    hard_event,
-                    original_event=event,
-                    initial_groups=forced_groups,
-                    record_tag=record_tag,
-                    return_groups=return_groups,
-                )
-
+        hard_event, forced_groups = forced if forced is not None else (event, None)
         return self._cluster_fxfx_event_internal(
-            event,
+            hard_event,
             original_event=event,
-            initial_groups=None,
+            initial_groups=forced_groups,
             record_tag=record_tag,
             return_groups=return_groups,
         )
+
+    def _prepare_fxfx_forced_clustering(self, event, track_decays=False):
+        """Reverse MadSpin decays without applying the xi-dependent FxFx steps."""
+        decayed_resonances = ResonanceIdentifier.find_decayed_resonances(event)
+        if decayed_resonances:
+            decay_tree = self._build_madspin_decay_tree(event)
+            forced_steps = self._generate_forced_cluster_steps(event, decay_tree)
+            if forced_steps:
+                return self._apply_forced_clustering(
+                    event, forced_steps, track_decays=track_decays,
+                )
+        return None
 
     def _cluster_fxfx_event_internal(
         self, event, original_event=None, initial_groups=None, record_tag=False, return_groups=False
@@ -2368,7 +2436,7 @@ class FxFxEWSudakovMixin:
             return None
 
         def _group_momentum_labels(grp):
-            """LHE labels whose original momenta add up to this object's momentum.
+            """Original LHE labels contributing to this group's invariant.
 
             A forced-clustering group keeps the restored resonance's own LHE
             index next to its children (the density path uses it to identify
@@ -2389,26 +2457,32 @@ class FxFxEWSudakovMixin:
             return leaves if leaves else list(grp)
 
         def _s_groups_lhe_from_pos(pos_i, pos_j):
-            # LHE labels index original_event.
+            """Magnitude of the original-LHE invariant, with all legs outgoing."""
+            # Original LHE labels 1 and 2 are the beams. Sign each constituent,
+            # not its current group: an ISR beam group also contains outgoing
+            # radiation. These signs are local to the invariant calculation;
+            # the event and the recoil mappings keep positive-energy beams.
             Ei = pxi = pyi = pzi = 0.0
             Ej = pxj = pyj = pzj = 0.0
             for lab in _group_momentum_labels(groups[pos_i]):
                 q = original_event[lab - 1]
-                Ei += float(q.E)
-                pxi += float(q.px)
-                pyi += float(q.py)
-                pzi += float(q.pz)
+                sign = -1.0 if lab in (1, 2) else 1.0
+                Ei += sign * float(q.E)
+                pxi += sign * float(q.px)
+                pyi += sign * float(q.py)
+                pzi += sign * float(q.pz)
             for lab in _group_momentum_labels(groups[pos_j]):
                 q = original_event[lab - 1]
-                Ej += float(q.E)
-                pxj += float(q.px)
-                pyj += float(q.py)
-                pzj += float(q.pz)
+                sign = -1.0 if lab in (1, 2) else 1.0
+                Ej += sign * float(q.E)
+                pxj += sign * float(q.px)
+                pyj += sign * float(q.py)
+                pzj += sign * float(q.pz)
             E = Ei + Ej
             px = pxi + pxj
             py = pyi + pyj
             pz = pzi + pzj
-            return E * E - px * px - py * py - pz * pz
+            return abs(E * E - px * px - py * py - pz * pz)
 
         def _group_rep(pos):
             """PDG and state (False for status -1) of the current buff_event[pos]."""
@@ -2420,9 +2494,9 @@ class FxFxEWSudakovMixin:
             return {"pdg": pdg, "state": state}
 
         mW2 = MW_POLE**2
-        # Clustering continues while some pair has s_ij < mW2_cluster_scale M_W²;
+        # Clustering continues while some pair has |s_ij| < mW2_cluster_scale M_W²;
         # the default 1.5 reaches √s_ij ≈ 98 GeV and so covers M_Z.
-        mW2_cluster_scale = getattr(self, "mW2_cluster_scale", 1.5)
+        mW2_cluster_scale = validate_sudakov_xi([getattr(self, "mW2_cluster_scale", 1.5)])[0]
         mW2_threshold = mW2_cluster_scale * mW2
 
         # Steps in the tag's order, which is scale ordered (soft to hard).
@@ -2578,12 +2652,9 @@ class FxFxEWSudakovMixin:
                                         break
 
                     if _step_mom is not None:
-                        try:
-                            _step_mom, charge_changed = _fix_mother_sign_global(
-                                self.model, buff_event, a, b, _step_mom
-                            )
-                        except RuntimeError:
-                            raise
+                        _step_mom, charge_changed = _fix_mother_sign_global(
+                            self.model, buff_event, a, b, _step_mom
+                        )
 
                 if _step_mom is None:
                     break
@@ -2632,7 +2703,7 @@ class FxFxEWSudakovMixin:
                         # The event is kept with unit Sudakov weights.
                         if _FKS_COUNT_ACTIVE:
                             FKS_QUALITY_COUNTS["clustering_aborted_math_domain"] += 1
-                        return None
+                        raise FxFxClusteringError("Kinematic mapping failed: %s" % e) from e
                     raise
                 fks_methods.append(step_method)
 
@@ -2676,10 +2747,15 @@ class FxFxEWSudakovMixin:
         if getattr(self, "lhe_input", None) is None:
             return
         source = getattr(self, "fxfx_catalogue_source", None) or self.lhe_input.path
+        source = os.path.abspath(source)
+        # Match EventFile's read fallback before stat/cache lookup, and before
+        # resolving symlinks so the fallback uses the requested file's sibling.
+        if source.endswith('.gz') and not os.path.exists(source) and os.path.exists(source[:-3]):
+            source = source[:-3]
         source = os.path.realpath(source)
         stat = os.stat(source)
         scale = getattr(self, "mW2_cluster_scale", 1.5)
-        xis = tuple(getattr(self, "sudakov_xi_scan", None) or [scale])
+        xis = tuple(validate_sudakov_xi(getattr(self, "sudakov_xi_scan", None) or [scale]))
         catalogue_key = (source, stat.st_size, stat.st_mtime_ns, xis)
         if (getattr(self, "_fxfx_cluster_catalog_ready", False)
                 and getattr(self, "_fxfx_cluster_catalog_key", None) == catalogue_key):
@@ -2694,22 +2770,23 @@ class FxFxEWSudakovMixin:
             with contextlib.closing(lhe_parser.EventFile(source)) as events:
                 for event in events:
                     self._sudakov_source_ids.update(event.parse_reweight() or {"1001": event.wgt})
-                    for xi in xis:
-                        self.mW2_cluster_scale = xi
-                        cluster_result = self._cluster_fxfx_event(event, record_tag=True, return_groups=True)
-                        if not cluster_result:
-                            continue
-                        clustered_event, _, groups = cluster_result
-                        for res_idx, res_pdg in ResonanceIdentifier.find_resonances(clustered_event):
-                            if res_idx >= len(groups):
+                    with self._fxfx_event_preparation(event):
+                        for xi in xis:
+                            self.mW2_cluster_scale = xi
+                            cluster_result = self._cluster_fxfx_event(event, record_tag=True, return_groups=True)
+                            if not cluster_result:
                                 continue
-                            decay_pdgs = [
-                                int(event[i - 1].pid) for i in sorted(groups[res_idx])
-                                if 1 <= i <= len(event) and event[i - 1].status == 1
-                            ]
-                            if len(decay_pdgs) >= 2:
-                                self.fxfx_clustered_decay_processes.add(
-                                    (int(res_pdg), tuple(sorted(decay_pdgs))))
+                            clustered_event, _, groups = cluster_result
+                            for res_idx, res_pdg in ResonanceIdentifier.find_resonances(clustered_event):
+                                if res_idx >= len(groups):
+                                    continue
+                                decay_pdgs = [
+                                    int(event[i - 1].pid) for i in sorted(groups[res_idx])
+                                    if 1 <= i <= len(event) and event[i - 1].status == 1
+                                ]
+                                if len(decay_pdgs) >= 2:
+                                    self.fxfx_clustered_decay_processes.add(
+                                        (int(res_pdg), tuple(sorted(decay_pdgs))))
         finally:
             self.mW2_cluster_scale = scale
         self._fxfx_cluster_catalog_key = catalogue_key
@@ -2825,6 +2902,10 @@ class FxFxEWSudakovMixin:
         return extra
 
     def _prepare_fxfx_sudakov_inputs(self, event, sud_mod, event_to_sud):
+        """FxFx entry point for the shared Sudakov momentum preparation."""
+        return self._prepare_sudakov_inputs(event, sud_mod, event_to_sud)
+
+    def _prepare_sudakov_inputs(self, event, sud_mod, event_to_sud):
         """Sudakov inputs: CM-frame kinematics in the canonical library order."""
         frame_transform = []
 
@@ -2841,7 +2922,7 @@ class FxFxEWSudakovMixin:
             frame_transform.append(("boost_to_cm", FourMomentum(p_in_sum)))
             event_to_sud.boost(p_in_sum)
 
-        # Initial state along z, as in the ickkw=0 path.
+        # Initial state along z in both reweighting modes.
         initial = copy.deepcopy(event_to_sud[0])
         if not ((abs(initial.px) < 1e-6 * initial.E) and (abs(initial.py) < 1e-6 * initial.E)):
             frame_transform.append(("rotate_to_z", FourMomentum(initial)))
@@ -2872,8 +2953,13 @@ class FxFxEWSudakovMixin:
             canon = list(sud_mod.original_pdg_list_dict[sorted_tag][1])
         except KeyError as exc:
             raise MissingSudakovProcessError(
-                "Sudakov library has no process %s. Generate the library from "
-                "the complete event input and xi scan." % (sorted_tag,)) from exc
+                "Sudakov library has no process %s. Generate and compile a library "
+                "covering the event subprocess." % (sorted_tag,)) from exc
+
+        if Counter(canon) != Counter(mapped_order[1]):
+            raise RuntimeError(
+                "Order in particle momenta does not match MG convention for %s: "
+                "expected %s, got %s" % (sorted_tag, canon, mapped_order[1]))
 
         # perm[i]: position in canon of the final-state particle mapped_order[1][i].
         perm = []
@@ -2899,7 +2985,9 @@ class FxFxEWSudakovMixin:
         expected_order = list(sud_mod.original_pdg_list_dict[sorted_tag][1])
         actual_order = mapped_order2[1]
         if expected_order != actual_order:
-            raise RuntimeError("Order in particle momenta does not match MG convention")
+            raise RuntimeError(
+                "Order in particle momenta does not match MG convention for %s: "
+                "expected %s, got %s" % (sorted_tag, expected_order, actual_order))
 
         incoming_pdgs = list(mapped_order2[0])
         outgoing_pdgs = list(mapped_order2[1])
@@ -2918,74 +3006,6 @@ class FxFxEWSudakovMixin:
             # operations before its on-shell adjustment.
             "frame_transform": frame_transform,
         }
-
-    def _get_fxfx_ewsudpy_module(self, sud_mod, sorted_tag):
-        """Return the ewsudpy module for a given sorted_tag (if available)."""
-        try:
-            result = sud_mod.pdg2ewsud_dict.get(sorted_tag)
-            return result
-        except Exception:
-            return None
-
-    def _set_ewsud_rij_ge_mw(self, ewsud_mod, disable_clamp):
-        """Set fxfx_ignore_invariant_checks = disable_clamp (else rij_ge_mw = not it).
-
-        Returns (kind, previous value) for _restore_ewsud_rij_ge_mw, or None if
-        nothing was set.
-        """
-        if ewsud_mod is None:
-            return None
-        if hasattr(ewsud_mod, "fxfx_ignore_invariant_checks"):
-            prev = getattr(ewsud_mod, "fxfx_ignore_invariant_checks")
-            try:
-                ewsud_mod.fxfx_ignore_invariant_checks = disable_clamp
-                return ("fxfx", prev)
-            except Exception:
-                try:
-                    ewsud_mod.fxfx_ignore_invariant_checks[...] = disable_clamp
-                    return ("fxfx", prev)
-                except Exception:
-                    return None
-        if not hasattr(ewsud_mod, "rij_ge_mw"):
-            return None
-        prev = getattr(ewsud_mod, "rij_ge_mw")
-        value = not disable_clamp
-        try:
-            ewsud_mod.rij_ge_mw = value
-            return ("rij", prev)
-        except Exception:
-            try:
-                ewsud_mod.rij_ge_mw[...] = value
-                return ("rij", prev)
-            except Exception:
-                return None
-
-    def _restore_ewsud_rij_ge_mw(self, ewsud_mod, prev):
-        """Restore invariant-clamp setting on the ewsudpy module if it was set."""
-        if prev is None or ewsud_mod is None:
-            return
-        kind = "rij"
-        value = prev
-        if isinstance(prev, tuple) and len(prev) == 2:
-            kind, value = prev
-        if kind == "fxfx" and hasattr(ewsud_mod, "fxfx_ignore_invariant_checks"):
-            try:
-                ewsud_mod.fxfx_ignore_invariant_checks = value
-            except Exception:
-                try:
-                    ewsud_mod.fxfx_ignore_invariant_checks[...] = value
-                except Exception:
-                    pass
-            return
-        if not hasattr(ewsud_mod, "rij_ge_mw"):
-            return
-        try:
-            ewsud_mod.rij_ge_mw = value
-        except Exception:
-            try:
-                ewsud_mod.rij_ge_mw[...] = value
-            except Exception:
-                pass
 
     def _is_2to1_topology(self, clustered_event):
         """Whether the clustered event is 2 -> 1.
@@ -3053,6 +3073,7 @@ class FxFxEWSudakovMixin:
 
     def _configure_sudakov_weight_ids(self, source_ids, xis, variant_names=None):
         """Assign a unique numeric ID to each source, xi index, and variant."""
+        xis = validate_sudakov_xi(xis)
         sources = sorted(set(map(str, source_ids)),
                          key=lambda key: (0, int(key), key) if key.isdigit() else (1, 0, key))
         names = tuple(variant_names or self.SUDAKOV_VARIANT_NAMES)
@@ -3164,10 +3185,7 @@ class FxFxEWSudakovMixin:
         if self._is_2to1_topology(event_to_sud):
             return self._build_sudakov_rwgt_dict(event, [1.0, 1.0, 1.0])
 
-        try:
-            prep = self._prepare_fxfx_sudakov_inputs(event, sud_mod, event_to_sud)
-        except RuntimeError:
-            sys.exit(3)
+        prep = self._prepare_fxfx_sudakov_inputs(event, sud_mod, event_to_sud)
 
         # Unit weights for small invariants. This cut makes the Fortran
         # rij_ge_mw clamp inert, so both_off and rij_ge_mw_off would equal
@@ -3175,17 +3193,7 @@ class FxFxEWSudakovMixin:
         if self._has_small_invariants(prep["p_in"], prep["iflist"]):
             return self._build_sudakov_rwgt_dict(event, [1.0, 1.0, 1.0])
 
-        rij_override_mod = None
-        rij_override_prev = None
-        _ignore_invs = getattr(self, "fxfx_ignore_invariant_checks", False)
-        if _ignore_invs:
-            rij_override_mod = self._get_fxfx_ewsudpy_module(sud_mod, prep["sorted_tag"])
-            rij_override_prev = self._set_ewsud_rij_ge_mw(rij_override_mod, False)
-        try:
-            res = sud_mod.ewsudakov(prep["sorted_tag"], prep["p_in"], prep["gstr"])
-        finally:
-            if rij_override_prev is not None:
-                self._restore_ewsud_rij_ge_mw(rij_override_mod, rij_override_prev)
+        res = sud_mod.ewsudakov(prep["sorted_tag"], prep["p_in"], prep["gstr"])
 
         # res[0] = Born, res[1] = sherpa_qed (sud_mod=0), res[2] = central,
         # res[3] = s_to_rij_off; res[4] (both_off) and res[5] (rij_ge_mw_off)
@@ -3230,9 +3238,9 @@ class FxFxEWSudakovMixin:
 
         cluster_result = self._cluster_fxfx_event(event, record_tag=True, return_groups=True)
         if not cluster_result:
-            # Evaluate the scalar path when clustering information is unavailable.
-            density_logger.log_event("fallback_no_cluster", [], 0, 1.0)
-            return self._compute_ewsudakov_fxfx_reweight(event, sud_mod)
+            _count_fks_event("events_clustering_failed")
+            density_logger.log_event("passthrough_clustering_failed", [], 0, 1.0)
+            return self._build_sudakov_rwgt_dict(event, [1.0, 1.0, 1.0])
 
         clustered_event, cluster_sorted_tag, groups = cluster_result
 
@@ -3285,9 +3293,10 @@ class FxFxEWSudakovMixin:
         # assumed-size Fortran arrays overrun silently: scalar path.
         if not density_dimensions_supported(total_dim, len(resonances)):
             _count_fks_event("events_density_dim_overflow")
+            _count_fks_event("events_density_scalar_fallback")
             global _DIM_OVERFLOW_WARNED
             if not _DIM_OVERFLOW_WARNED:
-                logger.warning(
+                reweight_logger.warning(
                     "Resonance-helicity space too large for the density kernel "
                     "(total_dim=%d, nres=%d; caps %d/%d/%d): falling back "
                     "to the scalar Sudakov path.",
@@ -3331,16 +3340,20 @@ class FxFxEWSudakovMixin:
         self._density_last_C_def = C_def
 
         event_to_sud = clustered_event
-        try:
-            prep = self._prepare_fxfx_sudakov_inputs(event, sud_mod, event_to_sud)
-        except RuntimeError:
-            sys.exit(3)
+        prep = self._prepare_fxfx_sudakov_inputs(event, sud_mod, event_to_sud)
 
         if self._has_small_invariants(prep["p_in"], prep["iflist"]):
             density_logger.log_event("passthrough_small_sij", resonances, total_dim, 1.0)
             return self._build_sudakov_rwgt_dict(event, [1.0, 1.0, 1.0])
 
+        if not hasattr(sud_mod, "density_sudakov"):
+            raise DensityLibraryError(
+                "The Sudakov dispatcher has no density_sudakov kernel for the decayed "
+                "process %s. Regenerate and compile the Sudakov libraries." % (prep["sorted_tag"],))
+
         weight_var = None
+        scalar_result = None
+        stage = "kernel"
         try:
             use_density_path = False
 
@@ -3361,45 +3374,32 @@ class FxFxEWSudakovMixin:
                             fortran_idx = canonical_idx + 1
                         res_indices_fortran.append(fortran_idx)
 
-                    rij_override_mod = None
-                    rij_override_prev = None
-                    if getattr(self, "fxfx_ignore_invariant_checks", False):
-                        rij_override_mod = self._get_fxfx_ewsudpy_module(
-                            sud_mod, prep["sorted_tag"]
-                        )
-                        rij_override_prev = self._set_ewsud_rij_ge_mw(rij_override_mod, False)
-                    try:
-                        density_result = sud_mod.density_sudakov(
-                            prep["sorted_tag"],
-                            prep["p_in"],
-                            prep["gstr"],
-                            res_indices_fortran,
-                            res_dims,
-                        )
-                    finally:
-                        if rij_override_prev is not None:
-                            self._restore_ewsud_rij_ge_mw(rij_override_mod, rij_override_prev)
+                    density_result = sud_mod.density_sudakov(
+                        prep["sorted_tag"],
+                        prep["p_in"],
+                        prep["gstr"],
+                        res_indices_fortran,
+                        res_dims,
+                    )
 
                     # The Fortran wrapper returns zeros for density_born; B comes
                     # from DensityHelper and the standalone density_prod modules
                     # (GET_DENSITY).
                     total_dim = density_result["total_dim"]
+                    stage = "production"
                     B = None
 
-                    if getattr(self, "density_prod_id_to_path", None) and getattr(
-                        self, "density_prod_f2pylib", None
-                    ):
-                        try:
-                            helper = DensityHelper(
-                                self, self.density_prod_id_to_path, self.density_prod_f2pylib
-                            )
-                            B_matrix = helper.compute_density_matrix(
-                                clustered_event, res_pdgs, res_dims
-                            )
-                            if B_matrix is not None:
-                                B = DensityMatrix.from_full_matrix(B_matrix, res_pdgs)
-                        except Exception:
-                            pass
+                    if not (getattr(self, "density_prod_id_to_path", None)
+                            and getattr(self, "density_prod_f2pylib", None)):
+                        raise DensityLibraryError(
+                            "Required production density libraries are not loaded for %s. "
+                            "Regenerate and compile rw_me_density_prod." % (prep["sorted_tag"],))
+                    helper = DensityHelper(
+                        self, self.density_prod_id_to_path, self.density_prod_f2pylib
+                    )
+                    B_matrix = helper.compute_density_matrix(clustered_event, res_pdgs, res_dims)
+                    if B_matrix is not None:
+                        B = DensityMatrix.from_full_matrix(B_matrix, res_pdgs)
 
                     if B is None:
                         raise ValueError(
@@ -3444,6 +3444,7 @@ class FxFxEWSudakovMixin:
                                     delta_var_normalized[h] = 0.0
                             delta_var = delta_var_normalized
 
+                    stage = "decay"
                     C = self._get_decay_density_matrix(
                         event,
                         clustered_event,
@@ -3451,6 +3452,7 @@ class FxFxEWSudakovMixin:
                         frame_transform=prep.get("frame_transform"),
                     )
                     if C is not None:
+                        stage = "contraction"
                         weight = compute_density_weight(B, C, delta)
 
                         weight_var = None
@@ -3459,23 +3461,21 @@ class FxFxEWSudakovMixin:
 
                         use_density_path = True
                     else:
-                        use_density_path = False
+                        raise ValueError("Decay density matrix is unavailable for %s" % (res_pdgs,))
 
+                except DensityLibraryError:
+                    raise
                 except Exception as e:
-                    warnings.warn(
-                        f"Density matrix computation failed, falling back to scalar: {e}",
-                        RuntimeWarning,
-                        stacklevel=2,
-                    )
+                    _report_density_fallback(stage, e, getattr(self, "mW2_cluster_scale", 1.5))
                     use_density_path = False
 
             # Scalar path if the density evaluation is unavailable or failed.
             if not use_density_path:
-                res = sud_mod.ewsudakov(prep["sorted_tag"], prep["p_in"], prep["gstr"])
-                born, sud_weak = res[0], res[2]
+                scalar_result = sud_mod.ewsudakov(prep["sorted_tag"], prep["p_in"], prep["gstr"])
+                born, sud_weak = scalar_result[0], scalar_result[2]
                 weight = 1.0 + sud_weak / born if abs(born) > 1e-30 else 1.0
                 # s_to_rij_off variant res[3], as in the scalar FxFx path.
-                weight_var = (1.0 + res[3] / born) if abs(born) > 1e-30 else 1.0
+                weight_var = (1.0 + scalar_result[3] / born) if abs(born) > 1e-30 else 1.0
 
             density_logger.log_event(
                 mode="density" if use_density_path else "scalar",
@@ -3484,14 +3484,19 @@ class FxFxEWSudakovMixin:
                 weight=weight,
             )
 
-        except Exception:
+        except DensityLibraryError:
+            raise
+        except Exception as error:
+            _report_density_fallback("evaluation", error, getattr(self, "mW2_cluster_scale", 1.5))
             return self._compute_ewsudakov_fxfx_reweight(event, sud_mod)
 
         # The scalar kernel supplies the Sherpa QED factor; the density kernel
         # supplies the central and s_to_rij_off factors.
         weight_sherpa_qed = 1.0
         try:
-            res_for_sq = sud_mod.ewsudakov(prep["sorted_tag"], prep["p_in"], prep["gstr"])
+            res_for_sq = scalar_result
+            if res_for_sq is None:
+                res_for_sq = sud_mod.ewsudakov(prep["sorted_tag"], prep["p_in"], prep["gstr"])
             if abs(res_for_sq[0]) > 1e-30:
                 weight_sherpa_qed = 1.0 + res_for_sq[1] / res_for_sq[0]
         except Exception:  # noqa: BLE001 — robustness: never let extraction failure abort the event
@@ -3631,36 +3636,28 @@ class FxFxEWSudakovMixin:
         """DensityMatrix of target_pdgs from GET_DENSITY of the standalone modules.
 
         A decay event (one incoming particle) uses rw_me_density_decay (C), a
-        production event rw_me_density_prod (B). Returns None on failure;
-        label is not used in the computation.
+        production event rw_me_density_prod (B). Missing required libraries
+        are setup errors. Evaluation errors propagate to the caller's
+        event fallback diagnostic; None means no matching density matrix.
         """
 
-        try:
-            tag_raw, order = event.get_tag_and_order()
-            nincoming = len(tag_raw[0])
-        except Exception:
-            nincoming = 2
+        tag_raw, order = event.get_tag_and_order()
+        nincoming = len(tag_raw[0])
 
         if nincoming == 1:
-            if not getattr(self, "density_decay_id_to_path", None):
-                return None
-            id_to_path = self.density_decay_id_to_path
-            f2pylib = self.density_decay_f2pylib
+            directory = "rw_me_density_decay"
+            id_to_path = getattr(self, "density_decay_id_to_path", None)
+            f2pylib = getattr(self, "density_decay_f2pylib", None)
         else:
-            if not getattr(self, "density_prod_id_to_path", None):
-                return None
-            id_to_path = self.density_prod_id_to_path
-            f2pylib = self.density_prod_f2pylib
+            directory = "rw_me_density_prod"
+            id_to_path = getattr(self, "density_prod_id_to_path", None)
+            f2pylib = getattr(self, "density_prod_f2pylib", None)
+        if not id_to_path or not f2pylib:
+            raise DensityLibraryError("Required density libraries for %s are not loaded (%s)."
+                                      % (label, directory))
 
         helper = DensityHelper(self, id_to_path, f2pylib)
-
-        try:
-            density_matrix = helper.compute_density_matrix(event, target_pdgs, res_dims)
-
-            if density_matrix is None:
-                return None
-
-            return DensityMatrix.from_full_matrix(density_matrix, target_pdgs)
-
-        except Exception:
+        density_matrix = helper.compute_density_matrix(event, target_pdgs, res_dims)
+        if density_matrix is None:
             return None
+        return DensityMatrix.from_full_matrix(density_matrix, target_pdgs)

@@ -45,6 +45,7 @@ class TestFxFxAccounting(unittest.TestCase):
                 fx.CURRENT_EVENT_ID = event_id
                 result = self.driver._compute_density_ewsudakov_reweight(self.event, module)
                 self.assertEqual(fx.FKS_QUALITY_COUNTS['events_density_dim_overflow'], expected)
+                self.assertEqual(fx.FKS_QUALITY_COUNTS['events_density_scalar_fallback'], expected)
                 self.assertEqual(fx.FKS_QUALITY_COUNTS['events_runaway_damped_scalar'], expected)
                 self.assertEqual(sum(fx.FKS_METHOD_COUNTS.values()), 2 * expected)
                 self.fixture.assert_factors(self.driver, result, [1., 1., 1.])
@@ -63,7 +64,7 @@ class TestFxFxAccounting(unittest.TestCase):
                 mock.patch.object(fx, 'FKS_FALLBACK_POLICY', 'accept'):
             for event_id in (1, 2):
                 fx.CURRENT_EVENT_ID = event_id
-                for xi in (.5, 1.5, 3.):
+                for xi in (1., 1.5, 3.):
                     self.driver.mW2_cluster_scale = xi
                     result = self.driver._compute_density_ewsudakov_reweight(self.event, module)
                     self.assertEqual(fx.FKS_QUALITY_COUNTS['events_with_fsr_fallback_density'], event_id)

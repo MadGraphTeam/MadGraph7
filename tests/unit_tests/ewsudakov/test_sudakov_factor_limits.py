@@ -74,7 +74,10 @@ class TestSudakovFactorLimits(unittest.TestCase):
             with self.subTest(factors=factors):
                 driver = FactorDriver()
                 module = self.scalar_module(driver, factors)
-                result = driver._compute_density_ewsudakov_reweight(self.event, module)
+                module.density_sudakov = mock.Mock(side_effect=ArithmeticError('event density failed'))
+                with self.assertLogs(fx.reweight_logger, level='WARNING'):
+                    result = driver._compute_density_ewsudakov_reweight(self.event, module)
+                module.ewsudakov.assert_called_once()
                 self.assertEqual(driver._density_logger.log_event.call_args.kwargs['mode'], 'scalar')
                 self.assert_factors(driver, result, expected)
 
@@ -94,6 +97,7 @@ class TestSudakovFactorLimits(unittest.TestCase):
                 with mock.patch.object(fx, 'DensityHelper') as helper:
                     helper.return_value.compute_density_matrix.return_value = np.eye(9)
                     result = driver._compute_density_ewsudakov_reweight(self.event, module)
+                module.ewsudakov.assert_called_once()
                 self.assertEqual(driver._density_logger.log_event.call_args.kwargs['mode'], 'density')
                 self.assert_factors(driver, result, expected)
 
