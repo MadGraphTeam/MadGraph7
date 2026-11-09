@@ -1768,6 +1768,50 @@ def test_an_upper_bound_outside_the_protocol_bounds_the_fastest_provider():
         decisions,
     )
     assert "ratio_to_fastest_bound" not in plain
+    # Each measured provider names its timing's settings (lit-report G5): a
+    # record without a protocol is a production run.
+    proc["providers"]["openloops"] = {
+        "median_seconds_per_point": 50.0,
+        "points": 16,
+        "mode": "most optimistic",
+        "protocol": "optimistic",
+        "library": {"name": "ppllll"},
+    }
+    runtime = builder._provider_runtime(proc)["providers"]
+    assert runtime["openloops"]["protocol"] == "optimistic"
+    assert runtime["madloop"]["protocol"] == "production"
+    assert "protocol" not in runtime["recola"]
+
+
+def test_table_1_names_its_provider_protocols_and_marks_kept_production_times():
+    """lit-report G5: summary.json meta lists the settings of Table 1's
+    provider timings and why a provider kept its production record (g1.json
+    meta ``provider_kept``); the report marks a production time beside
+    optimistic ones and names the protocol in its legend."""
+
+    import json
+
+    source = (
+        ROOT / "docs/performance_reports/loop/scripts/build_summary.py"
+    ).read_text()
+    assert '"provider_protocols": sorted(' in source
+    assert '{"provider_kept": g1["provider_kept"]}' in source
+    typ = (ROOT / "docs/performance_reports/loop/benchmarks.typ").read_text()
+    assert '#let t1-optimistic = "optimistic" in S.meta.at("provider_protocols"' in typ
+    assert "#t1-mark(x)" in typ and "#t1-mark(c.providers.at(f.key))" in typ
+    assert "#if t1-optimistic [ The providers run in their most optimistic" in typ
+    summary = json.loads(
+        (ROOT / "docs/performance_reports/loop/data/summary.json").read_text()
+    )
+    protocols = summary["meta"]["provider_protocols"]
+    shown = {
+        x["protocol"]
+        for g in summary["groups"]
+        for r in g["rows"]
+        for x in (r["full_colour"].get("providers") or {}).values()
+        if "protocol" in x
+    }
+    assert protocols == sorted(shown) and protocols
 
 
 def test_a_campaign_timed_on_tool_revisions_of_its_slice_revision(monkeypatch):
