@@ -74,9 +74,6 @@ PROFILE_GROUPS = (
     PROFILE_REDUCTION,
     PROFILE_REST,
 )
-# The label of a stage split read from a separate instrumented call rather
-# than the timed one (lit-unchecked's bars).
-INSTRUMENTED_LABEL = "instrumented run: stage shares, not the timed call"
 
 
 def profile_stage_names(contribution: str) -> dict[str, tuple[str, ...]]:

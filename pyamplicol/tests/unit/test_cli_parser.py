@@ -801,3 +801,52 @@ def test_profile_is_primary_cli_spelling_for_typed_benchmark_config(
     assert profile.evaluation.process == "d d~ > z g"
     assert profile.benchmark.batch_size == 64
     assert profile.benchmark.minimum_samples == 8
+
+
+def test_check_takes_a_card_or_an_artifact_and_its_options(tmp_path: Path) -> None:
+    """``pyamplicol check CARD_OR_ARTIFACT``: a file is the run card (its
+    request), a directory the artifact (``evaluation.artifact``)."""
+
+    card = tmp_path / "card.toml"
+    card.write_text(
+        'action = "generate"\n[process]\n'
+        'entries = [{expression = "u u~ > g g"}]\nloop_coupling_orders = ["QCD"]\n'
+    )
+    invocation = parse_cli(
+        ("check", str(card), "--points", "5", "--seed", "7", "--precision", "double")
+    )
+    assert invocation.action == "check" and invocation.card == card.resolve()
+    effective = invocation.resolve().effective
+    assert effective.action == "check"
+    assert (effective.check.points, effective.check.seed) == (5, 7)
+    assert effective.check.precision == "double"
+    assert effective.evaluation.artifact is None
+    artifact = tmp_path / "artifact"
+    artifact.mkdir()
+    direct = parse_cli(("check", str(artifact))).resolve().effective
+    assert direct.evaluation.artifact == artifact.resolve()
+    assert (direct.check.points, direct.check.seed) == (3, None)
+    assert direct.check.precision == "auto"
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(("check", str(card), "--precision", "quad"))
+
+
+def test_profile_takes_the_loop_settings() -> None:
+    effective = (
+        parse_cli(
+            (
+                "profile",
+                "artifact",
+                "--loop-reduction",
+                "tirust",
+                "--reduction-unchecked",
+                "--mu-r2",
+                "1e4",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert effective.evaluation.reduction == "tirust"
+    assert effective.evaluation.reduction_unchecked is True
+    assert effective.evaluation.mu_r2 == "1e4"
