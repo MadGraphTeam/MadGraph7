@@ -354,6 +354,7 @@ points = 3          # seeded phase-space points per process
 seed = 12345        # default: generation.validation.seed
 precision = "auto"  # binary64, then double-double where it fails; or one carrier
 # model = "my_ufo"  # default: model.source (an artifact: the source it records)
+# sqrt_s = 2000.0   # a scattering's energy; default: the validation convention
 ```
 
 Generation also drops the helicity rows of a loop-induced process that are
