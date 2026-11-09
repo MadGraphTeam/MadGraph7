@@ -797,8 +797,11 @@ impl std::fmt::Debug for DependentsCache {
 /// both columns with `U_t + eta U_t'`; the reduction is linear in the
 /// numerator, so `o'` is not reduced: its Laurent integrals (re-test,
 /// term scale) are `c` (`|c|`) times `o`'s, formed after the reduction.
-/// Empty for seeded plans and for a family without such columns (every
-/// stored column reduced, as before).
+/// The rule reads the plan's exact key vectors, not the fold: an unfolded
+/// family whose keys weight two columns in one exact ratio (u u~ > d d~ h:
+/// one key whose colour vector has two entries) has them too. Empty for
+/// seeded plans and for a family without such columns (every stored column
+/// reduced, as before).
 #[derive(Clone, Debug, Default)]
 pub struct Dependents {
     /// Per accumulator, per observable column whether it is dependent (not
