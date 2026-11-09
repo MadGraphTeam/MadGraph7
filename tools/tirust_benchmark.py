@@ -368,7 +368,9 @@ def cli_lines(tree, source, case, output):
     process = case['process'].replace('[noborn=QCD]', '[sqrvirt=QCD]')
     lines.extend((f"import model {model}", f"generate {process}",
                   f"output standalone {output}", "quit"))
-    return lines
+    # MG persists configuration options in its own input directory even with a
+    # private XDG_CONFIG_HOME. Keep every benchmark setting session-local.
+    return [line + " --no_save" if line.startswith("set ") else line for line in lines]
 
 
 def generate(source, case):
@@ -1390,6 +1392,44 @@ def summarize(config):
     return summary
 
 
+def execute_ordered_campaign(cases, run_task, report_failure):
+    """Qualify main rescue chains before spending the regression budget.
+
+    All selected main chains are attempted, so an early failure cannot hide
+    another case. Any failed/incomplete gate defers the later phase intact.
+    ``run_task(case, None)`` selects its chain; an integer selects a backend.
+    """
+    failures = []
+
+    def attempt(case, backend):
+        try:
+            result = run_task(case, backend)
+            require_speed_gate = case["role"] == "main" and backend in (None, 1, 6, 7, 8)
+            if not result.get("acceptance_eligible"):
+                raise RuntimeError("Retained comparison did not pass its numerical and duration gates")
+            if require_speed_gate and not result.get("passed"):
+                raise RuntimeError("Retained main comparison did not pass its required performance gate")
+        except Exception as error:
+            failure = {"case": case["id"], "backend": backend, "error": str(error)}
+            failures.append(failure)
+            report_failure(failure)
+
+    for case in cases:
+        if case["role"] == "main":
+            attempt(case, None)
+    if failures:
+        raise RuntimeError(f"{len(failures)} main rescue-chain gates failed/incomplete; "
+                           "explicit-backend regressions and controls are deferred; see summary.json")
+
+    for case in cases:
+        for backend in (1, 6, 7, 8, 9):
+            attempt(case, backend)
+        if case["role"] != "main":
+            attempt(case, None)
+    if failures:
+        raise RuntimeError(f"Campaign retains {len(failures)} failed/incomplete comparisons; see summary.json")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("init", "model", "generate", "build", "pair", "campaign", "summarize",
@@ -1462,41 +1502,41 @@ def main():
                     freeze_points(case, build(source, case, args.jobs), config)
                 print(f"{args.command}: {source} {case['id']}", flush=True)
         return
-    campaign_failures = []
-    for case in cases:
+    def run_task(case, backend):
         generation = json.loads((output_dir("baseline", case) / "generation.json").read_text())
         baseline_chain = parse_chain(args.baseline_chain or generation["default_chain"])
         candidate_chain = parse_chain(args.candidate_chain) if args.candidate_chain else [9, *baseline_chain]
-        labels = ([(f"backend-{backend}", [backend] if backend != 9 else [1], [backend])
-                   for backend in (1, 6, 7, 8, 9)] if args.command == "campaign" else [])
-        labels.append((args.label, baseline_chain, candidate_chain))
-        for label, left, right in labels:
-            base = REPORT / "runs" / case["id"]
-            attempt_name = f"{label}-attempt-{args.attempt}" if args.attempt > 1 else None
-            directory = base / attempt_name if attempt_name else selected_run_directory(base, label)
-            try:
-                if args.command == "campaign" and directory.exists():
-                    summary, _ = validate_retained_result(directory, label, case, config)
-                    spec = json.loads((directory / "specification.json").read_text())
-                    if spec["cpu"] != args.cpu:
-                        raise RuntimeError("Resume must use the retained CPU affinity")
-                else:
-                    if attempt_name:
-                        prepare_retry(base, label, directory, args.retry_reason)
-                    summary = pair(case, left, right, config, args.cpu, label, attempt_name=attempt_name)
-                    if attempt_name:
-                        select_attempt(base, label, directory, args.retry_reason)
-                print(json.dumps({"case": case["id"], "label": label, "statistics": summary["statistics"],
-                                  "acceptance_eligible": summary["acceptance_eligible"]}), flush=True)
-            except Exception as error:
-                if args.command != "campaign":
-                    raise
-                campaign_failures.append({"case": case["id"], "label": label, "error": str(error)})
-                print(json.dumps(campaign_failures[-1]), flush=True)
-            finally:
-                summarize(config)
-    if campaign_failures:
-        raise RuntimeError(f"Campaign retains {len(campaign_failures)} failed/incomplete labels; see summary.json")
+        if backend is None:
+            label, left, right = args.label, baseline_chain, candidate_chain
+        else:
+            label, left, right = f"backend-{backend}", [backend] if backend != 9 else [1], [backend]
+        base = REPORT / "runs" / case["id"]
+        attempt_name = f"{label}-attempt-{args.attempt}" if args.attempt > 1 else None
+        directory = base / attempt_name if attempt_name else selected_run_directory(base, label)
+        try:
+            if args.command == "campaign" and directory.exists():
+                summary, _ = validate_retained_result(directory, label, case, config)
+                spec = json.loads((directory / "specification.json").read_text())
+                if spec["cpu"] != args.cpu:
+                    raise RuntimeError("Resume must use the retained CPU affinity")
+            else:
+                if attempt_name:
+                    prepare_retry(base, label, directory, args.retry_reason)
+                summary = pair(case, left, right, config, args.cpu, label, attempt_name=attempt_name)
+                if attempt_name:
+                    select_attempt(base, label, directory, args.retry_reason)
+            print(json.dumps({"case": case["id"], "label": label, "statistics": summary["statistics"],
+                              "acceptance_eligible": summary["acceptance_eligible"]}), flush=True)
+            return summary
+        finally:
+            summarize(config)
+
+    if args.command == "campaign":
+        execute_ordered_campaign(cases, run_task,
+                                 lambda failure: print(json.dumps(failure), flush=True))
+    else:
+        for case in cases:
+            run_task(case, None)
 
 
 if __name__ == "__main__":

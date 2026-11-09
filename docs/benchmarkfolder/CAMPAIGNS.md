@@ -87,3 +87,35 @@ These observations have `seconds=null`, `seconds_per_point=null`,
 `timed_status_counts=null`, and `performance_eligible=false`. The retained cold
 interval covers initialization plus warmup. This option does not alter the
 acceptance worker, its timed loop, or already running numerical preparations.
+
+## Campaign execution order
+
+Complete the separate numerical validation first: every required saved point,
+explicit backend, coefficient and rescue/failure check must be assessed under
+the frozen candidate policy. The `campaign` timing command does not certify that
+this prerequisite has been performed. A passing rescue-chain timing comparison
+does not establish agreement for explicit backends that have not been tested.
+
+After numerical validation, `campaign` attempts all selected main TIRust-first
+chain comparisons before any explicit-backend regression or control timing.
+For the complete matrix this means eight main chain gates. Each retains the
+same seven-pair, full-100-point protocol and per-process criterion. A failed,
+ineligible or incomplete main gate remains reported; the command returns
+nonzero and defers the entire later regression/control phase. Other selected
+main chain gates are still attempted, so an early failure cannot hide their
+outcomes. Deferred work remains incomplete, never implicitly passed.
+
+When every selected main gate passes, the command runs the explicit backend
+comparisons and controls. Every row requires numerical agreement and sufficient
+batch duration. The performance bound applies to main rescue chains and main
+existing-backend regressions (1, 6, 7 and 8). Standalone backend 9 versus CutTools
+and control speed comparisons are descriptive; an eligible slower result in
+those rows does not introduce an additional performance requirement. All failed
+required gates are retained and return nonzero. This ordering avoids spending the full regression budget on
+a candidate that already misses a main acceptance gate; it does not relax any
+final delivery requirement or permit selecting favorable attempts.
+
+Generated MG command files apply `--no_save` to every configuration-changing
+`set` command. MG can otherwise persist options in its installation's input
+directory even when `XDG_CONFIG_HOME` is private. Historical command files and
+their effects are retained; this protection applies to future exports.
