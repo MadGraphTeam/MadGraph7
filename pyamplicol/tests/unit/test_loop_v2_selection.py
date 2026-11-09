@@ -1591,15 +1591,19 @@ def test_selections_are_masks_on_one_template(
                 assert all(x == 0 for x in got[0][column.key].totals)
             # MF-MASKS-ROWS: a call keeping some Born rows dresses the
             # families pruned to the rows they reach (``plan::LiveRows``),
-            # one keeping every row the template's families; one helicity
-            # runs pruned copies (the heap gate keeps them).
+            # one keeping every row the template's families; every
+            # row-restricted call runs exactly the row restriction of its
+            # own column set (lit-fc-hel (G4): every family that drops a
+            # link runs its pruned copy, the same dressing work as the
+            # loader's restriction of the oracle's plan).
             counts = masked.columns.last_report["counts"]
+            work = "dressing work (modelled complex MAC per lane)"
             if len(column.rows or ()) in range(1, len(hel)):
                 assert 0 < counts.get("live-row links", 0)
+                assert 0 < counts["row-pruned families"], selection
+                assert counts[work] == oracle.last_report["counts"][work], selection
             else:
                 assert "live-row links" not in counts
-            if selection.get("helicities") == [single]:
-                assert 0 < counts["row-pruned families"], selection
     assert built["sets"] > 1  # the oracles' own column sets
 
 

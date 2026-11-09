@@ -36,6 +36,10 @@ const SEED_FIELDS: [&str; 6] = [
 ];
 /// The column-set kinds (`native_observables.KINDS`).
 pub const COLUMN_SETS: [&str; 2] = ["correlated", "resolved"];
+/// The formed column sets of the selections (lit-fc-hel (G5)): the
+/// selection template ([`template::SelectionTemplate`]) and the latest
+/// resolved selection's columns ([`template::resolved_subset`]).
+const SELECTION_SETS: [&str; 2] = [template::TEMPLATE, "resolved-selection"];
 /// The inclusive Born metric's history id (`observables.INCLUSIVE`).
 pub const INCLUSIVE: &str = "born";
 
@@ -95,6 +99,22 @@ pub(super) struct Observables {
     sets: BTreeMap<String, ColumnSet>,
     /// The declared colour histories (id, directed), in the request's order.
     histories: Vec<(String, bool)>,
+    /// The stored observables record as read (the selections' formation,
+    /// [`template`]).
+    raw: serde_json::Value,
+    /// The selection template, formed on the first selection.
+    template: Option<template::SelectionTemplate>,
+    /// The kept (rows, basis elements) of the latest resolved selection's
+    /// columns (the set `resolved-selection`).
+    subset: Option<(Option<Vec<usize>>, Option<Vec<usize>>)>,
+}
+
+/// One leading-colour flow of the stored catalogue (`selection.Flow`): its
+/// ID and its Born basis element (None: no Born amplitude of that flow).
+#[derive(Clone, Debug, Deserialize)]
+pub struct StoredFlow {
+    pub id: String,
+    pub basis: Option<usize>,
 }
 
 /// One evaluated column of one point: the Born per public squared Born
@@ -168,6 +188,8 @@ impl Observables {
                  artifact); regenerate the artifact",
             )
         })?;
+        let raw: serde_json::Value = serde_json::from_slice(&record)
+            .map_err(|e| invalid(format!("stored observables: {e}")))?;
         let record: ObservablesRecord = serde_json::from_slice(&record)
             .map_err(|e| invalid(format!("stored observables: {e}")))?;
         if record.schema != OBSERVABLES_SCHEMA {
@@ -243,6 +265,9 @@ impl Observables {
             },
             sets,
             histories,
+            raw,
+            template: None,
+            subset: None,
         })
     }
 
@@ -360,6 +385,260 @@ impl Observables {
 }
 
 impl V2Runtime {
+    /// The leading-colour flows of the stored catalogue (`color_flows`; none
+    /// at next-to-leading and full colour), in the tree runtime's order.
+    pub fn colour_flows(&mut self) -> RusticolResult<Vec<StoredFlow>> {
+        let observables = self.stored_observables()?;
+        match observables.raw.get("color_flows") {
+            None | Some(serde_json::Value::Null) => Ok(Vec::new()),
+            Some(flows) => serde_json::from_value(flows.clone())
+                .map_err(|e| invalid(format!("stored colour flows: {e}"))),
+        }
+    }
+
+    /// Form the selection template (once) or the resolved selection's
+    /// columns of `rows` and `basis` (replacing the previous ones) as a
+    /// column set ([`template`]); returns the template's masks of the
+    /// selection, or None for a resolved selection.
+    fn formed_set(
+        &mut self,
+        resolved: bool,
+        rows: Option<&BTreeSet<usize>>,
+        basis: Option<&BTreeSet<usize>>,
+    ) -> RusticolResult<Option<template::SelectionMasks>> {
+        let plan = self.artifact.plan_json.clone();
+        let companion_plan = self.artifact.scaleless_plan_json.clone();
+        let observables = self.stored_observables()?;
+        let base = observables.set("resolved")?;
+        let stored_record =
+            |set: &template::FormedColumns, base: &ColumnSet| -> RusticolResult<SetRecord> {
+                Ok(SetRecord {
+                    columns: set
+                        .outputs
+                        .iter()
+                        .map(|column| ColumnRecord {
+                            key: column.key.clone(),
+                            history: None,
+                        })
+                        .collect(),
+                    lanes: set
+                        .lanes
+                        .iter()
+                        .map(|(c, sector, direct, swapped)| {
+                            let orders: Orders = serde_json::from_value(sector.clone())
+                                .map_err(|e| invalid(format!("a lane sector: {e}")))?;
+                            Ok((set.outputs[*c].key.clone(), orders, *direct, *swapped))
+                        })
+                        .collect::<RusticolResult<_>>()?,
+                    plan_components: base.record.plan_components.clone(),
+                    companion_components: base.record.companion_components.clone(),
+                })
+            };
+        let column_set = |set: &template::FormedColumns, base: &ColumnSet| {
+            Ok::<_, RusticolError>(ColumnSet {
+                record: stored_record(set, base)?,
+                overlay: set.overlay.clone().into_bytes(),
+                columns_json: set.columns.clone().into_bytes(),
+                companion_overlay: set.companion_overlay.clone().map(String::into_bytes),
+                runner: None,
+                twin: None,
+            })
+        };
+        let records = template::ResolvedRecords {
+            record: &observables.raw,
+            overlay: &base.overlay,
+            companion_overlay: base.companion_overlay.as_deref(),
+            columns: &base.columns_json,
+            plan: &plan,
+            companion_plan: companion_plan.as_deref(),
+        };
+        if resolved {
+            let key = (
+                rows.map(|r| r.iter().copied().collect()),
+                basis.map(|b| b.iter().copied().collect()),
+            );
+            if observables.subset.as_ref() != Some(&key) {
+                let set = template::resolved_subset(&records, rows, basis)?;
+                let formed = column_set(&set, base)?;
+                observables
+                    .sets
+                    .insert(SELECTION_SETS[1].to_owned(), formed);
+                observables.subset = Some(key);
+            }
+            return Ok(None);
+        }
+        if observables.template.is_none() {
+            let formed = template::SelectionTemplate::form(&records)?;
+            let set = column_set(&formed.set, base)?;
+            observables.sets.insert(SELECTION_SETS[0].to_owned(), set);
+            observables.template = Some(formed);
+        }
+        let formed = observables.template.as_ref().expect("the template");
+        formed.masks(rows, basis).map(Some)
+    }
+
+    /// The Born-interfered selection of the Born rows `rows` and (leading
+    /// colour) the basis elements `basis` (None keeps every one) in binary64
+    /// (lit-fc-hel; the Python API's `evaluate(helicities=...,
+    /// color_flows=...)` on a stored process): per point the selection's
+    /// one column, the masks of one call on the selection template (only
+    /// the kept rows' trees, links and lanes are formed: the executor's row
+    /// liveness), the template columns of several row classes summed in
+    /// their order. Points fail alone.
+    pub fn evaluate_selection(
+        &mut self,
+        rows: Option<&BTreeSet<usize>>,
+        basis: Option<&BTreeSet<usize>>,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+    ) -> RusticolResult<Vec<ColumnPoint<f64>>> {
+        let masks = self.formed_set(false, rows, basis)?.expect("the masks");
+        let points = self.columns_batch(
+            SELECTION_SETS[0],
+            momenta,
+            scales,
+            &[],
+            mode,
+            V2Precision::Double,
+            &0.0,
+            &Binary64,
+            Some(&masks),
+        )?;
+        Ok(summed(points, &masks.wanted, &Binary64))
+    }
+
+    /// [`V2Runtime::evaluate_selection`] in double-double or arbitrary
+    /// precision (the Python API's `Decimal` values).
+    pub fn evaluate_selection_extended(
+        &mut self,
+        rows: Option<&BTreeSet<usize>>,
+        basis: Option<&BTreeSet<usize>>,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+    ) -> RusticolResult<Vec<ColumnPoint<Decimal>>> {
+        let masks = self.formed_set(false, rows, basis)?.expect("the masks");
+        let arith = DecimalArith::new(precision.working_digits());
+        let points = match precision {
+            V2Precision::Double => {
+                return Err(invalid(
+                    "binary64 selections are V2Runtime::evaluate_selection's",
+                ));
+            }
+            V2Precision::DoubleDouble => self.columns_batch(
+                SELECTION_SETS[0],
+                momenta,
+                scales,
+                &[],
+                mode,
+                precision,
+                &DoubleFloat::from(0.0),
+                &arith,
+                Some(&masks),
+            )?,
+            V2Precision::Arbitrary(_) => {
+                let zero = Float::with_val(precision.bits()?, 0);
+                self.columns_batch(
+                    SELECTION_SETS[0],
+                    momenta,
+                    scales,
+                    &[],
+                    mode,
+                    precision,
+                    &zero,
+                    &arith,
+                    Some(&masks),
+                )?
+            }
+        };
+        Ok(summed(points, &masks.wanted, &arith))
+    }
+
+    /// The resolved columns of a resolved selection (the Python API's
+    /// `evaluate_resolved(helicities=..., color_flows=...)`): per point the
+    /// kept rows' (and leading-colour basis elements') columns only, each
+    /// its stored resolved column's value; with their (row, colour
+    /// component) keys ([`V2Runtime::resolved_keys`]'s numbering).
+    #[allow(clippy::type_complexity)]
+    pub fn evaluate_resolved_selection(
+        &mut self,
+        rows: Option<&BTreeSet<usize>>,
+        basis: Option<&BTreeSet<usize>>,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+    ) -> RusticolResult<(Vec<(usize, usize)>, ResolvedPoints)> {
+        self.formed_set(true, rows, basis)?;
+        let keys = self.set_keys(SELECTION_SETS[1])?;
+        let points = match precision {
+            V2Precision::Double => ResolvedPoints::Double(self.columns_batch(
+                SELECTION_SETS[1],
+                momenta,
+                scales,
+                &[],
+                mode,
+                precision,
+                &0.0,
+                &Binary64,
+                None,
+            )?),
+            V2Precision::DoubleDouble => {
+                let arith = DecimalArith::new(precision.working_digits());
+                ResolvedPoints::Decimal(self.columns_batch(
+                    SELECTION_SETS[1],
+                    momenta,
+                    scales,
+                    &[],
+                    mode,
+                    precision,
+                    &DoubleFloat::from(0.0),
+                    &arith,
+                    None,
+                )?)
+            }
+            V2Precision::Arbitrary(_) => {
+                let arith = DecimalArith::new(precision.working_digits());
+                let zero = Float::with_val(precision.bits()?, 0);
+                ResolvedPoints::Decimal(self.columns_batch(
+                    SELECTION_SETS[1],
+                    momenta,
+                    scales,
+                    &[],
+                    mode,
+                    precision,
+                    &zero,
+                    &arith,
+                    None,
+                )?)
+            }
+        };
+        Ok((keys, points))
+    }
+
+    /// Per column of a set (stored order) its (row, colour component)
+    /// indices on the stored rows (the key `[row, basis element]`).
+    fn set_keys(&mut self, kind: &str) -> RusticolResult<Vec<(usize, usize)>> {
+        let observables = self.stored_observables()?;
+        let rows = observables.rows().to_vec();
+        observables
+            .keys(kind)?
+            .iter()
+            .map(|key| {
+                let (row, colour): (Vec<(usize, i32)>, Option<usize>) =
+                    serde_json::from_value(key.clone())
+                        .map_err(|e| invalid(format!("a resolved column key: {e}")))?;
+                let row = rows
+                    .iter()
+                    .position(|known| *known == row)
+                    .ok_or_else(|| invalid("a resolved column of an unknown helicity row"))?;
+                Ok((row, colour.unwrap_or(0)))
+            })
+            .collect()
+    }
+
     /// The process's stored observables (read on first use).
     fn stored_observables(&mut self) -> RusticolResult<&mut Observables> {
         if self.observables.is_none() {
@@ -418,22 +697,7 @@ impl V2Runtime {
         if self.induced.is_some() {
             return Ok((0..self.induced_rows().len()).map(|row| (row, 0)).collect());
         }
-        let observables = self.stored_observables()?;
-        let rows = observables.rows().to_vec();
-        observables
-            .keys("resolved")?
-            .iter()
-            .map(|key| {
-                let (row, colour): (Vec<(usize, i32)>, Option<usize>) =
-                    serde_json::from_value(key.clone())
-                        .map_err(|e| invalid(format!("a resolved column key: {e}")))?;
-                let row = rows
-                    .iter()
-                    .position(|known| *known == row)
-                    .ok_or_else(|| invalid("a resolved column of an unknown helicity row"))?;
-                Ok((row, colour.unwrap_or(0)))
-            })
-            .collect()
+        self.set_keys("resolved")
     }
 
     /// The squared Born orders of the observable outputs
@@ -519,6 +783,7 @@ impl V2Runtime {
             V2Precision::Double,
             &0.0,
             &Binary64,
+            None,
         )
     }
 
@@ -571,10 +836,13 @@ impl V2Runtime {
                 precision,
                 &DoubleFloat::from(0.0),
                 &arith,
+                None,
             ),
             V2Precision::Arbitrary(_) => {
                 let zero = Float::with_val(precision.bits()?, 0);
-                self.columns_batch(kind, momenta, scales, spins, mode, precision, &zero, &arith)
+                self.columns_batch(
+                    kind, momenta, scales, spins, mode, precision, &zero, &arith, None,
+                )
             }
         }
     }
@@ -649,17 +917,21 @@ impl V2Runtime {
         precision: V2Precision,
         zero: &T,
         arith: &A,
+        masks: Option<&template::SelectionMasks>,
     ) -> RusticolResult<Vec<ColumnPoint<A::N>>>
     where
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
         self.check_batch(momenta, scales)?;
-        if !COLUMN_SETS.contains(&kind) {
+        if !COLUMN_SETS.contains(&kind) && !SELECTION_SETS.contains(&kind) {
             return Err(invalid(format!("unknown column set {kind:?}")));
         }
         if !spins.is_empty() && spins.len() != momenta.len() {
             return Err(invalid("one spin source assignment per point"));
+        }
+        if masks.is_some() && !spins.is_empty() {
+            return Err(invalid("a selection takes no spin sources"));
         }
         // The output columns, their lanes per sector and the born orders.
         let sectors = self.column_sectors();
@@ -755,16 +1027,26 @@ impl V2Runtime {
         let observables = self.observables.as_mut().expect("the observables");
         let set = observables.sets.get_mut(kind).expect("the set");
         let runner = set.runner.as_mut().expect("the set's runner");
-        let (bound, inputs) = runner.fill(
-            precision,
-            lanes,
-            &values,
-            scales,
-            &incoming,
-            poles,
-            sources.as_deref(),
-            zero,
-        )?;
+        let call = masks.map(|masks| masks.call(0));
+        let (bound, inputs, live) = match &call {
+            // A selection's masks on the template (lit-fc-hel (G5)).
+            Some(call) => runner.fill_masked(
+                precision, lanes, &values, scales, &incoming, poles, call, &options, zero,
+            )?,
+            None => {
+                let (bound, inputs) = runner.fill(
+                    precision,
+                    lanes,
+                    &values,
+                    scales,
+                    &incoming,
+                    poles,
+                    sources.as_deref(),
+                    zero,
+                )?;
+                (bound, inputs, RowLiveness::none())
+            }
+        };
         let columns = inputs
             .columns
             .ok_or_else(|| invalid("the stored tree program forms no observable columns"))?;
@@ -776,12 +1058,28 @@ impl V2Runtime {
             inputs.born,
         );
         let backend = self.backends.get_mut(&precision).expect("the backend");
-        let results = runner.evaluate(lanes, &batch, zero, backend, options)?;
+        let results = match &call {
+            Some(call) => {
+                runner.evaluate_masked(lanes, &batch, zero, backend, options, call, &live)?
+            }
+            None => runner.evaluate(lanes, &batch, zero, backend, options)?,
+        };
         // A model with pole regulators: the split selections also form every
         // column's interferences with the IR regulator at 0 (one more pass
         // of the tree program, no loop dressing or reduction).
         let columns_uv = match (&regulated, mode.split()) {
             (Some(regulated), true) => {
+                // A selection: its rows and basis elements (the Python
+                // binding's `tree_columns(rows=, basis=)`, the whole tree
+                // program).
+                let masked = call.as_ref().and_then(|call| {
+                    template::CallMasks {
+                        rows: call.rows.clone(),
+                        basis: call.basis.clone(),
+                        ..Default::default()
+                    }
+                    .sources::<T>(None, incoming.len())
+                });
                 let (_, inputs) = runner.fill(
                     precision,
                     lanes,
@@ -789,7 +1087,7 @@ impl V2Runtime {
                     scales,
                     &incoming,
                     true,
-                    sources.as_deref(),
+                    masked.as_deref().or(sources.as_deref()),
                     zero,
                 )?;
                 Some(inputs.columns.ok_or_else(|| {
@@ -800,18 +1098,32 @@ impl V2Runtime {
         };
         let twin_results = if twin_runs {
             let twin = set.twin.as_mut().expect("the set's companion");
-            let (bound, inputs) = twin.fill(
-                precision,
-                lanes,
-                &values,
-                scales,
-                &incoming,
-                poles,
-                sources.as_deref(),
-                zero,
-            )?;
+            let twin_call = masks.map(|masks| masks.call(1));
+            let (bound, inputs, live) = match &twin_call {
+                Some(call) => twin.fill_masked(
+                    precision, lanes, &values, scales, &incoming, poles, call, &options, zero,
+                )?,
+                None => {
+                    let (bound, inputs) = twin.fill(
+                        precision,
+                        lanes,
+                        &values,
+                        scales,
+                        &incoming,
+                        poles,
+                        sources.as_deref(),
+                        zero,
+                    )?;
+                    (bound, inputs, RowLiveness::none())
+                }
+            };
             let batch = v2_batch(incoming, scales, bound, inputs.block_rows, inputs.born);
-            let twin_results = twin.evaluate(lanes, &batch, zero, backend, options)?;
+            let twin_results = match &twin_call {
+                Some(call) => {
+                    twin.evaluate_masked(lanes, &batch, zero, backend, options, call, &live)?
+                }
+                None => twin.evaluate(lanes, &batch, zero, backend, options)?,
+            };
             if twin_results.len() != results.len() {
                 return Err(invalid("the companion evaluated another batch"));
             }
@@ -1055,6 +1367,46 @@ impl V2Runtime {
         }
         Ok(out)
     }
+}
+
+/// The points of a resolved selection ([`V2Runtime::evaluate_resolved_selection`])
+/// in binary64 or in `Decimal` (double-double and arbitrary precision).
+pub enum ResolvedPoints {
+    Double(Vec<ColumnPoint<f64>>),
+    Decimal(Vec<ColumnPoint<Decimal>>),
+}
+
+/// A selection's one output per point: the template columns `wanted` (row
+/// classes with a kept row) summed in their order (`observables.
+/// _sum_results`: Born, then every sector's Laurent coefficients, left to
+/// right).
+fn summed<A: Arith>(
+    points: Vec<ColumnPoint<A::N>>,
+    wanted: &[usize],
+    arith: &A,
+) -> Vec<ColumnPoint<A::N>> {
+    points
+        .into_iter()
+        .map(|point| {
+            point.map(|columns| {
+                let mut picked = wanted.iter().map(|&c| columns[c].clone());
+                let mut total = picked.next().expect("a selection keeps a template column");
+                for other in picked {
+                    for (a, b) in total.born.iter_mut().zip(&other.born) {
+                        *a = cadd(arith, a, b);
+                    }
+                    for (sector, extra) in
+                        total.virtual_values.iter_mut().zip(&other.virtual_values)
+                    {
+                        for (a, b) in sector.iter_mut().zip(extra) {
+                            *a = cadd(arith, a, b);
+                        }
+                    }
+                }
+                vec![total]
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

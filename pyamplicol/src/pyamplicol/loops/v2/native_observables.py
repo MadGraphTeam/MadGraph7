@@ -1180,6 +1180,21 @@ def selection_parts(observables: StoredObservableSlice, column: Any) -> _Selecti
     )
 
 
+def _stored_records(observables: StoredObservableSlice) -> tuple[Any, ...]:
+    """The native formation's records of a process's resolved set
+    (``template::ResolvedRecords``): the observables record (JSON), the
+    set's seed records (and its companion's) and interference programs."""
+
+    stored = observables.stored
+    base = stored.sets["resolved"]
+    return (
+        json.dumps(stored.record, separators=(",", ":")),
+        base.overlay_json,
+        base.companion_overlay_json,
+        base.columns_json,
+    )
+
+
 def resolved_parts(
     observables: StoredObservableSlice,
     rows: frozenset[Any] | None,
@@ -1191,7 +1206,59 @@ def resolved_parts(
     column, seed weights and interference program, so the set's plan seeds
     (and its load keeps, ``column_rows``) the kept rows only and an
     unselected row's column is never formed (None keeps every one of that
-    axis). The column keys and values are the resolved set's."""
+    axis). The column keys and values are the resolved set's. Formed by the
+    native formation the SDKs share (Rust ``v2_runtime::template::
+    resolved_subset``); ``resolved_parts_oracle`` is its Python oracle."""
+
+    from .observables import Column
+
+    stored = observables.stored
+    base = stored.sets["resolved"]
+    indices = (
+        None
+        if rows is None
+        else [h for h, row in enumerate(observables.rows) if row in rows]
+    )
+    overlay, companion, columns_json, outputs, lanes = (
+        observables.native.resolved_subset(
+            *_stored_records(observables),
+            rows=indices,
+            basis=None if basis is None else sorted(basis),
+        )
+    )
+    columns = tuple(
+        Column(
+            _key_of(json.loads(key)),
+            None,
+            None if kept is None else frozenset(observables.rows[h] for h in kept),
+            None if chosen is None else frozenset(chosen),
+        )
+        for key, kept, chosen in outputs
+    )
+    return _SelectionParts(
+        ObservableSet(
+            overlay,
+            base.plan_components,
+            columns_json,
+            companion,
+            base.companion_components,
+        ),
+        stored.record["sets"]["resolved"],
+        columns,
+        {
+            (columns[c].key, _orders_of(json.loads(sector))): (direct, swapped)
+            for c, sector, direct, swapped in lanes
+        },
+        (None, None),
+    )
+
+
+def resolved_parts_oracle(
+    observables: StoredObservableSlice,
+    rows: frozenset[Any] | None,
+    basis: frozenset[int] | None,
+) -> _SelectionParts:
+    """``resolved_parts`` formed in Python: its oracle."""
 
     from .observables import Column
 
@@ -1316,9 +1383,88 @@ class _SelectionMasks:
 
 
 class SelectionTemplate:
-    """The one column set of a loaded leading-colour process that serves
-    every evaluation-time selection (MF-MASKS; DESIGN §8.5), formed once from
-    its stored resolved set without regeneration. Rows whose resolved columns
+    """The one column set of a loaded Born-interfered process that serves
+    every evaluation-time selection (MF-MASKS; DESIGN §8.5; every colour
+    accuracy, lit-fc-hel): formed once from its stored resolved set without
+    regeneration by the native formation the SDKs share (Rust
+    ``v2_runtime::template::SelectionTemplate``: JSON over the stored
+    records, no Symbolica operation), with the masks of each selection
+    (``masks``). ``PythonSelectionTemplate`` is its Python oracle."""
+
+    def __init__(self, observables: StoredObservableSlice):
+        from .observables import Column
+
+        stored = observables.stored
+        base = stored.sets["resolved"]
+        process = observables.process
+        formed = observables.native.selection_template(
+            *_stored_records(observables),
+            process.plan_json,
+            None
+            if base.companion_overlay_json is None
+            else process.scaleless.plan_json,
+        )
+        self.rows = observables.rows
+        self.basis = len(observables.components)
+        self.meta = stored.record["sets"]["resolved"]
+        self.classes = tuple(tuple(hs) for hs in formed.classes)
+        self.row_class = [0] * len(self.rows)
+        for c, hs in enumerate(self.classes):
+            for h in hs:
+                self.row_class[h] = c
+        outputs, lanes = formed.outputs
+        self.columns = tuple(
+            Column(
+                (TEMPLATE, c),
+                None,
+                None if kept is None else frozenset(self.rows[h] for h in kept),
+                None,
+            )
+            for c, (_key, kept, _basis) in enumerate(outputs)
+        )
+        self.lanes = {
+            (self.columns[c].key, _orders_of(json.loads(sector))): (direct, swapped)
+            for c, sector, direct, swapped in lanes
+        }
+        self.set = ObservableSet(
+            formed.overlay,
+            base.plan_components,
+            formed.columns,
+            formed.companion_overlay,
+            base.companion_components,
+        )
+        self._formed = formed
+
+    def masks(self, column: Any) -> _SelectionMasks:
+        """The per-call masks of a selection (``selection.column``: Born
+        helicity rows and, at leading colour, basis elements; None keeps
+        every one)."""
+
+        rows = (
+            None
+            if column.rows is None
+            else [h for h, row in enumerate(self.rows) if row in column.rows]
+        )
+        basis = None if column.basis is None else sorted(column.basis)
+        kept, chosen, components, families, wanted = self._formed.masks(rows, basis)
+
+        def flags(mask: Any) -> tuple[bool, ...] | None:
+            return None if mask is None else tuple(mask)
+
+        return _SelectionMasks(
+            flags(kept),
+            flags(chosen),
+            tuple(flags(mask) for mask in components),
+            tuple(flags(mask) for mask in families),
+            tuple((TEMPLATE, c) for c in wanted),
+        )
+
+
+class PythonSelectionTemplate:
+    """``SelectionTemplate`` formed in Python (its oracle; the production
+    formation is the native one): the one column set of a loaded process
+    that serves every evaluation-time selection (MF-MASKS; DESIGN §8.5),
+    formed once from its stored resolved set without regeneration. Rows whose resolved columns
     read the same seed-weight column per (basis element, sector) form a row
     class (one at leading colour); per row class and sector one seed column
     whose weights are every basis element's seed-weight column, concatenated

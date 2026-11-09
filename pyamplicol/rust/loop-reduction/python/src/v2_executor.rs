@@ -33,6 +33,7 @@ use rusticol_core::loop_v2::trees::{
     BoundParameters, TREE_FILL_BUDGET, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
 };
 use rusticol_loop_reduction::runtime::{Reduction, TypedBatch, V2Backends, V2ReductionBackend};
+use rusticol_loop_reduction::v2_runtime::template;
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -473,84 +474,10 @@ impl Trees {
 /// The masks of one evaluation call (`V2Executor.evaluate`'s `rows`,
 /// `basis`, `components` and `families`): an evaluation-time selection run
 /// on the executor of a template column set, one program for every
-/// selection (`loops/v2/native_observables.py`; DESIGN §8.5). The kept Born
-/// helicity `rows` seed and interfere (every other row's Born components
-/// vanish, as a spin source's fixed row does); the observable columns'
-/// interferences keep the bra Born `basis` elements only; the seeds' bra
-/// keeps the plan Born `components` only (the others read zero); and only
-/// the plan `families` kept are dressed (the caller's statement that the
-/// others' seeds vanish under these masks; their lanes are absent). None
-/// keeps every one.
-#[derive(Default)]
-struct Selection {
-    rows: Option<Vec<bool>>,
-    basis: Option<Vec<bool>>,
-    components: Option<Vec<bool>>,
-    families: Option<Vec<bool>>,
-}
-
-impl Selection {
-    fn is_empty(&self) -> bool {
-        self.rows.is_none()
-            && self.basis.is_none()
-            && self.components.is_none()
-            && self.families.is_none()
-    }
-
-    /// Each point's sources with the kept rows (and the point's own) and the
-    /// kept basis elements; points without sources get an empty one.
-    fn sources<T>(
-        &self,
-        sources: Option<Vec<rusticol_core::loop_v2::trees::PointSources<T>>>,
-        points: usize,
-    ) -> Option<Vec<rusticol_core::loop_v2::trees::PointSources<T>>> {
-        if self.rows.is_none() && self.basis.is_none() {
-            return sources;
-        }
-        let mut sources = sources.unwrap_or_else(|| {
-            (0..points)
-                .map(|_| rusticol_core::loop_v2::trees::PointSources {
-                    vectors: Vec::new(),
-                    rows: None,
-                    basis: None,
-                })
-                .collect()
-        });
-        for point in &mut sources {
-            if let Some(kept) = &self.rows {
-                point.rows = Some(match point.rows.take() {
-                    Some(own) => own.iter().zip(kept).map(|(a, b)| *a && *b).collect(),
-                    None => kept.clone(),
-                });
-            }
-            if self.basis.is_some() {
-                point.basis.clone_from(&self.basis);
-            }
-        }
-        Some(sources)
-    }
-
-    /// Zero the plan Born components the seeds' bra does not keep (`born`:
-    /// per point `rows x components`).
-    fn mask_born<T: Real>(&self, born: &mut [Vec<Complex<T>>], zero: &T) -> PyResult<()> {
-        let Some(kept) = &self.components else {
-            return Ok(());
-        };
-        for point in born {
-            if kept.is_empty() || point.len() % kept.len() != 0 {
-                return Err(error("one component flag per plan Born component"));
-            }
-            for row in point.chunks_exact_mut(kept.len()) {
-                for (value, keep) in row.iter_mut().zip(kept) {
-                    if !keep {
-                        *value = Complex::new(zero.clone(), zero.clone());
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-}
+/// selection (`loops/v2/native_observables.py`; DESIGN §8.5): the shared
+/// `rusticol_loop_reduction::v2_runtime::template::CallMasks`, which the
+/// native SDKs' selections apply the same way (lit-fc-hel (G5)).
+type Selection = rusticol_loop_reduction::v2_runtime::template::CallMasks;
 
 /// Per point spin sources (`inputs["sources"]`): per point `(vectors,
 /// rows)`, `vectors` (1-based leg label, four `[re, im]` exact texts) and
@@ -1208,7 +1135,7 @@ where
                         .collect::<Vec<_>>()
                 }));
         }
-        selection.mask_born(&mut sub.born, &zero)?;
+        selection.mask_born(&mut sub.born, &zero).map_err(error)?;
         let families = selection.families.as_deref();
         let (part_results, part_report) = py
             .detach(|| {
@@ -2479,8 +2406,194 @@ fn square_amplitudes(
     .map_err(error)
 }
 
+/// The stored records of a Born-interfered process's resolved set
+/// (`native_observables.StoredObservables`) as the formation reads them.
+fn resolved_records<'a>(
+    record: &'a serde_json::Value,
+    overlay: &'a str,
+    companion_overlay: Option<&'a str>,
+    columns: &'a str,
+    plan: &'a str,
+    companion_plan: Option<&'a str>,
+) -> template::ResolvedRecords<'a> {
+    template::ResolvedRecords {
+        record,
+        overlay: overlay.as_bytes(),
+        companion_overlay: companion_overlay.map(str::as_bytes),
+        columns: columns.as_bytes(),
+        plan: plan.as_bytes(),
+        companion_plan: companion_plan.map(str::as_bytes),
+    }
+}
+
+/// A formed set's outputs for Python: per output column its key (JSON),
+/// rows and basis elements, and per (output, sector JSON) its lanes.
+type FormedOutputs = (
+    Vec<(String, Option<Vec<usize>>, Option<Vec<usize>>)>,
+    Vec<(usize, String, usize, usize)>,
+);
+
+fn formed_outputs(set: &template::FormedColumns) -> FormedOutputs {
+    (
+        set.outputs
+            .iter()
+            .map(|column| {
+                (
+                    column.key.to_string(),
+                    column.rows.clone(),
+                    column.basis.clone(),
+                )
+            })
+            .collect(),
+        set.lanes
+            .iter()
+            .map(|(c, sector, direct, swapped)| (*c, sector.to_string(), *direct, *swapped))
+            .collect(),
+    )
+}
+
+/// The selection template of a stored Born-interfered process (lit-fc-hel
+/// (G5): `rusticol_loop_reduction::v2_runtime::template`, the one formation
+/// the native SDKs use): its seed records (`overlay`, `companion_overlay`),
+/// interference programs (`columns`), output columns and lanes
+/// (`outputs`), row classes, and the masks of a selection (`masks`).
+#[pyclass(name = "SelectionTemplate", frozen)]
+struct PySelectionTemplate {
+    inner: template::SelectionTemplate,
+}
+
+#[pymethods]
+impl PySelectionTemplate {
+    #[getter]
+    fn overlay(&self) -> &str {
+        &self.inner.set.overlay
+    }
+
+    #[getter]
+    fn companion_overlay(&self) -> Option<&str> {
+        self.inner.set.companion_overlay.as_deref()
+    }
+
+    #[getter]
+    fn columns(&self) -> &str {
+        &self.inner.set.columns
+    }
+
+    #[getter]
+    fn classes(&self) -> Vec<Vec<usize>> {
+        self.inner.classes.clone()
+    }
+
+    #[getter]
+    fn outputs(&self) -> FormedOutputs {
+        formed_outputs(&self.inner.set)
+    }
+
+    /// The masks of a selection keeping the Born rows `rows` and the basis
+    /// elements `basis` (indices; None keeps every one): (rows, basis, per
+    /// plan the components and families, the wanted template columns).
+    #[allow(clippy::type_complexity)]
+    #[pyo3(signature = (rows=None, basis=None))]
+    fn masks(
+        &self,
+        rows: Option<Vec<usize>>,
+        basis: Option<Vec<usize>>,
+    ) -> PyResult<(
+        Option<Vec<bool>>,
+        Option<Vec<bool>>,
+        Vec<Option<Vec<bool>>>,
+        Vec<Option<Vec<bool>>>,
+        Vec<usize>,
+    )> {
+        let rows: Option<std::collections::BTreeSet<usize>> = rows.map(|r| r.into_iter().collect());
+        let basis: Option<std::collections::BTreeSet<usize>> =
+            basis.map(|b| b.into_iter().collect());
+        let masks = self
+            .inner
+            .masks(rows.as_ref(), basis.as_ref())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok((
+            masks.rows,
+            masks.basis,
+            masks.components,
+            masks.families,
+            masks.wanted,
+        ))
+    }
+}
+
+/// Form the selection template of a stored process (`PySelectionTemplate`)
+/// from its observables record (JSON), its resolved set's seed records and
+/// interference programs, and its process (companion) plan JSON.
+#[pyfunction]
+#[pyo3(signature = (record, overlay, companion_overlay, columns, plan, companion_plan))]
+fn selection_template(
+    py: Python<'_>,
+    record: &str,
+    overlay: &str,
+    companion_overlay: Option<&str>,
+    columns: &str,
+    plan: &str,
+    companion_plan: Option<&str>,
+) -> PyResult<PySelectionTemplate> {
+    let record: serde_json::Value = serde_json::from_str(record)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let records = resolved_records(
+        &record,
+        overlay,
+        companion_overlay,
+        columns,
+        plan,
+        companion_plan,
+    );
+    let inner = py
+        .detach(|| template::SelectionTemplate::form(&records))
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    Ok(PySelectionTemplate { inner })
+}
+
+/// The stored resolved columns of a resolved selection
+/// (`template::resolved_subset`): (overlay, companion overlay, columns,
+/// outputs, lanes).
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+#[pyfunction]
+#[pyo3(signature = (record, overlay, companion_overlay, columns, rows=None, basis=None))]
+fn resolved_subset(
+    record: &str,
+    overlay: &str,
+    companion_overlay: Option<&str>,
+    columns: &str,
+    rows: Option<Vec<usize>>,
+    basis: Option<Vec<usize>>,
+) -> PyResult<(
+    String,
+    Option<String>,
+    String,
+    Vec<(String, Option<Vec<usize>>, Option<Vec<usize>>)>,
+    Vec<(usize, String, usize, usize)>,
+)> {
+    let record: serde_json::Value = serde_json::from_str(record)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let records = resolved_records(&record, overlay, companion_overlay, columns, "", None);
+    let rows: Option<std::collections::BTreeSet<usize>> = rows.map(|r| r.into_iter().collect());
+    let basis: Option<std::collections::BTreeSet<usize>> = basis.map(|b| b.into_iter().collect());
+    let set = template::resolved_subset(&records, rows.as_ref(), basis.as_ref())
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let (outputs, lanes) = formed_outputs(&set);
+    Ok((
+        set.overlay,
+        set.companion_overlay,
+        set.columns,
+        outputs,
+        lanes,
+    ))
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
+    module.add_class::<PySelectionTemplate>()?;
+    module.add_function(wrap_pyfunction!(selection_template, module)?)?;
+    module.add_function(wrap_pyfunction!(resolved_subset, module)?)?;
     module.add_function(wrap_pyfunction!(square_amplitudes, module)?)?;
     module.add_function(wrap_pyfunction!(compile_v2_plane, module)?)?;
     module.add(

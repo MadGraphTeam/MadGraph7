@@ -475,3 +475,64 @@ def test_an_artifact_generated_before_the_selection_serves_it():
     ]
     _assert_partition(total, halves, 1, UNIT, len(hel))
     assert not math.isnan(float(_entry(single, 0)[0]))
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("process", "accuracy"),
+    [("u u~ > d d~ g", "full"), ("u u~ > d d~ g", "lc"), ("g g > g g", "nlc")],
+)
+def test_the_native_formation_is_the_python_one(artifacts, process, accuracy):
+    """lit-fc-hel (G5): the selection template and a resolved selection's
+    columns are formed by the one native formation the SDKs share (Rust
+    ``v2_runtime::template``), equal to their Python formation (the oracle,
+    ``PythonSelectionTemplate`` / ``resolved_parts_oracle``): the same seed
+    records, interference programs, output columns and lanes, and the same
+    masks of single, several and every helicity row (and, at leading
+    colour, flows); at leading colour exactly the template formed before
+    lit-fc-hel."""
+
+    from pyamplicol.loops.v2 import native_observables as no
+    from pyamplicol.loops.v2 import selection as lc
+
+    runtime = _runtime(artifacts(process, accuracy))
+    backend = runtime._backend._observable_runtime()
+    observables = backend._observables
+    native = no.SelectionTemplate(observables)
+    python = no.PythonSelectionTemplate(observables)
+
+    def records(formed: Any) -> Any:
+        companion = formed.set.companion_overlay_json
+        return (
+            json.loads(formed.set.overlay_json),
+            None if companion is None else json.loads(companion),
+            json.loads(formed.set.columns_json),
+            formed.set.plan_components,
+            formed.set.companion_components,
+        )
+
+    assert records(native) == records(python)
+    assert native.columns == python.columns
+    assert native.lanes == python.lanes
+    assert native.classes == python.classes
+    catalogue = backend.selection_catalogue()
+    hel = [lc.helicity_id(row) for row in catalogue.rows]
+    selections: list[tuple[Any, Any]] = [
+        (hel[:1], None),
+        (hel[: len(hel) // 2], None),
+        (hel[1:], None),
+        (hel, None),
+    ]
+    flows = [flow.id for flow in catalogue.flows if flow.basis is not None]
+    if flows:
+        selections += [(None, flows[:1]), (hel[::3], flows[1::2])]
+    for helicities, chosen in selections:
+        column = lc.column(*catalogue.resolve(helicities, chosen))
+        assert native.masks(column) == python.masks(column), (helicities, chosen)
+        rows = column.rows
+        basis = column.basis
+        formed = no.resolved_parts(observables, rows, basis)
+        oracle = no.resolved_parts_oracle(observables, rows, basis)
+        assert records(formed) == records(oracle)
+        assert formed.columns == oracle.columns
+        assert formed.lanes == oracle.lanes
