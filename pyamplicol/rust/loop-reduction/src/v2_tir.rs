@@ -1572,9 +1572,10 @@ impl TirReductionBackend {
                     .map_err(Clone::clone)
             });
             // The magnitudes of a method-choice row's moments per slot, once
-            // per row (the lanes' term scales, `scale_of`).
+            // per row (the lanes' term scales, `scale_of`); not formed in the
+            // unchecked mode, which has no comparison.
             let magnitudes: Option<Vec<[f64; SLOTS]>> = match &first.moments {
-                Ok(m) if m.choice => Some(
+                Ok(m) if verify && m.choice => Some(
                     m.values
                         .iter()
                         .map(|slots| std::array::from_fn(|s| norm(&slots[s])))
@@ -1584,11 +1585,12 @@ impl TirReductionBackend {
             };
             for lane in row.start..row.end {
                 let c = &g.coefficients[lane * declared..lane * declared + monomials];
-                // A method-choice lane's every slot (its acceptance compares
-                // them all; its value is their first `width`, the same sums);
-                // any other lane's `width` slots.
+                // A checked method-choice lane's every slot (its acceptance
+                // compares them all; its value is their first `width`, the
+                // same sums: `contract` forms each slot on its own); any other
+                // lane's `width` slots, also every lane of the unchecked mode.
                 let full = match &first.moments {
-                    Ok(m) if m.choice => Some(contract(&m.values, c, SLOTS)),
+                    Ok(m) if verify && m.choice => Some(contract(&m.values, c, SLOTS)),
                     _ => None,
                 };
                 let value = first.moments.as_ref().map(|m| match &full {
