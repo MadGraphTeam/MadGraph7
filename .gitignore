@@ -3,6 +3,11 @@
 .ninjars-build/
 .tirust-build/
 vendor/tirust/target/
+vendor/tirust/*.so
+vendor/tirust/smoke
+vendor/tirust/tirust-native-libs.txt
+vendor/tirust/tirust-link-before.txt
+vendor/tirust/exported-unexpected.txt
 vendor/ninjars/target/
 vendor/ninjars/smoke
 vendor/ninjars/ninjars-native-libs.txt

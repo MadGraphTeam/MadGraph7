@@ -1,0 +1,121 @@
+Note that this is a development version.
+This version is intended for development/beta testing and NOT for production.
+This version has not been fully tested (if at all) and might have limited user support (if at all)
+Running MG7 in debug mode
+********************************************************************************
+*                                                                              *
+*                               W E L C O M E to                               *
+*                              M A D G R A P H 7                               *
+*                                                                              *
+*                                                                              *
+*                                  ..........                                  *
+*                                @          ....                               *
+*                              @               ...                             *
+*                            @    M         M    .                             *
+*                           @     MM       MM    ..                            *
+*                           .     M  M   M  M  ..                              *
+*                           ..    M   M M   M ..                               *
+*                            .    M    M    M.                                 *
+*                            ...               7777777                         *
+*                              ....                 7                          *
+*                                 ................ 7                           *
+*                                                 7                            *
+*                                                7                             *
+*                                                                              *
+*                   VERSION 0.2.1                 2026-09-24                   *
+[1;31m*                                                                              *[1;0m
+[1;31m*                    WARNING: UNKNOWN DEVELOPMENT VERSION.                     *[1;0m
+[1;31m*                      WARNING: DO NOT USE FOR PRODUCTION                      *[1;0m
+[1;31m*                                                                              *[1;0m
+*                                                                              *
+*                 The MadGraph7 Development Team - Find us at                  *
+*                        http://madgraph.phys.ucl.ac.be/                       *
+*                                      and                                     *
+*                      http://amcatnlo.web.cern.ch/amcatnlo/                   *
+*                                                                              *
+*                         Type 'help' for in-line help.                        *
+*                 Type 'tutorial' to learn how MadGraph7 works                 *
+*                                                                              *
+********************************************************************************
+load MG7 configuration from .benchmark-work/tirust/baseline/input/mg7_configuration.txt 
+fastjet-config does not seem to correspond to a valid fastjet-config executable (v3+). We will use fjcore instead.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/fastjet-config (including fastjet-config).
+ MadGraph7> set fastjet /PATH/TO/fastjet-config
+
+eMELA-config does not seem to correspond to a valid eMELA-config executable.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).
+ MadGraph7> set eMELA /PATH/TO/eMELA-config
+
+set ninja to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib
+set collier to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier
+No valid eps viewer found. Please set in ./input/mg7_configuration.txt
+No valid web browser found. Please set in ./input/mg7_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg7_configuration.txt
+import /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/commands/qcd-feasibility.mg5
+The import format was not given, so we guess it as command
+set automatic_html_opening False
+This option will be the default in any output that you are going to create in this session.
+In order to keep this changes permanent please run 'save options'
+set auto_update 0
+save options auto_update
+save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/baseline/input/mg7_configuration.txt
+import model loop_sm
+INFO: Details of the model import are written in /shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/baseline/models/loop_sm/loop_sm_debug.log 
+INFO: failed to load model from pickle file. Try importing UFO from File 
+[1;60mINFO: This model [version 1.2] is provided by V. Hirschi (email: valentin.hirschi@gmail.com). Please cite n/a [0m
+INFO: load particles 
+INFO: load vertices 
+INFO: Restrict model loop_sm with file .benchmark-work/tirust/baseline/models/loop_sm/restrict_default.dat . 
+INFO: Use 'explain_restriction' to see what that card removes from the model. 
+INFO: Change particles name to pass to MG7 convention 
+Defined multiparticle p = g u c d s u~ c~ d~ s~
+Defined multiparticle j = g u c d s u~ c~ d~ s~
+Defined multiparticle l+ = e+ mu+
+Defined multiparticle l- = e- mu-
+Defined multiparticle vl = ve vm vt
+Defined multiparticle vl~ = ve~ vm~ vt~
+Defined multiparticle all = g gh gh~ d u s c d~ u~ s~ c~ a ve vm vt e- mu- ve~ vm~ vt~ e+ mu+ b t b~ t~ z w+ h w- ta- ta+
+generate g g > t t~ [virt=QCD]
+[1;32mDEBUG: Generating process: g g > t t~ [ virt = QCD ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=*,QED=0) 
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (4,0,W4) [0m
+[1;32mDEBUG:  > loop : (6,0,W6) [0m
+[1;32mDEBUG: A total of 9 loop diagrams were identified with equivalent ones. [0m
+INFO: Contributing diagrams generated: 3 Born, 36(+9) loops, 21 R2, 94 UV 
+Process generated in 0.473 s
+generate u u~ > z g g [virt=QCD]
+[1;32mDEBUG: Generating process: u u~ > z g g [ virt = QCD ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=*,QED=1) 
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (4,2,W8) [0m
+[1;32mDEBUG:  > loop : (6,2,W10) [0m
+[1;32mDEBUG: A total of 58 loop diagrams were identified with equivalent ones. [0m
+INFO: Contributing diagrams generated: 8 Born, 206(+58) loops, 112 R2, 208 UV 
+Process generated in 3.261 s
+generate u u~ > z z g g [virt=QCD]
+[1;32mDEBUG: Generating process: u u~ > z z g g [ virt = QCD ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=*,QED=2) 
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (4,4,W12) [0m
+[1;32mDEBUG:  > loop : (6,4,W14) [0m
+[1;32mDEBUG: A total of 378 loop diagrams were identified with equivalent ones. [0m
+INFO: Contributing diagrams generated: 30 Born, 1318(+378) loops, 578 R2, 780 UV 
+Process generated in 31.807 s
+generate g g > h h [noborn=QCD]
+INFO: Checking for minimal orders which gives processes. 
+INFO: Please specify coupling orders to bypass this step. 
+INFO: Trying coupling order WEIGHTED<=4: WEIGHTED IS QCD+2*QED 
+INFO: Trying coupling order WEIGHTED<=5: WEIGHTED IS QCD+2*QED 
+INFO: Trying coupling order WEIGHTED<=6: WEIGHTED IS QCD+2*QED 
+INFO: Trying coupling order WEIGHTED<=7: WEIGHTED IS QCD+2*QED 
+[1;32mDEBUG: Generating process: g g > h h WEIGHTED<=8 [ noborn = QCD ]  [0m
+[1;32mDEBUG: Born diagrams generation skipped by user request. [0m
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > No Born contributions for this process. [0m
+[1;32mDEBUG:  > loop : (4,4,W12) [0m
+INFO: Contributing diagrams generated: 0 Born, 16 loops, 4 R2, 0 UV 
+1 processes with 16 diagrams generated in 0.274 s
+Total: 1 processes with 16 diagrams
+quit
+quit

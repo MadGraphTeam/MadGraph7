@@ -1,0 +1,22 @@
+{
+  "baseline_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+  "cases": [
+    {
+      "diagram_summary": "3 Born, 36(+9) loops, 21 R2, 94 UV ",
+      "process": "g g > t t~ [virt=QCD]"
+    },
+    {
+      "diagram_summary": "8 Born, 206(+58) loops, 112 R2, 208 UV ",
+      "process": "u u~ > z g g [virt=QCD]"
+    },
+    {
+      "diagram_summary": "30 Born, 1318(+378) loops, 578 R2, 780 UV ",
+      "process": "u u~ > z z g g [virt=QCD]"
+    },
+    {
+      "diagram_summary": "0 Born, 16 loops, 4 R2, 0 UV ",
+      "process": "g g > h h [noborn=QCD]"
+    }
+  ],
+  "scope": "CLI diagram generation only; no evaluation or timing qualification"
+}

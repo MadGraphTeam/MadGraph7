@@ -1,0 +1,7 @@
+{
+  "failures": [],
+  "maximum_relative_error": 1.1556154226752629e-13,
+  "normalization": "max(abs(a), abs(b), 1e-6 * maximum absolute coefficient in the row)",
+  "passed": true,
+  "tolerance": 3e-06
+}

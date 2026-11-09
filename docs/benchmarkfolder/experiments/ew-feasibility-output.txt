@@ -1,0 +1,340 @@
+Note that this is a development version.
+This version is intended for development/beta testing and NOT for production.
+This version has not been fully tested (if at all) and might have limited user support (if at all)
+Running MG7 in debug mode
+********************************************************************************
+*                                                                              *
+*                               W E L C O M E to                               *
+*                              M A D G R A P H 7                               *
+*                                                                              *
+*                                                                              *
+*                                  ..........                                  *
+*                                @          ....                               *
+*                              @               ...                             *
+*                            @    M         M    .                             *
+*                           @     MM       MM    ..                            *
+*                           .     M  M   M  M  ..                              *
+*                           ..    M   M M   M ..                               *
+*                            .    M    M    M.                                 *
+*                            ...               7777777                         *
+*                              ....                 7                          *
+*                                 ................ 7                           *
+*                                                 7                            *
+*                                                7                             *
+*                                                                              *
+*                   VERSION 0.2.1                 2026-09-24                   *
+[1;31m*                                                                              *[1;0m
+[1;31m*                    WARNING: UNKNOWN DEVELOPMENT VERSION.                     *[1;0m
+[1;31m*                      WARNING: DO NOT USE FOR PRODUCTION                      *[1;0m
+[1;31m*                                                                              *[1;0m
+*                                                                              *
+*                 The MadGraph7 Development Team - Find us at                  *
+*                        http://madgraph.phys.ucl.ac.be/                       *
+*                                      and                                     *
+*                      http://amcatnlo.web.cern.ch/amcatnlo/                   *
+*                                                                              *
+*                         Type 'help' for in-line help.                        *
+*                 Type 'tutorial' to learn how MadGraph7 works                 *
+*                                                                              *
+********************************************************************************
+load MG7 configuration from .benchmark-work/tirust/baseline/input/mg7_configuration.txt 
+fastjet-config does not seem to correspond to a valid fastjet-config executable (v3+). We will use fjcore instead.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/fastjet-config (including fastjet-config).
+ MadGraph7> set fastjet /PATH/TO/fastjet-config
+
+eMELA-config does not seem to correspond to a valid eMELA-config executable.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).
+ MadGraph7> set eMELA /PATH/TO/eMELA-config
+
+set ninja to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib
+set collier to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier
+No valid eps viewer found. Please set in ./input/mg7_configuration.txt
+No valid web browser found. Please set in ./input/mg7_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg7_configuration.txt
+import /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/commands/ew-feasibility.mg5
+The import format was not given, so we guess it as command
+set automatic_html_opening False
+This option will be the default in any output that you are going to create in this session.
+In order to keep this changes permanent please run 'save options'
+set auto_update 0
+save options auto_update
+save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/baseline/input/mg7_configuration.txt
+import model /shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu
+Switching to Feynman gauge because it is the only one supported by the model /shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu.
+INFO: Details of the model import are written in /shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/loop_qcd_qed_sm_Gmu_debug.log 
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/parameters.py:25: SyntaxWarning: invalid escape sequence '\l'
+  texname = '\lambda_{HV}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/parameters.py:31: SyntaxWarning: invalid escape sequence '\e'
+  texname = '\eps')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/parameters.py:37: SyntaxWarning: invalid escape sequence '\e'
+  texname = '\ep')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/parameters.py:75: SyntaxWarning: invalid escape sequence '\e'
+  texname = '\text{\eps_{UV}}',
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/parameters.py:83: SyntaxWarning: invalid escape sequence '\e'
+  texname = '\text{\eps_{IR}}',
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/parameters.py:380: SyntaxWarning: invalid escape sequence '\_'
+  texname = '\text{Gf\_redefinition\_choice}',
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:77: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Gg')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:82: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Gq')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:88: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Gc')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:94: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Gb')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:100: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Gt')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:106: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta G_{wfct\_g}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:112: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta G_{wfct\_q}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:119: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta G_{wfct\_c}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:126: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta G_{wfct\_b}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:133: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta G_{wfct\_t}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:139: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_c')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:146: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_c')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:153: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_b')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:160: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_t')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:167: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m_b')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:174: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m_c')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:181: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m_t')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:199: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ht^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:206: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m_t^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:213: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m_t^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:220: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m2_H^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:227: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m2_W^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:234: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m2_Z^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:240: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_t^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:247: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_b^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:253: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_t^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:259: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_b^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:265: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{H}^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:272: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{G0}^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:279: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{Gp}^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:284: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{W}^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:289: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{ZZ}^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:295: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{AZ}^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:302: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{AA}^{EW,MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:308: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta e^{MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:315: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta SW^{MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:322: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta CW^{MB}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:335: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ht^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:343: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m_t^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:349: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m2_H^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:355: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m2_W^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:361: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta m2_Z^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:367: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_t^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:374: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_c^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:380: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_u^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:387: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_b^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:394: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_s^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:401: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_d^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:408: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_tau^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:415: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_mu^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:421: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_e^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:427: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_t^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:433: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_c^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:439: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_u^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:446: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_b^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:452: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_s^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:459: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_d^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:465: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_tau^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:471: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_mu^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:477: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_e^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:484: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_vt^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:491: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_vm^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:498: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_ve^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:506: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_t^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:514: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_c^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:520: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_u^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:527: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_b^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:533: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_s^{EW,dagger')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:539: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_d^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:545: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_tau^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:551: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_mu^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:557: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZR_e^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:563: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_t^{EW,dagger,p}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:569: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_c^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:575: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_u^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:581: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_b^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:587: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_s^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:593: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_d^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:599: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_tau^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:605: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_mu^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:611: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_e^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:617: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_vt^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:623: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_vm^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:629: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta ZL_ve^{EW,dagger}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:639: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{H}^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:645: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{G0}^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:651: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{Gp}^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:657: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{W}^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:663: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{ZZ}^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:669: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{AZ}^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:676: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{ZA}^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:682: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta Z_{AA}^{EW}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:688: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta e_{DGmua0}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:694: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta e_0')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:701: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta e_{Gmu}')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:707: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta SW')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:715: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta CW')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:731: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta y_c')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:738: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta y_b')
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/CT_parameters.py:745: SyntaxWarning: invalid escape sequence '\d'
+  texname = '\delta y_t')
+INFO: 
+By loading this model the calculation can involve ELECTROWEAK corrections.
+Please cite ref. 'arXiv:1804.10017' when using results from this code. 
+INFO: load particles 
+INFO: load vertices 
+INFO: Restrict model /shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu with file .benchmark-work/tirust/models/loop_qcd_qed_sm_Gmu/restrict_default.dat . 
+INFO: Use 'explain_restriction' to see what that card removes from the model. 
+INFO: Change particles name to pass to MG7 convention 
+Defined multiparticle p = g u c d s u~ c~ d~ s~
+Defined multiparticle j = g u c d s u~ c~ d~ s~
+Defined multiparticle l+ = e+ mu+
+Defined multiparticle l- = e- mu-
+Defined multiparticle vl = ve vm vt
+Defined multiparticle vl~ = ve~ vm~ vt~
+[1;34mPass the definition of 'j' and 'p' to 5 flavour scheme, including the photon.[0m
+Defined multiparticle all = g ghg ghg~ u c d s b u~ c~ d~ s~ b~ a gha gha~ ve vm vt e- mu- ta- ve~ vm~ vt~ e+ mu+ ta+ t t~ z w+ ghz ghwp ghwm h g0 g+ w- ghz~ ghwp~ ghwm~ g-
+generate u d~ > w+ [virt=QED]
+[1;32mDEBUG: Generating process: u d~ > w+ [ virt = QED ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=0,QED=*) 
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (0,2,W4) [0m
+[1;32mDEBUG:  > loop : (0,4,W8) [0m
+INFO: Contributing diagrams generated: 1 Born, 6 loops, 1 R2, 2 UV 
+Process generated in 0.177 s
+generate e+ e- > mu+ mu- [virt=QED]
+[1;32mDEBUG: Generating process: e+ e- > mu+ mu- [ virt = QED ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=0,QED=*) 
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (0,4,W8) [0m
+[1;32mDEBUG:  > loop : (0,6,W12) [0m
+[1;32mDEBUG: A total of 22 loop diagrams were identified with equivalent ones. [0m
+INFO: Contributing diagrams generated: 2 Born, 76(+22) loops, 51 R2, 16 UV 
+Process generated in 0.637 s
+generate e+ e- > t t~ a [virt=QED]
+[1;32mDEBUG: Generating process: e+ e- > t t~ a [ virt = QED ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=0,QED=*) 
+[1;32mDEBUG: MadLoop discarded 12 diagrams because they appeared to be zero because of Furry theorem. [0m
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (0,6,W12) [0m
+[1;32mDEBUG:  > loop : (0,8,W16) [0m
+[1;32mDEBUG: A total of 122 loop diagrams were identified with equivalent ones. [0m
+INFO: Contributing diagrams generated: 8 Born, 921(+122) loops, 240 R2, 114 UV 
+Process generated in 8.515 s
+generate e+ e- > mu+ mu- a a [virt=QED]
+[1;32mDEBUG: Generating process: e+ e- > mu+ mu- a a [ virt = QED ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=0,QED=*) 
+[1;32mDEBUG: MadLoop discarded 192 diagrams because they appeared to be zero because of Furry theorem. [0m
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (0,8,W16) [0m
+[1;32mDEBUG:  > loop : (0,10,W20) [0m
+[1;32mDEBUG: A total of 944 loop diagrams were identified with equivalent ones. [0m
+INFO: Contributing diagrams generated: 40 Born, 5066(+944) loops, 1382 R2, 640 UV 
+Process generated in 61.494 s
+generate u u~ > g a [virt=QCD QED]
+[1;32mDEBUG: Generating process: u u~ > g a [ virt = QCD QED ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=*,QED=*) 
+[1;32mDEBUG: MadLoop discarded 12 diagrams because they appeared to be zero because of Furry theorem. [0m
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (2,2,W6) [0m
+[1;32mDEBUG:  > loop : (4,2,W8) (2,4,W10) [0m
+INFO: Contributing diagrams generated: 2 Born, 38 loops, 18 R2, 32 UV 
+Process generated in 0.913 s
+quit
+quit

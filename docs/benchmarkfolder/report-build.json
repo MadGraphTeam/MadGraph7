@@ -1,0 +1,34 @@
+{
+  "typst": "typst 0.15.1 (9dfd3a08)",
+  "source_date_epoch": 1793306920,
+  "inputs": {
+    "benchmark.typ": {
+      "sha256": "4a348dfea66541536890103c90599cadb10fe5f7ae5200c789cdcd7271f027c9",
+      "bytes": 10737
+    },
+    "style.typ": {
+      "sha256": "a59107b387b794f98a3a0904a855b4f37523cf61aafa4fe38bee88370ee95797",
+      "bytes": 2938
+    },
+    "summary.json": {
+      "sha256": "2593a1b0dcb23965a5abda93e6fc409924cdc635970025ca21986a0d4db023ed",
+      "bytes": 50957
+    },
+    "implementation-start.json": {
+      "sha256": "43f6629e7ec0004ea53888746710013d181713a0e4e11694c252f0be387d8613",
+      "bytes": 987
+    },
+    "style-provenance.json": {
+      "sha256": "41e9d697c8cd0502f9908aa625023ffc01dcfe84cdbeaf1070f7b203c880d6b1",
+      "bytes": 732
+    },
+    "cases.json": {
+      "sha256": "4b83e672841768742e29791c25ba36f3009ea87158ec6b8d189614506945877d",
+      "bytes": 2249
+    }
+  },
+  "pdf_sha256": "ed66ca9e082276006126aee8298c0b8e1a67d7ae8698e0974b5c322af87e6070",
+  "font_paths": [],
+  "font_search_environment": "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts:/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts:/nix/store/0wcl9csd4li3na9z59j7g1igf2c1iz33-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/2ppmsk65csi9d1d05c43jhl2r2z5lrjf-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/6pjk30y4c695caymxpnkk8jbhisvavvv-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts:/nix/store/9fik6jfandv189wklkbz99923jv45lcd-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/bparysamy1afjxz3nga9ml2kdpsk5smc-dejavu-fonts-2.37/share/fonts:/nix/store/cnq79axmg834ya1xqzgb2sp1zj36vch0-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/gi7k29v23s6dv0g28nm4sdllnzahv3yp-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/klwz4lnn6zvz88nas35gyqyh2iv5xh80-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/lwii1s06ha263m4ay4vxbf8si0w24nb1-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/xadrivsjgk1bslbd64hq9zakin7vp6nr-dejavu-fonts-2.37/share/fonts:/nix/store/zm7p349xn0a5vxr9g7wg8gb2xd43h03m-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/zqhby0xidpi0xsafsbl4l7dc72imqqq6-dejavu-fonts-minimal-2.37/share/fonts",
+  "numerical_campaign_rerun": false
+}
