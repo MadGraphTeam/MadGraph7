@@ -835,13 +835,16 @@ mod tests {
             1e-8 / 1e-6
         );
         // A vanishing output (a numerical zero of the carrier) against the
-        // largest returned output.
+        // largest returned output (an exact large output: its own ratio 0).
         let zero = sector(1e-31, 3e-30, 2.0);
         assert!(zero.magnitude <= 16.0 * u * zero.scale);
+        let exact = sector(2.0, 0.0, 2.0);
         assert_eq!(
-            fallback_estimate(&[vec![large], vec![zero]], u),
+            fallback_estimate(&[vec![exact], vec![zero]], u),
             3e-30 / 2.0
         );
+        // Beside a large output with its own error, the larger ratio decides.
+        assert_eq!(fallback_estimate(&[vec![large], vec![zero]], u), 1e-12);
         // Alone it is its own largest output: its own ratio (rejected).
         assert_eq!(fallback_estimate(&[vec![zero]], u), 3e-30 / 1e-31);
         // An exact zero everywhere is passed over; a NaN is rejected.
