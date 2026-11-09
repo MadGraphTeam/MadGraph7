@@ -15,8 +15,8 @@
       "bytes": 18921
     },
     "benchmark.typ": {
-      "sha256": "52607fe705af64df2661dd8c84900ae834470c302cc274e160c5e5832e20899e",
-      "bytes": 21965
+      "sha256": "e5277e41a3fd7b53852a5d13f017a91c068656e4d0ec3a17a03edc235f9eb994",
+      "bytes": 22223
     },
     "style.typ": {
       "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e",
@@ -47,7 +47,7 @@
       "bytes": 173
     }
   },
-  "pdf_sha256": "9824d18dbfdff0b44270c3d2229fb5bcd556ca6e85c076088481590ec47ea104",
+  "pdf_sha256": "6f6aebb948bb81c534ff097dfe571a141393e22f04f7e0bb0a6755b6ce191ca4",
   "campaign": null,
   "typst_inputs": {
     "summary": "summary.json",

@@ -1,0 +1,54 @@
+{
+  "case": {
+    "id": "qcd_n4_uux_zzgg",
+    "model": "loop_sm",
+    "nfinal": 4,
+    "process": "u u~ > z z g g [virt=QCD]",
+    "role": "main"
+  },
+  "performance_eligible": false,
+  "results": [
+    {
+      "backend": 1,
+      "error": "ProtocolError(\"Invalid READY message: ['ERROR', 'administrative-stop-for-warmup-diagnostics']\")",
+      "performance_eligible": false,
+      "source": "baseline",
+      "status": "failed"
+    },
+    {
+      "backend": 1,
+      "error": "ProtocolError(\"Invalid READY message: ['ERROR', 'administrative-stop-for-warmup-diagnostics']\")",
+      "performance_eligible": false,
+      "source": "candidate",
+      "status": "failed"
+    },
+    {
+      "backend": 6,
+      "error": "RuntimeError('Worker template differs from compilation')",
+      "performance_eligible": false,
+      "source": "candidate",
+      "status": "failed"
+    },
+    {
+      "backend": 7,
+      "error": "RuntimeError('Worker template differs from compilation')",
+      "performance_eligible": false,
+      "source": "candidate",
+      "status": "failed"
+    },
+    {
+      "backend": 8,
+      "error": "RuntimeError('Worker template differs from compilation')",
+      "performance_eligible": false,
+      "source": "candidate",
+      "status": "failed"
+    },
+    {
+      "backend": 9,
+      "error": "RuntimeError('Worker template differs from compilation')",
+      "performance_eligible": false,
+      "source": "candidate",
+      "status": "failed"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "reason": "Warmup protocol audit found failures could repeat without actionable point/status evidence. Abort old worker before instrumenting the warmup and rerun under a new immutable label. No numerical failure inferred from timeout.",
+  "time_utc": "2026-11-09T20:50:59.260403+00:00",
+  "fifo": ".benchmark-work/tirust/outputs/baseline/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/worker-protocol.fifo"
+}

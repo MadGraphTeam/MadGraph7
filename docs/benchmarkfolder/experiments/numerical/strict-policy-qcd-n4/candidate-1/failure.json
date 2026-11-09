@@ -1,0 +1,7 @@
+{
+  "backend": 1,
+  "error": "ProtocolError(\"Invalid READY message: ['ERROR', 'administrative-stop-for-warmup-diagnostics']\")",
+  "performance_eligible": false,
+  "source": "candidate",
+  "status": "failed"
+}

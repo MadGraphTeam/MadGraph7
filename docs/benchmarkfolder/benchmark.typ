@@ -250,8 +250,10 @@ All timing attempts are retained. Only an objectively short series with passing 
 
 #let chains = d.at("reduction_chains", default: (:))
 #if chains.at("baseline", default: none) != none and chains.at("candidate", default: none) != none {
-  [The materialized baseline chain is #raw(chains.baseline.map(str).join("|")); the TIRust-first chain is #raw(chains.candidate.map(str).join("|")). Both run the same independent MadLoop stability policy.]
+  [For the eight main processes, the materialized baseline chain is #raw(chains.baseline.map(str).join("|")); the TIRust-first chain is #raw(chains.candidate.map(str).join("|")). Both run the same independent MadLoop stability policy.]
 }
+
+The loop-induced controls retain their generated default chain #raw("7|6|1"); their prescribed TIRust-first chain is #raw("9|7|6|1"). These are configured chains, not measurements of which reducer ultimately supplied a result.
 
 The recorded cold interval includes first-amplitude initialization and warming the complete saved point stream; it excludes process startup and parameter-card loading. Numerical objects and linked archives are bound to the retained compiler recipes and hashes. The benchmark runs on a shared host; host-load observations accompany timing pairs, and this study does not claim exclusive use of the machine.
 
