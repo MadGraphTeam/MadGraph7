@@ -495,7 +495,8 @@ electroweak model runs at full colour, where a Born-interfered process has
 none). Generation threshold of this example: at most 10 minutes and 8 GiB.
 
 Measured (2026-11-09, after the loop-block colour fix lit-ew-blocks, on a
-shared host at load ~210): generation 223 s, peak 7.65 GiB; `check` of the
+shared host at load ~160-210): generation 223-232 s, peak 7.65-8.37 GiB
+(three runs; without the fix 7.91-8.38 GiB, the peak varies by run); `check` of the
 card 232 s, 7.64 GiB: every pole row of the four sectors passes in binary64
 at both points. Per point, one pinned core, a batch of 8: NinjaRS (`auto`)
 111-151 ms checked, 145-153 ms unchecked; TIRust 144-152 ms with 2 of 8
