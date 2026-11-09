@@ -3076,5 +3076,96 @@ mod tests {
             traces: vec![None],
         });
         assert_eq!(format!("{walk:?}"), before);
+        let dependents = DependentsCache::default();
+        let before = format!("{dependents:?}");
+        dependents.get_or_init(Dependents::default);
+        assert_eq!(format!("{dependents:?}"), before);
+    }
+
+    /// A dressed-row plan (schema 5) of one bubble family over a leg of two
+    /// helicity rows and three basis elements, whose trace steps close with
+    /// seed keys of class weights `weights` (one key per entry; each its own
+    /// seeded leaf and trace step into accumulator 0).
+    fn dressed(weights: &[[i64; 3]]) -> LoopProgramV4 {
+        use serde_json::json;
+        let term = |row: usize, kernel: usize| {
+            json!({"slots": [], "dimensions": [], "vertex": -1, "split": [],
+                   "rows": [[row, []]],
+                   "bindings": [{"kernel": kernel, "inputs": [], "entries": [0]}]})
+        };
+        let mut steps = Vec::new();
+        let mut leaves = Vec::new();
+        for key in 0..weights.len() {
+            leaves.push(json!({"seed": key, "weight": "3"}));
+            steps.push(json!({"seeded": true, "trace": -1, "out": 2, "d_alpha": 1,
+                "d_out": 1, "degree": 0, "rank_in": 0,
+                "edges": [{"leaf": key, "child": -1, "factor": 0}]}));
+            steps.push(json!({"seeded": false, "trace": 0, "out": 0, "d_alpha": 1,
+                "d_out": 1, "degree": 0, "rank_in": 0,
+                "edges": [{"leaf": -1, "child": 2 * key, "factor": 1}]}));
+        }
+        let classes: Vec<_> = weights
+            .iter()
+            .map(|w| json!({"columns": w.map(|x| json!([[0, x.to_string(), "0"]]))}))
+            .collect();
+        let seeds: Vec<_> = (0..weights.len())
+            .map(|c| json!({"classes": [[c, "1", "0"]]}))
+            .collect();
+        let plan = json!({
+            "schema": 5, "legs": 2, "rows": 2, "helicities": [[0, 1], [0]], "columns": 6,
+            "average": 1, "born_components": 1, "constants": 2, "masses": 1,
+            "block_rows": [],
+            "kernels": [{"inputs": [], "outputs": [[[0, []]]]},
+                        {"inputs": [], "outputs": [[[1, []]]]}],
+            "contents": [
+                {"d_in": 1, "d_out": 1, "degree": 0, "rows": 2, "mask": 1,
+                 "row_helicities": [[0], [1]], "fused": [[0, 0, 0, 0, 0, 0]],
+                 "terms": [term(0, 0), term(1, 1)]},
+                {"d_in": 1, "d_out": 1, "degree": 0, "rows": 1, "mask": 2,
+                 "row_helicities": [[0]], "fused": [[0, 0, 0, 0, 0, 0]],
+                 "terms": [term(0, 1)]}],
+            "factors": [[0, 0], [1, 1]],
+            "seed_classes": classes, "seeds": seeds,
+            "families": [{"sequence": [[1, 0], [2, 0]], "rank": 0, "orders": [0],
+                          "leaves": leaves, "steps": steps}],
+            "forward": null, "merged": null,
+            "column_rows": [[0], [0], [0], [1], [1], [1]],
+            "column_weights": [0, 1, 2, 0, 1, 2], "dressed": true,
+        });
+        LoopProgramV4::load(&serde_json::to_vec(&plan).unwrap()).unwrap()
+    }
+
+    /// M-LIT lit-fold F1d: a stored column is dependent on another of the
+    /// same accumulator and Born row exactly when every key closing into the
+    /// accumulator weights the two in one exact ratio (`c`); a ratio that
+    /// differs between the keys leaves both columns reduced, and a seeded
+    /// plan has none.
+    #[test]
+    fn dressed_columns_in_one_exact_ratio_are_dependent() {
+        let r = |x: i64| [Rational::from(x), Rational::from(0)];
+        let one = dressed(&[[1, 2, -3]]);
+        let found = one.dependents_of(&one.families[0]);
+        assert_eq!(
+            found.columns,
+            [vec![
+                (0, 1, r(2)),
+                (0, 2, r(-3)),
+                (3, 4, r(2)),
+                (3, 5, r(-3))
+            ]]
+        );
+        assert_eq!(
+            found.dependent,
+            [vec![false, true, true, false, true, true]]
+        );
+        assert_eq!(found.of(0, 3), 2..4);
+        assert_eq!(found.of(0, 1), 2..2);
+        // Two keys: t = 1 is twice t = 0 under both, t = 2 is 3 and 5 times.
+        let two = dressed(&[[1, 2, 3], [1, 2, 5]]);
+        let found = two.dependents_of(&two.families[0]);
+        assert_eq!(found.columns, [vec![(0, 1, r(2)), (3, 4, r(2))]]);
+        // One key with one non-zero weight: nothing is dependent.
+        let lone = dressed(&[[0, 7, 0]]);
+        assert!(lone.dependents_of(&lone.families[0]).is_empty());
     }
 }
