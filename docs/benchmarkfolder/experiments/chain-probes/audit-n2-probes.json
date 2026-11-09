@@ -1,0 +1,115 @@
+{
+  "audit_scope": "read-only retained-evidence audit",
+  "host_context_files": {
+    "shared-host-context-20261109T224923.json": "3e717716fbc9745fedd976d6d330b3d486381c58d378eb94a4b91e8bc9dc4bcb",
+    "shared-host-stall-20261109T224507.json": "1610acd3e0eba0ca1661922c41e16375c978745a9c51c723abc9742ffa697893"
+  },
+  "limitations": [
+    "Historical c91 exports, not the final optimized candidate or formal campaign.",
+    "Backend/precision counts describe final accepted results, not internal reduction attempts.",
+    "An accepted DP status is not proof that NinjaRS made no internal compensated retry.",
+    "Retained host-context notes report severe shared-host conditions; no individual batch cause is inferred.",
+    "Source identity is checked against retained manifests and source-built private outputs; this audit does not rebuild historical source."
+  ],
+  "native_or_compiler_jobs_started": false,
+  "performance_acceptance_eligible": false,
+  "probes": [
+    {
+      "accepted_backend_precision_counts": {
+        "baseline": {
+          "8:DP": 3500
+        },
+        "candidate": {
+          "9:DP": 3500
+        }
+      },
+      "audit_status": "verified",
+      "label": "historical-c91-qcd-n2-chain-cpu9-1",
+      "maximum_relative_error": 1.7419950723544412e-12,
+      "minimum_descriptive_batch_duration_met": true,
+      "numerical_comparisons_recomputed": 8,
+      "ordinary_target_passed": true,
+      "performance_acceptance_eligible": false,
+      "raw_observations_reparsed": 18,
+      "source_proofs": {
+        "baseline": {
+          "executable_sha256": "526038f86560eb9c87fa8625382d07413a46c48c7bf7db54e458b37ee55951b1",
+          "files_sha256": "274a9ab19bb0bd3a382eeac5680c6aad4bd761093e9c6c8a66078eb3c0002558",
+          "generated_sources_checked": 148,
+          "numerical_objects_checked": 92,
+          "revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"
+        },
+        "candidate": {
+          "executable_sha256": "008ce2ee471e56886984ca6bbd6fcb2105c49812ab4692bd419f0820096104da",
+          "files_sha256": "74116e4bb2ba7abdb24a3dbcdb51cfae6547f05c3e276d3e17f5d5dab2b8d7a5",
+          "generated_sources_checked": 149,
+          "numerical_objects_checked": 93,
+          "revision": "c91cb85f3aa942c90299b3518bb1f195f55334a5"
+        }
+      },
+      "statistics": {
+        "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+        "geometric_mean_ratio": 1.021637992861465,
+        "log_ratio_standard_error": 0.014085142637788968,
+        "lower_95": 0.987026994442145,
+        "median_seconds_per_point": {
+          "baseline": 0.004678089502,
+          "candidate": 0.004834542152
+        },
+        "pairs": 7,
+        "student_t_critical": 2.446912,
+        "upper_95": 1.0574626573895414
+      },
+      "summary_sha256": "9fb56f010161d8bcedb7667112556699b883ea15d7f6bcbf8ab780c489ba4327"
+    },
+    {
+      "accepted_backend_precision_counts": {
+        "baseline": {
+          "8:DP": 3500
+        },
+        "candidate": {
+          "9:DP": 3500
+        }
+      },
+      "audit_status": "verified",
+      "label": "historical-c91-ew-n2-chain-cpu9-1",
+      "maximum_relative_error": 7.905337156791306e-12,
+      "minimum_descriptive_batch_duration_met": true,
+      "numerical_comparisons_recomputed": 8,
+      "ordinary_target_passed": true,
+      "performance_acceptance_eligible": false,
+      "raw_observations_reparsed": 18,
+      "source_proofs": {
+        "baseline": {
+          "executable_sha256": "5fb7fb824d31e6746bb3ba56796c7f02a49f581172e1a4c6582a7eb50cb6fbbb",
+          "files_sha256": "274a9ab19bb0bd3a382eeac5680c6aad4bd761093e9c6c8a66078eb3c0002558",
+          "generated_sources_checked": 268,
+          "numerical_objects_checked": 212,
+          "revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"
+        },
+        "candidate": {
+          "executable_sha256": "88aa4da0479dce51c3bdd6e0aa782d34ec94167da4fd4fde1163b60ca67bfe74",
+          "files_sha256": "74116e4bb2ba7abdb24a3dbcdb51cfae6547f05c3e276d3e17f5d5dab2b8d7a5",
+          "generated_sources_checked": 269,
+          "numerical_objects_checked": 213,
+          "revision": "c91cb85f3aa942c90299b3518bb1f195f55334a5"
+        }
+      },
+      "statistics": {
+        "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+        "geometric_mean_ratio": 1.0179018306518541,
+        "log_ratio_standard_error": 0.01816073754081568,
+        "lower_95": 0.9736588954541026,
+        "median_seconds_per_point": {
+          "baseline": 0.004317899528,
+          "candidate": 0.00428189252
+        },
+        "pairs": 7,
+        "student_t_critical": 2.446912,
+        "upper_95": 1.0641551591444767
+      },
+      "summary_sha256": "2a6e7fc612a53921ba2a20ff23c3413894496d4940a4dc7352e62a946b2a19f6"
+    }
+  ],
+  "schema": "madloop-chain-probe-independent-audit-v1"
+}

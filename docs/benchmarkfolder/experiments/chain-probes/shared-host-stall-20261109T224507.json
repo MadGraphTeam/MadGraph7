@@ -1,0 +1,70 @@
+{
+  "administrative_action": "No new native/compiler work launched by this lane after the hold. Both already-launched bounded probes completed before a safe pre-execution pause could be applied. Their original summaries and raw data are unchanged.",
+  "interpretation": "Severe shared-host load was reported during the surrounding queue/measurement period. These predeclared diagnostic probes remain ineligible for formal performance acceptance. No exact causal attribution to individual batches is claimed.",
+  "load_average_1_5_15_minutes": [
+    28347.78,
+    14255.1,
+    5659.77
+  ],
+  "observation_utc": "2026-11-09T22:45:07+00:00",
+  "performance_acceptance_eligible": false,
+  "probes": [
+    {
+      "actual_backend_precision_counts": {
+        "baseline": {
+          "8:DP": 3500
+        },
+        "candidate": {
+          "9:DP": 3500
+        }
+      },
+      "label": "historical-c91-qcd-n2-chain-cpu9-1",
+      "performance_acceptance_eligible": false,
+      "statistics": {
+        "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+        "geometric_mean_ratio": 1.021637992861465,
+        "log_ratio_standard_error": 0.014085142637788968,
+        "lower_95": 0.987026994442145,
+        "median_seconds_per_point": {
+          "baseline": 0.004678089502,
+          "candidate": 0.004834542152
+        },
+        "pairs": 7,
+        "student_t_critical": 2.446912,
+        "upper_95": 1.0574626573895414
+      },
+      "status": "complete",
+      "summary_sha256": "9fb56f010161d8bcedb7667112556699b883ea15d7f6bcbf8ab780c489ba4327"
+    },
+    {
+      "actual_backend_precision_counts": {
+        "baseline": {
+          "8:DP": 3500
+        },
+        "candidate": {
+          "9:DP": 3500
+        }
+      },
+      "label": "historical-c91-ew-n2-chain-cpu9-1",
+      "performance_acceptance_eligible": false,
+      "statistics": {
+        "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+        "geometric_mean_ratio": 1.0179018306518541,
+        "log_ratio_standard_error": 0.01816073754081568,
+        "lower_95": 0.9736588954541026,
+        "median_seconds_per_point": {
+          "baseline": 0.004317899528,
+          "candidate": 0.00428189252
+        },
+        "pairs": 7,
+        "student_t_critical": 2.446912,
+        "upper_95": 1.0641551591444767
+      },
+      "status": "complete",
+      "summary_sha256": "2a6e7fc612a53921ba2a20ff23c3413894496d4940a4dc7352e62a946b2a19f6"
+    }
+  ],
+  "recorded_utc": "2026-11-09T22:51:05.422831+00:00",
+  "schema": "madloop-shared-host-context-v1",
+  "source": "Parent agent /root reported its read-only uptime output in the task session; this file is a transcription, not an independent sampler."
+}
