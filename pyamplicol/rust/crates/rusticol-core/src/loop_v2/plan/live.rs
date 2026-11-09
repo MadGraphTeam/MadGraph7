@@ -730,7 +730,7 @@ fn prune_family(
         currents: currents.into_iter().collect(),
         row_traces,
         support: None,
-        walk: std::sync::OnceLock::new(),
+        walk: Default::default(),
     };
     (family, lists)
 }

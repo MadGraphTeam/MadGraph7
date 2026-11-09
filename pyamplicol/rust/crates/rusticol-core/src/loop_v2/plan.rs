@@ -736,7 +736,29 @@ pub struct Family {
     /// What a walk of the family reads besides its steps ([`Walk`]):
     /// derived from the plan's data by the family's first walk and kept
     /// (never stored; outside the loader's derivations and their bound).
-    pub walk: std::sync::OnceLock<Walk>,
+    pub walk: WalkCache,
+}
+
+/// A family's walk data ([`Walk`]), derived by its first walk and kept for
+/// the later ones. Whether it is set is the family's evaluation history, not
+/// its data: its `Debug` form shows nothing of it, so a loaded program's
+/// `Debug` form ([`binary::program_digest`]) is the same before and after
+/// a walk.
+#[derive(Clone, Default)]
+pub struct WalkCache(std::sync::OnceLock<Walk>);
+
+impl WalkCache {
+    /// The walk data, derived by `derive` on the first call.
+    #[inline]
+    pub fn get_or_init(&self, derive: impl FnOnce() -> Walk) -> &Walk {
+        self.0.get_or_init(derive)
+    }
+}
+
+impl std::fmt::Debug for WalkCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("WalkCache")
+    }
 }
 
 /// What a family walk reads besides its steps (lit-dress: derived from the
@@ -1327,8 +1349,14 @@ pub struct Gathers {
     index: Vec<u32>,
     schedules: Vec<super::kernels::GatherSchedule>,
     /// Per `(content, products table, seeded, d_alpha)` of a fused trace
-    /// step's edge, its index in `diagonal_schedules`.
-    diagonals: HashMap<(usize, usize, bool, usize), usize>,
+    /// step's edge, its index in `diagonal_schedules`. Ordered: the `Debug`
+    /// form of a loaded program ([`binary::program_digest`]) must be a
+    /// function of the plan alone, and a `HashMap` would print its entries
+    /// in its per-instance random order (two loads of one plan, by one
+    /// reader or by both, then digested differently). Read only by
+    /// [`LoopProgramV4::walk_of`], once per family, and by
+    /// [`LoopProgramV4::diagonal`].
+    diagonals: BTreeMap<(usize, usize, bool, usize), usize>,
     diagonal_schedules: Vec<super::kernels::DiagonalSchedule>,
 }
 
@@ -1340,7 +1368,7 @@ impl Gathers {
             products,
             index: vec![0; program.contents.len() * products * 2],
             schedules: Vec::new(),
-            diagonals: HashMap::new(),
+            diagonals: BTreeMap::new(),
             diagonal_schedules: Vec::new(),
         };
         let mut used = BTreeSet::new();
@@ -2489,7 +2517,7 @@ impl LoopProgramV4 {
             currents: currents.into_iter().collect(),
             row_traces,
             support: None,
-            walk: std::sync::OnceLock::new(),
+            walk: WalkCache::default(),
         })
     }
 
@@ -2843,5 +2871,36 @@ mod tests {
             "contents":[],"factors":[],"seed_classes":[],"seeds":[],"families":[],"forward":null}"#;
         let error = LoopProgramV4::load(text).unwrap_err();
         assert!(error.message().contains("schema"), "{error}");
+    }
+
+    /// The `Debug` form of the derived tables (`binary::program_digest`'s
+    /// input) is a function of their content: the diagonal index prints in
+    /// key order whatever the insertion order (a `HashMap` printed its
+    /// per-instance random order, so two loads of one plan digested
+    /// differently), and a family's walk cache prints the same before and
+    /// after its first walk.
+    #[test]
+    fn derived_tables_debug_canonically() {
+        let keys: Vec<_> = (0..64)
+            .map(|k| (k % 7, k / 7, k % 2 == 0, 1 + k % 3))
+            .collect();
+        let gathers = |order: &mut dyn Iterator<Item = usize>| {
+            let mut gathers = Gathers::default();
+            for id in order {
+                gathers.diagonals.insert(keys[id], id);
+            }
+            format!("{gathers:?}")
+        };
+        assert_eq!(
+            gathers(&mut (0..keys.len())),
+            gathers(&mut (0..keys.len()).rev())
+        );
+        let walk = WalkCache::default();
+        let before = format!("{walk:?}");
+        walk.get_or_init(|| Walk {
+            written: vec![Some(vec![true])],
+            traces: vec![None],
+        });
+        assert_eq!(format!("{walk:?}"), before);
     }
 }
