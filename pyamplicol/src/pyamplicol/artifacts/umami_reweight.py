@@ -123,6 +123,10 @@ def _canonical_legs(pdgs: Sequence[int], legs: Sequence[int], incoming: int) -> 
     return tuple(legs)
 
 
+def _is_parton(pdg: int) -> bool:
+    return pdg == 21 or 0 < abs(pdg) <= 6
+
+
 def _pdf_column(pdg: int) -> int:
     if pdg == 21:
         return 6
@@ -138,8 +142,9 @@ def switch_catalogue(
     initial_legs: Sequence[Sequence[int]] | None = None,
 ) -> dict[str, Any]:
     """The flavours of a leading-colour provider in event slot order, both beam
-    orientations and every distinct final-state ordering, see
-    ``write_reweight_provider``."""
+    orientations and every distinct ordering of the outgoing partons over the
+    parton slots, see ``write_reweight_provider``. The other outgoing legs keep
+    the slots the events have them in."""
     incoming = _integer(reference["provider"]["incoming_count"])
     if incoming != 2:
         raise ValueError("the flavour switch needs two incoming partons")
@@ -178,7 +183,21 @@ def switch_catalogue(
     color_index = {json.dumps(flow): i for i, flow in enumerate(color_flows)}
     evaluations: dict[tuple, int] = {}
     orderings, targets, target_pdgs, seen = [], [], [], set()
-    n_final = math.factorial(len(processes[0]["pdgs"]) - incoming)
+    # the slots of the outgoing non-partons, the same in every row
+    fixed = {
+        slot: pdg
+        for slot, pdg in enumerate(reference["pdg_ids"][0])
+        if slot >= incoming and not _is_parton(pdg)
+    }
+    if any(
+        {s: p for s, p in enumerate(row) if s >= incoming and not _is_parton(p)} != fixed
+        for row in reference["pdg_ids"]
+    ):
+        raise ValueError("the flavour switch needs the non-partons in fixed slots")
+    parton_slots = [
+        slot for slot in range(incoming, len(reference["pdg_ids"][0])) if slot not in fixed
+    ]
+    n_partons = math.factorial(len(parton_slots))
     for rep, pdgs, permutation, conjugated, factor in members:
         rep_pdgs = processes[rep]["pdgs"]
         a, b = pdgs[:incoming]
@@ -196,10 +215,16 @@ def switch_catalogue(
             seen.add(key)
             lines = quark_lines(pdgs)
             final = pdgs[incoming:]
+            partons = [p for p in final if _is_parton(p)]
+            if sorted(p for p in final if not _is_parton(p)) != sorted(fixed.values()):
+                raise ValueError(f"flavour {pdgs} has other non-partons than the events")
             weight = factor * math.prod(
-                math.factorial(final.count(p)) for p in set(final)
-            ) / n_final
-            for order in sorted(set(itertools.permutations(final))):
+                math.factorial(partons.count(p)) for p in set(partons)
+            ) / n_partons
+            for parton_order in sorted(set(itertools.permutations(partons))):
+                order_slots = dict(fixed)
+                order_slots.update(zip(parton_slots, parton_order))
+                order = tuple(order_slots[s] for s in range(incoming, len(pdgs)))
                 slots = [0, 1] if orientation == 0 else [1, 0]
                 slots += [incoming + j for j in _first_unused(order, final)]
                 legs = _canonical_legs(
