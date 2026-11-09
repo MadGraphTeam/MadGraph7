@@ -332,8 +332,8 @@ class AmplicolLaunchResonancesTest(unittest.TestCase):
 
 
 class AmplicolLeadingColourFlavoursTest(unittest.TestCase):
-    """The flavours of the leading-colour pass: their sampling prior factors,
-    and the initial_sum and two_lines proofs of concept."""
+    """The flavours of the leading-colour pass: their sampling prior factors
+    and the two_lines selection."""
 
     def setUp(self):
         try:
@@ -361,16 +361,6 @@ class AmplicolLeadingColourFlavoursTest(unittest.TestCase):
                          [2., 0.5, 1.5, 1., 1. / 3])
         self.assertEqual([f['prior_factor'] for f in off['flavors']],
                          [2., 1., 3., 1., 1.])
-
-    def test_initial_sum_groups_by_initial_state(self):
-        meta = self.module.with_prior_factors(self.meta, True)
-        summed = self.module.lc_flavors(meta, 'initial_sum')
-        self.assertEqual([f['sum_members'] for f in summed['flavors']],
-                         [[0], [1, 2, 3], [4]])
-        self.assertEqual([f['factor'] for f in summed['flavors']], [2., 5., 1.])
-        self.assertEqual([f['prior_factor'] for f in summed['flavors']],
-                         [2., 3., 1. / 3])
-        self.assertIs(summed['summed_flavors'], meta['flavors'])
 
     def test_two_lines_drops_three_quark_lines(self):
         flavors = self.meta['flavors'] + [{

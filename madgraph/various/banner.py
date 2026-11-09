@@ -7569,9 +7569,9 @@ class RunCardMG7(RunCard):
             comment="divide each flavour's sampling prior by its number of "
                     "phase-space channels, its expected share in each")
         self.add_toml_param('amplicol', 'lc_flavors', "all",
-            allowed=["all", "initial_sum", "two_lines"],
-            comment="flavours at leading colour: all sampled, summed per initial state, "
-                    "or those with at most two quark lines")
+            allowed=["all", "two_lines"],
+            comment="flavours at leading colour: all, or those with at most two "
+                    "quark lines")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,

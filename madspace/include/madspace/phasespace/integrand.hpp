@@ -291,13 +291,6 @@ public:
     /// Constant factors of the flavours' sampling priors, in place of the flavour
     /// factors (which still weight the events).
     void set_flavor_prior_factors(const std::vector<double>& factors);
-    /// Proof of concept: each sampled flavour stands for a group of member flavours
-    /// whose matrix elements are summed. members: per group, the member indices.
-    void set_flavor_sum(
-        const nested_vector2<me_int_t>& members,
-        const std::vector<me_int_t>& member_me_indices,
-        const std::vector<double>& member_factors
-    );
 
 private:
     NamedVector<Value> build_function_impl(
@@ -382,11 +375,6 @@ private:
     std::vector<double> _flavor_factors;
     std::vector<double> _flavor_mirror_factors;
     std::vector<double> _flavor_prior_factors;
-    // flavour sum: per slot, the member of each group and whether it exists
-    std::vector<std::vector<me_int_t>> _sum_member_cols;
-    std::vector<std::vector<double>> _sum_valid_cols;
-    std::vector<me_int_t> _sum_me_indices;
-    std::vector<double> _sum_factors;
     bool _has_mirror;
     NamedVector<Type> _channel_part_ret_types;
     std::vector<me_int_t> _flavor_diff_xs_indices;

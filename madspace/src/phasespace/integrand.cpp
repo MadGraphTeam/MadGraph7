@@ -1274,15 +1274,7 @@ NamedVector<Value> Integrand::build_common_part(
         channel_count > 1 && channel_count * 8 > _compressed_channel_weight_count * 12;
     Value chan_weights_acc;
     Value mapping_diagram_acc;
-    bool flavor_sum = !_sum_member_cols.empty();
-    if (flavor_sum &&
-        (channel_count > 1 ||
-         (_mapping_chan_weights && _mapping_chan_weights->has_diagrams()))) {
-        throw std::logic_error(
-            "Integrand: the flavour sum needs a single channel without diagrams"
-        );
-    }
-    if (_mapping_chan_weights && !flavor_sum &&
+    if (_mapping_chan_weights &&
         (channel_count > 1 || _mapping_chan_weights->has_diagrams() ||
          _mapping_chan_weights->has_partners())) {
         ValueVec cw_args{momenta_acc, x1_acc, x2_acc, flavor_id};
@@ -1378,81 +1370,7 @@ NamedVector<Value> Integrand::build_common_part(
     Value ps_flavor_id;
     Value subproc_id;
     Value dxs_index;
-    if (flavor_sum) {
-        // every slot of the group in one batch, summed and one member picked
-        // in proportion to its contribution for the event
-        std::size_t slots = _sum_member_cols.size();
-        ValueVec member_parts, valid_parts;
-        for (std::size_t k = 0; k < slots; ++k) {
-            member_parts.push_back(fb.gather_int(flavor_id, _sum_member_cols[k]));
-            valid_parts.push_back(fb.gather(flavor_id, _sum_valid_cols[k]));
-        }
-        auto [member_all, counts] = fb.batch_cat(member_parts);
-        Value valid_all = fb.batch_cat(valid_parts).at(0);
-        auto repeat = [&](Value value) {
-            return fb.batch_cat(ValueVec(slots, value)).at(0);
-        };
-        Value me_flavor_all = fb.gather_int(member_all, _sum_me_indices);
-        ValueVec sum_args;
-        for (auto input : me_first.external_inputs()) {
-            if (input == MatrixElement::momenta_in) {
-                sum_args.push_back(repeat(momenta_acc));
-            } else if (input == MatrixElement::flavor_in) {
-                sum_args.push_back(me_flavor_all);
-            }
-        }
-        for (std::size_t i = sum_args.size(); i < xs_args.size(); ++i) {
-            sum_args.push_back(repeat(xs_args.at(i)));
-        }
-        ValueVec dxs_all = _diff_xs.at(0).build_function(fb, sum_args).values();
-        Value contribution = fb.mul(
-            fb.mul(dxs_all.at(0), fb.gather(member_all, _sum_factors)), valid_all
-        );
-        if (_mapping_chan_weights && _mapping_chan_weights->has_partners()) {
-            ValueVec cw_args{
-                repeat(momenta_acc), repeat(x1_acc), repeat(x2_acc), member_all
-            };
-            if (_mapping_chan_weights->mirror_beams()) {
-                cw_args.push_back(repeat(args.at("mirror_index_acc")));
-            }
-            auto shares = _mapping_chan_weights->build_function(fb, cw_args).at(0);
-            contribution = fb.mul(contribution, fb.unstack(shares).at(0));
-        }
-        ValueVec slot_values = fb.batch_split(contribution, counts);
-        Value total = slot_values.at(0);
-        for (std::size_t k = 1; k < slots; ++k) {
-            total = fb.add(total, slot_values.at(k));
-        }
-        // a slot that cannot be zero keeps the choice defined
-        slot_values.at(0) =
-            fb.add(slot_values.at(0), fb.full({1e-300, fb.batch_size({momenta_acc})}));
-        auto [chosen, chosen_det] = fb.sample_discrete_probs(
-            fb.squeeze(fb.random(fb.batch_size({momenta_acc}), 1)),
-            fb.stack(slot_values)
-        );
-        ValueVec chosen_indices =
-            fb.batch_split_by_index(chosen, static_cast<me_int_t>(slots));
-        auto pick = [&](Value value_all) {
-            ValueVec parts;
-            for (auto [value, indices] :
-                 zip(fb.batch_split(value_all, counts), chosen_indices)) {
-                parts.push_back(fb.batch_gather(indices, value));
-                parts.push_back(indices);
-            }
-            return fb.batch_merge_by_index(parts);
-        };
-        for (std::size_t i = 0; i < dxs_all.size(); ++i) {
-            if (i == 0) {
-                dxs_vec.push_back(total);
-            } else if (std::cmp_equal(i, amp2_index)) {
-                dxs_vec.push_back(Value());
-            } else {
-                dxs_vec.push_back(pick(dxs_all.at(i)));
-            }
-        }
-        me_flavor_id = pick(me_flavor_all);
-        ps_flavor_id = flavor_id;
-    } else if (_diff_xs.size() == 1) {
+    if (_diff_xs.size() == 1) {
         dxs_vec = _diff_xs.at(0).build_function(fb, xs_args).values();
         ps_flavor_id = flavor_id;
         if (channel_count > 1 && !_prop_chan_weights && !_mapping_chan_weights) {
@@ -1594,7 +1512,7 @@ NamedVector<Value> Integrand::build_common_part(
     }
 
     auto diff_xs_acc = dxs_vec.at(0);
-    if (_flavor_factors.size() > 0 && !flavor_sum) {
+    if (_flavor_factors.size() > 0) {
         diff_xs_acc = has_multi_flavor
             ? fb.mul(diff_xs_acc, fb.gather(flavor_id, _flavor_factors))
             : fb.mul(diff_xs_acc, _flavor_factors.at(0));
@@ -1648,7 +1566,7 @@ NamedVector<Value> Integrand::build_common_part(
     if (channel_count > 1 && !_madnis_training) {
         Value chan_index_acc = fb.batch_gather(indices_acc, args.at("chan_index"));
         weights_after_cuts.push_back(fb.gather(chan_index_acc, chan_weights_acc));
-    } else if (channel_count == 1 && _mapping_chan_weights && !flavor_sum &&
+    } else if (channel_count == 1 && _mapping_chan_weights &&
                _mapping_chan_weights->has_partners()) {
         // the share of the contribution this integrand samples, the partners
         // sampling the rest: part of the integrand, also in training
@@ -1886,38 +1804,6 @@ void Integrand::set_flavor_prior_factors(const std::vector<double>& factors) {
         throw std::invalid_argument("set_flavor_prior_factors: one factor per flavour");
     }
     _flavor_prior_factors = factors;
-}
-
-void Integrand::set_flavor_sum(
-    const nested_vector2<me_int_t>& members,
-    const std::vector<me_int_t>& member_me_indices,
-    const std::vector<double>& member_factors
-) {
-    if (members.size() != _pid_options.size()) {
-        throw std::invalid_argument("set_flavor_sum: one member list per flavour");
-    }
-    if (member_me_indices.size() != member_factors.size()) {
-        throw std::invalid_argument("set_flavor_sum: member tables differ in size");
-    }
-    std::size_t slots = 0;
-    for (auto& group : members) {
-        if (group.empty()) {
-            throw std::invalid_argument("set_flavor_sum: empty member list");
-        }
-        slots = std::max(slots, group.size());
-    }
-    _sum_member_cols.assign(slots, std::vector<me_int_t>(members.size()));
-    _sum_valid_cols.assign(slots, std::vector<double>(members.size()));
-    for (std::size_t g = 0; g < members.size(); ++g) {
-        for (std::size_t k = 0; k < slots; ++k) {
-            bool valid = k < members[g].size();
-            // padded slots evaluate the first member with weight zero
-            _sum_member_cols[k][g] = members[g].at(valid ? k : 0);
-            _sum_valid_cols[k][g] = valid ? 1. : 0.;
-        }
-    }
-    _sum_me_indices = member_me_indices;
-    _sum_factors = member_factors;
 }
 
 IntegrandChannelPart::IntegrandChannelPart(const Integrand& integrand) :

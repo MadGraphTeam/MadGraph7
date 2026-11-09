@@ -2750,14 +2750,6 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("factors"),
             pydoc::doc("Integrand::set_flavor_prior_factors")
         )
-        .def(
-            "set_flavor_sum",
-            &Integrand::set_flavor_sum,
-            py::arg("members"),
-            py::arg("member_me_indices"),
-            py::arg("member_factors"),
-            pydoc::doc("Integrand::set_flavor_sum")
-        )
         .def_readonly_static(
             "matrix_element_inputs",
             &Integrand::matrix_element_inputs,

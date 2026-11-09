@@ -203,35 +203,15 @@ def with_prior_factors(meta: dict, partner_share: bool) -> dict:
 
 
 def lc_flavors(meta: dict, mode: str) -> dict:
-    """Proof of concept for the flavours of the leading-colour pass: all of
-    them sampled, those of an initial state (and orientation) summed into one
-    flavour (initial_sum), or only those with at most two quark lines
-    (two_lines, the others neglected without a correction)."""
+    """The flavours of the leading-colour pass: all of them, or only those with
+    at most two quark lines (two_lines, the others neglected)."""
     flavors = meta["flavors"]
     if mode == "all":
         return meta
-    if mode == "two_lines":
-        kept = [f for f in flavors if quark_lines(f["options"][0]) <= 2]
-        if not kept:
-            raise RuntimeError("lc_flavors = two_lines leaves no flavour")
-        return {**meta, "flavors": kept}
-    groups = {}
-    for i, flavor in enumerate(flavors):
-        key = (tuple(flavor["options"][0][:2]), flavor["mirror"])
-        groups.setdefault(key, []).append(i)
-    summed = [
-        {
-            **flavors[members[0]],
-            # the prior follows the summed factors
-            "factor": sum(
-                flavors[i].get("factor", len(flavors[i]["options"])) for i in members
-            ),
-            "prior_factor": sum(flavors[i].get("prior_factor", 1.) for i in members),
-            "sum_members": members,
-        }
-        for members in groups.values()
-    ]
-    return {**meta, "flavors": summed, "summed_flavors": flavors}
+    kept = [f for f in flavors if quark_lines(f["options"][0]) <= 2]
+    if not kept:
+        raise RuntimeError(f"lc_flavors = {mode} leaves no flavour")
+    return {**meta, "flavors": kept}
 
 
 def lhe_diagrams(meta: dict) -> tuple[list[tuple[int, tuple]], list[list[float]]]:
@@ -392,8 +372,6 @@ class AmplicolSubprocess(MadgraphSubprocess):
         phase-space channels, which are sampled by the subprocesses of the
         flavour's copies."""
         flavors = self.meta["flavors"]
-        # under initial_sum the channel weights follow each summed flavour
-        mask_flavors = self.meta.get("summed_flavors", flavors)
         particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
         mappings = []
         for topology, color_order, _ in channel_topologies(self.meta, self.process):
@@ -409,7 +387,7 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 beam_rapidity=self.process.beam_rapidity,
                 mirror_beams=self.mirror_beams,
             ))
-        if any(flavor["channels"][0] != 0 for flavor in mask_flavors):
+        if any(flavor["channels"][0] != 0 for flavor in flavors):
             raise RuntimeError(
                 "the [amplicol] flavours of a subprocess must sample its first "
                 "phase-space channel: regenerate the output"
@@ -432,7 +410,7 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 mappings[:1],
                 [
                     [float(index in flavor["channels"]) for index in range(len(mappings))]
-                    for flavor in mask_flavors
+                    for flavor in flavors
                 ],
                 [channel for channel, _ in diagrams],
                 diagram_masks,
@@ -447,17 +425,10 @@ class AmplicolSubprocess(MadgraphSubprocess):
 
     def build_integrands(self, *args, **kwargs) -> list:
         integrands = super().build_integrands(*args, **kwargs)
-        members = self.meta.get("summed_flavors")
         for integrand in integrands:
             if len(self.meta["flavors"]) > 1:
                 integrand.set_flavor_prior_factors(
                     [flavor["prior_factor"] for flavor in self.meta["flavors"]]
-                )
-            if members is not None:
-                integrand.set_flavor_sum(
-                    [flavor["sum_members"] for flavor in self.meta["flavors"]],
-                    [member["index"] for member in members],
-                    [member.get("factor", len(member["options"])) for member in members],
                 )
         return integrands
 
