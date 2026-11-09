@@ -356,9 +356,13 @@ def test_lit_json_is_keyed_by_the_registry_and_read_by_the_report(entries, tmp_p
     assert "TIRust fails 2 of 3 binary64 points closed" in row["note"]
     assert out["rows"]["gg_zz"]["status"] == "not run"
     assert "LI-24" in out["ids"] and "LI-A7" in out["ids"]
-    # a §4.1 check not run (SPEC unrun_checks) makes its id and rows partial
-    assert out["ids"]["LI-24"]["status"] == "partial"
-    assert "LI-24 lambda_hhh scan: not run" in row["note"]
+    # a §4.1 check a user ruling makes not applicable (SPEC
+    # not_applicable_checks: LI-24's lambda_hhh scan, USER 2026-11-09 ~08:42)
+    # is recorded with the ruling and leaves the status to the other checks
+    assert out["ids"]["LI-24"]["status"] == row["status"]
+    assert out["ids"]["LI-24"]["not_applicable"] == lm.NOT_APPLICABLE["LI-24"]
+    assert "not_run" not in out["ids"]["LI-24"]
+    assert "LI-24 lambda_hhh scan: not applicable (USER 2026-11-09 ~08:42)" in row["note"]
     # each run's checks once: an id's run a registry row carries names it
     assert out["ids"]["LI-24"]["runs"]["li_gg_hh"] == {
         "status": row["status"],
@@ -1283,7 +1287,7 @@ def test_fabc_check_needs_the_run_within_and_the_control_beyond(monkeypatch, tmp
     within its bounds at every point and carrier, the control's beyond them
     somewhere; a run beyond, or a control that never shows an f^abc part,
     fails; the spec names the runs; LI-24's lambda_hhh scan is recorded not
-    run with its reason."""
+    applicable with the user's ruling (USER 2026-11-09 ~08:42)."""
 
     def fake(asymmetry):
         return {
@@ -1300,4 +1304,5 @@ def test_fabc_check_needs_the_run_within_and_the_control_beyond(monkeypatch, tmp
     assert lm.fabc_check(tmp_path, check)["status"] == "fail"
     values.update(li_gg_ag=1e-12, li_gg_zg=1e-12)
     assert lm.fabc_check(tmp_path, check)["status"] == "fail"
-    assert "lambda_hhh scan" in lm.UNRUN["LI-24"]
+    assert "lambda_hhh scan" in lm.NOT_APPLICABLE["LI-24"]
+    assert "LI-24" not in lm.UNRUN
