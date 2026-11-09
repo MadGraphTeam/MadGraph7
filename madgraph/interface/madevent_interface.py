@@ -4688,6 +4688,13 @@ already exists and is not a fifo file."""%fifo_path)
             # Also make sure to use the shower starting scales specified in the LHE
             # unless the user specified it
             PY8_Card.systemSet('Beams:setProductionScalesFromLHEF',True)
+            # Pythia8 then starts the initial-state shower from the largest
+            # pt_clust. Without this, a sample with no light parton in the final
+            # state (0 jets) radiates up to the kinematic limit regardless. The
+            # mg7 output writes the event's hardest scale for the non-jet
+            # particles (beam.mlm_shower_start), so its shower starts there;
+            # madevent writes sqrt(s) for them, where this changes nothing.
+            PY8_Card.MadGraphSet('SpaceShower:pTmaxMatch', 1)
 
 
             if PY8_Card['SysCalc:qCutList']!='auto':
@@ -4741,6 +4748,15 @@ already exists and is not a fifo file."""%fifo_path)
                     " specify the option 'Merging:Process' in pythia8_card.dat.\n"+
                     "Read section 'Defining the hard process' of "+\
                     "http://home.thep.lu.se/~torbjorn/pythia81html/CKKWLMerging.html for more information.")
+
+            # Since Pythia8 8.318, main164 loads its merging hook as a plugin with
+            # a readString after reading the card. Pythia8 ignores that readString
+            # for a card with 'Main:subrun' lines, as ours always has: without
+            # the hook, 'Merging:Process = guess' crashes and UMEPS/UNLOPS lose
+            # their subtractive samples. Load the hook from the card instead.
+            merging_plugin = misc.get_pythia8_merging_plugin(self.options['pythia8_path'])
+            if merging_plugin:
+                PY8_Card.add_plugin(merging_plugin)
 
             # When running CKKWL make sure that we do not write out the parameter
             # JetMatching:xxx as this can interfere with the MLM merging in older
@@ -6641,10 +6657,12 @@ tar -czf split_$1.tar.gz split_$1
             self.make_opts_var['pdlabel1'] = 'eva'
         if self.run_card['pdlabel2'] in ['eva', 'iww']:
             self.make_opts_var['pdlabel2'] = 'eva'
-        if self.run_card['pdlabel1'] in ['edff','chff']:
+        if banner_mod.is_upc_label(self.run_card['pdlabel1']):
             self.make_opts_var['pdlabel1'] = self.run_card['pdlabel1']
-        if self.run_card['pdlabel2'] in ['edff','chff']:
+        if banner_mod.is_upc_label(self.run_card['pdlabel2']):
             self.make_opts_var['pdlabel2'] = self.run_card['pdlabel2']
+        # also in RunCard.check_validity (only a warning on some read paths): stop before compiling
+        banner_mod.check_upc_neutron_tagging(self.run_card, self.run_card['pdlabel1'])
 
 
         # set  lhapdf.

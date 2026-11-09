@@ -1,8 +1,6 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/source/_static/logo-wide-dark.png">
-    <img src="docs/source/_static/logo-wide-light.png" width="450" alt="MadGraph7">
-  </picture>
+  <img src="docs/source/_static/logo-wide-light.png#gh-light-mode-only" width="450" alt="MadGraph7">
+  <img src="docs/source/_static/logo-wide-dark.png#gh-dark-mode-only" width="450" alt="MadGraph7">
 </p>
 
 MadGraph7 is the next major release of the MadGraph event generator. Its new features
@@ -16,7 +14,9 @@ This is an **alpha release**, meant for testing and feedback, **not for producti
 The MadGraph7 workflow currently covers leading-order event generation. The LO
 workflow from MG5_aMC@NLO is still reachable through the `output madevent` mode.
 The NLO workflow is also available (with only minor updates).
-AmpliCol mode is not included in this release.
+The AmpliCol backend is available for the MG7 output: `generate p p > j j j [amplicol]`
+takes the matrix elements from AmpliCol instead of Feynman diagrams (see below for its
+installation).
 
 If you need a stable release, use
 [MadGraph5_aMC@NLO](https://github.com/mg5amcnlo/mg5amcnlo) (also on

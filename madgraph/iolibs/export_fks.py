@@ -933,6 +933,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             perturbation_order.append('QCD')
         self.proc_characteristic['perturbation_order'] = perturbation_order 
         self.set_real_channels_default()
+        self.set_me_frame_characteristics()
 
         self.create_proc_charac()
 
@@ -2083,6 +2084,28 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                         'default: %d hard channels (more than %d).'
                         % (n_hard_channels,
                            fks_real_channels_auto.MAX_HARD_CHANNELS))
+
+    def set_me_frame_characteristics(self):
+        """Record the default me_frame of the run_card, what me_frame = [1, 2]
+        means for these processes at NLO, and which legs may not enter an
+        me_frame once real emission is computed
+        (fks_common.me_frame_characteristics). RunCardNLO uses the first for
+        its default and resolves the run_card against all three at launch."""
+        cm_legs, unsafe_legs, default_legs = \
+            fks_common.me_frame_characteristics(
+                getattr(self, 'proc_defs', None) or [],
+                density=self.proc_characteristic['density_matrix'],
+                splitting_types=self.proc_characteristic['splitting_types']
+                                or ['QCD'])
+        self.proc_characteristic['me_frame_cm_legs'] = cm_legs
+        self.proc_characteristic['me_frame_unsafe_legs'] = unsafe_legs
+        self.proc_characteristic['me_frame_default_legs'] = default_legs
+        if default_legs:
+            logger.info(
+                'Polarised NLO: the default me_frame is %s, the rest frame of '
+                'the massive final-state particles. The partonic c.m. [1, 2] '
+                'is not infrared safe once the initial state radiates.'
+                % default_legs)
 
     def write_real_channels_file(self, writer, matrix_element):
         """Write compact hard-channel IDs without a Born-channel factor."""
@@ -4820,13 +4843,13 @@ Parameters              %(params)s\n\
             if 22 in initial_states[0] and 22 in initial_states[1]:
                 if subproc_group:
                     pdf_lines = pdf_lines + \
-                        "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                        "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))THEN\n"
                     pdf_lines = pdf_lines + \
                         ("%s%d=PHOTONPDFSQUARE(XBK(IB(1)),XBK(IB(2)))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
                         (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)
                 else:
                     pdf_lines = pdf_lines + \
-                        "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                        "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))THEN\n"
                     pdf_lines = pdf_lines + \
                         ("%s%d=PHOTONPDFSQUARE(XBK(1),XBK(2))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
                         (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)

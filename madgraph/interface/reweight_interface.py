@@ -58,6 +58,14 @@ cmd_logger = logging.getLogger('cmdprint2') # -> print
 dir_to_f2py_free_mod = {}
 nb_f2py_module = 0 # each time the process/model is changed this number is modified to 
                # forced the python module to re-create an executable
+# names (output directory name + suffix, e.g. rw_me, rw_me_r2) under which a
+# reweighting f2py module and its shared library were imported in this python
+# process. Nothing loaded can be unloaded: the dynamic loader resolves a
+# library by its install name/SONAME to the one already loaded, whichever
+# directory it comes from (e.g. the rw_me of a previous reweighting in the same
+# session, or of another sample). A new build must therefore use a name that is
+# not in here (see get_f2py_suffix), or it gets the previous matrix elements.
+loaded_f2py_names = set()
 
 #lhapdf = None
 
@@ -148,6 +156,9 @@ class ReweightInterface(extended_cmd.Cmd):
         self._beampol_set = {} # id(module) -> value its /to_beampol/ holds
         self._spin_cache = {}
         self._pickled_spins = {} # pdg -> spin, from rwgt.pkl (see save_to_pickle)
+        # output directory name (rw_me, rw_mevirt, ...) -> suffix of the names
+        # its f2py modules and library were built with ('' = default names)
+        self.f2py_suffix = {}
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
@@ -2157,8 +2168,12 @@ class ReweightInterface(extended_cmd.Cmd):
             if not self.use_eventid:
                 pid = -1
             
-            if not scale2: 
-                if hasattr(event, 'scale'):
+            if not scale2:
+                # mu_R: the mur of the <scales> tag when the event has one
+                # (mg7), else SCALUP, which holds mu_F
+                if hasattr(event, 'get_ren_scale'):
+                    scale2 = event.get_ren_scale()**2
+                elif hasattr(event, 'scale'):
                     scale2 = event.scale**2
                 else:
                     scale2 = 0
@@ -2250,26 +2265,37 @@ class ReweightInterface(extended_cmd.Cmd):
         element's leg order) in the rest frame of the legs ``selected``
         (counted from 1), a single one exactly at rest.
 
-        madevent applies that boost to momenta that are in the partonic CM
-        frame -- genps.f builds them there and unwgt.f boosts them to the lab
-        only when it writes the event -- so the event is first taken back to
-        the rest frame of its initial state (the z boost the default frame
-        does below). Boosting to the selected legs straight from the lab is
-        not the same frame: two boosts along different directions compose to
-        a boost *and* a rotation (Wigner), and the quantisation axis of a
-        single leg at rest turns with it -- by 25 degrees already for a W of
-        pT = 100 GeV in a partonic CM at rapidity 1. Only a frame that
-        is the partonic CM itself (e.g. the whole final state) is unaffected.
+        For a collision that frame is reached by a boost along z, to zero
+        rapidity of the selected legs, and then a transverse one
+        (get_me_frame_boosts in Template/Common/Source/impose_frame_rest.f),
+        which lands in the same frame whichever frame along the beam it
+        starts from -- the lab here, the partonic CM in madevent. A single
+        boost from either would not: two boosts along different directions
+        compose to a boost *and* a rotation (Wigner), and the quantisation
+        axis of a single leg at rest turns with it -- by 25 degrees already
+        for a W of pT = 100 GeV in a partonic CM at rapidity 1. A decay has
+        no beam: its frame is a single boost from the rest frame of the
+        decaying particle, the frame madevent works in.
         """
-        pinit = lhe_parser.FourMomentum()
-        for i in range(nb_initial):
-            pinit += lhe_parser.FourMomentum(momenta[i])
-        cm = cls.boost_momenta_to_rest_frame(momenta, pinit)
+        rest_leg = selected[0] - 1 if len(selected) == 1 else None
+        if nb_initial != 2:
+            pinit = lhe_parser.FourMomentum()
+            for i in range(nb_initial):
+                pinit += lhe_parser.FourMomentum(momenta[i])
+            rest = cls.boost_momenta_to_rest_frame(momenta, pinit)
+            pboost = lhe_parser.FourMomentum()
+            for n in selected:
+                pboost += lhe_parser.FourMomentum(rest[n - 1])
+            return cls.boost_momenta_to_rest_frame(rest, pboost, rest_leg)
         pboost = lhe_parser.FourMomentum()
         for n in selected:
-            pboost += lhe_parser.FourMomentum(cm[n - 1])
-        rest_leg = selected[0] - 1 if len(selected) == 1 else None
-        return cls.boost_momenta_to_rest_frame(cm, pboost, rest_leg)
+            pboost += lhe_parser.FourMomentum(momenta[n - 1])
+        along_z = cls.boost_momenta_to_rest_frame(
+            momenta, lhe_parser.FourMomentum(pboost.E, 0., 0., pboost.pz))
+        transverse = lhe_parser.FourMomentum(
+            math.sqrt((pboost.E - pboost.pz) * (pboost.E + pboost.pz)),
+            pboost.px, pboost.py, 0.)
+        return cls.boost_momenta_to_rest_frame(along_z, transverse, rest_leg)
 
     def get_me_frame(self, n_incoming, n_external):
         """The legs -- counted from 1, in the matrix element's order -- whose
@@ -2926,11 +2952,26 @@ class ReweightInterface(extended_cmd.Cmd):
                 if not os.path.isdir(pjoin(path_me,onedir)):
                     continue
                 pdir = pjoin(path_me, onedir, 'SubProcesses')
-                self.compile_SubProcess_dir(pdir)
+                self.f2py_suffix[onedir] = self.get_f2py_suffix(pdir)
+                self.compile_SubProcess_dir(pdir, self.f2py_suffix[onedir])
 
+    @staticmethod
+    def get_f2py_suffix(Sdir):
+        """suffix for the names of the f2py modules/library built in Sdir:
+        '' (the default names) unless that name was already imported in this
+        process, from this or any other directory (see loaded_f2py_names).
+        """
+        name = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        suffix = ''
+        i = 1
+        while name + suffix in loaded_f2py_names:
+            i += 1
+            suffix = '_r%i' % i
+        return suffix
 
-    def compile_SubProcess_dir(self, Sdir):
-        """compile a full Subprocess directory"""
+    def compile_SubProcess_dir(self, Sdir, suffix=''):
+        """compile a full Subprocess directory. A non-empty suffix is appended
+        to the names of the f2py modules and of their shared library."""
 
         if self.mother:
             nb_core = self.mother.options['nb_core'] if self.mother.options['run_mode'] !=0 else 1
@@ -2941,20 +2982,25 @@ class ReweightInterface(extended_cmd.Cmd):
         # the loader hands the second f2py module the first library.
         # The leading '_' keeps it different from the liball<dir>_<N>me.so
         # name that load_module tries to preload with RTLD_GLOBAL.
-        procname = 'PROCNAME=_%s' % os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
-        os.environ['MENUM'] = '2'
-        try: 
-            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
-        except Exception as e:
-            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=1)
-
-        if not (self.second_model or self.second_process or self.dedicated_path):
-            os.environ['MENUM'] = '3'
+        # A rebuild of a name already loaded in this process (suffix) also
+        # renames the f2py module, and for the loop output (rw_mevirt, whose
+        # makefile names its library after ROOTNAME) the library too.
+        dirname = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        names = ['PROCNAME=_%s%s' % (dirname, suffix)]
+        if suffix:
+            names.append('ROOTNAME=%s%s' % (dirname, suffix))
+        for menum in ['2', '3']:
+            if menum == '3' and (self.second_model or self.second_process or self.dedicated_path):
+                break
+            os.environ['MENUM'] = menum
+            args = names + ['all_matrix%spy.so' % menum]
+            if suffix:
+                args.insert(-1, 'F2PYMOD=all_matrix%spy%s' % (menum, suffix))
             try:
-                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
+                misc.compile(args, cwd=Sdir, nb_core=nb_core)
             except Exception as e:
-                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=1)
-                
+                misc.compile(args, cwd=Sdir, nb_core=1)
+
 
     def load_module(self, metag=1):
         """load the various module and load the associate information"""
@@ -2992,23 +3038,19 @@ class ReweightInterface(extended_cmd.Cmd):
                             except Exception as err:
                                 logger.debug('ctypes trick fail for module')
                             break
-                    mod_name = '%s.SubProcesses.all_matrix%spy' % (onedir, tag)
-                    #mymod = __import__('%s.SubProcesses.allmatrix%spy' % (onedir, tag), globals(), locals(), [],-1)
-                    if mod_name in list(sys.modules.keys()):
-                        del sys.modules[mod_name]
-                        tmp_mod_name = mod_name
-                        while '.' in tmp_mod_name:
-                            tmp_mod_name = tmp_mod_name.rsplit('.',1)[0]
-                            del sys.modules[tmp_mod_name]
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        mymod = importlib.reload(mymod)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    else:
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    
+                    suffix = self.f2py_suffix.get(onedir, '')
+                    mod_name = '%s.SubProcesses.all_matrix%spy%s' % (onedir, tag, suffix)
+                    # forget the module and its packages: the packages of a
+                    # previous reweighting may point to another rwgt_dir
+                    tmp_mod_name = mod_name
+                    while tmp_mod_name:
+                        sys.modules.pop(tmp_mod_name, None)
+                        tmp_mod_name = tmp_mod_name.rpartition('.')[0]
+                    import importlib
+                    importlib.invalidate_caches()
+                    mymod = importlib.import_module(mod_name)
+                    loaded_f2py_names.add(onedir + suffix)
+
                 if fprefix != '':
                     fprefix = 'f%i_' % fprefix
                     for attr in dir(mymod):
@@ -3227,6 +3269,7 @@ class ReweightInterface(extended_cmd.Cmd):
                 spins.update((pid, part.get('spin'))
                              for pid, part in model.get('particle_dict').items())
         to_save['spins'] = spins
+        to_save['f2py_suffix'] = self.f2py_suffix
 
         name = pjoin(self.rwgt_dir, 'rw_me', 'rwgt.pkl')
         save_load_object.save_to_file(name, to_save)
@@ -3277,6 +3320,7 @@ class ReweightInterface(extended_cmd.Cmd):
         self.has_nlo = obj['has_nlo']
         self.nb_library = obj['nb_library']
         self._pickled_spins = obj.get('spins') or {}
+        self.f2py_suffix = obj.get('f2py_suffix', {})
         if not self.rwgt_mode:
             self.rwgt_mode = obj['rwgt_mode']
             logger.info("mode set to %s" % self.rwgt_mode)
@@ -3543,8 +3587,8 @@ class DensityInterface(ReweightInterface):
         elif line[0] == 'False':
             self.matrix_normalisation = False
         else:
-            logger.warning('Option matrix_normalisation not understood, set it to True. Please use the syntax: change matrix_normalisation True if you want to enable it.')
-            self.matrix_normalisation = False
+            logger.warning('Option matrix_normalisation not understood, set it to True (the default). Please use the syntax: change matrix_normalisation False if you want to disable it.')
+            self.matrix_normalisation = True
 
 
     def do_change_particle_in_density_matrix(self, line):
@@ -3937,17 +3981,21 @@ class DensityInterface(ReweightInterface):
                     prefix = prefix_cor[k]
 
         get_density = lambda *args: module.py_get_density(pdg, *args)
+        # mu_R: the mur of the <scales> tag when the event has one (mg7), else
+        # SCALUP, which holds mu_F
+        ren_scale2 = (event.get_ren_scale() if hasattr(event, 'get_ren_scale')
+                      else event.scale)**2
         for i in range(len(all_p)):
             pinv = self.invert_momenta(all_p[i])
             # npdg = len(all_p[i]) #number of particles in the event
-            # the argument event.scale**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
+            # the argument mu_R**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
             production_matrix = get_density(-1, pinv, pos_corrected, #self.number_changing_helicities,
-                                            self.allowed_helicities, event.aqcd, event.scale**2)
+                                            self.allowed_helicities, event.aqcd, ren_scale2)
 
             if self.symmetrise_initial_state:
                 pinv_bis = self.invert_momenta(all_p_bis[i])
                 production_matrix_bis = get_density(-1, pinv_bis, pos_corrected, #self.number_changing_helicities,
-                                            self.allowed_helicities, event.aqcd, event.scale**2)
+                                            self.allowed_helicities, event.aqcd, ren_scale2)
                 
             if self.symmetrise_initial_state:
                 rho_instance = dens.DensityMatrixObservables(production_matrix + production_matrix_bis, self.number_combinations * (self.number_combinations + 1) / 2)
