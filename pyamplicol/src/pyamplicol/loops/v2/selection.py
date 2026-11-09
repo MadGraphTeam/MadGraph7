@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Leading-colour helicity and colour-flow selection of v2 virtuals (MQ-SELECT).
+"""Helicity and colour-flow selection of v2 virtuals (MQ-SELECT, lit-fc-hel).
 
 At leading colour the virtual is diagonal in the Born colour flows (design
 §7.5): sum over flows sigma and Born helicity rows h of
@@ -36,7 +36,11 @@ Born itself, so one that would drop it is refused
 output is the observable column of those rows and basis elements
 (``observables.Column``): its seeds and its Born, counterterm and field bras
 keep them only, so a complete set of selections sums to the inclusive value.
-Next-to-leading and full colour expose no selection.
+Next-to-leading and full colour (lit-fc-hel) select helicity rows only: the
+colour is contracted there (one resolved component per helicity row), so a
+selection keeps some Born helicity rows with every colour component of
+their Born (``require_colour_flows`` refuses colour flows); no
+generation-time selection there (``SliceRequest.selection`` is LC-only).
 
 A loaded (stored) process serves every evaluation-time selection with one
 column set, its selection template (``native_observables.SelectionTemplate``,
@@ -435,7 +439,8 @@ def request_flows(compiled: Any, request: Any, basis: Any) -> tuple[Flow, ...]:
 
 @dataclass(frozen=True)
 class Catalogue:
-    """The selectors of an LC v2 virtual: its Born helicity rows and flows."""
+    """The selectors of a v2 virtual: its Born helicity rows and (leading
+    colour only) its flows."""
 
     rows: tuple[rx.Row, ...]
     flows: tuple[Flow, ...]
@@ -503,28 +508,19 @@ class Catalogue:
 _ACCURACY_NAMES = {"nlc": "next-to-leading", "full": "full"}
 
 
-def require_leading_colour(
-    accuracy: str,
-    helicities: Iterable[str] | None,
-    color_flows: Iterable[str] | None,
-    *,
-    resolved: bool = False,
-) -> None:
-    """Helicity and colour-flow selection exists at leading colour only: NLC
-    and full colour keep their API (every helicity and colour contracted;
-    ``evaluate_resolved`` without selectors per helicity)."""
+def require_colour_flows(accuracy: str, color_flows: Iterable[str] | None) -> None:
+    """Helicity rows are selectable at every colour accuracy; colour flows
+    exist at leading colour only: NLC and full colour contract the colour
+    (one component per helicity row), so a colour-flow selection there is
+    refused (lit-fc-hel)."""
 
-    if (helicities or color_flows) and accuracy != "lc":
-        instead = (
-            "evaluate_resolved without selectors returns every helicity row"
-            if resolved
-            else "use evaluate_resolved for per-helicity outputs"
-        )
+    if color_flows and accuracy != "lc":
         raise CompatibilityError(
-            "v2 virtual runtimes evaluate every helicity and colour at "
-            f"{_ACCURACY_NAMES.get(accuracy, accuracy)} colour; helicity and "
-            "colour-flow selection is available at leading colour "
-            f"(color.accuracy='lc'); {instead}"
+            "v2 virtual runtimes contract the colour at "
+            f"{_ACCURACY_NAMES.get(accuracy, accuracy)} colour, which has no "
+            "colour flows to select; colour-flow selection is available at "
+            "leading colour (color.accuracy='lc'); helicities=... selects Born "
+            "helicity rows at every colour accuracy"
         )
 
 

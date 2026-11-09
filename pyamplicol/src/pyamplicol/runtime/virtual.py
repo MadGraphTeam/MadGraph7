@@ -1216,17 +1216,16 @@ class V2ObservablesRuntime:
         *,
         resolved: bool = False,
     ) -> None:
-        """Refuse a selection the process cannot serve: at NLC and full
-        colour every helicity and colour is contracted
-        (``selection.require_leading_colour``)."""
+        """Refuse a selection the process cannot serve: helicity rows are
+        selectable at every colour accuracy, colour flows at leading colour
+        only (NLC and full colour contract the colour,
+        ``selection.require_colour_flows``)."""
 
         from pyamplicol.loops.v2 import selection as lc
 
-        lc.require_leading_colour(
-            self._observables.slice.request.accuracy,
-            helicities,
-            color_flows,
-            resolved=resolved,
+        del helicities, resolved
+        lc.require_colour_flows(
+            self._observables.slice.request.accuracy, color_flows
         )
 
     def _resolution(self, color_resolution: str | None) -> tuple[Any, tuple[Any, ...]]:

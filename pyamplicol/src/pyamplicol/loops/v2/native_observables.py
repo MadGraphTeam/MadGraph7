@@ -994,6 +994,18 @@ def _merged_weights(lists: Sequence[Sequence[Sequence[Any]]]) -> list[list[Any]]
     ]
 
 
+def _basis_of(item: Mapping[str, Any]) -> int | None:
+    """A stored resolved column's colour component: its Born basis element
+    at leading colour, None (the contracted component) at NLC and full
+    colour (``observables.resolved_columns``)."""
+
+    basis = item["basis"]
+    if basis is None:
+        return None
+    (b,) = basis
+    return int(b)
+
+
 def selection_parts(observables: StoredObservableSlice, column: Any) -> _SelectionParts:
     """The column set of a leading-colour selection (``selection.column``:
     Born helicity rows and basis elements) of a loaded process, formed from
@@ -1021,7 +1033,7 @@ def selection_parts(observables: StoredObservableSlice, column: Any) -> _Selecti
 
     def chosen(item: Mapping[str, Any]) -> bool:
         (row,) = item["rows"]
-        (b,) = item["basis"]
+        b = _basis_of(item)
         return (rows is None or _row(row) in rows) and (basis is None or b in basis)
 
     kept = [k for k, item in enumerate(items) if chosen(item)]
@@ -1244,9 +1256,17 @@ class SelectionTemplate:
         # Per row: the seed-weight column of each (basis element, sector,
         # plan); rows with equal ones form a row class.
         weights: dict[int, dict[tuple[int, str, int], int]] = {}
+        # The resolved colour axis: the Born basis elements at leading
+        # colour, the one contracted component (None) at NLC and full colour.
+        found_axis = {_basis_of(item) for item in items}
+        if None in found_axis and found_axis != {None}:
+            raise ValueError("a resolved set mixes basis elements and contracted columns")
+        self.axis: tuple[int | None, ...] = (
+            (None,) if None in found_axis else tuple(range(self.basis))
+        )
         for k, item in enumerate(items):
             (row,) = item["rows"]
-            (b,) = item["basis"]
+            b = _basis_of(item)
             h = row_index[_row(row)]
             for label in sectors:
                 i = seed_column[k, label]
@@ -1315,7 +1335,7 @@ class SelectionTemplate:
         # seed weights, the components each seed class reads, the plan's
         # Born component count, and per family the seed classes its leaves
         # read (None: a forward or merged program, which reads every family).
-        self._basis_components: list[list[frozenset[int]]] = []
+        self._basis_components: list[dict[int | None, frozenset[int]]] = []
         self._class_components: list[list[frozenset[int]]] = []
         self._components: list[int] = []
         self._family_classes: list[list[frozenset[int]] | None] = []
@@ -1325,8 +1345,8 @@ class SelectionTemplate:
             plan = json.loads(plan_json)
             if seed_records is None:
                 seed_records, keys = plan["seed_classes"], plan["seeds"]
-            owner: dict[int, int] = {}
-            per_basis: list[set[int]] = [set() for _ in range(self.basis)]
+            owner: dict[int, int | None] = {}
+            per_basis: dict[int | None, set[int]] = {b: set() for b in self.axis}
             for (b, _label, q), w in (
                 item for h in range(every) for item in weights[h].items()
             ):
@@ -1342,7 +1362,9 @@ class SelectionTemplate:
                                 "masks its seeds by component"
                             )
                         per_basis[b].add(component)
-            self._basis_components.append([frozenset(c) for c in per_basis])
+            self._basis_components.append(
+                {b: frozenset(c) for b, c in per_basis.items()}
+            )
             class_columns = []
             reads = []
             for record in seed_records:
@@ -1409,7 +1431,7 @@ class SelectionTemplate:
         kept_rows = [
             h for h, row in enumerate(self.rows) if rows is None or row in rows
         ]
-        kept_basis = [b for b in range(self.basis) if basis is None or b in basis]
+        kept_basis = [b for b in self.axis if basis is None or b in basis]
         if not kept_rows or not kept_basis:
             raise ValueError("a selection keeps no resolved column")
         row_mask = (
@@ -1422,7 +1444,7 @@ class SelectionTemplate:
             for c, hs in enumerate(self.classes)
             if any(row_mask is None or row_mask[h] for h in hs)
         )
-        every = len(kept_basis) == self.basis
+        every = len(kept_basis) == len(self.axis)
         chosen = set(kept_basis)
         components, families = [], []
         for per_basis, reads, count, family_classes in zip(
