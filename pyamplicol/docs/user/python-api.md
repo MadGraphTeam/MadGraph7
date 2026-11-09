@@ -391,11 +391,14 @@ value for, the way the one-loop providers' most optimistic settings run
   `stability_threshold` and `relative_tolerance` 0): a lane fails only where
   a tested quantity is exactly zero or NaN, or where its box mu-expansion's
   conditioning bound refuses it. The bound is not a stability threshold and
-  stays active in every carrier: a lane whose predicted loss of digits
-  exceeds the carrier's precision minus 14 bits (near-planar 2 -> 3 points
-  with a rank-n numerator, e.g. g g > z z z with the event plane containing
-  the beam) fails `Unstable` (the generic engine: `CutFailed {
-  SingularParameter }`), with or without the setting.
+  stays active in every carrier: it flags a lane whose predicted loss of
+  digits exceeds the carrier's precision minus 14 bits (near-planar 2 -> 3
+  points with a rank-n numerator, e.g. g g > z z z with the event plane
+  containing the beam); the binary64 engine refuses a flagged lane
+  (`Unstable`) when the first-order rounding estimate of its boxes'
+  mu-expansion terms exceeds 2^-17 of the lane's value, the generic engine
+  (double-double, arbitrary precision) refuses every flagged lane
+  (`CutFailed { SingularParameter }`), with or without the setting.
 * The **residual failures**, which no scheme gives a finite value for, stay
   failed points with their reasons: an exactly singular pivot (TIRust, after
   its affine-relation variants), a non-finite output (TIRust's "nonfinite
