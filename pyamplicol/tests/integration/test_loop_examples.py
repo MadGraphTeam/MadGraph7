@@ -12,10 +12,10 @@ The test decides on the capability: with a native extension built without
 TIRust, 'auto' serves a loop-induced example on NinjaRS (its reason
 recorded) and an explicit 'tirust' arm prints its typed refusal.
 
-``check`` of example 2 (u u~ > d d~ e+ e-, every order) fails its pole check
-in the QCD^2 QED^8 and QED^10 sectors (the UV poles of the e^6 loop do not
-cancel there): a finding of the lit-examples report (§0), kept visible as a
-strict expected failure until it is resolved.
+Every example passes ``check`` (exit 0). Example 2 (u u~ > d d~ e+ e-, every
+order, complex-mass scheme) is also compared with Recola 2.3.0 on the
+walkthrough's own artifact (``tests/fixtures/loop/uux-ddxepem-recola-cms.json``):
+the Born per order, both poles of every sector and the finite parts.
 """
 
 from __future__ import annotations
@@ -36,13 +36,7 @@ EXAMPLES = ("loop_uux_ttxgg", "loop_uux_ddxepem", "loop_gg_zgg", "loop_gg_epemmp
 LOOP_INDUCED = {"loop_gg_zgg", "loop_gg_epemmpmm"}
 # Born-interfered examples with a leading-colour variant (helicity selection).
 LC_VARIANTS = {"loop_uux_ttxgg": "loop_uux_ttxgg_lc_generate.toml"}
-CHECK_FINDINGS = {
-    "loop_uux_ddxepem": (
-        "lit-examples report §0: the pole check of u u~ > d d~ e+ e- fails in "
-        "the QCD^2 QED^8 and QED^10 sectors (binary64 and double-double; the "
-        "renormalised UV poles do not cancel there)"
-    )
-}
+RECOLA = ROOT / "tests" / "fixtures" / "loop" / "uux-ddxepem-recola-cms.json"
 STEPS = (
     "=== 1. pyamplicol check of the card",
     "=== 2. Generation",
@@ -171,11 +165,9 @@ def _tirust() -> bool:
 def test_the_example_runs_end_to_end(walkthrough, name):
     found = walkthrough(name)
     output = found.stdout
-    # The walkthrough exits with its check's exit code (0 unless the check
-    # finds a failure: example 2's recorded finding, CHECK_FINDINGS).
-    allowed = (0, 1) if name in CHECK_FINDINGS else (0,)
-    assert found.returncode in allowed, found.stderr[-4000:]
-    assert f"check exit code {found.returncode}" in output, output[-4000:]
+    # The walkthrough exits with its check's exit code.
+    assert found.returncode == 0, found.stderr[-4000:]
+    assert "check exit code 0" in output, output[-4000:]
     for step in STEPS:
         assert step in output, (step, output[-4000:], found.stderr[-4000:])
     # Both settings of the per-stage profile.
@@ -204,18 +196,99 @@ def test_the_example_runs_end_to_end(walkthrough, name):
         assert "exists at leading colour only" in output
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        pytest.param(
-            name,
-            marks=pytest.mark.xfail(strict=True, reason=CHECK_FINDINGS[name]),
-        )
-        if name in CHECK_FINDINGS
-        else name
-        for name in EXAMPLES
-    ],
-)
+@pytest.mark.parametrize("name", EXAMPLES)
 def test_the_example_passes_check(walkthrough, name):
     output = walkthrough(name).stdout
     assert "check exit code 0" in output, output[-6000:]
+
+
+_RECOLA_EVALUATION = """
+import json, sys
+from pyamplicol import Runtime
+from pyamplicol.api import VirtualStabilityChecks
+from pyamplicol.loops.v2.stability import RESCUE_TARGET
+artifact, points, scales = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])
+def name(order):
+    return " ".join(f"{k}^{v}" for k, v in order if v)
+checks = VirtualStabilityChecks(1, True, rescaled=True)
+result = Runtime.load(artifact).evaluate(points, mu_r2=scales, stability_checks=checks)
+print(json.dumps({"target": float(RESCUE_TARGET), "rows": [
+    {
+        "born": {
+            name(order): complex(value).real
+            for order, value in zip(result.born_orders, result.born_values[i])
+        },
+        "virtual": {
+            name(s.order): [complex(x).real for x in result.values[i][j]]
+            for j, s in enumerate(result.sectors)
+        },
+        "estimate": {
+            name(s.order): [float(x) for x in result.stability[i].absolute[j]]
+            for j, s in enumerate(result.sectors)
+        },
+    }
+    for i in range(len(points))
+]}))
+"""
+
+
+def test_example_2_equals_recola(walkthrough, workspace):
+    """Example 2 (the walkthrough's artifact, complex-mass scheme) against
+    Recola 2.3.0 at its four points (fixture provenance; m-lit lit-ew-blocks,
+    the block colour-order fix of the e^6 loop): the Born per squared order to
+    1e-12; both poles of every sector within ten times the evaluation's own
+    estimate E plus 1e-12 of the sector's pole scale (Recola's larger pole
+    coefficient); each sector's finite part within the fixture's CMS
+    convention level of its point (the two codes' complex-mass counterterm
+    prescriptions, measured on the neutral-only helicity rows; at least the
+    default target accuracy ``stability.RESCUE_TARGET``, read in the child
+    process like the values). Before the fix the
+    QED^10 and QCD^2 QED^8 poles were off by 3e-3 - 1.8 and the finite parts
+    by 0.09 - 2.5."""
+
+    assert walkthrough("loop_uux_ddxepem").returncode == 0
+    root, _client = workspace
+    fixture = json.loads(RECOLA.read_text())
+    points = json.loads(
+        (ROOT / "examples" / "data" / "loop_uux_ddxepem_momenta.json").read_text()
+    )
+    found = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _RECOLA_EVALUATION,
+            str(root / "artifacts" / "loop_uux_ddxepem"),
+            json.dumps(points),
+            json.dumps(fixture["mu_r2"]),
+        ],
+        env=_environment(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    evaluated = json.loads(found.stdout.strip().splitlines()[-1])
+    for point, (row, born, virtual, levels) in enumerate(
+        zip(
+            evaluated["rows"],
+            fixture["born"],
+            fixture["virtual"],
+            fixture["finite_levels"],
+            strict=True,
+        )
+    ):
+        assert set(row["born"]) == set(born)
+        for order, expected in born.items():
+            assert abs(row["born"][order] - expected) <= 1e-12 * abs(expected), (
+                point,
+                order,
+            )
+        assert set(row["virtual"]) == set(virtual)
+        for sector, expected in virtual.items():
+            value, estimate = row["virtual"][sector], row["estimate"][sector]
+            scale = max(abs(expected[1]), abs(expected[2]))
+            for k in (1, 2):
+                bound = 10 * estimate[k] + 1e-12 * scale
+                assert abs(value[k] - expected[k]) <= bound, (point, sector, k)
+            level = max(levels[sector], evaluated["target"])
+            deviation = abs(value[0] - expected[0]) / abs(expected[0])
+            assert deviation <= level, (point, sector, deviation, level)
