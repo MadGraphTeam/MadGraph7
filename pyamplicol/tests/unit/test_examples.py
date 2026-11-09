@@ -549,7 +549,7 @@ def test_loop_examples_ship_their_cards_data_and_documentation() -> None:
     for stem, (expression, model, corrections) in LOOP_EXAMPLES.items():
         generate = resolve_config(EXAMPLES / f"{stem}_generate.toml").effective
         assert generate.action == "generate"
-        assert generate.model.source.name == model
+        assert Path(str(generate.model.source)).name == model
         assert generate.process.entries[0].expression == expression
         assert generate.process.loop_coupling_orders == corrections
         assert generate.generation.output == EXAMPLES / "artifacts" / stem
