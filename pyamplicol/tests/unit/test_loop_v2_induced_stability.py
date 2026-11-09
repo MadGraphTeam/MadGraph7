@@ -308,9 +308,12 @@ def test_g_g_to_h_a_is_zero_within_its_estimate_on_the_stored_route(li, tmp_path
     """g g > h a (Furry; no counterterms) on the stored runtime's route: its
     term floor is at rounding, so the rotation budget carries the estimate.
     Through the executor with native inputs and through the public runtime
+    of the unfolded artifact (``generation.loop_induced_folding`` off)
     |A|^2 <= 10 E per Laurent coefficient (no correct digit claimed for a
     value that is rounding), in binary64 and double-double, the rotation
-    check sampling."""
+    check sampling. Folded (the default since M-LIT lit-fold; USER
+    2026-11-08 ~22:39 "Yes, and allow exact zeros"), the artifact is an
+    exact fold zero: exactly 0 with the fold certificate in the detail."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
@@ -325,7 +328,9 @@ def test_g_g_to_h_a_is_zero_within_its_estimate_on_the_stored_route(li, tmp_path
             for k, value in enumerate(laurent.coefficients):
                 assert abs(float(value)) <= ESTIMATE_MARGIN * absolute[k], (k, value)
     fixture = _fixture("li_gg_ha")
-    output = _generate(tmp_path, (("gg_ha", "g g > h a"),), fixture)
+    output = _generate(
+        tmp_path / "off", (("gg_ha", "g g > h a"),), fixture, folding=False
+    )
     point, scale, parameters = li.point("li_gg_ha")
     runtime = Runtime.load(output, process="gg_ha", model_parameters=parameters)
     for arithmetic in ("double", "double-double"):
@@ -336,6 +341,19 @@ def test_g_g_to_h_a_is_zero_within_its_estimate_on_the_stored_route(li, tmp_path
         assert ESTIMATE_MARGIN * estimate.finite >= 1, (arithmetic, estimate)
         for value, error in zip(result.values[0], estimate.absolute, strict=True):
             assert abs(value.finite) <= ESTIMATE_MARGIN * error.finite, arithmetic
+    # The folding-on arm (the default): an exact fold zero.
+    folded = _generate(tmp_path / "on", (("gg_ha", "g g > h a"),), fixture)
+    runtime = Runtime.load(folded, process="gg_ha", model_parameters=parameters)
+    assert runtime.inspect()["exact_fold_zero"] is True
+    for arithmetic in ("double", "double-double"):
+        policy = VirtualRescuePolicy((VirtualRescueLevel(arithmetic),))
+        result = runtime.evaluate([point], mu_r2=[str(scale)], stability=policy)
+        assert all(value.finite == 0 for value in result.values[0]), arithmetic
+    # Without a rescue policy the lane's detail names the certificate (a
+    # rescue policy's detail is its level's, as for the colour zero).
+    result = runtime.evaluate([point], mu_r2=[str(scale)])
+    assert all(value.finite == 0 for value in result.values[0])
+    assert result.diagnostics[0].detail.startswith("exact fold zero")
 
 
 # ---------------------------------------------------------------- calibration

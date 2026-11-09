@@ -981,6 +981,12 @@ class GenerationConfig:
     helicity_filter_failure_probability: float = field(
         default=1e-12, metadata=_setting("float")
     )
+    # M-LIT lit-fold (USER 2026-11-08 ~22:39, F1): fold the loop chains of a
+    # loop-induced process whose numerators the exact test certifies
+    # proportional (one dressing per group; a group that cancels exactly is
+    # an exact zero), at helicity_filter_failure_probability (0 folds
+    # nothing); on by default; off writes the unfolded plans.
+    loop_induced_folding: bool = field(default=True, metadata=_setting("bool"))
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
     )
@@ -1015,6 +1021,10 @@ class GenerationConfig:
             )
         if not isinstance(self.allow_failed_probes, bool):
             raise ConfigurationError("generation.allow_failed_probes must be a boolean")
+        if not isinstance(self.loop_induced_folding, bool):
+            raise ConfigurationError(
+                "generation.loop_induced_folding must be true or false"
+            )
         failure = _finite_float(
             self.helicity_filter_failure_probability,
             "generation.helicity_filter_failure_probability",

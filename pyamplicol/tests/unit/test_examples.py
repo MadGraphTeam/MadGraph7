@@ -96,6 +96,7 @@ _VIRTUAL_ONLY_LEAVES = frozenset(
         "generation.loop_induced_probes",
         "generation.allow_failed_probes",
         "generation.helicity_filter_failure_probability",
+        "generation.loop_induced_folding",
         "loop.alpha_s_parameter",
         "loop.alpha0_inverse_parameter",
     }

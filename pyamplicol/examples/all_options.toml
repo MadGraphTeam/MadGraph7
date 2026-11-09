@@ -236,6 +236,14 @@ emit_api_bundle = true
 # it drops a helicity row that is not an integrand zero); 0 drops nothing and
 # skips the filter. Recorded in the artifact. Virtual-only. Default 1e-12.
 # helicity_filter_failure_probability = 1e-12
+# generation.loop_induced_folding: Fold the loop chains of a loop-induced
+# process whose numerators the exact test (the helicity filter's, at
+# helicity_filter_failure_probability; 0 folds nothing) certifies
+# proportional with an exact rational ratio: one dressing per group; a group
+# whose weights cancel exactly is dropped, and a process left with nothing is
+# an exact zero with its certificate. Values change at rounding level.
+# Recorded in the artifact. Virtual-only. Default true.
+# loop_induced_folding = false
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
 enabled = true
