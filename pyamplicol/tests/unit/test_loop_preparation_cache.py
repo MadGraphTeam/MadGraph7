@@ -264,6 +264,47 @@ def test_artifacts_and_dry_runs_are_byte_identical_off_cold_and_warm(
     assert len(_entries(root)) == 1
 
 
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["uux_ddxg_lc", "uux_uuxg_full"])
+def test_the_pinned_process_bytes_hold_cold_and_warm(
+    loop_sm_compiled_model, loop_native, tmp_path, name
+):
+    """The byte pins of ``test_loop_v2_fail_closed``
+    (``test_plans_the_guards_do_not_refuse_keep_their_bytes``: the plan,
+    companion plan and native member digests of the slice before that
+    package), here generated with a preparation memo and the persistent
+    store: cold (an empty store: lowered and written) and warm (a new memo
+    and store object reading the entry: nothing lowered)."""
+
+    import importlib.util
+
+    from pyamplicol.loops.preparation_cache import PreparationMemo, PreparationStore
+    from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.models.loading import load_compiled_model
+
+    spec = importlib.util.spec_from_file_location(
+        "_lit_ewprep_fail_closed_pins",
+        ROOT / "tests" / "unit" / "test_loop_v2_fail_closed.py",
+    )
+    pins = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pins)
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    process, born, accuracy = pins.CONTROLS[name]
+    directory = tmp_path / "loop-preparations"
+    counts = []
+    for _arm in ("cold", "warm"):
+        memo = PreparationMemo(PreparationStore(directory))
+        generated = generate_process(
+            compiled, pins._request(process, born, accuracy), loop_native, memo=memo
+        )
+        assert pins._identity(generated) == pins.CONTROL_BYTES[name]
+        counts.append(memo.counts)
+    cold, warm = counts
+    assert cold["lowerings"] == 1 and cold["program_saves"] == 1
+    assert warm["lowerings"] == 0 and warm["program_loads"] == 1
+    assert len(list(directory.iterdir())) == 1
+
+
 # ------------------------------------------------------------ (vii) sharing
 
 
