@@ -1,0 +1,27 @@
+{
+  "scope": "Release ABI/cache parity and native artifact qualification; no timing or full physics claim.",
+  "qualifier_sha256": "d581c512262e6fb9a9b4916c903c586566e08cd3c3bced9d8f2653c33e234ae9",
+  "release_build_metadata_sha256": "0ca8afbb4e0e1133b7b566ceb33ff4af936380e690d388ab7a946b3300dc4559",
+  "production_source_sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+  "original_library_sha256": "49af12f0b88252a2d06420a2ea8768529eb5ab51de34e3db2257ee61cd71ca12",
+  "new_library_sha256": "92da56e247d793e51b9e6b85154996fd056e754b3224ba15ecc0a8ff2004f3d6",
+  "original_config_sha256": "000ac5255c1ba3fa268f17524b4d30bcd5a231c38f13a10b820d7b4a208711da",
+  "new_config_sha256": "317566febd560b7856fae730f5683df93bcf35dfbe296da1b5e1d7b0aa5491f7",
+  "new_installation_available": true,
+  "original_installation_available": true,
+  "original-readelf.txt_sha256": "676debcbc8e6bfd0120c103d956960b9b094fedaa69dd616f61653a4287cecd9",
+  "original-ldd.txt_sha256": "aa962d552f77a643f00037a9248f8b2af7fdcc54cd26e5dc298d0afda7a4652d",
+  "new-readelf.txt_sha256": "81b1d9ce1481eee606bbc93f0bcb1f0ba9c390bdb49a94f52bf6c1e1a064c6a6",
+  "new-ldd.txt_sha256": "f54c65480aead6bdc8e9c56c3a81c52ea9e23bc5b2d7e292e0c11e77c6693bba",
+  "validation_command": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/n1-profile/production/validate_release.py",
+    "--output",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/n1-profile/production/release-validation.json"
+  ],
+  "all_event_records_identical": true,
+  "compared_event_records": 110,
+  "validation_sha256": "63b106cf57762a889c73d8b33ab12086d64895b3c900a00552099d2cbb05acf8",
+  "validation_passed": true,
+  "old_prefix_unchanged": true
+}

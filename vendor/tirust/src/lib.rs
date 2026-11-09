@@ -42,7 +42,8 @@ thread_local! { static LAST_ERROR: RefCell<String> = const { RefCell::new(String
 struct State {
     budget: u64,
     plans: HashMap<Key, DirectReductionPlan>,
-    dp: HashMap<Key, TensorWorkspace<f64>>,
+    dp_plans: HashMap<Key, TensorReductionPlan>,
+    dp: HashMap<(Key, bool), TensorWorkspace<f64>>,
     mp: HashMap<Key, DirectWorkspace<Float>>,
     store: TensorStore,
     qp_cache: QpCache,
@@ -59,6 +60,7 @@ impl State {
         Self {
             budget: DEFAULT_BUDGET,
             plans: HashMap::new(),
+            dp_plans: HashMap::new(),
             dp: HashMap::new(),
             mp: HashMap::new(),
             qp_cache: QpCache::new(DEFAULT_BUDGET / 2),
@@ -94,17 +96,24 @@ impl State {
             #[cfg(not(feature = "poles-only"))]
             return Ok((UNSUPPORTED, Vec::new()));
         }
-        if !self.dp.contains_key(&key) {
-            let plan = TensorReductionPlan::new(settings(key)).map_err(|e| e.to_string())?;
-            let workspace =
-                TensorWorkspace::new_embedded(&plan, 0.0f64, EmbedderOptions::default())
-                    .map_err(|e| e.to_string())?;
-            self.dp.insert(key, workspace);
+        // Keep each direction's structural variants and scratch buffers warm.
+        // Reusing one workspace makes alternating lightlike configurations
+        // repeatedly discard and rediscover their active geometry variants.
+        let workspace_key = (key, mode.check);
+        if !self.dp.contains_key(&workspace_key) {
+            let plan = match self.dp_plans.entry(key) {
+                std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::hash_map::Entry::Vacant(entry) => entry
+                    .insert(TensorReductionPlan::new(settings(key)).map_err(|e| e.to_string())?),
+            };
+            let workspace = TensorWorkspace::new_embedded(plan, 0.0f64, EmbedderOptions::default())
+                .map_err(|e| e.to_string())?;
+            self.dp.insert(workspace_key, workspace);
         }
         // check_view() may alias the primary when no master provider exists.
         // MadLoop's independent direction checks must recompute every entry.
         let store = (mode.cache && !mode.check).then(|| self.store.clone());
-        let workspace = self.dp.get_mut(&key).unwrap();
+        let workspace = self.dp.get_mut(&workspace_key).unwrap();
         workspace.set_tensor_store(store.as_ref());
         let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
         match result.lane(0) {
@@ -137,7 +146,8 @@ impl State {
             // status check. A failed reduction must not retain those entries.
             if mode.finite {
                 self.store.clear();
-                self.dp.remove(&key);
+                self.dp.remove(&(key, false));
+                self.dp.remove(&(key, true));
             } else {
                 #[cfg(feature = "poles-only")]
                 {
@@ -1080,6 +1090,127 @@ mod tests {
         assert_eq!(counts[6], 0);
         assert_eq!(tadpole(c, 0, 4.0), (SUCCESS, reference));
         assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn direction_workspaces_reuse_one_immutable_plan() {
+        let mut state = State::new();
+        let key = (3, 2);
+        let mass = 91.188;
+        let forward = [
+            0.,
+            0.,
+            0.,
+            0.,
+            mass / 2.,
+            0.,
+            0.,
+            mass / 2.,
+            mass,
+            0.,
+            0.,
+            0.,
+        ];
+        let reverse = [
+            0.,
+            0.,
+            0.,
+            0.,
+            mass,
+            0.,
+            0.,
+            0.,
+            mass / 2.,
+            0.,
+            0.,
+            mass / 2.,
+        ];
+        let s_forward = [0., 0., mass * mass, 0., 0., 0., mass * mass, 0., 0.];
+        let s_reverse = [0., mass * mass, 0., mass * mass, 0., 0., 0., 0., 0.];
+        let evaluate = |state: &mut State, check: bool, cache: bool| {
+            state
+                .dp_checked(
+                    key,
+                    dp_batch(
+                        3,
+                        if check { &reverse } else { &forward },
+                        if check { &s_reverse } else { &s_forward },
+                        &[C64::default(); 3],
+                        mass * mass,
+                    )
+                    .unwrap(),
+                    Mode {
+                        poles: 0,
+                        finite: true,
+                        check,
+                        cache,
+                    },
+                )
+                .unwrap()
+        };
+        let forward_result = evaluate(&mut state, false, true);
+        let reverse_result = evaluate(&mut state, true, true);
+        assert_eq!(forward_result.0, SUCCESS);
+        assert_eq!(reverse_result.0, SUCCESS);
+        assert_eq!(state.dp.len(), 2);
+        assert_eq!(state.dp_plans.len(), 1);
+        let workspace_addresses = |state: &State| {
+            [false, true].map(|check| &state.dp[&(key, check)] as *const TensorWorkspace<f64>)
+        };
+        let original_workspaces = workspace_addresses(&state);
+        assert_ne!(original_workspaces[0], original_workspaces[1]);
+        let original_plan = &state.dp_plans[&key] as *const TensorReductionPlan;
+        for cache in [true, false, true] {
+            state.store.clear();
+            assert_eq!(evaluate(&mut state, false, cache), forward_result);
+            let before = state.store.statistics();
+            assert_eq!(evaluate(&mut state, true, cache), reverse_result);
+            let after = state.store.statistics();
+            assert_eq!(before.entries, after.entries);
+            assert_eq!(before.masters_reused, after.masters_reused);
+            assert_eq!(before.moments_reused, after.moments_reused);
+            assert_eq!(workspace_addresses(&state), original_workspaces);
+            assert_eq!(
+                &state.dp_plans[&key] as *const TensorReductionPlan,
+                original_plan
+            );
+        }
+    }
+    #[test]
+    fn failed_dp_call_invalidates_both_directions_but_retains_plan() {
+        let key = (1, 0);
+        let evaluate = |state: &mut State, check: bool, mass: f64| {
+            state
+                .dp_checked(
+                    key,
+                    dp_batch(1, &[0.; 4], &[0.], &[C64 { re: mass, im: 0. }], 4.).unwrap(),
+                    Mode {
+                        poles: 0,
+                        finite: true,
+                        check,
+                        cache: true,
+                    },
+                )
+                .unwrap()
+        };
+        for failed_check in [false, true] {
+            let mut state = State::new();
+            let primary = evaluate(&mut state, false, 4.);
+            let checked = evaluate(&mut state, true, 4.);
+            assert_eq!(primary.0, SUCCESS);
+            assert_eq!(checked.0, SUCCESS);
+            assert_eq!(state.dp.len(), 2);
+            assert!(state.store.statistics().entries > 0);
+            let plan = &state.dp_plans[&key] as *const TensorReductionPlan;
+            assert_ne!(evaluate(&mut state, failed_check, 1e308).0, SUCCESS);
+            assert!(state.dp.is_empty());
+            assert_eq!(state.store.statistics().entries, 0);
+            assert_eq!(state.dp_plans.len(), 1);
+            assert_eq!(&state.dp_plans[&key] as *const TensorReductionPlan, plan);
+            assert_eq!(evaluate(&mut state, false, 4.), primary);
+            assert_eq!(evaluate(&mut state, true, 4.), checked);
+            assert_eq!(state.dp.len(), 2);
+            assert_eq!(&state.dp_plans[&key] as *const TensorReductionPlan, plan);
+        }
     }
     #[test]
     fn binary128_last_bit_and_signed_zero_transport() {

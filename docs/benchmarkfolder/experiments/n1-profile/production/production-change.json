@@ -1,0 +1,7 @@
+{
+  "base_commit": "4dfc21dc7523a973bad1e9746b40857ef14a2591",
+  "original_bridge_source_sha256": "1eab09d61652e4dfade900a22f8c63a071b4fecee2e7454e8144f934f17e34e0",
+  "new_bridge_source_sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+  "patch_sha256": "3581fb647cca96dd04d2a72a852d2cc2ceffe2bb17bd07860c54506af4b3d687",
+  "scope": "Production source, tests and ownership documentation only; diagnostic instrumentation excluded."
+}

@@ -1,0 +1,14 @@
+{
+  "command": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/debug/deps/madloop_tirust-023491e0ce6b8075",
+    "--test-threads=1"
+  ],
+  "source_sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+  "test_executable_sha256": "dd64e120ddb4a02039fbe5a58eb8292b831260cadda413262419726ccdd5d0e2",
+  "build_messages_sha256": "d9770c87a6ca5688ecad7bf7db00f2bccaea26c7bb265b9b1a26ccdf0d1def32",
+  "runner_sha256": "1dd3316193dc8e3f6e423e7687e081762af57b3f11e7c64d851b76c4022bff3e",
+  "scope": "All nine pre-existing native bridge tests plus two direction-workspace lifecycle tests.",
+  "exit_code": 0,
+  "log_sha256": "c2ed8fa9c14e2867a52c5d23c1f96c8a6b2f1cec848ba54dd3a3fda1d8a242f7",
+  "source_unchanged": true
+}

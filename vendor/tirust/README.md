@@ -47,8 +47,12 @@ failed results to zero and returns a non-success status. The module owns one
 serial context; separate concurrent callers must use separate C contexts.
 If a panic poisons the context, subsequent calls report an error and cannot read
 its caches. Call `tirust_finalize` before retrying; the next request creates a
-fresh context. Ordinary numerical failures discard the affected DP store and
-workspace while retaining the registered plans.
+fresh context. Full-DP primary and independent-check workspaces share one
+immutable reduction plan per `(N,rank)`, while retaining separate structural
+variants and scratch buffers. Check passes still recompute the numerical
+results. A failed full-DP reduction clears its store and discards both
+directional workspaces while retaining the immutable plan; a failed pole-only
+reduction discards its separate store and affected workspace.
 
 Register each `(N,rank)` plan before reducing a point. Clear numerical caches at
 the end of each phase-space point while retaining plans/workspaces. Full and
