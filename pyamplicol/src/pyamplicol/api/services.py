@@ -1135,13 +1135,18 @@ class Runtime:
         """
 
         if self.contribution_kind != "tree":
+            # A virtual runtime's evaluate always returns a VirtualEvaluation
+            # (contribution_kind); the view re-checks it on construction.
             return VirtualOrderEvaluation(
-                self.evaluate(
-                    momenta,
-                    helicities=helicities,
-                    color_flows=color_flows,
-                    precision=precision,
-                    **virtual_options,
+                cast(
+                    VirtualEvaluation,
+                    self.evaluate(
+                        momenta,
+                        helicities=helicities,
+                        color_flows=color_flows,
+                        precision=precision,
+                        **virtual_options,
+                    ),
                 )
             )
         if virtual_options:

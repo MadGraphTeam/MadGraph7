@@ -14,7 +14,7 @@ from copy import deepcopy
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
@@ -71,7 +71,7 @@ if TYPE_CHECKING:
     from .recurrence_exact import RecurrenceExactExecutor
     from .symbolica_exact import SymbolicaExactExecutor
 
-    _ExactExecutor = (
+    _ExactExecutor: TypeAlias = (
         EagerExactExecutor | RecurrenceExactExecutor | SymbolicaExactExecutor
     )
 

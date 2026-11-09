@@ -306,7 +306,7 @@ def virtual_order_summary(result: Any, *, prettytable: Any) -> str:
     return (
         virtual_evaluation_summary(result.evaluation, prettytable=prettytable)
         + "\n\n"
-        + table.get_string()
+        + str(table.get_string())
     )
 
 
@@ -384,4 +384,4 @@ def virtual_profile_summary(result: Any, *, prettytable: Any, color: bool) -> st
                 _paint(bar, _STAGE_COLOURS.get(group), enabled=color),
             )
         )
-    return header.get_string() + "\n\n" + stages.get_string()
+    return str(header.get_string()) + "\n\n" + str(stages.get_string())
