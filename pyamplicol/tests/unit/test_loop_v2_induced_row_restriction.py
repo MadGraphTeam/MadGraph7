@@ -4,31 +4,39 @@ restriction only (m-lit lit-dress (H); USER 2026-11-08 ~22:34, DECISIONS
 2026-11-08 22:34 (2) 'ADDED').
 
 A selection keeping some helicity rows of a loop-induced (dressed-row,
-route R2) plan must dress, close, scatter and reduce only what the plan
-whose columns keep those rows evaluates (the "row-restricted plan": the
-same plan JSON with every column keeping the selected rows only, pruned by
-the native loader, ``plan/live.rs``). Each call's native counts (modelled
-dressing work, steps, families, fused factors read, closure columns,
-reduction lanes) equal the row-restricted plan's, and so do its values
+route R2) plan must evaluate only what the plan whose columns keep those
+rows evaluates (the "row-restricted plan": the same plan JSON with every
+column keeping the selected rows only, pruned by the native loader,
+``plan/live.rs``, its tree program restricted at load, ``trees_rows.rs``):
+its trees and counterterm kets, dressing, closure, scatter and reduction
+lanes. Each call's native counts (modelled dressing work, steps, families,
+fused factors read, closure columns, reduction lanes, tree closure rows and
+tree interactions) equal the row-restricted plan's, and so do its values
 (bitwise, binary64):
 
 * on the executor (``NativeExecutor.row_mask``, the path of every entry
-  point) for a single row, two rows and all but one row of g g > h h;
+  point) for a single row, two rows and all but one row of g g > h h, in
+  gate G0's kernel forms and in the all-fused and all-split forms (a split
+  trace step closes the rows a link writes only: their columns are the
+  family's support);
 * through the Python API: ``evaluate(helicities=...)`` and
   ``evaluate_resolved(helicities=...)`` on the stored g g > h g g artifact,
   for one, two and all but one helicity;
-* through the C ABI (``rusticol_virtual_evaluate_selected``): a global
-  selection of the helicity rows TIRust never refuses on the 128 stream
-  points serves every point (an unselected row's refusal no longer fails
-  a point: its lanes are not reduced), and the per-point selection
-  (``helicity_by_point``) equals the Python API's per-point selections.
+* through the C ABI (``rusticol_virtual_evaluate_selected``, the same
+  native path: ``Runner::row_liveness``): a global selection of the helicity
+  rows TIRust serves on every one of the 128 stream points serves every
+  point (an unselected row's refusal does not fail a point: its lanes are
+  not reduced), and the per-point selection (``helicity_by_point``) equals
+  the Python API's per-point selections.
 
 At the base (before lit-dress) a family keeping more than half of its row
 links ran whole (``KEPT_SHARE``): the two-row and all-but-one selections of
 g g > h h and the all-but-one selection of g g > h g g dressed and reduced
-every row, a single row closed and stored every row's columns (no
-"closure columns" count existed), and the C ABI selection above failed 19
-of the 128 points through rows it did not select.
+every row; every selection, a single row included, formed every row's
+trees and counterterm kets (no tree counts existed: a single row of these
+rows ran no link outside its restriction at the base, its excess was the
+tree program and the dense closure); and the C ABI selection above failed
+19 of the 128 points through rows it did not select.
 """
 
 from __future__ import annotations
@@ -51,6 +59,8 @@ COUNTS = (
     "factors",
     "closure columns",
     "reduction lanes",
+    "tree closure rows",
+    "tree interactions",
 )
 
 
@@ -93,6 +103,7 @@ def _restricted(executor, kept):
         inputs=executor.inputs,
         lanes=executor.lanes,
         threads=executor.threads,
+        forms=executor.forms,
         forward=False,
     )
 
@@ -120,15 +131,26 @@ def _selections(rows):
     }
 
 
-def test_executor_selections_run_their_row_restriction(li):
-    """g g > h h, three fixture points: each selection's counts and values
-    are the row-restricted plan's (at the base the two-row and all-but-one
-    selections ran every family whole)."""
+def _executor(li, name, forms):
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    if forms == "rule":
+        return li.executor(name, "native")
+    return NativeExecutor(li.slice(name), forward=False, inputs="native", forms=forms)
+
+
+@pytest.mark.parametrize("forms", ["rule", "fused", "split"])
+def test_executor_selections_run_their_row_restriction(li, forms):
+    """g g > h h, three fixture points, in each kernel form: each
+    selection's counts and values are the row-restricted plan's (at the base
+    the two-row and all-but-one selections ran every family whole, every
+    selection formed every row's trees and counterterm kets, and a selection
+    in the split form failed on the rows it dropped)."""
 
     from pyamplicol.loops.v2.assemble import Precision
 
     name = "li_gg_hh"
-    executor = li.executor(name, "native")
+    executor = _executor(li, name, forms)
     rows = len(executor.exported.rows)
     points, scales, parameters = [], [], None
     for index in range(3):
@@ -149,8 +171,8 @@ def test_executor_selections_run_their_row_restriction(li):
         finally:
             executor.row_mask = None
         restricted = _restricted(executor, kept)
-        # The row-restricted plan dresses the kept rows only; its row mask
-        # squares them only (every row's counterterm kets are formed).
+        # The row-restricted plan evaluates the kept rows only (its tree
+        # program restricted at load); its row mask squares them only.
         restricted.row_mask = tuple(row in kept for row in range(rows))
         try:
             reference = restricted.evaluate(
@@ -163,8 +185,10 @@ def test_executor_selections_run_their_row_restriction(li):
         for count in (
             "dressing work (modelled complex MAC per lane)",
             "reduction lanes",
+            "tree closure rows",
         ):
             assert counts[count] < whole_counts[count], (label, count)
+        assert counts["tree closure rows"] == len(kept), label
     assert _values(whole) != _values(selected)
 
 
@@ -186,7 +210,8 @@ def test_executor_selections_square_their_rows_only(li):
     relative 1e-12 for the summation order). Before lit-dress the executor's
     row mask squared every row with its counterterm kets (formed for every
     row), so an exactly vanishing row returned the other rows' counterterm
-    squares (up to 12x the summed value on the stream points)."""
+    squares (up to 12x the summed value on the stream points); now a
+    selection forms and returns its kept rows' kets only."""
 
     import math
 
@@ -216,6 +241,7 @@ def test_executor_selections_square_their_rows_only(li):
 
     summed = evaluate(None)
     singles = [evaluate({row}) for row in range(rows)]
+    assert executor.last_report["counts"]["tree closure rows"] == 1
     assert any(all(v == 0.0 for v in single) for single in singles)
     for p, total in enumerate(summed):
         assert all(0.0 <= single[p] <= total * (1 + 1e-12) for single in singles)
@@ -316,7 +342,11 @@ def test_c_abi_selections_serve_points_refused_outside_them(artifacts):
                 for s in _call(sdk, handle, points, scales, ids=[f"h{row}"])["statuses"]
             )
         ]
-        assert 1 < len(served) < rows, served
+        # Decided on the capability, not on TIRust's refusal pattern: the
+        # rows served everywhere one by one are served everywhere together
+        # (when some row is refused somewhere, its refusal is outside the
+        # selection; at the current pin rows are refused on these points).
+        assert served, "no helicity row TIRust serves on every stream point"
         ids = [f"h{row}" for row in served]
         selected = _call(sdk, handle, points, scales, ids=ids)
         assert selected["statuses"] == [SUCCESS_STATUS] * count
