@@ -1,17 +1,21 @@
 # SPDX-License-Identifier: 0BSD
 """The guard of the loop-induced ``"auto"`` per-point NinjaRS fallback (m-lit
 lit-fallback-guard; DECISIONS 2026-11-09 05:56 'NINJARS DEFECT CONFIRMED'
-ruling (1), USER 2026-11-08 ~20:55 'Same precision as call').
+ruling (1) and 11:53, USER 2026-11-08 ~20:55 'Same precision as call' and
+2026-11-09 ~11:53 'Double-double+ only, but also it's fine to relax the
+target precision to 1e-5 or so').
 
 NinjaRS (pin 5b6a8f57) returns finite, badly wrong values as success at
 near-planar 2 -> 3 points of rank-n pentagon families (g g > z z z stream
-points 44 and 57 in double-double: 1.3e7 and 0.48 off the truth). Every
-point the per-point fallback serves therefore runs the cached
-reduction-direction re-reduction at the call's carrier and fails typed when
-its relative estimate exceeds the call's target; the estimate is recorded
-in the point's record (``VirtualReduction.guard_estimate``), an accepted
-point keeps the fallback's value bitwise, and points TIRust serves run
-nothing more.
+points 44 and 57 in double-double: 1.3e7 and 0.48 off the truth). In the
+extended carriers (double-double, arbitrary precision) every point the
+per-point fallback serves therefore runs the cached reduction-direction
+re-reduction at the call's carrier and fails typed when its relative
+estimate exceeds the guard's limit, the call's target never below 1e-5
+(max(target, 1e-5)); the estimate is recorded in the point's record
+(``VirtualReduction.guard_estimate``), an accepted point keeps the
+fallback's value bitwise, and points TIRust serves run nothing more. A
+binary64 fallback point is served unguarded, as before the guard.
 
 * the guard's rule and reason (one definition in Rust ``reduction_policy``)
   and its logic in ``loops.v2.reduction.with_fallback`` with a scripted
@@ -25,12 +29,12 @@ nothing more.
   lit-ninja-planar's re-pin: a refusal or an accurate value pass too);
 * (c') default binary64 ``"auto"`` at the 13 tilt points stays within 1e-5
   of the truth;
-* the guard at binary64, double-double and arbitrary precision through the
-  public API, and the loop-induced default rescue stack at 44 and 57.
+* the guard at double-double and arbitrary precision (and its absence in
+  binary64) through the public API and the SDKs, and the loop-induced
+  default rescue stack at 44 and 57.
 
 The fixture ``tests/fixtures/loop/fallback_guard_zzz.json`` holds the
-binary64 texts, mu_R^2 and truths (its ``provenance``). The SDK guard is in
-``test_loop_v2_sdk_selection.py``.
+binary64 texts, mu_R^2 and truths (its ``provenance``).
 """
 
 from __future__ import annotations
@@ -49,6 +53,13 @@ from tests.unit.loop_v2_induced_observables_rows import generate
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "loop" / "fallback_guard_zzz.json"
 TARGET = 1e-5
+# The guard's limit is the call's target, never below 1e-5 (USER 2026-11-09
+# ~11:53; ``reduction_policy::FALLBACK_FLOOR``).
+FLOOR = 1e-5
+
+
+def _limit(target: float) -> float:
+    return max(target, FLOOR)
 
 
 def _fixture() -> dict:
@@ -72,16 +83,26 @@ def _error(value: Any, truth: str) -> float:
 
 @pytest.mark.loop_fast
 def test_the_guard_has_one_rule_and_one_reason(loop_native):
-    """The guard's acceptance rule and its one reason text are the native
-    policy's (``reduction_policy::fallback_accepted`` /
-    ``fallback_rejected``), read by Python."""
+    """The guard's carriers, its acceptance rule and its one reason text are
+    the native policy's (``reduction_policy::fallback_guarded`` /
+    ``fallback_accepted`` / ``fallback_rejected``), read by Python: the
+    extended carriers only, the limit max(target, 1e-5)."""
 
-    from pyamplicol.loops.v2.reduction import fallback_accepted, text
+    from pyamplicol.loops.v2.reduction import (
+        CARRIERS,
+        fallback_accepted,
+        fallback_guarded,
+        text,
+    )
 
+    assert [fallback_guarded(c) for c in CARRIERS] == [c != "double" for c in CARRIERS]
     assert fallback_accepted(1e-5, 1e-5) and fallback_accepted(0.0, 1e-5)
     assert not fallback_accepted(1.5e-5, 1e-5)
     assert not fallback_accepted(math.nan, 1e-5)
     assert not fallback_accepted(math.inf, 1e-5)
+    # Never stricter than 1e-5; a looser target is the limit.
+    assert fallback_accepted(9e-6, 1e-8) and not fallback_accepted(1.1e-5, 1e-8)
+    assert fallback_accepted(1e-3, 1e-3) and not fallback_accepted(1.1e-3, 1e-3)
     reason = text(
         "rejected",
         "tirust",
@@ -94,7 +115,7 @@ def test_the_guard_has_one_rule_and_one_reason(loop_native):
     assert reason == (
         "auto: TIRust refused or failed the point (TIRust refused the row); the "
         "per-point NinjaRS fallback's value failed its reduction-direction check: "
-        "estimate 1.4e2 > target 1e-5 (double-double)"
+        "estimate 1.4e2 > 1e-5 = max(target 1e-5, 1e-5) (double-double)"
     )
     assert loop_native.reduction_text(
         "rejected",
@@ -104,7 +125,7 @@ def test_the_guard_has_one_rule_and_one_reason(loop_native):
         carrier="arbitrary",
         estimate=3.0,
         target=1e-7,
-    ).endswith("estimate 3.0e0 > target 1e-7 (arbitrary)")
+    ).endswith("estimate 3.0e0 > 1e-5 = max(target 1e-7, 1e-5) (arbitrary)")
 
 
 # ------------------------------------------------- with_fallback, scripted
@@ -204,19 +225,21 @@ def _choice(target: float | None = TARGET):
 def test_a_served_point_is_guarded_by_the_cached_check_without_call_checks(
     loop_native,
 ):
-    """Without the call's checks the fallback's evaluation runs the cached
-    reduction-direction check (one pass, no rescaled variant); an accepted
-    point keeps the fallback's value with no public estimate or finiteness
-    (what an evaluation without checks returns) and its estimate recorded,
-    a point above the target fails typed with the one reason; TIRust's
-    points run once, unguarded."""
+    """In an extended carrier, without the call's checks the fallback's
+    evaluation runs the cached reduction-direction check (one pass, no
+    rescaled variant); an accepted point keeps the fallback's value with no
+    public estimate or finiteness (what an evaluation without checks
+    returns) and its estimate recorded, a point above the limit fails typed
+    with the one reason; TIRust's points run once, unguarded."""
 
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
     from pyamplicol.loops.v2.reduction import text, with_fallback
 
     runner = _Runner(refused={2, 5, 6}, cached={2: 3e-7, 5: 2.0}, ninja_fails={6})
     none = VirtualStabilityChecks()
-    results, failures, records = with_fallback(runner, _choice(), 8, none, "double")
+    results, failures, records = with_fallback(
+        runner, _choice(), 8, none, "double-double"
+    )
     assert [call[:2] for call in runner.calls] == [
         ("tirust", None),
         ("ninjars", (2, 5, 6)),
@@ -245,7 +268,7 @@ def test_a_served_point_is_guarded_by_the_cached_check_without_call_checks(
             "tirust",
             "ninjars",
             "TIRust refused point 5",
-            carrier="double",
+            carrier="double-double",
             estimate=estimate,
             target=TARGET,
         )
@@ -265,6 +288,41 @@ def test_a_served_point_is_guarded_by_the_cached_check_without_call_checks(
 
 
 @pytest.mark.loop_fast
+def test_a_binary64_fallback_point_is_served_unguarded(loop_native):
+    """In binary64 the guard does not run (USER 2026-11-09 ~11:53, 'Double-
+    double+ only'; DECISIONS 11:53): the fallback's evaluation runs with the
+    call's checks only (none: no check at all; the rescaled variant: no
+    extra pass), every point it serves keeps its value and the call's
+    checks' estimate, whatever its cached estimate would be, and its record
+    carries no guard estimate, as before the guard."""
+
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.loops.v2.reduction import text, with_fallback
+
+    for checks in (None, VirtualStabilityChecks(1, True, rescaled=True)):
+        runner = _Runner(refused={2, 5, 6}, cached={2: 3e-7, 5: 2.0}, ninja_fails={6})
+        results, failures, records = with_fallback(
+            runner, _choice(), 8, checks, "double"
+        )
+        assert [call[:2] for call in runner.calls] == [
+            ("tirust", None),
+            ("ninjars", (2, 5, 6)),
+        ]
+        assert runner.calls[1][2] is checks
+        for index in (2, 5):
+            assert results[index].value == 1.0 + index and index not in failures
+            assert results[index].tag == "ninjars"
+            assert records[index].guard_estimate is None
+            assert records[index].reason == text(
+                "served", "tirust", "ninjars", f"TIRust refused point {index}"
+            )
+        assert failures[6] == [
+            "TIRust refused point 6",
+            "NinjaRS fallback: MasterFailed",
+        ]
+
+
+@pytest.mark.loop_fast
 def test_the_calls_cached_check_is_reused_and_a_rescaled_one_is_not(loop_native):
     """The call's own cached reduction check is reused (no second pass; the
     estimate of that check alone, ``StabilityEstimate.subset``); beside the
@@ -280,7 +338,9 @@ def test_the_calls_cached_check_is_reused_and_a_rescaled_one_is_not(loop_native)
     # Reused: rotation + cached reduction check.
     cached = VirtualStabilityChecks(1, True, cross_backend=True)
     runner = _Runner(refused={1, 3}, cached={1: 1e-9, 3: 1.0})
-    results, failures, records = with_fallback(runner, _choice(), 8, cached, "double")
+    results, failures, records = with_fallback(
+        runner, _choice(), 8, cached, "arbitrary"
+    )
     assert [call[:2] for call in runner.calls] == [
         ("tirust", None),
         ("ninjars", (1, 3)),
@@ -326,27 +386,38 @@ def test_the_calls_cached_check_is_reused_and_a_rescaled_one_is_not(loop_native)
 
     # No served point: no extra pass.
     runner = _Runner(refused={2}, cached={}, ninja_fails={2})
-    with_fallback(runner, _choice(), 8, rescaled, "double")
+    with_fallback(runner, _choice(), 8, rescaled, "double-double")
     assert len(runner.calls) == 2
 
 
 @pytest.mark.loop_fast
 def test_the_target_nan_and_calls_without_fallback(loop_native):
-    """The only threshold is the call's target (the default target when the
-    choice has none); a NaN estimate is rejected; a choice without a
+    """The only threshold is the guard's limit: the call's target (the
+    default target when the choice has none), never below 1e-5 (USER
+    2026-11-09 ~11:53); a NaN estimate is rejected; a choice without a
     per-point fallback (explicit and Born-interfered calls) runs once."""
 
     from pyamplicol.api.virtual_results import VirtualReduction
     from pyamplicol.loops.v2.reduction import default_target, with_fallback
 
+    dd = "double-double"
     runner = _Runner(refused={0, 1}, cached={0: 1e-4, 1: math.nan})
-    _results, failures, records = with_fallback(runner, _choice(1e-3), 8)
+    _results, failures, records = with_fallback(runner, _choice(1e-3), 8, None, dd)
     assert 0 not in failures and records[0].guard_estimate == pytest.approx(2e-4)
     assert math.isnan(records[1].guard_estimate) and "estimate NaN" in failures[1][0]
     runner = _Runner(refused={0}, cached={0: 6e-6})
-    _results, failures, records = with_fallback(runner, _choice(None), 8)
+    _results, failures, records = with_fallback(runner, _choice(None), 8, None, dd)
     assert default_target() == TARGET
     assert 0 in failures and records[0].guard_estimate == pytest.approx(1.2e-5)
+    # A target below 1e-5: the limit stays 1e-5 (the floor).
+    runner = _Runner(refused={0, 1}, cached={0: 3e-6, 1: 1.2e-5})
+    _results, failures, records = with_fallback(runner, _choice(1e-8), 8, None, dd)
+    assert 0 not in failures and records[0].guard_estimate == pytest.approx(6e-6)
+    assert records[0].target == 1e-8
+    assert records[1].guard_estimate == pytest.approx(1.2e-5)
+    assert failures[1][0].endswith(
+        "estimate 1.2e-5 > 1e-5 = max(target 1e-8, 1e-5) (double-double)"
+    ), failures[1]
     explicit = VirtualReduction("ninjars", "ninjars", "requested")
     runner = _Runner(refused=set(), cached={})
     with_fallback(runner, explicit, 8)
@@ -372,7 +443,9 @@ def test_the_guard_stays_on_under_the_unchecked_setting(loop_native):
     for unchecked in (False, True):
         runner = _Runner(refused={1, 4}, cached={1: 1e-9, 4: 3.0})
         choice = replace(_choice(), unchecked=unchecked)
-        results, failures, records = with_fallback(runner, choice, 8, None, "double")
+        results, failures, records = with_fallback(
+            runner, choice, 8, None, "double-double"
+        )
         assert [call[:2] for call in runner.calls] == [
             ("tirust", None),
             ("ninjars", (1, 4)),
@@ -419,13 +492,14 @@ def _tilt(keys=None):
     )
 
 
-ESTIMATE = r"estimate [0-9.]+e-?[0-9]+ > target "
+ESTIMATE = r"estimate [0-9.]+e-?[0-9]+ > [0-9.]+e-?[0-9]+ = max\(target "
 
 
 def _guarded_failure(lane, target: float = TARGET) -> None:
     """A typed failure of a point the fallback evaluated: its record names
     the fallback; where the fallback served it, the guard's estimate is
-    above the target and the one reason names it."""
+    above the guard's limit at the call's ``target`` and the one reason
+    names it."""
 
     import re
 
@@ -435,7 +509,7 @@ def _guarded_failure(lane, target: float = TARGET) -> None:
     assert record.effective == "ninjars", record
     assert "NinjaRS" in lane.detail, lane.detail
     if record.guard_estimate is not None:
-        assert not record.guard_estimate <= target, record
+        assert not record.guard_estimate <= _limit(target), record
         assert re.search(ESTIMATE, lane.detail), lane.detail
         assert "fallback's value failed its reduction-direction check" in lane.detail
 
@@ -544,20 +618,23 @@ def _ratio(reason: str) -> float | None:
 
 
 @pytest.mark.loop_physics
-def test_the_guard_rejects_a_wrong_binary64_fallback_value(zzz, loop_native):
-    """Binary64 reject: at the tilt-1e-11 point TIRust's method-choice lanes
-    deviate by r of their term scale; at the target whose calibrated
-    acceptance is r / 2 TIRust refuses the point, and the per-point fallback
-    serves NinjaRS's binary64 value (8.9e13 off the truth at pin 5b6a8f57,
-    C/out/tilt.json 'nj_b64'). The guard's cached reduction-direction
-    estimate (175 there) exceeds the target: the point fails typed with the
-    one reason and its estimate recorded; the public result carries no
-    estimate (no checks requested)."""
+def test_a_binary64_fallback_value_is_served_unguarded(zzz, loop_native):
+    """Binary64 (USER 2026-11-09 ~11:53, 'Double-double+ only'; DECISIONS
+    11:53): at the tilt-1e-11 point TIRust's method-choice lanes deviate by
+    r of their term scale; at the target whose calibrated acceptance is
+    r / 2 TIRust refuses the point and the per-point fallback serves
+    NinjaRS's binary64 value as before the guard (8.9e13 off the truth at
+    pin 5b6a8f57, ninjars-dd-zzz C/out/tilt.json 'nj_b64': the near-planar
+    hazard that lit-ninja-planar's conditioning bound in NinjaRS's fast
+    engine addresses): bitwise the explicit NinjaRS value at that target,
+    its record NinjaRS with the served reason and no guard estimate; where
+    NinjaRS refuses the point (that bound), a failure with both backends'
+    reasons."""
 
     from pyamplicol import Runtime
-    from pyamplicol.api.errors import EvaluationError
+    from pyamplicol.loops.v2.reduction import text
 
-    _keys, points, scales, truths = _tilt(["1e-11"])
+    _keys, points, scales, _truths = _tilt(["1e-11"])
     runtime = Runtime.load(zzz, process="p")
     options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
     if not _tirust(loop_native):
@@ -574,22 +651,20 @@ def test_the_guard_rejects_a_wrong_binary64_fallback_value(zzz, loop_native):
         points, reduction="tirust", reduction_target=target, **options
     )
     assert explicit.values[0] is None
+    ninjars = runtime.evaluate(
+        points, reduction="ninjars", reduction_target=target, **options
+    )
     found = runtime.evaluate(points, reduction_target=target, **options)
-    assert found.stability is None
     lane = found.diagnostics[0]
-    value = found.values[0]
-    if value is not None:
-        # A served value (lit-ninja-planar's re-pin may make it accurate).
-        assert lane.reduction.guard_estimate <= target
-        assert _error(value, truths[0]) <= TARGET
+    assert lane.reduction.effective == "ninjars", lane.reduction
+    assert lane.reduction.guard_estimate is None, lane.reduction
+    if ninjars.values[0] is None:
+        assert found.values[0] is None and "NinjaRS fallback: " in lane.detail
         return
-    _guarded_failure(lane, target)
-    assert lane.detail.endswith("(double)"), lane.detail
-    assert lane.reduction.target == target
-    with pytest.raises(EvaluationError, match="reduction-direction check: estimate"):
-        runtime.evaluate(
-            points, reduction_target=target, **{**options, "on_failure": "raise"}
-        )
+    assert repr(found.values[0]) == repr(ninjars.values[0])
+    served = text("served", "tirust", "ninjars", "")
+    assert lane.reduction.reason.startswith(served[:-1]), lane.reduction.reason
+    assert "method-choice" in lane.reduction.reason, lane.reduction.reason
 
 
 @pytest.mark.loop_physics
@@ -625,12 +700,24 @@ def test_the_default_rescue_stack_escalates_the_guarded_fallback(zzz, loop_nativ
         assert attempt.estimate is None and attempt.failure is not None, attempt
         if not _tirust(loop_native):
             continue
+        # The levels as before the guard (the base's record: TIRust and
+        # NinjaRS binary64 fail both points, the double-double level misses
+        # the target, the 57-digit level serves them).
+        assert [
+            (a.arithmetic, a.reduction.requested, a.failure is None)
+            for a in record.attempts
+        ] == [
+            ("double", "tirust", False),
+            ("double", "ninjars", False),
+            ("double-double", "auto", False),
+            ("arbitrary", "auto", True),
+        ], record.attempts
         reduction = attempt.reduction
         assert (reduction.requested, reduction.effective) == ("auto", "ninjars")
         assert "NinjaRS" in attempt.failure
         if reduction.guard_estimate is not None:
             # The fallback served the point: the guard's typed failure.
-            assert not reduction.guard_estimate <= TARGET, reduction
+            assert not reduction.guard_estimate <= _limit(TARGET), reduction
             assert "fallback's value failed its reduction-direction check" in (
                 attempt.failure
             )
@@ -652,8 +739,9 @@ def hh(loop_sm_ufo, loop_native, tmp_path_factory):
 
 def _guard_split(found, explicit, target: float) -> tuple[list[int], list[int]]:
     """The points the per-point fallback served (accepted: the explicit
-    NinjaRS value bitwise, its estimate within ``target``) and those its
-    guard rejected (typed, the estimate above ``target`` in the reason)."""
+    NinjaRS value bitwise, its estimate within the guard's limit at
+    ``target``) and those its guard rejected (typed, the estimate above the
+    limit in the reason)."""
 
     accepted, rejected = [], []
     for p, lane in enumerate(found.diagnostics):
@@ -663,7 +751,7 @@ def _guard_split(found, explicit, target: float) -> tuple[list[int], list[int]]:
             continue
         assert record.guard_estimate is not None, (p, lane.detail)
         if found.values[p] is not None:
-            assert record.guard_estimate <= target, (p, record)
+            assert record.guard_estimate <= _limit(target), (p, record)
             assert repr(found.values[p]) == repr(explicit.values[p]), p
             accepted.append(p)
         else:
@@ -680,8 +768,10 @@ def test_the_guard_at_double_double_and_arbitrary_precision(hh, loop_native):
     in the call's own carrier and the guard runs its check there. Double-
     double and 20 digits accept them (estimates within 1e-5, values bitwise
     the explicit NinjaRS ones, no public estimate without checks); at 16
-    digits and the target 1e-6 the guard rejects them typed (estimates
-    2.3e-6 and 1.9e-2 at pin 5b6a8f57), naming the arithmetic."""
+    digits and the target 1e-6 (estimates 2.3e-6 and 1.9e-2 at pin
+    5b6a8f57) the guard's limit is 1e-5, never stricter (USER 2026-11-09
+    ~11:53): it accepts the point whose estimate lies between the target and
+    1e-5 and rejects the other typed, naming the arithmetic."""
 
     from pyamplicol import Runtime
 
@@ -695,7 +785,7 @@ def test_the_guard_at_double_double_and_arbitrary_precision(hh, loop_native):
     for carrier, digits, target, expect in (
         ("double-double", {}, TARGET, "accept"),
         ("arbitrary", {"precision": 20}, TARGET, "accept"),
-        ("arbitrary", {"precision": 16}, 1e-6, "reject"),
+        ("arbitrary", {"precision": 16}, 1e-6, "both"),
     ):
         call = {**options, "arithmetic": carrier, **digits, "reduction_target": target}
         explicit = runtime.evaluate(points, reduction="ninjars", **call)
@@ -703,6 +793,12 @@ def test_the_guard_at_double_double_and_arbitrary_precision(hh, loop_native):
         assert found.stability is None
         accepted, rejected = _guard_split(found, explicit, target)
         assert accepted if expect == "accept" else rejected, (carrier, digits)
+        if expect == "both":
+            # The floor: accepted above the call's target, within 1e-5.
+            assert any(
+                target < found.diagnostics[p].reduction.guard_estimate <= FLOOR
+                for p in accepted
+            ), [lane.reduction for lane in found.diagnostics]
         for p in rejected:
             assert found.diagnostics[p].detail.endswith(f"({carrier})")
 
@@ -759,12 +855,12 @@ def _ulps(a: float, b: float) -> float:
 def _same_guard(sdk_record: dict, python, arithmetic: str) -> None:
     """The SDK's per-point fallback record (diagnostics "fallbacks") against
     the Python API's on the same exact inputs: the same points, backend and
-    decision, the guard's estimates equal (bitwise in binary64, the one
-    implementation ``v2_stability``; within ``ULPS`` units in the last place
-    in the extended carriers, whose colour-metric norms of the amplitude
-    vectors the Python assembly forms in the carrier and the SDK in binary64
-    (``induced.quadratic_budget`` / ``InducedShape::g_norm``)), and the same
-    reason where the estimates agree bitwise."""
+    decision, the guard's estimates equal within ``ULPS`` units in the last
+    place (the colour-metric norms of the amplitude vectors: the Python
+    assembly forms them in the carrier, the SDK in binary64,
+    ``induced.quadratic_budget`` / ``InducedShape::g_norm``; bitwise or one
+    ulp apart on record) and none in binary64, where the guard does not
+    run, and the same reason where the estimates agree bitwise."""
 
     expected = {
         str(index): lane.reduction
@@ -777,10 +873,8 @@ def _same_guard(sdk_record: dict, python, arithmetic: str) -> None:
         served = python.values[int(key)] is not None
         assert mine["effective"] == ("ninjars" if served else None), (arithmetic, key)
         theirs = record.guard_estimate
-        if theirs is None or mine["guard_estimate"] is None:
+        if arithmetic == "double" or theirs is None or mine["guard_estimate"] is None:
             assert theirs is None and mine["guard_estimate"] is None, (key, mine)
-        elif arithmetic == "double":
-            assert mine["guard_estimate"] == theirs, (key, mine, theirs)
         else:
             assert _ulps(mine["guard_estimate"], theirs) <= ULPS, (key, mine, theirs)
         if mine["guard_estimate"] == theirs:
@@ -794,29 +888,28 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
     zzz, hh, loop_native, tmp_path
 ):
     """The SDK's ``with_fallback`` guard through the C ABI and the C++
-    wrapper (m-lit lit-fallback-guard Done 2), at binary64, double-double
-    and arbitrary precision, against the Python API on the SAME exact
-    inputs (``_same_inputs``: the doubles' decimal expansions):
+    wrapper (m-lit lit-fallback-guard Done 2) against the Python API on the
+    SAME exact inputs (``_same_inputs``: the doubles' decimal expansions;
+    given the shortest decimal texts instead, the Python API evaluates
+    points up to half an ulp away, docs/user/native-apis.md):
 
     * binary64, the tilt-1e-11 point at the target that refuses TIRust
-      there: status Failed (not AccuracyNotEstablished), the one reason and
-      the guard's estimate in the "fallbacks" record, the estimate bitwise
-      the Python API's and the SDK monitoring's own cached
-      reduction-direction estimate of the point (explicit NinjaRS with that
-      check alone: the one binary64 implementation, ``v2_stability``); the
-      C++ wrapper returns the C ABI's record;
-    * double-double, z z z points 44 and 57 (the defect): Failed, the
-      guard's reason naming the carrier, the Python API's estimates;
+      there: no guard (USER 2026-11-09 ~11:53, the extended carriers only):
+      the fallback's value as the Python API serves it, no guard estimate in
+      either record;
+    * double-double, z z z points 44 and 57 (the defect): status Failed
+      (not AccuracyNotEstablished), the guard's reason naming the carrier,
+      the guard's estimates in the "fallbacks" record equal to the Python
+      API's (within ``ULPS``; on record 23.14776330598882 vs
+      23.147763305988818 and 31.352350506280747 on both sides);
     * the g g > h h near-forward points in double-double, at 20 digits and
       at 16 digits with the target 1e-6: the Python API's decisions and
       estimates per point, every accepted value bitwise the SDK's explicit
       NinjaRS value (the summed call's fallback evaluation carries the
       guard's check: one evaluation per served point) and equal to the
-      Python API's.
-
-    The extended carriers' estimates agree within ``ULPS`` units in the
-    last place (the colour-metric norms, ``_same_guard``); binary64
-    bitwise."""
+      Python API's;
+    * the C++ wrapper returns the C ABI's double-double record of g g > h h.
+    """
 
     import subprocess
 
@@ -866,28 +959,20 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
         finally:
             sdk.rusticol_virtual_free(handle)
 
-    # Binary64: the guard is the monitoring's cached check, bitwise the
-    # Python API's guard on the same point.
+    # Binary64: no guard; the fallback's value as the Python API's.
     python = runtime.evaluate(
         same_tilt, mu_r2=same_tilt_scales, reduction_target=target, **options
     )
     found = call(zzz, tilt, tilt_scales, reduction_target=lambda h: (h, target))
-    monitored = call(
-        zzz,
-        tilt,
-        tilt_scales,
-        reduction=lambda h: (h, b"ninjars"),
-        stability_checks=lambda h: (h, 0, None, 1, 0, 0),
-    )
-    (estimate,) = monitored["diagnostics"]["stability"]["estimates"]
-    assert found["statuses"] == [FAILED_STATUS]
     (record,) = found["diagnostics"]["fallbacks"].values()
-    assert record["effective"] is None
-    assert record["guard_estimate"] == estimate["relative"] > target
-    assert found["diagnostics"]["failures"]["0"] == [record["reason"]]
-    assert "reduction-direction check: estimate" in record["reason"]
-    assert record["reason"].endswith("(double)")
+    assert record["guard_estimate"] is None
     _same_guard(found["diagnostics"]["fallbacks"], python, "double")
+    if python.values[0] is None:
+        assert found["statuses"] == [FAILED_STATUS]
+    else:
+        assert found["statuses"] == [SUCCESS_STATUS]
+        assert record["effective"] == "ninjars"
+        assert _per_point(found)[0][0] == float(python.values[0][0].finite)
 
     # Double-double at the defect's points: rejected typed, as the Python
     # API rejects them.
@@ -910,6 +995,7 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
     artifact, points, scales = hh
     same_points, same_scales = _same_inputs(points, scales)
     hh_runtime = Runtime.load(artifact, process="p")
+    records = {}
     for arithmetic, digits, chosen in (
         ("double-double", 0, TARGET),
         ("arbitrary", 20, TARGET),
@@ -945,6 +1031,7 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
             reduction=lambda h: (h, b"ninjars"),
         )
         record = found["diagnostics"]["fallbacks"]
+        records[arithmetic, digits] = record
         _same_guard(record, python, arithmetic)
         mine, plain = _per_point(found), _per_point(explicit)
         for p, value in enumerate(python.values):
@@ -957,7 +1044,7 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
                 # Served: bitwise the unguarded (explicit NinjaRS) value.
                 assert [repr(x) for x in mine[p]] == [repr(x) for x in plain[p]]
 
-    # The C++ wrapper: the C ABI's binary64 record.
+    # The C++ wrapper: the C ABI's double-double record.
     build = _staged_sdk()
     (tmp_path / "client.cpp").write_text(FALLBACK_CLIENT)
     subprocess.run(
@@ -977,7 +1064,7 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
         check=True,
         cwd=tmp_path,
     )
-    c_points, c_scales = _c_inputs(tilt, tilt_scales)
+    c_points, c_scales = _c_inputs(points, scales)
     lines = [f"{len(c_points)} {len(c_points[0])}"]
     for point, scale in zip(c_points, c_scales, strict=True):
         lines.append(" ".join(v.hex() for v in [*(c for p in point for c in p), scale]))
@@ -985,19 +1072,19 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
     done = subprocess.run(
         [
             str(tmp_path / "client"),
-            str(zzz),
+            str(artifact),
             "p",
             str(tmp_path / "input.txt"),
-            repr(target),
-            "double",
+            repr(TARGET),
+            "double-double",
+            "none",
         ],
         capture_output=True,
         text=True,
         timeout=600,
         check=True,
     )
-    statuses, _values, diagnostics = done.stdout.splitlines()
-    assert statuses == f"statuses {FAILED_STATUS}"
+    _statuses, _values, diagnostics = done.stdout.splitlines()
     wrapper = json.loads(diagnostics.split(" ", 1)[1])["fallbacks"]
-    assert wrapper["0"]["guard_estimate"] == estimate["relative"]
-    assert wrapper["0"]["effective"] is None
+    assert wrapper == records["double-double", 0]
+    assert any(item["guard_estimate"] is not None for item in wrapper.values())

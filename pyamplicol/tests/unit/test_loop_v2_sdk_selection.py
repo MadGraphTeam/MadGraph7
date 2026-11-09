@@ -274,7 +274,8 @@ def _moved(expected, choice) -> dict:
     or failed on, by point index, with the backend that served it (None: it
     failed there too, or the fallback's guard rejected it), the reason and
     the guard's estimate (m-lit lit-fallback-guard: the summed |A|^2's
-    cached reduction-direction estimate on both sides, bitwise)."""
+    cached reduction-direction estimate in the extended carriers, None in
+    binary64, where the guard does not run)."""
 
     return {
         str(index): {
