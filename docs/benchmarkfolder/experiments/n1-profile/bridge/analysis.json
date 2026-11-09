@@ -1,0 +1,668 @@
+{
+  "performance_eligible": false,
+  "input": "docs/benchmarkfolder/experiments/n1-profile/fortran/attribution-1/results.json",
+  "input_sha256": "c99ff147e63ceee441fbbbc8d3289f5643343222d2c5fecd231d1247bcdeece7",
+  "points_per_batch": 20000,
+  "saved_final_traversal_outputs_bit_identical": true,
+  "unit": "microseconds_per_amplitude",
+  "levels": {
+    "pristine": {
+      "whole_amplitude_wall": {
+        "median": 70.77303195,
+        "minimum": 70.61641885,
+        "maximum": 116.91906510000001,
+        "observations": [
+          116.91906510000001,
+          70.77303195,
+          70.61641885
+        ]
+      }
+    },
+    "0:0": {
+      "whole_amplitude_wall": {
+        "median": 70.6719151,
+        "minimum": 70.66435200000001,
+        "maximum": 107.43119455,
+        "observations": [
+          107.43119455,
+          70.66435200000001,
+          70.6719151
+        ]
+      },
+      "whole_amplitude_cpu": {
+        "median": 70.1647,
+        "minimum": 70.14665,
+        "maximum": 106.43169999999999,
+        "observations": [
+          106.43169999999999,
+          70.14665,
+          70.1647
+        ]
+      }
+    },
+    "1:0": {
+      "whole_amplitude_wall": {
+        "median": 72.26180575,
+        "minimum": 71.79333220000001,
+        "maximum": 73.44077365000001,
+        "observations": [
+          71.79333220000001,
+          73.44077365000001,
+          72.26180575
+        ]
+      },
+      "whole_amplitude_cpu": {
+        "median": 71.75665,
+        "minimum": 71.30825,
+        "maximum": 72.89734999999999,
+        "observations": [
+          71.30825,
+          72.89734999999999,
+          71.75665
+        ]
+      }
+    },
+    "0:1": {
+      "whole_amplitude_wall": {
+        "median": 72.36533615,
+        "minimum": 72.1811769,
+        "maximum": 112.97295419999999,
+        "observations": [
+          72.36533615,
+          112.97295419999999,
+          72.1811769
+        ]
+      },
+      "whole_amplitude_cpu": {
+        "median": 71.8707,
+        "minimum": 71.66765,
+        "maximum": 112.02649999999998,
+        "observations": [
+          71.8707,
+          112.02649999999998,
+          71.66765
+        ]
+      },
+      "all_calls_direct_dp": true,
+      "calls_per_amplitude": 2,
+      "bridge_inclusive": {
+        "ffi_total": {
+          "median": 8.8861482,
+          "minimum": 8.761416149999999,
+          "maximum": 13.9113827,
+          "observations": [
+            8.761416149999999,
+            13.9113827,
+            8.8861482
+          ]
+        },
+        "input_batch": {
+          "median": 0.48745350000000004,
+          "minimum": 0.4224773,
+          "maximum": 0.58792305,
+          "observations": [
+            0.4224773,
+            0.58792305,
+            0.48745350000000004
+          ]
+        },
+        "state_lock": {
+          "median": 0.0735056,
+          "minimum": 0.0717806,
+          "maximum": 0.08843340000000001,
+          "observations": [
+            0.0735056,
+            0.08843340000000001,
+            0.0717806
+          ]
+        },
+        "state_dp_checked": {
+          "median": 7.787336900000001,
+          "minimum": 7.76634415,
+          "maximum": 12.51275165,
+          "observations": [
+            7.76634415,
+            12.51275165,
+            7.787336900000001
+          ]
+        },
+        "store_attach": {
+          "median": 0.1632554,
+          "minimum": 0.15951759999999998,
+          "maximum": 0.2261174,
+          "observations": [
+            0.15951759999999998,
+            0.2261174,
+            0.1632554
+          ]
+        },
+        "reduce_batch": {
+          "median": 6.3816451,
+          "minimum": 6.34657055,
+          "maximum": 10.327522,
+          "observations": [
+            6.34657055,
+            10.327522,
+            6.3816451
+          ]
+        },
+        "output_pack": {
+          "median": 0.1892592,
+          "minimum": 0.18612684999999998,
+          "maximum": 0.3197136,
+          "observations": [
+            0.1892592,
+            0.3197136,
+            0.18612684999999998
+          ]
+        },
+        "output_copy": {
+          "median": 0.0816538,
+          "minimum": 0.07276995,
+          "maximum": 0.11391245000000001,
+          "observations": [
+            0.07276995,
+            0.11391245000000001,
+            0.0816538
+          ]
+        },
+        "workspace_setup": {
+          "median": 0.3148903,
+          "minimum": 0.30921404999999996,
+          "maximum": 0.4835431,
+          "observations": [
+            0.3148903,
+            0.4835431,
+            0.30921404999999996
+          ]
+        },
+        "profile_configuration": {
+          "median": 0.05973,
+          "minimum": 0.0583395,
+          "maximum": 0.07659095,
+          "observations": [
+            0.05973,
+            0.07659095,
+            0.0583395
+          ]
+        },
+        "upstream_arguments": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0,
+          "observations": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "upstream_scalar_masters": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0,
+          "observations": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "upstream_reduction": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0,
+          "observations": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "upstream_total": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0,
+          "observations": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "bridge_auxiliary": {
+        "clear": {
+          "median": 0.32303584999999996,
+          "minimum": 0.32283035,
+          "maximum": 0.44947005,
+          "observations": [
+            0.32283035,
+            0.44947005,
+            0.32303584999999996
+          ]
+        },
+        "budget": {
+          "median": 0.09908275000000001,
+          "minimum": 0.0929014,
+          "maximum": 0.12188679999999999,
+          "observations": [
+            0.0929014,
+            0.12188679999999999,
+            0.09908275000000001
+          ]
+        },
+        "register": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0,
+          "observations": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    "0:2": {
+      "whole_amplitude_wall": {
+        "median": 75.19239995000001,
+        "minimum": 73.79576709999999,
+        "maximum": 114.6823028,
+        "observations": [
+          75.19239995000001,
+          114.6823028,
+          73.79576709999999
+        ]
+      },
+      "whole_amplitude_cpu": {
+        "median": 74.68115,
+        "minimum": 73.1608,
+        "maximum": 113.67384999999999,
+        "observations": [
+          74.68115,
+          113.67384999999999,
+          73.1608
+        ]
+      },
+      "all_calls_direct_dp": true,
+      "calls_per_amplitude": 2,
+      "bridge_inclusive": {
+        "ffi_total": {
+          "median": 9.9552082,
+          "minimum": 9.63822125,
+          "maximum": 14.96899595,
+          "observations": [
+            9.9552082,
+            14.96899595,
+            9.63822125
+          ]
+        },
+        "input_batch": {
+          "median": 0.48503735,
+          "minimum": 0.40549504999999997,
+          "maximum": 0.5895818,
+          "observations": [
+            0.48503735,
+            0.5895818,
+            0.40549504999999997
+          ]
+        },
+        "state_lock": {
+          "median": 0.07442195,
+          "minimum": 0.0724055,
+          "maximum": 0.09065564999999999,
+          "observations": [
+            0.07442195,
+            0.09065564999999999,
+            0.0724055
+          ]
+        },
+        "state_dp_checked": {
+          "median": 8.8616343,
+          "minimum": 8.63689035,
+          "maximum": 13.5327026,
+          "observations": [
+            8.8616343,
+            13.5327026,
+            8.63689035
+          ]
+        },
+        "store_attach": {
+          "median": 0.17049015,
+          "minimum": 0.1456201,
+          "maximum": 0.22414879999999998,
+          "observations": [
+            0.17049015,
+            0.22414879999999998,
+            0.1456201
+          ]
+        },
+        "reduce_batch": {
+          "median": 7.3555805,
+          "minimum": 7.1413664,
+          "maximum": 11.34175015,
+          "observations": [
+            7.3555805,
+            11.34175015,
+            7.1413664
+          ]
+        },
+        "output_pack": {
+          "median": 0.21141849999999998,
+          "minimum": 0.19358945,
+          "maximum": 0.31318645,
+          "observations": [
+            0.19358945,
+            0.31318645,
+            0.21141849999999998
+          ]
+        },
+        "output_copy": {
+          "median": 0.08365444999999999,
+          "minimum": 0.0814154,
+          "maximum": 0.1127725,
+          "observations": [
+            0.0814154,
+            0.1127725,
+            0.08365444999999999
+          ]
+        },
+        "workspace_setup": {
+          "median": 0.32809750000000004,
+          "minimum": 0.3275762,
+          "maximum": 0.45282459999999997,
+          "observations": [
+            0.32809750000000004,
+            0.45282459999999997,
+            0.3275762
+          ]
+        },
+        "profile_configuration": {
+          "median": 0.0590426,
+          "minimum": 0.05864825,
+          "maximum": 0.06498045000000001,
+          "observations": [
+            0.0590426,
+            0.06498045000000001,
+            0.05864825
+          ]
+        },
+        "upstream_arguments": {
+          "median": 2.8556414,
+          "minimum": 2.69712,
+          "maximum": 4.10846065,
+          "observations": [
+            2.8556414,
+            4.10846065,
+            2.69712
+          ]
+        },
+        "upstream_scalar_masters": {
+          "median": 1.1475081,
+          "minimum": 1.1461430499999998,
+          "maximum": 1.8579230500000001,
+          "observations": [
+            1.1475081,
+            1.8579230500000001,
+            1.1461430499999998
+          ]
+        },
+        "upstream_reduction": {
+          "median": 1.96141255,
+          "minimum": 1.9057346,
+          "maximum": 3.1899666499999997,
+          "observations": [
+            1.96141255,
+            3.1899666499999997,
+            1.9057346
+          ]
+        },
+        "upstream_total": {
+          "median": 7.08267195,
+          "minimum": 6.8213479999999995,
+          "maximum": 10.9623364,
+          "observations": [
+            7.08267195,
+            10.9623364,
+            6.8213479999999995
+          ]
+        }
+      },
+      "bridge_auxiliary": {
+        "clear": {
+          "median": 0.33350810000000003,
+          "minimum": 0.3219925,
+          "maximum": 0.45277895,
+          "observations": [
+            0.33350810000000003,
+            0.45277895,
+            0.3219925
+          ]
+        },
+        "budget": {
+          "median": 0.0921453,
+          "minimum": 0.0843935,
+          "maximum": 0.12240495,
+          "observations": [
+            0.0921453,
+            0.12240495,
+            0.0843935
+          ]
+        },
+        "register": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0,
+          "observations": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    "1:2": {
+      "whole_amplitude_wall": {
+        "median": 74.69801735,
+        "minimum": 74.57346584999999,
+        "maximum": 92.22735454999999,
+        "observations": [
+          74.57346584999999,
+          92.22735454999999,
+          74.69801735
+        ]
+      },
+      "whole_amplitude_cpu": {
+        "median": 74.1214,
+        "minimum": 74.1021,
+        "maximum": 91.49664999999999,
+        "observations": [
+          74.1021,
+          91.49664999999999,
+          74.1214
+        ]
+      },
+      "all_calls_direct_dp": true,
+      "calls_per_amplitude": 2,
+      "bridge_inclusive": {
+        "ffi_total": {
+          "median": 9.820844600000001,
+          "minimum": 9.49558805,
+          "maximum": 11.7577547,
+          "observations": [
+            9.820844600000001,
+            11.7577547,
+            9.49558805
+          ]
+        },
+        "input_batch": {
+          "median": 0.48384675,
+          "minimum": 0.41881365,
+          "maximum": 0.5001931000000001,
+          "observations": [
+            0.5001931000000001,
+            0.48384675,
+            0.41881365
+          ]
+        },
+        "state_lock": {
+          "median": 0.074144,
+          "minimum": 0.0739871,
+          "maximum": 0.0816606,
+          "observations": [
+            0.074144,
+            0.0816606,
+            0.0739871
+          ]
+        },
+        "state_dp_checked": {
+          "median": 8.709469649999999,
+          "minimum": 8.4633931,
+          "maximum": 10.526557500000001,
+          "observations": [
+            8.709469649999999,
+            10.526557500000001,
+            8.4633931
+          ]
+        },
+        "store_attach": {
+          "median": 0.1798495,
+          "minimum": 0.14747235,
+          "maximum": 0.18183365,
+          "observations": [
+            0.18183365,
+            0.1798495,
+            0.14747235
+          ]
+        },
+        "reduce_batch": {
+          "median": 7.2328491999999995,
+          "minimum": 7.0237163,
+          "maximum": 8.777350049999999,
+          "observations": [
+            7.2328491999999995,
+            8.777350049999999,
+            7.0237163
+          ]
+        },
+        "output_pack": {
+          "median": 0.1923367,
+          "minimum": 0.19179585,
+          "maximum": 0.24295044999999998,
+          "observations": [
+            0.19179585,
+            0.24295044999999998,
+            0.1923367
+          ]
+        },
+        "output_copy": {
+          "median": 0.08332655,
+          "minimum": 0.07291299999999999,
+          "maximum": 0.1386425,
+          "observations": [
+            0.07291299999999999,
+            0.1386425,
+            0.08332655
+          ]
+        },
+        "workspace_setup": {
+          "median": 0.32575895000000005,
+          "minimum": 0.30719409999999997,
+          "maximum": 0.37948905,
+          "observations": [
+            0.32575895000000005,
+            0.37948905,
+            0.30719409999999997
+          ]
+        },
+        "profile_configuration": {
+          "median": 0.058969900000000006,
+          "minimum": 0.0587605,
+          "maximum": 0.061061700000000003,
+          "observations": [
+            0.058969900000000006,
+            0.061061700000000003,
+            0.0587605
+          ]
+        },
+        "upstream_arguments": {
+          "median": 2.7944543,
+          "minimum": 2.68268455,
+          "maximum": 3.27654315,
+          "observations": [
+            2.7944543,
+            3.27654315,
+            2.68268455
+          ]
+        },
+        "upstream_scalar_masters": {
+          "median": 1.13678305,
+          "minimum": 1.1202565500000001,
+          "maximum": 1.39363475,
+          "observations": [
+            1.13678305,
+            1.39363475,
+            1.1202565500000001
+          ]
+        },
+        "upstream_reduction": {
+          "median": 1.9238435999999999,
+          "minimum": 1.8982009,
+          "maximum": 2.4423099,
+          "observations": [
+            1.9238435999999999,
+            2.4423099,
+            1.8982009
+          ]
+        },
+        "upstream_total": {
+          "median": 6.95573245,
+          "minimum": 6.7703511,
+          "maximum": 8.470415650000001,
+          "observations": [
+            6.95573245,
+            8.470415650000001,
+            6.7703511
+          ]
+        }
+      },
+      "bridge_auxiliary": {
+        "clear": {
+          "median": 0.3340207,
+          "minimum": 0.3235607,
+          "maximum": 0.37493055,
+          "observations": [
+            0.3340207,
+            0.37493055,
+            0.3235607
+          ]
+        },
+        "budget": {
+          "median": 0.09207765000000001,
+          "minimum": 0.08913294999999999,
+          "maximum": 0.10396259999999999,
+          "observations": [
+            0.09207765000000001,
+            0.10396259999999999,
+            0.08913294999999999
+          ]
+        },
+        "register": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0,
+          "observations": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    }
+  },
+  "limits": [
+    "Diagnostic attribution, not a paired performance acceptance test.",
+    "Three repetitions per level; report range and all observations, not a confidence interval.",
+    "Some runs are substantially slower; timer medians are descriptive under shared-host variation.",
+    "Inclusive timers overlap; do not sum FFI, state, reduction and upstream totals.",
+    "Timer and bookkeeping costs remain included. Cross-level subtraction is not a causal speedup estimate.",
+    "The workload has exactly two DP N3 rank2 calls per amplitude, with independent reversal checking."
+  ]
+}

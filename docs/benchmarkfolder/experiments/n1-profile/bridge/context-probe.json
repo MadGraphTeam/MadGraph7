@@ -1,0 +1,642 @@
+{
+  "performance_eligible": false,
+  "scope": "Fixed massless triangle, two orderings; internal timers compare one vs two contexts, not complete amplitudes.",
+  "all_evaluations_bit_identical_to_per_order_reference": true,
+  "pairs_per_run": 10000,
+  "cpu": 1,
+  "library": ".tirust-build/n1-profile/bridge/libmadloop_tirust.so",
+  "library_sha256": "aef3b0fb1404bdcd12e31ceee9eea57ee431a48d1eea922cd879436e7c9cc732",
+  "source_sha256": "491603ced130461c46a6c850a5367b4854c9e0c08189a4b268c3a9ab7a24eb4e",
+  "shifts": [
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      45.594,
+      0.0,
+      0.0,
+      45.594,
+      91.188,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      91.188,
+      0.0,
+      0.0,
+      0.0,
+      45.594,
+      0.0,
+      0.0,
+      45.594
+    ]
+  ],
+  "invariants": [
+    [
+      0.0,
+      0.0,
+      8315.251344,
+      0.0,
+      0.0,
+      0.0,
+      8315.251344,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      8315.251344,
+      0.0,
+      8315.251344,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "mass_squared": 0.0,
+  "scale_squared": 8315.251344,
+  "reference_output_sha256": [
+    "f354464222733b383b459c39ad422802ece804a338092b38ed834bc28c232849",
+    "5b8f6a8611f26d5b8c58c61f183a9c499ab84c19040a7dd50437906843e24190"
+  ],
+  "runs": [
+    {
+      "repetition": 0,
+      "split_contexts": false,
+      "profile_level": 0,
+      "python_loop_wall_seconds": 0.3379209218546748,
+      "profile": {
+        "schema_version": 1,
+        "level": 0,
+        "time_unit": "ns",
+        "rows": [],
+        "auxiliary": {
+          "clear_calls": 0,
+          "clear_ns": 0,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 0,
+      "split_contexts": true,
+      "profile_level": 0,
+      "python_loop_wall_seconds": 0.30512109491974115,
+      "profile": {
+        "schema_version": 1,
+        "level": 0,
+        "time_unit": "ns",
+        "rows": [],
+        "auxiliary": {
+          "clear_calls": 0,
+          "clear_ns": 0,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 0,
+      "split_contexts": false,
+      "profile_level": 2,
+      "python_loop_wall_seconds": 0.3668566928245127,
+      "profile": {
+        "schema_version": 1,
+        "level": 2,
+        "time_unit": "ns",
+        "rows": [
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 0,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 96229667,
+            "input_batch_ns": 4732205,
+            "state_lock_ns": 354108,
+            "state_dp_checked_ns": 85234424,
+            "store_attach_ns": 3941668,
+            "reduce_batch_ns": 66146237,
+            "output_pack_ns": 922552,
+            "output_copy_ns": 422680,
+            "workspace_setup_ns": 4610490,
+            "profile_configuration_ns": 3306514,
+            "upstream_arguments_ns": 20886389,
+            "upstream_scalar_masters_ns": 12112123,
+            "upstream_reduction_ns": 23455510,
+            "upstream_total_ns": 64780617,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          },
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 1,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 98448940,
+            "input_batch_ns": 1491824,
+            "state_lock_ns": 355665,
+            "state_dp_checked_ns": 87660187,
+            "store_attach_ns": 636029,
+            "reduce_batch_ns": 74872457,
+            "output_pack_ns": 3937245,
+            "output_copy_ns": 411611,
+            "workspace_setup_ns": 1596916,
+            "profile_configuration_ns": 290529,
+            "upstream_arguments_ns": 41021166,
+            "upstream_scalar_masters_ns": 7045700,
+            "upstream_reduction_ns": 13562807,
+            "upstream_total_ns": 73500240,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          }
+        ],
+        "auxiliary": {
+          "clear_calls": 20000,
+          "clear_ns": 6414648,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 0,
+      "split_contexts": true,
+      "profile_level": 2,
+      "python_loop_wall_seconds": 0.3339413548819721,
+      "profile": {
+        "schema_version": 1,
+        "level": 2,
+        "time_unit": "ns",
+        "rows": [
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 0,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 88634510,
+            "input_batch_ns": 4853489,
+            "state_lock_ns": 373451,
+            "state_dp_checked_ns": 80562579,
+            "store_attach_ns": 4006031,
+            "reduce_batch_ns": 49409948,
+            "output_pack_ns": 3970549,
+            "output_copy_ns": 424619,
+            "workspace_setup_ns": 13664911,
+            "profile_configuration_ns": 3309831,
+            "upstream_arguments_ns": 7666580,
+            "upstream_scalar_masters_ns": 12184013,
+            "upstream_reduction_ns": 17006441,
+            "upstream_total_ns": 48053904,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          },
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 1,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 55046268,
+            "input_batch_ns": 1875467,
+            "state_lock_ns": 354105,
+            "state_dp_checked_ns": 49917350,
+            "store_attach_ns": 559096,
+            "reduce_batch_ns": 43290926,
+            "output_pack_ns": 920461,
+            "output_copy_ns": 409869,
+            "workspace_setup_ns": 1607047,
+            "profile_configuration_ns": 291244,
+            "upstream_arguments_ns": 10687884,
+            "upstream_scalar_masters_ns": 3922762,
+            "upstream_reduction_ns": 13133306,
+            "upstream_total_ns": 41938243,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          }
+        ],
+        "auxiliary": {
+          "clear_calls": 20000,
+          "clear_ns": 9422649,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 1,
+      "split_contexts": true,
+      "profile_level": 2,
+      "python_loop_wall_seconds": 0.33459057891741395,
+      "profile": {
+        "schema_version": 1,
+        "level": 2,
+        "time_unit": "ns",
+        "rows": [
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 0,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 70805211,
+            "input_batch_ns": 1888209,
+            "state_lock_ns": 355987,
+            "state_dp_checked_ns": 65715495,
+            "store_attach_ns": 971610,
+            "reduce_batch_ns": 52622674,
+            "output_pack_ns": 919480,
+            "output_copy_ns": 440107,
+            "workspace_setup_ns": 4615466,
+            "profile_configuration_ns": 291342,
+            "upstream_arguments_ns": 10703155,
+            "upstream_scalar_masters_ns": 12123517,
+            "upstream_reduction_ns": 23143329,
+            "upstream_total_ns": 51275775,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          },
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 1,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 82549187,
+            "input_batch_ns": 4931645,
+            "state_lock_ns": 355781,
+            "state_dp_checked_ns": 74366032,
+            "store_attach_ns": 3564241,
+            "reduce_batch_ns": 55757791,
+            "output_pack_ns": 3933180,
+            "output_copy_ns": 415174,
+            "workspace_setup_ns": 4599721,
+            "profile_configuration_ns": 291295,
+            "upstream_arguments_ns": 13765537,
+            "upstream_scalar_masters_ns": 6991256,
+            "upstream_reduction_ns": 16198076,
+            "upstream_total_ns": 51364360,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          }
+        ],
+        "auxiliary": {
+          "clear_calls": 20000,
+          "clear_ns": 9436736,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 1,
+      "split_contexts": false,
+      "profile_level": 2,
+      "python_loop_wall_seconds": 0.3931380729191005,
+      "profile": {
+        "schema_version": 1,
+        "level": 2,
+        "time_unit": "ns",
+        "rows": [
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 0,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 89512095,
+            "input_batch_ns": 2005703,
+            "state_lock_ns": 402580,
+            "state_dp_checked_ns": 84178610,
+            "store_attach_ns": 3993634,
+            "reduce_batch_ns": 70733929,
+            "output_pack_ns": 978717,
+            "output_copy_ns": 448244,
+            "workspace_setup_ns": 1672188,
+            "profile_configuration_ns": 295883,
+            "upstream_arguments_ns": 30614049,
+            "upstream_scalar_masters_ns": 18443275,
+            "upstream_reduction_ns": 15004702,
+            "upstream_total_ns": 69337067,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          },
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 1,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 106701819,
+            "input_batch_ns": 7997220,
+            "state_lock_ns": 369564,
+            "state_dp_checked_ns": 95221217,
+            "store_attach_ns": 693073,
+            "reduce_batch_ns": 70008046,
+            "output_pack_ns": 4030105,
+            "output_copy_ns": 423001,
+            "workspace_setup_ns": 4649280,
+            "profile_configuration_ns": 294769,
+            "upstream_arguments_ns": 35691696,
+            "upstream_scalar_masters_ns": 7312977,
+            "upstream_reduction_ns": 17124120,
+            "upstream_total_ns": 68620657,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          }
+        ],
+        "auxiliary": {
+          "clear_calls": 20000,
+          "clear_ns": 18674597,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 1,
+      "split_contexts": true,
+      "profile_level": 0,
+      "python_loop_wall_seconds": 0.29422270879149437,
+      "profile": {
+        "schema_version": 1,
+        "level": 0,
+        "time_unit": "ns",
+        "rows": [],
+        "auxiliary": {
+          "clear_calls": 0,
+          "clear_ns": 0,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 1,
+      "split_contexts": false,
+      "profile_level": 0,
+      "python_loop_wall_seconds": 0.32989360904321074,
+      "profile": {
+        "schema_version": 1,
+        "level": 0,
+        "time_unit": "ns",
+        "rows": [],
+        "auxiliary": {
+          "clear_calls": 0,
+          "clear_ns": 0,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 2,
+      "split_contexts": false,
+      "profile_level": 0,
+      "python_loop_wall_seconds": 0.329778297804296,
+      "profile": {
+        "schema_version": 1,
+        "level": 0,
+        "time_unit": "ns",
+        "rows": [],
+        "auxiliary": {
+          "clear_calls": 0,
+          "clear_ns": 0,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 2,
+      "split_contexts": true,
+      "profile_level": 0,
+      "python_loop_wall_seconds": 0.29244188219308853,
+      "profile": {
+        "schema_version": 1,
+        "level": 0,
+        "time_unit": "ns",
+        "rows": [],
+        "auxiliary": {
+          "clear_calls": 0,
+          "clear_ns": 0,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 2,
+      "split_contexts": false,
+      "profile_level": 2,
+      "python_loop_wall_seconds": 0.3702922770753503,
+      "profile": {
+        "schema_version": 1,
+        "level": 2,
+        "time_unit": "ns",
+        "rows": [
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 0,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 87229774,
+            "input_batch_ns": 1871132,
+            "state_lock_ns": 356216,
+            "state_dp_checked_ns": 82101952,
+            "store_attach_ns": 3915910,
+            "reduce_batch_ns": 66110649,
+            "output_pack_ns": 924906,
+            "output_copy_ns": 427520,
+            "workspace_setup_ns": 1593592,
+            "profile_configuration_ns": 291164,
+            "upstream_arguments_ns": 26978809,
+            "upstream_scalar_masters_ns": 15132349,
+            "upstream_reduction_ns": 11480084,
+            "upstream_total_ns": 64746725,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          },
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 1,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 89359883,
+            "input_batch_ns": 1895063,
+            "state_lock_ns": 354702,
+            "state_dp_checked_ns": 78049555,
+            "store_attach_ns": 633074,
+            "reduce_batch_ns": 65169256,
+            "output_pack_ns": 922760,
+            "output_copy_ns": 3421821,
+            "workspace_setup_ns": 4684341,
+            "profile_configuration_ns": 308977,
+            "upstream_arguments_ns": 28917383,
+            "upstream_scalar_masters_ns": 7102737,
+            "upstream_reduction_ns": 16587258,
+            "upstream_total_ns": 60801924,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          }
+        ],
+        "auxiliary": {
+          "clear_calls": 20000,
+          "clear_ns": 9464962,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    },
+    {
+      "repetition": 2,
+      "split_contexts": true,
+      "profile_level": 2,
+      "python_loop_wall_seconds": 0.3353527011349797,
+      "profile": {
+        "schema_version": 1,
+        "level": 2,
+        "time_unit": "ns",
+        "rows": [
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 0,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 79902257,
+            "input_batch_ns": 4846510,
+            "state_lock_ns": 354828,
+            "state_dp_checked_ns": 71855009,
+            "store_attach_ns": 1009120,
+            "reduce_batch_ns": 58700602,
+            "output_pack_ns": 923441,
+            "output_copy_ns": 425021,
+            "workspace_setup_ns": 4646658,
+            "profile_configuration_ns": 292007,
+            "upstream_arguments_ns": 13688829,
+            "upstream_scalar_masters_ns": 18300947,
+            "upstream_reduction_ns": 17086331,
+            "upstream_total_ns": 57267910,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          },
+          {
+            "n": 3,
+            "rank": 2,
+            "check": 1,
+            "cache": 1,
+            "calls": 10000,
+            "ffi_total_ns": 52666643,
+            "input_batch_ns": 1864063,
+            "state_lock_ns": 354904,
+            "state_dp_checked_ns": 47577309,
+            "store_attach_ns": 560137,
+            "reduce_batch_ns": 40701829,
+            "output_pack_ns": 921270,
+            "output_copy_ns": 410747,
+            "workspace_setup_ns": 1645508,
+            "profile_configuration_ns": 291593,
+            "upstream_arguments_ns": 10778942,
+            "upstream_scalar_masters_ns": 13000039,
+            "upstream_reduction_ns": 10412083,
+            "upstream_total_ns": 39350198,
+            "failed_calls": 0,
+            "direct_lanes": 10000,
+            "method_choice_lanes": 0,
+            "precision_tier_lanes": 0,
+            "refused_lanes": 0
+          }
+        ],
+        "auxiliary": {
+          "clear_calls": 20000,
+          "clear_ns": 9505367,
+          "budget_calls": 0,
+          "budget_ns": 0,
+          "register_calls": 0,
+          "register_ns": 0
+        },
+        "scope": "Diagnostic inclusive timers; inner stages overlap and timing overhead is not subtracted"
+      }
+    }
+  ]
+}

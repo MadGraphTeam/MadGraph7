@@ -1,0 +1,16 @@
+["rustc", "--crate-name", "madloop_tirust", "--edition=2024", "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/bridge/src/lib.rs", "--crate-type", "cdylib", "--crate-type", "rlib", "--emit=dep-info,link", "-C", "opt-level=3", "-C", "lto=thin", "-C", "codegen-units=1", "--cfg", "feature=\"default\"", "--cfg", "feature=\"poles-only\"", "--check-cfg", "cfg(feature, values(\"default\", \"poles-only\"))", "--out-dir", "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/bridge", "-L", "dependency=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps", "--extern", "iregi_rust=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libiregi_rust-d256505083284e99.rlib", "--extern", "symbolica=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsymbolica-bfa2826cb07859dd.rlib", "-L", "native=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/gmp-mpfr-sys-e3a3f2f14732793a/out/lib", "-C", "link-arg=-Wl,-soname,libmadloop_tirust.so", "-C", "link-arg=-Wl,--exclude-libs,ALL"]
+warning: unexpected `cfg` condition name: `test`
+   --> /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/bridge/src/lib.rs:929:7
+    |
+929 | #[cfg(test)]
+    |       ^^^^
+    |
+    = help: expected names are: `feature` and 32 more
+    = help: to expect this configuration use `--check-cfg=cfg(test)`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg.html> for more information about checking conditional configuration
+    = note: `#[warn(unexpected_cfgs)]` on by default
+
+error: lto can only be run for executables, cdylibs and static library outputs
+
+error: aborting due to 1 previous error; 1 warning emitted
+

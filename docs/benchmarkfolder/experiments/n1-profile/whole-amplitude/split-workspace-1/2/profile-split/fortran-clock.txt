@@ -1,0 +1,8 @@
+ levels           1           2
+ clock_rate           1000000000
+ batch_wall_seconds   2.0987976970000002     
+ batch_cpu_seconds   2.0806679999999997     
+ calibration_iterations       10000
+ calibration_internal_seconds   3.5396199999999998E-004
+ calibration_wall_seconds   8.6801300000000005E-004
+ calibration_cpu_seconds   8.6100000000000065E-004

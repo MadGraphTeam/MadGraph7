@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "state": "complete",
+  "performance_eligible": false,
+  "source_sha256": "8bf1f33ef2d77321f3f5b4a12f58516b7fe30d2326902d40fb05b90e97a7ba61",
+  "workers": {
+    "original": {
+      "returncode": 0,
+      "command": [
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/n1-profile/bridge/validate_split.py",
+        "--worker",
+        "original",
+        "--library",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/bridge/libmadloop_tirust.so",
+        "--worker-output",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/n1-profile/bridge/split-validation-workers/original.json",
+        "--expected-library-sha256",
+        "aef3b0fb1404bdcd12e31ceee9eea57ee431a48d1eea922cd879436e7c9cc732",
+        "--lock-fd",
+        "3"
+      ],
+      "result": "docs/benchmarkfolder/experiments/n1-profile/bridge/split-validation-workers/original.json",
+      "result_sha256": "562691ead89032f3dabf5f7ae7eb2fd0a54cc804b601827f7867e8c95243206b",
+      "log": "docs/benchmarkfolder/experiments/n1-profile/bridge/split-validation-workers/original.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "split": {
+      "returncode": 0,
+      "command": [
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/n1-profile/bridge/validate_split.py",
+        "--worker",
+        "split",
+        "--library",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/split-bridge/libmadloop_tirust.so",
+        "--worker-output",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/n1-profile/bridge/split-validation-workers/split.json",
+        "--expected-library-sha256",
+        "1c3688011fb0b423142ab4ac4c832f5b71d8e4409ef323087dfac5ceb2075cd7",
+        "--lock-fd",
+        "3"
+      ],
+      "result": "docs/benchmarkfolder/experiments/n1-profile/bridge/split-validation-workers/split.json",
+      "result_sha256": "e5e711dcd46ac9614ef53c33bd8a2da130437f110d71b075cd5b5e6bfcb0c646",
+      "log": "docs/benchmarkfolder/experiments/n1-profile/bridge/split-validation-workers/split.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "comparison": {
+    "passed": true,
+    "differences": [],
+    "cache_statistics_identical": true,
+    "cache_statistics_differences": [],
+    "cache_comparison_policy": "Counters are reported separately; each worker strictly checks bypass, same-budget preservation, zero-budget exclusion, and failure clearing.",
+    "exact_output_comparison": "Per-call byte identity, including signed zeros, between original and split for the same input and options.",
+    "failure_removal_limit": "External recovery and empty-store assertions cannot inspect workspace object destruction; removal of both directions is established by the isolated source diff."
+  },
+  "identities": {
+    "original": {
+      "library": ".tirust-build/n1-profile/bridge/libmadloop_tirust.so",
+      "library_sha256": "aef3b0fb1404bdcd12e31ceee9eea57ee431a48d1eea922cd879436e7c9cc732",
+      "source_and_metadata_sha256": {
+        "docs/benchmarkfolder/experiments/n1-profile/bridge/validate_split.py": "8bf1f33ef2d77321f3f5b4a12f58516b7fe30d2326902d40fb05b90e97a7ba61",
+        "vendor/tirust/tirust.h": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad",
+        "vendor/tirust/src/lib.rs": "1eab09d61652e4dfade900a22f8c63a071b4fecee2e7454e8144f934f17e34e0",
+        ".tirust-build/pole-development/crates/iregi-rust/src/basis.rs": "5d245fd11b81bd59105d554d9a33cd7441e3d5c7954621b998057c328a667178",
+        ".tirust-build/n1-profile/bridge/src/lib.rs": "5a20ad2513c4ad53616ec81c750a3f9d02df8d80008331b0ae531f1f24d48596",
+        ".tirust-build/n1-profile/bridge/src/profile.rs": "7c080e4d456690e4e3150396822393053aa0f17332bdb8d17329b89c0581175a",
+        ".tirust-build/n1-profile/bridge/preparation.json": "65f20a053dc2a6819b3938954b3f73730555b94cba1380214daa74a501138845",
+        ".tirust-build/n1-profile/bridge/build-metadata.json": "abe01f4a8c4bc960449c3cda56cbcca3c0d81dc45c96306c8002083af470cdb5"
+      }
+    },
+    "split": {
+      "library": ".tirust-build/n1-profile/split-bridge/libmadloop_tirust.so",
+      "library_sha256": "1c3688011fb0b423142ab4ac4c832f5b71d8e4409ef323087dfac5ceb2075cd7",
+      "source_and_metadata_sha256": {
+        "docs/benchmarkfolder/experiments/n1-profile/bridge/validate_split.py": "8bf1f33ef2d77321f3f5b4a12f58516b7fe30d2326902d40fb05b90e97a7ba61",
+        "vendor/tirust/tirust.h": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad",
+        "vendor/tirust/src/lib.rs": "1eab09d61652e4dfade900a22f8c63a071b4fecee2e7454e8144f934f17e34e0",
+        ".tirust-build/pole-development/crates/iregi-rust/src/basis.rs": "5d245fd11b81bd59105d554d9a33cd7441e3d5c7954621b998057c328a667178",
+        ".tirust-build/n1-profile/split-bridge/src/lib.rs": "acc21eb665e523a99906d5e071781c966c5f06d57de8f8683cd713147bc73252",
+        ".tirust-build/n1-profile/split-bridge/src/profile.rs": "7c080e4d456690e4e3150396822393053aa0f17332bdb8d17329b89c0581175a",
+        ".tirust-build/n1-profile/split-bridge/preparation.json": "bbb07dc8d01e9a16df64e2f149a4bf85f448839e643187f95bc163b132b00895",
+        ".tirust-build/n1-profile/split-bridge/build-metadata.json": "149835d8587a1b61d8d2bb2b0bd6d10f79d31a3954e17475da2a9575ef62cf4e"
+      }
+    }
+  },
+  "call_counts": {
+    "original": 90,
+    "split": 90
+  },
+  "optional_fixture_refusals": {
+    "original": [],
+    "split": []
+  },
+  "scope": "Sequential, isolated raw-ABI DP tests. No timing or complete-amplitude claim; QP is unchanged by the experiment and not exercised."
+}
