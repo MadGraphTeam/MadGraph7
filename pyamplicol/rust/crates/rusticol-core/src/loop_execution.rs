@@ -868,6 +868,10 @@ pub mod v2 {
         report.time("dressing", start);
         let peak = runs.iter().map(|run| run.peak_reals).max().unwrap_or(0);
         report.peak("open objects (one family walk)", peak, L);
+        report.count(
+            "closure columns",
+            runs.iter().map(|run| run.closures as u64).sum(),
+        );
         report.count("families", families.len() as u64);
         let steps = || {
             families

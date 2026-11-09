@@ -29,6 +29,9 @@ use ninjars::fast::tensor_layout::ncoeff;
 pub struct FamilyRun<T> {
     pub numerator: FamilyNumerator<T>,
     pub peak_reals: usize,
+    /// The (traced object row, observable column) closures of the walk: the
+    /// closure's counted work (report count "closure columns").
+    pub closures: usize,
 }
 
 /// Run schedule B for family `index` of `plan` on one chunk of lanes.
@@ -124,6 +127,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
     // The rows each fused step writes (and its consumer reads): only those
     // are zeroed (a row-pruned copy writes the kept rows only).
     let written = written_rows(family, columns);
+    let mut closures = 0;
     for (s, step) in family.steps.iter().enumerate() {
         // A fused trace step forms only the diagonal its trace reads
         // (lit-dress lever A; decided per step from the plan).
@@ -137,7 +141,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                 .collect::<RusticolResult<Vec<_>>>()?;
             let mut trace = pool.take(ncoeff(step.rank_out) * v);
             let row_trace = family.row_traces.get(s).and_then(Option::as_ref);
-            close_diagonal::<T, L>(
+            closures += close_diagonal::<T, L>(
                 plan,
                 step,
                 &diagonals,
@@ -219,6 +223,12 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                 // Dressed rows: the per-row closure with the amplitude
                 // vector of the step's seed key (decided per step).
                 let vector = key_vector(plan, row_trace, data);
+                let keys = &plan.key_columns[row_trace.key as usize];
+                closures += row_trace
+                    .rows
+                    .iter()
+                    .map(|&h| keys.row(h as usize).len())
+                    .sum::<usize>();
                 trace_rows_into::<T, L>(
                     step,
                     &out,
@@ -233,6 +243,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                 pool.give(out);
             }
             (Some(accumulator), _) => {
+                closures += columns;
                 trace_into::<T, L>(
                     step,
                     &out,
@@ -252,6 +263,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
     Ok(FamilyRun {
         numerator,
         peak_reals: pool.peak,
+        closures,
     })
 }
 
@@ -315,9 +327,10 @@ fn close_diagonal<T: Carrier, const L: usize>(
     rank: usize,
     trace: &mut [T],
     data: &LaneData<T, L>,
-) {
+) -> usize {
     let v = lane_vector_len(L);
     let traced = row_trace.map_or(plan.object_columns(), |r| r.rows.len());
+    let mut closures = 0;
     // Per edge: its input row and factor row lengths.
     let shapes: Vec<(usize, usize)> = step
         .edges
@@ -393,18 +406,19 @@ fn close_diagonal<T: Carrier, const L: usize>(
         }
         trace_row::<T, L>(&contributions, trace);
         match (row_trace, &vector) {
-            (Some(row_trace), Some(vector)) => close_row::<T, L>(
-                trace,
-                accumulator,
-                plan.key_columns[row_trace.key as usize].row(row_trace.rows[r] as usize),
-                slots,
-                vector,
-                rank,
-                &mut term,
-            ),
-            _ => close_column::<T, L>(trace, accumulator, r, rank),
+            (Some(row_trace), Some(vector)) => {
+                let columns =
+                    plan.key_columns[row_trace.key as usize].row(row_trace.rows[r] as usize);
+                closures += columns.len();
+                close_row::<T, L>(trace, accumulator, columns, slots, vector, rank, &mut term)
+            }
+            _ => {
+                closures += 1;
+                close_column::<T, L>(trace, accumulator, r, rank)
+            }
         }
     }
+    closures
 }
 
 /// The split-form segment of `step` for `vertex`, with products table
