@@ -149,9 +149,15 @@ def test_executor_selections_run_their_row_restriction(li):
         finally:
             executor.row_mask = None
         restricted = _restricted(executor, kept)
-        reference = restricted.evaluate(
-            points, scales, parameters=parameters, precision=Precision.double()
-        )
+        # The row-restricted plan dresses the kept rows only; its row mask
+        # squares them only (every row's counterterm kets are formed).
+        restricted.row_mask = tuple(row in kept for row in range(rows))
+        try:
+            reference = restricted.evaluate(
+                points, scales, parameters=parameters, precision=Precision.double()
+            )
+        finally:
+            restricted.row_mask = None
         assert counts == _counts(restricted), label
         assert _values(selected) == _values(reference), label
         for count in (
@@ -160,6 +166,65 @@ def test_executor_selections_run_their_row_restriction(li):
         ):
             assert counts[count] < whole_counts[count], (label, count)
     assert _values(whole) != _values(selected)
+
+
+def _finite(results):
+    return [
+        sum(
+            float(complex(laurent.finite).real)
+            for laurent in r.components["virtual"].values()
+        )
+        for r in results
+    ]
+
+
+def test_executor_selections_square_their_rows_only(li):
+    """u u~ > h g g, two fixture points (eight of its 16 helicity rows vanish
+    exactly): a row selection squares its kept rows only, so every single
+    row's value lies in [0, the summed value], the single rows sum to the
+    summed value and a two-row selection to its two rows (identities: a
+    relative 1e-12 for the summation order). Before lit-dress the executor's
+    row mask squared every row with its counterterm kets (formed for every
+    row), so an exactly vanishing row returned the other rows' counterterm
+    squares (up to 12x the summed value on the stream points)."""
+
+    import math
+
+    from pyamplicol.loops.v2.assemble import Precision
+
+    name = "li_uux_hgg"
+    executor = li.executor(name, "native")
+    rows = len(executor.exported.rows)
+    points, scales, parameters = [], [], None
+    for index in range(2):
+        point, scale, parameters = li.point(name, index)
+        points.append(point)
+        scales.append(scale)
+
+    def evaluate(kept):
+        executor.row_mask = (
+            None if kept is None else tuple(r in kept for r in range(rows))
+        )
+        try:
+            return _finite(
+                executor.evaluate(
+                    points, scales, parameters=parameters, precision=Precision.double()
+                )
+            )
+        finally:
+            executor.row_mask = None
+
+    summed = evaluate(None)
+    singles = [evaluate({row}) for row in range(rows)]
+    assert any(all(v == 0.0 for v in single) for single in singles)
+    for p, total in enumerate(summed):
+        assert all(0.0 <= single[p] <= total * (1 + 1e-12) for single in singles)
+        assert math.isclose(sum(single[p] for single in singles), total, rel_tol=1e-12)
+    live = [row for row in range(rows) if any(singles[row])]
+    pair = {live[0], live[-1]}
+    for p, value in enumerate(evaluate(pair)):
+        expected = sum(singles[row][p] for row in pair)
+        assert math.isclose(value, expected, rel_tol=1e-12), (p, value, expected)
 
 
 def _runtime(artifacts, name):
@@ -176,7 +241,6 @@ def test_api_selections_run_their_row_restriction(artifacts):
     every row)."""
 
     from pyamplicol.loops.v2.assemble import Precision
-
     from tests.unit.test_loop_v2_induced import _fixture
 
     name = "li_gg_hgg"

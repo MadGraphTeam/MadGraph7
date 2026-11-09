@@ -2474,7 +2474,7 @@ class NativeExecutor:
         observables (``induced_observables``) form their quadratic forms on
         the same evaluations' amplitude vectors; ``rows`` (amplitude mode)
         keeps those helicity rows only (``row_mask``: the others are not
-        dressed, their amplitudes are not formed). ``reduction`` is the
+        dressed, nor are their amplitudes formed or squared). ``reduction`` is the
         effective backend the call's result records (``VirtualReduction.
         effective``; None: the current context's, ``reduction.running``): the
         executor calls of the run reduce on it."""
@@ -2921,6 +2921,17 @@ class NativeExecutor:
                     induced.read_native(
                         evaluation, output, index, exported, carrier, numbers
                     )
+                    if self.row_mask is not None:
+                        # A row selection squares its kept rows only: the
+                        # others are not dressed, and their counterterm kets
+                        # (formed for every row) are no part of it.
+                        evaluation.amplitude_rows = tuple(
+                            row
+                            for row, kept in zip(
+                                exported.rows, self.row_mask, strict=True
+                            )
+                            if kept
+                        )
                 if catani and evaluation.catani:
                     from .dipoles import correlations
 
