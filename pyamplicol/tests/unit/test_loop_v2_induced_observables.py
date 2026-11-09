@@ -38,7 +38,7 @@ import pytest
 
 from tests.unit.test_loop_v2_induced import _fixture, _request, _Rows
 
-from .loop_v2_induced_observables_rows import ROWS, coloured, generate
+from .loop_v2_induced_observables_rows import ROWS, coloured, fold_record, generate
 
 ROOT = Path(__file__).resolve().parents[2]
 CORRELATIONS = ROOT / "tests" / "fixtures" / "loop" / "required" / "li" / "correlations"
@@ -293,6 +293,10 @@ def test_colour_and_spin_correlations_equal_recola(artifacts, name):
     from pyamplicol.correlators import CorrelatedRequest
 
     runtime = _runtime(artifacts, name)
+    # Folded (M-LIT lit-fold F1f, USER 2026-11-08 ~22:39: the colour-resolved
+    # outputs are tested on folded plans): these artifacts are generated with
+    # folding on, the default.
+    assert fold_record(artifacts[name])["groups"] > 0
     reference = _recola(name)
     points, scales = _points(name)
     assert reference["points"] == points

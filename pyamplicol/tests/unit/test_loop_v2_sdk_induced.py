@@ -36,7 +36,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit.loop_v2_induced_observables_rows import ROWS, generate
+from tests.unit.loop_v2_induced_observables_rows import ROWS, fold_record, generate
 from tests.unit.test_loop_v2_induced import _fixture
 from tests.unit.test_loop_v2_sdk_extras import (
     _agree,
@@ -188,6 +188,11 @@ def test_loop_induced_sdk_values_equal_the_python_api(artifacts, loop_native, na
     from pyamplicol import Runtime
 
     artifact = artifacts[name]
+    # The artifact is folded (M-LIT lit-fold F1f, USER 2026-11-08 ~22:39:
+    # the SDK outputs are tested on folded plans): its orientation pairs are
+    # dressed once.
+    record = fold_record(artifact)
+    assert record["groups"] > 0 and record["chains_after"] < record["chains"]
     runtime = Runtime.load(artifact, process="p")
     points, scales = _inputs(name)
     exact_points, exact_scales = _exact(points, scales)

@@ -878,13 +878,19 @@ def test_a_failed_generation_probe_refuses_unless_allowed(li, monkeypatch):
 @pytest.mark.loop_physics
 def test_g_g_to_a_a_a_is_zero_within_its_absolute_estimate(li):
     """g g > a a a (Furry: the quark loop's two orientations cancel) is
-    served numerically (Q13: no Furry-by-rule zero): |A|^2 lies within ten
-    times its absolute estimate. The two orientations of a quark loop are
-    dressed into one family numerator, so here the numerator coefficients
+    served numerically on the unfolded plan (Q13: no Furry-by-rule zero;
+    ``generation.loop_induced_folding`` off): |A|^2 lies within ten times
+    its absolute estimate. The two orientations of a quark loop are dressed
+    into one family numerator, so here the numerator coefficients
     themselves cancel and the term scale is of the size of the rounding too:
     the estimate rests on the rotation and re-test budgets, which see that
-    cancellation's rounding."""
+    cancellation's rounding. Folded (the default since M-LIT lit-fold; USER
+    2026-11-08 ~22:39 "Yes, and allow exact zeros" relaxes Q13 for zeros the
+    engine's exact algebra proves), the exact test certifies every
+    orientation pair and their weights cancel exactly: no chain is left and
+    the value is exactly 0."""
 
+    from pyamplicol.loops.v2 import fold
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.loops.v2.plan_export import NativeExecutor
     from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
@@ -910,6 +916,19 @@ def test_g_g_to_a_a_a_is_zero_within_its_absolute_estimate(li):
     estimate = result.stability.absolute[sector].coefficients[0]
     total = abs(float(_total(result)))
     assert total <= 10 * estimate
+    # The folding-on arm: an exact fold zero (USER ~22:39).
+    folded = fold.fold_slice(slice_)
+    assert folded.verdict.exact_zero and folded.verdict.chains_after == 0
+    slice_.fold = folded
+    try:
+        executor = NativeExecutor(slice_, forward=False, inputs="python")
+    finally:
+        slice_.fold = None
+    assert executor.exported.families == ()
+    (result,) = executor.evaluate(
+        [point], [Fraction(1000) ** 2], precision=Precision.double()
+    )
+    assert _total(result) == 0
 
 
 # ------------------------------------------------------------ public route
