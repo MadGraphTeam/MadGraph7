@@ -11,8 +11,8 @@
       "bytes": 2962
     },
     "summary.json": {
-      "sha256": "81aa0b91e3d5e8c8911abcb4d03f17c4587031740973ae9713df578e30e1bdf4",
-      "bytes": 74609
+      "sha256": "b59bde198b17d6b483dc9e0c1b8c59cd3a3254e0fc61d2d68fcc9fd6824406e7",
+      "bytes": 75122
     },
     "implementation-start.json": {
       "sha256": "43f6629e7ec0004ea53888746710013d181713a0e4e11694c252f0be387d8613",
@@ -31,7 +31,7 @@
       "bytes": 221119
     }
   },
-  "pdf_sha256": "4ef1290a29a65bcf07780ac56edff59acce09312f9a58d2706a49e6e022e74f6",
+  "pdf_sha256": "b01f4c816f32bce3a8666789da2cde5ce185a30652f3a665b61a1e81dacf5cfc",
   "font_paths": [],
   "font_search_environment": "/nix/store/fsknhsx8k14l62da4d07pilsnxsvkdc1-libertinus-7.051/share/fonts:/nix/store/0lhf2h2fnjqvpzmk92s5axr2ybvs981s-dejavu-fonts-2.37/share/fonts:/nix/store/0wcl9csd4li3na9z59j7g1igf2c1iz33-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/2ppmsk65csi9d1d05c43jhl2r2z5lrjf-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/6pjk30y4c695caymxpnkk8jbhisvavvv-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts:/nix/store/9fik6jfandv189wklkbz99923jv45lcd-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/bparysamy1afjxz3nga9ml2kdpsk5smc-dejavu-fonts-2.37/share/fonts:/nix/store/cnq79axmg834ya1xqzgb2sp1zj36vch0-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/gi7k29v23s6dv0g28nm4sdllnzahv3yp-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/klwz4lnn6zvz88nas35gyqyh2iv5xh80-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/lwii1s06ha263m4ay4vxbf8si0w24nb1-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/xadrivsjgk1bslbd64hq9zakin7vp6nr-dejavu-fonts-2.37/share/fonts:/nix/store/zm7p349xn0a5vxr9g7wg8gb2xd43h03m-dejavu-fonts-minimal-2.37/share/fonts:/nix/store/zqhby0xidpi0xsafsbl4l7dc72imqqq6-dejavu-fonts-minimal-2.37/share/fonts",
   "numerical_campaign_rerun": false

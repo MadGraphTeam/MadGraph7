@@ -1,0 +1,31 @@
+{
+  "scope": "All actual MP_BUILD_KINEMATIC_MATRIX calls during the isolated four-call TIRust QP point20 diagnostic",
+  "decimal_precision": 80,
+  "point_index": 20,
+  "onshell_threshold": 1e-24,
+  "definition": "Recover q_ij squared as S_ij + m_i squared + m_j squared; identify physical external momenta by their repaired components.",
+  "matrices": 104,
+  "propagator_count_histogram": {
+    "3": 32,
+    "4": 36,
+    "2": 20,
+    "1": 16
+  },
+  "counts": {
+    "entries": 960,
+    "diagonal_entries": 296,
+    "external_momentum_entries": 416,
+    "physical_t_entries": 40
+  },
+  "maximum_residuals": {
+    "matrix_identity_residual_gev2": "7.328291282230259891975195675356222282955781459E-29",
+    "diagonal_residual_gev2": "1E-30",
+    "external_shell_residual_gev2": "1.328291282230259891975195675356222282955781459E-29",
+    "guarded_external_virtuality_gev2": "0",
+    "relative_t_error": "1.3045106798816905173173835398751303268772189607821216347910469012588530506339357E-17"
+  },
+  "raw_trace_sha256": "1cd23bdb9c4d10ad560a503ff74e215ed0153240b9c93c3d32acdaf9f9b30ea9",
+  "amplitude_result_byte_identical_to_untraced_run": true,
+  "stability_certified": false,
+  "performance_eligible": false
+}

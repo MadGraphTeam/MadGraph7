@@ -1,0 +1,149 @@
+{
+  "backend": 8,
+  "case": {
+    "id": "qcd_n3_uux_zgg",
+    "model": "loop_sm",
+    "nfinal": 3,
+    "process": "u u~ > z g g [virt=QCD]",
+    "role": "main"
+  },
+  "configuration_sha256": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef",
+  "cpu": 6,
+  "created_utc": "2026-11-09T20:44:18.199405+00:00",
+  "error": "MeasurementError('Unexpected status 420 for backends [8]; initialization, failure, or another backend was used')",
+  "failed_phase": "single-traversal",
+  "performance_eligible": false,
+  "phase_timeout_seconds": 180.0,
+  "points_sha256": "a2d4bb120bf442179ceadd6c3bf8b842732dfa8e3af50f71e30bb7c9948eed9b",
+  "precision_request": "auto",
+  "protocol_sha256": {
+    "tirust_benchmark-observed-live-drift.py": "cfd8a8920e059159a410693e86a78dfdeed5c86a23a9c5b8fcd106a2d29dc092",
+    "tirust_benchmark.py": "6f67119e5b3be36406fe9065915fd3e68a090fdf3bcd375416ad3370b9ccdc2d",
+    "tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "tirust_benchmark_worker.f": "02a5115406ec38dafb307bdf82879e26f363a5957cfe794121520cfe36b4d678",
+    "tirust_benchmark_worker.py": "33c7b986798b468bdd0a5649283ce1ab707d16edc7373e6c8930d134f22d01ee",
+    "tirust_physical_stress-v2.py": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+  },
+  "rows": {
+    "accepted": [
+      {
+        "accuracy": 1.214611175491153e-15,
+        "coefficients": [
+          3.957638846289334e-05,
+          -9.370426202474434e-06,
+          -2.184598371962983e-05,
+          -6.441550151609363e-06
+        ],
+        "order": 0,
+        "point": 1,
+        "precision": "DP",
+        "raw_numbers": [
+          "3.95763884628933378E-005",
+          "-9.37042620247443424E-006",
+          "-2.18459837196298313E-005",
+          "-6.44155015160936269E-006",
+          "1.21461117549115310E-015"
+        ],
+        "role": "ordinary-control",
+        "stability_checked": true,
+        "status": 218
+      },
+      {
+        "accuracy": 1.214611175491153e-15,
+        "coefficients": [
+          3.957638846289334e-05,
+          -9.370426202474434e-06,
+          -2.184598371962983e-05,
+          -6.441550151609363e-06
+        ],
+        "order": 1,
+        "point": 1,
+        "precision": "DP",
+        "raw_numbers": [
+          "3.95763884628933378E-005",
+          "-9.37042620247443424E-006",
+          "-2.18459837196298313E-005",
+          "-6.44155015160936269E-006",
+          "1.21461117549115310E-015"
+        ],
+        "role": "ordinary-control",
+        "stability_checked": true,
+        "status": 218
+      }
+    ],
+    "rejected": [
+      {
+        "order": 0,
+        "point": 2,
+        "raw_numbers": [
+          "NaN",
+          "-5.65394884573801472E+017",
+          "-1.33868288196557926E+019",
+          "-4.58569023710119526E+018",
+          "1.00000000000000000E+000"
+        ],
+        "reason": "nonfinite output",
+        "role": "stress",
+        "status": 420
+      },
+      {
+        "order": 1,
+        "point": 2,
+        "raw_numbers": [
+          "NaN",
+          "-5.65394884573801472E+017",
+          "-1.33868288196557926E+019",
+          "-4.58569023710119526E+018",
+          "1.00000000000000000E+000"
+        ],
+        "reason": "nonfinite output",
+        "role": "stress",
+        "status": 420
+      }
+    ],
+    "unchecked": []
+  },
+  "runner_sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4",
+  "settings": {
+    "checkcycle": 3,
+    "colliercanoutput": false,
+    "colliercomputeirpoles": true,
+    "colliercomputeuvpoles": true,
+    "collierglobalcache": -1,
+    "colliermode": 1,
+    "collierrequiredaccuracy": 1e-08,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "ctlooplibrary": 2,
+    "ctmodeinit": 1,
+    "ctmoderun": -1,
+    "ctstabthres": 0.01,
+    "doublecheckhelicityfilter": true,
+    "helicityfilterlevel": 2,
+    "helinitstartover": false,
+    "improvepspoint": 2,
+    "iregimode": 2,
+    "iregirecy": true,
+    "loopinitstartover": false,
+    "looppolemode": 0,
+    "maxattempts": 10,
+    "mlreductionlib": "8",
+    "mlstabthres": 1e-06,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "osthres": 1e-08,
+    "tirustcachemaxbytes": 268435456,
+    "tirustcomputefinite": true,
+    "tirustglobalcache": -1,
+    "useloopfilter": false,
+    "useqpintegrandforcuttools": true,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforninjars": true,
+    "useqpintegrandfortirust": true,
+    "writeoutfilters": true,
+    "zerothres": 1e-09
+  },
+  "source": "candidate",
+  "stability_checked": true,
+  "status": "failed"
+}

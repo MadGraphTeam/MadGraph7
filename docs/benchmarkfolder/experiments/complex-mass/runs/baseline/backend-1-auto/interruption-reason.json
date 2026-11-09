@@ -1,0 +1,7 @@
+{
+  "action": "SIGINT sent to the owned Python controller",
+  "reason": "Release the shared numerical-test lock after CPU-active initialization had not produced worker READY within several minutes; subsequent CutTools runs do not acquire the Symbolica lock.",
+  "classification": "Interrupted qualification attempt; no numerical disagreement inferred",
+  "raw_results_available": false,
+  "retained_evidence": ["baseline-output.txt", "baseline-inputs.json", "failure.json", "specification.json"]
+}

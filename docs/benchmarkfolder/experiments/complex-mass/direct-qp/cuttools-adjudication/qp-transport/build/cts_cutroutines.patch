@@ -1,0 +1,41 @@
+--- cts_cutroutines.original
++++ cts_cutroutines.instrumented
+@@ -1,4 +1,4 @@
+-  subroutine ctsxcut(imode,rootsvalue,muscalein,number_propagators, &
++  subroutine ctsxcut_qpinput(imode,rootsvalue,muscalein,number_propagators, &
+                      numdummy,mpnumdummy,rnk,p,m2,amp,ampcc,ampr1,stable)
+ !
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+@@ -68,7 +68,7 @@
+   integer, intent(in) :: rnk
+   include 'cts_dpr.h'
+    , intent(in) :: rootsvalue,muscalein
+-  include 'cts_dpr.h'
++  include 'cts_mpr.h'
+    , intent(in), dimension(0:3,0:(number_propagators-1)) :: p
+   include 'cts_dpc.h'
+    , intent(in), dimension(0:(number_propagators-1)) :: m2
+@@ -302,7 +302,7 @@
+     call load_denominators(dn,number_propagators)
+ !
+     do j= 0,number_propagators-1
+-      do k= 0,3; mp_dn(j)%p(k)= dn(j)%p(k); enddo
++      do k= 0,3; mp_dn(j)%p(k)= p(k,j); enddo
+                  mp_dn(j)%m2  = dn(j)%m2
+     enddo
+     call load_denominators(mp_dn,number_propagators)
+@@ -343,7 +343,7 @@
+     call load_denominators(dn,number_propagators)
+ !
+     do j= 0,number_propagators-1
+-      do k= 0,3; mp_dn(j)%p(k)= dn(j)%p(k); enddo
++      do k= 0,3; mp_dn(j)%p(k)= p(k,number_propagators-1-j); enddo
+                  mp_dn(j)%m2  = dn(j)%m2
+     enddo
+     call load_denominators(mp_dn,number_propagators)
+@@ -617,4 +617,4 @@
+ ! comment
+     endif
+   end subroutine mptest
+-  end subroutine ctsxcut
++  end subroutine ctsxcut_qpinput

@@ -1,0 +1,86 @@
+  ========================================================================================== 
+ {                                                                                          }
+ {       [32m                                                                            [0m       }
+ {       [32m                               ,,                                           [0m       }
+ {       [32m`7MMM.     ,MMF'             `7MM  `7MMF'                                   [0m       }
+ {       [32m  MMMb    dPMM                 MM    MM                                     [0m       }
+ {       [32m  M YM   ,M MM   ,6"Yb.   ,M""bMM    MM         ,pW"Wq.   ,pW"Wq.`7MMpdMAo. [0m       }
+ {       [32m  M  Mb  M' MM  8)   MM ,AP    MM    MM        6W'   `Wb 6W'   `Wb MM   `Wb [0m       }
+ {       [32m  M  YM.P'  MM   ,pm9MM 8MI    MM    MM      , 8M     M8 8M     M8 MM    M8 [0m       }
+ {       [32m  M  `YM'   MM  8M   MM `Mb    MM    MM     ,M YA.   ,A9 YA.   ,A9 MM   ,AP [0m       }
+ {       [32m.JML. `'  .JMML.`Moo9^Yo.`Wbmd"MML..JMMmmmmMMM  `Ybmd9'   `Ybmd9'  MMbmmd'  [0m       }
+ {       [32m                                                                   MM       [0m       }
+ {       [32m                                                                 .JMML.     [0m       }
+ {       [32m[0mv0.2.1 (2026-09-24), Ref: arXiv:1103.0621v2, arXiv:1405.0301[32m                [0m       }
+ {       [32m                                                                            [0m       }
+ {                                                                                          }
+  ========================================================================================== 
+ ===============================================================
+ INFO: MadLoop read these parameters from ./MadLoop5_resources/MadLoopParams.dat                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+ ===============================================================
+  > MLReductionLib            = 9
+  > CTModeRun                 =           -1
+  > LoopPoleMode              =            0
+  > TIRustComputeFinite       =  T
+  > UseQPIntegrandForTIRust    =  T
+  > TIRustGlobalCache         =           -1
+  > TIRustCacheMaxBytes       =             268435456
+  > MLStabThres               =    1.0000000000000000E-003
+  > NRotations_DP             =            0
+  > NRotations_QP             =            0
+  > CTStabThres               =    1.0000000000000000E-002
+  > CTLoopLibrary             =            2
+  > CTModeInit                =            1
+  > CheckCycle                =            3
+  > MaxAttempts               =           10
+  > UseLoopFilter             =  F
+  > HelicityFilterLevel       =            2
+  > ImprovePSPoint            =            2
+  > DoubleCheckHelicityFilter =  T
+  > LoopInitStartOver         =  F
+  > HelInitStartOver          =  F
+  > ZeroThres                 =    1.0000000000000001E-009
+  > OSThres                   =    1.0000000000000000E-008
+  > WriteOutFilters           =  T
+  > UseQPIntegrandForNinja    =  T
+  > UseQPIntegrandForNinjaRS  =  T
+  > UseQPIntegrandForCutTools =  T
+  > IREGIMODE                 =            2
+  > IREGIRECY                 =  T
+  > COLLIERMode               =            1
+  > COLLIERRequiredAccuracy   =    1.0000000000000000E-008
+  > COLLIERCanOutput          =  F
+  > COLLIERComputeUVpoles     =  T
+  > COLLIERComputeIRpoles     =  T
+  > COLLIERGlobalCache        =           -1
+  > COLLIERUseCacheForPoles   =  F
+  > COLLIERUseInternalStabilityTest =  T
+ ===============================================================
+ ##W03 WARNING An unstable PS point was detected.
+ ## The last QP reduction was deemed unstable because a floating point exception was encountered.
+ ##DP accuracy:    3.1867675097328062E-017
+ ##QP accuracy:    0.0000000000000000     
+ Details for split order index :            1
+ Best estimate (fin,1eps,2eps):   5.3509319052389287E-003  -2.4763129180757290E-004  -6.7762635780344027E-021
+ Finite double precision evaluations :   5.3509319052389356E-003   5.3509319052389356E-003
+ Finite quad   precision evaluations :   5.3509319052389287E-003   5.3509319052389287E-003
+ PS point specification :
+ Renormalization scale MU_R=   1000.0000000000000     
+ 1     0.50000000000000000E+03    0.00000000000000000E+00    0.00000000000000000E+00    0.50000000000000000E+03
+ 2     0.50000000000000000E+03    0.00000000000000000E+00    0.00000000000000000E+00   -0.50000000000000000E+03
+ 3     0.50000000000000000E+03    0.49999999999991664E-03    0.00000000000000000E+00    0.49999999999975000E+03
+ 4     0.50000000000000000E+03   -0.49999999999991664E-03    0.00000000000000000E+00   -0.49999999999975000E+03
+ ##W03 WARNING An unstable PS point was detected.
+ ## The last QP reduction was deemed unstable because a floating point exception was encountered.
+ ##DP accuracy:    7.2328647399645702E-016
+ ##QP accuracy:    0.0000000000000000     
+ Details for split order index :            1
+ Best estimate (fin,1eps,2eps):   5.3509319052416782E-003  -2.4763129180773737E-004   6.7762635780344027E-021
+ Finite double precision evaluations :   4.4542262881341107E-003   4.4542262881341116E-003
+ Finite quad   precision evaluations :   5.3509319052416782E-003   5.3509319052416782E-003
+ PS point specification :
+ Renormalization scale MU_R=   1000.0000000000000     
+ 1     0.50000000000000000E+03    0.00000000000000000E+00    0.00000000000000000E+00    0.50000000000000000E+03
+ 2     0.50000000000000000E+03    0.00000000000000000E+00    0.00000000000000000E+00   -0.50000000000000000E+03
+ 3     0.50000000000000000E+03    0.50000000000000004E-05    0.00000000000000000E+00    0.50000000000000000E+03
+ 4     0.50000000000000000E+03   -0.50000000000000004E-05    0.00000000000000000E+00   -0.50000000000000000E+03

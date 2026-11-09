@@ -1,0 +1,25 @@
+qcd_n2_gg_ttx sqrt_s 3.460000346000000E+2 max_shell/s 2.70409461E-17 max_conservation/sqrt_s 1.61849695E-16
+  threshold_excess_GeV 3.459999999200000E-5
+  pair_excess_above_declared_top_pair_threshold_GeV 3.459999993600000E-5
+  pair_threshold_beta_using_declared_masses 4.472135615453336E-4
+qcd_n3_uux_zgg sqrt_s 1.000000000000000E+3 max_shell/s 8.85659472E-17 max_conservation/sqrt_s 1.95999991E-16
+  threshold_excess_GeV 9.088120000000000E+2
+  energy_GeV 9.999999999999999E-5
+  energy_over_sqrt_s 9.999999999999999E-8
+  angle_to_positive_z_beam_radians 1.000000000000000E-6
+  pt_GeV 9.999999999998332E-11
+  two_p1_dot_soft_GeV2 5.000880000000000E-14
+  two_p1_dot_soft_over_s 5.000880000000000E-20
+  two_p1_dot_soft_using_massless_stable_identity_GeV2 4.999999999999582E-14
+  relative_shift_if_soft_leg_forced_exactly_massless -1.759690295343120E-4
+  two_p1_dot_soft_exact_binary64_components_GeV2 5.000882520589389E-14
+  two_p1_dot_soft_direct_binary64_arithmetic_GeV2 5.001554725936330E-14
+  direct_binary64_relative_error_vs_DAT 1.349214410924107E-4
+qcd_n4_uux_zzgg sqrt_s 1.000000000000000E+3 max_shell/s 2.05949066E-17 max_conservation/sqrt_s 2.27000000E-16
+  threshold_excess_GeV 8.176240000000000E+2
+  gram_final_four_legs_one_based_3_4_5_6 det/s4 -7.504977373389624E-18
+  gram_beams_and_Zs_legs_one_based_1_2_3_4 det/s4 -4.496645008189506E-18
+ew_n3_epem_ttxa sqrt_s 3.466000346600001E+2 max_shell/s 5.80314487E-17 max_conservation/sqrt_s 7.85955449E-17
+  threshold_excess_GeV 3.466000006200000E-5
+  pair_excess_above_declared_top_pair_threshold_GeV 9.620002660241211E-13
+  pair_threshold_beta_using_declared_masses 7.450549676388306E-8

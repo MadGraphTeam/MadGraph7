@@ -1,0 +1,5 @@
+{
+  "stage": "compile private free-form CutTools routine",
+  "cause": "Generated process fixed-form cts_mpc.h shadowed vendor free-form include; no native run occurred.",
+  "remedy": "Compile private routine in a separate directory with copied original free-form vendor headers."
+}

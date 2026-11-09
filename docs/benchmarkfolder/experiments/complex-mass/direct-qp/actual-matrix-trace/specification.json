@@ -1,0 +1,20 @@
+{
+  "scope": "Diagnostic-only trace of every actual MP_BUILD_KINEMATIC_MATRIX invocation during four fixed-QP TIRust CMS calls; no timing or stability certification",
+  "backend": 9,
+  "point": 20,
+  "onshell_threshold": 1e-24,
+  "source": "candidate",
+  "parent_compilation_sha256": "287f871fd1966ed3b0a702e7176913512906a898af7ca0681d99876d2b03e753",
+  "unmodified_ct_interface_sha256": "c785122bf5fb865b6e489026430922ad8af950147c306c3ce7aa5c1bc02d5138",
+  "traced_ct_interface_sha256": "b2de8cf6552e876f97106f790866cfe41e3db0b575536e59cb74c725fd4a4060",
+  "trace_sha256": "42192f133cd7d83727e9d17b591e5778d78bf02f8d2dad68394272540bc9925b",
+  "build_command": [
+    "make",
+    "SHELL=/home/external/.nix-profile/bin/bash",
+    "-j1",
+    "check"
+  ],
+  "returncode": 0,
+  "reference_result_sha256": "d6465f727ae8978aa39a58077774839c0ccbcd6e52164604c3b9adb51caa411c",
+  "trace_result_sha256": "d6465f727ae8978aa39a58077774839c0ccbcd6e52164604c3b9adb51caa411c"
+}

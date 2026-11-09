@@ -1,0 +1,244 @@
+{
+  "backend": 8,
+  "case": {
+    "id": "ew_n3_epem_ttxa",
+    "model": "loop_qcd_qed_sm_Gmu",
+    "nfinal": 3,
+    "process": "e+ e- > t t~ a [virt=QED]",
+    "role": "main"
+  },
+  "cpu": 2,
+  "created_utc": "2026-11-09T21:02:40.309719+00:00",
+  "finished_utc": "2026-11-09T21:03:45.477824+00:00",
+  "force_stability_checks": false,
+  "helper_sha256": "29f5de0563ca25afe1852b646e8c6d02ea60cd57f532b02b1ef7a56b768a3c95",
+  "initialization_mode": 1,
+  "observation": {
+    "answer_dimensions": {
+      "allocated": 1,
+      "born_orders": 1,
+      "loop_orders": 1
+    },
+    "backend_precision_counts": {
+      "8:QP_unchecked": 2
+    },
+    "native_dp_only": false,
+    "rows": [
+      {
+        "accuracy": -1.0,
+        "coefficients": [
+          1.8313685258474922e-07,
+          1.7902888837729794e-09,
+          7.704415681834628e-10,
+          -4.3993358513125174e-10
+        ],
+        "order": 0,
+        "point": 1,
+        "precision": "QP",
+        "precision_evidence": "CTModeRun=4, sole selected backend, T=2 (MP_DONE_ONCE)",
+        "requested_backend": 8,
+        "stability_checked": false,
+        "status": 120
+      },
+      {
+        "accuracy": -1.0,
+        "coefficients": [
+          1.8313685258474922e-07,
+          1.7902888837729794e-09,
+          7.704415681834628e-10,
+          -4.3993358513125174e-10
+        ],
+        "order": 1,
+        "point": 1,
+        "precision": "QP",
+        "precision_evidence": "CTModeRun=4, sole selected backend, T=2 (MP_DONE_ONCE)",
+        "requested_backend": 8,
+        "stability_checked": false,
+        "status": 120
+      },
+      {
+        "accuracy": -1.0,
+        "coefficients": [
+          8410001.398002014,
+          600224466462.0547,
+          14590.774647851393,
+          -20202.60814035208
+        ],
+        "order": 0,
+        "point": 2,
+        "precision": "QP",
+        "precision_evidence": "CTModeRun=4, sole selected backend, T=2 (MP_DONE_ONCE)",
+        "requested_backend": 8,
+        "stability_checked": false,
+        "status": 120
+      },
+      {
+        "accuracy": -1.0,
+        "coefficients": [
+          8410001.398002014,
+          600224466462.0547,
+          14590.774647851393,
+          -20202.60814035208
+        ],
+        "order": 1,
+        "point": 2,
+        "precision": "QP",
+        "precision_evidence": "CTModeRun=4, sole selected backend, T=2 (MP_DONE_ONCE)",
+        "requested_backend": 8,
+        "stability_checked": false,
+        "status": 120
+      }
+    ],
+    "scope": "Fixed-mode QP coefficient diagnostic; no numerical stability certification or timing qualification",
+    "stability_checked": false,
+    "status_counts": {
+      "120": 2
+    },
+    "timed_status_counts": {
+      "120": 2
+    }
+  },
+  "original_compilation_sha256": "5e9e8d5377f3499bb6b656ca90e3b34e9664bf9045d81a410679edd3114da09a",
+  "original_executable_sha256": "2395c4891053777b662c46727a333d1575e417a19a311274139cbfc761ffbe37",
+  "performance_eligible": false,
+  "phase_timeout_seconds": 180.0,
+  "points_sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3",
+  "precision_request": "qp",
+  "rows": {
+    "accepted": [],
+    "rejected": [],
+    "unchecked": [
+      {
+        "accuracy": -1.0,
+        "coefficients": [
+          1.8313685258474922e-07,
+          1.7902888837729794e-09,
+          7.704415681834628e-10,
+          -4.3993358513125174e-10
+        ],
+        "order": 0,
+        "point": 1,
+        "precision": "QP",
+        "raw_numbers": [
+          "1.83136852584749221E-007",
+          "1.79028888377297943E-009",
+          "7.70441568183462822E-010",
+          "-4.39933585131251741E-010",
+          "-1.00000000000000000E+000"
+        ],
+        "role": "ordinary-control",
+        "stability_checked": false,
+        "status": 120
+      },
+      {
+        "accuracy": -1.0,
+        "coefficients": [
+          1.8313685258474922e-07,
+          1.7902888837729794e-09,
+          7.704415681834628e-10,
+          -4.3993358513125174e-10
+        ],
+        "order": 1,
+        "point": 1,
+        "precision": "QP",
+        "raw_numbers": [
+          "1.83136852584749221E-007",
+          "1.79028888377297943E-009",
+          "7.70441568183462822E-010",
+          "-4.39933585131251741E-010",
+          "-1.00000000000000000E+000"
+        ],
+        "role": "ordinary-control",
+        "stability_checked": false,
+        "status": 120
+      },
+      {
+        "accuracy": -1.0,
+        "coefficients": [
+          8410001.398002014,
+          600224466462.0547,
+          14590.774647851393,
+          -20202.60814035208
+        ],
+        "order": 0,
+        "point": 2,
+        "precision": "QP",
+        "raw_numbers": [
+          "8.41000139800201356E+006",
+          "6.00224466462054688E+011",
+          "1.45907746478513927E+004",
+          "-2.02026081403520802E+004",
+          "-1.00000000000000000E+000"
+        ],
+        "role": "stress",
+        "stability_checked": false,
+        "status": 120
+      },
+      {
+        "accuracy": -1.0,
+        "coefficients": [
+          8410001.398002014,
+          600224466462.0547,
+          14590.774647851393,
+          -20202.60814035208
+        ],
+        "order": 1,
+        "point": 2,
+        "precision": "QP",
+        "raw_numbers": [
+          "8.41000139800201356E+006",
+          "6.00224466462054688E+011",
+          "1.45907746478513927E+004",
+          "-2.02026081403520802E+004",
+          "-1.00000000000000000E+000"
+        ],
+        "role": "stress",
+        "stability_checked": false,
+        "status": 120
+      }
+    ]
+  },
+  "runner_sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230",
+  "settings": {
+    "checkcycle": 3,
+    "colliercanoutput": false,
+    "colliercomputeirpoles": true,
+    "colliercomputeuvpoles": true,
+    "collierglobalcache": -1,
+    "colliermode": 1,
+    "collierrequiredaccuracy": 1e-08,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "ctlooplibrary": 2,
+    "ctmodeinit": 1,
+    "ctmoderun": 4,
+    "ctstabthres": 0.01,
+    "doublecheckhelicityfilter": true,
+    "helicityfilterlevel": 2,
+    "helinitstartover": false,
+    "improvepspoint": 2,
+    "iregimode": 2,
+    "iregirecy": true,
+    "loopinitstartover": false,
+    "looppolemode": 0,
+    "maxattempts": 10,
+    "mlreductionlib": "8",
+    "mlstabthres": 1e-06,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "osthres": 1e-08,
+    "tirustcachemaxbytes": 268435456,
+    "tirustcomputefinite": true,
+    "tirustglobalcache": -1,
+    "useloopfilter": false,
+    "useqpintegrandforcuttools": true,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforninjars": true,
+    "useqpintegrandfortirust": true,
+    "writeoutfilters": true,
+    "zerothres": 1e-09
+  },
+  "source": "candidate",
+  "stability_checked": false,
+  "status": "unchecked-qp-diagnostic"
+}

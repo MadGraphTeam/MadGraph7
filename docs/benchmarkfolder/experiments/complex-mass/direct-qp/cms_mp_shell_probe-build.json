@@ -1,0 +1,85 @@
+{
+  "scope": "Exact generated SET_MP_PS/MP_BUILD_KINEMATIC_MATRIX inspection, no reduction or timing acceptance",
+  "source_sha256": "ac3e285fb275da0dfe71042590a152900ff6d850c344341ea5c27e20653ec2e1",
+  "point_stream_sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60",
+  "commands": [
+    {
+      "command": [
+        "gfortran",
+        "-ffixed-line-length-132",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/complex-stress-direct-qp/Source/MODEL",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/complex-stress-direct-qp/SubProcesses/P0_epem_mupmum",
+        "-c",
+        "cms_mp_shell_probe.f",
+        "-o",
+        "cms_mp_shell_probe.o"
+      ],
+      "returncode": 0,
+      "output": "MadLoopParams.inc:23:22:\n\n   23 |       common /MADLOOP/CTModeInit,CTModeRun,NRotations_DP,NRotations_QP,\n      |                      1\nWarning: Padding of 4 bytes required before \u2018mlstabthres\u2019 in COMMON \u2018madloop\u2019 at (1); reorder elements or use \u2018-fno-align-commons\u2019 [-Walign-commons]\n"
+    },
+    {
+      "command": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-w",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-I../../Source/MODEL",
+        "-I../../Source/DHELAS",
+        "-o",
+        "cms_mp_shell_probe",
+        "cms_mp_shell_probe.o",
+        "MadLoopParamReader.o",
+        "MadLoopCommons.o",
+        "polynomial.o",
+        "loop_matrix.o",
+        "improve_ps.o",
+        "born_matrix.o",
+        "CT_interface.o",
+        "loop_num.o",
+        "helas_calls_ampb_1.o",
+        "mp_compute_loop_coefs.o",
+        "mp_helas_calls_ampb_1.o",
+        "coef_construction_1.o",
+        "loop_CT_calls_1.o",
+        "mp_coef_construction_1.o",
+        "TIR_interface.o",
+        "COLLIER_interface.o",
+        "mg5_citation.o",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/complex-stress-direct-qp/lib/",
+        "-ldhelas",
+        "-lmodel",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/complex-stress-direct-qp/lib/",
+        "-lcts",
+        "-liregi",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/",
+        "-lninja",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/",
+        "-lavh_olo",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/",
+        "-lcollier",
+        "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a",
+        "-lgcc_s",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/",
+        "-lninjars",
+        "-ldl",
+        "-lgcc_s",
+        "-lutil",
+        "-lrt",
+        "-lpthread",
+        "-lm",
+        "-ldl",
+        "-lc",
+        "-lstdc++"
+      ],
+      "returncode": 0,
+      "output": "/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: warning: 2759c6e58623ef3d-x86_64.o: missing .note.GNU-stack section implies executable stack\n/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker\n"
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/complex-stress-direct-qp/SubProcesses/P0_epem_mupmum/cms_mp_shell_probe"
+      ],
+      "returncode": 0,
+      "output": ""
+    }
+  ]
+}

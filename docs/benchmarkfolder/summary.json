@@ -2134,7 +2134,7 @@
       "validation_errors": {}
     }
   ],
-  "created_utc": "2026-11-09T21:05:20.694221+00:00",
+  "created_utc": "2026-11-09T21:26:25.859138+00:00",
   "date": "2026-11-09",
   "field_definitions": {
     "actual_backend_precision_counts": "Final accepted backend and precision per amplitude evaluation; internal reducer attempts are not counted",
@@ -2214,10 +2214,16 @@
       "status": "fail"
     },
     {
-      "evidence": "All five reducers pass 19 moderate points; ordinary TIRust differences are at most 5.96e-13. Two extreme forward points fail in several reducers; forced-QP adjudication remains open.",
+      "evidence": "All five reducers pass 19 moderate points; original extreme automatic results remain unqualified. Separate QP diagnostics identify legacy CutTools scalar-cutoff and DP-input limitations; private corrections agree with TIRust within 2.11e-11 and an independent double-pole formula.",
       "name": "Complex-mass stress campaign",
-      "path": "experiments/complex-mass/",
-      "status": "pending"
+      "path": "experiments/complex-mass/README.md",
+      "status": "partial"
+    },
+    {
+      "evidence": "24 primary requests give 12 checked completions, 11 rejected/nonfinite streams and one warmup timeout. QP resolves several discrepancies; the EW threshold comparison remains unresolved, and the soft-collinear Born result is nonfinite in every reducer.",
+      "name": "Physical stress campaign",
+      "path": "experiments/physical-stress/README.md",
+      "status": "fail"
     },
     {
       "evidence": "The main matrix above records the independent physical and paired runtime gates. Completed interface checks do not substitute for those measurements.",

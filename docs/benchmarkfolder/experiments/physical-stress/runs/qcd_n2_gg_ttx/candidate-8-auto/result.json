@@ -1,0 +1,231 @@
+{
+  "backend": 8,
+  "case": {
+    "id": "qcd_n2_gg_ttx",
+    "model": "loop_sm",
+    "nfinal": 2,
+    "process": "g g > t t~ [virt=QCD]",
+    "role": "main"
+  },
+  "configuration_sha256": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef",
+  "cpu": 2,
+  "created_utc": "2026-11-09T20:40:18.104074+00:00",
+  "observation": {
+    "answer_dimensions": {
+      "allocated": 1,
+      "born_orders": 1,
+      "loop_orders": 1
+    },
+    "backend_precision_counts": {
+      "8:DP": 2
+    },
+    "cold_seconds": 0.014948052,
+    "native_dp_only": true,
+    "rows": [
+      {
+        "accuracy": 6.83926019090896e-14,
+        "actual_backend": 8,
+        "coefficients": [
+          0.9448968027029306,
+          0.4441576288030051,
+          -0.1690638647212793,
+          -0.10647257777822425
+        ],
+        "order": 0,
+        "point": 1,
+        "precision": "DP",
+        "status": 218
+      },
+      {
+        "accuracy": 6.83926019090896e-14,
+        "actual_backend": 8,
+        "coefficients": [
+          0.9448968027029306,
+          0.4441576288030051,
+          -0.1690638647212793,
+          -0.10647257777822425
+        ],
+        "order": 1,
+        "point": 1,
+        "precision": "DP",
+        "status": 218
+      },
+      {
+        "accuracy": 1.5930652681560666e-10,
+        "actual_backend": 8,
+        "coefficients": [
+          0.3206570234098782,
+          34.88593628133503,
+          -0.06309276235717846,
+          -0.03613217887056201
+        ],
+        "order": 0,
+        "point": 2,
+        "precision": "DP",
+        "status": 218
+      },
+      {
+        "accuracy": 1.5930652681560666e-10,
+        "actual_backend": 8,
+        "coefficients": [
+          0.3206570234098782,
+          34.88593628133503,
+          -0.06309276235717846,
+          -0.03613217887056201
+        ],
+        "order": 1,
+        "point": 2,
+        "precision": "DP",
+        "status": 218
+      }
+    ],
+    "seconds": 0.006006765,
+    "seconds_per_point": 0.0030033825,
+    "status_counts": {
+      "218": 2
+    },
+    "timed_status_counts": {
+      "218": 2
+    }
+  },
+  "performance_eligible": false,
+  "phase_timeout_seconds": 180.0,
+  "points_sha256": "e1886222168de31e45945c7a479d1a970df4f53984155db849b91f9a22111cc7",
+  "precision_request": "auto",
+  "rows": {
+    "accepted": [
+      {
+        "accuracy": 6.83926019090896e-14,
+        "coefficients": [
+          0.9448968027029306,
+          0.4441576288030051,
+          -0.1690638647212793,
+          -0.10647257777822425
+        ],
+        "order": 0,
+        "point": 1,
+        "precision": "DP",
+        "raw_numbers": [
+          "9.44896802702930638E-001",
+          "4.44157628803005078E-001",
+          "-1.69063864721279294E-001",
+          "-1.06472577778224248E-001",
+          "6.83926019090895972E-014"
+        ],
+        "role": "ordinary-control",
+        "stability_checked": true,
+        "status": 218
+      },
+      {
+        "accuracy": 6.83926019090896e-14,
+        "coefficients": [
+          0.9448968027029306,
+          0.4441576288030051,
+          -0.1690638647212793,
+          -0.10647257777822425
+        ],
+        "order": 1,
+        "point": 1,
+        "precision": "DP",
+        "raw_numbers": [
+          "9.44896802702930638E-001",
+          "4.44157628803005078E-001",
+          "-1.69063864721279294E-001",
+          "-1.06472577778224248E-001",
+          "6.83926019090895972E-014"
+        ],
+        "role": "ordinary-control",
+        "stability_checked": true,
+        "status": 218
+      },
+      {
+        "accuracy": 1.5930652681560666e-10,
+        "coefficients": [
+          0.3206570234098782,
+          34.88593628133503,
+          -0.06309276235717846,
+          -0.03613217887056201
+        ],
+        "order": 0,
+        "point": 2,
+        "precision": "DP",
+        "raw_numbers": [
+          "3.20657023409878172E-001",
+          "3.48859362813350273E+001",
+          "-6.30927623571784640E-002",
+          "-3.61321788705620123E-002",
+          "1.59306526815606664E-010"
+        ],
+        "role": "stress",
+        "stability_checked": true,
+        "status": 218
+      },
+      {
+        "accuracy": 1.5930652681560666e-10,
+        "coefficients": [
+          0.3206570234098782,
+          34.88593628133503,
+          -0.06309276235717846,
+          -0.03613217887056201
+        ],
+        "order": 1,
+        "point": 2,
+        "precision": "DP",
+        "raw_numbers": [
+          "3.20657023409878172E-001",
+          "3.48859362813350273E+001",
+          "-6.30927623571784640E-002",
+          "-3.61321788705620123E-002",
+          "1.59306526815606664E-010"
+        ],
+        "role": "stress",
+        "stability_checked": true,
+        "status": 218
+      }
+    ],
+    "rejected": [],
+    "unchecked": []
+  },
+  "settings": {
+    "checkcycle": 3,
+    "colliercanoutput": false,
+    "colliercomputeirpoles": true,
+    "colliercomputeuvpoles": true,
+    "collierglobalcache": -1,
+    "colliermode": 1,
+    "collierrequiredaccuracy": 1e-08,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "ctlooplibrary": 2,
+    "ctmodeinit": 1,
+    "ctmoderun": -1,
+    "ctstabthres": 0.01,
+    "doublecheckhelicityfilter": true,
+    "helicityfilterlevel": 2,
+    "helinitstartover": false,
+    "improvepspoint": 2,
+    "iregimode": 2,
+    "iregirecy": true,
+    "loopinitstartover": false,
+    "looppolemode": 0,
+    "maxattempts": 10,
+    "mlreductionlib": "8",
+    "mlstabthres": 1e-06,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "osthres": 1e-08,
+    "tirustcachemaxbytes": 268435456,
+    "tirustcomputefinite": true,
+    "tirustglobalcache": -1,
+    "useloopfilter": false,
+    "useqpintegrandforcuttools": true,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforninjars": true,
+    "useqpintegrandfortirust": true,
+    "writeoutfilters": true,
+    "zerothres": 1e-09
+  },
+  "source": "candidate",
+  "stability_checked": true,
+  "status": "complete"
+}

@@ -38,6 +38,11 @@ Python 3.12 or higher and a C++ compiler are required. The `madspace` library is
 installed automatically the first time you launch a run. To build it yourself instead,
 run `install madspace` from the MadGraph7 prompt.
 
+MadLoop also provides the optional TIRust reduction backend through
+`install tirust` and `MLReductionLib=9`. See the
+[installation and parameter guide](docs/tirust.md) and the
+[numerical and performance report](docs/benchmarkfolder/benchmark.pdf).
+
 ## First steps
 
 Type `tutorial` at the MadGraph7 prompt for a guided walkthrough of the commands.

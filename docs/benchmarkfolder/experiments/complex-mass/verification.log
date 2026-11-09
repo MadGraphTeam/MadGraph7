@@ -1,0 +1,139 @@
+$ /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python -m unittest tests.unit_tests.various.test_tirust_complex_stress -q
+----------------------------------------------------------------------
+Ran 7 tests in 0.007s
+
+OK
+$ /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python tools/tirust_complex_stress.py summarize
+PASS: verbose derived JSON output is retained in the corresponding summary.json.
+Captured stdout bytes: 5319295; SHA256: ac7f2e051aa7083aa75ca99d3f6a482b9f97fac573aa02a930d390fd54622692
+$ /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/complex-mass/direct-qp/summarize.py
+{"completed": 10, "failed": [], "comparisons": 14, "all_comparisons_pass": false}
+$ /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/complex-mass/direct-qp/check_shell_audit.py
+{
+  "points": 21,
+  "matrix_entries": 1008,
+  "decimal_precision": 80,
+  "all_repaired_external_shells_and_adjacent_matrix_entries_checked": true,
+  "maximum_physical_t_relative_error_at_osthres_1e_minus24": "5.1477031518958000357700106733618311119737771007314095087850550565255514004125342E-16",
+  "stability_certified": false,
+  "performance_eligible": false
+}
+$ /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/analyze.py
+{
+  "scope": "All actual MP_BUILD_KINEMATIC_MATRIX calls during the isolated four-call TIRust QP point20 diagnostic",
+  "decimal_precision": 80,
+  "point_index": 20,
+  "onshell_threshold": 1e-24,
+  "definition": "Recover q_ij squared as S_ij + m_i squared + m_j squared; identify physical external momenta by their repaired components.",
+  "matrices": 104,
+  "propagator_count_histogram": {
+    "3": 32,
+    "4": 36,
+    "2": 20,
+    "1": 16
+  },
+  "counts": {
+    "entries": 960,
+    "diagonal_entries": 296,
+    "external_momentum_entries": 416,
+    "physical_t_entries": 40
+  },
+  "maximum_residuals": {
+    "matrix_identity_residual_gev2": "7.328291282230259891975195675356222282955781459E-29",
+    "diagonal_residual_gev2": "1E-30",
+    "external_shell_residual_gev2": "1.328291282230259891975195675356222282955781459E-29",
+    "guarded_external_virtuality_gev2": "0",
+    "relative_t_error": "1.3045106798816905173173835398751303268772189607821216347910469012588530506339357E-17"
+  },
+  "raw_trace_sha256": "1cd23bdb9c4d10ad560a503ff74e215ed0153240b9c93c3d32acdaf9f9b30ea9",
+  "amplitude_result_byte_identical_to_untraced_run": true,
+  "stability_certified": false,
+  "performance_eligible": false
+}
+$ /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/analyze.py
+{
+  "forward_reverse": {
+    "relative_errors": {
+      "BORN": "0",
+      "FIN": "2.76344710703541203457392261664720884213232860741680598612634E-11",
+      "1EPS": "3.16790001295945621683648160834463514688607758703895126814890E-11",
+      "2EPS": "1.32840442426257575477830658539462397795436982921266450281966E-14"
+    },
+    "maximum_relative_error": "3.16790001295945621683648160834463514688607758703895126814890E-11",
+    "metric": "abs(a-b)/max(abs(a),abs(b)), zero-zero=0"
+  },
+  "references": {
+    "backend-6-point20-osthres-1e-24": {
+      "result_sha256": "7ea4401497b0528462fb83d7861aac52a1593ab4fa1138e6b3b7d37629ecaccb",
+      "status_sha256": "4053f17c4c900eb17430ab8cdd21dbd557e36bcaa89b820a235c9e017ff66fd9",
+      "coefficients": {
+        "BORN": "0.03386428695052817",
+        "FIN": "-54.18341448115604",
+        "1EPS": "-7.810789449874293",
+        "2EPS": "-0.2559461514807478"
+      },
+      "comparison": {
+        "relative_errors": {
+          "BORN": "0",
+          "FIN": "1.83572779513122887694048597829089963262296352350730983962148E-11",
+          "1EPS": "2.10009501663362717558562316274462241726942042415614146703229E-11",
+          "2EPS": "2.73495028524644102680177057452724796080754307880678948541175E-14"
+        },
+        "maximum_relative_error": "2.10009501663362717558562316274462241726942042415614146703229E-11",
+        "metric": "abs(a-b)/max(abs(a),abs(b)), zero-zero=0"
+      }
+    },
+    "backend-8-point20-osthres-1e-24": {
+      "result_sha256": "6a819d944f2e44ae6c6b4521b58e17b4942c63f414c7020d258d55b663218fad",
+      "status_sha256": "efb7f63e2bc84775888ada29dd2ebc6b5215339d35f89d30437aa854debd60c7",
+      "coefficients": {
+        "BORN": "0.03386428695052817",
+        "FIN": "-54.18341448115498",
+        "1EPS": "-7.810789449874154",
+        "2EPS": "-0.2559461514807408"
+      },
+      "comparison": {
+        "relative_errors": {
+          "BORN": "0",
+          "FIN": "1.83768411333326686239235587869605149719033362116371277975177E-11",
+          "1EPS": "2.10187460627548236522561488165424787611332138029302591576803E-11",
+          "2EPS": "0"
+        },
+        "maximum_relative_error": "2.10187460627548236522561488165424787611332138029302591576803E-11",
+        "metric": "abs(a-b)/max(abs(a),abs(b)), zero-zero=0"
+      }
+    },
+    "backend-9-point20-osthres-1e-24": {
+      "result_sha256": "d6465f727ae8978aa39a58077774839c0ccbcd6e52164604c3b9adb51caa411c",
+      "status_sha256": "e0c9d445d0d14a21ca40df575dcf647d11a5e56214b67f0065a441b6851a5817",
+      "coefficients": {
+        "BORN": "0.03386428695052817",
+        "FIN": "-54.18341448115497",
+        "1EPS": "-7.810789449874153",
+        "2EPS": "-0.2559461514807408"
+      },
+      "comparison": {
+        "relative_errors": {
+          "BORN": "0",
+          "FIN": "1.83770256916536156036831691549232651478059182963216941126243E-11",
+          "1EPS": "2.10188740907866117953957165661043223193234225048106105568699E-11",
+          "2EPS": "0"
+        },
+        "maximum_relative_error": "2.10188740907866117953957165661043223193234225048106105568699E-11",
+        "metric": "abs(a-b)/max(abs(a),abs(b)), zero-zero=0"
+      }
+    }
+  },
+  "double_pole_crosscheck": {
+    "expression": "-4*abs(aEW)/alphaS",
+    "observed_aew_real": "0.00755041146868185714",
+    "observed_aew_imaginary": "3.45112270124079520E-20",
+    "observed_alpha_s": "0.11799999999999999",
+    "expected": "-0.255946151480740941690351820401774722194951405886047108232327",
+    "transport_relative_error": "5.53594383039838288895126857441443558369849197205854988758876E-16",
+    "old_transport_relative_error": "0.00000527570728036811808570510173081180370162959059954506296058094",
+    "source_note": "FKS uses -sum(Q_i^2)*GAL(1)^2/G^2; generated GAL(1)^2=4*pi*abs(aEW), equivalent here at recorded precision."
+  }
+}
+$ /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/analyze.py
+{"runs": 7, "input_records": 2708, "independent_double_pole_relative_error": 1.6651662645314937e-16}

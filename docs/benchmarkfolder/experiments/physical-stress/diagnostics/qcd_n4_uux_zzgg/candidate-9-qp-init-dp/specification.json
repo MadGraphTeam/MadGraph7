@@ -1,0 +1,29 @@
+{
+  "backend": 9,
+  "case": {
+    "id": "qcd_n4_uux_zzgg",
+    "model": "loop_sm",
+    "nfinal": 4,
+    "process": "u u~ > z z g g [virt=QCD]",
+    "role": "main"
+  },
+  "cpu": 2,
+  "created_utc": "2026-11-09T20:59:25.107406+00:00",
+  "force_stability_checks": false,
+  "helper_sha256": "29f5de0563ca25afe1852b646e8c6d02ea60cd57f532b02b1ef7a56b768a3c95",
+  "initialization_mode": 1,
+  "original_compilation_sha256": "8dc0f3f1c77d916d2e41102a15c0a35ba3d3dd096a91ea3865d95def5684f1a0",
+  "original_executable_sha256": "a5a36737cb34fcca91f6b3cf5b257e340607a927971e5b33208b67af37e4a4dd",
+  "performance_eligible": false,
+  "phase_timeout_seconds": 180.0,
+  "points_sha256": "8a9111fcef99bdbfcb350cc8e9e7ced78557f2bb39d1761f9ecd0ef94a09a0b9",
+  "precision_request": "qp",
+  "rows": {
+    "accepted": [],
+    "rejected": [],
+    "unchecked": []
+  },
+  "runner_sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230",
+  "source": "candidate",
+  "stability_checked": false
+}

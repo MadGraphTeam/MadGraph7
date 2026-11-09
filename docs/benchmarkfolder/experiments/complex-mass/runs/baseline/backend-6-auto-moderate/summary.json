@@ -1,0 +1,661 @@
+{
+  "backend": 6,
+  "case": {
+    "complex_mass_scheme": true,
+    "id": "cms_ew_n2_epem_mupmum",
+    "model": "loop_qcd_qed_sm_Gmu",
+    "nfinal": 2,
+    "process": "e+ e- > mu+ mu- [virt=QED]",
+    "role": "complex-mass-stress"
+  },
+  "complex_model": {
+    "CMSParam": 1.0,
+    "compiler": "GNU Fortran (GCC) 15.2.0",
+    "masses": {
+      "W": {
+        "mass": 80.419,
+        "relative_reconstruction_error": 0.0,
+        "squared_mass": [
+          6467.215560999999,
+          -168.30972928999998
+        ],
+        "width": 2.09291
+      },
+      "Z": {
+        "mass": 91.188,
+        "relative_reconstruction_error": 0.0,
+        "squared_mass": [
+          8315.251344,
+          -227.85783876
+        ],
+        "width": 2.49877
+      }
+    },
+    "model_library_sha256": "1153d488faabde69a02c340144ba132403a04e3b3e09edbd28435d2f5b8a7496",
+    "parameter_card_sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec",
+    "probe_sha256": "29252543f5fab9a228a253b1f66957d774d42c7fca01bb0c58c0bcbef77c0312"
+  },
+  "created_utc": "2026-11-09T20:08:57.210172+00:00",
+  "observation": {
+    "answer_dimensions": {
+      "allocated": 1,
+      "born_orders": 1,
+      "loop_orders": 1
+    },
+    "backend_precision_counts": {
+      "6:DP": 19
+    },
+    "cold_seconds": 0.063451734,
+    "native_dp_only": true,
+    "rows": [
+      {
+        "accuracy": 3.47102299485714e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.014609942207387691,
+          0.0003102826702005405,
+          -0.00014400634067433533,
+          -7.022621158309016e-05
+        ],
+        "order": 0,
+        "point": 1,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 3.47102299485714e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.014609942207387691,
+          0.0003102826702005405,
+          -0.00014400634067433533,
+          -7.022621158309016e-05
+        ],
+        "order": 1,
+        "point": 1,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 8.056442872770942e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.006283218548664584,
+          0.0003948470619265553,
+          -1.2645452857602277e-05,
+          -3.0201805657943867e-05
+        ],
+        "order": 0,
+        "point": 2,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 8.056442872770942e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.006283218548664584,
+          0.0003948470619265553,
+          -1.2645452857602277e-05,
+          -3.0201805657943867e-05
+        ],
+        "order": 1,
+        "point": 2,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 5.0608026732727015e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.007007666461081502,
+          0.00028542748812498763,
+          -2.6796468148991414e-05,
+          -3.368403930788902e-05
+        ],
+        "order": 0,
+        "point": 3,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 5.0608026732727015e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.007007666461081502,
+          0.00028542748812498763,
+          -2.6796468148991414e-05,
+          -3.368403930788902e-05
+        ],
+        "order": 1,
+        "point": 3,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.3182994238317413e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.006299949309245036,
+          0.000707492418078089,
+          2.0565870183427455e-05,
+          -3.0282226094643298e-05
+        ],
+        "order": 0,
+        "point": 4,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.3182994238317413e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.006299949309245036,
+          0.000707492418078089,
+          2.0565870183427455e-05,
+          -3.0282226094643298e-05
+        ],
+        "order": 1,
+        "point": 4,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.1745934168218007e-13,
+        "actual_backend": 6,
+        "coefficients": [
+          0.0062181580550807695,
+          0.00041378889281231757,
+          -1.0672479824111735e-05,
+          -2.9889076700959675e-05
+        ],
+        "order": 0,
+        "point": 5,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.1745934168218007e-13,
+        "actual_backend": 6,
+        "coefficients": [
+          0.0062181580550807695,
+          0.00041378889281231757,
+          -1.0672479824111735e-05,
+          -2.9889076700959675e-05
+        ],
+        "order": 1,
+        "point": 5,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 2.170655863702591e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.01712846785916123,
+          0.00046546903976332657,
+          -0.00019208530167543814,
+          -8.233211267347592e-05
+        ],
+        "order": 0,
+        "point": 6,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 2.170655863702591e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.01712846785916123,
+          0.00046546903976332657,
+          -0.00019208530167543814,
+          -8.233211267347592e-05
+        ],
+        "order": 1,
+        "point": 6,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.0696817667487759e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.024694265023739143,
+          0.0013094698524770691,
+          -0.0003849791752576319,
+          -0.00011869894184585452
+        ],
+        "order": 0,
+        "point": 7,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.0696817667487759e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.024694265023739143,
+          0.0013094698524770691,
+          -0.0003849791752576319,
+          -0.00011869894184585452
+        ],
+        "order": 1,
+        "point": 7,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 5.141403684690784e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.03214122370093728,
+          0.0032560515592550306,
+          -0.0007924572979858235,
+          -0.00015449454516117646
+        ],
+        "order": 0,
+        "point": 8,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 5.141403684690784e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.03214122370093728,
+          0.0032560515592550306,
+          -0.0007924572979858235,
+          -0.00015449454516117646
+        ],
+        "order": 1,
+        "point": 8,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 3.046042621301079e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.007913173653596006,
+          0.00022507595142262377,
+          -4.021496813700964e-05,
+          -3.8036578064639125e-05
+        ],
+        "order": 0,
+        "point": 9,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 3.046042621301079e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.007913173653596006,
+          0.00022507595142262377,
+          -4.021496813700964e-05,
+          -3.8036578064639125e-05
+        ],
+        "order": 1,
+        "point": 9,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.874100771547699e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.006869502321696637,
+          0.000299457833521757,
+          -2.4544819867119352e-05,
+          -3.301992004253488e-05
+        ],
+        "order": 0,
+        "point": 10,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.874100771547699e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.006869502321696637,
+          0.000299457833521757,
+          -2.4544819867119352e-05,
+          -3.301992004253488e-05
+        ],
+        "order": 1,
+        "point": 10,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.46542341744803e-13,
+        "actual_backend": 6,
+        "coefficients": [
+          0.009921377933861294,
+          0.00018447630584222973,
+          -6.867382497406641e-05,
+          -4.7689496377804186e-05
+        ],
+        "order": 0,
+        "point": 11,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.46542341744803e-13,
+        "actual_backend": 6,
+        "coefficients": [
+          0.009921377933861294,
+          0.00018447630584222973,
+          -6.867382497406641e-05,
+          -4.7689496377804186e-05
+        ],
+        "order": 1,
+        "point": 11,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 4.514076376411421e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.007779338085477997,
+          0.00023151935515917823,
+          -3.830768982751942e-05,
+          -3.739326512126238e-05
+        ],
+        "order": 0,
+        "point": 12,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 4.514076376411421e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.007779338085477997,
+          0.00023151935515917823,
+          -3.830768982751942e-05,
+          -3.739326512126238e-05
+        ],
+        "order": 1,
+        "point": 12,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.3291360246797183e-17,
+        "actual_backend": 6,
+        "coefficients": [
+          0.341791051071973,
+          -0.0420072617250937,
+          -0.0052930070924497585,
+          -0.0016429011373946469
+        ],
+        "order": 0,
+        "point": 13,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 1.3291360246797183e-17,
+        "actual_backend": 6,
+        "coefficients": [
+          0.341791051071973,
+          -0.0420072617250937,
+          -0.0052930070924497585,
+          -0.0016429011373946469
+        ],
+        "order": 1,
+        "point": 13,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 3.2987328738786214e-17,
+        "actual_backend": 6,
+        "coefficients": [
+          2.5077433494207515,
+          -0.26463620965989343,
+          -0.03883514004506,
+          -0.012054073353107268
+        ],
+        "order": 0,
+        "point": 14,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 3.2987328738786214e-17,
+        "actual_backend": 6,
+        "coefficients": [
+          2.5077433494207515,
+          -0.26463620965989343,
+          -0.03883514004506,
+          -0.012054073353107268
+        ],
+        "order": 1,
+        "point": 14,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 2.1240579320416698e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.6976237113336164,
+          -0.04905601495171727,
+          -0.010803463813253034,
+          -0.003353296656623422
+        ],
+        "order": 0,
+        "point": 15,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 2.1240579320416698e-14,
+        "actual_backend": 6,
+        "coefficients": [
+          0.6976237113336164,
+          -0.04905601495171727,
+          -0.010803463813253034,
+          -0.003353296656623422
+        ],
+        "order": 1,
+        "point": 15,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 8.8380176707568e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.030977453645515577,
+          0.0009230398023614785,
+          -0.00047971964548955897,
+          -0.00014890060365299121
+        ],
+        "order": 0,
+        "point": 16,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 8.8380176707568e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.030977453645515577,
+          0.0009230398023614785,
+          -0.00047971964548955897,
+          -0.00014890060365299121
+        ],
+        "order": 1,
+        "point": 16,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 2.209508467669128e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.03097743313034484,
+          0.0009230388463860751,
+          -0.0004797193277897719,
+          -0.0001489005050418742
+        ],
+        "order": 0,
+        "point": 17,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 2.209508467669128e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.03097743313034484,
+          0.0009230388463860751,
+          -0.0004797193277897719,
+          -0.0001489005050418742
+        ],
+        "order": 1,
+        "point": 17,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 4.6952140982490925e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.030977412615281707,
+          0.0009230378905248913,
+          -0.0004797190100916497,
+          -0.0001489004064312748
+        ],
+        "order": 0,
+        "point": 18,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 4.6952140982490925e-15,
+        "actual_backend": 6,
+        "coefficients": [
+          0.030977412615281707,
+          0.0009230378905248913,
+          -0.0004797190100916497,
+          -0.0001489004064312748
+        ],
+        "order": 1,
+        "point": 18,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 4.0736694444572276e-10,
+        "actual_backend": 6,
+        "coefficients": [
+          0.03386427001840561,
+          -0.004335374762104815,
+          -0.002718666103383347,
+          -0.0001627767925630919
+        ],
+        "order": 0,
+        "point": 19,
+        "precision": "DP",
+        "status": 216
+      },
+      {
+        "accuracy": 4.0736694444572276e-10,
+        "actual_backend": 6,
+        "coefficients": [
+          0.03386427001840561,
+          -0.004335374762104815,
+          -0.002718666103383347,
+          -0.0001627767925630919
+        ],
+        "order": 1,
+        "point": 19,
+        "precision": "DP",
+        "status": 216
+      }
+    ],
+    "seconds": 0.04789596,
+    "seconds_per_point": 0.00252084,
+    "status_counts": {
+      "216": 19
+    },
+    "timed_status_counts": {
+      "216": 19
+    }
+  },
+  "point_group": "moderate",
+  "points_file": "points/cms_ew_n2_epem_mupmum-moderate.dat",
+  "points_sha256": "74905c3ee6874a8efa76c407e8ab778c7ac4cf2f06dc7b9f02426327a0257c67",
+  "precision_request": "auto",
+  "scope": "Numerical only; timing is not qualified",
+  "settings": {
+    "checkcycle": 3,
+    "colliercanoutput": false,
+    "colliercomputeirpoles": true,
+    "colliercomputeuvpoles": true,
+    "collierglobalcache": -1,
+    "colliermode": 1,
+    "collierrequiredaccuracy": 1e-08,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "ctlooplibrary": 2,
+    "ctmodeinit": 1,
+    "ctmoderun": -1,
+    "ctstabthres": 0.01,
+    "doublecheckhelicityfilter": true,
+    "helicityfilterlevel": 2,
+    "helinitstartover": false,
+    "improvepspoint": 2,
+    "iregimode": 2,
+    "iregirecy": true,
+    "loopinitstartover": false,
+    "looppolemode": 0,
+    "maxattempts": 10,
+    "mlreductionlib": "6",
+    "mlstabthres": 0.001,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "osthres": 1e-08,
+    "tirustcachemaxbytes": 268435456,
+    "tirustcomputefinite": true,
+    "tirustglobalcache": -1,
+    "useloopfilter": false,
+    "useqpintegrandforcuttools": true,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforninjars": true,
+    "useqpintegrandfortirust": true,
+    "writeoutfilters": true,
+    "zerothres": 1e-09
+  },
+  "source": "baseline",
+  "source_point_indices": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "status": "complete",
+  "timeout_seconds": 120.0
+}

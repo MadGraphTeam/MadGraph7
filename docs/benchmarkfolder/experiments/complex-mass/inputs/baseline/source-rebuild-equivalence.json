@@ -1,0 +1,119 @@
+{
+  "scope": "Byte identity of earlier CMS baseline numerical executables against the later fully source-rebuilt baseline; this does not replace failed numerical observations or establish timing eligibility. Runtime shared dependencies are checked against their recorded hashes; static hashes are checked where retained.",
+  "full_compilation_file": "inputs/baseline/cms_ew_n2_epem_mupmum/compilation.json",
+  "full_compilation_sha256": "f7334e1e4895f8559c913197e979619dd17bbfd39fb398a55d1e932e595b7bac",
+  "compiler": "GNU Fortran (GCC) 15.2.0",
+  "full_numerical_rebuild_this_invocation": true,
+  "numerical_build_from_sources": true,
+  "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+  "records": [
+    {
+      "inputs_file": "runs/baseline/backend-1-auto/baseline-inputs.json",
+      "inputs_sha256": "638366f2eb2f5cbae6c60464409103ba1cbd7939ea0d66924023871fed49edbb",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": false,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-1-auto-moderate/baseline-inputs.json",
+      "inputs_sha256": "64caa74a5cdc3aea830fa42ad8d90de9c4bb6baf2f103fb1e1a6f8c6ba47da66",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-1-auto-ordinary/baseline-inputs.json",
+      "inputs_sha256": "4367cc6cd758e70850ae8466f8160a7fb19a8389e480657b384cf096925f31e2",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-6-auto/baseline-inputs.json",
+      "inputs_sha256": "328159048aea3eb297ea4f351e9690ca699bdb68ebbd82dfac9ed838e1081d60",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-6-auto-moderate/baseline-inputs.json",
+      "inputs_sha256": "e8dbc84eadd80fa7e1c3efaaad1cf4f0459b52df28bf16f7d38b0f4412f060eb",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-6-qp-osthres-1e-24/baseline-inputs.json",
+      "inputs_sha256": "bbc9a44fc26f480dc85d51078664a31db7c422a4f79f66ebbe80df7a25f8c3a3",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-7-auto/baseline-inputs.json",
+      "inputs_sha256": "0352d409dbe86cb93d9da093235aaab68d22d9217e2f57cb4f2c483764f74296",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-7-auto-moderate/baseline-inputs.json",
+      "inputs_sha256": "cb06448000463ec00daead0c1643d23f483e66eed6c70b46fb2e346f3b63d572",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-8-auto/baseline-inputs.json",
+      "inputs_sha256": "af45f3a5ddc2d36703bda6d6b6d6a9a94a1a581ac26c956e1b26b4acb8d04f90",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-8-auto-moderate/baseline-inputs.json",
+      "inputs_sha256": "6ad03726cbb4da3845060be36128ebf08e4653dd9b3e40a2bf68dbeb09a5c6bd",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-8-qp-ordinary-fixed-qp/baseline-inputs.json",
+      "inputs_sha256": "3ac58744e83c84032ac9be19f2d8de44a3ce976f3df386e3ad52a54883b6ca8b",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    },
+    {
+      "inputs_file": "runs/baseline/backend-8-qp-osthres-1e-24/baseline-inputs.json",
+      "inputs_sha256": "b55bf440933b2a3634a66a4b6434ec8b3e14e8a53349b276e70e6e7d4523cc7c",
+      "executable_sha256": "4d74878c4720a6839f0d5039232bb56fe1e051462c5b0bc62636c4475ce2a922",
+      "equals_fully_rebuilt_executable": true,
+      "static_archives_recorded": true,
+      "static_archive_mismatches": [],
+      "runtime_library_mismatches": []
+    }
+  ]
+}

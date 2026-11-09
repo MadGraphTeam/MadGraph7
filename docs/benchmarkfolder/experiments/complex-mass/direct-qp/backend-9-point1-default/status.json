@@ -1,0 +1,19 @@
+{
+  "source": "candidate",
+  "backend": 9,
+  "point_index": 1,
+  "parent_points_sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60",
+  "onshell_threshold": 1e-08,
+  "stability_certified": false,
+  "performance_eligible": false,
+  "precision_request": "QP",
+  "calls": 4,
+  "driver_sha256": "71fd705799138e38ab8bb01bdd18da9e13e57875e7c1087b059799aa73d0d712",
+  "executable_sha256": "7d208ec0fda0b5c67bc2aa3d9fed5536d4bfaff71fc0b4f0bb9b12dc6c83890b",
+  "parameter_card_sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec",
+  "runner_sha256": "9cc5672addb02141a06c467f881d1826c5e0bb1aaf38114c3d2855531c245016",
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds_diagnostic_only": 0.5155125828459859,
+  "result_file_exists": true
+}

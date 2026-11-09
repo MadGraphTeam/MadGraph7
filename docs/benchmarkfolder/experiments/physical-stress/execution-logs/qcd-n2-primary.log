@@ -1,0 +1,6 @@
+{"source": "baseline", "backend": 1, "precision_request": "auto", "status": "complete", "case": "qcd_n2_gg_ttx"}
+{"source": "candidate", "backend": 1, "precision_request": "auto", "status": "complete", "case": "qcd_n2_gg_ttx"}
+{"source": "candidate", "backend": 6, "precision_request": "auto", "status": "complete", "case": "qcd_n2_gg_ttx"}
+{"source": "candidate", "backend": 7, "precision_request": "auto", "status": "complete", "case": "qcd_n2_gg_ttx"}
+{"source": "candidate", "backend": 8, "precision_request": "auto", "status": "complete", "case": "qcd_n2_gg_ttx"}
+{"source": "candidate", "backend": 9, "precision_request": "auto", "status": "complete", "case": "qcd_n2_gg_ttx"}

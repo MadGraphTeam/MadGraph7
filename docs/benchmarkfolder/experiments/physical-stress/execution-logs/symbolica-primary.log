@@ -1,0 +1,6 @@
+{"source": "candidate", "backend": 8, "precision_request": "auto", "status": "failed", "case": "qcd_n3_uux_zgg"}
+{"source": "candidate", "backend": 9, "precision_request": "auto", "status": "failed", "case": "qcd_n3_uux_zgg"}
+{"source": "candidate", "backend": 8, "precision_request": "auto", "status": "complete", "case": "qcd_n4_uux_zzgg"}
+{"source": "candidate", "backend": 9, "precision_request": "auto", "status": "timeout", "case": "qcd_n4_uux_zzgg"}
+{"source": "candidate", "backend": 8, "precision_request": "auto", "status": "complete", "case": "ew_n3_epem_ttxa"}
+{"source": "candidate", "backend": 9, "precision_request": "auto", "status": "failed", "case": "ew_n3_epem_ttxa"}

@@ -1,0 +1,22 @@
+{
+  "case": {
+    "complex_mass_scheme": true,
+    "id": "cms_ew_n2_epem_mupmum",
+    "model": "loop_qcd_qed_sm_Gmu",
+    "nfinal": 2,
+    "process": "e+ e- > mu+ mu- [virt=QED]",
+    "role": "complex-mass-stress"
+  },
+  "command_sha256": "7396f95a73e409a1a9d26c09367aed3b1c811f15c579ed4ef8bb598fdb496b77",
+  "created_utc": "2026-11-09T19:55:23.349982+00:00",
+  "default_chain": "8|6|7|1",
+  "parameter_card_sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec",
+  "seconds": 169.6988356821239,
+  "source": "baseline",
+  "source_identity": {
+    "archive_sha256": "c21b0acdd14916a97d2b5c6fbd9b569468ea37f34d8f02e4b3d405675e19853b",
+    "dirty": false,
+    "files_sha256": "274a9ab19bb0bd3a382eeac5680c6aad4bd761093e9c6c8a66078eb3c0002558",
+    "revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"
+  }
+}

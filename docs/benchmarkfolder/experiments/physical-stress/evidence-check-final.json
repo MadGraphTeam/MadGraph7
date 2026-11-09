@@ -1,0 +1,1737 @@
+{
+  "audit_script_sha256": "6f3ef8ed08a79818897b70bc26e67b1a947d8968af2c95ca234f04d9950d0953",
+  "binary_artifacts": [],
+  "counts": {
+    "complete_order_comparisons_checked": 44,
+    "corrected_qp_failed": 2,
+    "corrected_qp_timeout": 1,
+    "corrected_qp_total": 9,
+    "corrected_qp_unchecked-qp-diagnostic": 6,
+    "derived_point_streams_checked": 4,
+    "diagnostic_only_adjudication_comparisons_checked": 204,
+    "driver_only_proofs_checked": 10,
+    "initial_qp_interrupted": 2,
+    "initial_qp_timeout": 1,
+    "initial_qp_total": 3,
+    "initial_record_identities_preserved": 180,
+    "primary_complete": 12,
+    "primary_failed": 11,
+    "primary_timeout": 1,
+    "primary_total": 24,
+    "trace_total": 1,
+    "trace_unchecked-qp-diagnostic": 1
+  },
+  "intervals": [
+    {
+      "case": "ew_n3_epem_ttxa",
+      "end": 1794257091.144884,
+      "run": "baseline-1-auto",
+      "source": "baseline",
+      "start": 1794257085.5518658
+    },
+    {
+      "case": "ew_n3_epem_ttxa",
+      "end": 1794257101.215917,
+      "run": "candidate-1-auto",
+      "source": "candidate",
+      "start": 1794257095.4708984
+    },
+    {
+      "case": "ew_n3_epem_ttxa",
+      "end": 1794257110.2239468,
+      "run": "candidate-6-auto",
+      "source": "candidate",
+      "start": 1794257105.5239313
+    },
+    {
+      "case": "ew_n3_epem_ttxa",
+      "end": 1794257115.3739636,
+      "run": "candidate-7-auto",
+      "source": "candidate",
+      "start": 1794257114.7689617
+    },
+    {
+      "case": "ew_n3_epem_ttxa",
+      "end": 1794257346.8427236,
+      "run": "candidate-8-auto",
+      "source": "candidate",
+      "start": 1794257325.3166528
+    },
+    {
+      "case": "ew_n3_epem_ttxa",
+      "end": 1794257386.1378527,
+      "run": "candidate-9-auto",
+      "source": "candidate",
+      "start": 1794257379.2358298
+    },
+    {
+      "case": "qcd_n2_gg_ttx",
+      "end": 1794256804.5419452,
+      "run": "baseline-1-auto",
+      "source": "baseline",
+      "start": 1794256804.0589437
+    },
+    {
+      "case": "qcd_n2_gg_ttx",
+      "end": 1794256809.7709625,
+      "run": "candidate-1-auto",
+      "source": "candidate",
+      "start": 1794256809.318961
+    },
+    {
+      "case": "qcd_n2_gg_ttx",
+      "end": 1794256813.922976,
+      "run": "candidate-6-auto",
+      "source": "candidate",
+      "start": 1794256813.8789759
+    },
+    {
+      "case": "qcd_n2_gg_ttx",
+      "end": 1794257355.539752,
+      "run": "candidate-6-qp",
+      "source": "candidate",
+      "start": 1794257175.529161
+    },
+    {
+      "case": "qcd_n2_gg_ttx",
+      "end": 1794256818.0999897,
+      "run": "candidate-7-auto",
+      "source": "candidate",
+      "start": 1794256818.0239894
+    },
+    {
+      "case": "qcd_n2_gg_ttx",
+      "end": 1794256993.1035626,
+      "run": "candidate-8-auto",
+      "source": "candidate",
+      "start": 1794256993.0665627
+    },
+    {
+      "case": "qcd_n2_gg_ttx",
+      "end": 1794257589.0085194,
+      "run": "candidate-8-qp",
+      "source": "candidate",
+      "start": 1794257473.298139
+    },
+    {
+      "case": "qcd_n2_gg_ttx",
+      "end": 1794256998.069579,
+      "run": "candidate-9-auto",
+      "source": "candidate",
+      "start": 1794256997.3635767
+    },
+    {
+      "case": "qcd_n3_uux_zgg",
+      "end": 1794256999.2085826,
+      "run": "baseline-1-auto",
+      "source": "baseline",
+      "start": 1794256993.6665645
+    },
+    {
+      "case": "qcd_n3_uux_zgg",
+      "end": 1794257009.1566153,
+      "run": "candidate-1-auto",
+      "source": "candidate",
+      "start": 1794257003.6195972
+    },
+    {
+      "case": "qcd_n3_uux_zgg",
+      "end": 1794257017.587643,
+      "run": "candidate-6-auto",
+      "source": "candidate",
+      "start": 1794257013.1826286
+    },
+    {
+      "case": "qcd_n3_uux_zgg",
+      "end": 1794257589.0095193,
+      "run": "candidate-6-qp",
+      "source": "candidate",
+      "start": 1794257360.0367668
+    },
+    {
+      "case": "qcd_n3_uux_zgg",
+      "end": 1794257022.187658,
+      "run": "candidate-7-auto",
+      "source": "candidate",
+      "start": 1794257021.7696567
+    },
+    {
+      "case": "qcd_n3_uux_zgg",
+      "end": 1794257075.255832,
+      "run": "candidate-8-auto",
+      "source": "candidate",
+      "start": 1794257062.3687897
+    },
+    {
+      "case": "qcd_n3_uux_zgg",
+      "end": 1794257085.2158647,
+      "run": "candidate-9-auto",
+      "source": "candidate",
+      "start": 1794257079.4458458
+    },
+    {
+      "case": "qcd_n4_uux_zzgg",
+      "end": 1794257036.3937047,
+      "run": "baseline-1-auto",
+      "source": "baseline",
+      "start": 1794257026.461672
+    },
+    {
+      "case": "qcd_n4_uux_zzgg",
+      "end": 1794257052.5527575,
+      "run": "candidate-1-auto",
+      "source": "candidate",
+      "start": 1794257041.7217221
+    },
+    {
+      "case": "qcd_n4_uux_zzgg",
+      "end": 1794257066.5608034,
+      "run": "candidate-6-auto",
+      "source": "candidate",
+      "start": 1794257057.0977726
+    },
+    {
+      "case": "qcd_n4_uux_zzgg",
+      "end": 1794257081.2648518,
+      "run": "candidate-7-auto",
+      "source": "candidate",
+      "start": 1794257070.687817
+    },
+    {
+      "case": "qcd_n4_uux_zzgg",
+      "end": 1794257098.8249094,
+      "run": "candidate-8-auto",
+      "source": "candidate",
+      "start": 1794257089.216878
+    },
+    {
+      "case": "qcd_n4_uux_zzgg",
+      "end": 1794257284.83652,
+      "run": "candidate-9-auto",
+      "source": "candidate",
+      "start": 1794257104.7659287
+    }
+  ],
+  "issues": [],
+  "notes": [
+    "Baseline settings metadata includes four irrelevant TIRust Python defaults absent from original baseline Fortran cards; applicable settings match.",
+    "Credential scan covers private-key headers and recognized GitHub/AWS token patterns; it is not a claim to recognize every possible secret format.",
+    "Packaging index checked before adding this audit artifact; its final post-addition index will be different."
+  ],
+  "packaging_index_snapshot": {
+    "files": 519,
+    "mismatches": [],
+    "note": "Index before adding this audit artifact; owner will regenerate after packaging it.",
+    "sha256": "68ce2da06b04970d4b701f42d909c4df0599cb100a1e7ede2c28ccc1c615f986",
+    "unindexed": []
+  },
+  "python_cache_artifacts": [],
+  "recognizable_sensitive_material": [],
+  "record_identities": {
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "4a89d4ef01e6c15fa06317d965fd98464f868a727fd9d1ee10ef5b84332b87c9"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/candidate-inputs.json": {
+      "bytes": 1242644,
+      "sha256": "d4c1e8e4a0c424ab8067d3830bd7551658eaf85888424c7f9f38bbd7fa4647e0"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/check_sa.f": {
+      "bytes": 5403,
+      "sha256": "99bc61556a1e604736ec9402a5ce3f71d1ddfbcddc7e26f3fde2ba9ec46e71ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/diagnostic-compilation.json": {
+      "bytes": 475885,
+      "sha256": "4d80f2f3fd48b1d6fdbee5e30137d83e3e3e04cfae5b2fd5c56cafc2a1154c65"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "f177a7e7ce68d869462f4861897cefff3d40b7f4a60a0496abd8dee7634cdada"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "4d490aeaecdc43aa929f950784866680961c20aabc279d6f64ae8db39768fa72"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/result.json": {
+      "bytes": 6838,
+      "sha256": "733c341012a226a0315f78a9e96661c9503149b550344762ed3476360cf73f95"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/runner.py": {
+      "bytes": 5381,
+      "sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/specification.json": {
+      "bytes": 999,
+      "sha256": "a05e4df3e1947324b24b83c0e8de22e5198f7a790829f593f054436b54740ab2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-1-qp-init-dp/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "df375c6821decaa24d1c526607b2f1843ed898927b6faa8372026dfe81820740"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/candidate-inputs.json": {
+      "bytes": 1242644,
+      "sha256": "04b825fec3c752133fd489a1b2e3af722a6d7f28ab0dfcddc434d065be6c6475"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/check_sa.f": {
+      "bytes": 5403,
+      "sha256": "99bc61556a1e604736ec9402a5ce3f71d1ddfbcddc7e26f3fde2ba9ec46e71ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/diagnostic-compilation.json": {
+      "bytes": 475885,
+      "sha256": "4d80f2f3fd48b1d6fdbee5e30137d83e3e3e04cfae5b2fd5c56cafc2a1154c65"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "d9d752f5c441eb3775a028922fc167800e447e3061436fad09586ab119a0802e"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "b8d96a1a4f05aa23e81b034526516637992588a49b721eff478a9af250150a69"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/result.json": {
+      "bytes": 6842,
+      "sha256": "3773325531c4434d5b28f0992789bda5fb37110b8da7173f30bf8f12bb538dc7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/runner.py": {
+      "bytes": 5381,
+      "sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/specification.json": {
+      "bytes": 999,
+      "sha256": "da57a7bd42181cc050ba999cef5b641e482ddd914c1a6e465c1e85cb4b452e58"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-6-qp-init-dp/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "652ded2a2665df0efc81c17c11cbbceb6fd660758861c1eb6a24b440ab8799e7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/candidate-inputs.json": {
+      "bytes": 1242644,
+      "sha256": "9fb7e319d3df836e200d0008f498b4e4e40738f9303e2bed8b33a7a9dc16ac1d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/check_sa.f": {
+      "bytes": 5403,
+      "sha256": "99bc61556a1e604736ec9402a5ce3f71d1ddfbcddc7e26f3fde2ba9ec46e71ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/diagnostic-compilation.json": {
+      "bytes": 475885,
+      "sha256": "4d80f2f3fd48b1d6fdbee5e30137d83e3e3e04cfae5b2fd5c56cafc2a1154c65"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "aaea087be9b5bd73a3961afd633392674c9958f53313b43ced5a432a916618ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "7315e1ddaf322c429d80595184a98bc35e94ac2a5a8f4f1ea3bd7a6d30cea64f"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/result.json": {
+      "bytes": 6846,
+      "sha256": "a78647ae05d309447b40d4d36bb22a086e37603d3086cf312e41e27e45202911"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/runner.py": {
+      "bytes": 5381,
+      "sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/specification.json": {
+      "bytes": 999,
+      "sha256": "97401a4623edab612220340e2cb9ba655b84bb4ec797a410882d449d0770848a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/candidate-inputs.json": {
+      "bytes": 1242644,
+      "sha256": "461c2bbc3e745fd193dc492c540f1c4e9363e7dffe74b1d4b6c3c993a5e8073f"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/check_sa.f": {
+      "bytes": 5403,
+      "sha256": "99bc61556a1e604736ec9402a5ce3f71d1ddfbcddc7e26f3fde2ba9ec46e71ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/diagnostic-compilation.json": {
+      "bytes": 475885,
+      "sha256": "4d80f2f3fd48b1d6fdbee5e30137d83e3e3e04cfae5b2fd5c56cafc2a1154c65"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "954abe005c7fb29e08a0d2d2a4124ba7218fd25da9aac334d869e8ce91f62f28"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "73dc0813aed04648a35ace4cb8f7a5f336158cd69f3d2c13ec968f34419b52f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/result.json": {
+      "bytes": 6838,
+      "sha256": "c1d14beb68c18512700baf4c5705e32746ede69fd8714a522b99bf8d811a3180"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/runner.py": {
+      "bytes": 5381,
+      "sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/specification.json": {
+      "bytes": 999,
+      "sha256": "8b0a3d0ff2193414b41436ff87a215cae9e41b9e18ecea1be01848538db32b3c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-9-qp-init-dp/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "df375c6821decaa24d1c526607b2f1843ed898927b6faa8372026dfe81820740"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/candidate-inputs.json": {
+      "bytes": 596013,
+      "sha256": "7c8f8d9092d73fa88669983266e5860a927ac93a7e702ff95cb05f632a57db22"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/check_sa.f": {
+      "bytes": 5403,
+      "sha256": "c81914d04278990f37d07d6ba95d9a4d088f6e247b32a10737de172fbaa1a778"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/diagnostic-compilation.json": {
+      "bytes": 133700,
+      "sha256": "a2abf7e079c0ae617f05b4fe300ae121c89fc745358210fcd5a57c0b198744d6"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "be97b919ffe85fad523eff3459ca3f2694d8d2a184632e5a2d5b38f27045dba4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "bd892e3a5f163efeca232073dcb9c93a08b2ebc5aabe32e84727a8c0642014b4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/result.json": {
+      "bytes": 6796,
+      "sha256": "caf30f7f9bad3db3d30493b766b83b4ae7f63258497b9863260fe8620c130021"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/runner.py": {
+      "bytes": 5381,
+      "sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/specification.json": {
+      "bytes": 981,
+      "sha256": "b4884eb12ddb1353ae5ba215ffc99c22904765bdf0eaeef4d7e4a176adfcd265"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-6-qp-init-dp/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "652ded2a2665df0efc81c17c11cbbceb6fd660758861c1eb6a24b440ab8799e7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/candidate-inputs.json": {
+      "bytes": 596013,
+      "sha256": "1c8c242eb850ba8a74c6934d6cb61d92c131a17fe3a1bbb2033a12d5fc056126"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/check_sa.f": {
+      "bytes": 5403,
+      "sha256": "c81914d04278990f37d07d6ba95d9a4d088f6e247b32a10737de172fbaa1a778"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/diagnostic-compilation.json": {
+      "bytes": 133700,
+      "sha256": "a2abf7e079c0ae617f05b4fe300ae121c89fc745358210fcd5a57c0b198744d6"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "b3237cad2f6743e8af1895675932878bcb657af9a68ff5d292162cf2ef5a266f"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "bd892e3a5f163efeca232073dcb9c93a08b2ebc5aabe32e84727a8c0642014b4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/result.json": {
+      "bytes": 6796,
+      "sha256": "d5fc44f813a8c5dcfcddd9d20c1ea79e9071a4a26c849120ddf058623a0abedb"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/runner.py": {
+      "bytes": 5381,
+      "sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/specification.json": {
+      "bytes": 981,
+      "sha256": "053656c042185fbd34d13f56ac82cca97417345fa5721bae5ec2d67cdeb879c8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n2_gg_ttx/candidate-8-qp-init-dp/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "df375c6821decaa24d1c526607b2f1843ed898927b6faa8372026dfe81820740"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/candidate-inputs.json": {
+      "bytes": 701601,
+      "sha256": "47616cbd61427813cbcb4c539723101a23862c4a35c05721c3c41874519af4f7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/check_sa.f": {
+      "bytes": 5403,
+      "sha256": "99bc61556a1e604736ec9402a5ce3f71d1ddfbcddc7e26f3fde2ba9ec46e71ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/diagnostic-compilation.json": {
+      "bytes": 189497,
+      "sha256": "dfc6fa6fc605cbaee343d31ceae113da8714853246e8ac487893402d79fbdbde"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "3d2b74ce0e82e7e1ff6530f0143bbc0e6578813eb4a2503ab2ae1c00df0dd566"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "330084977d91de43e535f36abd7ccf1f8fb6e8304b6f48dc1d69ae40ef0e4add"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/result.json": {
+      "bytes": 4089,
+      "sha256": "df180d66b66115e8e57bfa58b5fcc935247027099033cb522aacfd67fa960b20"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/runner.py": {
+      "bytes": 5381,
+      "sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/specification.json": {
+      "bytes": 984,
+      "sha256": "b2e003818748399710422cc53c9d0a28e59022f65ceab8443af9fcc9bad9cb94"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-6-qp-init-dp/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/candidate-inputs.json": {
+      "bytes": 701601,
+      "sha256": "7b4cdf0ab75f3b2ce55f544996f77a7d4e7fd766763c22c15695f0e8864d729d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/check_sa.f": {
+      "bytes": 5403,
+      "sha256": "99bc61556a1e604736ec9402a5ce3f71d1ddfbcddc7e26f3fde2ba9ec46e71ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/diagnostic-compilation.json": {
+      "bytes": 189497,
+      "sha256": "dfc6fa6fc605cbaee343d31ceae113da8714853246e8ac487893402d79fbdbde"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "569635f87ec749da4bd5b49e3d39cfa764b757140ce6b18e927409ca37dcad4b"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "31841d5cb4ea4ea6484430d9228d17ab5b9556bb2da61fcec560356a23a9f08b"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/result.json": {
+      "bytes": 4221,
+      "sha256": "2c363754a972f28dc5833df8498acf604c19cc070d47087486fe2a55c0b97ec7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/runner.py": {
+      "bytes": 5381,
+      "sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/specification.json": {
+      "bytes": 984,
+      "sha256": "cf6a45290ed792c1c737a550e59311185433503bca46411975b7a08edcb65884"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n3_uux_zgg/candidate-9-qp-init-dp/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/candidate-inputs.json": {
+      "bytes": 732517,
+      "sha256": "f302b0effba699c3ab271073c889a38eb7c4164239cc5aa2ccd385ebc84cb0bd"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/check_sa.f": {
+      "bytes": 7843,
+      "sha256": "5937c159e462a0d3c607eeb6e4fc8fe4abcb842d5dadb93b01ba3dfd0bc52318"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/diagnostic-compilation.json": {
+      "bytes": 205847,
+      "sha256": "b21484fff71f60b63cfbad52231fdc7a521e8610e6cd6f5b71a50a5e6e6f09bf"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "30b83418734aa7ee423a9f28a7f8a2aedd7f321aa0fddc651266bfa7f14f8d35"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "301b0c031ec041c266cd938f267ccaa15435092e3d201675b6c55a9fc8e3e4b4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "8f496062f3858318e6b4fafcdbe100783ba4c861fbae0e9fb9635d6b7af62f9b"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/raw/warmup.dat": {
+      "bytes": 1135,
+      "sha256": "ff4f3b15233e335394da9d3398791a4d7b0ab73d14f448a1fbb77aa8f5cb3587"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/result.json": {
+      "bytes": 6918,
+      "sha256": "f9822900964f14c54fd816d7b8f303ce4193abe5174064b7962c242914e65657"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/runner.py": {
+      "bytes": 5387,
+      "sha256": "827e6664a71f46eb9892ef182a2f460c2612aafbaf3961c0059ff7c7ffe3e874"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/specification.json": {
+      "bytes": 987,
+      "sha256": "0823f40aa8161dda2760e2f1a29506acec2f719597f5bfa4705809d00d26c23c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp-warmup-trace/unchecked-worker.f": {
+      "bytes": 7897,
+      "sha256": "9e17e2c4cec63ae951c826160e06410d66ed0b3f5266ad01983ffb8d5df460ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/candidate-inputs.json": {
+      "bytes": 732476,
+      "sha256": "e47eb3c8f5454a4bc334c0f43ffae7b4de9a88adab3649fb358008e1a9fc0183"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/check_sa.f": {
+      "bytes": 5403,
+      "sha256": "2234f4e1d5c9eccba6b536fcb64b81a487e2d3c5c75cba3f8d1ea0a691276322"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/configuration.json": {
+      "bytes": 2684,
+      "sha256": "7b3d2338dedc2d67d5ccf7ef6bfda2734aa15e8e6b15257f1c787634930f68f2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/diagnostic-compilation.json": {
+      "bytes": 205819,
+      "sha256": "ac2525d5208b4db09b34ceb7888db6b02e9392bad4d4182eb8f711fd062ca16c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/result.json": {
+      "bytes": 1361,
+      "sha256": "535cf5bb4ce43f7c32f15f49764f6cb47571b5a110a0cefe5a952e08b1e0ffb6"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/runner.py": {
+      "bytes": 5381,
+      "sha256": "a80d3042a04facc27b3267e340ebf62430663aee9e577bc2c055633ac5c69230"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/specification.json": {
+      "bytes": 987,
+      "sha256": "9c1a670890a26ca7056544a36b5fd5215934d58c62eb1c51857df074cae22b98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/diagnostics/qcd_n4_uux_zzgg/candidate-9-qp-init-dp/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/baseline-1-auto/MadLoopParams.dat": {
+      "bytes": 13927,
+      "sha256": "8badc7fb1a4407961555942151cc4de56639077409d6057670a13da0e57dc8d4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/baseline-1-auto/baseline-inputs.json": {
+      "bytes": 422066,
+      "sha256": "83c1b442d7f9eebc3f023dbc3bea729b887d54447cf309c50f906889805ce291"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/baseline-1-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/baseline-1-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "8afbb9886941ee146ea996eb53a93745107adbcc74197289f5b587cd5c1f88c5"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/baseline-1-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "606765fe35f2221f040ce5cca754b2122ebf865f3a9d46ef59154badd14eafd3"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/baseline-1-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "0f10495f702934482b760384cb3399742c39f6f1b7c6f17f8994cfb9d446eafa"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/baseline-1-auto/result.json": {
+      "bytes": 5211,
+      "sha256": "2a535a4954dec54c7647fa077f3d95126e513c22bb0baaaa9ab2567418537cba"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/baseline-1-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/baseline-1-auto/specification.json": {
+      "bytes": 1313,
+      "sha256": "f1534d9e67b913a31b4a472f5ac566818e4574e553c307809c6e1194ad1a23ef"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-1-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "aee4d44106587c991036d1bc9691fedd7c4f46b2b4934851f520080beea99543"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-1-auto/candidate-inputs.json": {
+      "bytes": 752450,
+      "sha256": "5cd3be1a39d61ded14bee5705933e02bcaebe81e1b7cae052324a5d13866779a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-1-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-1-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "8afbb9886941ee146ea996eb53a93745107adbcc74197289f5b587cd5c1f88c5"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-1-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "97903979d17be1d25b9cae901d101bd94b0b7d0f781c6c8ebe74a6eeec2bc471"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-1-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "0f10495f702934482b760384cb3399742c39f6f1b7c6f17f8994cfb9d446eafa"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-1-auto/result.json": {
+      "bytes": 5212,
+      "sha256": "f4939f9971a5077d23afb145f86dd25205994e692f5079967291ee448a79a6d1"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-1-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-1-auto/specification.json": {
+      "bytes": 1314,
+      "sha256": "62a19b4aea65676dd20fbe293769144498c0655d1e248bbdc22902cfc56a2c5b"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "069da5cc6cf123adfe0765d765ba2b7a3cde9dd8a8d2d09355d0cc60e0c8b39d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/candidate-inputs.json": {
+      "bytes": 752450,
+      "sha256": "a74799d04c528823b99c707c3eb7f80d6c89a2af40d24887ea1e2bc220a127f8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/raw/observation.json": {
+      "bytes": 1663,
+      "sha256": "463b602aa3e8108efbd8f58363c445df6ac041c1304deb084a6f2d2effabc7db"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "c17f5f82ab37837190122e740d164b80603a02382a6816da2247d3caae18b23c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "767ca2872160e6eba855606cda488cd36091dd0135c17153ef15be4d17200e73"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "a0dc52c353efb91cd4a0256d33abfc722d0ec0d36419d48c27b7965571d1e25a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/result.json": {
+      "bytes": 6782,
+      "sha256": "295bb1638a21e65a63221bbe3c3c91b9b3e719fa6c71da1bcdb9ce3029539af9"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-6-auto/specification.json": {
+      "bytes": 1314,
+      "sha256": "2f711584e244dd107c66cf19772485e89adf2e51a86c5a67793cdd9f58d760b6"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-7-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5cc706d1ff8903784ff7a4a2e957f8d172ed3bb4abd98351be09d66aab8977ff"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-7-auto/candidate-inputs.json": {
+      "bytes": 752450,
+      "sha256": "3d88bc8d5d2683af748de759d8459c88425c5d913cb3d4b8c5da214e636070aa"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-7-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-7-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "745ffe2f6ec56ca7ee3fcaedb4e4bd5b9a0b41ec2b605f6cafba57eb566afeca"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-7-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "9ea1e5a2358d42d1076f852d2cdcc106d72b097b13342240e0a63c2991a1554e"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-7-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "7220f3ca664fef03e02dffaf037c3d36de4e03f843fc1ffc9cd118f16d0b3800"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-7-auto/result.json": {
+      "bytes": 5210,
+      "sha256": "5b8e9e50bb4a561f3fc0be1fa880d13225acb6d1ef866e043e7dac6ae45401ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-7-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-7-auto/specification.json": {
+      "bytes": 1314,
+      "sha256": "c91413187e85765635f3be041268c84a12ac0532cbc317cbd5d0878c19edd72c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "d266d7f54aaabf22cbbf73a420ea24ba3382080af6bc6fc47a162a27ac5342e3"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/candidate-inputs.json": {
+      "bytes": 752450,
+      "sha256": "6d9873d94a47f6d1bdfff53703cd1bb6cbab55507bd4d5bd0847e76f314d02fe"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/raw/observation.json": {
+      "bytes": 1622,
+      "sha256": "f31dafb4ea7c2f3f6464352a86c7e7171edfb748fc9be08bfa066318f91c27a7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "4dd469ca624c2dfadb3b5a8ab0e24f39f46437635bec068b71d2ac94e2a97939"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "62880d9cba77537687775fa58a08c8943742f1624df66e4c6a803c8a3d8f13f5"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "34b9b9284dbdfc0d191cf7ac8c047bc40680b35b7417ebe8badaeeb62d1c54ce"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/result.json": {
+      "bytes": 6703,
+      "sha256": "476e48f02d683b6b46f0ea6afc8f23eaaa57014ab17e6a99d94add3d7a2a9cfa"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-8-auto/specification.json": {
+      "bytes": 1314,
+      "sha256": "9d33485582fec7e28b3c242f99e6491e34b0b69ec581520f3e184baa005eb81e"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-9-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-9-auto/candidate-inputs.json": {
+      "bytes": 752450,
+      "sha256": "f051ef8cfa0dab924813a66e25e7712ffc2f55fc2332c54f04fc1ca7ec1ffb74"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-9-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-9-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "90929b2a476186b0ac617ac35a52a2eaa7e393e370b61cb2ef7ffd4b1a1fb8ae"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-9-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "2fc44d93631c09d8aa7a9a2f5dfd41ff3eaf2228f89601ed0d43daaa32f58de8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-9-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "2527f323834bdd2ce50bf6a1e4beba4c8ba6d312c51233be772a28c0b189dd20"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-9-auto/result.json": {
+      "bytes": 5172,
+      "sha256": "b2a1cc11c3bfa539f25427eeb6809da4d704688f4f88a0ebd742f9c2664e0ef8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-9-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/ew_n3_epem_ttxa/candidate-9-auto/specification.json": {
+      "bytes": 1314,
+      "sha256": "2186adc8ac18301d84d8e477c0782b7b258b015f3f2a46715efd71bdbb67d101"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/baseline-1-auto/MadLoopParams.dat": {
+      "bytes": 13927,
+      "sha256": "8badc7fb1a4407961555942151cc4de56639077409d6057670a13da0e57dc8d4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/baseline-1-auto/baseline-inputs.json": {
+      "bytes": 128187,
+      "sha256": "85e5a5642bdefc5ee3bbe2aa687470129115a91ab495ab0fef5f15287ca00510"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/baseline-1-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/baseline-1-auto/raw/observation.json": {
+      "bytes": 1611,
+      "sha256": "e1604ca641b60b734299ebf14b6229648e15d07dcbc12294da4ee1d276fbd603"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/baseline-1-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "812399ef6e8caba9d4d3cb9880dd227406f7c56663cf67b33ce3b0b782e95f0e"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/baseline-1-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "1802ac6e27811001c6465b050731a725000d0e51b9e086a23f4fcb60a8b4c419"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/baseline-1-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "0a250ad9d222b8c70a98b5f762cbeb45141bd216deed62ab16a41a018078540c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/baseline-1-auto/result.json": {
+      "bytes": 5928,
+      "sha256": "a43443dc8b18dc8d6c9cc038dbeff1d25f03c0682c99c7edf54ca74e6f8b6a2c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/baseline-1-auto/specification.json": {
+      "bytes": 560,
+      "sha256": "0ed68640b04aeb1b1dcacd922087ed54a253bda2fd655749c3446518b8df4a25"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-1-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "aee4d44106587c991036d1bc9691fedd7c4f46b2b4934851f520080beea99543"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-1-auto/candidate-inputs.json": {
+      "bytes": 458568,
+      "sha256": "4ce9597cf061eb8c013ae001d6e88bb7fdd1f92b749771eb3262833b8c08c5c7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-1-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-1-auto/raw/observation.json": {
+      "bytes": 1610,
+      "sha256": "c20f165e22682b4dcd784ccd4463a49d8dbfbc4506bd5bef5bedeeec8aee5608"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-1-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "812399ef6e8caba9d4d3cb9880dd227406f7c56663cf67b33ce3b0b782e95f0e"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-1-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "971f555312e149c508d0ae6fd3e563e8a53197e2bc563a515137f7bd83f44e7f"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-1-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "0a250ad9d222b8c70a98b5f762cbeb45141bd216deed62ab16a41a018078540c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-1-auto/result.json": {
+      "bytes": 5928,
+      "sha256": "31a4a315e83c0ea1eb7a4260326b12ad7987f77590d3547d20ba75ae5adef913"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-1-auto/specification.json": {
+      "bytes": 561,
+      "sha256": "93cac2f1176f941285856c5b62c49b25108c32871f49d87ab0dbe9ad7739e377"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "069da5cc6cf123adfe0765d765ba2b7a3cde9dd8a8d2d09355d0cc60e0c8b39d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-auto/candidate-inputs.json": {
+      "bytes": 458568,
+      "sha256": "1544dbe1d2fd0fceef4de2f816b12224d68568c0a0598c76fbf92345eebec3d8"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-auto/raw/observation.json": {
+      "bytes": 1604,
+      "sha256": "31b0372d796c74bb6466a89ff1e579691652cdf7ae8eb70305e334e483ea709c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-auto/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "a434d3104a7f5ac0f7be747ffb0479a6895ec03e8608025baae57249bc21e3b6"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "2ce010e13f8a0bc92ab7c89a57febc38f74ba23068a99d6097a17092fbf5b736"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "e4546927075ce3f959a0f4d7bac6037c20afe3e554d0fc3afb96af66103f95b9"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-auto/result.json": {
+      "bytes": 5954,
+      "sha256": "b199fedb2df319798a031e5c714d7fb8858204b221ef878c82772e22decc300c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-auto/specification.json": {
+      "bytes": 561,
+      "sha256": "4474f0f367f931f727ab74fc8ac66d2de770135529462aa7e9ebaecb0ed4192d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-qp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "8271a752c622b154ce10715ab17dcb0b5bc4009f8d2c558f8fd3fc0e68cd9d7a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-qp/candidate-inputs.json": {
+      "bytes": 458567,
+      "sha256": "79c6c2f587382f6099f67d13d634115b249cbeac87741ac2377152b15f85c590"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-qp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-qp/result.json": {
+      "bytes": 1675,
+      "sha256": "5015e1d9ab0f6a039d304929e89d669b1baa61c51f1826ca21339add5f1dacc2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-qp/runner.py": {
+      "bytes": 18416,
+      "sha256": "9518d7afba2652663b187f9f49b093c0f437570c289536f72c54c06c2d94ba2c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-6-qp/specification.json": {
+      "bytes": 1295,
+      "sha256": "1996056af5707ca3b686246787d2cb30a20fb956b6211ec9f7bd5572cb5354d2"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-7-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5cc706d1ff8903784ff7a4a2e957f8d172ed3bb4abd98351be09d66aab8977ff"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-7-auto/candidate-inputs.json": {
+      "bytes": 458568,
+      "sha256": "2b1d2ad9ae8a4038f182436e6066ef90169ce2988cdd26e7533969cf5511ec51"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-7-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-7-auto/raw/observation.json": {
+      "bytes": 1602,
+      "sha256": "51524f52b1c843c05943f876ad2c63594402bb8e65d2ce040f90ab9d70ff99a3"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-7-auto/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "d0e9d3b90c178bb920b57425969de21abd31aef88cb2985b61059aa98cc1ca5a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-7-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "b028aeae30227fe19aff8c102263ccab2fa2d3cfa5dbf135aeac22cd5b73def7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-7-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "9d1d740e13cd77a41f4c147c241d7e2f94b4b29ca8cb40a4660646394131ae3f"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-7-auto/result.json": {
+      "bytes": 5948,
+      "sha256": "fee1b61f5a2d5b9301c6631a495da1ee4877e3f72283f3264ffd11676e03023a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-7-auto/specification.json": {
+      "bytes": 561,
+      "sha256": "70938e639a6fb8ca1e67272010b929d62635f546d7905773ec1477e8f62a5496"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "d266d7f54aaabf22cbbf73a420ea24ba3382080af6bc6fc47a162a27ac5342e3"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-auto/candidate-inputs.json": {
+      "bytes": 458568,
+      "sha256": "5070a4d8c524c9613b6c2a6dc5b0baf6f453571bfaaa523965a91ce78517fc32"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-auto/raw/observation.json": {
+      "bytes": 1603,
+      "sha256": "6caa229aa1ee88d41bba6a0db69f040d50c2e8562bb837030fd280d8ef9ea771"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-auto/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "b6d6e4272cbfb4e02351ee845716f11ff48bee14dfa6409e23a63ad8bb187397"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "49136b434514c98160c878de94081f61b62fbc5f950a3fcd96b19b96ade79e17"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "909895d2a2340daeedbfc6e81989af579b73e47dbc406cf8ce16aa7df4724a6c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-auto/result.json": {
+      "bytes": 5951,
+      "sha256": "3d92eff7dcf8fb51e754bb774e405a51f8c31cc434663df34ac6497742f3d55d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-auto/specification.json": {
+      "bytes": 561,
+      "sha256": "53d4e41a36ddfc0f8bb1d372c5ede6e9f92a0170fc92a7a5e920239928e46c3a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-qp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "906f7b62541a58ae8132087edf940ab2c6208d617ec6551f9f0c169471d0d965"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-qp/candidate-inputs.json": {
+      "bytes": 458567,
+      "sha256": "b2508d2ce774c9bb6718e4ae6a43af0ef71dc7c1c1b9533c4f2381e846e3199a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-qp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-qp/result.json": {
+      "bytes": 1645,
+      "sha256": "ba78ed820752e43ddcfb26f1526c755d6fb3509ec071d91ef9e37d054153d2fc"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-qp/runner.py": {
+      "bytes": 18416,
+      "sha256": "9518d7afba2652663b187f9f49b093c0f437570c289536f72c54c06c2d94ba2c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-8-qp/specification.json": {
+      "bytes": 1295,
+      "sha256": "c013b0796823bae087084f1bf0102a073ba625539db2ad6ab845247a74e55d7c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-9-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-9-auto/candidate-inputs.json": {
+      "bytes": 458568,
+      "sha256": "3014a68a14427bb8d8bdc26eb70ac04d40cc846efcbc9488915c029d5f4e4519"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-9-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-9-auto/raw/observation.json": {
+      "bytes": 1611,
+      "sha256": "7098756aad4966c08d91dec9491b6619f39f8b4bf2b8d358f655f3d13988d063"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-9-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "4bc36ce757f1f308d579d8d15ceedd97ec19a5fea62515360a73603a66bb0766"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-9-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "55b2af6cd19260210bff078f4f623faadc72e905ba2c54908aa9021d699b317c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-9-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "ff1700e4dc289ed96f30491551b5bf534909eb6547e9f8f598e5909f939db1a0"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-9-auto/result.json": {
+      "bytes": 5929,
+      "sha256": "3a8036f9e47ff04e1f2440bd0d7ffafaf490290d50f8a25127679218f27094ce"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n2_gg_ttx/candidate-9-auto/specification.json": {
+      "bytes": 561,
+      "sha256": "e03c1a975068bad0b1e95816d41541d8ce50b912114baed02585b4d454489131"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/baseline-1-auto/MadLoopParams.dat": {
+      "bytes": 13927,
+      "sha256": "8badc7fb1a4407961555942151cc4de56639077409d6057670a13da0e57dc8d4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/baseline-1-auto/baseline-inputs.json": {
+      "bytes": 176229,
+      "sha256": "618c29c1d734d89d88a6ee4a3beb22bcf94945d18b5f7ae4d852e251eb22b9fd"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/baseline-1-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/baseline-1-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "8afbb9886941ee146ea996eb53a93745107adbcc74197289f5b587cd5c1f88c5"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/baseline-1-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "ad95e7377167ac5a1c160c6a9b6fb5020ec2b502f7c614c6eb39c1bf6d317de4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/baseline-1-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "b53e98cc47ddd1e8b7967981d090fef1287e22cae185f1c599afa1bbea6ce73f"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/baseline-1-auto/result.json": {
+      "bytes": 4608,
+      "sha256": "c0ab5af534cd73dc37935a1ae18575a611b25cf6533b5e4f374c705f36829aac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/baseline-1-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/baseline-1-auto/specification.json": {
+      "bytes": 1298,
+      "sha256": "de8c2f04d83a5da2b0bb0772e47cbd1dd3f20ead8463296d18735a3b8f5f32ce"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-1-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "aee4d44106587c991036d1bc9691fedd7c4f46b2b4934851f520080beea99543"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-1-auto/candidate-inputs.json": {
+      "bytes": 506611,
+      "sha256": "956875799632847551b5126523d43614eeabeba6eae9bfbbe9d0217685971a36"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-1-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-1-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "8afbb9886941ee146ea996eb53a93745107adbcc74197289f5b587cd5c1f88c5"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-1-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "c9ee9cfd1d5ba964900dc36fa75f6681908c8943e5e6d0d82d00ce8447fd36be"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-1-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "b53e98cc47ddd1e8b7967981d090fef1287e22cae185f1c599afa1bbea6ce73f"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-1-auto/result.json": {
+      "bytes": 4609,
+      "sha256": "d906348c1af0180214f43c7c42642e3670e417737b9773b5b6ffc742f907f369"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-1-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-1-auto/specification.json": {
+      "bytes": 1299,
+      "sha256": "94d21617a8e07167ac8474f427cafd4b9e47cc1d638b16a1c4dbf9f0ade24cca"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "069da5cc6cf123adfe0765d765ba2b7a3cde9dd8a8d2d09355d0cc60e0c8b39d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-auto/candidate-inputs.json": {
+      "bytes": 506611,
+      "sha256": "0700baafbaffaa4df942420693618804b73ddcb55c03480d3c27a89ec843b696"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "24c29d2c792814029dfe64aabeb813882415027d0ffbf807d4d38549836d143a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "53fe05128a0af423afcfa116750bdd4699a827a6475de9c9b947b0343d5812aa"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "dea6018ee00a52b1abb3765409fb7487d3a51a54898db5275c71c5c1b64b4acc"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-auto/result.json": {
+      "bytes": 4481,
+      "sha256": "80bf468adc45d7f14f77cf6a95a81dd6cf7d6cf80b52136c085d40a2f9465f09"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-auto/specification.json": {
+      "bytes": 1299,
+      "sha256": "dd6f9ad386cc90025e7db1c33cee11f4a16cfd7bc82db9cdde0de50f002e34d3"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-qp/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "8271a752c622b154ce10715ab17dcb0b5bc4009f8d2c558f8fd3fc0e68cd9d7a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-qp/candidate-inputs.json": {
+      "bytes": 506610,
+      "sha256": "986ec4315b6f37ed4277fc7831a7c86a68e599e98b0e4d7ddc38e7441bd9db2a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-qp/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-qp/result.json": {
+      "bytes": 1648,
+      "sha256": "99ae741255b0c20c278a0d316164e92d968a31bc34a12012f472ce2631ef3be9"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-qp/runner.py": {
+      "bytes": 18416,
+      "sha256": "9518d7afba2652663b187f9f49b093c0f437570c289536f72c54c06c2d94ba2c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-6-qp/specification.json": {
+      "bytes": 1298,
+      "sha256": "75547f58f08ad4db5b5a389510feb2938855076aa39939d67c5c5c995ab7a0ac"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-7-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5cc706d1ff8903784ff7a4a2e957f8d172ed3bb4abd98351be09d66aab8977ff"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-7-auto/candidate-inputs.json": {
+      "bytes": 506611,
+      "sha256": "ba06f83eb910f2960e8cd57b5646e79e87a9842b37e42b33209656fed6dfa9cb"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-7-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-7-auto/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "dd554f794722141a2bca8a23a6aa2deee783f5db36a92fdd9cf8ab600ba0c9db"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-7-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "b28352e5bc4d7eb658bc984659d4d6f295a028747630102d6fae02efa1396266"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-7-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "e9d8f46aea9e48721ad4359d096331e4e765329d269eb8d55bd40bc2c2b6fecb"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-7-auto/result.json": {
+      "bytes": 4545,
+      "sha256": "e43475f8aadcfbe3b4615ca9d093cb64bebae71d001d708ffe3f6a221bec6cb9"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-7-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-7-auto/specification.json": {
+      "bytes": 1299,
+      "sha256": "027adc1c38db0d3ec8770c72a18f4ec1d5a2929061bd164d51841f788eb6ec71"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "d266d7f54aaabf22cbbf73a420ea24ba3382080af6bc6fc47a162a27ac5342e3"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/candidate-inputs.json": {
+      "bytes": 506611,
+      "sha256": "30f4f474cf134e4b50868e3c0e7b4c4858818eb02289fae64a034165665bc481"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "9009c172e3469f088e34f16248a82d2129604f638e538d45f38b5eb4b37d3ab0"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "6f9ae87920c10aac70369dc7ee83c78b440fa1bf0bfb4a17637b50068aa47e8f"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "1ea370d192ed341fb18ec6e87a26b20054a0df1446a1f924d529d10f9b6a671a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/result.json": {
+      "bytes": 4615,
+      "sha256": "4b3e7a7eed6b65cfb7764a9154a6b15992ec66b7049d63b3e34bef286306e034"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/specification.json": {
+      "bytes": 1299,
+      "sha256": "b4e9f5f320fcc2ce3209e12d9ac51bafc529a2f8d340f4b44b18c305af00432e"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/candidate-inputs.json": {
+      "bytes": 506611,
+      "sha256": "a1ff6a9f5c936fca23e8a71f7b8bc860e706eef8180d755b0e194579a40e2f98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "90929b2a476186b0ac617ac35a52a2eaa7e393e370b61cb2ef7ffd4b1a1fb8ae"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "b2d5450e5eb10831f2d8cd4f92ea98450a0655ed6910f6386c87d37472b54d33"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "24110dbdc74d99bd3e583bb62d74272a751bf9c2fcce202677969c52befe39ad"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/result.json": {
+      "bytes": 4615,
+      "sha256": "dac758e01adc90fcc35b3977fada540f89782b5b2bed24638f94c7968252f3e5"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/specification.json": {
+      "bytes": 1299,
+      "sha256": "6836c12214a80fed18094d7aadf1784eba40db6235874bf1026f171f18a29779"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/MadLoopParams.dat": {
+      "bytes": 13927,
+      "sha256": "8badc7fb1a4407961555942151cc4de56639077409d6057670a13da0e57dc8d4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/baseline-inputs.json": {
+      "bytes": 190013,
+      "sha256": "90ab19abb57bdef4f0eb8ad005c52537980b87d2e771cbfecb0ee8f1f070c32a"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/raw/observation.json": {
+      "bytes": 1657,
+      "sha256": "2e765f654d4f5e2db52c0503b79d72ec15404a0a4d391d702ebf1cff80cec1bb"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "0601922fc47d5c879fcaa7141eda1619da89bd63386037f0187b2ce0a5541684"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "0e0a5d841a1f34ac03862a1eb7867f28d45f8e60d28bbfec7e3748b38080c7ed"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "72f5b102a1b770186b523c3af3aa1fb9d3576bc922f25a530c6ba0694dbab082"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/result.json": {
+      "bytes": 6805,
+      "sha256": "922dc341ca4f8170557aa707cb63345fea49db67ca665d633938fc3730794b17"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/baseline-1-auto/specification.json": {
+      "bytes": 1301,
+      "sha256": "8d4d808f9f049f6ab461efaba82d5f1e8b9f760202877e171a385fe5e70aad43"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "aee4d44106587c991036d1bc9691fedd7c4f46b2b4934851f520080beea99543"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/candidate-inputs.json": {
+      "bytes": 520716,
+      "sha256": "57c325621911c383341d193571c5f34238a207a1c42f6b922b88c9f8bcb3d54e"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/raw/observation.json": {
+      "bytes": 1658,
+      "sha256": "05bbe047ebf5d99b67e75d2dca5703ca681374d37f5af942cc646a34c3a60552"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "0601922fc47d5c879fcaa7141eda1619da89bd63386037f0187b2ce0a5541684"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "8be1b62bf813999055e3ef04997b5d4c82c7a419f00934d249758d448dc4e43d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "72f5b102a1b770186b523c3af3aa1fb9d3576bc922f25a530c6ba0694dbab082"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/result.json": {
+      "bytes": 6807,
+      "sha256": "58cc58ad1b3d213606637f54301b5728e68b1c31022a1aa5d63c6ec774c6719c"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-1-auto/specification.json": {
+      "bytes": 1302,
+      "sha256": "010e9b364ad2649308a0215c1a7c17226cf45ff3a7a74a4c9247e6aed5bf2285"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "069da5cc6cf123adfe0765d765ba2b7a3cde9dd8a8d2d09355d0cc60e0c8b39d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/candidate-inputs.json": {
+      "bytes": 520716,
+      "sha256": "bee240a120ff067221a62711f489106ab4f4a75e9b4b76efff94061a6e4457d7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/raw/observation.json": {
+      "bytes": 1658,
+      "sha256": "61bf3deb8d7e62ce8286b85f0f7c61fa250235e4ca5297c2901a3978a380e749"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "a434d3104a7f5ac0f7be747ffb0479a6895ec03e8608025baae57249bc21e3b6"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "15e775d847f35218f0b5d5a02ada0364150f883b8c0d5689188ff76be8f3bd19"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "3f76cb1b0180db550f09a7ac0827f120d7e38db4652c7d6c19a0950c870d0289"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/result.json": {
+      "bytes": 6807,
+      "sha256": "8b8bc412fd22f4b00cc91bde477f33ce76f1b7e77b21f47d3f0ec1f75e9d25c4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-6-auto/specification.json": {
+      "bytes": 1302,
+      "sha256": "fc2ee745238303b0fc80b8779e5327b4fe3e1c0efb479c96f67f519c3ca04e4d"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-7-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5cc706d1ff8903784ff7a4a2e957f8d172ed3bb4abd98351be09d66aab8977ff"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-7-auto/candidate-inputs.json": {
+      "bytes": 520716,
+      "sha256": "45b28df024b56bc5fa2a9d86aae98d5d442d5d9ba26e21590ef78b4a2fe8703b"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-7-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-7-auto/raw/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "745ffe2f6ec56ca7ee3fcaedb4e4bd5b9a0b41ec2b605f6cafba57eb566afeca"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-7-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "995f15c8bca6108d0565e31416d510a02c4ede66ffc10e2bd9e27b64a3aa76ae"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-7-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "0706328730d980fda4e7dd39738c0cf58aec9b4c4ddad7c0d0d4c676293d12ca"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-7-auto/result.json": {
+      "bytes": 5254,
+      "sha256": "a7ad556ca5a89681cfaf09c9df70ee03b693d9fac77e872c3fe07124141b1ad9"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-7-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-7-auto/specification.json": {
+      "bytes": 1302,
+      "sha256": "3bc4c925a93d036de7b2279aee8ec0a84c7881538c28e5351a781ab7e0a2fde4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "d266d7f54aaabf22cbbf73a420ea24ba3382080af6bc6fc47a162a27ac5342e3"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/candidate-inputs.json": {
+      "bytes": 520716,
+      "sha256": "62544576ee9fcff9c0b2da1e500af7d3d84fd709e62723b125e4b9235172e012"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/raw/observation.json": {
+      "bytes": 1657,
+      "sha256": "1aa87391c08c997710f880a36eb7bcc95e9d5d2a66e61de80c53275d7f4e20a7"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/raw/timed_status.dat": {
+      "bytes": 27,
+      "sha256": "b6d6e4272cbfb4e02351ee845716f11ff48bee14dfa6409e23a63ad8bb187397"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/raw/timing.dat": {
+      "bytes": 53,
+      "sha256": "bda0533a346f0e52a49836f10ee7ddf10bb8c32bff6c589e0e23fcc1cd686310"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/raw/values.dat": {
+      "bytes": 620,
+      "sha256": "549bcea4dd004bbc535a237de9d423aec538552304c80a3f5d27ade75f696d68"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/result.json": {
+      "bytes": 6806,
+      "sha256": "8887df18152fec373f00d50e7b302c864fb7f3e7cb614d4246dfb630b854ae79"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-8-auto/specification.json": {
+      "bytes": 1302,
+      "sha256": "7591b7666d783127429e3350c2edf83c6f341c6b220efa811e429bef5a627392"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-9-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-9-auto/candidate-inputs.json": {
+      "bytes": 520716,
+      "sha256": "40f999a926ce0eecca2fc902aabbec4c2d5287b75147c62487b1451561ea7dcc"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-9-auto/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-9-auto/result.json": {
+      "bytes": 1686,
+      "sha256": "192c50e22442b113c966683d4922b425052588fe43d12a157221bda724446f29"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-9-auto/runner.py": {
+      "bytes": 17938,
+      "sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n4_uux_zzgg/candidate-9-auto/specification.json": {
+      "bytes": 1302,
+      "sha256": "90066f838898009dfd4b2cce2c68089cbd8ff0070bdf21a041cb54476eee412f"
+    }
+  },
+  "same_source_case_overlaps": [],
+  "schema": "madloop-physical-stress-final-core-audit-v1",
+  "scope": "Read-only audit of core physical stress evidence. No builds or numerical executions; no stability/performance qualification of forced-QP diagnostics.",
+  "snapshot_utc": "2026-11-09T21:18:53.656495+00:00",
+  "unique_files_hashed": 2800
+}

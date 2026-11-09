@@ -1,0 +1,234 @@
+{
+  "backend": 9,
+  "case": {
+    "id": "qcd_n2_gg_ttx",
+    "model": "loop_sm",
+    "nfinal": 2,
+    "process": "g g > t t~ [virt=QCD]",
+    "role": "main"
+  },
+  "configuration_sha256": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef",
+  "cpu": 2,
+  "created_utc": "2026-11-09T20:43:13.108104+00:00",
+  "observation": {
+    "answer_dimensions": {
+      "allocated": 1,
+      "born_orders": 1,
+      "loop_orders": 1
+    },
+    "backend_precision_counts": {
+      "9:DP": 1,
+      "9:QP": 1
+    },
+    "cold_seconds": 0.357145418,
+    "native_dp_only": false,
+    "rows": [
+      {
+        "accuracy": 1.135761620151021e-14,
+        "actual_backend": 9,
+        "coefficients": [
+          0.9448968027029306,
+          0.44415762880299575,
+          -0.169063864721281,
+          -0.10647257777822426
+        ],
+        "order": 0,
+        "point": 1,
+        "precision": "DP",
+        "status": 219
+      },
+      {
+        "accuracy": 1.135761620151021e-14,
+        "actual_backend": 9,
+        "coefficients": [
+          0.9448968027029306,
+          0.44415762880299575,
+          -0.169063864721281,
+          -0.10647257777822426
+        ],
+        "order": 1,
+        "point": 1,
+        "precision": "DP",
+        "status": 219
+      },
+      {
+        "accuracy": 0.0,
+        "actual_backend": 9,
+        "coefficients": [
+          0.3206570234098782,
+          34.88594375943788,
+          -0.06308793476299869,
+          -0.03613217842147352
+        ],
+        "order": 0,
+        "point": 2,
+        "precision": "QP",
+        "status": 323
+      },
+      {
+        "accuracy": 0.0,
+        "actual_backend": 9,
+        "coefficients": [
+          0.3206570234098782,
+          34.88594375943788,
+          -0.06308793476299869,
+          -0.03613217842147352
+        ],
+        "order": 1,
+        "point": 2,
+        "precision": "QP",
+        "status": 323
+      }
+    ],
+    "seconds": 0.324353601,
+    "seconds_per_point": 0.1621768005,
+    "status_counts": {
+      "219": 1,
+      "323": 1
+    },
+    "timed_status_counts": {
+      "219": 1,
+      "323": 1
+    }
+  },
+  "performance_eligible": false,
+  "phase_timeout_seconds": 180.0,
+  "points_sha256": "e1886222168de31e45945c7a479d1a970df4f53984155db849b91f9a22111cc7",
+  "precision_request": "auto",
+  "rows": {
+    "accepted": [
+      {
+        "accuracy": 1.135761620151021e-14,
+        "coefficients": [
+          0.9448968027029306,
+          0.44415762880299575,
+          -0.169063864721281,
+          -0.10647257777822426
+        ],
+        "order": 0,
+        "point": 1,
+        "precision": "DP",
+        "raw_numbers": [
+          "9.44896802702930638E-001",
+          "4.44157628802995752E-001",
+          "-1.69063864721280988E-001",
+          "-1.06472577778224262E-001",
+          "1.13576162015102096E-014"
+        ],
+        "role": "ordinary-control",
+        "stability_checked": true,
+        "status": 219
+      },
+      {
+        "accuracy": 1.135761620151021e-14,
+        "coefficients": [
+          0.9448968027029306,
+          0.44415762880299575,
+          -0.169063864721281,
+          -0.10647257777822426
+        ],
+        "order": 1,
+        "point": 1,
+        "precision": "DP",
+        "raw_numbers": [
+          "9.44896802702930638E-001",
+          "4.44157628802995752E-001",
+          "-1.69063864721280988E-001",
+          "-1.06472577778224262E-001",
+          "1.13576162015102096E-014"
+        ],
+        "role": "ordinary-control",
+        "stability_checked": true,
+        "status": 219
+      },
+      {
+        "accuracy": 0.0,
+        "coefficients": [
+          0.3206570234098782,
+          34.88594375943788,
+          -0.06308793476299869,
+          -0.03613217842147352
+        ],
+        "order": 0,
+        "point": 2,
+        "precision": "QP",
+        "raw_numbers": [
+          "3.20657023409878172E-001",
+          "3.48859437594378790E+001",
+          "-6.30879347629986903E-002",
+          "-3.61321784214735167E-002",
+          "0.00000000000000000E+000"
+        ],
+        "role": "stress",
+        "stability_checked": true,
+        "status": 323
+      },
+      {
+        "accuracy": 0.0,
+        "coefficients": [
+          0.3206570234098782,
+          34.88594375943788,
+          -0.06308793476299869,
+          -0.03613217842147352
+        ],
+        "order": 1,
+        "point": 2,
+        "precision": "QP",
+        "raw_numbers": [
+          "3.20657023409878172E-001",
+          "3.48859437594378790E+001",
+          "-6.30879347629986903E-002",
+          "-3.61321784214735167E-002",
+          "0.00000000000000000E+000"
+        ],
+        "role": "stress",
+        "stability_checked": true,
+        "status": 323
+      }
+    ],
+    "rejected": [],
+    "unchecked": []
+  },
+  "settings": {
+    "checkcycle": 3,
+    "colliercanoutput": false,
+    "colliercomputeirpoles": true,
+    "colliercomputeuvpoles": true,
+    "collierglobalcache": -1,
+    "colliermode": 1,
+    "collierrequiredaccuracy": 1e-08,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "ctlooplibrary": 2,
+    "ctmodeinit": 1,
+    "ctmoderun": -1,
+    "ctstabthres": 0.01,
+    "doublecheckhelicityfilter": true,
+    "helicityfilterlevel": 2,
+    "helinitstartover": false,
+    "improvepspoint": 2,
+    "iregimode": 2,
+    "iregirecy": true,
+    "loopinitstartover": false,
+    "looppolemode": 0,
+    "maxattempts": 10,
+    "mlreductionlib": "9",
+    "mlstabthres": 1e-06,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "osthres": 1e-08,
+    "tirustcachemaxbytes": 268435456,
+    "tirustcomputefinite": true,
+    "tirustglobalcache": -1,
+    "useloopfilter": false,
+    "useqpintegrandforcuttools": true,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforninjars": true,
+    "useqpintegrandfortirust": true,
+    "writeoutfilters": true,
+    "zerothres": 1e-09
+  },
+  "source": "candidate",
+  "stability_checked": true,
+  "status": "complete"
+}

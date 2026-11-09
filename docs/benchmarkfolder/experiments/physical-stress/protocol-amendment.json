@@ -1,0 +1,13 @@
+{
+  "reason": "Initial qcd_n2 execution imported live protocol modules. A concurrent main-harness timing/report amendment changed the live benchmark file; stress numerical functions were unchanged. Subsequent runner revision imports the prepared frozen protocols and captures per-run runner bytes. It also requires complete split-order coverage and retains malformed-output failures.",
+  "initial_runner_sha256": "42797af720b644b2c6bc9ffdafeaeb49f0234c2d7600c5e3c51eb8e330345d47",
+  "revised_runner_sha256": "2c7ec77771ac6da0ee2601b3179c2f15b8ddd57adc406262ed68923c6df14db4",
+  "live_protocol_changed_functions": [
+    "main",
+    "pair",
+    "select_attempt",
+    "summarize"
+  ],
+  "initial_runs": "qcd_n2_gg_ttx primary auto only; original runner retained",
+  "revised_runs": "all subsequent runs"
+}

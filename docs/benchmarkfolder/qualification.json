@@ -20,7 +20,7 @@
   {
     "name": "Accelerated poles-only path",
     "status": "pass",
-    "evidence": "N=1–6, rank six, UV/IR/scaleless and rescue/cache checks pass; finite evaluators and arithmetic are absent. 288 scalar comparisons and byte-identical regeneration pass.",
+    "evidence": "N=1\u20136, rank six, UV/IR/scaleless and rescue/cache checks pass; finite evaluators and arithmetic are absent. 288 scalar comparisons and byte-identical regeneration pass.",
     "path": "qualification/poles-only/index.json"
   },
   {
@@ -55,9 +55,15 @@
   },
   {
     "name": "Complex-mass stress campaign",
-    "status": "pending",
-    "evidence": "All five reducers pass 19 moderate points; ordinary TIRust differences are at most 5.96e-13. Two extreme forward points fail in several reducers; forced-QP adjudication remains open.",
-    "path": "experiments/complex-mass/"
+    "status": "partial",
+    "evidence": "All five reducers pass 19 moderate points; original extreme automatic results remain unqualified. Separate QP diagnostics identify legacy CutTools scalar-cutoff and DP-input limitations; private corrections agree with TIRust within 2.11e-11 and an independent double-pole formula.",
+    "path": "experiments/complex-mass/README.md"
+  },
+  {
+    "name": "Physical stress campaign",
+    "status": "fail",
+    "evidence": "24 primary requests give 12 checked completions, 11 rejected/nonfinite streams and one warmup timeout. QP resolves several discrepancies; the EW threshold comparison remains unresolved, and the soft-collinear Born result is nonfinite in every reducer.",
+    "path": "experiments/physical-stress/README.md"
   },
   {
     "name": "Full five-backend acceptance",

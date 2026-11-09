@@ -1,0 +1,30 @@
+{
+  "OSThres": 1e-08,
+  "baseline_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+  "helper_file_sha256": "368392c1ba9544d93dc56463a3bf6a155cc10f8d280c763f02d24395390e2c96",
+  "probe_sha256": "d2c6ed193369662555a12c38a6cfb506bd95449220bc31aa906b7bab759b8f19",
+  "results": [
+    {
+      "direct_dp": -0.24999997916666736,
+      "direct_qp": -0.24999997916666736,
+      "helper_dp": -0.24999997916666736,
+      "helper_qp": -0.24999997916666736,
+      "point": "forward-0.001"
+    },
+    {
+      "direct_dp": -2.4999999999997913e-07,
+      "direct_qp": -2.4999999999997913e-07,
+      "helper_dp": -0.0,
+      "helper_qp": -0.0,
+      "point": "forward-1e-06"
+    },
+    {
+      "direct_dp": -2.5000000000000004e-11,
+      "direct_qp": -2.5000000000000004e-11,
+      "helper_dp": -0.0,
+      "helper_qp": -0.0,
+      "point": "forward-1e-08"
+    }
+  ],
+  "scope": "Existing baseline helper; no production guard changes"
+}

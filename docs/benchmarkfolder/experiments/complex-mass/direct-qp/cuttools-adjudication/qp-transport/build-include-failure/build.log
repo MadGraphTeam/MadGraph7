@@ -1,0 +1,125 @@
+cts_mpc.h:1:22:
+
+    1 |       COMPLEX(KIND=16)
+      |                      1
+Error: Invalid character in name at (1)
+cts_cutroutines_qpinput.f90:80:5:
+
+   80 |    :: mp_amp(0:2),mp_ampcc,mp_ampr1
+      |     1
+Error: Invalid character in name at (1)
+cts_mpc.h:1:22:
+
+    1 |       COMPLEX(KIND=16)
+      |                      1
+Error: Invalid character in name at (1)
+cts_cutroutines_qpinput.f90:82:5:
+
+   82 |    :: mp_amp1(0:2),mp_amp1cc,mp_amp1r1
+      |     1
+Error: Invalid character in name at (1)
+cts_mpc.h:1:22:
+
+    1 |       COMPLEX(KIND=16)
+      |                      1
+Error: Invalid character in name at (1)
+cts_cutroutines_qpinput.f90:514:7:
+
+  514 |      , intent(out) :: mp_camp(0:2),mp_campcc,mp_campr1
+      |       1
+Error: Invalid character in name at (1)
+cts_cutroutines_qpinput.f90:508:27:
+
+  508 |   subroutine mpcomputeamp(mp_camp,mp_campcc,mp_campr1)
+      |                           1~~~~~~
+Error: Symbol ‘mp_camp’ at (1) has no IMPLICIT type
+cts_cutroutines_qpinput.f90:508:35:
+
+  508 |   subroutine mpcomputeamp(mp_camp,mp_campcc,mp_campr1)
+      |                                   1~~~~~~~~
+Error: Symbol ‘mp_campcc’ at (1) has no IMPLICIT type
+cts_cutroutines_qpinput.f90:508:45:
+
+  508 |   subroutine mpcomputeamp(mp_camp,mp_campcc,mp_campr1)
+      |                                             1~~~~~~~~
+Error: Symbol ‘mp_campr1’ at (1) has no IMPLICIT type
+cts_cutroutines_qpinput.f90:321:28:
+
+  321 |     call mpcomputeamp(mp_amp,mp_ampcc,mp_ampr1)
+      |                            1
+Error: Symbol ‘mp_amp’ at (1) has no IMPLICIT type; did you mean ‘amp’?
+cts_cutroutines_qpinput.f90:362:29:
+
+  362 |     call mpcomputeamp(mp_amp1,mp_amp1cc,mp_amp1r1)
+      |                             1
+Error: Symbol ‘mp_amp1’ at (1) has no IMPLICIT type; did you mean ‘amp1’?
+cts_cutroutines_qpinput.f90:362:39:
+
+  362 |     call mpcomputeamp(mp_amp1,mp_amp1cc,mp_amp1r1)
+      |                                       1
+Error: Symbol ‘mp_amp1cc’ at (1) has no IMPLICIT type; did you mean ‘amp1cc’?
+cts_cutroutines_qpinput.f90:362:49:
+
+  362 |     call mpcomputeamp(mp_amp1,mp_amp1cc,mp_amp1r1)
+      |                                                 1
+Error: Symbol ‘mp_amp1r1’ at (1) has no IMPLICIT type; did you mean ‘amp1r1’?
+cts_cutroutines_qpinput.f90:321:37:
+
+  321 |     call mpcomputeamp(mp_amp,mp_ampcc,mp_ampr1)
+      |                                     1
+Error: Symbol ‘mp_ampcc’ at (1) has no IMPLICIT type; did you mean ‘ampcc’?
+cts_cutroutines_qpinput.f90:321:46:
+
+  321 |     call mpcomputeamp(mp_amp,mp_ampcc,mp_ampr1)
+      |                                              1
+Error: Symbol ‘mp_ampr1’ at (1) has no IMPLICIT type; did you mean ‘ampr1’?
+cts_cutroutines_qpinput.f90:605:31:
+
+  605 |     aus1= abs(mp_amp1(0)-mp_amp(0))
+      |                               1
+Error: ‘mp_amp’ at (1) is not a function
+cts_cutroutines_qpinput.f90:605:14:
+
+  605 |     aus1= abs(mp_amp1(0)-mp_amp(0))
+      |              1
+Error: ‘mp_amp1’ at (1) is not a function
+cts_cutroutines_qpinput.f90:606:20:
+
+  606 |     aus2= limit*abs(mp_amp1(0))
+      |                    1
+Error: Function ‘mp_amp1’ at (1) has no IMPLICIT type
+cts_cutroutines_qpinput.f90:546:16:
+
+  546 |     mp_campcc = mp_camp(0)
+      |                1
+Error: Function ‘mp_camp’ at (1) has no IMPLICIT type
+cts_cutroutines_qpinput.f90:548:4:
+
+  548 |     mp_camp(0)= mp_camp(0)+mp_campr1
+      |    1
+Error: Function ‘mp_camp’ at (1) has no IMPLICIT type
+cts_cutroutines_qpinput.f90:548:16:
+
+  548 |     mp_camp(0)= mp_camp(0)+mp_campr1
+      |                1
+Error: Function ‘mp_camp’ at (1) has no IMPLICIT type
+cts_cutroutines_qpinput.f90:465:16:
+
+  465 |      amp(k)   = mp_amp1(k)
+      |                1
+Error: ‘mp_amp1’ at (1) is not a function
+cts_cutroutines_qpinput.f90:457:14:
+
+  457 |       amp(k)= mp_amp(k)
+      |              1
+Error: ‘mp_amp’ at (1) is not a function
+cts_cutroutines_qpinput.f90:321:28:
+
+  321 |     call mpcomputeamp(mp_amp,mp_ampcc,mp_ampr1)
+      |                            1
+Error: Symbol ‘mp_amp’ at (1) has no IMPLICIT type; did you mean ‘amp’?
+cts_cutroutines_qpinput.f90:362:29:
+
+  362 |     call mpcomputeamp(mp_amp1,mp_amp1cc,mp_amp1r1)
+      |                             1
+Error: Symbol ‘mp_amp1’ at (1) has no IMPLICIT type; did you mean ‘amp1’?

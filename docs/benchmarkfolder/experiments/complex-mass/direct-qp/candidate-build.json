@@ -1,0 +1,10 @@
+{
+  "command": [
+    "make",
+    "SHELL=/home/external/.nix-profile/bin/bash",
+    "-j1",
+    "check"
+  ],
+  "returncode": 0,
+  "source_compilation_sha256": "287f871fd1966ed3b0a702e7176913512906a898af7ca0681d99876d2b03e753"
+}
