@@ -135,9 +135,12 @@ class CheckRow:
     that decided, the verdict (``VERDICTS``), ``ratio`` the measured value
     over its allowed bound (<= 1 passes: the deviation over ESTIMATES E plus
     the floor, a probe's residue over ten times its estimate),
-    ``deviation`` and ``estimate`` the deviation and E over the
-    pre-cancellation scale S (where formed), ``fallback`` why the first
-    carrier did not decide, ``reason`` why a row is not a verdict."""
+    ``deviation`` and ``estimate`` the deviation and E over the row's scale
+    (where formed): a binary64 pole row's pre-cancellation scale S, a
+    double-double pole row's |Catani| (its criterion is relative; no E), a
+    Born-interfered Ward row's physical scale (``ward.ward_scales``), a
+    probe's row term floor S_k(h); ``fallback`` why the first carrier did
+    not decide, ``reason`` why a row is not a verdict."""
 
     check: str
     subject: str

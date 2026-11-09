@@ -22,8 +22,8 @@ def _number(value: float | None) -> str:
 def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
     """The header (what was checked and how), one table per process (every
     row: check, subject, point, deciding carrier, ratio to its bound,
-    deviation and E over the pre-cancellation scale S, verdict, fallback or
-    reason) and the overall verdict with the exit code."""
+    deviation and E over the row's scale (``checks.CheckRow``), verdict,
+    fallback or reason) and the overall verdict with the exit code."""
 
     from .summary import _paint
 
@@ -66,8 +66,8 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
                 "point",
                 "carrier",
                 "ratio",
-                "dev / S",
-                "E / S",
+                "dev / scale",
+                "E / scale",
                 "verdict",
                 "fallback / reason",
             )

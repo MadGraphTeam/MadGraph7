@@ -638,8 +638,11 @@ external gluon or photon, no massive vector, a unitary-gauge request) reads
 
 Every row names the check, its subject (sector and pole, leg and factor),
 the point, the carrier that decided, `ratio` (the measured value over its
-bound: <= 1 passes), the deviation and E over the pre-cancellation scale S
-where formed, the fallback's reason and the verdict. The exit code is 0 iff
+bound: <= 1 passes), the deviation and E over the row's scale where formed
+(`dev / scale`, `E / scale`: a binary64 pole row's pre-cancellation scale S;
+a double-double pole row's |Catani|, its criterion being relative; a
+Born-interfered Ward row's physical scale; a probe's row term floor
+S_k(h)), the fallback's reason and the verdict. The exit code is 0 iff
 every applicable check passed, 1 on any failure, and 3 when a process had
 nothing to check (or an applicable check did not run). `--json` returns the
 `CheckReport` (`source`, `source_kind`, `points`, `seed`, `precision`,
