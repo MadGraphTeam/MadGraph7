@@ -1,0 +1,152 @@
+{
+  "scope": "Synthetic full-shape DP rank1x1 kernel only, with caller IEEE_GET_FLAG cost; illustrative diagnostic, no amplitude performance claim or acceptance gate",
+  "comparison": "The untouched extracted dense kernel versus conservative guarded diagonal terminal arithmetic. The prior QP optimization is not involved.",
+  "inputs": "Deterministic finite fractional complex components; IEEE_INEXACT already set, nearest rounding, all exception traps disabled; all calls admitted",
+  "cpu": 9,
+  "load_average_after": [
+    193.5732421875,
+    182.36767578125,
+    174.11181640625
+  ],
+  "compiler": {
+    "command": [
+      "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+    "stderr": ""
+  },
+  "source_sha256": {
+    "oracle.f90": "9a0e0d96e493c69f51018cb1b24d3eedf8095e41c5be0f669dee1b930ec3a73e",
+    "terminal.f90": "0f3af055f42e7fea0334b97fb0765451b9257e5cb0aec5ea48320043fb27a730",
+    "microbenchmark.f90": "5ebb5e126f946af75337a5900e4e739c986b105c9158949131cd3e909f67fc35",
+    "run_microbenchmark.py": "7f313b1822e6c8e758b46b37c52b5a90e3cb5af96c793ff108b126c3069b8c2e"
+  },
+  "results": [
+    {
+      "name": "default-o0",
+      "flags": [
+        "-O0"
+      ],
+      "build": {
+        "command": [
+          "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+          "-O0",
+          "-ffree-line-length-none",
+          "-J",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-default-o0",
+          "-I",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-default-o0",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/packed-scan/oracle.f90",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/packed-scan/terminal.f90",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/packed-scan/microbenchmark.f90",
+          "-o",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-default-o0/microbenchmark"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "executable_sha256": "914ca44cfc5c7e935b330ae1b5f8671f0176538cc3af30f1b745872dacb7e829",
+      "calibration": {
+        "command": [
+          "taskset",
+          "-c",
+          "9",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-default-o0/microbenchmark",
+          "1000",
+          "1"
+        ],
+        "returncode": 0,
+        "stdout": "pair,order,algorithm,iterations,seconds,diagonal_checksum\n1,1,0,1000,  1.2518242000000001E-02,  1.5268852832454934E+02\n1,2,1,1000,  5.9312250000000000E-03,  1.5268852832454934E+02\n",
+        "stderr": ""
+      },
+      "measured": {
+        "command": [
+          "taskset",
+          "-c",
+          "9",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-default-o0/microbenchmark",
+          "11982",
+          "7"
+        ],
+        "returncode": 0,
+        "stdout": "pair,order,algorithm,iterations,seconds,diagonal_checksum\n1,1,0,11982,  1.5100401699999999E-01,  1.5268852832454934E+02\n1,2,1,11982,  7.2148408999999997E-02,  1.5268852832454934E+02\n2,1,1,11982,  7.1764568000000001E-02,  1.5268852832454934E+02\n2,2,0,11982,  1.5074534600000000E-01,  1.5268852832454934E+02\n3,1,0,11982,  1.5205798200000001E-01,  1.5268852832454934E+02\n3,2,1,11982,  7.3590454999999999E-02,  1.5268852832454934E+02\n4,1,1,11982,  7.9179168999999994E-02,  1.5268852832454934E+02\n4,2,0,11982,  1.6786476600000000E-01,  1.5268852832454934E+02\n5,1,0,11982,  1.6208891300000000E-01,  1.5268852832454934E+02\n5,2,1,11982,  7.7196319999999999E-02,  1.5268852832454934E+02\n6,1,1,11982,  7.8152424999999998E-02,  1.5268852832454934E+02\n6,2,0,11982,  1.5672430100000001E-01,  1.5268852832454934E+02\n7,1,0,11982,  1.5763091400000001E-01,  1.5268852832454934E+02\n7,2,1,11982,  7.4709041000000004E-02,  1.5268852832454934E+02\n",
+        "stderr": ""
+      },
+      "terminal_over_dense_paired_ratios": [
+        0.47779132259772933,
+        0.4760648995425703,
+        0.4839631174376627,
+        0.47168426636951316,
+        0.47625910107744385,
+        0.4986618188841052,
+        0.4739491709094575
+      ],
+      "median_terminal_over_dense_ratio": 0.47625910107744385
+    },
+    {
+      "name": "o3",
+      "flags": [
+        "-O3"
+      ],
+      "build": {
+        "command": [
+          "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+          "-O3",
+          "-ffree-line-length-none",
+          "-J",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-o3",
+          "-I",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-o3",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/packed-scan/oracle.f90",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/packed-scan/terminal.f90",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/packed-scan/microbenchmark.f90",
+          "-o",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-o3/microbenchmark"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "executable_sha256": "26c1f0b4ba1dbf696e6577452feb7b427e44c6230a2edeb3d1da6897416613e3",
+      "calibration": {
+        "command": [
+          "taskset",
+          "-c",
+          "9",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-o3/microbenchmark",
+          "1000",
+          "1"
+        ],
+        "returncode": 0,
+        "stdout": "pair,order,algorithm,iterations,seconds,diagonal_checksum\n1,1,0,1000,  2.6966809999999998E-03,  1.5268852832454934E+02\n1,2,1,1000,  1.9671480000000002E-03,  1.5268852832454934E+02\n",
+        "stderr": ""
+      },
+      "measured": {
+        "command": [
+          "taskset",
+          "-c",
+          "9",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/packed-scan/micro-o3/microbenchmark",
+          "55623",
+          "7"
+        ],
+        "returncode": 0,
+        "stdout": "pair,order,algorithm,iterations,seconds,diagonal_checksum\n1,1,0,55623,  1.4767632300000000E-01,  1.5268852832454934E+02\n1,2,1,55623,  1.1053195900000000E-01,  1.5268852832454934E+02\n2,1,1,55623,  1.0993605600000000E-01,  1.5268852832454934E+02\n2,2,0,55623,  1.3607345600000001E-01,  1.5268852832454934E+02\n3,1,0,55623,  1.4845116600000000E-01,  1.5268852832454934E+02\n3,2,1,55623,  1.0999984700000000E-01,  1.5268852832454934E+02\n4,1,1,55623,  1.1077695999999999E-01,  1.5268852832454934E+02\n4,2,0,55623,  1.4838652599999999E-01,  1.5268852832454934E+02\n5,1,0,55623,  1.4871772799999999E-01,  1.5268852832454934E+02\n5,2,1,55623,  1.0996155600000000E-01,  1.5268852832454934E+02\n6,1,1,55623,  1.0998849600000001E-01,  1.5268852832454934E+02\n6,2,0,55623,  1.4812633600000000E-01,  1.5268852832454934E+02\n7,1,0,55623,  1.4816108500000000E-01,  1.5268852832454934E+02\n7,2,1,55623,  1.1020344700000000E-01,  1.5268852832454934E+02\n",
+        "stderr": ""
+      },
+      "terminal_over_dense_paired_ratios": [
+        0.7484744795548572,
+        0.8079169827214501,
+        0.7409833817000804,
+        0.7465432542035522,
+        0.7393977670234446,
+        0.7425316724231943,
+        0.7438083151186426
+      ],
+      "median_terminal_over_dense_ratio": 0.7438083151186426
+    }
+  ]
+}

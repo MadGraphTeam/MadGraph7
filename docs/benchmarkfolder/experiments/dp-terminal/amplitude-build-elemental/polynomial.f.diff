@@ -1,0 +1,86 @@
+--- original/polynomial.f
++++ elemental/polynomial.f
+@@ -875,3 +875,83 @@
+       END FUNCTION
+ 
+       END
++
++      subroutine ML5_0_DP_TERMINAL_1_1(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OU
++     $T,ENTRY_INEXACT,FAST)
++      use ML5_0_POLYNOMIAL_CONSTANTS
++      use, intrinsic :: iso_fortran_env, only: int64
++      use, intrinsic :: ieee_arithmetic
++      use, intrinsic :: ieee_exceptions
++      implicit none
++      complex(8) :: A(4,0:14,4), B(4,0:4,4), OUT(4,0:14,4)
++      integer :: LCUT_SIZE, IN_SIZE, OUT_SIZE, I, J, K, H
++      logical, intent(in) :: ENTRY_INEXACT
++      logical, intent(out) :: FAST
++      logical :: HALTING(size(IEEE_ALL))
++      type(IEEE_ROUND_TYPE) :: ROUNDING
++      FAST=.false.
++C  The private caller proves diagonal consumption; runtime proof is narrow.
++      if (.not.ENTRY_INEXACT) goto 900
++      if (LCUT_SIZE/=4.or.IN_SIZE/=4.or.OUT_SIZE/=4) goto 900
++      call IEEE_GET_ROUNDING_MODE(ROUNDING)
++      if (ROUNDING/=IEEE_NEAREST) goto 900
++C  Conservative admission: no enabled exception trap of any kind.
++      do H=1,size(IEEE_ALL)
++        if (.not.IEEE_SUPPORT_HALTING(IEEE_ALL(H))) goto 900
++      enddo
++      call IEEE_GET_HALTING_MODE(IEEE_ALL,HALTING)
++      if (any(HALTING)) goto 900
++C  Integer classification cannot signal on exceptional operand bit patterns.
++      if (.not.all(BOUNDED(real(A(:,0:4,:),kind=8)))) goto 900
++      if (.not.all(BOUNDED(aimag(A(:,0:4,:))))) goto 900
++      if (.not.all(BOUNDED(real(B,kind=8)))) goto 900
++      if (.not.all(BOUNDED(aimag(B)))) goto 900
++      FAST=.true.
++      DO I=1,LCUT_SIZE
++        DO K=0,14
++          DO J=1,OUT_SIZE
++            OUT(J,K,I)=(0.0D0,0.0D0)
++          ENDDO
++        ENDDO
++        DO K=1,IN_SIZE
++          DO J=I,I
++            OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
++            OUT(J,1,I)=OUT(J,1,I)+A(K,0,I)*B(J,1,K)+A(K,1,I)*B(J,0,K)
++            OUT(J,2,I)=OUT(J,2,I)+A(K,0,I)*B(J,2,K)+A(K,2,I)*B(J,0,K)
++            OUT(J,3,I)=OUT(J,3,I)+A(K,0,I)*B(J,3,K)+A(K,3,I)*B(J,0,K)
++            OUT(J,4,I)=OUT(J,4,I)+A(K,0,I)*B(J,4,K)+A(K,4,I)*B(J,0,K)
++            OUT(J,5,I)=OUT(J,5,I)+A(K,1,I)*B(J,1,K)
++            OUT(J,6,I)=OUT(J,6,I)+A(K,1,I)*B(J,2,K)+A(K,2,I)*B(J,1,K)
++            OUT(J,7,I)=OUT(J,7,I)+A(K,2,I)*B(J,2,K)
++            OUT(J,8,I)=OUT(J,8,I)+A(K,1,I)*B(J,3,K)+A(K,3,I)*B(J,1,K)
++            OUT(J,9,I)=OUT(J,9,I)+A(K,2,I)*B(J,3,K)+A(K,3,I)*B(J,2,K)
++            OUT(J,10,I)=OUT(J,10,I)+A(K,3,I)*B(J,3,K)
++            OUT(J,11,I)=OUT(J,11,I)+A(K,1,I)*B(J,4,K)+A(K,4,I)*B(J,1,K)
++            OUT(J,12,I)=OUT(J,12,I)+A(K,2,I)*B(J,4,K)+A(K,4,I)*B(J,2,K)
++            OUT(J,13,I)=OUT(J,13,I)+A(K,3,I)*B(J,4,K)+A(K,4,I)*B(J,3,K)
++            OUT(J,14,I)=OUT(J,14,I)+A(K,4,I)*B(J,4,K)
++          ENDDO
++        ENDDO
++      ENDDO
++      return
++  900 continue
++      call ML5_0_UPDATE_WL_1_1(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT)
++      contains
++      elemental logical function BOUNDED(X)
++      real(8), intent(in) :: X
++      integer(int64), parameter :: ONE_WORDS(1)=transfer(1.0_8,(/0_int64
++     $/))
++      BOUNDED=.false.
++      if (storage_size(X)/=64.or.digits(X)/=53.or.radix(X)/=2.or.maxexpo
++     $nent(X)/=1024) return
++      if (ONE_WORDS(1)/=shiftl(1023_int64,52)) return
++      associate (WORDS=>transfer(X,ONE_WORDS))
++        if (ibclr(WORDS(1),63)==0_int64) then
++          BOUNDED=.true.
++        else
++          BOUNDED=ibits(WORDS(1),52,11)>=623_int64.and.ibits(WORDS(1),52
++     $,11)<=1423_int64
++        endif
++      end associate
++      end function
++      end subroutine

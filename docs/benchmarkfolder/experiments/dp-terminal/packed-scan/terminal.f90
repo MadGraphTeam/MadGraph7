@@ -1,0 +1,73 @@
+subroutine DP_TERMINAL(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT,ENTRY_INEXACT,FAST)
+use ML5_0_POLYNOMIAL_CONSTANTS
+use, intrinsic :: iso_fortran_env, only: int64
+use, intrinsic :: ieee_arithmetic
+use, intrinsic :: ieee_exceptions
+implicit none
+complex(8) :: A(4,0:14,4), B(4,0:4,4), OUT(4,0:14,4)
+integer :: LCUT_SIZE, IN_SIZE, OUT_SIZE, I, J, K, H
+integer(int64) :: WORDS_A(160), WORDS_B(160), WORD
+integer(int64), parameter :: ONE_WORD=transfer(1.0_8,0_int64)
+integer(int64), parameter :: MIN_WORD=shiftl(623_int64,52), MAX_WORD=shiftl(1424_int64,52)
+logical, intent(in) :: ENTRY_INEXACT
+logical, intent(out) :: FAST
+logical :: HALTING(size(IEEE_ALL))
+type(IEEE_ROUND_TYPE) :: ROUNDING
+FAST=.false.
+! The private caller proves diagonal consumption; runtime proof is narrow.
+if (.not.ENTRY_INEXACT) goto 900
+if (LCUT_SIZE/=4.or.IN_SIZE/=4.or.OUT_SIZE/=4) goto 900
+call IEEE_GET_ROUNDING_MODE(ROUNDING)
+if (ROUNDING/=IEEE_NEAREST) goto 900
+! Conservative admission: no enabled exception trap of any kind.
+do H=1,size(IEEE_ALL)
+  if (.not.IEEE_SUPPORT_HALTING(IEEE_ALL(H))) goto 900
+enddo
+call IEEE_GET_HALTING_MODE(IEEE_ALL,HALTING)
+if (any(HALTING)) goto 900
+! Transfer bits in bulk; no arithmetic on signaling or exceptional values.
+if (storage_size(1.0_8)/=64.or.digits(1.0_8)/=53.or.radix(1.0_8)/=2.or.maxexponent(1.0_8)/=1024) goto 900
+if (storage_size(A(1,0,1))/=128.or.ONE_WORD/=shiftl(1023_int64,52)) goto 900
+WORDS_A=transfer(A(:,0:4,:),WORDS_A)
+WORDS_B=transfer(B,WORDS_B)
+do H=1,160
+  WORD=ibclr(WORDS_A(H),63)
+  if (WORD/=0_int64) then
+    if (WORD<MIN_WORD.or.WORD>=MAX_WORD) goto 900
+  endif
+  WORD=ibclr(WORDS_B(H),63)
+  if (WORD/=0_int64) then
+    if (WORD<MIN_WORD.or.WORD>=MAX_WORD) goto 900
+  endif
+enddo
+FAST=.true.
+DO I=1,LCUT_SIZE
+  DO K=0,14
+    DO J=1,OUT_SIZE
+      OUT(J,K,I)=(0.0D0,0.0D0)
+    ENDDO
+  ENDDO
+  DO K=1,IN_SIZE
+    DO J=I,I
+      OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
+      OUT(J,1,I)=OUT(J,1,I)+A(K,0,I)*B(J,1,K)+A(K,1,I)*B(J,0,K)
+      OUT(J,2,I)=OUT(J,2,I)+A(K,0,I)*B(J,2,K)+A(K,2,I)*B(J,0,K)
+      OUT(J,3,I)=OUT(J,3,I)+A(K,0,I)*B(J,3,K)+A(K,3,I)*B(J,0,K)
+      OUT(J,4,I)=OUT(J,4,I)+A(K,0,I)*B(J,4,K)+A(K,4,I)*B(J,0,K)
+      OUT(J,5,I)=OUT(J,5,I)+A(K,1,I)*B(J,1,K)
+      OUT(J,6,I)=OUT(J,6,I)+A(K,1,I)*B(J,2,K)+A(K,2,I)*B(J,1,K)
+      OUT(J,7,I)=OUT(J,7,I)+A(K,2,I)*B(J,2,K)
+      OUT(J,8,I)=OUT(J,8,I)+A(K,1,I)*B(J,3,K)+A(K,3,I)*B(J,1,K)
+      OUT(J,9,I)=OUT(J,9,I)+A(K,2,I)*B(J,3,K)+A(K,3,I)*B(J,2,K)
+      OUT(J,10,I)=OUT(J,10,I)+A(K,3,I)*B(J,3,K)
+      OUT(J,11,I)=OUT(J,11,I)+A(K,1,I)*B(J,4,K)+A(K,4,I)*B(J,1,K)
+      OUT(J,12,I)=OUT(J,12,I)+A(K,2,I)*B(J,4,K)+A(K,4,I)*B(J,2,K)
+      OUT(J,13,I)=OUT(J,13,I)+A(K,3,I)*B(J,4,K)+A(K,4,I)*B(J,3,K)
+      OUT(J,14,I)=OUT(J,14,I)+A(K,4,I)*B(J,4,K)
+    ENDDO
+  ENDDO
+ENDDO
+return
+900 continue
+call DP_DENSE(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT)
+end subroutine

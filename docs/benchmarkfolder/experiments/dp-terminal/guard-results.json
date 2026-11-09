@@ -1,0 +1,1008 @@
+{
+  "scope": "DP terminal rank1x1 isolated kernel correctness; no production edits, physical acceptance, or performance claim",
+  "compiler": {
+    "command": [
+      "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+    "stderr": ""
+  },
+  "source_sha256": {
+    "guard-driver.f90": "49d097b6035e27a693eb0cfa6fff14763ddd9d67eebdfa970e66ee588a092fb2",
+    "oracle.f90": "9a0e0d96e493c69f51018cb1b24d3eedf8095e41c5be0f669dee1b930ec3a73e",
+    "terminal.f90": "a9644682d62de62dfd3f33c80b51fd916383c443701507cc6fc5c95c81abe95e",
+    "trap-driver.f90": "791ad65a11649ffae18a364d3916215018d108e653e78459ef097339b3d09f36"
+  },
+  "runner_sha256": "f67bf60849bac06ecf51debfc8a9ac4dcff07950ccd52ad6a2109e64aa3cbe83",
+  "results": [
+    {
+      "name": "o0-round",
+      "flags": [
+        "-O0",
+        "-frounding-math"
+      ],
+      "builds": [
+        {
+          "command": [
+            "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+            "-O0",
+            "-frounding-math",
+            "-fcheck=all",
+            "-ffree-line-length-none",
+            "-J",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round",
+            "-I",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/oracle.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/guard-driver.f90",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/guards"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+            "-O0",
+            "-frounding-math",
+            "-fcheck=all",
+            "-ffree-line-length-none",
+            "-J",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round",
+            "-I",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/oracle.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/trap-driver.f90",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "traps": [
+        {
+          "mode": 1,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "1",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7983627b1d9f in ???\n#1  0x5c9e6749a9aa in dp_dense_\n#2  0x5c9e674a55fe in MAIN__\n#3  0x5c9e674a5856 in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "1",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7d57dc30bd9f in ???\n#1  0x5765f0d569aa in dp_dense_\n#2  0x5765f0d60ba0 in dp_terminal_\n#3  0x5765f0d61648 in MAIN__\n#4  0x5765f0d61856 in main\n"
+          }
+        },
+        {
+          "mode": 2,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "2",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7c00807abd9f in ???\n#1  0x5c80ffdd19aa in dp_dense_\n#2  0x5c80ffddc5fe in MAIN__\n#3  0x5c80ffddc856 in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "2",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x791f18f36d9f in ???\n#1  0x650803d799aa in dp_dense_\n#2  0x650803d83ba0 in dp_terminal_\n#3  0x650803d84648 in MAIN__\n#4  0x650803d84856 in main\n"
+          }
+        },
+        {
+          "mode": 3,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "3",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x747ba9a9fd9f in ???\n#1  0x596ee81989aa in dp_dense_\n#2  0x596ee81a35fe in MAIN__\n#3  0x596ee81a3856 in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "3",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7a305ddf5d9f in ???\n#1  0x56d6d22e59aa in dp_dense_\n#2  0x56d6d22efba0 in dp_terminal_\n#3  0x56d6d22f0648 in MAIN__\n#4  0x56d6d22f0856 in main\n"
+          }
+        },
+        {
+          "mode": 4,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "4",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7443b6634d9f in ???\n#1  0x5acba26aa9aa in dp_dense_\n#2  0x5acba26b55fe in MAIN__\n#3  0x5acba26b5856 in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "4",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x795aed86ad9f in ???\n#1  0x5bcfa33759aa in dp_dense_\n#2  0x5bcfa337fba0 in dp_terminal_\n#3  0x5bcfa3380648 in MAIN__\n#4  0x5bcfa3380856 in main\n"
+          }
+        },
+        {
+          "mode": 5,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "5",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           5 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "5",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           5 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 6,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "6",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           6 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "6",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           6 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 7,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "7",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           7 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "7",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           7 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 8,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "8",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           8 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/traps",
+              "8",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           8 F F F F F\n",
+            "stderr": ""
+          }
+        }
+      ],
+      "guard_probe": {
+        "command": [
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o0-round/guards"
+        ],
+        "returncode": 0,
+        "stdout": " PASS      384000         176      383824\n",
+        "stderr": ""
+      },
+      "passed": true
+    },
+    {
+      "name": "o3",
+      "flags": [
+        "-O3"
+      ],
+      "builds": [
+        {
+          "command": [
+            "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+            "-O3",
+            "-fcheck=all",
+            "-ffree-line-length-none",
+            "-J",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3",
+            "-I",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/oracle.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/guard-driver.f90",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/guards"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+            "-O3",
+            "-fcheck=all",
+            "-ffree-line-length-none",
+            "-J",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3",
+            "-I",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/oracle.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/trap-driver.f90",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "traps": [
+        {
+          "mode": 1,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "1",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7692ff4c9d9f in ???\n#1  0x5fbc135ff4da in dp_dense_\n#2  0x5fbc136022e8 in MAIN__\n#3  0x5fbc135ff1ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "1",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x75b141e37d9f in ???\n#1  0x5fd8fb75e4da in dp_dense_\n#2  0x5fd8fb75f24b in dp_terminal_\n#3  0x5fd8fb761b8c in MAIN__\n#4  0x5fd8fb75e1ce in main\n"
+          }
+        },
+        {
+          "mode": 2,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "2",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x78761f6e4d9f in ???\n#1  0x5f08414c64fe in dp_dense_\n#2  0x5f08414c92e8 in MAIN__\n#3  0x5f08414c61ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "2",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7429794f5d9f in ???\n#1  0x5b07e540b4fe in dp_dense_\n#2  0x5b07e540c24b in dp_terminal_\n#3  0x5b07e540eb8c in MAIN__\n#4  0x5b07e540b1ce in main\n"
+          }
+        },
+        {
+          "mode": 3,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "3",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7b48b7f28d9f in ???\n#1  0x5ba18ee394fe in dp_dense_\n#2  0x5ba18ee3c2e8 in MAIN__\n#3  0x5ba18ee391ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "3",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7bd51ad53d9f in ???\n#1  0x6488bc28a4fe in dp_dense_\n#2  0x6488bc28b24b in dp_terminal_\n#3  0x6488bc28db8c in MAIN__\n#4  0x6488bc28a1ce in main\n"
+          }
+        },
+        {
+          "mode": 4,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "4",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7a27d744ad9f in ???\n#1  0x605530e984da in dp_dense_\n#2  0x605530e9b2e8 in MAIN__\n#3  0x605530e981ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "4",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x780591b07d9f in ???\n#1  0x608ef45d94da in dp_dense_\n#2  0x608ef45da24b in dp_terminal_\n#3  0x608ef45dcb8c in MAIN__\n#4  0x608ef45d91ce in main\n"
+          }
+        },
+        {
+          "mode": 5,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "5",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           5 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "5",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           5 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 6,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "6",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           6 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "6",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           6 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 7,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "7",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           7 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "7",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           7 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 8,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "8",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           8 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/traps",
+              "8",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           8 F F F F F\n",
+            "stderr": ""
+          }
+        }
+      ],
+      "guard_probe": {
+        "command": [
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3/guards"
+        ],
+        "returncode": 0,
+        "stdout": " PASS      384000         176      383824\n",
+        "stderr": ""
+      },
+      "passed": true
+    },
+    {
+      "name": "o3-round",
+      "flags": [
+        "-O3",
+        "-frounding-math"
+      ],
+      "builds": [
+        {
+          "command": [
+            "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+            "-O3",
+            "-frounding-math",
+            "-fcheck=all",
+            "-ffree-line-length-none",
+            "-J",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round",
+            "-I",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/oracle.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/guard-driver.f90",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/guards"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+            "-O3",
+            "-frounding-math",
+            "-fcheck=all",
+            "-ffree-line-length-none",
+            "-J",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round",
+            "-I",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/oracle.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/trap-driver.f90",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "traps": [
+        {
+          "mode": 1,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "1",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x72dc7bb6ad9f in ???\n#1  0x5df4793ca4da in dp_dense_\n#2  0x5df4793cd2e8 in MAIN__\n#3  0x5df4793ca1ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "1",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7ad0f75e4d9f in ???\n#1  0x5b44dd67f4da in dp_dense_\n#2  0x5b44dd68024b in dp_terminal_\n#3  0x5b44dd682b8c in MAIN__\n#4  0x5b44dd67f1ce in main\n"
+          }
+        },
+        {
+          "mode": 2,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "2",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7e4e73811d9f in ???\n#1  0x56fceaf8f4fe in dp_dense_\n#2  0x56fceaf922e8 in MAIN__\n#3  0x56fceaf8f1ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "2",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x71f048cb5d9f in ???\n#1  0x60de409064fe in dp_dense_\n#2  0x60de4090724b in dp_terminal_\n#3  0x60de40909b8c in MAIN__\n#4  0x60de409061ce in main\n"
+          }
+        },
+        {
+          "mode": 3,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "3",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7cffb0540d9f in ???\n#1  0x5a4d9ee534fe in dp_dense_\n#2  0x5a4d9ee562e8 in MAIN__\n#3  0x5a4d9ee531ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "3",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x72f5d5715d9f in ???\n#1  0x5b939332d4fe in dp_dense_\n#2  0x5b939332e24b in dp_terminal_\n#3  0x5b9393330b8c in MAIN__\n#4  0x5b939332d1ce in main\n"
+          }
+        },
+        {
+          "mode": 4,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "4",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x72bfd76dad9f in ???\n#1  0x64c705a164da in dp_dense_\n#2  0x64c705a192e8 in MAIN__\n#3  0x64c705a161ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "4",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7497c4f72d9f in ???\n#1  0x61eb589a44da in dp_dense_\n#2  0x61eb589a524b in dp_terminal_\n#3  0x61eb589a7b8c in MAIN__\n#4  0x61eb589a41ce in main\n"
+          }
+        },
+        {
+          "mode": 5,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "5",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           5 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "5",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           5 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 6,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "6",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           6 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "6",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           6 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 7,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "7",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           7 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "7",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           7 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 8,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "8",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           8 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/traps",
+              "8",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           8 F F F F F\n",
+            "stderr": ""
+          }
+        }
+      ],
+      "guard_probe": {
+        "command": [
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round/guards"
+        ],
+        "returncode": 0,
+        "stdout": " PASS      384000         176      383824\n",
+        "stderr": ""
+      },
+      "passed": true
+    },
+    {
+      "name": "o3-round-static",
+      "flags": [
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic"
+      ],
+      "builds": [
+        {
+          "command": [
+            "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+            "-O3",
+            "-frounding-math",
+            "-fno-automatic",
+            "-fcheck=all",
+            "-ffree-line-length-none",
+            "-J",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static",
+            "-I",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/oracle.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/guard-driver.f90",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/guards"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+            "-O3",
+            "-frounding-math",
+            "-fno-automatic",
+            "-fcheck=all",
+            "-ffree-line-length-none",
+            "-J",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static",
+            "-I",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/oracle.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/terminal.f90",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-terminal/trap-driver.f90",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "traps": [
+        {
+          "mode": 1,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "1",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x79515a5d7d9f in ???\n#1  0x58b1bef4e55c in dp_dense_\n#2  0x58b1bef50e95 in MAIN__\n#3  0x58b1bef4e1ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "1",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x738733249d9f in ???\n#1  0x5d350a05455c in dp_dense_\n#2  0x5d350a054f1f in dp_terminal_\n#3  0x5d350a05774f in MAIN__\n#4  0x5d350a0541ce in main\n"
+          }
+        },
+        {
+          "mode": 2,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "2",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x79c42da5fd9f in ???\n#1  0x55e9d9bcf57c in dp_dense_\n#2  0x55e9d9bd1e95 in MAIN__\n#3  0x55e9d9bcf1ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "2",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7b6c0eb82d9f in ???\n#1  0x5ca9e0d1157c in dp_dense_\n#2  0x5ca9e0d11f1f in dp_terminal_\n#3  0x5ca9e0d1474f in MAIN__\n#4  0x5ca9e0d111ce in main\n"
+          }
+        },
+        {
+          "mode": 3,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "3",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x74dd0fe16d9f in ???\n#1  0x5dca22acd57c in dp_dense_\n#2  0x5dca22acfe95 in MAIN__\n#3  0x5dca22acd1ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "3",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7e877593ad9f in ???\n#1  0x57e60cf9057c in dp_dense_\n#2  0x57e60cf90f1f in dp_terminal_\n#3  0x57e60cf9374f in MAIN__\n#4  0x57e60cf901ce in main\n"
+          }
+        },
+        {
+          "mode": 4,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "4",
+              "0"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7f24ce84ad9f in ???\n#1  0x626d79c30547 in dp_dense_\n#2  0x626d79c32e95 in MAIN__\n#3  0x626d79c301ce in main\n"
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "4",
+              "1"
+            ],
+            "returncode": -8,
+            "stdout": "",
+            "stderr": "\nProgram received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.\n\nBacktrace for this error:\n#0  0x7134e3739d9f in ???\n#1  0x61f6a7942547 in dp_dense_\n#2  0x61f6a7942f1f in dp_terminal_\n#3  0x61f6a794574f in MAIN__\n#4  0x61f6a79421ce in main\n"
+          }
+        },
+        {
+          "mode": 5,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "5",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           5 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "5",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           5 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 6,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "6",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           6 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "6",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           6 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 7,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "7",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           7 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "7",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           7 F F F F F\n",
+            "stderr": ""
+          }
+        },
+        {
+          "mode": 8,
+          "dense": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "8",
+              "0"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           8 F F F F F\n",
+            "stderr": ""
+          },
+          "candidate": {
+            "command": [
+              "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/traps",
+              "8",
+              "1"
+            ],
+            "returncode": 0,
+            "stdout": " RETURN           8 F F F F F\n",
+            "stderr": ""
+          }
+        }
+      ],
+      "guard_probe": {
+        "command": [
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/o3-round-static/guards"
+        ],
+        "returncode": 0,
+        "stdout": " PASS      384000         176      383824\n",
+        "stderr": ""
+      },
+      "passed": true
+    }
+  ],
+  "guard_comparisons": 1536000,
+  "trap_comparison_pairs": 32,
+  "passed": true
+}

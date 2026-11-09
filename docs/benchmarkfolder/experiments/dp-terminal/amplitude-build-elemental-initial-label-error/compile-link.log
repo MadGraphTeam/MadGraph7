@@ -1,0 +1,55 @@
+Untouched reconstruction:
+/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -o check check_sa.o MadLoopParamReader.o MadLoopCommons.o polynomial.o loop_matrix.o improve_ps.o born_matrix.o CT_interface.o loop_num.o helas_calls_ampb_1.o mp_compute_loop_coefs.o mp_helas_calls_ampb_1.o coef_construction_1.o loop_CT_calls_1.o mp_coef_construction_1.o TIR_interface.o COLLIER_interface.o TIRUST_interface.o mg5_citation.o -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/amplitude-elemental/lib/ -ldhelas -lmodel -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal/amplitude-elemental/lib/ -lcts -liregi -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/ -lninja -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/ -lavh_olo -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/ -lcollier /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a -lgcc_s -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ -lninjars -ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc -lgcc_s -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/ -ltirust -lmadloop_tirust -Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib -lstdc++
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: warning: 2759c6e58623ef3d-x86_64.o: missing .note.GNU-stack section implies executable stack
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -O3 -c polynomial.f -o polynomial.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib
+polynomial.f:937:8:
+
+  937 |       900 continue
+      |        1
+Error: Invalid character in name at (1)
+polynomial.f:894:132:
+
+  894 |       if (.not.ENTRY_INEXACT) goto 900
+      |                                                                                                                                    1
+Error: Label 900 referenced at (1) is never defined
+polynomial.f:895:132:
+
+  895 |       if (LCUT_SIZE/=4.or.IN_SIZE/=4.or.OUT_SIZE/=4) goto 900
+      |                                                                                                                                    1
+Error: Label 900 referenced at (1) is never defined
+polynomial.f:897:132:
+
+  897 |       if (ROUNDING/=IEEE_NEAREST) goto 900
+      |                                                                                                                                    1
+Error: Label 900 referenced at (1) is never defined
+polynomial.f:900:132:
+
+  900 |         if (.not.IEEE_SUPPORT_HALTING(IEEE_ALL(H))) goto 900
+      |                                                                                                                                    1
+Error: Label 900 referenced at (1) is never defined
+polynomial.f:903:132:
+
+  903 |       if (any(HALTING)) goto 900
+      |                                                                                                                                    1
+Error: Label 900 referenced at (1) is never defined
+polynomial.f:905:132:
+
+  905 |       if (.not.all(BOUNDED(real(A(:,0:4,:),kind=8)))) goto 900
+      |                                                                                                                                    1
+Error: Label 900 referenced at (1) is never defined
+polynomial.f:906:132:
+
+  906 |       if (.not.all(BOUNDED(aimag(A(:,0:4,:))))) goto 900
+      |                                                                                                                                    1
+Error: Label 900 referenced at (1) is never defined
+polynomial.f:907:132:
+
+  907 |       if (.not.all(BOUNDED(real(B,kind=8)))) goto 900
+      |                                                                                                                                    1
+Error: Label 900 referenced at (1) is never defined
+polynomial.f:908:132:
+
+  908 |       if (.not.all(BOUNDED(aimag(B)))) goto 900
+      |                                                                                                                                    1
+Error: Label 900 referenced at (1) is never defined

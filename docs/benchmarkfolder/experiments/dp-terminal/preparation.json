@@ -1,0 +1,28 @@
+{
+  "candidate_operation_change": "Only second (arithmetic) J loop changes 1:OUT_SIZE to I:I; all zero initialization and dense fallback retained",
+  "comparison_scope": "Consumed diagonal bit patterns; full bit patterns on fallback; all input bits, IEEE flags, and rounding modes",
+  "generated": {
+    "guard-driver.f90": "49d097b6035e27a693eb0cfa6fff14763ddd9d67eebdfa970e66ee588a092fb2",
+    "oracle.f90": "9a0e0d96e493c69f51018cb1b24d3eedf8095e41c5be0f669dee1b930ec3a73e",
+    "terminal.f90": "a9644682d62de62dfd3f33c80b51fd916383c443701507cc6fc5c95c81abe95e",
+    "trap-driver.f90": "791ad65a11649ffae18a364d3916215018d108e653e78459ef097339b3d09f36"
+  },
+  "guard_requires": "nearest rounding, preexisting INEXACT, supported disabled halting for all flags, binary64 layout",
+  "inputs": {
+    ".benchmark-work/tirust/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/coef_construction_1.f": "e2dbc5804c7f21139b46aa3cb6a49b97806f51e2d489e94e3e9f0f88760f3c1d",
+    ".benchmark-work/tirust/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/polynomial.f": "0ebb4350ad0b7e58458405671e785b0476d9df8d8a94083ec7773247135a9275",
+    ".benchmark-work/tirust/outputs/candidate/qcd_n1_uux_z/compilation.json": "362f52c33ca18a2db8f4a133a5d4504889a58d0e77304c413ecb1309f482f536",
+    "docs/benchmarkfolder/experiments/dp-terminal/prepare.py": "bddb6cbab7bc879bf5d64cbdde2fa0f97645876fb67d2d31f7a09670cb8b6b6d",
+    "tests/unit_tests/various/test_q_polynomial_compiled.py": "1e8d0402b633a4bcffdaeb142d8f8c78a30687de2b30a745af4ae6e9cdda712b"
+  },
+  "nonzero_component_unbiased_exponents": [
+    -400,
+    400
+  ],
+  "scope": "Isolated DP terminal rank1x1 experiment; no production edits or QP changes",
+  "shape": [
+    4,
+    4,
+    4
+  ]
+}
