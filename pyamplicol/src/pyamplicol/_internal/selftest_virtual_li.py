@@ -73,6 +73,10 @@ def card(output: Path, cache_dir: Path | None = None) -> dict[str, object]:
         "generation": {
             "output": str(output),
             "emit_api_bundle": False,
+            # The shipped artifact predates the F1 fold (M-LIT lit-fold, on
+            # by default): its card pins the unfolded plan, so regenerating
+            # it reproduces the shipped bytes.
+            "loop_induced_folding": False,
             "validation": {"post_build_validation": False},
         },
         "output": {"progress": "off"},

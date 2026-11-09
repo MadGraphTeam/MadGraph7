@@ -44,7 +44,8 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 132
+    # 133: M-LIT lit-fold's generation.loop_induced_folding (USER ~22:39).
+    assert len(FIELD_REGISTRY) == 133
     # m-lit lit-unchecked: the unchecked reduction setting, a runtime option
     # (off by default).
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False

@@ -112,7 +112,11 @@ def test_folding_is_on_by_default_and_set_in_config_cli_and_python(tmp_path):
     )
     assert resolve_config(off).effective.generation.loop_induced_folding is False
     bad = tmp_path / "bad.toml"
-    bad.write_text(off.read_text().replace("= false", '= "no"'))
+    bad.write_text(
+        off.read_text().replace(
+            "loop_induced_folding = false", 'loop_induced_folding = "no"'
+        )
+    )
     with pytest.raises(ConfigurationError, match=MESSAGE):
         resolve_config(bad)
     cli = parse_cli(("generate",)).resolve().effective.generation
@@ -459,3 +463,177 @@ def test_dependent_columns_are_formed_after_the_reduction(li):
         ):
             pairs += 1
     assert pairs > 0
+
+
+# ------------------------------------------------- consumers on folds
+
+
+def _declared(root: Path, name: str, expression: str, folding: bool) -> Path:
+    """``name``'s artifact with every dipole and gluon spin class declared
+    (``loop_v2_induced_observables_rows.generate``'s declaration), folded or
+    with folding off."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from pyamplicol.correlators import CorrelatorConfig
+
+    from .loop_v2_induced_observables_rows import coloured, dipoles, gluons
+
+    fixture = _fixture(name)
+    pdgs = fixture["pdgs"]
+    root.mkdir(parents=True, exist_ok=True)
+    text = _card(root / "artifact", (("p", expression),), fixture)
+    if not folding:
+        text = text.replace(
+            "[generation]\n", "[generation]\nloop_induced_folding = false\n"
+        )
+    (root / "card.toml").write_text(text)
+    correlators = CorrelatorConfig.from_json_dict(
+        {
+            "color_correlations": dipoles(coloured(pdgs)),
+            "spin_correlations": [[leg] for leg in gluons(pdgs)],
+        }
+    )
+    Generator(resolve_config(root / "card.toml")).generate(
+        ProcessSet((ProcessRequest.parse(expression, name="p"),)),
+        root / "artifact",
+        correlators=correlators,
+    )
+    return root / "artifact"
+
+
+@pytest.fixture(scope="module")
+def hgg(loop_sm_ufo, loop_native, tmp_path_factory):
+    """g g > h g g (168 chains fold to 84) with its observables declared,
+    folded (the default) and with folding off."""
+
+    root = tmp_path_factory.mktemp("fold-hgg")
+    return {
+        folding: _declared(root / str(folding), "li_gg_hgg", "g g > h g g", folding)
+        for folding in (True, False)
+    }
+
+
+def _points(name: str, count: int = 3):
+    from decimal import Decimal
+
+    fixture = _fixture(name)
+    points = [
+        [[float(Decimal(c)) for c in p] for p in point]
+        for point in fixture["points"][:count]
+    ]
+    return points, [float(Decimal(mu)) ** 2 for mu in fixture["mu_r"][:count]]
+
+
+def _checks(cross: bool = False):
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+
+    return VirtualStabilityChecks(
+        RECOMMENDED_CHECKS.rotations,
+        reduction_direction=True,
+        rescaled=True,
+        cross_backend=cross,
+    )
+
+
+@pytest.mark.loop_physics
+def test_folded_outputs_agree_with_the_unfolded_ones_within_their_estimates(hgg):
+    """F1f (DECISIONS 2026-11-08 22:39): on the folded g g > h g g the
+    summed value, the helicity-resolved rows, the amplitude-basis anchors and
+    the colour correlations equal the folding-off artifact's within the two
+    calls' own estimates (recommended checks: they bound the
+    folded-vs-unfolded difference); the resolved rows sum to the summed
+    call and a complete helicity selection to the ordinary value (Q39)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.correlators import CorrelatedRequest
+
+    runtimes = {f: Runtime.load(hgg[f], process="p") for f in (True, False)}
+    points, scales = _points("li_gg_hgg")
+    options = {"mu_r2": scales, "on_failure": "return", "stability_checks": _checks()}
+    found = {f: {} for f in runtimes}
+    for f, runtime in runtimes.items():
+        summed = runtime.evaluate(points, **options)
+        found[f]["summed"] = [
+            [
+                (complex(v.finite), e.absolute[s].finite)
+                for s, v in enumerate(summed.values[p])
+            ]
+            for p, e in enumerate(summed.stability)
+        ]
+        for name, extra in (
+            ("rows", {}),
+            ("anchors", {"color_resolution": "amplitude-basis"}),
+        ):
+            resolved = runtime.evaluate_resolved(points, **options, **extra)
+            found[f][name] = [
+                [
+                    (complex(value.finite), estimate[h][c].absolute[s].finite)
+                    for s, sector in enumerate(resolved.values[p])
+                    for h, row in enumerate(sector)
+                    for c, value in enumerate(row)
+                ]
+                for p, estimate in enumerate(resolved.stability)
+            ]
+        ids = [item.id for item in runtime.available_color_correlations()][:4]
+        many = runtime.evaluate_correlated_many(
+            points, {i: CorrelatedRequest(i) for i in ids}, **options
+        )
+        for key, result in many.items():
+            found[f][key] = [
+                [(complex(result.values[p][0].finite), e.absolute[0].finite)]
+                for p, e in enumerate(result.stability)
+            ]
+    for call, values in found[True].items():
+        for p, entries in enumerate(values):
+            other = found[False][call][p]
+            assert len(entries) == len(other), call
+            for (a, e_a), (b, e_b) in zip(entries, other, strict=True):
+                assert abs(a - b) <= e_a + e_b, (call, p, a, b, e_a, e_b)
+    total = runtimes[True].evaluate(points[:1], mu_r2=scales[:1])
+    resolved = runtimes[True].evaluate_resolved(points[:1], mu_r2=scales[:1])
+    rows = [
+        resolved.values[0][0][h][0].finite for h in range(len(resolved.helicity_ids))
+    ]
+    finite = total.values[0][0].finite
+    assert abs(sum(rows) - finite) <= 1e-12 * abs(finite)
+    selected = runtimes[True].evaluate(
+        points[:1], mu_r2=scales[:1], helicities=list(resolved.helicity_ids)
+    )
+    assert abs(selected.values[0][0].finite - finite) <= 1e-12 * abs(finite)
+
+
+@pytest.mark.loop_physics
+def test_both_backends_agree_on_the_folded_plan(hgg):
+    """F1f: TIRust and NinjaRS on the folded g g > h g g agree within their
+    estimates at every point both serve, and the cross-backend check runs on
+    it."""
+
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(hgg[True], process="p")
+    points, scales = _points("li_gg_hgg")
+    options = {"mu_r2": scales, "on_failure": "return", "stability_checks": _checks()}
+    tirust = runtime.evaluate(points, reduction="tirust", **options)
+    ninjars = runtime.evaluate(points, reduction="ninjars", **options)
+    served = 0
+    for p in range(len(points)):
+        if tirust.values[p] is None or ninjars.values[p] is None:
+            continue
+        served += 1
+        for s, (a, b) in enumerate(
+            zip(tirust.values[p], ninjars.values[p], strict=True)
+        ):
+            e_a = tirust.stability[p].absolute[s].finite
+            e_b = ninjars.stability[p].absolute[s].finite
+            assert abs(a.finite - b.finite) <= e_a + e_b, (p, a, b, e_a, e_b)
+    assert served
+    crossed = runtime.evaluate(
+        points,
+        mu_r2=scales,
+        on_failure="return",
+        reduction="tirust",
+        stability_checks=_checks(cross=True),
+    )
+    assert any(value is not None for value in crossed.values)
