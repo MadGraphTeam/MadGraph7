@@ -206,7 +206,8 @@ def _assert_partition(
             # Exact sums of the parts' decimal values.
             context.prec = 200
             summed = [
-                sum(values) for values in zip(*(_entry(p, point) for p in parts))
+                sum(values)
+                for values in zip(*(_entry(p, point) for p in parts), strict=True)
             ]
         bound = rounding_bound(total, parts, point, unit, rows)
         for got, expected, limit in zip(
@@ -260,7 +261,7 @@ def test_single_helicities_are_their_resolved_entries_and_partition_the_virtual(
         _bits(x) for x in _entry(by_index, 0)
     ]
     for call in (runtime.evaluate, runtime.evaluate_resolved):
-        with pytest.raises(CompatibilityError, match="helicities=... selects Born"):
+        with pytest.raises(CompatibilityError, match=r"helicities=\.\.\. selects Born"):
             call(pts, mu_r2=scales, color_flows=["1"])
 
 
@@ -331,8 +332,8 @@ def test_a_selection_forms_only_its_rows(artifacts, monkeypatch, process, points
             == restricted["tree closure rows"]
             == len(chosen)
         )
-        assert 0 < counts["live-row links"]
-        assert 0 < counts["row-pruned families"]
+        assert counts["live-row links"] > 0
+        assert counts["row-pruned families"] > 0
     resolved = runtime.evaluate_resolved(pts, mu_r2=scales)
     selections = backend._selections
     picked = runtime.evaluate_resolved(pts, mu_r2=scales, helicities=[one, hel[0]])
@@ -395,9 +396,7 @@ def test_double_double_selections_and_the_correlated_refusal(artifacts):
 
 
 @pytest.mark.loop_physics
-def test_a_rescued_selection_evaluates_its_rows_at_every_level(
-    artifacts, monkeypatch
-):
+def test_a_rescued_selection_evaluates_its_rows_at_every_level(artifacts, monkeypatch):
     """A rescue policy with a selection (``stability=``): every level and
     every rotation evaluates the selected rows only (each native call of the
     process is the selection's masks on the template, keeping those rows),

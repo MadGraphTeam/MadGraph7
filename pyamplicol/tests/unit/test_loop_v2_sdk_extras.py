@@ -921,7 +921,11 @@ def test_sdk_leading_colour_selection_is_the_python_apis(leading):
         for selectors, python, resolved in (
             ({"ids": ["h1"]}, {"helicities": ["h1"]}, False),
             ({"by_point": [1]}, {"helicities": ["h1"]}, False),
-            ({"resolved": True, "ids": ["h1", "h2"]}, {"helicities": ["h1", "h2"]}, True),
+            (
+                {"resolved": True, "ids": ["h1", "h2"]},
+                {"helicities": ["h1", "h2"]},
+                True,
+            ),
         ):
             found = _call(sdk, handle, [point], [scale], **selectors)
             assert found["status"] == 0, (selectors, found.get("error"))

@@ -1600,7 +1600,7 @@ def test_selections_are_masks_on_one_template(
             work = "dressing work (modelled complex MAC per lane)"
             if len(column.rows or ()) in range(1, len(hel)):
                 assert 0 < counts.get("live-row links", 0)
-                assert 0 < counts["row-pruned families"], selection
+                assert counts["row-pruned families"] > 0, selection
                 assert counts[work] == oracle.last_report["counts"][work], selection
             else:
                 assert "live-row links" not in counts

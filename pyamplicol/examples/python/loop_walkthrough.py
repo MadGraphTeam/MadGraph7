@@ -62,7 +62,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--lc-card",
         type=Path,
-        help="an optional leading-colour variant card (its helicity and colour-flow selection)",
+        help="an optional leading-colour variant card (its colour-flow selection)",
     )
     parser.add_argument(
         "--native-client", type=Path, help="the compiled native/loop_client"

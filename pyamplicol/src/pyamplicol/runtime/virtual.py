@@ -1239,9 +1239,7 @@ class V2ObservablesRuntime:
         from pyamplicol.loops.v2 import selection as lc
 
         del helicities, resolved
-        lc.require_colour_flows(
-            self._observables.slice.request.accuracy, color_flows
-        )
+        lc.require_colour_flows(self._observables.slice.request.accuracy, color_flows)
 
     def _resolution(self, color_resolution: str | None) -> tuple[Any, tuple[Any, ...]]:
         """(the resolved column set's key, its colour components) of

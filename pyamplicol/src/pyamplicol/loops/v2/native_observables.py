@@ -1295,13 +1295,9 @@ def resolved_parts_oracle(
         raise ValueError("the resolved set stores no seed records of its own")
     formed = []
     for overlay in overlays:
-        weights = overlay.get("column_weights") or list(
-            range(int(overlay["columns"]))
-        )
+        weights = overlay.get("column_weights") or list(range(int(overlay["columns"])))
         column_rows = overlay.get("column_rows")
-        out = {
-            key: overlay[key] for key in ("seed_classes", "seeds") if key in overlay
-        }
+        out = {key: overlay[key] for key in ("seed_classes", "seeds") if key in overlay}
         out.update(
             {
                 "columns": len(order),
@@ -1464,8 +1460,9 @@ class PythonSelectionTemplate:
     """``SelectionTemplate`` formed in Python (its oracle; the production
     formation is the native one): the one column set of a loaded process
     that serves every evaluation-time selection (MF-MASKS; DESIGN §8.5),
-    formed once from its stored resolved set without regeneration. Rows whose resolved columns
-    read the same seed-weight column per (basis element, sector) form a row
+    formed once from its stored resolved set without regeneration. Rows
+    whose resolved columns read the same seed-weight column per (basis
+    element, sector) form a row
     class (one at leading colour); per row class and sector one seed column
     whose weights are every basis element's seed-weight column, concatenated
     in seed-weight-column order, and one interference column of the class's
@@ -1514,7 +1511,9 @@ class PythonSelectionTemplate:
         # colour, the one contracted component (None) at NLC and full colour.
         found_axis = {_basis_of(item) for item in items}
         if None in found_axis and found_axis != {None}:
-            raise ValueError("a resolved set mixes basis elements and contracted columns")
+            raise ValueError(
+                "a resolved set mixes basis elements and contracted columns"
+            )
         self.axis: tuple[int | None, ...] = (
             (None,) if None in found_axis else tuple(range(self.basis))
         )

@@ -204,7 +204,9 @@ def _call(
             == 0
         )
         born = (ctypes.c_double * max(shape.born_values, 1))()
-        assert sdk.rusticol_virtual_result_copy_born(result, born, shape.born_values) == 0
+        assert (
+            sdk.rusticol_virtual_result_copy_born(result, born, shape.born_values) == 0
+        )
         return {
             "status": 0,
             "shape": shape,
