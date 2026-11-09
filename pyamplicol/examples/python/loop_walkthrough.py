@@ -323,6 +323,11 @@ def main() -> int:
     card = args.card.resolve()
     config = resolve_config(card).effective
     artifact = (args.artifact or config.generation.output).resolve()
+    if args.native_client is not None and not args.native_client.is_file():
+        raise SystemExit(
+            f"--native-client {args.native_client}: no such file; build it first "
+            "with `make -C native loop` (see examples/README.md)"
+        )
     times: dict[str, float] = {}
     begin = time.perf_counter()
 

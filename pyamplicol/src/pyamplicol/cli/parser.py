@@ -1071,7 +1071,9 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="CARD_OR_ARTIFACT",
         help=(
             "a run card (its generation request) or a generated one-loop "
-            "artifact directory (the request its config/effective.toml records)"
+            "artifact directory (the processes its artifact.json stores, "
+            "regenerated with its config/effective.toml; refused when the "
+            "model or processes differ from the stored ones)"
         ),
     )
     check.add_argument(

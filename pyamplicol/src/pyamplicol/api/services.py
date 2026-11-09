@@ -76,6 +76,7 @@ _runtime_loader: RuntimeLoader | None = None
 _benchmark_factory: BenchmarkFactory | None = None
 
 if TYPE_CHECKING:
+    from pyamplicol.benchmarking import VirtualProfileResult
     from pyamplicol.loops.v2.checks import CheckReport
     from pyamplicol.runtime.correlations import CorrelatorCatalogue, CorrelatorEvaluator
 
@@ -1676,7 +1677,7 @@ class BenchmarkRunner:
         target: Runtime | os.PathLike[str] | str,
         *,
         points: Momenta | None = None,
-    ) -> BenchmarkResult:
+    ) -> BenchmarkResult | VirtualProfileResult:
         """Profile an artifact path or an already loaded :class:`Runtime`.
 
         A loop (v2 virtual) artifact or runtime returns its
@@ -1687,13 +1688,10 @@ class BenchmarkRunner:
         from pyamplicol.benchmarking import is_virtual_target, profile_virtual
 
         if is_virtual_target(target):
-            return cast(
-                BenchmarkResult,
-                profile_virtual(
-                    target,
-                    self._config if self._config is not None else None,
-                    points=points,
-                ),
+            return profile_virtual(
+                target,
+                self._config if self._config is not None else None,
+                points=points,
             )
         backend_target: RuntimeBackend | os.PathLike[str] | str
         if isinstance(target, Runtime):
@@ -1888,7 +1886,7 @@ def benchmark(
     points: Momenta | None = None,
     config: BenchmarkConfig | RunConfig | None = None,
     progress: ProgressSink | None = None,
-) -> BenchmarkResult:
+) -> BenchmarkResult | VirtualProfileResult:
     """Profile a generated artifact using a one-shot convenience function."""
 
     return BenchmarkRunner(config=config, progress=progress).run(target, points=points)
