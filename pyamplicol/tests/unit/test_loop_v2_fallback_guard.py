@@ -343,10 +343,10 @@ def test_the_target_nan_and_calls_without_fallback(loop_native):
     _results, failures, records = with_fallback(runner, _choice(1e-3), 8)
     assert 0 not in failures and records[0].guard_estimate == pytest.approx(2e-4)
     assert math.isnan(records[1].guard_estimate) and "estimate NaN" in failures[1][0]
-    runner = _Runner(refused={0}, cached={0: 4e-6})
+    runner = _Runner(refused={0}, cached={0: 6e-6})
     _results, failures, records = with_fallback(runner, _choice(None), 8)
     assert default_target() == TARGET
-    assert 0 in failures and records[0].guard_estimate == pytest.approx(8e-6)
+    assert 0 in failures and records[0].guard_estimate == pytest.approx(1.2e-5)
     explicit = VirtualReduction("ninjars", "ninjars", "requested")
     runner = _Runner(refused=set(), cached={})
     with_fallback(runner, explicit, 8)

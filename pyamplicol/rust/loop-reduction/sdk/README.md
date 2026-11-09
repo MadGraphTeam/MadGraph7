@@ -105,19 +105,35 @@ stack; under `"auto"` on TIRust a point TIRust refuses, or fails in the
 enabled binary64 monitoring's own evaluations, is evaluated again on NinjaRS
 from its original exact inputs, in the call's own arithmetic, after the TIRust
 call (the per-point fallback; none on a TIR-only artifact); a point NinjaRS
-fails too fails with both reasons. An explicit `"ninjars"` or `"tirust"` has
-no fallback. An explicit backend the library is built without (TIRust needs
+fails too fails with both reasons. Every point the fallback serves is guarded
+(m-lit lit-fallback-guard): the reduction-direction re-test (reversed frame,
+cached masters) of the point's summed |A|^2 in the call's own arithmetic
+(binary64, double-double or arbitrary precision; reused from a binary64
+monitoring that runs that check), and a point whose relative estimate exceeds
+the target below has status Failed with one reason
+(`reduction_policy::fallback_rejected`: the fallback, TIRust's failure, the
+arithmetic, the estimate and the target). An explicit `"ninjars"` or
+`"tirust"` has no fallback and no guard. NinjaRS (pin 5b6a8f57) can return
+finite, badly wrong values with status AccuracyNotEstablished at near-planar
+2 -> 3 points of rank-n pentagon families (all-vector quark loops), in
+binary64 and double-double; an explicit `"ninjars"` call without binary64
+monitoring (and every double-double or arbitrary-precision NinjaRS call,
+which the SDKs do not monitor) stays exposed until the NinjaRS fix is pinned
+(windows, records and the estimates of each check: `docs/user/python-api.md`,
+"Near-planar NinjaRS hazard"). An explicit backend the library is built without (TIRust needs
 the default cargo feature `tir`; without it `"auto"` takes NinjaRS) is refused
 by the setter, one that cannot serve a call's carrier (TIRust serves every
 carrier) by that call, never switched silently. Every result's
 `diagnostics_json` records `"reduction": {"requested", "effective", "reason",
 "fallback", "fallback_points"}` and `"fallbacks"`: per point id the fallback
-evaluated again, the backend that served it (null: it failed on both) and the
-reason; the capabilities list the backends this library serves, the
+evaluated again, the backend that served it (null: it failed on both, or its
+guard rejected it), the reason and `"guard_estimate"` (the guard's relative
+estimate; null where the guard did not run); the capabilities list the backends this library serves, the
 `auto_default` and the target. `rusticol_virtual_set_reduction_target(handle,
 target)` (C++ / Fortran / Rust `set_reduction_target`; default 1e-5, the
 relative accuracy of each point's result) sets the calibrated acceptance of
-TIRust's checked method choice, as the Python API's `reduction_target=`.
+TIRust's checked method choice, as the Python API's `reduction_target=`, and
+is the fallback guard's only threshold.
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++ / Fortran
 / Rust `set_reduction_unchecked`; 0 by default, 1 on) reduces without the
 backends' own acceptance and refusal checks, as the Python API's
