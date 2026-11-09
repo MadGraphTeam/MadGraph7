@@ -457,15 +457,17 @@ def v2_options(
         raise ValueError("on_failure must be 'raise' or 'return'")
     if helicities or color_flows:
         # ``evaluate`` and ``evaluate_resolved`` take them (Born-interfered:
-        # at leading colour, ``loops.v2.selection``; loop-induced: helicities
-        # at full colour, ``V2InducedObservablesRuntime``) and remove them before this
-        # check; the correlated evaluations reach it.
+        # helicities at every colour accuracy, colour flows at leading
+        # colour, ``loops.v2.selection``; loop-induced: helicities at full
+        # colour, ``V2InducedObservablesRuntime``) and remove them before
+        # this check; the correlated evaluations reach it (the v2 rule of
+        # both process types, MQ-SELECT and lit-sdk-b).
         raise CompatibilityError(
             "v2 correlated virtual evaluations take no helicity or colour-flow "
-            "selection, as in the tree engine; select with evaluate or "
-            "evaluate_resolved (Born-interfered processes at leading colour, "
-            "color.accuracy='lc'; loop-induced processes select helicities at "
-            "full colour)"
+            "selection; select with evaluate or evaluate_resolved "
+            "(Born-interfered processes select helicities at every colour "
+            "accuracy and colour flows at leading colour, color.accuracy='lc'; "
+            "loop-induced processes select helicities at full colour)"
         )
     v2_r2_strategy(r2_strategy)
     if stability is not None:
