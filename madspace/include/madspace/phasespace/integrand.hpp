@@ -188,6 +188,10 @@ public:
      *                                          evaluation rescaled by the alpha_s
      *                                          and PDF ratios instead of a second
      *                                          evaluation.
+     * @param parton_density_output             Also return `parton_densities`,
+     *                                          x f(x, mu_F) of both legs for the
+     *                                          PDG ids -6..6 (6: gluon), shape
+     *                                          `(2, 13)`, for a @ref WeightingStep.
      */
     Integrand(
         const PhaseSpaceMapping& mapping,
@@ -221,7 +225,8 @@ public:
         const std::optional<CustomFunction>& custom_bias = std::nullopt,
         const std::optional<PdfGrid>& pdf_grid2 = std::nullopt,
         const std::optional<MappingChannelWeights>& mapping_chan_weights = std::nullopt,
-        int mlm_history_qcd_power = -1
+        int mlm_history_qcd_power = -1,
+        bool parton_density_output = false
     );
     /// Globals prefix under which the second beam's PDF grid is registered
     /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
@@ -334,6 +339,10 @@ private:
     // for the events whose orientation is mirrored
     std::array<std::optional<PartonDensity>, 2> _pdfs_swapped;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
+    // parton_densities output: per leg the grid's partons, their columns of -6..6
+    std::array<std::optional<PartonDensity>, 2> _all_pdfs;
+    std::array<std::optional<PartonDensity>, 2> _all_pdfs_swapped;
+    std::vector<int> _all_pdf_columns;
     // Density over every flavour a beam line can have on the MLM clustering
     // ladder, picked per event by index.
     std::optional<PartonDensity> _pdf_rw;

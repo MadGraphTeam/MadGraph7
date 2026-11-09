@@ -22,6 +22,15 @@ int output_position(
 
 } // namespace
 
+bool WeightingStep::needs_parton_densities() const {
+    return std::any_of(matrix_elements.begin(), matrix_elements.end(), [](auto& me) {
+        auto& inputs = me.inputs();
+        return std::find(
+                   inputs.begin(), inputs.end(), MatrixElement::parton_densities_in
+               ) != inputs.end();
+    });
+}
+
 bool WeightingStep::returns_ratio() const {
     return !matrix_elements.empty() &&
         output_position(
@@ -50,6 +59,12 @@ WeightingStepFunction::WeightingStepFunction(
             arg_types.push_back("color_index", batch_int);
             arg_types.push_back("helicity_index", batch_int);
             arg_types.push_back("diagram_index", batch_int);
+            arg_types.push_back("flavor_index", batch_int);
+            if (step.needs_parton_densities()) {
+                arg_types.push_back(
+                    "parton_densities", {DataType::dt_float64, batch_size, {2, 13}}
+                );
+            }
             arg_types.push_back("random", batch_float_array(random_count * step_count));
             return arg_types;
         }(),
@@ -58,12 +73,16 @@ WeightingStepFunction::WeightingStepFunction(
             {"color_index", batch_int},
             {"helicity_index", batch_int},
             {"diagram_index", batch_int},
+            {"flavor_index", batch_int},
             {"unweight_random", batch_float},
         }
     ),
     _matrix_elements(step.matrix_elements),
     _write_indices(write_indices),
-    _step_index(step_index) {
+    _step_index(step_index),
+    _flavor_target_count(step.flavor_target_count),
+    _flavor_offset(step.flavor_offset),
+    _switch_diagram_map(step.switch_diagram_map) {
     if (step_index >= step_count) {
         throw std::invalid_argument("step index out of range");
     }
@@ -100,6 +119,8 @@ WeightingStepFunction::WeightingStepFunction(
             case MatrixElement::random_diagram_in:
             case MatrixElement::helicity_in:
             case MatrixElement::diagram_in:
+            case MatrixElement::random_flavor_in:
+            case MatrixElement::parton_densities_in:
                 break;
             default:
                 throw std::invalid_argument(
@@ -110,17 +131,39 @@ WeightingStepFunction::WeightingStepFunction(
         bool has_random_inputs = std::any_of(
             matrix_element.inputs().begin(),
             matrix_element.inputs().end(),
-            [](auto input) {
-                return input == MatrixElement::random_color_in ||
-                    input == MatrixElement::random_helicity_in ||
-                    input == MatrixElement::random_diagram_in;
-            }
+            MatrixElement::is_random_input
         );
         if (has_random_inputs && matrix_element.sample_random_inputs()) {
             throw std::invalid_argument(
                 "the random inputs of a weighting step matrix element are passed in "
                 "and must not be sampled internally"
             );
+        }
+    }
+    auto& first = _matrix_elements.at(0);
+    bool flavor_out = output_position(first, MatrixElement::flavor_index_out) != -1;
+    if (flavor_out != step.switches_flavor()) {
+        throw std::invalid_argument(
+            "a weighting step switches flavours if and only if its matrix element "
+            "returns flavor_index and it has switch targets"
+        );
+    }
+    if (flavor_out &&
+        (_matrix_elements.size() != 1 ||
+         output_position(first, MatrixElement::color_index_out) == -1 ||
+         output_position(first, MatrixElement::helicity_index_out) == -1)) {
+        throw std::invalid_argument(
+            "a flavour-switching weighting step needs a single matrix element "
+            "returning the color and helicity index"
+        );
+    }
+    if (!_switch_diagram_map.empty() &&
+        _switch_diagram_map.size() != _flavor_target_count) {
+        throw std::invalid_argument("switch_diagram_map needs one row per target");
+    }
+    for (auto& row : _switch_diagram_map) {
+        if (row.size() != _switch_diagram_map.at(0).size()) {
+            throw std::invalid_argument("switch_diagram_map rows differ in length");
         }
     }
 }
@@ -164,6 +207,12 @@ NamedVector<Value> WeightingStepFunction::build_function_impl(
             case MatrixElement::diagram_in:
                 ret.push_back(arg(indices.at(2)));
                 break;
+            case MatrixElement::random_flavor_in:
+                ret.push_back(arg(random.at(3)));
+                break;
+            case MatrixElement::parton_densities_in:
+                ret.push_back(arg(args.at("parton_densities")));
+                break;
             default:
                 break;
             }
@@ -188,15 +237,14 @@ NamedVector<Value> WeightingStepFunction::build_function_impl(
             return ret;
         };
 
-    ValueVec results;
+    ValueVec results, me_outputs;
     if (_matrix_elements.size() == 1) {
         auto& matrix_element = _matrix_elements.at(0);
-        results = select_outputs(
-            matrix_element,
+        me_outputs =
             matrix_element
                 .build_function(fb, me_args(matrix_element, [](Value v) { return v; }))
-                .values()
-        );
+                .values();
+        results = select_outputs(matrix_element, me_outputs);
     } else {
         ValueVec split_indices = fb.batch_split_by_index(
             args.at("matrix_element_index"),
@@ -234,6 +282,58 @@ NamedVector<Value> WeightingStepFunction::build_function_impl(
         Value result = results.at(i + 1);
         outputs.push_back(result && _write_indices.at(i) ? result : indices.at(i));
     }
-    outputs.push_back(random.at(3));
+    Value flavor = args.at("flavor_index");
+    if (_flavor_target_count > 0) {
+        // the switched events take the target's flavour, color, helicity, diagram
+        auto& matrix_element = _matrix_elements.at(0);
+        Value target = me_outputs.at(
+            output_position(matrix_element, MatrixElement::flavor_index_out)
+        );
+        std::vector<double> switched_table(_flavor_target_count + 1, 1.);
+        switched_table.at(0) = 0.;
+        Value switched = fb.nonzero(fb.gather(
+            fb.add_int(
+                target, fb.full({static_cast<me_int_t>(1), fb.batch_size({target})})
+            ),
+            switched_table
+        ));
+        Value switched_target = fb.batch_gather(switched, target);
+        std::vector<me_int_t> flavor_table, row_offsets;
+        for (std::size_t k = 0; k < _flavor_target_count; ++k) {
+            flavor_table.push_back(_flavor_offset + static_cast<me_int_t>(k));
+            if (!_switch_diagram_map.empty()) {
+                row_offsets.push_back(
+                    static_cast<me_int_t>(k * _switch_diagram_map.at(0).size())
+                );
+            }
+        }
+        flavor = fb.batch_scatter(
+            switched, flavor, fb.gather_int(switched_target, flavor_table)
+        );
+        for (auto [i, output] : std::array{
+                 std::pair{0, MatrixElement::color_index_out},
+                 std::pair{1, MatrixElement::helicity_index_out}
+             }) {
+            Value value = me_outputs.at(output_position(matrix_element, output));
+            outputs.at(i + 1) = fb.batch_scatter(
+                switched, indices.at(i), fb.batch_gather(switched, value)
+            );
+        }
+        if (!_switch_diagram_map.empty()) {
+            std::vector<me_int_t> flat_map;
+            for (auto& row : _switch_diagram_map) {
+                flat_map.insert(flat_map.end(), row.begin(), row.end());
+            }
+            Value position = fb.add_int(
+                fb.gather_int(switched_target, row_offsets),
+                fb.batch_gather(switched, indices.at(2))
+            );
+            outputs.at(3) = fb.batch_scatter(
+                switched, indices.at(2), fb.gather_int(position, flat_map)
+            );
+        }
+    }
+    outputs.push_back(flavor);
+    outputs.push_back(random.at(4));
     return {return_types().keys(), outputs};
 }

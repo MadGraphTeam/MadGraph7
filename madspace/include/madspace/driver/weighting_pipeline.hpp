@@ -138,7 +138,9 @@ private:
         std::vector<std::vector<std::vector<ChunkPtr>>> buffers;
         std::vector<std::vector<std::size_t>> buffer_sizes;
         std::vector<bool> multiple_matrix_elements;
-        int momenta, alpha_s, flavor, me_index, color, helicity, diagram, random;
+        std::vector<bool> parton_density_steps;
+        int momenta, alpha_s, flavor, me_index, color, helicity, diagram, flavor_index,
+            parton_densities, random;
     };
     struct Job {
         std::size_t group;

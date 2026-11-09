@@ -150,6 +150,9 @@ madspace::weighting_groups_to_json(const std::vector<WeightingGroup>& groups) {
                 {"max_overweight_truncation", step.max_overweight_truncation},
                 {"freeze_max_weight_after", step.freeze_max_weight_after},
                 {"override_outputs", override_outputs},
+                {"flavor_target_count", step.flavor_target_count},
+                {"flavor_offset", step.flavor_offset},
+                {"switch_diagram_map", step.switch_diagram_map},
             });
         }
         json group_json{{"channel_indices", group.channel_indices}, {"steps", steps}};
@@ -200,6 +203,11 @@ madspace::weighting_groups_from_json(const std::string& text) {
                     static_cast<MatrixElement::MatrixElementOutput>(output)
                 );
             }
+            // absent in groups stored before the flavour switch
+            step.flavor_target_count = step_json.value("flavor_target_count", 0);
+            step.flavor_offset = step_json.value("flavor_offset", 0);
+            step.switch_diagram_map =
+                step_json.value("switch_diagram_map", nested_vector2<me_int_t>{});
             group.steps.push_back(std::move(step));
         }
         groups.push_back(std::move(group));
@@ -316,6 +324,10 @@ WeightingPipeline::WeightingPipeline(
             .color = static_cast<int>(index_map.at("color_index")),
             .helicity = static_cast<int>(index_map.at("helicity_index")),
             .diagram = static_cast<int>(index_map.at("diagram_index")),
+            .flavor_index = static_cast<int>(index_map.at("flavor_index")),
+            .parton_densities = index_map.contains("parton_densities")
+                ? static_cast<int>(index_map.at("parton_densities"))
+                : -1,
             .random = static_cast<int>(types.size() - 1),
         };
 
@@ -329,6 +341,19 @@ WeightingPipeline::WeightingPipeline(
                 );
             }
             group.multiple_matrix_elements.push_back(step.matrix_elements.size() > 1);
+            group.parton_density_steps.push_back(step.needs_parton_densities());
+            if (step.needs_parton_densities() && group.parton_densities == -1) {
+                throw std::invalid_argument(
+                    "a weighting step needs the parton densities, but the integrand "
+                    "does not return them"
+                );
+            }
+            if (step.switches_flavor() && step_index + 1 != step_count) {
+                // later steps would see the old matrix_element_flavor
+                throw std::invalid_argument(
+                    "a flavour-switching weighting step must be the last step"
+                );
+            }
             group.settings.push_back({
                 .unweight = step.mode == WeightingStep::unweight,
                 .max_overweight_truncation = step.max_overweight_truncation,
@@ -783,13 +808,18 @@ void WeightingPipeline::run_job(Job& job) {
     step_args.push_back(events.at(group.color));
     step_args.push_back(events.at(group.helicity));
     step_args.push_back(events.at(group.diagram));
+    step_args.push_back(events.at(group.flavor_index));
+    if (group.parton_density_steps.at(job.stage - 1)) {
+        step_args.push_back(events.at(group.parton_densities));
+    }
     step_args.push_back(events.at(group.random));
     TensorVec outputs = runtimes.steps.at(job.stage - 1)->run(step_args);
     auto matrix_elements = to_vector(outputs.at(0).cpu());
-    auto random = to_vector(outputs.at(4).cpu());
+    auto random = to_vector(outputs.at(5).cpu());
     events.at(group.color) = outputs.at(1);
     events.at(group.helicity) = outputs.at(2);
     events.at(group.diagram) = outputs.at(3);
+    events.at(group.flavor_index) = outputs.at(4);
 
     auto shared_events = std::make_shared<TensorVec>(std::move(events));
     std::size_t offset = 0;
