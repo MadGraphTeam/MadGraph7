@@ -46,12 +46,11 @@ TOLERANCE = 1e-12
 # components 2,3 / 0,1 of the parity-mirrored kinematics; FeynKit therefore
 # evaluates the mirrored process (mirrored momenta and vectors).
 MIRROR = np.array([1.0, -1.0, -1.0, -1.0])
+# FeynKit's structural model has width-free propagators.
+WIDTH_FREE = {"WZ": 0, "WW": 0, "WT": 0, "WH": 0}
 
 
-@pytest.fixture(scope="module")
-def models(loop_sm_compiled_model):
-    """(compiled loop_sm, tree-engine model, prepared native loop structure)."""
-
+def _prepared_models(loop_sm_compiled_model, qed):
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.models.loading import load_compiled_model
@@ -59,10 +58,25 @@ def models(loop_sm_compiled_model):
     compiled = load_compiled_model(loop_sm_compiled_model)
     structure = prepare_loop_request_model(
         compiled,
-        born_order_bounds={"QCD": 5, "QED": 2},
-        loop_order_bounds={"QCD": 7, "QED": 2},
+        born_order_bounds={"QCD": 5, "QED": qed},
+        loop_order_bounds={"QCD": 7, "QED": qed},
     ).structure
     return compiled, CompiledUFOModel(compiled), structure
+
+
+@pytest.fixture(scope="module")
+def ew_models(loop_sm_compiled_model):
+    """``models`` with electroweak bounds 4: e^3 and e^4 blocks of two quark
+    lines whose bosons meet at a colour-singlet vertex."""
+
+    return _prepared_models(loop_sm_compiled_model, 4)
+
+
+@pytest.fixture(scope="module")
+def models(loop_sm_compiled_model):
+    """(compiled loop_sm, tree-engine model, prepared native loop structure)."""
+
+    return _prepared_models(loop_sm_compiled_model, 2)
 
 
 def _process(compiled, text, accuracy="full"):
@@ -390,7 +404,7 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
     for seed in seeds:
         point = _point(dag, model, seed)
         # FeynKit's structural model has width-free propagators.
-        values = _current_values(dag, model, point, parameters={"WZ": 0, "WW": 0})
+        values = _current_values(dag, model, point, parameters=WIDTH_FREE)
         momenta = {
             label: np.array(
                 [-float(x) if legs[label].is_initial else float(x) for x in vector]
@@ -637,6 +651,36 @@ def test_three_line_block_currents_equal_feynkit_tree_sums(models):
     orders = {"QCD": 4, "QED": 0}
     text = "u u~ > d d~ s s~"
     assert _assert_blocks_equal_feynkit(models, text, POINT_SEEDS[:1], orders, 5)
+
+
+# Blocks of two quark lines whose electroweak bosons meet at a colour-singlet
+# vertex (WWA, WWZ, HZZ, the WWAA contact): both input orders of such a merge
+# gave two block words of one colour factor, so the vertex's trees entered the
+# block current twice (``ColorEngine._loop_block_trace_orientation_allowed``).
+# Both DAG lanes: the tree engine's loop-request mode (the oracle) and the
+# native builder.
+DAG_LANES = [pytest.param(False, id="oracle"), pytest.param(True, id="native")]
+ELECTROWEAK_SINGLET_MERGES = [
+    pytest.param("u u~ > d d~ a", {"QCD": 0, "QED": 3}, id="uux_ddxa"),
+    pytest.param("u c~ > d s~ e+ e-", {"QCD": 0, "QED": 4}, id="ucx_dsxepem"),
+    pytest.param("u u~ > s s~ t t~", {"QCD": 0, "QED": 4}, id="uux_ssxttx"),
+    pytest.param("u u~ > d d~ a a", {"QCD": 0, "QED": 4}, id="uux_ddxaa"),
+]
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("native", DAG_LANES)
+@pytest.mark.parametrize(("text", "orders"), ELECTROWEAK_SINGLET_MERGES)
+def test_electroweak_singlet_merge_blocks_equal_feynkit_tree_sums(
+    ew_models, native, text, orders
+):
+    from pyamplicol.loops.v2 import dag_input
+
+    with dag_input.native_flags(dag=native):
+        checked = _assert_blocks_equal_feynkit(
+            ew_models, text, POINT_SEEDS[:1], orders, 4
+        )
+    assert checked > 0
 
 
 @pytest.mark.loop_physics
