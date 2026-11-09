@@ -76,13 +76,16 @@ within the estimate").
 
 Binary64 outputs run the one Rust implementation the native SDK runs
 (``rusticol_loop_reduction::v2_runtime::induced_outputs``, m-lit LIT-SDK,
-DECISIONS 2026-11-07 21:50 R7): the carrier forms (``Forms``), the spin
+DECISIONS 2026-11-07 21:50 R7): the carrier forms (``Forms``; an
+amplitude-basis anchor's metric formed natively from G), the spin
 coefficients (``PointOutputs``) and the spin-projected vectors
 (``spin_amplitudes``) through the native extension (``induced_form``,
-``induced_spin_coefficients``, ``induced_spin_amplitudes``), the square
-natively as before. The ``Decimal`` code of this module stays the oracle
-(``NATIVE_BINARY64 = False`` runs it in binary64 too) and the
-double-double / arbitrary-precision path.
+``induced_anchor_form``, ``induced_spin_coefficients``,
+``induced_spin_amplitudes``), the square natively as before; a selection's
+row mask runs the executor's row liveness (``NativeExecutor.runs(rows=...)``),
+which the SDK's selections run too (m-lit lit-sdk-b). The ``Decimal`` code of
+this module stays the oracle (``NATIVE_BINARY64 = False`` runs it in binary64
+too) and the double-double / arbitrary-precision path.
 """
 
 from __future__ import annotations
@@ -520,7 +523,19 @@ class Forms:
                 exact = self._matrices[metric]
                 h, k = hermitian_parts(exact)
             numbers = self._numbers
-            if numbers.double and NATIVE_BINARY64:
+            if numbers.double and NATIVE_BINARY64 and isinstance(metric, tuple):
+                # An anchor's native form: its metric formed from G by the
+                # SDK's Rust code (``induced_anchor_form``, module docstring).
+                native_h = _native().induced_anchor_form(
+                    [
+                        [(str(cell.real), str(cell.imag)) for cell in row]
+                        for row in self._gram
+                    ],
+                    metric[1],
+                )
+                carrier = [[complex(re, im) for re, im in row] for row in native_h]
+                imaginary = None
+            elif numbers.double and NATIVE_BINARY64:
                 # The native forms (module docstring): H and K of a history's
                 # matrix, else the metric itself.
                 native_h, native_k = _native().induced_form(
@@ -528,7 +543,7 @@ class Forms:
                         [(str(cell.real), str(cell.imag)) for cell in row]
                         for row in exact
                     ],
-                    not (metric == INCLUSIVE or isinstance(metric, tuple)),
+                    metric != INCLUSIVE,
                 )
                 carrier = [[complex(re, im) for re, im in row] for row in native_h]
                 imaginary = (
@@ -1256,10 +1271,20 @@ class InducedObservables:
         keys): ``correlated`` (history ids, or (spin source assignment,
         history id) pairs: ``V2InducedObservablesRuntime.
         evaluate_correlated_many``), ``resolved`` (a colour resolution,
-        ``COLOUR_RESOLUTIONS``) or ``selection`` (a ``selection.column``: its
-        helicity rows, a ``member``'s own)."""
+        ``COLOUR_RESOLUTIONS``, or (resolution, the selected helicity rows):
+        a resolved helicity selection, whose outputs read, so whose
+        executor dresses, the selected rows only) or ``selection`` (a
+        ``selection.column``: its helicity rows). Rows are a ``member``'s
+        own."""
 
         from .selection import SELECTION
+
+        def representative(rows: Any) -> Any:
+            if member is None or rows is None:
+                return rows
+            # A member's selection names its own rows.
+            found = {member.row(row): row for row in self.rows}
+            return frozenset(found[row] for row in rows)
 
         if kind == "correlated":
             outputs = []
@@ -1268,13 +1293,15 @@ class InducedObservables:
                 self.history(name)
                 outputs.append(Output(item, name, None, spin))
         elif kind == "resolved":
-            if value not in COLOUR_RESOLUTIONS:
-                raise ValueError(f"unknown loop-induced resolution {value!r}")
+            resolution, selected = (value, None) if isinstance(value, str) else value
+            if resolution not in COLOUR_RESOLUTIONS:
+                raise ValueError(f"unknown loop-induced resolution {resolution!r}")
             anchors = (
                 (None,)
-                if value == CONTRACTED
+                if resolution == CONTRACTED
                 else tuple(range(len(self.slice.amplitude)))
             )
+            kept = representative(selected)
             outputs = [
                 Output(
                     (row, b),
@@ -1282,17 +1309,13 @@ class InducedObservables:
                     frozenset({row}),
                 )
                 for row in self.rows
+                if kept is None or row in kept
                 for b in anchors
             ]
         elif kind == SELECTION:
             if value.basis is not None:
                 raise ValueError("a loop-induced process has no colour-flow selection")
-            rows = value.rows
-            if member is not None and rows is not None:
-                # A member's selection names its own rows.
-                representative = {member.row(row): row for row in self.rows}
-                rows = frozenset(representative[row] for row in rows)
-            outputs = [Output(value.key, INCLUSIVE, rows)]
+            outputs = [Output(value.key, INCLUSIVE, representative(value.rows))]
         else:
             raise ValueError(f"unknown column set {kind!r}")
         return InducedColumns(self, outputs, member, resolved=kind == "resolved")

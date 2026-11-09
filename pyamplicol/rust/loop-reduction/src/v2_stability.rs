@@ -24,6 +24,8 @@
 //!   [`per_coefficient`].
 
 use rusticol_core::{RusticolError, RusticolResult};
+use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use symbolica::domains::integer::Integer;
 use symbolica::domains::rational::Rational;
 
@@ -43,9 +45,6 @@ pub const ADDITIVE: [&str; 4] = [REDUCTION, RESCALED, TRANSVERSE, CROSS];
 pub fn rotation_name(k: usize) -> String {
     format!("rotation-{k}")
 }
-/// The loop factor denominator of the lane budgets
-/// (`conventions.LOOP_FACTOR_DENOMINATOR`).
-const LOOP_FACTOR_DENOMINATOR: f64 = 16.0;
 /// `Rotation.from_axis_angle`'s and `Rotation.from_euler`'s default
 /// resolutions.
 pub const AXIS_ANGLE_RESOLUTION: u64 = 1_000_000;
@@ -600,7 +599,10 @@ pub type Budget = Vec<Vec<f64>>;
 /// The factor of a lane's |delta Omega| in the bare virtual's budget,
 /// 2 / (16 pi^2 average) (`_PointEvaluation._lane_budget`).
 pub fn lane_factor(average: f64) -> f64 {
-    2.0 / (LOOP_FACTOR_DENOMINATOR * py_pow(std::f64::consts::PI, 2.0) * average)
+    // The loop factor denominator (`conventions.LOOP_FACTOR_DENOMINATOR`),
+    // the runtime's one definition (16, exact in binary64).
+    let denominator = crate::v2_runtime::LOOP_FACTOR_DENOMINATOR as f64;
+    2.0 / (denominator * py_pow(std::f64::consts::PI, 2.0) * average)
 }
 
 /// `_PointEvaluation._lane_budget`: per sector (of `sectors`, `width`
@@ -652,24 +654,30 @@ pub type Lane<K> = (K, usize, Vec<(f64, f64)>);
 /// The lanes of a rotation check (`_PointEvaluation.rotation_budget`'s
 /// `lanes`): over the union of both evaluations' lanes in insertion order
 /// (`dict.fromkeys([*direct, *rotated])`), per lane |rotated - direct| per
-/// coefficient (an absent lane is zero), as (sector, errors).
-pub fn rotation_lanes<K: PartialEq + Clone>(
+/// coefficient (an absent lane is zero), as (sector, errors). Lanes are
+/// matched through a map on their keys (the first lane of a key, as a
+/// linear scan finds it): linear in the lane count, as the Python dicts.
+pub fn rotation_lanes<K: Eq + Hash + Clone>(
     direct: &[Lane<K>],
     rotated: &[Lane<K>],
     width: usize,
 ) -> RusticolResult<Vec<(usize, Vec<f64>)>> {
+    let direct_index = first_lanes(direct);
+    let rotated_index = first_lanes(rotated);
+    let mut seen: HashSet<&K> = HashSet::with_capacity(direct.len());
     let mut order: Vec<&Lane<K>> = Vec::with_capacity(direct.len());
     for lane in direct.iter().chain(rotated) {
-        if !order.iter().any(|seen| seen.0 == lane.0) {
+        if seen.insert(&lane.0) {
             order.push(lane);
         }
     }
-    fn values<'v, K: PartialEq>(
+    fn values<'v, K: Eq + Hash>(
         lanes: &'v [Lane<K>],
+        index: &HashMap<&K, usize>,
         key: &K,
         width: usize,
     ) -> RusticolResult<Option<&'v [(f64, f64)]>> {
-        match lanes.iter().find(|lane| lane.0 == *key) {
+        match index.get(key).map(|&i| &lanes[i]) {
             None => Ok(None),
             Some(lane) if lane.2.len() == width => Ok(Some(lane.2.as_slice())),
             Some(_) => Err(invalid("a lane of another Laurent width")),
@@ -678,8 +686,8 @@ pub fn rotation_lanes<K: PartialEq + Clone>(
     order
         .into_iter()
         .map(|lane| {
-            let a = values(rotated, &lane.0, width)?;
-            let b = values(direct, &lane.0, width)?;
+            let a = values(rotated, &rotated_index, &lane.0, width)?;
+            let b = values(direct, &direct_index, &lane.0, width)?;
             let errors = (0..width)
                 .map(|k| {
                     // `rotated.get(lane, zero) - direct.get(lane, zero)`: a
@@ -694,19 +702,29 @@ pub fn rotation_lanes<K: PartialEq + Clone>(
         .collect()
 }
 
+/// Per key the index of its first lane in `lanes`.
+fn first_lanes<K: Eq + Hash>(lanes: &[Lane<K>]) -> HashMap<&K, usize> {
+    let mut index = HashMap::with_capacity(lanes.len());
+    for (i, lane) in lanes.iter().enumerate() {
+        index.entry(&lane.0).or_insert(i);
+    }
+    index
+}
+
 /// The re-test's per-lane deviations (`family_deviations`): per lane of
 /// `direct`, in its order, |direct - retest| per coefficient; a lane absent
 /// from the re-test is refused (Python's `KeyError`).
-pub fn retest_deviations<K: PartialEq>(
+pub fn retest_deviations<K: Eq + Hash>(
     direct: &[Lane<K>],
     retest: &[Lane<K>],
 ) -> RusticolResult<Vec<(usize, Vec<f64>)>> {
+    let index = first_lanes(retest);
     direct
         .iter()
         .map(|(key, sector, values)| {
-            let other = retest
-                .iter()
-                .find(|lane| lane.0 == *key)
+            let other = index
+                .get(key)
+                .map(|&i| &retest[i])
                 .ok_or_else(|| invalid("a lane is missing from the re-test"))?;
             if other.2.len() != values.len() {
                 return Err(invalid("a re-test lane of another width"));
@@ -912,7 +930,7 @@ impl LaneShape {
     /// The budget of one rotation check (or of the cross-backend check, the
     /// same comparison at the unrotated point): every lane and local
     /// component is invariant (`_PointEvaluation.rotation_budget`).
-    pub fn rotation<K: PartialEq + Clone>(
+    pub fn rotation<K: Eq + Hash + Clone>(
         self,
         direct: &PointLanes<K>,
         rotated: &PointLanes<K>,
@@ -932,7 +950,7 @@ impl LaneShape {
 
     /// The reduction re-test's budget (`retest_budget`) from the point's
     /// lanes and their re-test.
-    pub fn retest<K: PartialEq>(
+    pub fn retest<K: Eq + Hash>(
         self,
         direct: &PointLanes<K>,
         retest: &[Lane<K>],
@@ -949,7 +967,7 @@ impl LaneShape {
 /// record), against the `reference` Laurent values per sector, with the
 /// absolute sums S as the floor's scale.
 #[allow(clippy::too_many_arguments)]
-pub fn born_interfered_estimate<K: PartialEq + Clone>(
+pub fn born_interfered_estimate<K: Eq + Hash + Clone>(
     shape: LaneShape,
     roundoff: f64,
     reference: &Budget,

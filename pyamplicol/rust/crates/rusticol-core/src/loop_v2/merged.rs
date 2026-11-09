@@ -271,6 +271,7 @@ impl<T: Carrier, const L: usize> Context<'_, T, L> {
                         step.seeded,
                         step.d_alpha,
                         &plan.products[edge.products],
+                        plan.gather(edge.content, edge.products, step.seeded),
                         step.rank_out,
                         source.values(),
                         self.inputs.factors.get(edge.factor),

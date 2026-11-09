@@ -17,16 +17,25 @@
 //!   digits plus [`SPIN_GUARD_DIGITS`], as `PointOutputs`), A(v) = sum_h c_h
 //!   A(h) ([`spin_amplitudes`]);
 //! * helicity-resolved: per helicity row the inclusive form over that row
-//!   alone (the colour-contracted resolution, `CONTRACTED`); the
-//!   amplitude-basis anchors ([`anchor_metric`]) are served to the Python
-//!   API.
+//!   alone (the colour-contracted resolution, [`Resolution::Contracted`]),
+//!   or per amplitude-basis element t the anchor's form
+//!   ([`anchor_metric`], [`Resolution::AmplitudeBasis`]: Re(conj(a_t)
+//!   (G a)_t)/avg, a basis-dependent split summing to the row's value);
+//! * single-helicity selection ([`InducedCall::Selection`], RULED Q39): the
+//!   inclusive form over the selected rows, with the total's average.
+//!
+//! A call that reads some helicity rows only (a selection, or a resolved
+//! output restricted to some rows) dresses those rows only: the executor's
+//! row liveness ([`InducedCall::row_mask`], `Runner::row_liveness`), as the
+//! Python API's `NativeExecutor.runs(rows=...)` through the Python binding.
 //!
 //! The Python API's binary64 outputs call these functions through PyO3
 //! (`induced_spin_coefficients`, `induced_spin_amplitudes`,
-//! `induced_forms`), so the SDK's binary64 outputs are bitwise the Python
-//! API's by construction; its `Decimal` code stays the oracle and the
-//! double-double / arbitrary-precision path, which [`DecimalArith`] follows
-//! operation for operation (equal `Decimal` values).
+//! `induced_form`, `induced_anchor_form`), so the SDK's binary64 outputs are
+//! bitwise the Python API's by construction; its `Decimal` code stays the
+//! oracle and the double-double / arbitrary-precision path, which
+//! [`DecimalArith`] follows operation for operation (equal `Decimal`
+//! values).
 
 use super::columns::{ColumnPoint, ColumnValues, INCLUSIVE};
 pub use super::induced::{Exact, Row, Vectors};
@@ -526,6 +535,21 @@ pub fn binary64_form(
     ))
 }
 
+/// The binary64 carrier form of the amplitude-basis anchor `t` of the
+/// exact colour metric `gram` (`size x size`, row-major): [`anchor_metric`]
+/// in the carrier (`Forms` of an `("anchor", t)` metric).
+pub fn binary64_anchor_form(gram: &[Exact], size: usize, t: usize) -> RusticolResult<Vec<C<f64>>> {
+    if gram.len() != size * size {
+        return Err(invalid("a form is basis x basis"));
+    }
+    if t >= size {
+        return Err(invalid(format!(
+            "amplitude-basis element {t} is outside the basis of {size}"
+        )));
+    }
+    carrier(&crate::v2_decimal::Binary64, &anchor_metric(gram, size, t))
+}
+
 /// The binary64 spin coefficients of one spin leg (`PointOutputs`): the
 /// polarisation vectors at the leg's exact momentum, c_h in the spin
 /// context of `working_digits`, each the nearest binary64 pair.
@@ -556,6 +580,88 @@ pub fn rows_of<N>(vectors: &Vectors<N>) -> Vec<Row> {
         }
     }
     rows
+}
+
+/// The colour resolution `CONTRACTED` (`induced_observables`).
+pub const CONTRACTED: &str = "contracted";
+/// The colour resolution `AMPLITUDE_BASIS` (`induced_observables`).
+pub const AMPLITUDE_BASIS: &str = "amplitude-basis";
+
+/// The colour axis of a loop-induced resolved output
+/// (`induced_observables.COLOUR_RESOLUTIONS`): one colour-contracted
+/// component per helicity row (its ID the accuracy, `"full"`), or one
+/// component per amplitude-basis element t (`amplitude-<t>`,
+/// [`anchor_id`]): the anchored part Re(conj(a_t) (G a)_t)/avg
+/// ([`anchor_metric`]), a basis-dependent split (the basis may be linearly
+/// dependent at N_c = 3) summing to the row's value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Resolution {
+    Contracted,
+    AmplitudeBasis,
+}
+
+impl Resolution {
+    /// The resolution of its name (`"contracted"`, `"amplitude-basis"`).
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            CONTRACTED => Some(Self::Contracted),
+            AMPLITUDE_BASIS => Some(Self::AmplitudeBasis),
+            _ => None,
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Contracted => CONTRACTED,
+            Self::AmplitudeBasis => AMPLITUDE_BASIS,
+        }
+    }
+}
+
+/// The ID of the amplitude-basis anchor `t` (`induced_observables.ANCHOR_ID`).
+pub fn anchor_id(t: usize) -> String {
+    format!("amplitude-{t}")
+}
+
+/// The outputs of one call on a loop-induced process (the column sets of
+/// `induced_observables.InducedObservables.native_columns`). Helicity rows
+/// are indices of the plan's rows (`V2Runtime::resolved_axes`' order).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InducedCall {
+    /// `correlated`: `born` (|A|^2) and the declared histories, in order.
+    Correlated,
+    /// `resolved`: per helicity row (the kept ones in the plan's order;
+    /// None: every row) its components of `resolution`, row-major.
+    Resolved {
+        resolution: Resolution,
+        rows: Option<Vec<usize>>,
+    },
+    /// `selection` (RULED Q39): the sum over the kept rows of |A(h)|^2/avg,
+    /// the total's average.
+    Selection { rows: Vec<usize> },
+}
+
+impl InducedCall {
+    /// The plan rows the call dresses (`InducedColumns._rows`): None when
+    /// an output reads every row, else one flag per plan row (`plan_rows`
+    /// rows); None too when the kept rows are every row.
+    pub fn row_mask(&self, plan_rows: usize) -> RusticolResult<Option<Vec<bool>>> {
+        let kept = match self {
+            Self::Correlated | Self::Resolved { rows: None, .. } => return Ok(None),
+            Self::Resolved {
+                rows: Some(rows), ..
+            }
+            | Self::Selection { rows } => rows,
+        };
+        let mut mask = vec![false; plan_rows];
+        for &row in kept {
+            *mask.get_mut(row).ok_or_else(|| {
+                invalid(format!(
+                    "helicity row {row} is outside the process's {plan_rows} rows"
+                ))
+            })? = true;
+        }
+        Ok((!mask.iter().all(|&kept| kept)).then_some(mask))
+    }
 }
 
 /// The observables of a loop-induced process (`InducedObservables`): its
@@ -660,23 +766,25 @@ fn source_records(trees_json: &[u8]) -> RusticolResult<Vec<serde_json::Value>> {
 }
 
 /// The metric of one output (`Output.metric`).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Metric {
     /// G (`INCLUSIVE`).
     Inclusive,
     /// A declared history's matrix.
     History(String),
+    /// The amplitude-basis anchor t's metric (`("anchor", t)`).
+    Anchor(usize),
 }
 
 /// One output: its metric and the helicity rows it reads (None: all).
 struct Output {
     metric: Metric,
-    rows: Option<Row>,
+    rows: Option<Vec<Row>>,
 }
 
 /// The carrier forms of a call's outputs (`Forms`): per metric (H, K).
 struct Forms<N> {
-    found: BTreeMap<String, Form<N>>,
+    found: BTreeMap<Metric, Form<N>>,
 }
 
 impl<N: Clone> Forms<N> {
@@ -689,28 +797,23 @@ impl<N: Clone> Forms<N> {
         let size = induced.size();
         let mut found = BTreeMap::new();
         for output in outputs {
-            let (key, h, k) = match &output.metric {
-                Metric::Inclusive => (INCLUSIVE.to_owned(), induced.metric().to_vec(), None),
-                Metric::History(id) => {
-                    let (h, k) = hermitian_parts(&observables.matrices[id], size);
-                    (id.clone(), h, k)
-                }
-            };
-            if found.contains_key(&key) {
+            if found.contains_key(&output.metric) {
                 continue;
             }
+            let (h, k) = match &output.metric {
+                Metric::Inclusive => (induced.metric().to_vec(), None),
+                Metric::History(id) => hermitian_parts(&observables.matrices[id], size),
+                Metric::Anchor(t) => (anchor_metric(induced.metric(), size, *t), None),
+            };
             let h = carrier(arith, &h)?;
             let k = k.map(|k| carrier(arith, &k)).transpose()?;
-            found.insert(key, (h, k));
+            found.insert(output.metric.clone(), (h, k));
         }
         Ok(Self { found })
     }
 
     fn of(&self, metric: &Metric) -> &Form<N> {
-        match metric {
-            Metric::Inclusive => &self.found[INCLUSIVE],
-            Metric::History(id) => &self.found[id],
-        }
+        &self.found[metric]
     }
 }
 
@@ -743,27 +846,158 @@ impl V2Runtime {
             .plan_rows()
     }
 
-    /// The outputs of the column set `kind` of a loop-induced process
-    /// (`InducedObservables.native_columns`): `correlated`, `born` and the
+    /// The outputs of a call on a loop-induced process
+    /// (`InducedObservables.native_columns`): correlated, `born` and the
     /// declared histories in order (every point's spin sources, if any, in
-    /// each); `resolved`, per helicity row its colour-contracted value.
-    fn induced_outputs(&mut self, kind: &str) -> RusticolResult<Vec<Output>> {
-        match kind {
-            "correlated" => {
+    /// each); resolved, per kept helicity row (plan order) its
+    /// colour-contracted value or its amplitude-basis anchors; a selection,
+    /// the inclusive form over the kept rows.
+    fn induced_outputs(&mut self, call: &InducedCall) -> RusticolResult<Vec<Output>> {
+        let plan_rows = self.induced_rows();
+        let kept = |rows: &[usize]| -> RusticolResult<Vec<Row>> {
+            // Plan order, each row once (`frozenset` membership).
+            let mut flags = vec![false; plan_rows.len()];
+            for &row in rows {
+                *flags.get_mut(row).ok_or_else(|| {
+                    invalid(format!(
+                        "helicity row {row} is outside the process's {} rows",
+                        plan_rows.len()
+                    ))
+                })? = true;
+            }
+            Ok(plan_rows
+                .iter()
+                .zip(&flags)
+                .filter(|(_, kept)| **kept)
+                .map(|(row, _)| row.clone())
+                .collect())
+        };
+        match call {
+            InducedCall::Correlated => {
                 let histories = self.induced_observables()?.histories.clone();
                 Ok(std::iter::once(Metric::Inclusive)
                     .chain(histories.into_iter().map(Metric::History))
                     .map(|metric| Output { metric, rows: None })
                     .collect())
             }
-            "resolved" => Ok(self
-                .induced_rows()
-                .into_iter()
-                .map(|row| Output {
+            InducedCall::Resolved { resolution, rows } => {
+                let rows = match rows {
+                    None => plan_rows.clone(),
+                    Some(rows) => kept(rows)?,
+                };
+                let size = self
+                    .induced
+                    .as_ref()
+                    .expect("a loop-induced process")
+                    .size();
+                let metrics: Vec<Metric> = match resolution {
+                    Resolution::Contracted => vec![Metric::Inclusive],
+                    Resolution::AmplitudeBasis => (0..size).map(Metric::Anchor).collect(),
+                };
+                Ok(rows
+                    .into_iter()
+                    .flat_map(|row| {
+                        metrics.iter().map(move |metric| Output {
+                            metric: metric.clone(),
+                            rows: Some(vec![row.clone()]),
+                        })
+                    })
+                    .collect())
+            }
+            InducedCall::Selection { rows } => {
+                if rows.is_empty() {
+                    return Err(invalid("a helicity selection keeps at least one row"));
+                }
+                Ok(vec![Output {
                     metric: Metric::Inclusive,
-                    rows: Some(row),
-                })
-                .collect()),
+                    rows: Some(kept(rows)?),
+                }])
+            }
+        }
+    }
+
+    /// The outputs of `call` on a loop-induced process in binary64 (the
+    /// Python API's binary64 `evaluate_resolved(color_resolution=...,
+    /// helicities=...)` and `evaluate(helicities=...)`): per point the
+    /// call's outputs in order (resolved: row-major over the kept rows, then
+    /// the components; a selection: one), as [`V2Runtime::evaluate_columns`].
+    /// Points fail alone.
+    pub fn evaluate_induced_call(
+        &mut self,
+        call: &InducedCall,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+    ) -> RusticolResult<Vec<ColumnPoint<f64>>> {
+        self.require_induced()?;
+        self.check_batch(momenta, scales)?;
+        self.check_poles(mode)?;
+        self.induced_call(
+            call,
+            momenta,
+            scales,
+            &[],
+            mode,
+            V2Precision::Double,
+            &0.0,
+            &crate::v2_decimal::Binary64,
+        )
+    }
+
+    /// [`V2Runtime::evaluate_induced_call`] in double-double or arbitrary
+    /// precision, assembled in Python's `Decimal` arithmetic at the working
+    /// digits (equal values to the Python API's).
+    pub fn evaluate_induced_call_extended(
+        &mut self,
+        call: &InducedCall,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+    ) -> RusticolResult<Vec<ColumnPoint<Decimal>>> {
+        self.require_induced()?;
+        self.check_batch(momenta, scales)?;
+        self.check_poles(mode)?;
+        let arith = DecimalArith::new(precision.working_digits());
+        match precision {
+            V2Precision::Double => Err(invalid(
+                "binary64 loop-induced outputs are V2Runtime::evaluate_induced_call",
+            )),
+            V2Precision::DoubleDouble => self.induced_call(
+                call,
+                momenta,
+                scales,
+                &[],
+                mode,
+                precision,
+                &symbolica::domains::float::DoubleFloat::from(0.0),
+                &arith,
+            ),
+            V2Precision::Arbitrary(_) => {
+                let zero = symbolica::domains::float::Float::with_val(precision.bits()?, 0);
+                self.induced_call(call, momenta, scales, &[], mode, precision, &zero, &arith)
+            }
+        }
+    }
+
+    fn require_induced(&self) -> RusticolResult<()> {
+        if self.induced.is_none() {
+            return Err(invalid(
+                "a Born-interfered process has no loop-induced outputs",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The call of the stored column set `kind` (`correlated`, `resolved`:
+    /// colour-contracted, every row).
+    fn column_call(kind: &str) -> RusticolResult<InducedCall> {
+        match kind {
+            "correlated" => Ok(InducedCall::Correlated),
+            "resolved" => Ok(InducedCall::Resolved {
+                resolution: Resolution::Contracted,
+                rows: None,
+            }),
             _ => Err(invalid(format!("the process stores no {kind} columns"))),
         }
     }
@@ -789,13 +1023,37 @@ impl V2Runtime {
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
+        let call = Self::column_call(kind)?;
+        self.induced_call(&call, momenta, scales, spins, mode, precision, zero, arith)
+    }
+
+    /// The outputs of `call` on a batch (`InducedColumns.evaluate`; as
+    /// [`V2Runtime::induced_columns`]): a call that reads some helicity rows
+    /// only dresses those ([`InducedCall::row_mask`]).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn induced_call<T: Native, A: Lift<T> + Squaring + CarrierPair>(
+        &mut self,
+        call: &InducedCall,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        spins: &[BTreeMap<usize, [(Rational, Rational); 4]>],
+        mode: V2Poles,
+        precision: V2Precision,
+        zero: &T,
+        arith: &A,
+    ) -> RusticolResult<Vec<ColumnPoint<A::N>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
         if !spins.is_empty() && spins.len() != momenta.len() {
             return Err(invalid("one spin source assignment per point"));
         }
-        if kind != "correlated" && !spins.is_empty() {
+        if *call != InducedCall::Correlated && !spins.is_empty() {
             return Err(invalid("spin sources apply to correlated outputs"));
         }
-        let outputs = self.induced_outputs(kind)?;
+        let outputs = self.induced_outputs(call)?;
+        let mask = call.row_mask(self.induced_rows().len())?;
         let induced = self.induced.clone().expect("a loop-induced process");
         let classes = self.induced_spin_classes()?;
         for spin in spins.iter().filter(|spin| !spin.is_empty()) {
@@ -813,7 +1071,7 @@ impl V2Runtime {
             let digits = precision.working_digits();
             let plan_rows = induced.plan_rows();
             let sector_index = self.sector_index.clone();
-            self.induced_points(
+            self.induced_points_with(
                 &induced,
                 momenta,
                 scales,
@@ -821,7 +1079,9 @@ impl V2Runtime {
                 precision,
                 zero,
                 arith,
-                |index, vectors, width| {
+                Monitoring::default(),
+                mask.as_deref(),
+                &mut |index, vectors, width| {
                     let spin = spins.get(index).filter(|spin| !spin.is_empty());
                     let (amplitudes, rows) = match spin {
                         None => (None, plan_rows.clone()),
@@ -850,9 +1110,11 @@ impl V2Runtime {
                         .map(|output| {
                             let rows: Vec<Row> = match &output.rows {
                                 None => rows.clone(),
-                                Some(kept) => {
-                                    rows.iter().filter(|row| *row == kept).cloned().collect()
-                                }
+                                Some(kept) => rows
+                                    .iter()
+                                    .filter(|row| kept.contains(row))
+                                    .cloned()
+                                    .collect(),
                             };
                             let (h, k) = forms.of(&output.metric);
                             let real = induced
@@ -926,13 +1188,16 @@ impl V2Runtime {
             zero,
             arith,
             Monitoring::default(),
+            None,
             &mut per_point,
         )
     }
 
     /// [`V2Runtime::induced_points`] with the stability monitoring's
     /// executor options and collection (`monitoring`, the reference
-    /// evaluation of a monitored batch: its re-test frame and term scale).
+    /// evaluation of a monitored batch: its re-test frame and term scale)
+    /// and the plan rows the call dresses (`rows`, one flag per plan row;
+    /// None: every row; `NativeExecutor.runs(rows=...)`).
     #[allow(clippy::too_many_arguments)]
     pub(super) fn induced_points_with<T: Native, A: Lift<T> + Squaring, R>(
         &mut self,
@@ -944,6 +1209,7 @@ impl V2Runtime {
         zero: &T,
         arith: &A,
         mut monitoring: Monitoring<'_, A::N>,
+        rows: Option<&[bool]>,
         per_point: &mut impl FnMut(usize, &Vectors<A::N>, usize) -> RusticolResult<R>,
     ) -> RusticolResult<Vec<Result<R, Vec<String>>>>
     where
@@ -956,11 +1222,6 @@ impl V2Runtime {
         let lanes = precision.lanes(momenta.len());
         let incoming = self.incoming(momenta);
         let values = self.parameter_values()?;
-        let (bound, inputs) = self.process.fill(
-            precision, lanes, &values, scales, &incoming, poles, None, zero,
-        )?;
-        let kets = inputs.kets;
-        let batch = v2_batch(incoming, scales, bound, inputs.block_rows, inputs.born);
         let options = V2Options {
             poles: mode.lanes(),
             contraction: contraction(&self.artifact.metadata.color_contraction),
@@ -968,11 +1229,31 @@ impl V2Runtime {
             term_scale: monitoring.term_scale,
             ..V2Options::default()
         };
+        // A row mask's liveness (the Python binding's `evaluate(rows=...)`:
+        // formed before the tree fill, which it restricts with the dressing).
+        let liveness = rows
+            .map(|rows| self.process.row_liveness(lanes, rows, &options))
+            .transpose()?;
+        let (bound, inputs) = match &liveness {
+            None => self.process.fill(
+                precision, lanes, &values, scales, &incoming, poles, None, zero,
+            )?,
+            Some(liveness) => self.process.fill_live(
+                precision, lanes, &values, scales, &incoming, poles, liveness, zero,
+            )?,
+        };
+        let kets = inputs.kets;
+        let batch = v2_batch(incoming, scales, bound, inputs.block_rows, inputs.born);
         self.backend(precision)?;
         let backend = self.backends.get_mut(&precision).expect("the backend");
-        let results = self
-            .process
-            .evaluate(lanes, &batch, zero, backend, options)?;
+        let results = match &liveness {
+            None => self
+                .process
+                .evaluate(lanes, &batch, zero, backend, options)?,
+            Some(liveness) => self
+                .process
+                .evaluate_live(lanes, &batch, zero, backend, options, liveness)?,
+        };
         let mut out = Vec::with_capacity(results.len());
         for (index, result) in results.into_iter().enumerate() {
             if !result.failures.is_empty() {

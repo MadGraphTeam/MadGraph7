@@ -256,6 +256,7 @@ impl V2Runtime {
                 term_scale: true,
                 collected: Some(&mut collected),
             },
+            None,
             &mut |_, vectors, width| {
                 induced.square_vectors(&Binary64, vectors, &rows, &gram, width, average)
             },
@@ -281,6 +282,7 @@ impl V2Runtime {
                     term_scale: false,
                     collected: Some(&mut runs),
                 },
+                None,
                 &mut |_, _, _| Ok(()),
             )?;
             for (index, point) in turned.iter().enumerate() {
@@ -387,6 +389,7 @@ impl V2Runtime {
                     term_scale: false,
                     collected: Some(&mut runs),
                 },
+                None,
                 &mut |_, _, _| Ok(()),
             )?;
             points

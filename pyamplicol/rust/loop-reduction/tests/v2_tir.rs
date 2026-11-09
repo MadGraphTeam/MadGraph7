@@ -1556,10 +1556,12 @@ fn the_rescaled_acceptance_refuses_the_rotation_blind_lanes() {
             Err(reason) => assert!(reason.contains("TIRust"), "{reason}"),
         }
     }
-    // At this TIRust pin the rotated frame is blind on some of these lanes
-    // (lit-tir report §H.1); a pin that serves them right makes this count
-    // zero and the rescaled acceptance's reason moot.
-    assert!(blind > 0, "no rotation-blind lane at this TIRust pin");
+    // The rotated frame was blind on some of these lanes at the pins of
+    // lit-tir and lit-tir-mp (lit-tir report §H.1; 21 lanes): the count is
+    // recorded, not asserted (a TIRust pin that serves them right makes it
+    // zero), and every lane the rotated frame misses is refused by the
+    // default above.
+    eprintln!("rotation-blind lanes at this TIRust pin: {blind}");
 }
 
 /// `TirOptions::store` (m-lit lit-cache STEP 3): a box family and its
@@ -1620,6 +1622,115 @@ fn the_tensor_store_leaves_every_lane_bitwise_and_shares_pinched_subsets() {
             statistics.counts
         );
     }
+}
+
+/// m-lit lit-perf (lit-cache audit minor (iv)): with the tensor store on,
+/// the rotation copy off and a check frame that only relabels the
+/// propagators, the check pass (in its own workspaces, without the store)
+/// recomputes every integral: every lane and every check lane is bitwise
+/// the store-off value.
+#[test]
+fn a_check_pass_with_the_store_recomputes_its_integrals() {
+    let mut rng = Lcg(37);
+    let masses = [0., 0., 173. * 173., 0.];
+    let box_points: Vec<_> = (0..3).map(|_| point(4, &masses, &mut rng)).collect();
+    let pinched: Vec<_> = box_points
+        .iter()
+        .map(|p| Point {
+            shifts: p.shifts[..3].to_vec(),
+            masses: p.masses[..3].to_vec(),
+            mu2: p.mu2,
+        })
+        .collect();
+    let groups = [
+        lanes(0, &box_points, 4, 4, 3, &mut rng),
+        lanes(1, &pinched, 3, 3, 2, &mut rng),
+    ];
+    let backend = |store: bool| {
+        V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+            store,
+            rotation_copy: false,
+            ..TirOptions::default()
+        })))
+    };
+    let relabelling = ReductionCheck {
+        reverse: false,
+        rotation: 1,
+        shift: false,
+        rescale: false,
+    };
+    let (off, off_check) = reduce(&mut backend(false), &groups, Poles::All, Some(relabelling));
+    let (on, on_check) = reduce(&mut backend(true), &groups, Poles::All, Some(relabelling));
+    assert_eq!(on, off);
+    assert_eq!(on_check, off_check);
+    assert!(off_check.is_some());
+}
+
+/// m-lit lit-perf (lit-cache audit minor (v)): the masters census counts
+/// the store's master misses per family and those repeating an earlier miss
+/// up to its relabellings (a box and its cyclically relabelled copy at the
+/// same points: the copy's box masters repeat the box's up to a dihedral
+/// relabelling), the totals are the families' sums, the values bitwise the
+/// store-off ones; without the store it is refused typed.
+#[test]
+fn the_masters_census_counts_relabelled_repeats_and_needs_the_store() {
+    let mut rng = Lcg(41);
+    let masses = [0., 173. * 173., 173. * 173., 0.];
+    let points: Vec<_> = (0..2).map(|_| point(4, &masses, &mut rng)).collect();
+    let direct = lanes(0, &points, 2, 4, 2, &mut rng);
+    let mut copy = relabelled(&direct, 2);
+    copy.family = 1;
+    for key in &mut copy.keys {
+        key.family = 1;
+    }
+    let groups = [direct, copy];
+    let census = || {
+        V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+            store: true,
+            masters_census: true,
+            ..TirOptions::default()
+        })))
+    };
+    let (plain, _) = reduce(&mut tir(), &groups, Poles::All, None);
+    let mut backend = census();
+    let (counted, _) = reduce(&mut backend, &groups, Poles::All, None);
+    assert_eq!(counted, plain);
+    let statistics = V2Backend::<f64>::take_statistics(&mut backend);
+    let misses = count(&statistics, "TIR masters census: box store misses");
+    let repeats = count(&statistics, "TIR masters census: box canonical repeats");
+    eprintln!("census: {:?}", statistics.counts);
+    assert!(misses > 0, "{:?}", statistics.counts);
+    assert!(repeats > 0 && repeats <= misses, "{:?}", statistics.counts);
+    let total = |name: &str| {
+        ["tadpole", "bubble", "triangle", "box"]
+            .iter()
+            .map(|family| count(&statistics, &format!("TIR masters census: {family} {name}")))
+            .sum::<u64>()
+    };
+    assert_eq!(
+        total("store misses"),
+        count(&statistics, "TIR masters census: store misses")
+    );
+    assert_eq!(
+        total("canonical repeats"),
+        count(&statistics, "TIR masters census: canonical repeats")
+    );
+    let refused = TirReductionBackend::with_histogram(
+        [(4, 2)],
+        53,
+        TirOptions {
+            masters_census: true,
+            ..TirOptions::default()
+        },
+    );
+    assert!(
+        refused
+            .as_ref()
+            .err()
+            .is_some_and(|e| e.message().contains("masters_census")),
+        "{:?}",
+        refused.err().map(|e| e.message().to_owned())
+    );
 }
 
 /// The TIR backend in the unchecked mode (`TirOptions::unchecked`, m-lit

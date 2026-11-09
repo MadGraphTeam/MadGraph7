@@ -113,10 +113,11 @@ use rusticol_core::loop_execution::v2::{
     Contraction, LaneKey, PointResult, Poles, V2Executor, V2Options,
 };
 use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
-use rusticol_core::loop_v2::plan::LoopProgramV4;
+use rusticol_core::loop_v2::plan::{LiveRows, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::loop_v2::trees::{
-    BoundParameters, PointSources, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
+    BoundParameters, PointSources, TREE_FILL_BUDGET, TreeCarrier, TreeInputs, TreeProgram,
+    TreeRows, TreeRuntime,
 };
 use rusticol_core::{RusticolError, RusticolResult};
 use serde::Deserialize;
@@ -138,7 +139,7 @@ const FIELD_COMPONENT: &str = "uv_external_fields";
 /// Laurent powers in coefficient order (finite, 1/ε, 1/ε²).
 const LAURENT_POWERS: [i32; 3] = [0, -1, -2];
 /// The bare virtual's loop factor denominator (`conventions.LOOP_FACTOR_DENOMINATOR`).
-const LOOP_FACTOR_DENOMINATOR: i64 = 16;
+pub(crate) const LOOP_FACTOR_DENOMINATOR: i64 = 16;
 /// The artifact's model parameter defaults (`generation/artifact_writer.py`):
 /// every external parameter of the model, by name.
 const MODEL_PARAMETERS_PATH: &str = "model/parameters.json";
@@ -638,6 +639,51 @@ impl Runner {
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
+        self.bind_and_fill(
+            precision,
+            lanes,
+            values,
+            scales,
+            zero,
+            |trees, runtime, plan, bound| {
+                trees.inputs_with(
+                    runtime,
+                    plan,
+                    &bound.trees,
+                    incoming,
+                    &bound.constants,
+                    poles,
+                    sources,
+                    zero,
+                )
+            },
+        )
+    }
+
+    /// The tree runtime of `precision` (formed once) and the executor of
+    /// `lanes`: the batch's parameters bound, then its tree inputs formed by
+    /// `inputs` (the program, the runtime, the plan, the bound parameters),
+    /// both on the executor's pool ([`Runner::fill`], [`Runner::fill_live`]).
+    fn bind_and_fill<T: Native, F>(
+        &mut self,
+        precision: V2Precision,
+        lanes: usize,
+        values: &[Rational],
+        scales: &[Rational],
+        zero: &T,
+        inputs: F,
+    ) -> RusticolResult<(BoundParameters<T>, TreeInputs<T>)>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+        F: FnOnce(
+                &TreeProgram,
+                &mut TreeRuntime<T>,
+                &LoopProgramV4,
+                &BoundParameters<T>,
+            ) -> RusticolResult<TreeInputs<T>>
+            + Send,
+    {
         self.executor(lanes)?;
         if !self.runtimes.contains_key(&precision) {
             let runtime = self.trees.runtime(zero)?;
@@ -652,16 +698,7 @@ impl Runner {
         let trees = &self.trees;
         executor.install(|| -> RusticolResult<_> {
             let bound = trees.bind(runtime, values, scales, zero)?;
-            let inputs = trees.inputs_with(
-                runtime,
-                executor.plan(),
-                &bound.trees,
-                incoming,
-                &bound.constants,
-                poles,
-                sources,
-                zero,
-            )?;
+            let inputs = inputs(trees, runtime, executor.plan(), &bound)?;
             Ok((bound, inputs))
         })
     }
@@ -684,6 +721,112 @@ impl Runner {
             .evaluate(batch, zero, backend, options)?;
         Ok(results)
     }
+
+    /// The row liveness of a call keeping the plan's helicity rows `rows`
+    /// (one flag per plan row), as the Python binding's
+    /// `V2Executor.evaluate(rows=...)` forms it (`evaluate_with`): the
+    /// executor's families pruned to the rows the kept rows reach
+    /// (`V2Executor::live_rows`, schedule B) and the tree fill's liveness
+    /// (`TreeProgram::live_rows`; none for an amplitude-mode program, whose
+    /// trees have no observable columns). Both None when `rows` drops no
+    /// seeded row.
+    pub(crate) fn row_liveness(
+        &mut self,
+        lanes: usize,
+        rows: &[bool],
+        options: &V2Options,
+    ) -> RusticolResult<RowLiveness> {
+        self.executor(lanes)?;
+        let executor = &self.executors[&lanes];
+        let live = executor.live_rows(rows, None, options.schedule)?;
+        let trees = live
+            .as_deref()
+            .and_then(|live| self.trees.live_rows(executor.plan(), live));
+        Ok(RowLiveness { live, trees })
+    }
+
+    /// [`Runner::fill`] of a call with a row liveness (the Python binding's
+    /// `Trees::fill_part` with `filling.rows`): the tree fill of
+    /// `TreeProgram::inputs_with`, restricted to the live tree rows.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn fill_live<T: Native>(
+        &mut self,
+        precision: V2Precision,
+        lanes: usize,
+        values: &[Rational],
+        scales: &[Rational],
+        incoming: &[Vec<Rational>],
+        poles: bool,
+        rows: &RowLiveness,
+        zero: &T,
+    ) -> RusticolResult<(BoundParameters<T>, TreeInputs<T>)>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let Some(tree_rows) = &rows.trees else {
+            return self.fill(
+                precision, lanes, values, scales, incoming, poles, None, zero,
+            );
+        };
+        self.bind_and_fill(
+            precision,
+            lanes,
+            values,
+            scales,
+            zero,
+            |trees, runtime, plan, bound| {
+                let chunk = trees.fill_points::<T>(incoming.len(), false, TREE_FILL_BUDGET);
+                trees.inputs_chunked(
+                    runtime,
+                    plan,
+                    &bound.trees,
+                    incoming,
+                    &bound.constants,
+                    poles,
+                    None,
+                    None,
+                    chunk,
+                    Some(tree_rows),
+                    zero,
+                )
+            },
+        )
+    }
+
+    /// [`Runner::evaluate`] of a call with a row liveness
+    /// (`V2Executor::evaluate_families` with the live rows: every family
+    /// pruned to them, as the Python binding's).
+    pub(crate) fn evaluate_live<T: Native>(
+        &mut self,
+        lanes: usize,
+        batch: &V2Batch<T>,
+        zero: &T,
+        backend: &mut V2Backends,
+        options: V2Options,
+        rows: &RowLiveness,
+    ) -> RusticolResult<Vec<PointResult<T>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let (results, _report) = self.executor(lanes)?.evaluate_families(
+            batch,
+            zero,
+            backend,
+            options,
+            None,
+            rows.live.as_deref(),
+        )?;
+        Ok(results)
+    }
+}
+
+/// The row liveness of one call keeping some plan rows
+/// ([`Runner::row_liveness`]).
+pub(crate) struct RowLiveness {
+    live: Option<Arc<LiveRows>>,
+    trees: Option<TreeRows>,
 }
 
 /// The executor batch of bound parameters and tree inputs.

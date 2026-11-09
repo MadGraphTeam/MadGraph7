@@ -760,6 +760,18 @@ All native APIs use the Symbolica-independent f64 runtime:
 - C++/ASM evaluator artifacts load only on a compatible target and CPU;
 - no native call imports Symbolica or performs a Symbolica license check.
 
+Every binary64 tree call of the C, C++, Fortran and Rust APIs and of the UMAMI
+provider (ordinary values, helicity- and colour-resolved values, global and
+per-point helicity / colour-flow selections, squared-order partials, colour-
+and spin-correlated values, the OTF warm-up, model-parameter updates) needs no
+Symbolica licensing at all: neither a personal licence nor pyAmpliCol's
+package key. Concurrent unlicensed processes with the key disabled
+(`PYAMPLICOL_NATIVE_LIBRARY_KEY=off`), while another process holds the
+restricted Symbolica permit, return the licensed run's values bit for bit
+(`tests/integration/test_native_sdk_tree_licence_free.py`). On an x86-64 CPU
+without AVX and FMA3, SymJIT tree artifacts are refused with the reason; they
+are never evaluated through Symbolica.
+
 Python is the only standalone driver that can request Symbolica-backed exact
 precision when the artifact retains an exact evaluator. OTF does not retain
 that path and rejects non-f64 precision. See
@@ -783,10 +795,24 @@ counterpart is the Python API given those exact values (for example
 `str(decimal.Decimal(x))`). The Python API reads a float by its shortest
 decimal (`33.6`, not the double's exact value): where the two differ, its
 point lies half an ulp from the SDK's, and values and estimates may differ in
-their last digits. Binary64 evaluation, with or without the
-monitoring, never touches Symbolica: the shipped loop-induced self-test
-artifact evaluates through the C ABI without `SYMBOLICA_LICENSE` while another
-process holds the restricted Symbolica permit.
+their last digits. Binary64 evaluation, with or without the monitoring, runs
+the artifact's stored SymJIT applications and needs no Symbolica licence: the
+shipped loop-induced self-test artifact evaluates through the C ABI without
+`SYMBOLICA_LICENSE` while another process holds the restricted Symbolica
+permit. Two binary64 cases evaluate saved Symbolica states natively, under
+pyAmpliCol's own package library key (no user licence either; see
+[Symbolica and licensing](symbolica-and-licensing.md)): a loop whose squared
+masses or invariants lie strictly between 0 and 1e-9 in the model's units
+(or an invariant within 1e-9 of a real squared mass), reduced by the generic
+engine, and an x86-64 CPU without AVX and FMA3, where SymJIT cannot compile.
+Double-double and arbitrary precision run under the package key too.
+
+The SDK serves the loop-induced selections of the Python API
+(`helicities=`, `color_resolution="amplitude-basis"`) through
+`rusticol_virtual_evaluate_selected` and its wrappers (see the SDK README,
+"Selections"): the amplitude-basis anchors are an explicitly basis-dependent
+split, a helicity selection is |A(h)|²/avg with the total's average, only the
+selected rows are evaluated, and colour flows are refused (full colour).
 
 The reduction backend (`rusticol_virtual_set_reduction`; C++ and Fortran
 `set_reduction`, the packaged Rust wrapper's `set_reduction`) is the Python

@@ -135,6 +135,23 @@ pub struct BatchRequest {
     pub r2_strategy: *const c_char,
 }
 
+/// The selectors of `rusticol_virtual_evaluate_selected` (additive, ABI
+/// version 2 kept; m-lit lit-sdk-b): global string IDs and per-point
+/// zero-based indices (a zero count omits that selector) and a resolved
+/// evaluation's colour resolution (NULL: "contracted").
+#[repr(C)]
+pub struct SelectionRequest {
+    pub helicity_ids: *const *const c_char,
+    pub helicity_count: usize,
+    pub color_ids: *const *const c_char,
+    pub color_count: usize,
+    pub helicity_by_point: *const u32,
+    pub helicity_by_point_count: usize,
+    pub color_flow_by_point: *const u32,
+    pub color_flow_by_point_count: usize,
+    pub color_resolution: *const c_char,
+}
+
 /// Borrowed source rows, separate from BatchRequest to preserve its ABI.
 #[repr(C)]
 pub struct SpinSourceRequest {
@@ -472,6 +489,132 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate(
         )?;
         *output = Box::into_raw(Box::new(VirtualResult(result)));
         Ok(())
+    })
+}
+/// String IDs of a selector array (`count` NUL-terminated strings; a zero
+/// count omits the selector).
+unsafe fn selector_ids(
+    ids: *const *const c_char,
+    count: usize,
+    name: &str,
+) -> Result<Option<Vec<String>>> {
+    if count == 0 {
+        return Ok(None);
+    }
+    unsafe { values(ids, count) }
+        .map_err(|_| bad(format!("{name} array is null")))?
+        .iter()
+        .enumerate()
+        .map(|(index, &id)| {
+            unsafe { text(id) }?
+                .map(str::to_owned)
+                .ok_or_else(|| bad(format!("{name}[{index}] is null")))
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
+}
+
+/// Per-point indices (`count` values; a zero count omits the selector).
+unsafe fn per_point(indices: *const u32, count: usize, name: &str) -> Result<Option<Vec<u32>>> {
+    if count == 0 {
+        return Ok(None);
+    }
+    Ok(Some(
+        unsafe { values(indices, count) }
+            .map_err(|_| bad(format!("{name} is null")))?
+            .to_vec(),
+    ))
+}
+
+/// An evaluation with selectors (the Python API's `helicities=` and
+/// `color_resolution=`, the tree C ABI's selector conventions; m-lit
+/// lit-sdk-b): `request.resolved` 0 is the ordinary evaluation of the
+/// selected helicity rows, 1 the resolved evaluation of the selected rows in
+/// the colour resolution. A NULL `selection` selects nothing
+/// (`rusticol_virtual_evaluate`). Every selector is validated before any
+/// evaluation; the result is written only on success.
+///
+/// # Safety
+///
+/// `handle` is a live handle used by no other thread; `request`, `selection`
+/// (NULL or) and `output` follow the ABI's pointer rules: every nonzero
+/// selector count names that many readable entries, each ID a
+/// NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_evaluate_selected(
+    handle: *mut VirtualHandle,
+    request: *const BatchRequest,
+    selection: *const SelectionRequest,
+    output: *mut *mut VirtualResult,
+) -> c_int {
+    guard(|| unsafe {
+        let output = mutable(output)?;
+        *output = ptr::null_mut();
+        let request = reference(request)?;
+        if request.resolved > 1 {
+            return Err(bad("resolved must be zero or one"));
+        }
+        let selection = if selection.is_null() {
+            Selection::default()
+        } else {
+            let selection = reference(selection)?;
+            Selection {
+                helicities: selector_ids(
+                    selection.helicity_ids,
+                    selection.helicity_count,
+                    "helicity ids",
+                )?,
+                color_flows: selector_ids(selection.color_ids, selection.color_count, "color ids")?,
+                helicity_by_point: per_point(
+                    selection.helicity_by_point,
+                    selection.helicity_by_point_count,
+                    "helicity_by_point",
+                )?,
+                color_flow_by_point: per_point(
+                    selection.color_flow_by_point,
+                    selection.color_flow_by_point_count,
+                    "color_flow_by_point",
+                )?,
+                color_resolution: text(selection.color_resolution)?.map(str::to_owned),
+            }
+        };
+        let handle = mutable(handle)?;
+        let ids = request_ids(&handle.0, request)?;
+        let result = handle.0.evaluate_selected(
+            values(request.momenta, request.momentum_count)?,
+            &ids,
+            values(request.mu_r2, request.scale_count)?,
+            request.resolved == 1,
+            text(request.r2_strategy)?,
+            &selection,
+        )?;
+        *output = Box::into_raw(Box::new(VirtualResult(result)));
+        Ok(())
+    })
+}
+
+/// The axes of a result as JSON: `{"helicity_ids": [...], "color_ids":
+/// [...]}` (a resolved result's helicity rows and colour components in its
+/// layout's order; empty for an ordinary result).
+///
+/// # Safety
+///
+/// `result` is a live result; `output`, `capacity` and `needed` follow the
+/// ABI's JSON size-query rules.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_result_axes_json(
+    result: *const VirtualResult,
+    output: *mut c_char,
+    capacity: usize,
+    needed: *mut usize,
+) -> c_int {
+    guard(|| unsafe {
+        let result = &reference(result)?.0;
+        let axes = serde_json::json!({
+            "helicity_ids": result.helicity_ids,
+            "color_ids": result.color_ids,
+        });
+        json_string(&axes.to_string(), output, capacity, needed)
     })
 }
 #[unsafe(no_mangle)]

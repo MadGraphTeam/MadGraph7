@@ -433,9 +433,9 @@ combines with at least one other check: a point the other backend fails or
 refuses keeps the estimate of the other checks and names the check, with
 the reason, in its estimate's `not_run` (a refusal of the other backend says
 nothing about the value). It is a runtime option of the call, never stored in
-an artifact; a carrier the other backend does not serve (TIRust at
-double-double in this release, or a native extension built without TIRust)
-refuses it before any point (`ReductionUnavailable`). The values are those
+an artifact; a carrier the other backend does not serve (in this release
+TIRust serves every carrier, so only a native extension built without
+TIRust) refuses it before any point (`ReductionUnavailable`). The values are those
 of the call without it, bit for bit. It runs on `evaluate` and on the
 resolved, correlated and selected outputs of both process types (not on the
 Python reference executor, which refuses it).

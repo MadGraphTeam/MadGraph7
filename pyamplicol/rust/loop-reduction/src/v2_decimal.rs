@@ -574,6 +574,9 @@ impl Arith for DecimalArith {
     }
 }
 
+/// One amplitude vector: per basis element t its Laurent coefficients.
+pub type AmplitudeVector<N> = Vec<Vec<C<N>>>;
+
 /// |A|² of loop-induced amplitude vectors per sector and Laurent
 /// coefficient as the Python API's `loops/v2/induced.square` forms it in
 /// double-double and arbitrary precision, operation for operation (the
@@ -586,9 +589,6 @@ impl Arith for DecimalArith {
 /// average. `metric` is `G` row-major (`size²` cells). Binary64 squares with
 /// `rusticol_core::loop_v2::interference::square_amplitudes` (Python's
 /// `induced.native_square`).
-/// One amplitude vector: per basis element t its Laurent coefficients.
-pub type AmplitudeVector<N> = Vec<Vec<C<N>>>;
-
 #[allow(clippy::too_many_arguments)]
 pub fn square_amplitudes_python<A: Arith>(
     arith: &A,

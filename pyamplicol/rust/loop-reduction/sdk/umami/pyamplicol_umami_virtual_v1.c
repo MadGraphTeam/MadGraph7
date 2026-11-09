@@ -19,7 +19,8 @@ const char *pyamplicol_umami_virtual_v1_last_error_message(void) {
 uint32_t pyamplicol_umami_virtual_v1_version(void) { return PYAMPLICOL_UMAMI_VIRTUAL_VERSION; }
 UmamiStatus pyamplicol_umami_virtual_v1_supported_inputs(const int **keys, size_t *count) {
     static const int supported[] = {UMAMI_IN_MOMENTA, PYAMPLICOL_UMAMI_V1_IN_MU_R2,
-        PYAMPLICOL_UMAMI_V1_IN_MU_R2_SCALAR, PYAMPLICOL_UMAMI_V1_IN_POINT_ID};
+        PYAMPLICOL_UMAMI_V1_IN_MU_R2_SCALAR, PYAMPLICOL_UMAMI_V1_IN_POINT_ID,
+        UMAMI_IN_HELICITY_INDEX, PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION};
     if (!keys || !count) return fail(UMAMI_ERROR, "null supported-input query output");
     *keys = supported; *count = sizeof(supported)/sizeof(supported[0]);
     return UMAMI_SUCCESS;
@@ -64,9 +65,9 @@ static UmamiStatus evaluate_bulk(int correlated,
     if ((input_count && (!input_keys || !inputs || !input_capacities)) ||
         (output_count && (!output_keys || !outputs || !output_capacities)))
         return fail(UMAMI_ERROR, "missing UMAMI key/pointer/capacity arrays");
-    const void *in[7] = {NULL,NULL,NULL,NULL,NULL,NULL,NULL};
+    const void *in[9] = {NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
     void *out[3] = {NULL,NULL,NULL};
-    size_t in_capacity[7] = {0,0,0,0,0,0,0}, out_capacity[3] = {0,0,0};
+    size_t in_capacity[9] = {0,0,0,0,0,0,0,0,0}, out_capacity[3] = {0,0,0};
     unsigned in_present = 0, out_present = 0;
     for (size_t i=0;i<input_count;i++) {
         unsigned slot;
@@ -78,10 +79,15 @@ static UmamiStatus evaluate_bulk(int correlated,
         case PYAMPLICOL_UMAMI_V1_IN_SPIN_LEGS: slot=4; break;
         case PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS: slot=5; break;
         case PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS_SCALAR: slot=6; break;
+        case UMAMI_IN_HELICITY_INDEX: slot=7; break;
+        case PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION: slot=8; break;
         default: return fail(UMAMI_ERROR_UNSUPPORTED_INPUT, "unsupported virtual-extension input key");
         }
-        if (slot>=4 && !correlated)
+        if (slot>=4 && slot<=6 && !correlated)
             return fail(UMAMI_ERROR_UNSUPPORTED_INPUT,"spin sources require correlated evaluation");
+        if (slot>=7 && correlated)
+            return fail(UMAMI_ERROR_UNSUPPORTED_INPUT,
+                "helicity and colour-resolution selections apply to ordinary and resolved evaluations");
         if (in_present & (1u<<slot)) return fail(UMAMI_ERROR, "duplicate virtual-extension input key");
         in_present |= 1u<<slot; in[slot]=inputs[i]; in_capacity[slot]=input_capacities[i];
     }
@@ -131,6 +137,31 @@ static UmamiStatus evaluate_bulk(int correlated,
     uint32_t resolved=options ? options->resolved : 0;
     if (correlated && resolved) return fail(UMAMI_ERROR_NOT_IMPLEMENTED,"resolved directed correlations are unavailable");
     if (resolved > 1) return fail(UMAMI_ERROR, "resolved must be zero or one");
+    /* A selection (UMAMI_IN_HELICITY_INDEX: ordinary; COLOR_RESOLUTION:
+     * resolved), passed to rusticol_virtual_evaluate_selected. */
+    int selected=(in_present & (128u|256u)) != 0;
+    if ((in_present & 128u) && resolved)
+        return fail(UMAMI_ERROR_UNSUPPORTED_INPUT,
+            "a helicity index selects ordinary evaluations (options.resolved = 0)");
+    if ((in_present & 256u) && !resolved)
+        return fail(UMAMI_ERROR_UNSUPPORTED_INPUT,
+            "a colour resolution selects resolved evaluations (options.resolved = 1)");
+    const char *color_resolution=NULL;
+    if (in_present & 256u) {
+        const char *text=in[8];
+        size_t length=0;
+        while (text && length<in_capacity[8] && text[length]) length++;
+        if (!text || length>=in_capacity[8])
+            return fail(UMAMI_ERROR,"the colour resolution is not a NUL-terminated string within its capacity");
+        color_resolution=text;
+    }
+    if ((in_present & 128u) && count) {
+        if (!buffer_valid(in[7],in_capacity[7],stride,sizeof(int),_Alignof(int)))
+            return fail(UMAMI_ERROR, "invalid or short helicity-index buffer");
+        for (size_t p=0;p<count;p++)
+            if (((const int*)in[7])[offset+p] < 0)
+                return fail(UMAMI_ERROR, "helicity indices are zero-based rows (non-negative)");
+    }
     rusticol_virtual_shape_info shape;
     if (rusticol_virtual_shape(handle,&shape)) return native_failure();
     if (resolved && !shape.resolved_available)
@@ -167,6 +198,7 @@ static UmamiStatus evaluate_bulk(int correlated,
             size_t width=i==0 ? born_width : i==1 ? virtual_width : 1;
             size_t bytes=i==2 ? sizeof(uint32_t) : value_size;
             size_t alignment=i==2 ? _Alignof(uint32_t) : value_alignment;
+            if (i!=2 && color_resolution) continue; /* checked on the result's axes */
             if (!product(stride,width,&required) ||
                 !buffer_valid(out[i],out_capacity[i],required,bytes,alignment))
                 return fail(UMAMI_ERROR, "invalid or short virtual-extension output buffer");
@@ -179,11 +211,12 @@ static UmamiStatus evaluate_bulk(int correlated,
     double *scales=array(count,sizeof(double));
     uint64_t *ids=array(count,sizeof(uint64_t)), *success_ids=NULL;
     uint32_t *statuses=array(count,sizeof(uint32_t));
+    uint32_t *helicity_rows=(in_present & 128u) ? array(count,sizeof(uint32_t)) : NULL;
     rusticol_virtual_complex64 *source_values=array(source_count,sizeof(rusticol_virtual_complex64));
     void *born=NULL, *virtual_values=NULL;
     void *result=NULL;
     UmamiStatus status=UMAMI_SUCCESS;
-    if (count && (!momenta || !scales || !ids || !statuses)) {
+    if (count && (!momenta || !scales || !ids || !statuses || ((in_present & 128u) && !helicity_rows))) {
         status=fail(UMAMI_ERROR,"unable to allocate virtual bulk input buffers"); goto done;
     }
     if (source_count && !source_values) {
@@ -197,6 +230,7 @@ static UmamiStatus evaluate_bulk(int correlated,
                     ((const double*)in[0])[event+stride*(leg+shape.external_count*component)];
         scales[p]=in_present & 2u ? ((const double*)in[1])[event] : ((const double*)in[2])[0];
         ids[p]=in_present & 8u ? ((const uint64_t*)in[3])[event] : (uint64_t)event;
+        if (helicity_rows) helicity_rows[p]=(uint32_t)((const int*)in[7])[event];
         if (spin_keys) {
             const rusticol_virtual_complex64 *vectors=in[(spin_keys & 32u) ? 5 : 6];
             for (size_t leg=0;leg<source_legs;leg++) for (size_t component=0;component<4;component++) {
@@ -223,6 +257,31 @@ static UmamiStatus evaluate_bulk(int correlated,
         }
         result_shape.requested_points=axes.requested_points; result_shape.successful_points=axes.successful_points;
         result_shape.born_values=axes.born_values; result_shape.virtual_values=axes.virtual_values;
+    } else if (selected) {
+        rusticol_virtual_selection selection={NULL,0,NULL,0,helicity_rows,helicity_rows ? count : 0,
+            NULL,0,color_resolution};
+        rusticol_virtual_result *typed=NULL;
+        if (rusticol_virtual_evaluate_selected(handle,&request,&selection,&typed)) {
+            status=native_failure(); goto done;
+        }
+        result=typed;
+        if (rusticol_virtual_result_shape(typed,&result_shape)) { status=native_failure(); goto done; }
+        if (color_resolution) {
+            /* The resolved call's own axes: its rows and colour components. */
+            h=result_shape.axes.helicities; vc=result_shape.axes.virtual_color_components;
+            if (!product(shape.virtual_orders,h,&virtual_width) || !product(virtual_width,vc,&virtual_width) ||
+                !product(virtual_width,shape.epsilon_count,&virtual_width) ||
+                !product(shape.born_orders,h,&born_width) || !product(born_width,bc,&born_width)) {
+                status=fail(UMAMI_ERROR, "UMAMI layout dimensions overflow size_t"); goto done;
+            }
+            for (unsigned i=0;i<2;i++) if (count && (out_present & (1u<<i))) {
+                size_t width=i==0 ? born_width : virtual_width;
+                if (!product(stride,width,&required) ||
+                    !buffer_valid(out[i],out_capacity[i],required,sizeof(double),_Alignof(double))) {
+                    status=fail(UMAMI_ERROR, "invalid or short virtual-extension output buffer"); goto done;
+                }
+            }
+        }
     } else {
         rusticol_virtual_result *typed=NULL;
         if (rusticol_virtual_evaluate(handle,&request,&typed)) { status=native_failure(); goto done; }
@@ -307,7 +366,7 @@ done:
         if (correlated) rusticol_virtual_correlated_result_free(result);
         else rusticol_virtual_result_free(result);
     }
-    free(momenta); free(scales); free(ids); free(statuses);
+    free(momenta); free(scales); free(ids); free(statuses); free(helicity_rows);
     free(success_ids); free(born); free(virtual_values); free(source_values);
     return status;
 }

@@ -4,8 +4,8 @@
 /// Additive binary64 Born–loop interfaces, using the same installed archive.
 pub mod virtual_amplitudes {
     use super::{
-        Error, ErrorKind, Result, checked_cstring, optional_cstring, optional_pointer,
-        path_cstring, read_string_checked,
+        Error, ErrorKind, Result, checked_cstring, cstring_list, optional_cstring,
+        optional_pointer, path_cstring, read_string_checked,
     };
     use std::{
         ffi::{CStr, c_char, c_int, c_void},
@@ -60,6 +60,25 @@ pub mod virtual_amplitudes {
         /// API's `Decimal` values; `born`/`virtual_values` hold their nearest
         /// doubles); `null` in binary64.
         pub decimal_json: String,
+        /// `{"helicity_ids", "color_ids"}`: a resolved result's axes in the
+        /// layout's order (a selection's rows, the `amplitude-<t>` anchors);
+        /// empty lists for an ordinary result.
+        pub axes_json: String,
+    }
+    /// The selectors of [`Runtime::evaluate_selected`]
+    /// (`rusticol_virtual_selection`): global helicity IDs (`h<i>` or
+    /// `h:<helicities in leg order>`), per-point zero-based helicity rows
+    /// (one per point; exclusive with the IDs), colour flows (refused for a
+    /// loop-induced process: full colour only) and a resolved evaluation's
+    /// colour resolution (`"contracted"`, the default, or
+    /// `"amplitude-basis"`). Empty vectors omit a selector.
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    pub struct Selection {
+        pub helicity_ids: Vec<String>,
+        pub color_ids: Vec<String>,
+        pub helicity_by_point: Vec<u32>,
+        pub color_flow_by_point: Vec<u32>,
+        pub color_resolution: Option<String>,
     }
     #[repr(C)]
     #[derive(Clone, Copy, Debug, Default)]
@@ -346,6 +365,70 @@ pub mod virtual_amplitudes {
             })?);
             result.copy()
         }
+        /// `rusticol_virtual_evaluate_selected`: the selected helicity rows
+        /// of a loop-induced process (`resolved` false: their sum per point,
+        /// RULED Q39; true: per selected row its colour components in the
+        /// selection's colour resolution); refusals are errors.
+        #[allow(clippy::too_many_arguments)]
+        pub fn evaluate_selected(
+            &mut self,
+            momenta: &[f64],
+            point_count: usize,
+            point_ids: Option<&[u64]>,
+            mu_r2: &[f64],
+            resolved: bool,
+            strategy: Option<&str>,
+            selection: &Selection,
+        ) -> Result<Evaluation> {
+            self.validate_inputs(momenta, point_count, point_ids)?;
+            let strategy = optional_cstring(strategy, "R2 strategy")?;
+            let helicities = cstring_list(&selection.helicity_ids, "helicity ID")?;
+            let colours = cstring_list(&selection.color_ids, "colour-flow ID")?;
+            let helicity_pointers: Vec<*const c_char> =
+                helicities.iter().map(|id| id.as_ptr()).collect();
+            let colour_pointers: Vec<*const c_char> =
+                colours.iter().map(|id| id.as_ptr()).collect();
+            let resolution =
+                optional_cstring(selection.color_resolution.as_deref(), "colour resolution")?;
+            let selectors = ffi::SelectionRequest {
+                helicity_ids: helicity_pointers.as_ptr(),
+                helicity_count: helicity_pointers.len(),
+                color_ids: colour_pointers.as_ptr(),
+                color_count: colour_pointers.len(),
+                helicity_by_point: selection.helicity_by_point.as_ptr(),
+                helicity_by_point_count: selection.helicity_by_point.len(),
+                color_flow_by_point: selection.color_flow_by_point.as_ptr(),
+                color_flow_by_point_count: selection.color_flow_by_point.len(),
+                color_resolution: optional_pointer(&resolution),
+            };
+            let request = ffi::BatchRequest {
+                momenta: momenta.as_ptr(),
+                momentum_count: momenta.len(),
+                point_count,
+                point_ids: point_ids.map_or(ptr::null(), |ids| ids.as_ptr()),
+                mu_r2: mu_r2.as_ptr(),
+                scale_count: mu_r2.len(),
+                resolved: u32::from(resolved),
+                r2_strategy: optional_pointer(&strategy),
+            };
+            let mut result = ptr::null_mut();
+            // SAFETY: buffers and strings remain borrowed for this one bulk call.
+            check(unsafe {
+                ffi::rusticol_virtual_evaluate_selected(
+                    self.handle.as_ptr(),
+                    &request,
+                    &selectors,
+                    &mut result,
+                )
+            })?;
+            let result = OwnedResult(NonNull::new(result).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidResponse,
+                    "virtual evaluation returned null",
+                )
+            })?);
+            result.copy()
+        }
         fn validate_inputs(
             &self,
             momenta: &[f64],
@@ -548,6 +631,12 @@ pub mod virtual_amplitudes {
                 unsafe { ffi::rusticol_virtual_result_decimal_json(handle, out, len, needed) },
                 check,
             )?;
+            let axes_json = read_string_checked(
+                |out, len, needed|
+                // SAFETY: helper allocates the queried writable string buffer.
+                unsafe { ffi::rusticol_virtual_result_axes_json(handle, out, len, needed) },
+                check,
+            )?;
             Ok(Evaluation {
                 shape,
                 requested_point_ids,
@@ -557,6 +646,7 @@ pub mod virtual_amplitudes {
                 virtual_values,
                 diagnostics_json,
                 decimal_json,
+                axes_json,
             })
         }
     }
@@ -716,7 +806,31 @@ pub mod virtual_amplitudes {
             pub values: *const ComplexPair,
             pub value_count: usize,
         }
+        #[repr(C)]
+        pub(super) struct SelectionRequest {
+            pub helicity_ids: *const *const c_char,
+            pub helicity_count: usize,
+            pub color_ids: *const *const c_char,
+            pub color_count: usize,
+            pub helicity_by_point: *const u32,
+            pub helicity_by_point_count: usize,
+            pub color_flow_by_point: *const u32,
+            pub color_flow_by_point_count: usize,
+            pub color_resolution: *const c_char,
+        }
         unsafe extern "C" {
+            pub(super) fn rusticol_virtual_evaluate_selected(
+                handle: *mut c_void,
+                request: *const BatchRequest,
+                selection: *const SelectionRequest,
+                output: *mut *mut c_void,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_axes_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
             pub(super) fn rusticol_virtual_evaluate_correlated_with_sources(
                 handle: *mut c_void,
                 request: *const BatchRequest,

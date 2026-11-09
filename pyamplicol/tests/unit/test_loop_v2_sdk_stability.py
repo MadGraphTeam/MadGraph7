@@ -38,7 +38,13 @@ from fractions import Fraction
 
 import pytest
 
-from tests.unit.test_loop_v2_sdk_extras import _error, _Request, _ResultShape, _sdk
+from tests.unit.test_loop_v2_sdk_extras import (
+    _agree,
+    _error,
+    _Request,
+    _ResultShape,
+    _sdk,
+)
 from tests.unit.test_loop_v2_sdk_parity import GG_POINT, POINT_173, _generate
 
 pytestmark = pytest.mark.loop_physics
@@ -84,24 +90,71 @@ def _exact(matrix) -> tuple:
     return tuple(tuple(Fraction(x) for x in row) for row in matrix)
 
 
-def test_the_native_rotations_are_the_python_ones(loop_native):
-    from pyamplicol.api.virtual_results import parse_rotation
-    from pyamplicol.loops.v2.stability import RESCUE_ROTATION, default_rotation
+def test_the_native_rotations_are_the_python_ones(loop_native, monkeypatch):
+    """The native rotations equal the Python construction (the oracle), and
+    the Python API's production rotations (``default_rotation``,
+    ``parse_rotation``: the native ones, m-lit lit-sdk-b) equal both."""
 
+    from pyamplicol.api.virtual_results import parse_rotation
+    from pyamplicol.loops.v2 import stability
+    from pyamplicol.loops.v2.stability import (
+        RESCUE_ROTATION,
+        default_rotation,
+        python_default_rotation,
+    )
+
+    produced = [
+        parse_rotation(text).matrix for text in (*SPECIFICATIONS, RESCUE_ROTATION)
+    ]
     for k in range(64):
-        assert _exact(loop_native.stability_default_rotation(k)) == (
-            default_rotation(k).matrix
-        ), k
-    for text in (*SPECIFICATIONS, RESCUE_ROTATION):
-        assert _exact(loop_native.stability_rotation(text)) == (
-            parse_rotation(text).matrix
-        ), text
+        oracle = python_default_rotation(k).matrix
+        assert _exact(loop_native.stability_default_rotation(k)) == oracle, k
+        assert default_rotation(k).matrix == oracle, k
+    # The Python parser alone (the oracle).
+    monkeypatch.setattr(stability, "NATIVE_BINARY64", False)
+    for text, found in zip((*SPECIFICATIONS, RESCUE_ROTATION), produced, strict=True):
+        oracle = parse_rotation(text).matrix
+        assert _exact(loop_native.stability_rotation(text)) == oracle, text
+        assert found == oracle, text
     for text in REFUSED:
         with pytest.raises(ValueError) as python:
             parse_rotation(text)
         with pytest.raises(ValueError) as native:
             loop_native.stability_rotation(text)
         assert str(native.value) == str(python.value), text
+
+
+def test_importing_the_virtual_api_loads_no_native_extension(loop_native):
+    """Importing the virtual result types, the stability module or the
+    artifact module loads no native extension (the recommended checks'
+    native rotation is formed on first use); the recommended rotation is
+    the oracle's."""
+
+    import subprocess
+    import sys
+
+    from pyamplicol.loops.v2 import stability
+
+    modules = (
+        "pyamplicol.api.virtual_results",
+        "pyamplicol.loops.v2.stability",
+        "pyamplicol.loops.v2.artifact",
+    )
+    for module in modules:
+        found = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                f"import sys, {module}; print('pyamplicol._rusticol' in sys.modules)",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert found.stdout.strip() == "False", (module, found.stderr)
+    (rotation,) = stability.RECOMMENDED_CHECKS.rotations
+    assert rotation.matrix == stability.python_default_rotation(0).matrix
+    assert stability.RECOMMENDED_CHECKS.reduction_direction
 
 
 def _checks(configuration):
@@ -122,16 +175,29 @@ def _served(loop_native) -> dict:
     return json.loads(loop_native.reduction_backends())
 
 
-def _python(runtime, point, configuration):
+def _turned(point):
+    """A second, distinct point of a centre-of-mass point: its final-state
+    momenta rotated by 90 degrees about x, (E, px, py, pz) -> (E, px, -pz,
+    py), exact in decimal and binary64 (a new scattering angle: another
+    value)."""
+
+    out = [list(momentum) for momentum in point]
+    for leg in range(2, len(point)):
+        energy, x, y, z = point[leg]
+        out[leg] = [energy, x, str(-Decimal(z)), y]
+    return out
+
+
+def _python(runtime, point, configuration, points=None):
     """The Python API's call of one configuration (None: refused, with the
-    error)."""
+    error) on ``points`` (default: ``point`` twice)."""
 
     from pyamplicol.api.errors import ReductionUnavailable
 
     *_, poles, reduction = configuration
     try:
         return runtime.evaluate(
-            [point, point],
+            [point, point] if points is None else points,
             mu_r2=SCALES,
             poles=poles,
             reduction=reduction,
@@ -278,7 +344,9 @@ def test_sdk_estimates_equal_the_python_api(artifacts, loop_native, name):
     artifact = artifacts[name]
     runtime = Runtime.load(artifact, process=name)
     point = PROCESSES[name][1]
-    points = [[[float(Decimal(c)) for c in p] for p in point]] * 2
+    # Two distinct points (a lane or point order mix-up changes values).
+    exact = [point, _turned(point)]
+    points = [[[float(Decimal(c)) for c in p] for p in each] for each in exact]
     scales = [float(Decimal(s)) for s in SCALES]
     sdk = _sdk()
     handle = ctypes.c_void_p()
@@ -297,7 +365,7 @@ def test_sdk_estimates_equal_the_python_api(artifacts, loop_native, name):
             )
             assert sdk.rusticol_virtual_set_poles(handle, poles.encode()) == 0
             status = sdk.rusticol_virtual_set_reduction(handle, reduction.encode())
-            expected, refused = _python(runtime, point, configuration)
+            expected, refused = _python(runtime, point, configuration, exact)
             if reduction == "tirust" and "tirust" not in _served(loop_native):
                 assert status == STATUS_RUNTIME_ERROR and refused is not None
                 continue
@@ -354,6 +422,24 @@ def test_sdk_estimates_equal_the_python_api(artifacts, loop_native, name):
         assert found["statuses"] == [SUCCESS_STATUS] * 2
         record = found["diagnostics"]["stability"]
         assert record["estimates"] is None and "binary64" in record["reason"]
+        # A split pole selection ("uv", "ir") in binary64 with checks set
+        # returns its values (the Python API's, bitwise) and the documented
+        # null record (the Python API estimates those selections; lit-sdk-b
+        # item [5]: before, RUSTICOL_VIRTUAL_RUNTIME_ERROR).
+        assert sdk.rusticol_virtual_set_arithmetic(handle, b"double", 0) == 0
+        capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
+        assert "uv" in capabilities["pole_selections"], capabilities["pole_selections"]
+        for poles in ("uv", "ir"):
+            assert sdk.rusticol_virtual_set_poles(handle, poles.encode()) == 0
+            status, found = _evaluate(sdk, handle, points, scales)
+            assert status == 0, (poles, _error(sdk))
+            assert found["statuses"] == [SUCCESS_STATUS] * 2
+            record = found["diagnostics"]["stability"]
+            assert record["estimates"] is None, record
+            assert '"uv" and "ir"' in record["reason"], record
+            expected = runtime.evaluate(exact, mu_r2=SCALES, poles=poles)
+            assert _same(found["virtual"], _flat(expected)), poles
+        assert sdk.rusticol_virtual_set_poles(handle, b"all") == 0
         # Checks off again: no estimate, no record.
         assert _set(sdk, handle, 0, None, False, False, False) == 0
         status, found = _evaluate(sdk, handle, points, scales)
@@ -828,6 +914,31 @@ int main(int argc, char **argv) {
       }
       std::printf("\ndiagnostics %s\n", result.diagnostics_json().c_str());
     }
+    // The selections (m-lit lit-sdk-b): the amplitude-basis anchors and one
+    // helicity row, in binary64, or with a fifth argument "extended" in
+    // double-double and arbitrary precision (the package key's carriers).
+    runtime.set_stability_checks(0);
+    const bool extended = argc > 5 && std::strcmp(argv[5], "extended") == 0;
+    for (int pass = 0; pass < 2; ++pass) {
+      if (extended && pass == 0) runtime.set_arithmetic("double-double");
+      if (extended && pass == 1) runtime.set_arithmetic("arbitrary", 32);
+      rusticol::VirtualSelection selection;
+      if (pass == 0) selection.color_resolution = std::string("amplitude-basis");
+      else selection.helicity_ids = {"h1"};
+      bool resolved = pass == 0;
+      auto result =
+          runtime.evaluate_selected(momenta, points, scales, selection, resolved);
+      std::printf("statuses");
+      for (auto status : result.statuses()) std::printf(" %u", status);
+      std::printf("\nvirtual");
+      for (double value : result.virtual_values()) {
+        std::uint64_t bits;
+        std::memcpy(&bits, &value, sizeof bits);
+        std::printf(" %" PRIu64, bits);
+      }
+      std::printf("\naxes %s\ndecimal %s\n", result.axes_json().c_str(),
+                  result.decimal_json().c_str());
+    }
   } catch (const rusticol::VirtualError &error) {
     std::printf("error %d %s\n", error.status(), error.what());
     return 1;
@@ -916,9 +1027,14 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
         str(tmp_path / "input.txt"),
     ]
 
-    def run(env: dict[str, str]) -> list[str]:
+    def run(env: dict[str, str], extra: tuple[str, ...] = ()) -> list[str]:
         done = subprocess.run(
-            command, capture_output=True, text=True, timeout=600, check=False, env=env
+            [*command, *extra],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+            env=env,
         )
         output = done.stdout[-3000:] + done.stderr[-3000:]
         assert done.returncode == 0, output
@@ -936,6 +1052,10 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
         )
     licensed = run(dict(os.environ))
     assert unlicensed == licensed
+    # The extended carriers of the selections run under pyAmpliCol's package
+    # key without a user licence (D7): equal to the licensed run.
+    extended = run(base, ("extended",))
+    assert extended == run(dict(os.environ), ("extended",))
 
     runtime = Runtime.load(
         artifact, process=selftest.NAME, model_parameters=expected["parameters"]
@@ -960,6 +1080,64 @@ def test_the_sdk_self_test_touches_no_symbolica_state(loop_native, tmp_path):
             assert record is None
         else:
             assert record["estimates"] == [_record(e) for e in result.stability]
+    # The selections: binary64 bitwise the Python API's, axes its IDs; the
+    # extended carriers its Decimal values.
+    anchors = runtime.evaluate_resolved(
+        exact_points, mu_r2=exact_scales, color_resolution="amplitude-basis"
+    )
+    one = runtime.evaluate(exact_points, mu_r2=exact_scales, helicities=["h1"])
+    flat_anchors = [
+        math.nan if x is None else x
+        for v in anchors.values
+        for sector in v
+        for row in sector
+        for c in row
+        for x in (c.finite, c.single_pole, c.double_pole)
+    ]
+    for index, (expected_values, ids) in enumerate(
+        (
+            (
+                flat_anchors,
+                [list(anchors.helicity_ids), list(anchors.virtual_color_ids)],
+            ),
+            (_flat(one), [[], []]),
+        )
+    ):
+        statuses, values, axes, decimal = licensed[8 + 4 * index : 12 + 4 * index]
+        assert statuses == "statuses" + " 4" * len(points), statuses
+        bits = [int(b) for b in values.split()[1:]]
+        assert bits == [
+            struct.unpack("<q", struct.pack("<d", float(v)))[0] & mask
+            for v in expected_values
+        ], index
+        axes = json.loads(axes.split(" ", 1)[1])
+        assert [axes["helicity_ids"], axes["color_ids"]] == ids
+        assert decimal == "decimal null"
+    references = (
+        runtime.evaluate_resolved(
+            exact_points,
+            mu_r2=exact_scales,
+            color_resolution="amplitude-basis",
+            arithmetic="double-double",
+        ),
+        runtime.evaluate(
+            exact_points,
+            mu_r2=exact_scales,
+            helicities=["h1"],
+            arithmetic="arbitrary",
+            precision=32,
+        ),
+    )
+    for index, reference in enumerate(references):
+        decimal = json.loads(extended[8 + 4 * index + 3].split(" ", 1)[1])
+        cells = (
+            [c for v in reference.values for sector in v for row in sector for c in row]
+            if index == 0
+            else [sector for v in reference.values for sector in v]
+        )
+        values = [x for c in cells for x in (c.finite, c.single_pole, c.double_pole)]
+        # The double-double target (``test_loop_v2_sdk_extras._agree``).
+        assert _agree(values, decimal["virtual"]), index
 
 
 def test_auto_through_the_c_abi_reads_the_librarys_backends(loop_native):

@@ -74,6 +74,20 @@ module rusticol_virtual
     ! Extended precision: {"arithmetic","digits","born","virtual"} decimal
     ! literals in the C layouts (JSON); "null" in binary64.
     character(:), allocatable :: decimal_json
+    ! {"helicity_ids","color_ids"}: a resolved result's axes in layout order
+    ! (a selection's rows, "amplitude-<t>" anchors); empty for an ordinary one.
+    character(:), allocatable :: axes_json
+  end type
+  type, bind(C) :: c_selection
+    type(c_ptr) :: helicity_ids
+    integer(c_size_t) :: helicity_count
+    type(c_ptr) :: color_ids
+    integer(c_size_t) :: color_count
+    type(c_ptr) :: helicity_by_point
+    integer(c_size_t) :: helicity_by_point_count
+    type(c_ptr) :: color_flow_by_point
+    integer(c_size_t) :: color_flow_by_point_count
+    type(c_ptr) :: color_resolution
   end type
   ! Assignment shares a reference-counted runtime. Calls require exclusive access.
   ! Evaluations own copied arrays and never depend on this runtime's lifetime.
@@ -103,6 +117,7 @@ module rusticol_virtual
     procedure :: set_reduction_unchecked
     procedure :: set_stability_checks
     procedure :: evaluate
+    procedure :: evaluate_selected
     procedure :: evaluate_correlated
     procedure :: correlation_histories_json
     procedure :: spin_correlation_classes_json
@@ -229,6 +244,23 @@ module rusticol_virtual
       type(c_ptr), value :: handle
       type(c_batch_request), intent(in) :: request
       type(c_ptr) :: output
+      integer(c_int) :: value
+    end function
+    function c_evaluate_selected(handle, request, selection, output) &
+        bind(C, name="rusticol_virtual_evaluate_selected") result(value)
+      import :: c_ptr, c_int, c_batch_request, c_selection
+      type(c_ptr), value :: handle
+      type(c_batch_request), intent(in) :: request
+      type(c_selection), intent(in) :: selection
+      type(c_ptr), intent(out) :: output
+      integer(c_int) :: value
+    end function
+    function c_result_axes_json(handle, output, capacity, needed) &
+        bind(C, name="rusticol_virtual_result_axes_json") result(value)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t), intent(out) :: needed
       integer(c_int) :: value
     end function
     function c_result_copy_born(handle, output, capacity) bind(C, name="rusticol_virtual_result_copy_born") result(value)
@@ -546,6 +578,8 @@ contains
       status=c_result_decimal_json(handle,c_null_ptr,0_c_size_t,n)
     case(10)
       status=c_correlated_decimal_json(handle,c_null_ptr,0_c_size_t,n)
+    case(11)
+      status=c_result_axes_json(handle,c_null_ptr,0_c_size_t,n)
     end select
     if (status/=VIRTUAL_OK) return
     allocate(buffer(n))
@@ -570,6 +604,8 @@ contains
       status=c_result_decimal_json(handle,c_loc(buffer),n,n)
     case(10)
       status=c_correlated_decimal_json(handle,c_loc(buffer),n,n)
+    case(11)
+      status=c_result_axes_json(handle,c_loc(buffer),n,n)
     end select
     if (status/=VIRTUAL_OK) return
     deallocate(text)
@@ -737,12 +773,11 @@ contains
     integer(c_int), optional, intent(out) :: ierr
     character(:), allocatable, optional, intent(out) :: error_message
     type(c_batch_request) :: request
-    type(c_ptr) :: result_handle, destination
+    type(c_ptr) :: result_handle
     type(virtual_shape) :: axes
-    type(virtual_evaluation), target :: value
     character(c_char), allocatable, target :: strategy(:)
-    integer(c_int) :: status, ignored
-    integer(c_size_t) :: helicities, colors, points
+    integer(c_int) :: status
+    integer(c_size_t) :: points
     axes=self%shape(status)
     if (status/=VIRTUAL_OK) then
       call finish(status,ierr,error_message=error_message); return
@@ -778,6 +813,21 @@ contains
     if (status/=VIRTUAL_OK) then
       call finish(status,ierr,error_message=error_message); return
     end if
+    call read_result(result_handle,output,status)
+    call finish(status,ierr,error_message=error_message)
+  end subroutine
+
+  ! Copy a result's arrays and JSON records into output and free the result
+  ! (the original function status in status).
+  subroutine read_result(result_handle,output,status)
+    type(c_ptr), intent(in) :: result_handle
+    type(virtual_evaluation), intent(inout) :: output
+    integer(c_int), intent(out) :: status
+    type(c_ptr) :: destination
+    type(virtual_shape) :: axes
+    type(virtual_evaluation), target :: value
+    integer(c_int) :: ignored
+    integer(c_size_t) :: helicities, colors, points
     status=c_result_shape(result_handle,value%shape)
     if (status==VIRTUAL_OK) then
       axes=value%shape%axes; points=value%shape%successful_points
@@ -818,6 +868,7 @@ contains
       end if
       if (status==VIRTUAL_OK) value%diagnostics_json=read_json(result_handle,3,status)
       if (status==VIRTUAL_OK) value%decimal_json=read_json(result_handle,9,status)
+      if (status==VIRTUAL_OK) value%axes_json=read_json(result_handle,11,status)
     end if
     ! Free regardless of copy/query failures; report the original function status.
     ignored=c_result_free(result_handle)
@@ -830,8 +881,119 @@ contains
       call move_alloc(value%statuses,output%statuses)
       call move_alloc(value%diagnostics_json,output%diagnostics_json)
       call move_alloc(value%decimal_json,output%decimal_json)
+      call move_alloc(value%axes_json,output%axes_json)
     end if
+  end subroutine
+
+  ! rusticol_virtual_evaluate_selected: the selected helicity rows of a
+  ! loop-induced process (resolved absent/false: their sum per point, RULED
+  ! Q39; resolved: per selected row its colour components). helicity_ids are
+  ! global IDs (trailing blanks ignored), helicity_by_point zero-based rows
+  ! (one per point; exclusive with helicity_ids), color_ids /
+  ! color_flow_by_point colour flows (refused for loop-induced processes),
+  ! color_resolution "contracted" (absent) or "amplitude-basis" (resolved).
+  subroutine evaluate_selected(self,momenta,mu_r2,output,helicity_ids,helicity_by_point, &
+      color_ids,color_flow_by_point,color_resolution,resolved,point_ids,r2_strategy,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    real(c_double), contiguous, target, intent(in) :: momenta(:,:,:), mu_r2(:)
+    type(virtual_evaluation), intent(out) :: output
+    character(*), optional, intent(in) :: helicity_ids(:), color_ids(:)
+    integer(c_int32_t), contiguous, target, optional, intent(in) :: helicity_by_point(:), color_flow_by_point(:)
+    character(*), optional, intent(in) :: color_resolution
+    logical, optional, intent(in) :: resolved
+    integer(c_int64_t), contiguous, target, optional, intent(in) :: point_ids(:)
+    character(*), optional, intent(in) :: r2_strategy
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    type(c_batch_request) :: request
+    type(c_selection) :: selection
+    type(c_ptr) :: result_handle
+    type(virtual_shape) :: axes
+    character(c_char), allocatable, target :: strategy(:), resolution(:)
+    character(c_char), allocatable, target :: helicity_text(:,:), color_text(:,:)
+    type(c_ptr), allocatable, target :: helicity_ptrs(:), color_ptrs(:)
+    integer(c_int) :: status
+    integer(c_size_t) :: points
+    axes=self%shape(status)
+    if (status/=VIRTUAL_OK) then
+      call finish(status,ierr,error_message=error_message); return
+    end if
+    points=size(momenta,3,kind=c_size_t)
+    if (size(momenta,1,kind=c_size_t)/=4 .or. size(momenta,2,kind=c_size_t)/=axes%external_count) then
+      call finish(VIRTUAL_INVALID_ARGUMENT,ierr,'momenta must have shape (4,external_leg,point)',error_message)
+      return
+    end if
+    if (present(point_ids)) then
+      if (size(point_ids,kind=c_size_t)/=points) then
+        call finish(VIRTUAL_INVALID_ARGUMENT,ierr,'point_ids must have one entry per input point',error_message)
+        return
+      end if
+    end if
+    request%momenta=c_null_ptr; request%point_ids=c_null_ptr; request%mu_r2=c_null_ptr
+    request%momentum_count=size(momenta,kind=c_size_t); request%point_count=points
+    request%scale_count=size(mu_r2,kind=c_size_t)
+    if (size(momenta,kind=c_size_t)>0) request%momenta=c_loc(momenta)
+    if (present(point_ids)) then
+      if (size(point_ids,kind=c_size_t)>0) request%point_ids=c_loc(point_ids)
+    end if
+    if (size(mu_r2,kind=c_size_t)>0) request%mu_r2=c_loc(mu_r2)
+    request%resolved=0
+    if (present(resolved)) then
+      if (resolved) request%resolved=1
+    end if
+    request%r2_strategy=c_null_ptr
+    if (present(r2_strategy)) then
+      strategy=cstring(r2_strategy); request%r2_strategy=c_loc(strategy)
+    end if
+    selection%helicity_ids=c_null_ptr; selection%helicity_count=0
+    selection%color_ids=c_null_ptr; selection%color_count=0
+    selection%helicity_by_point=c_null_ptr; selection%helicity_by_point_count=0
+    selection%color_flow_by_point=c_null_ptr; selection%color_flow_by_point_count=0
+    selection%color_resolution=c_null_ptr
+    if (present(helicity_ids)) then
+      call c_strings(helicity_ids,helicity_text,helicity_ptrs)
+      selection%helicity_count=size(helicity_ids,kind=c_size_t)
+      if (selection%helicity_count>0) selection%helicity_ids=c_loc(helicity_ptrs)
+    end if
+    if (present(color_ids)) then
+      call c_strings(color_ids,color_text,color_ptrs)
+      selection%color_count=size(color_ids,kind=c_size_t)
+      if (selection%color_count>0) selection%color_ids=c_loc(color_ptrs)
+    end if
+    if (present(helicity_by_point)) then
+      selection%helicity_by_point_count=size(helicity_by_point,kind=c_size_t)
+      if (selection%helicity_by_point_count>0) selection%helicity_by_point=c_loc(helicity_by_point)
+    end if
+    if (present(color_flow_by_point)) then
+      selection%color_flow_by_point_count=size(color_flow_by_point,kind=c_size_t)
+      if (selection%color_flow_by_point_count>0) selection%color_flow_by_point=c_loc(color_flow_by_point)
+    end if
+    if (present(color_resolution)) then
+      resolution=cstring(color_resolution); selection%color_resolution=c_loc(resolution)
+    end if
+    status=c_evaluate_selected(handle_of(self),request,selection,result_handle)
+    if (status/=VIRTUAL_OK) then
+      call finish(status,ierr,error_message=error_message); return
+    end if
+    call read_result(result_handle,output,status)
     call finish(status,ierr,error_message=error_message)
+  end subroutine
+
+  ! NUL-terminated copies of trimmed strings and their C pointers.
+  subroutine c_strings(names,text,pointers)
+    character(*), intent(in) :: names(:)
+    character(c_char), allocatable, target, intent(out) :: text(:,:)
+    type(c_ptr), allocatable, intent(out) :: pointers(:)
+    integer :: k, i, n
+    allocate(text(len(names)+1,max(size(names),1)),pointers(size(names)))
+    do k=1,size(names)
+      n=len_trim(names(k))
+      do i=1,n
+        text(i,k)=names(k)(i:i)
+      end do
+      text(n+1,k)=c_null_char
+      pointers(k)=c_loc(text(1,k))
+    end do
   end subroutine
   subroutine evaluate_correlated(self,momenta,mu_r2,output,point_ids,r2_strategy, &
       ierr,error_message,spin_legs,spin_vectors)

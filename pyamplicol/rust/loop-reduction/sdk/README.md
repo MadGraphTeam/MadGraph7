@@ -41,8 +41,58 @@ declared vector leg enters through its projection on the leg's polarisation
 vectors. Binary64 values are bitwise the Python API's (the same Rust code:
 `rusticol_loop_reduction::v2_runtime::induced_outputs`, which the Python API's
 binary64 outputs call), double-double and arbitrary precision equal `Decimal`
-values. The amplitude-basis anchors (`color_resolution="amplitude-basis"`)
-are served by the Python API only.
+values.
+
+**Selections (loop-induced, F1).** `rusticol_virtual_evaluate_selected(handle,
+request, selection, &result)` (C++ `evaluate_selected` with a
+`VirtualSelection`, Fortran `evaluate_selected`, the packaged Rust wrapper's
+`evaluate_selected` with a `Selection`, the safe Rust `Runtime::
+evaluate_selected` with a `Selection`; UMAMI: `UMAMI_IN_HELICITY_INDEX` and
+`PYAMPLICOL_UMAMI_V1_IN_COLOR_RESOLUTION`) serves the Python API's
+`helicities=` and `color_resolution=` with the tree C ABI's selector
+conventions (global string IDs, per-point zero-based indices, mutually
+exclusive per axis, validated before evaluation, output only on success):
+
+- an ordinary call (`request.resolved = 0`) with helicity IDs (`h<i>` or the
+  tree engine's `h:<helicities in leg order>`) returns per point the sum over
+  the selected rows of |A(h)|²/avg with the total's average (RULED Q39: a
+  complete selection sums to the ordinary value; no parity or Bose row
+  mapping), `helicity_by_point` each point's own row;
+- a resolved call (`request.resolved = 1`) returns the selected rows (every
+  row without IDs) with one colour-contracted component (`"contracted"`, the
+  default) or with the amplitude-basis anchors (`"amplitude-basis"`: per basis
+  element t, `amplitude-<t>`, Re(conj(a_t) (G a)_t)/avg, an explicitly
+  basis-dependent split summing to the row's value); its axes are counted by
+  the result shape and named by `rusticol_virtual_result_axes_json`;
+- only the selected rows are dressed and reduced (the executor's row liveness,
+  the Python API's path), binary64 bitwise the Python API's, double-double and
+  arbitrary precision its `Decimal` values; the handle's poles, arithmetic and
+  reduction backend apply as to every call (the stability monitoring returns
+  `{"estimates": null, "reason": ...}`: the Python API estimates selections);
+- colour flows are refused (full colour only, RULED Q8), and so are an unknown
+  colour resolution or helicity ID, in the Python API's words. A
+  Born-interfered process's leading-colour selection stays the Python API's
+  (refused typed here; its NLC and full-colour refusals in the Python API's
+  words).
+
+The capabilities list the selection (`"helicity_selection"`) and the colour
+axes (`"color_resolutions"`: the contracted ID and the anchors' IDs).
+
+| Tree-level SDK feature (`rusticol.h`, tree UMAMI) | Loop-induced virtual SDK |
+| --- | --- |
+| Ordinary value | served (`rusticol_virtual_evaluate`) |
+| Per-order partials | served (one value per loop x loop sector) |
+| Helicity-resolved | served (`resolved = 1`) |
+| Colour-resolved | served: the amplitude-basis anchors (`"amplitude-basis"`); colour flows not applicable (full colour, Q8) |
+| Global helicity selection | served (`evaluate_selected`, helicity IDs) |
+| Global colour-flow selection | not applicable (full colour, Q8; refused typed) |
+| Per-point helicity selection | served (`helicity_by_point`; UMAMI `UMAMI_IN_HELICITY_INDEX`) |
+| Per-point colour-flow selection | not applicable (full colour, Q8; refused typed) |
+| Colour-correlated | served (`born` = \|A\|², declared histories) |
+| Colour-correlated with helicity IDs | not served: the Python API refuses helicity selection on correlated evaluations |
+| Spin-correlated | served (declared spin classes) |
+| Carriers (binary64, double-double, arbitrary) | served |
+| UMAMI random helicity / LC colour index | not served (the virtual UMAMI extension samples nothing; full colour) |
 
 **Reduction backend.** `rusticol_virtual_set_reduction(handle, "auto" |
 "ninjars" | "tirust")` (C++ `set_reduction`, Fortran `set_reduction`) selects

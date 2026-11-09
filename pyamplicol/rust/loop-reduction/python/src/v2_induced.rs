@@ -2,7 +2,8 @@
 
 //! The binary64 observables of a loop-induced process for the Python API
 //! (`loops/v2/induced_observables`): the spin coefficients, the
-//! spin-projected amplitude vectors and the carrier forms of the one Rust
+//! spin-projected amplitude vectors and the carrier forms (a history's, the
+//! amplitude-basis anchors') of the one Rust
 //! implementation the native SDK runs
 //! (`rusticol_loop_reduction::v2_runtime::induced_outputs`; m-lit LIT-SDK,
 //! DECISIONS 2026-11-07 21:50 R7). The Python `Decimal` code stays the
@@ -53,6 +54,20 @@ fn induced_form(
             .collect()
     };
     Ok((rows(h), k.map(rows)))
+}
+
+/// The binary64 carrier form of the amplitude-basis anchor `t` of the exact
+/// colour metric `gram` (rows of `[re, im]` rational texts): the anchor's
+/// metric (E_t G + G E_t)/2 (`induced_outputs::anchor_metric`, the SDK's)
+/// in binary64 (`induced_observables.Forms` of an `("anchor", t)` metric).
+#[pyfunction]
+fn induced_anchor_form(gram: Vec<Vec<(String, String)>>, t: usize) -> PyResult<Vec<Vec<Pair>>> {
+    let size = gram.len();
+    let cells = outputs::binary64_anchor_form(&exact_cells(&gram)?, size, t).map_err(error)?;
+    Ok(cells
+        .chunks(size.max(1))
+        .map(|row| row.iter().map(|z| (z.re, z.im)).collect())
+        .collect())
 }
 
 /// The binary64 spin coefficients c_h of vector leg `leg` (its label)
@@ -146,6 +161,7 @@ fn induced_spin_amplitudes(
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(induced_form, module)?)?;
+    module.add_function(wrap_pyfunction!(induced_anchor_form, module)?)?;
     module.add_function(wrap_pyfunction!(induced_spin_coefficients, module)?)?;
     module.add_function(wrap_pyfunction!(induced_spin_amplitudes, module)?)?;
     Ok(())
