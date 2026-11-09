@@ -213,8 +213,13 @@ def probe(
     one point on the native executors of the vector's slice (``vector``, on
     the full tree kernels) and of the Goldstone's (``goldstone``,
     ``goldstone_slice``). ``physical``: the vector slice's physical row
-    floors at the point (``induced.physical_floors``; formed when None).
-    ``checks``: the estimate's checks (default ``RECOMMENDED_CHECKS``)."""
+    floors at the point (``induced.probe_floors``; formed when None).
+    ``checks``: the estimate's checks (default ``RECOMMENDED_CHECKS``).
+    ``precision``: the carrier of the runs (the floors are binary64, or
+    double-double where the backend refuses that run, ``induced.
+    probe_floors``); a run the backend refuses raises ``induced.
+    ProbePointRefused`` (the generation-time probes re-run the probe in
+    their next carrier, ``induced.generation_probes``)."""
 
     from .assemble import Precision, _fraction
     from .stability import RECOMMENDED_CHECKS
@@ -255,9 +260,9 @@ def probe(
     carrier, side_v, turned_v = run(vector, [ward])
     _carrier, side_g, turned_g = run(goldstone, [None])
     if physical is None:
-        physical = induced.physical_floors(vector, point, scale, parameters)
+        physical, _record = induced.probe_floors(vector, point, scale, parameters)
     floors_v = induced.ward_floors(physical, leg)
-    floors_g = induced.physical_floors(goldstone, point, scale, parameters)
+    floors_g, _record = induced.probe_floors(goldstone, point, scale, parameters)
     roundoff = carrier.unit_roundoff
     estimates_v = induced.amplitude_estimates(side_v, roundoff, floors_v, turned_v)
     estimates_g = induced.amplitude_estimates(side_g, roundoff, floors_g, turned_g)

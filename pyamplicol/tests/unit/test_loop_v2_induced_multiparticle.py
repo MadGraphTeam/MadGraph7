@@ -106,6 +106,7 @@ fixed_parameters = {{{fixed}}}
 [generation]
 output = {json.dumps(str(output))}
 emit_api_bundle = false
+loop_induced_probes = true
 [generation.validation]
 post_build_validation = false
 """

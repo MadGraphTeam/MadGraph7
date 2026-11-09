@@ -207,6 +207,40 @@ def _record(name):
     }
 
 
+def test_campaign_cards_enable_the_probes_and_l4_reads_off_as_not_run(entries):
+    """The campaign is validation: its cards enable the generation-time
+    probes (off by default, DECISIONS 2026-11-08 22:34 (3)); L4 reads a
+    record without them as not run (never a pass) and names the carrier
+    that decided each probe."""
+
+    data = lm.fixture("li_gg_hh")
+    text = lm.card(data, Path("out"), set(), "g g > h h")
+    assert "loop_induced_probes = true" in text.split("[generation]")[1]
+    entry = {e["fixture"]: e for e in entries}["li_gg_hh"]
+    record = _record("li_gg_hh")
+    record["generation"]["probes"] = {"status": "off"}
+    judged = lm.judge(record, entry)["L4"]
+    assert judged["generation"]["status"] == "not run"
+    record["generation"]["probes"] = None
+    assert lm.judge(record, entry)["L4"]["generation"]["status"] == "not run"
+    record["generation"]["probes"] = {
+        "status": "run",
+        "finiteness": {"passed": True, "worst": 0.1, "carrier": "double"},
+        "ward": {"legs": [1], "passed": True, "worst": 0.2},
+        "probes": [
+            {"probe": "finiteness", "carrier": "double"},
+            {"probe": "ward", "leg": 1, "carrier": "double-double"},
+        ],
+        "widths": "zero",
+    }
+    judged = lm.judge(record, entry)["L4"]["generation"]
+    assert judged["status"] == "pass"
+    assert judged["carrier"] == {
+        "finiteness": "double",
+        "ward (leg 1)": "double-double",
+    }
+
+
 # The capability query of an extension with TIRust at every carrier (lit-tir-mp).
 AFTER_TIR_MP = {
     "ninjars": ["arbitrary", "double", "double-double"],

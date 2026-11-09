@@ -209,20 +209,65 @@ order of the unit roundoff). Zeros are never declared by a physics rule
 `g g > a a a`) is reported as zero within its absolute estimate, `|value| <=
 E` with the estimate's `absolute` E and `magnitude` S (the size of what
 cancelled); only an exact colour zero is an exact 0.
-Generation probes every loop-induced process in double-double at one point
-(the validation point farthest from the tree poles, lifted to exact momentum
-conservation), on its full tree kernels with every width fixed to zero (the
-complex-mass scheme keeps its complex masses): the amplitude's poles must
-vanish (finiteness) and, for an external gluon and an external photon, the
-amplitude with its polarisation replaced by its momentum (Ward: R2
-completeness) and, for an external massive vector of a 't Hooft-Feynman gauge
-request, the Goldstone-equivalence identity k.A(V) = eta M_V A(G), each within
-ten times the probe's own estimate. A failure refuses the process
-(`loop-induced-probe`); `[generation] allow_failed_probes = true` (CLI
-`--allow-failed-probes`) stores it anyway. The outcome is recorded in the
-artifact's generation filters (`loop_induced_probes`; its `goldstone` entry
-reads `status = "not-run"`, with the refusals, when no Goldstone side of the
-request could be generated).
+
+Generation can also probe every loop-induced process (off by default; enable
+with `[generation] loop_induced_probes = true`, the CLI flag
+`--loop-induced-probes`, or `GenerationConfig(loop_induced_probes=True)` in
+the `RunConfig` given to `Generator`). The probes run at one point (the
+validation point farthest from the tree poles, lifted to exact momentum
+conservation), on the process's full tree kernels with every width fixed to
+zero (the complex-mass scheme keeps its complex masses):
+
+- **finiteness**: the amplitude's poles must vanish;
+- **Ward**, for each external gluon and photon species: the amplitude with
+  one polarisation replaced by its momentum must vanish;
+- **Goldstone**, for an external massive vector of a 't Hooft-Feynman gauge
+  request: the identity k.A(V) = eta M_V A(G) must hold.
+
+Each passes within ten times the probe's own estimate. Every probe runs in
+binary64 first. A probe whose binary64 run fails that test, or whose point
+the reduction backend refuses in binary64, runs again in double-double on the
+same point, and the double-double run decides it. A failure refuses the
+process (`loop-induced-probe`); `[generation] allow_failed_probes = true`
+(CLI `--allow-failed-probes`) stores it anyway, with the failure recorded.
+`allow_failed_probes` does nothing while the probes are off.
+
+The outcome is recorded in the artifact's generation filters
+(`loop_induced_probes`): per probe the carrier that decided it, its ratio to
+its estimate, the reason for a double-double rerun and the time, plus the
+time of each stage. The probes reduce on NinjaRS (recorded). A `goldstone`
+entry reads `status = "not-run"`, with the refusals, when no Goldstone side
+of the request could be generated. With the probes off the record reads
+`{"status": "off"}`: not run, never a pass. An exact colour zero records
+`exact_colour_zero` either way.
+
+What the probes guard is the model and the generation, not the artifact's
+numbers. Nothing in the written artifact or at run time depends on them: the
+stored plan and the evaluated values are bitwise the same with and without
+them.
+
+- The Ward probe checks the R2 completeness of the UFO. A missing or wrong R2
+  vertex changes only the finite part, which the poles cannot show.
+- The finiteness probe checks that no loop family is missing, that no
+  family was wrongly dropped as scaleless, and that the master integrals
+  are right.
+- The Goldstone probe checks the Goldstone-side vertices and counterterms.
+
+Enable them when you generate from a new or edited loop UFO. Their cost,
+measured on the loop-induced 2->3 and 2->4 rows of loop_sm (one pinned core
+of a loaded host): 3.3-13 s per 2->3 process against 2.5-14 s for the
+engine's own generation (the probe slice, a second generation of the
+process, is 3-5 s of it); 18 s and 29 s for g g > h h g g and g g > h g g g
+(engine generation 5 s and 8 s); 93 s and 103 s for g g > a a g g and
+g g > z z z z (engine generation 11 s and 9 s). No probe needed the
+double-double rerun there. Running every probe in double-double instead, as
+generation did before, took 5-195 s per 2->3 process, 7 and 13 minutes for
+g g > h h g g and g g > h g g g, and 70 and 74 minutes for
+g g > a a g g and g g > z z z z. On the electroweak UFOs the probe slice and
+each Goldstone slice generate the process again, so the probes cost one
+generation of the process or more (e+ e- > g g g: 43 s, of which 37 s is the
+probe slice, against 43 s for the engine's generation).
+
 Generation also drops the helicity rows of a loop-induced process that are
 zero before the loop integration (every numerator vanishes identically),
 tested exactly modulo the fixed prime 2^61 - 1 at random points. Over the
