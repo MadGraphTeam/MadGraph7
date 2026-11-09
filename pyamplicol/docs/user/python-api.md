@@ -354,8 +354,9 @@ the target keeps the fallback's value unchanged, and the result's
 When the call's checks run that cached check it is reused; beside other
 checks (rotations, or the rescaled variant of the recommended checks and of
 every default rescue level) the served points are evaluated once more with
-it. On the resolved, correlated and selected outputs the largest estimate
-over the point's outputs decides. Points TIRust serves run nothing more.
+it. On the resolved, correlated and selected outputs the guard decides on
+the point's summed |A|^2 (one more evaluation of the served points, as in
+the native SDKs). Points TIRust serves run nothing more.
 The estimate is a sampled measure, not a proven bound.
 
 **Near-planar NinjaRS hazard.** NinjaRS (pin 5b6a8f57) can return finite,

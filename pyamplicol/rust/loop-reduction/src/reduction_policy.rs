@@ -22,7 +22,15 @@
 //!   inputs, at the call's own carrier, after the TIRust call; the backend
 //!   that served each point and the fallback's reason are recorded per point
 //!   ([`fallback_served`]; a point NinjaRS fails too fails with both
-//!   reasons, [`fallback_failed`]). A TIR-only artifact has no fallback;
+//!   reasons, [`fallback_failed`]). Every point the fallback serves is
+//!   GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1)):
+//!   NinjaRS can return finite, badly wrong values as success at
+//!   near-planar 2 -> 3 points of rank-n pentagon families, so its value
+//!   runs the reduction-direction re-reduction ([`FALLBACK_CHECK`], cached
+//!   masters) at the call's carrier, its relative estimate is recorded per
+//!   point, and a point whose estimate exceeds the call's target
+//!   ([`fallback_accepted`]) fails with the one reason
+//!   [`fallback_rejected`]. A TIR-only artifact has no fallback;
 //! * an explicit backend that cannot serve the call is refused typed
 //!   ([`Refusal::Unavailable`], the Python API's `ReductionUnavailable`):
 //!   never a silent switch, and an explicit backend has no fallback (its
