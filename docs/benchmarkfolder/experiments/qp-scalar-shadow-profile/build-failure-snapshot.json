@@ -1,0 +1,11 @@
+{
+  "observed_utc": "2026-11-09T23:50:36.362739+00:00",
+  "state": "compiler_rejected_private_observer; cargo_draining_other_job",
+  "native_reducer_calls": 0,
+  "first_failure": "Private observer places unsafe MPFR flag FFI inside iregi-rust, whose crate forbids unsafe_code",
+  "preserved_safeguard": "Do not weaken or remove forbid(unsafe_code)",
+  "proposed_fix_not_built": "Move MPFR FFI into the bridge and register a safe function callback with the observer",
+  "log_sha256": "600a265edf943ecd3ae8c37d6eea6cb728b4b56a774f79744712e4e9c1c828b5",
+  "source_index_sha256": "7ea41eb03dadf35707920b291962c22a2bcbc638c244f8655da26407e9696a39",
+  "automatic_retry": false
+}

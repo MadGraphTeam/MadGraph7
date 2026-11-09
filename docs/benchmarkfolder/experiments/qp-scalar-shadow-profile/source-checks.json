@@ -1,0 +1,23 @@
+{
+  "state": "source_only",
+  "python_tests_returncode": 0,
+  "python_tests": 8,
+  "python_syntax_files": [
+    "analyze.py",
+    "build.py",
+    "input_bits.py",
+    "prepare.py",
+    "run.py",
+    "test_analyze.py"
+  ],
+  "isolated_hash_inventory_verified": true,
+  "frozen_fortran_runtime_hashes_verified": true,
+  "native_reducer_calls": 0,
+  "rust_fortran_compiler_invocations": 0,
+  "raw_log_sha256": "d4c42809b791bf1f280816a604650c4b0aac5dab83cdce6fcdc2c45a42bd344c",
+  "review_corrections": [
+    "Shared modeled occupancy sums all eligible modes within context/epoch.",
+    "Capped/dropped lifecycle events suppress derived opportunity and budget counts.",
+    "Public Fortran transport refusal excludes otherwise successful bridge parents."
+  ]
+}

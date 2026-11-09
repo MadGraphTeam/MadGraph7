@@ -1,0 +1,32 @@
+{
+  "scope": "Private diagnostic compilation only",
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "--release",
+    "--lib",
+    "--features",
+    "poles-only",
+    "--manifest-path",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile/bridge/Cargo.toml",
+    "-j",
+    "2",
+    "--",
+    "-C",
+    "link-arg=-Wl,-soname,libmadloop_tirust.so",
+    "-C",
+    "link-arg=-Wl,--exclude-libs,ALL"
+  ],
+  "cap_seconds": 900,
+  "jobs": 2,
+  "actual_inherited_affinity": [
+    2,
+    3
+  ],
+  "source_manifest_sha256": "ca79a1efbfd64b3583492f0f41f00eb1fc96c5695d1201eb003f464775eeb7a2",
+  "returncode": 101,
+  "elapsed_seconds": 502.2903417991474,
+  "log_sha256": "600a265edf943ecd3ae8c37d6eea6cb728b4b56a774f79744712e4e9c1c828b5"
+}

@@ -1,0 +1,57 @@
+{
+  "scope": "Read-only exact/semantic dependency comparison; private profile compares against actual historical49af, not CLI095e",
+  "files": {
+    "historical_49af": {
+      "path": ".benchmark-work/tirust/historical-installs/c91cb85f3a-49af12f0b88252a2/tirust/Cargo.lock",
+      "sha256": "8be809d137651ec217157388a909a2e9976e83470ffe4f08ce5f259a4d3f4517"
+    },
+    "reconstructed_split_92da": {
+      "path": ".tirust-build/tirust-split-install/Cargo.lock",
+      "sha256": "8be809d137651ec217157388a909a2e9976e83470ffe4f08ce5f259a4d3f4517"
+    },
+    "private_profile": {
+      "path": ".tirust-build/qp-scalar-shadow-profile/bridge/Cargo.lock",
+      "sha256": "8be809d137651ec217157388a909a2e9976e83470ffe4f08ce5f259a4d3f4517"
+    },
+    "actual_cli_095e": {
+      "path": "docs/benchmarkfolder/qualification/tirust-install/current-source/Cargo.lock",
+      "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4"
+    }
+  },
+  "historical49af_vs_private_byte_identical": true,
+  "historical49af_vs_private_semantic_diff": {
+    "historical_only": [],
+    "private_only": []
+  },
+  "private_vs_actual_cli095e_semantic_diff": {
+    "private_only": [
+      [
+        "oneloop",
+        "0.1.0",
+        null,
+        null,
+        [
+          "bincode",
+          "symbolica",
+          "symjit",
+          "xprec"
+        ]
+      ]
+    ],
+    "actual_cli_only": [
+      [
+        "oneloop",
+        "0.1.0",
+        "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#bd703d09a78f7849a6b86a07096e6f222fc01193",
+        null,
+        [
+          "bincode",
+          "symbolica",
+          "symjit",
+          "xprec"
+        ]
+      ]
+    ]
+  },
+  "correction": "Earlier wording current split installation denoted reconstructed92da prefix. It did not denote actual095e CLI installation. The private profile intentionally binds the49af historical reference lock."
+}

@@ -1,0 +1,9 @@
+--- original/iregi-lib.rs
++++ isolated/iregi-lib.rs
+@@ -73,3 +73,6 @@
+ 
+ /// Scalar-master selection for explicitly configured workspaces.
+ pub use iregi_masters::MasterExecutionPolicy;
++
++#[doc(hidden)]
++pub mod qp_scalar_shadow;

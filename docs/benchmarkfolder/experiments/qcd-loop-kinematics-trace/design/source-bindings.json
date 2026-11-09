@@ -1,0 +1,114 @@
+{
+  "limitations": [
+    "No observed per-group clamp records exist yet.",
+    "Original-input Born arithmetic does not replace actual repaired QP loop kinematics.",
+    "A snap or S/q mismatch alone does not establish the rejected amplitude cause."
+  ],
+  "native_executed": false,
+  "production_modified": false,
+  "schema": 1,
+  "source_anchors": [
+    {
+      "line": 248,
+      "path": ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.f",
+      "text": "SUBROUTINE ML5_0_MP_BUILD_KINEMATIC_MATRIX"
+    },
+    {
+      "line": 1020,
+      "path": ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.f",
+      "text": "SUBROUTINE ML5_0_MP_NINJARS_LOOP"
+    },
+    {
+      "line": 1143,
+      "path": ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.f",
+      "text": "SUBROUTINE ML5_0_LOOP_2("
+    },
+    {
+      "line": 121,
+      "path": ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIRUST_interface.f",
+      "text": "SUBROUTINE ML5_0_MP_TIRUST_TENSOR_DIAGNOSTIC"
+    },
+    {
+      "line": 244,
+      "path": ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIRUST_interface.f",
+      "text": "SUBROUTINE ML5_0_MP_TIRUST_LOOP"
+    },
+    {
+      "line": 327,
+      "path": ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIR_interface.f",
+      "text": "SUBROUTINE ML5_0_MP_SWITCH_ORDER"
+    },
+    {
+      "line": 2129,
+      "path": ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.f",
+      "text": "SUBROUTINE ML5_0_SET_MP_PS"
+    }
+  ],
+  "source_inputs": {
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.f": {
+      "bytes": 70163,
+      "sha256": "091cd7efe6ab18b2eb8cd5d31c834a48ceee9c69875834eaca9da3d5b3809363"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIRUST_interface.f": {
+      "bytes": 12246,
+      "sha256": "90aa42f27796c7b8762ccfc5c7240a3dc90e21a399078a51031355eda15846d0"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIR_interface.f": {
+      "bytes": 23310,
+      "sha256": "2a1dffb507f359a9e0c0fe5ff4f597aa752306284e027a2d8c6231acb2b15241"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/helas_calls_ampb_1.f": {
+      "bytes": 25821,
+      "sha256": "3eaa865b92e37552e7de056f4b63861c3736b004d9d113e1d40d0b46200e7e92"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/improve_ps.f": {
+      "bytes": 28507,
+      "sha256": "fa190450c53d61bd82f4e9641d3c5898a576642f0d0082a1898df041af4ad8ff"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_CT_calls_1.f": {
+      "bytes": 18872,
+      "sha256": "f49561ab2c444c44eb862cc6a43b9d0e55d79520472d23e727919d81bbf3312f"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.f": {
+      "bytes": 100824,
+      "sha256": "2846f4d35755abfb7a8709a5bb1560983b3676535fd43b39cd62acac1be6185c"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.f": {
+      "bytes": 13490,
+      "sha256": "f1cb3605c429ae40750127660b69f37870f61b40546e9a6389655f338d6b7469"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_helas_calls_ampb_1.f": {
+      "bytes": 26509,
+      "sha256": "138b9f55da144b18572fa102f1d49a9168002a6a91412f392154697f179925b9"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/inputs/candidate/qcd_n3_uux_zgg/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/points/qcd_n3_uux_zgg/selected.dat": {
+      "bytes": 971,
+      "sha256": "a2d4bb120bf442179ceadd6c3bf8b842732dfa8e3af50f71e30bb7c9948eed9b"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "d266d7f54aaabf22cbbf73a420ea24ba3382080af6bc6fc47a162a27ac5342e3"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "docs/benchmarkfolder/experiments/qcd-born-cancellation-audit/evidence-index.json": {
+      "bytes": 4020,
+      "sha256": "af8e2461c0a284917ceb9de22f85b5fb2c7314745788ed0ac324ad4f5cb9186c"
+    },
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/amplitude-native-1/adjudication.json": {
+      "bytes": 25572,
+      "sha256": "ab763a8adbb21c915d0dff3c31aa69a68aa0442fa3f7435e2688c540f722c681"
+    },
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/evidence-index.json": {
+      "bytes": 28585,
+      "sha256": "d7ace06aad2ae7850f2bf97cc9d48001ca9d2f4c1a8a02a349f975a97c7c0137"
+    }
+  },
+  "status": "source-only observational proposal"
+}

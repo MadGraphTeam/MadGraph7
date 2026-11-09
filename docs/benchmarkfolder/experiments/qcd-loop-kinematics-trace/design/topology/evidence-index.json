@@ -1,0 +1,135 @@
+{
+  "additional_source_bindings": {
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIR_interface.f": {
+      "anchors": [
+        {
+          "line": 327,
+          "text": "SUBROUTINE ML5_0_MP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN,M2L)"
+        },
+        {
+          "line": 341,
+          "text": "IF (CTMODE.NE.2.AND.CTMODE.NE.5) THEN"
+        },
+        {
+          "line": 345,
+          "text": "IF (NLOOPLINE.LE.2) THEN"
+        },
+        {
+          "line": 361,
+          "text": "NEW_M2L(I)=M2L(NLOOPLINE-I+2)"
+        },
+        {
+          "line": 370,
+          "text": "NEW_PL(J,I) = -PL(J,NLOOPLINE+1-I)"
+        }
+      ],
+      "bytes": 23310,
+      "sha256": "2a1dffb507f359a9e0c0fe5ff4f597aa752306284e027a2d8c6231acb2b15241"
+    }
+  },
+  "compiler_executed": false,
+  "files": {
+    "README.md": {
+      "bytes": 5857,
+      "sha256": "a3f11246a61651deeabda5e485722b78c21b97060a9515e05825299d8e9a7dbf"
+    },
+    "audit_routing.py": {
+      "bytes": 15845,
+      "sha256": "76715c3dd6d5f5ce1adcd746075b0e5f7c98695fbefc67605cc9901449783815"
+    },
+    "routing.json": {
+      "bytes": 493325,
+      "sha256": "1198fbb0fc62de9a4bf23abafb704aa4a4b75f4e7df12bac605970d14e6a1fde"
+    }
+  },
+  "frozen_born_package_modified": false,
+  "invocations": [
+    {
+      "argv": [
+        "python3",
+        "docs/benchmarkfolder/experiments/qcd-loop-kinematics-trace/design/topology/audit_routing.py",
+        "--output",
+        "docs/benchmarkfolder/experiments/qcd-loop-kinematics-trace/design/topology/routing.json"
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "environment_setup": "source tools/tirust_env.sh",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "python3",
+        "docs/benchmarkfolder/experiments/qcd-loop-kinematics-trace/design/topology/audit_routing.py",
+        "--verify",
+        "docs/benchmarkfolder/experiments/qcd-loop-kinematics-trace/design/topology/routing.json"
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "environment_setup": "source tools/tirust_env.sh",
+      "exit_code": 0
+    }
+  ],
+  "limitations": [
+    "Integer incidence is not proof of exact floating momentum conservation.",
+    "B is the promoted original DP event; C is the repaired QP loop event. No numerical B/C channel or Born comparison is supplied.",
+    "No clamp observation or causal attribution of the amplitude rejection is established.",
+    "Static unordered pair counts are not runtime trace counts or a trace buffer bound."
+  ],
+  "native_executed": false,
+  "production_modified": false,
+  "schema": 1,
+  "scope": "Original CTMODE1/4 topology; reversal source anchors retained separately. No floating-point kinematic or Born evaluation.",
+  "source_count": 19,
+  "status": "source-only routing audit reproduced and verified",
+  "summary": {
+    "by_n": {
+      "2": {
+        "composite": 20,
+        "single_massless": 4
+      },
+      "3": {
+        "composite": 62,
+        "single_Z": 27,
+        "single_massless": 58
+      },
+      "4": {
+        "composite": 93,
+        "single_Z": 25,
+        "single_massless": 68
+      },
+      "5": {
+        "composite": 60,
+        "single_Z": 12,
+        "single_massless": 48
+      }
+    },
+    "classification_modulo_conservation": {
+      "composite": 235,
+      "single_Z": 64,
+      "single_massless": 178
+    },
+    "forward_arc_subset_sizes": {
+      "1": 220,
+      "2": 167,
+      "3": 68,
+      "4": 22
+    },
+    "groups": 116,
+    "literal_difference_subset_sizes": {
+      "1": 146,
+      "2": 114,
+      "3": 121,
+      "4": 96
+    },
+    "pairs": 477,
+    "single_leg_counts": {
+      "1": 33,
+      "2": 33,
+      "3": 64,
+      "4": 56,
+      "5": 56
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 13507,
+      "sha256": "32f4c6a3858acf3045a955ec9c46cfc8ae35d5635c991621343b984f42ff12af"
+    },
+    "bind_sources.py": {
+      "bytes": 3213,
+      "sha256": "f3207fd87b574cccfe5c82a4cdf35fc45bd19837be00df21a4674dd926013fa6"
+    },
+    "source-bindings.json": {
+      "bytes": 5378,
+      "sha256": "9518371e9a8afa9626649a9164eecf5dc340099638960209423f91d871869e90"
+    },
+    "topology/README.md": {
+      "bytes": 5857,
+      "sha256": "a3f11246a61651deeabda5e485722b78c21b97060a9515e05825299d8e9a7dbf"
+    },
+    "topology/audit_routing.py": {
+      "bytes": 15845,
+      "sha256": "76715c3dd6d5f5ce1adcd746075b0e5f7c98695fbefc67605cc9901449783815"
+    },
+    "topology/evidence-index.json": {
+      "bytes": 3789,
+      "sha256": "bec5de02d395b630869fc59cae97a1fb12d709a412c52542185edfe148f0a997"
+    },
+    "topology/routing.json": {
+      "bytes": 493325,
+      "sha256": "1198fbb0fc62de9a4bf23abafb704aa4a4b75f4e7df12bac605970d14e6a1fde"
+    },
+    "verify.py": {
+      "bytes": 1508,
+      "sha256": "10bec27bf36744deda8b282bb9c5502bff3df870e7fabea3ffe2f2671bbfdc36"
+    }
+  },
+  "schema": 1,
+  "scope": "Frozen source-only observational design, including exact routing and original/promoted versus repaired kinematics consistency prerequisite. No native evaluation or production change."
+}

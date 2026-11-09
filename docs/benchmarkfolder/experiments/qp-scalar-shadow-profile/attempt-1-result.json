@@ -1,0 +1,19 @@
+{
+  "scope": "Authorized single private build, failed before any replay",
+  "returncode": 101,
+  "elapsed_seconds": 502.2903417991474,
+  "timed_out": false,
+  "actual_inherited_affinity": [
+    2,
+    3
+  ],
+  "jobs": 2,
+  "source_index_sha256": "7ea41eb03dadf35707920b291962c22a2bcbc638c244f8655da26407e9696a39",
+  "source_inventory_unchanged_after_build": true,
+  "private_dso_produced": false,
+  "fortran_drivers_produced": false,
+  "native_reducer_calls": 0,
+  "build_failure": "Unsafe MPFR flag FFI placed in core which forbids unsafe_code. Preserve that lint; future correction should use safe observer callback implemented by bridge.",
+  "automatic_retry": false,
+  "compiler_lane_released": true
+}
