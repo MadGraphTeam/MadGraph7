@@ -33,8 +33,20 @@ def _json_value(value: object) -> object:
     from pyamplicol.api.virtual_results import (
         ResolvedVirtualEvaluation,
         VirtualEvaluation,
+        VirtualOrderEvaluation,
     )
 
+    if isinstance(value, VirtualOrderEvaluation):
+        # The one evaluation, its order axes and the explicit sums (named:
+        # orders are never summed silently).
+        return {
+            "evaluation": _json_value(value.evaluation),
+            "contribution_kind": value.contribution,
+            "orders": _json_value(value.orders),
+            "born_orders": _json_value(value.born_orders),
+            "sum_orders": _json_value(value.sum_orders()),
+            "sum_born_orders": _json_value(value.sum_born_orders()),
+        }
     if is_dataclass(value) and not isinstance(value, type):
         result = {
             item.name: _json_value(getattr(value, item.name)) for item in fields(value)

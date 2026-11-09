@@ -52,6 +52,75 @@ from pyamplicol.runtime.correlated_exact import (
     _prepare_spin_vectors,
 )
 
+# --------------------------------------------------------- stage profile
+
+# The per-stage split of a v2 virtual call (``pyamplicol profile`` of a loop
+# artifact, ``benchmarking.profile_virtual``): groups of the native
+# executor's always-on stage report (``NativeExecutor.last_report
+# ["seconds"]``, top-level stages only; "x: y" names are sub-stages), in
+# order; ``REST`` is every other stage plus the call's untimed remainder.
+# A Born-interfered call's dressing is its seeds, factors and dressing; a
+# loop-induced call's (whose seeds and factors are the amplitude basis's
+# few) is the dressing stage, as the report's loop-induced bars read it.
+PROFILE_TREES = "trees"
+PROFILE_DRESSING = "dressing"
+PROFILE_SCATTER = "scatter"
+PROFILE_REDUCTION = "reduction"
+PROFILE_REST = "rest"
+PROFILE_GROUPS = (
+    PROFILE_TREES,
+    PROFILE_DRESSING,
+    PROFILE_SCATTER,
+    PROFILE_REDUCTION,
+    PROFILE_REST,
+)
+# The label of a stage split read from a separate instrumented call rather
+# than the timed one (lit-unchecked's bars).
+INSTRUMENTED_LABEL = "instrumented run: stage shares, not the timed call"
+
+
+def profile_stage_names(contribution: str) -> dict[str, tuple[str, ...]]:
+    """The native stages of each timed group of a ``contribution`` call
+    ("virtual" or "loop-induced"); every other stage is ``PROFILE_REST``."""
+
+    dressing = (
+        ("seeds", "factors", "dressing") if contribution == "virtual" else ("dressing",)
+    )
+    return {
+        PROFILE_TREES: ("trees",),
+        PROFILE_DRESSING: dressing,
+        PROFILE_SCATTER: ("scatter",),
+        PROFILE_REDUCTION: ("reduction",),
+    }
+
+
+def profile_stages(
+    seconds: Mapping[str, float], wall: float, contribution: str
+) -> dict[str, float]:
+    """The call's wall time ``wall`` split into ``PROFILE_GROUPS`` from the
+    executor's stage report ``seconds``: each group the sum of its stages,
+    ``PROFILE_REST`` the remainder (never negative)."""
+
+    out = {
+        group: sum(float(seconds.get(name, 0.0)) for name in names)
+        for group, names in profile_stage_names(contribution).items()
+    }
+    out[PROFILE_REST] = max(wall - sum(out.values()), 0.0)
+    return out
+
+
+def last_stage_seconds(runtime: Any) -> dict[str, float] | None:
+    """The stage report of a loaded v2 virtual runtime's latest native call
+    (the executor's always-on timers; nothing is timed for it), or None when
+    the runtime has no native executor report."""
+
+    backend = getattr(runtime, "_backend", runtime)
+    executor = getattr(backend, "_executor", None)
+    report = getattr(executor, "last_report", None)
+    if not isinstance(report, Mapping) or "seconds" not in report:
+        return None
+    return {str(name): float(value) for name, value in report["seconds"].items()}
+
 
 def _number(value: object, description: str) -> str:
     """Validate a real decimal input without a binary64 round trip: a number

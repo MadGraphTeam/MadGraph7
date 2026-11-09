@@ -871,6 +871,35 @@ def _add_evaluation_options(
 
 def _add_profile_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("target", type=Path, nargs="?", default=None, metavar="OUTPUT")
+    # Loop (v2 virtual) artifacts: the profiled calls' backend, setting and
+    # scale (the per-stage table of ``benchmarking.profile_virtual``).
+    parser.add_argument(
+        "--loop-reduction",
+        dest="evaluation.reduction",
+        choices=tuple(ReductionBackend),
+        default=argparse.SUPPRESS,
+        help="loop artifacts: the reduction backend of the profiled calls",
+    )
+    parser.add_argument(
+        "--reduction-unchecked",
+        dest="evaluation.reduction_unchecked",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: profile the unchecked timing mode (no accuracy "
+            "certificate); default off"
+        ),
+    )
+    parser.add_argument(
+        "--mu-r2",
+        dest="evaluation.mu_r2",
+        default=argparse.SUPPRESS,
+        metavar="EXACT_VALUE",
+        help=(
+            "loop artifacts: the renormalisation scale squared (default: per "
+            "point the squared invariant mass of its initial state)"
+        ),
+    )
     parser.add_argument(
         "--process",
         dest="evaluation.process",

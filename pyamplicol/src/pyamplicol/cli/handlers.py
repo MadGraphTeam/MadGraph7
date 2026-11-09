@@ -537,10 +537,22 @@ class DefaultCliServices:
                 arithmetic=evaluation.arithmetic,
             )
         if evaluation.orders:
-            if virtual or requests is not None:
+            if requests is not None:
                 raise ConfigurationError(
-                    "--orders applies to tree evaluation; virtual results already "
-                    "carry their squared-order axes"
+                    "--orders splits an evaluation by squared coupling order; "
+                    "correlated requests carry their own order axes"
+                )
+            if virtual:
+                # One evaluation, viewed per squared-order sector with the
+                # explicit sums (``VirtualOrderEvaluation``).
+                return runtime.evaluate_orders(
+                    cast("Momenta", momenta),
+                    precision=evaluation.precision,
+                    helicities=evaluation.helicity_ids or None,
+                    color_flows=evaluation.color_flow_ids or None,
+                    mu_r2=scales,
+                    on_failure=evaluation.on_failure,
+                    **v2_options,
                 )
             return runtime.evaluate_orders(
                 cast("Momenta", momenta),

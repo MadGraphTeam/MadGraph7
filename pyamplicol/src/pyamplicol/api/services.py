@@ -64,6 +64,7 @@ from .virtual_results import (
 from .virtual_results import (
     ResolvedVirtualEvaluation,
     VirtualEvaluation,
+    VirtualOrderEvaluation,
     VirtualRescuePolicy,
     VirtualStabilityChecks,
     pole_selection,
@@ -1111,22 +1112,40 @@ class Runtime:
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         color_flows: Sequence[str | ColorFlow] | None = None,
         precision: int | None = None,
-    ) -> TreeOrderEvaluation:
-        """Return tree values split by squared coupling order.
+        **virtual_options: Any,
+    ) -> TreeOrderEvaluation | VirtualOrderEvaluation:
+        """Return values split by squared coupling order.
 
-        Every squared coupling order of the generated amplitude, including
-        vanishing interference, is a separate ``values[point][order]`` column
-        alongside ``total``, which is exactly :meth:`evaluate`'s value for the
-        same global selectors and precision; per-point selectors are not
-        supported. Orders follow the Born order axis of virtual results
-        (:attr:`VirtualEvaluation.born_orders`). Virtual runtimes already
-        return their order axes from :meth:`evaluate`.
+        Tree runtimes: every squared coupling order of the generated
+        amplitude, including vanishing interference, is a separate
+        ``values[point][order]`` column alongside ``total``, which is exactly
+        :meth:`evaluate`'s value for the same global selectors and precision;
+        per-point selectors are not supported. Orders follow the Born order
+        axis of virtual results (:attr:`VirtualEvaluation.born_orders`).
+
+        Virtual runtimes (Born-interfered and loop-induced): ONE
+        :meth:`evaluate` call with the same arguments (``virtual_options``:
+        ``mu_r2``, ``poles``, ``stability_checks``, ``reduction``, ...), returned
+        as its :class:`VirtualOrderEvaluation` view: per squared-order sector
+        its Laurent coefficients, the Born per Born order, and the explicit
+        sums ``sum_orders()`` / ``sum_born_orders()``; nothing is evaluated
+        twice and no order is summed silently.
         """
 
         if self.contribution_kind != "tree":
+            return VirtualOrderEvaluation(
+                self.evaluate(
+                    momenta,
+                    helicities=helicities,
+                    color_flows=color_flows,
+                    precision=precision,
+                    **virtual_options,
+                )
+            )
+        if virtual_options:
             raise CompatibilityError(
-                "virtual results already carry Born and virtual order axes; "
-                "use evaluate()"
+                "tree evaluate_orders takes no virtual options: "
+                + ", ".join(sorted(virtual_options))
             )
         operation = getattr(self._backend, "evaluate_orders", None)
         if not callable(operation):
@@ -1657,8 +1676,24 @@ class BenchmarkRunner:
         *,
         points: Momenta | None = None,
     ) -> BenchmarkResult:
-        """Profile an artifact path or an already loaded :class:`Runtime`."""
+        """Profile an artifact path or an already loaded :class:`Runtime`.
 
+        A loop (v2 virtual) artifact or runtime returns its
+        ``benchmarking.VirtualProfileResult``: the per-point time and the
+        per-stage split of the timed calls (trees, dressing, scatter,
+        reduction, rest) from the native executor's own stage report."""
+
+        from pyamplicol.benchmarking import is_virtual_target, profile_virtual
+
+        if is_virtual_target(target):
+            return cast(
+                BenchmarkResult,
+                profile_virtual(
+                    target,
+                    self._config if self._config is not None else None,
+                    points=points,
+                ),
+            )
         backend_target: RuntimeBackend | os.PathLike[str] | str
         if isinstance(target, Runtime):
             backend_target = target._backend

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import platform
@@ -2749,6 +2750,173 @@ def _sample_statistics(samples: list[float]) -> tuple[float, float, float, float
     return mean, deviation, error, relative_error
 
 
+# ------------------------------------------------------ loop artifacts
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualProfileResult:
+    """The profile of a v2 virtual (loop) runtime (``pyamplicol profile`` of a
+    loop artifact, :class:`pyamplicol.BenchmarkRunner`): ``samples`` timed
+    calls of one batch of ``batch`` points (the validation points repeated,
+    or the caller's), finite part only, at the runtime's reduction setting.
+    ``seconds_per_point`` is the median call's wall time per point (``low``
+    and ``high`` the fastest and slowest call's); ``stages`` splits the
+    timed calls' total wall time per point into the groups of
+    ``runtime.virtual.PROFILE_GROUPS`` from the executor's always-on stage
+    report of the same calls (no other timer runs, so ``label`` is None).
+    ``reduction`` is the requested, effective backend and reason of the
+    last call; ``unchecked`` the reduction_unchecked setting."""
+
+    process_id: str
+    process_expression: str | None
+    contribution: str
+    batch: int
+    samples: int
+    warmup: int
+    seconds_per_point: float
+    low: float
+    high: float
+    stages: Mapping[str, float]
+    reduction: Mapping[str, object]
+    unchecked: bool
+    failed_points: int
+    label: str | None = None
+
+
+def is_virtual_target(target: object) -> bool:
+    """Whether a profile target is a v2 virtual (loop) artifact or runtime."""
+
+    kind = getattr(target, "contribution_kind", None)
+    if kind is not None:
+        return kind != "tree"
+    if isinstance(target, (str, os.PathLike)):
+        from pyamplicol.cli.handlers import _virtual_artifact_hint
+
+        return _virtual_artifact_hint(Path(os.fspath(target)))
+    return False
+
+
+def _initial_invariant(point: Sequence[Sequence[object]], initial: int) -> str:
+    total = [
+        math.fsum(float(cast(Any, p[mu])) for p in point[:initial]) for mu in range(4)
+    ]
+    return repr(total[0] ** 2 - total[1] ** 2 - total[2] ** 2 - total[3] ** 2)
+
+
+def profile_virtual(
+    target: Any,
+    config: RunConfig | BenchmarkConfig | None,
+    *,
+    points: Momenta | None = None,
+) -> VirtualProfileResult:
+    """Profile a loop artifact path or a loaded virtual :class:`Runtime`
+    (``VirtualProfileResult``). Settings: ``benchmark.batch_size``,
+    ``warmup_runs`` and ``minimum_samples``; ``evaluation.process``,
+    ``reduction``, ``reduction_target`` and ``reduction_unchecked`` when a path
+    is loaded; ``evaluation.mu_r2`` (default: per point the squared
+    invariant mass of its initial state)."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.runtime.virtual import last_stage_seconds, profile_stages
+
+    run = config if isinstance(config, RunConfig) else None
+    bench = run.benchmark if run is not None else config or BenchmarkConfig()
+    evaluation = run.evaluation if run is not None else None
+    if isinstance(target, Runtime):
+        runtime = target
+        artifact = None
+    else:
+        artifact = Path(os.fspath(target)).expanduser().resolve(strict=False)
+        options: dict[str, Any] = {}
+        if evaluation is not None:
+            if evaluation.reduction is not None:
+                options["reduction"] = str(evaluation.reduction)
+            if evaluation.reduction_target is not None:
+                options["reduction_target"] = evaluation.reduction_target
+            if evaluation.reduction_unchecked:
+                options["reduction_unchecked"] = True
+        runtime = Runtime.load(
+            artifact,
+            process=None if evaluation is None else evaluation.process,
+            **options,
+        )
+    physics = runtime.physics
+    if points is None:
+        if artifact is None:
+            raise EvaluationError(
+                "profiling a loaded virtual runtime needs its points (points=)"
+            )
+        record = json.loads(
+            (
+                artifact / "processes" / physics.process_id / "validation-momenta.json"
+            ).read_text()
+        )
+        points = [[entry["momentum"] for entry in point] for point in record["points"]]
+    if not points:
+        raise EvaluationError("profiling needs at least one phase-space point")
+    batch = _benchmark_batch(points, bench.batch_size)
+    initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
+    scales: Any = (
+        evaluation.mu_r2
+        if evaluation is not None and evaluation.mu_r2 is not None
+        else [_initial_invariant(point, initial) for point in batch]
+    )
+    options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    for _ in range(bench.warmup_runs):
+        runtime.evaluate(batch, **options)
+    walls: list[float] = []
+    totals: dict[str, float] = {}
+    failed = 0
+    contribution = runtime.contribution_kind
+    result: Any = None
+    for _ in range(max(bench.minimum_samples, 1)):
+        begin = time.perf_counter()
+        result = runtime.evaluate(batch, **options)
+        wall = time.perf_counter() - begin
+        walls.append(wall)
+        failed += sum(1 for valid in result.valid if not valid)
+        seconds = last_stage_seconds(runtime) or {}
+        for group, value in profile_stages(seconds, wall, contribution).items():
+            totals[group] = totals.get(group, 0.0) + value
+    count = len(batch) * len(walls)
+    reduction = next(
+        (
+            lane.reduction
+            for lane in result.diagnostics
+            if getattr(lane, "reduction", None) is not None
+        ),
+        None,
+    )
+    return VirtualProfileResult(
+        physics.process_id,
+        physics.process,
+        contribution,
+        len(batch),
+        len(walls),
+        bench.warmup_runs,
+        statistics.median(walls) / len(batch),
+        min(walls) / len(batch),
+        max(walls) / len(batch),
+        {group: value / count for group, value in totals.items()},
+        _reduction_record(reduction),
+        bool(getattr(reduction, "unchecked", False)),
+        failed,
+    )
+
+
+def _reduction_record(reduction: Any) -> dict[str, object]:
+    """The requested and effective reduction backend of the profiled calls
+    (the first lane's ``VirtualReduction``) and the reason of the choice."""
+
+    if reduction is None:
+        return {}
+    return {
+        name: str(getattr(reduction, name))
+        for name in ("requested", "effective", "reason")
+        if getattr(reduction, name, None) is not None
+    }
+
+
 def create_benchmark_backend(
     config: BenchmarkConfig | RunConfig | None,
     progress: ProgressSink | None,
@@ -2756,4 +2924,10 @@ def create_benchmark_backend(
     return BenchmarkBackend(config, progress)
 
 
-__all__ = ["BenchmarkBackend", "create_benchmark_backend"]
+__all__ = [
+    "BenchmarkBackend",
+    "VirtualProfileResult",
+    "create_benchmark_backend",
+    "is_virtual_target",
+    "profile_virtual",
+]
