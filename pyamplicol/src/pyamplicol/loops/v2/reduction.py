@@ -617,11 +617,9 @@ def with_fallback(
         still = dict(still)
         served = [local for local in range(len(indices)) if local not in still]
         guarded: dict[int, float] = {}
-        if not checking:
-            pass
-        elif guard is None and (reused or merged):
+        if checking and guard is None and (reused or merged):
             guarded = {local: _guard_estimate(again[local]) for local in served}
-        elif served:
+        elif checking and served:
             chosen = [indices[local] for local in served]
             found, missed = (
                 run(chosen, _reduction_check(plain)) if guard is None else guard(chosen)
