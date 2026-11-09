@@ -1991,7 +1991,9 @@ def generation_probes(
             for i, result in zip(pending, found, strict=True):
                 outcomes[i].append(result)
                 # The probes of one pass share its native batches.
-                entries[i]["seconds"] = _short(entries[i].get("seconds", 0.0) + elapsed)
+                entries[i]["seconds"] = _seconds(
+                    entries[i].get("seconds", 0.0) + elapsed
+                )
             pending = [
                 i
                 for i in pending
@@ -2045,9 +2047,9 @@ def generation_probes(
         "fallbacks": sum(1 for entry in entries if "fallback" in entry),
         "seconds": {
             key: (
-                {k: _short(v) for k, v in value.items()}
+                {k: _seconds(v) for k, v in value.items()}
                 if isinstance(value, dict)
-                else _short(value)
+                else _seconds(value)
             )
             for key, value in seconds.items()
         },
@@ -2159,7 +2161,7 @@ def _goldstone_probes(
         entry: dict[str, Any] = {
             "probe": "goldstone",
             "leg": leg,
-            "seconds": _short(probes_seconds[str(leg)]),
+            "seconds": _seconds(probes_seconds[str(leg)]),
         }
         (result,) = _decided([entry], [runs], carriers)
         entries.append(entry)
@@ -2201,6 +2203,14 @@ def _goldstone_probes(
         "seconds": seconds,
         "record": record,
     }
+
+
+def _seconds(value: float) -> float:
+    """A time for the artifact record: whole milliseconds (the record's
+    times are subtracted from the generation's phase times, so they keep an
+    absolute, not a relative, resolution)."""
+
+    return round(value, 3)
 
 
 def _short(value: float) -> float | str:
