@@ -472,7 +472,7 @@ TIRust 26 ms with all 8 points refused (an ill-conditioned Gram matrix, a
 typed refusal: the explicit backend has no fallback) and 47-49 ms unchecked;
 at leading colour one helicity 4.9 ms against 7.6 ms summed (0.65). The
 whole walkthrough at two points (fresh workspace, both generations included):
-67 s, peak 0.77 GiB.
+67 s, peak 0.77 GiB; at one point (the CI smoke test): 73 s.
 
 ### `u u~ > d d~ e+ e-`, NLO QCD+EW at every order (complex-mass scheme)
 
@@ -504,7 +504,8 @@ Born alone fails its QED^10 sector identically, while `u u~ > d d~` and
 `u u~ > d d~ a` at every order pass: the finding is reported for the engine
 (package report lit-examples §0); the walkthrough shows it as it is. The
 whole walkthrough at two points: 550 s (`check` 275 s, generation 242 s on a
-loaded host), peak 7.6 GiB in the generation's child process.
+loaded host), peak 7.6 GiB in the generation's child process; at one point
+(the CI smoke test): 671 s.
 
 ### `g g > z g g`, loop-induced (every quark loop)
 
@@ -522,7 +523,8 @@ Measured (2026-11-09): generation 10.4 s, peak 0.68 GiB (with the correlators
 probe of the gluons pass in binary64). Per point, one pinned core, a batch of
 8: TIRust (`auto`) 187-194 ms checked and 68-73 ms unchecked; NinjaRS 298-315
 ms (unchecked 299-306 ms); one helicity 20 ms against 200 ms summed (0.10).
-The whole walkthrough at two points: 64 s, peak 1.9 GiB.
+The whole walkthrough at two points: 64 s, peak 1.9 GiB; at one point (the
+CI smoke test): 50 s.
 
 ### `g g > e+ e- m+ m-`, loop-induced (complex-mass scheme)
 
@@ -537,7 +539,8 @@ which 49 s is the electroweak request-model preparation (with the correlators
 point, one pinned core, a batch of 8: TIRust (`auto`) 3.1 ms checked and
 unchecked; NinjaRS 4.6-4.7 ms; one helicity 1.8 ms against 3.1 ms summed
 (0.58). The whole walkthrough at two points: 301-367 s (two runs on a
-loaded host), peak 4.4 GiB in the generation's child process.
+loaded host), peak 4.4 GiB in the generation's child process; at one point
+(the CI smoke test): 338 s.
 
 ## Typed Python
 
