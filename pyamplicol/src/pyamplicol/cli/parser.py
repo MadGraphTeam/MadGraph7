@@ -219,6 +219,16 @@ def _add_model_options(parser: argparse.ArgumentParser) -> None:
         type=Path,
         default=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--loop-preparation-cache",
+        dest="model.loop_preparation_cache",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "reuse the persistent cache of one-loop model preparations "
+            "(default on; off with --no-model-cache too)"
+        ),
+    )
 
 
 def _add_process_options(parser: argparse.ArgumentParser) -> None:

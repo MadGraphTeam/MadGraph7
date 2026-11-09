@@ -132,6 +132,75 @@ restriction = "default"
 UFO modules are Python code and execute during loading. See
 [Models and Processes](models-and-processes.md) before using an external model.
 
+## Model caches and the one-loop preparation cache
+
+`[model] cache = true` (the default; `--no-model-cache` turns it off) reuses
+compiled models keyed by the source's contents, the compile options and the
+toolchain. The cache root is `[model] cache_dir` when set, else
+`$PYAMPLICOL_CACHE_DIR/models`, else the per-user cache's `models` directory
+(`~/.cache/pyamplicol/models` on Linux, `~/Library/Caches/pyamplicol/models` on
+macOS).
+
+One-loop generation also *prepares the model of each request* before it
+builds any tree or loop: it applies the restriction card, lowers every
+parameter, counterterm parameter and coupling of the model to an exact
+Laurent program (about 2,100 declarations on the full QCD+QED UFO
+`loop_qcd_qed_sm_Gmu`), checks each for poles hidden in functions, and builds
+the covariant structure and the counterterm model the request's coupling
+orders admit. A generation forms each of these once and shares it between all
+its consumers (the loop-order inference of a loop-induced process, every
+process, the dry run, the generation-time probes): the lowered program once
+per model, the rest once per distinct set of order bounds and fixed
+parameters. The lowered program is moreover kept in a persistent cache, so a
+later generation with the same model reads it instead of lowering it again:
+
+```toml
+[model]
+loop_preparation_cache = true   # default
+```
+
+- **Where.** `<model cache root>/loop-preparations/`, one file
+  `<sha256>.pyAmplicol-loop-preparation.json` per model and simplification
+  (a JSON header line and the program in Symbolica's own binary
+  serialization; about 35 kB for `loop_sm`, 0.7 MB for `loop_qcd_qed_sm_Gmu`).
+- **Key.** A SHA-256 of the model *as the generation sees it* (its records
+  and metadata: the restriction card's contents, the loop model declaration,
+  `[loop.preparation]`, the mass scheme), `model.simplify`, the entry schema
+  and the code identity: the pyAmpliCol version, a digest of the first-party
+  sources that form and read the program, the Python version, Symbolica
+  (its distribution and module versions and its extension module's size and
+  modification time) and ufo-model-loader. Editing the model, its card or
+  pyAmpliCol therefore never reuses a stale entry: it writes a new one.
+- **Switching it off.** The cache is used only when every switch allows it:
+  `[model] cache` (no model cache means none), `[model]
+  loop_preparation_cache` (CLI `--no-loop-preparation-cache`) and the
+  environment variable `PYAMPLICOL_LOOP_PREPARATION_CACHE` (`0`, `false`,
+  `no` or `off` turn it off; a true value changes nothing; any other value is
+  refused). Off means no entry is read or written. Any switch that says off
+  wins, so a benchmark or a test harness can disable it from the environment
+  without editing its cards, and a card can disable it whatever the
+  environment says.
+- **Safety.** An entry is written to a unique temporary file in its directory,
+  flushed to disk and renamed into place, so concurrent generations writing
+  one entry both succeed and a reader never sees a partial file. Each entry
+  carries its key, schema, code identity and the SHA-256 of its payload, all
+  checked when it is read; a missing, truncated, corrupt, foreign or stale
+  entry is ignored and rebuilt (never an error). A cache directory that cannot
+  be read or written leaves the generation uncached with one warning. No file
+  that runs code is involved.
+- **Removal.** Nothing deletes an entry automatically. Deleting the
+  `loop-preparations` directory (or any file in it) is always safe; the next
+  generation of that model rebuilds what it needs.
+- **What it changes.** Only time: the generated artifact is byte-identical
+  with the cache off, empty or filled (the state is logged by the generation,
+  never written into the artifact).
+
+**Preparing ahead.** The first one-loop generation of a model fills the cache.
+A dry run (`pyamplicol generate --dry-run`, `Generator.plan`) runs the same
+preparations and fills it too, but only when the compiled model is already
+cached, because a dry run never compiles a UFO or JSON model (compile it first,
+e.g. by a first generation or `pyamplicol model inspect`).
+
 ## Processes and multiparticles
 
 One card may contain one inclusive multiparticle request or multiple named
