@@ -14,7 +14,7 @@
 //! one lane-major coefficient vector per point, the ingress of the NinjaRS
 //! adapter's buckets.
 
-use super::dress::{Carrier, LaneData, cadd, cmul_into};
+use super::dress::{Carrier, LaneData, Pool, cadd, cmul_into};
 use super::kernels::lane_vector_len;
 use super::plan::{Family, KeyColumns, Step, Support};
 use ninjars::fast::tensor_layout::{monomial_index, monomials, ncoeff};
@@ -65,6 +65,35 @@ impl<T: Carrier> FamilyNumerator<T> {
             accumulators: (0..plan_family.orders.len())
                 .map(|_| vec![zero.clone(); len])
                 .collect(),
+        }
+    }
+
+    /// [`Self::zeros_on`] with the accumulator buffers taken from `pool`
+    /// (zeroed; lit-dress lever E).
+    pub fn zeros_in<const L: usize>(
+        family: usize,
+        plan_family: &Family,
+        columns: usize,
+        support: Option<Arc<Support>>,
+        pool: &mut Pool<T>,
+    ) -> Self {
+        let stored = support.as_ref().map_or(columns, |s| s.columns.len());
+        let len = stored * ncoeff(plan_family.rank) * lane_vector_len(L);
+        Self {
+            family,
+            rank: plan_family.rank,
+            columns,
+            support,
+            accumulators: (0..plan_family.orders.len())
+                .map(|_| pool.take(len))
+                .collect(),
+        }
+    }
+
+    /// Hand the accumulator buffers back to `pool`.
+    pub fn recycle(self, pool: &mut Pool<T>) {
+        for buffer in self.accumulators {
+            pool.give(buffer);
         }
     }
 

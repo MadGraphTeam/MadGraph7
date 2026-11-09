@@ -16,7 +16,7 @@
 //! `O' += T · V` once per group and target row.
 
 use super::closure::{FamilyNumerator, close_column, close_row, trace_into, trace_rows_into};
-use super::dress::{Carrier, ChunkInputs, LaneData, Pool, dress_edge};
+use super::dress::{Carrier, ChunkInputs, LaneData, Pool, Workspaces, dress_edge};
 use super::kernels::{
     DiagonalSchedule, Segment, TraceTerm, lane_vector_len, split_edge, split_vertex, trace_row,
 };
@@ -39,7 +39,16 @@ pub fn run_family<T: Carrier, const L: usize>(
     seeds: &Seeds<T>,
     data: &LaneData<T, L>,
 ) -> RusticolResult<FamilyRun<T>> {
-    run_family_on(plan, index, &plan.families[index], inputs, seeds, data)
+    let workspaces = Workspaces::new(1, &data.zero);
+    run_family_on(
+        plan,
+        index,
+        &plan.families[index],
+        inputs,
+        seeds,
+        data,
+        &workspaces,
+    )
 }
 
 /// The source object of an edge: a weighted leaf seed, or a child's output
@@ -71,6 +80,9 @@ fn source<T: Carrier, const L: usize>(
 
 /// [`run_family`] on `family`: plan family `index` or its copy pruned to an
 /// evaluation's live rows (`plan::LiveRows`).
+/// The walk takes its buffers from the calling thread's pool of
+/// `workspaces` and its accumulators from their numerator pool (lit-dress
+/// lever E), and gives the open objects back when it ends.
 pub fn run_family_on<T: Carrier, const L: usize>(
     plan: &LoopProgramV4,
     index: usize,
@@ -78,15 +90,29 @@ pub fn run_family_on<T: Carrier, const L: usize>(
     inputs: &ChunkInputs<T>,
     seeds: &Seeds<T>,
     data: &LaneData<T, L>,
+    workspaces: &Workspaces<T>,
 ) -> RusticolResult<FamilyRun<T>> {
     // Objects carry `object_columns` columns per row (one with dressed
     // rows); the accumulators every observable column.
     let columns = plan.object_columns();
     let v = lane_vector_len(L);
     let zero = &data.zero;
-    let mut pool = Pool::new(zero);
-    let mut numerator =
-        FamilyNumerator::zeros_on::<L>(index, family, plan.columns, family.support.clone(), zero);
+    let mut numerator = {
+        let mut numerators = workspaces
+            .numerators
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        FamilyNumerator::zeros_in::<L>(
+            index,
+            family,
+            plan.columns,
+            family.support.clone(),
+            &mut numerators,
+        )
+    };
+    let mut guard = workspaces.objects();
+    let pool = &mut *guard;
+    pool.begin();
     let mut outputs: Vec<Option<Vec<T>>> = (0..family.steps.len()).map(|_| None).collect();
     let weights: Vec<T> = family
         .leaves
@@ -104,7 +130,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
             let sources = step
                 .edges
                 .iter()
-                .map(|edge| source::<T, L>(edge, family, seeds, &weights, &mut outputs, &mut pool))
+                .map(|edge| source::<T, L>(edge, family, seeds, &weights, &mut outputs, pool))
                 .collect::<RusticolResult<Vec<_>>>()?;
             let mut trace = pool.take(ncoeff(step.rank_out) * v);
             let row_trace = family.row_traces.get(s).and_then(Option::as_ref);
@@ -131,8 +157,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
         match &step.split {
             None => {
                 for edge in &step.edges {
-                    let input =
-                        source::<T, L>(edge, family, seeds, &weights, &mut outputs, &mut pool)?;
+                    let input = source::<T, L>(edge, family, seeds, &weights, &mut outputs, pool)?;
                     dress_edge::<T, L>(
                         &plan.contents[edge.content],
                         step.seeded,
@@ -159,8 +184,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                     })
                     .collect();
                 for (edge, parts) in step.edges.iter().zip(&split.parts) {
-                    let input =
-                        source::<T, L>(edge, family, seeds, &weights, &mut outputs, &mut pool)?;
+                    let input = source::<T, L>(edge, family, seeds, &weights, &mut outputs, pool)?;
                     for part in parts {
                         let group = &split.groups[part.group];
                         let segment = split_segment(plan, step, group.vertex, edge.products);
@@ -211,6 +235,9 @@ pub fn run_family_on<T: Carrier, const L: usize>(
             }
             (None, _) => outputs[s] = Some(out),
         }
+    }
+    for out in outputs.into_iter().flatten() {
+        pool.give(out);
     }
     Ok(FamilyRun {
         numerator,

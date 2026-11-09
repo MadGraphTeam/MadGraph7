@@ -748,7 +748,7 @@ fn costs(step: &Step, contents: &[Content], vertices: &[Vertex]) -> (StepCost, O
 
 #[cfg(test)]
 mod tests {
-    use crate::loop_v2::dress::{ChunkInputs, LaneData, Reads, V2Batch};
+    use crate::loop_v2::dress::{ChunkInputs, LaneData, Reads, V2Batch, Workspaces};
     use crate::loop_v2::plan::{LoopProgramV4, Source};
     use crate::loop_v2::seeds::seeds;
     use crate::loop_v2::trie::{run_family, run_family_on};
@@ -999,6 +999,7 @@ mod tests {
             &inputs,
             &seeds,
             &data,
+            &Workspaces::new(1, &zero),
         )
         .unwrap();
         assert_eq!(
@@ -1069,8 +1070,16 @@ mod tests {
         let family = &template.families[0];
         let reads = Reads::of_families(std::iter::once(family));
         inputs.prepare(&template, &data, &reads, &reads);
-        let run =
-            run_family_on::<Rational, L>(&template, 0, family, &inputs, &seeds, &data).unwrap();
+        let run = run_family_on::<Rational, L>(
+            &template,
+            0,
+            family,
+            &inputs,
+            &seeds,
+            &data,
+            &Workspaces::new(1, &zero),
+        )
+        .unwrap();
         assert_eq!(
             run.numerator.accumulators,
             numerators(&restricted, &batch)[0]
