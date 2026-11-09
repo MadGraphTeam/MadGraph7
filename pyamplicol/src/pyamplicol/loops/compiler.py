@@ -107,10 +107,6 @@ def prepare_loop_request_model(
         compatibility=compatibility,
         covariant_multiplets=covariant_multiplets,
     )
-    if memo is not None and declarations.program is None:
-        # Lowered by the structure (no restriction card, or no
-        # simplification): the next preparation of this raw model reuses it.
-        memo.remember_program(raw, simplify, structure.scalars)
     ir = build_loop_model(structure.raw, scalar_program=structure.scalars)
     counterterms = prepare_counterterm_model(
         ir,

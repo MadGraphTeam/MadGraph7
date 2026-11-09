@@ -298,6 +298,62 @@ def test_one_preparation_per_recipe_and_one_lowering_per_model(
 
 
 @pytest.mark.loop_physics
+def test_a_program_the_restriction_does_not_lower_is_shared_and_stored(
+    seeded, monkeypatch, tmp_path
+):
+    """A model without a restriction card (``restriction = "none"``): the
+    restriction lowers nothing, so the memo lowers the model's program
+    itself and it is stored and reused like any other; cold and warm give
+    the artifact files of the preparation as it was
+    (``build_covariant_structure`` lowering the model)."""
+
+    from pyamplicol.api import Generator
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loops import preparation_cache as cache
+    from pyamplicol.loops.model_restrictions import prepare_loop_restrictions
+
+    root = _root(seeded, tmp_path / "cache")
+    monkeypatch.setenv("PYAMPLICOL_CACHE_DIR", str(root))
+    monkeypatch.delenv(ENVIRONMENT, raising=False)
+
+    def generate(name):
+        work = tmp_path / name
+        work.mkdir()
+        card = work / "card.toml"
+        text = _card(work / "artifact", "born")
+        card.write_text(
+            text.replace('restriction = "no_b_mass"', 'restriction = "none"')
+        )
+        Generator(resolve_config(card)).generate(_processes("born"), work / "artifact")
+        return work / "artifact"
+
+    with monkeypatch.context() as patch:
+        # The reference: the declarations as before (no memo lowering, no
+        # store), the program lowered by the covariant structure.
+        patch.setattr(
+            cache.PreparationMemo,
+            "restrictions",
+            lambda memo, raw, *, simplify=True: prepare_loop_restrictions(
+                raw, simplify=simplify
+            ),
+        )
+        reference = generate("reference")
+    assert not _entries(root)
+    spy = _Memos(monkeypatch)
+    cold = generate("cold")
+    warm = generate("warm")
+    cold_counts, warm_counts = (memo.counts for memo in spy.memos)
+    assert cold_counts["lowerings"] == 1 and cold_counts["program_saves"] == 1
+    assert warm_counts["lowerings"] == 0 and warm_counts["program_loads"] == 1
+    # No card: the restriction returned the model itself, without a program.
+    (declarations,) = spy.memos[0]._sources.values()
+    assert declarations.derived is declarations.original
+    assert len(_entries(root)) == 1
+    expected = _identity(reference)
+    assert _identity(cold) == expected and _identity(warm) == expected
+
+
+@pytest.mark.loop_physics
 def test_a_dry_run_prepares_a_generation_ahead(seeded, monkeypatch, tmp_path):
     """With the compiled model cached, the dry run (``Generator.plan``)
     fills the preparation cache; the generation that follows (a fresh
@@ -646,9 +702,24 @@ def test_content_simplification_and_code_identity_invalidate(
         assert len(list(store.directory.iterdir())) == entries
         uncached = prepare_loop_restrictions(raw).program
         assert _program_strings(program) == _program_strings(uncached)
-    # The other simplification lowers in the structure (no program here):
-    # its own key, nothing stored by the restriction.
+    # The other simplification: the restriction lowers nothing, the memo
+    # lowers the restricted model ``build_covariant_structure`` would lower,
+    # under its own key, stored beside the others.
+    from pyamplicol.loops.scalar_frontend import lower_scalar_program
+
     assert store.key(raw_model, False) != store.key(raw_model, True)
+    assert prepare_loop_restrictions(raw_model, simplify=False).program is None
+    memo, declarations, program = prepared(raw_model, simplify=False)
+    entries += 1
+    assert memo.counts["lowerings"] == 1 and memo.counts["program_saves"] == 1
+    assert len(list(store.directory.iterdir())) == entries
+    assert program.library.raw is declarations.derived
+    assert _program_strings(program) == _program_strings(
+        lower_scalar_program(declarations.derived)
+    )
+    memo, _, again = prepared(raw_model, simplify=False)
+    assert memo.counts["program_loads"] == 1 and memo.counts["lowerings"] == 0
+    assert _program_strings(again) == _program_strings(program)
     # A changed code identity: a miss, a new entry, the old ones stay.
     identity = cache.code_identity()
     monkeypatch.setattr(

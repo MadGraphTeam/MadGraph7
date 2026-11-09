@@ -168,8 +168,12 @@ class PreparationMemo:
 
     def restrictions(self, raw: Any, *, simplify: bool = True) -> Any:
         """``prepare_loop_restrictions(raw, simplify=simplify)``, formed once
-        per raw model and simplification (its program from the store when
-        one holds it)."""
+        per raw model and simplification, always with the scalar program of
+        its restricted model (from the store when one holds it): when the
+        restriction does not lower it (no restriction card, or no
+        simplification), it is lowered here from the same restricted model
+        ``build_covariant_structure`` would lower, so every model's program
+        is shared and stored alike."""
 
         from .model_restrictions import prepare_loop_restrictions
 
@@ -179,11 +183,11 @@ class PreparationMemo:
             self.counts["restriction_hits"] += 1
             return found
         self.counts["restrictions"] += 1
-        found = self._sources[key] = prepare_loop_restrictions(
-            raw,
-            simplify=simplify,
-            lower=functools.partial(self._lower, raw, simplify),
-        )
+        lower = functools.partial(self._lower, raw, simplify)
+        found = prepare_loop_restrictions(raw, simplify=simplify, lower=lower)
+        if found.program is None:
+            found = replace(found, program=lower(found.derived))
+        self._sources[key] = found
         return found
 
     def _lower(self, raw: Any, simplify: bool, derived: Any) -> Any:
@@ -202,19 +206,6 @@ class PreparationMemo:
         if self.store is not None and self.store.save(raw, simplify, program):
             self.counts["program_saves"] += 1
         return program
-
-    def remember_program(self, raw: Any, simplify: bool, program: Any) -> None:
-        """Keep the scalar program ``build_covariant_structure`` lowered for
-        restricted declarations that carry none (no restriction card, or
-        no simplification), for the next preparation of ``raw``."""
-
-        key = (self._raw_key(raw), simplify)
-        found = self._sources.get(key)
-        if found is not None and found.program is None:
-            if program.library.raw is not found.derived:
-                raise ValueError("scalar program belongs to another raw model")
-            self.counts["lowerings"] += 1
-            self._sources[key] = replace(found, program=program)
 
     # -- the request model --------------------------------------------------
 
