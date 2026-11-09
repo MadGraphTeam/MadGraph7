@@ -390,6 +390,9 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 f"subprocesses ({meta['incoming']} > {meta['outgoing']}): "
                 "use a closed-form scale choice"
             )
+        # before lc_flavors drops the flavours it switches to; the matrix
+        # elements loaded by the base class need it
+        self.switch = flavor_switch(meta, process)
         super().__init__(process, meta, subproc_id, unmerged_meta)
         self.meta = active_resonances(self.meta, process.get_mass, process.get_width)
         if unmerged_meta is not None and process.run_card["amplicol"]["lc_flavors"] != "all":
@@ -397,8 +400,6 @@ class AmplicolSubprocess(MadgraphSubprocess):
         self.meta = with_prior_factors(
             self.meta, process.run_card["amplicol"]["prior_partner_share"]
         )
-        # before lc_flavors drops the flavours it switches to
-        self.switch = flavor_switch(self.meta, process)
         self.meta = lc_flavors(self.meta, process.run_card["amplicol"]["lc_flavors"])
         if self.switch is not None and getattr(process, "custom_functions", None):
             raise RuntimeError(
