@@ -59,6 +59,12 @@
 #error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CPPCXTYPE_STDCOMPLEX or MGONGPU_CPPCXTYPE_CXSMPL for C++
 #endif
 
+// Double-word kernel (FPTYPE=ff/dd): CompleXDW DW<T>/XDW<T> arithmetic over FP64 buffers
+#if defined MGONGPU_DWTYPE_DOUBLE or defined MGONGPU_DWTYPE_FLOAT
+#define MGONGPU_DWTYPE 1
+#include "CompleXDW/DW.h"
+#endif
+
 // NB: namespace mgOnGpu includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
 namespace mgOnGpu
 {
@@ -90,13 +96,23 @@ namespace mgOnGpu
 #else
   typedef fptype fptype_momenta;
 #endif
+#if defined MGONGPU_DWTYPE_DOUBLE
+  typedef DW<double> fptype_amp;
+  typedef fptype_amp fptype_denom;
+#elif defined MGONGPU_DWTYPE_FLOAT
+  typedef DW<float> fptype_amp;
+  typedef fptype_amp fptype_denom;
+#else
   typedef fptype_momenta fptype_denom; // denominator precision == momenta precision
   typedef fptype fptype_amp;           // amplitudes/wavefunctions == fptype
+#endif
   typedef fptype2 fptype_colour;       // color algebra == fptype2
 
+#ifndef MGONGPU_DWTYPE
   // Valid precision ordering: colour <= amp <= momenta (4=fp32, 8=fp64)
   static_assert( sizeof( fptype_colour ) <= sizeof( fptype_amp ), "colour precision must not exceed amp precision" );
   static_assert( sizeof( fptype_amp ) <= sizeof( fptype_momenta ), "amp precision must not exceed momenta precision" );
+#endif
 
   // Maximum number of threads per block
   const int ntpbMAX = 1024; // NB: 512 is ok, but 1024 does fail with "too many resources requested for launch"

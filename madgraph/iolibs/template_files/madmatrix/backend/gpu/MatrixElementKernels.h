@@ -153,10 +153,10 @@ namespace madmatrix
     std::unique_ptr<DeviceBufferAmp> m_pHelJamps;
 
     // The super-buffer of nGoodHel numerator buffers (dynamically allocated because nGoodHel is determined at runtime)
-    std::unique_ptr<DeviceBufferSimple> m_pHelNumerators;
+    std::unique_ptr<DeviceBufferAmp> m_pHelNumerators;
 
     // The super-buffer of nGoodHel denominator buffers (dynamically allocated because nGoodHel is determined at runtime)
-    std::unique_ptr<DeviceBufferSimple> m_pHelDenominators;
+    std::unique_ptr<DeviceBufferAmp> m_pHelDenominators;
 
     // The super-buffer of ncolor_flow jamp2 buffers
     DeviceBufferAmp m_colJamp2s;

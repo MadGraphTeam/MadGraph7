@@ -229,7 +229,7 @@
 #ifndef MGONGPU_CPPSIMD
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3 ) );
 #else
-      volatile fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
+      MGONGPU_VOLATILE fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( p2 ) );
 #endif
       // In C++ ixxxxx, use a single ip/im numbering that is valid both for pp==0 and pp>0, which have two numbering schemes in Fortran ixxxxx:
@@ -280,9 +280,9 @@
       omega[1] = fmass / omega[0];
       const fptype_amp_v sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
       const fptype_amp_v pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0 );
-      volatile fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
-      volatile fptype_amp_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
-      volatile fptype_amp_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
+      MGONGPU_VOLATILE fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
+      MGONGPU_VOLATILE fptype_amp_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
+      MGONGPU_VOLATILE fptype_amp_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
       const cxtype_amp_v chi[2] = { cxmake( fpsqrt( chi0r2 ), 0 ),     // hack: dummy[ieppV] is not used if pp[ieppV]==0
                                 cxternary( ( pp3 == 0. ),
                                            cxmake( -nh, 0 ),
@@ -306,14 +306,14 @@
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.
       const fptype_amp_sv p0mp3 = pvec0 - pvec3;
-      volatile fptype_amp_sv p0mp3DENOM = fpternary( p0mp3 > 0, p0mp3, 1. ); // hack: dummy p0mp3DENOM[ieppV]=1 if p0mp3[ieppV]<=0
-      volatile fptype_amp_sv p0p3 = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
+      MGONGPU_VOLATILE fptype_amp_sv p0mp3DENOM = fpternary( p0mp3 > 0, p0mp3, 1. ); // hack: dummy p0mp3DENOM[ieppV]=1 if p0mp3[ieppV]<=0
+      MGONGPU_VOLATILE fptype_amp_sv p0p3 = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
                                               ( pvec1 * pvec1 + pvec2 * pvec2 ) / (const fptype_amp_sv)p0mp3DENOM,
                                               fpmax( pvec0 + pvec3, 0 ) ); // volatile fixes #736
-      volatile fptype_amp_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
+      MGONGPU_VOLATILE fptype_amp_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
                                              fpsqrt( p0p3 ) * (fptype_amp)nsf );
-      volatile fptype_amp_sv sqp0p3DENOM = fpternary( sqp0p3 != 0, (fptype_amp_sv)sqp0p3, 1. ); // hack: dummy sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
+      MGONGPU_VOLATILE fptype_amp_sv sqp0p3DENOM = fpternary( sqp0p3 != 0, (fptype_amp_sv)sqp0p3, 1. ); // hack: dummy sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
       cxtype_amp_sv chi[2] = { cxmake( (fptype_amp_v)sqp0p3, 0. ),
                            cxternary( sqp0p3 == 0,
                                       cxmake( -(fptype_amp)nhel * fpsqrt( (fptype_amp)2. * pvec0 ), 0. ),
@@ -607,8 +607,8 @@
       }
 
 #else
-      volatile fptype_amp_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
-      volatile fptype_amp_sv p2 = pt2 + ( pvec3 * pvec3 ); // volatile fixes #736
+      MGONGPU_VOLATILE fptype_amp_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
+      MGONGPU_VOLATILE fptype_amp_sv p2 = pt2 + ( pvec3 * pvec3 ); // volatile fixes #736
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( p2 ) );
       const fptype_amp_sv pt = fpmin( pp, fpsqrt( pt2 ) );
       // Branch A: pp == 0.
@@ -617,12 +617,12 @@
       const cxtype_amp vcA_4 = cxmake( 0, nsvahl * sqh );
       const cxtype_amp vcA_5 = cxmake( hel0, 0 );
       // Branch B: pp != 0.
-      volatile fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. ); // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
+      MGONGPU_VOLATILE fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. ); // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
       const fptype_amp_v emp = pvec0 / ( vmass * ppDENOM );         // hack: dummy[ieppV] is not used if pp[ieppV]==0
       const cxtype_amp_v vcB_2 = cxmake( hel0 * pp / vmass, 0 );
       const cxtype_amp_v vcB_5 = cxmake( hel0 * pvec3 * emp + hel * pt / ppDENOM * sqh, 0 ); // hack: dummy[ieppV] is not used if pp[ieppV]==0
       // Branch B1: pp != 0. and pt != 0.
-      volatile fptype_amp_v ptDENOM = fpternary( pt != 0, pt, 1. );                                                     // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
+      MGONGPU_VOLATILE fptype_amp_v ptDENOM = fpternary( pt != 0, pt, 1. );                                                     // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
       const fptype_amp_v pzpt = pvec3 / ( ppDENOM * ptDENOM ) * sqh * hel;                                              // hack: dummy[ieppV] is not used if pp[ieppV]==0
       const cxtype_amp_v vcB1_3 = cxmake( hel0 * pvec1 * emp - pvec1 * pzpt, -fpamp_scalar(nsvahl) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
       const cxtype_amp_v vcB1_4 = cxmake( hel0 * pvec2 * emp - pvec2 * pzpt, fpamp_scalar(nsvahl) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
@@ -672,7 +672,7 @@
 #ifndef MGONGPU_CPPSIMD
       const fptype_amp_sv pt = fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) );
 #else
-      volatile fptype_amp_sv pt2 = pvec1 * pvec1 + pvec2 * pvec2; // volatile fixes #736
+      MGONGPU_VOLATILE fptype_amp_sv pt2 = pvec1 * pvec1 + pvec2 * pvec2; // volatile fixes #736
       const fptype_amp_sv pt = fpsqrt( pt2 );
 #endif
       w[0] = cxzero_sv();
@@ -693,7 +693,7 @@
       }
 #else
       // Branch A: pt != 0.
-      volatile fptype_amp_v ptDENOM = fpternary( pt != 0, pt, 1. );                             // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
+      MGONGPU_VOLATILE fptype_amp_v ptDENOM = fpternary( pt != 0, pt, 1. );                             // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
       const fptype_amp_v pzpt = pvec3 / ( pp * ptDENOM ) * sqh * hel;                           // hack: dummy[ieppV] is not used if pt[ieppV]==0
       const cxtype_amp_v vcA_3 = cxmake( -pvec1 * pzpt, -fpamp_scalar(nsv) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
       const cxtype_amp_v vcA_4 = cxmake( -pvec2 * pzpt, fpamp_scalar(nsv) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
@@ -821,7 +821,7 @@
         w[3] = sfomeg[0] * chi[ip];
       }
 #else
-      volatile fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
+      MGONGPU_VOLATILE fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( p2 ) );
       // Branch A: pp == 0.
       // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
@@ -842,9 +842,9 @@
       const int imB = ( 1 - nh ) / 2;
       const fptype_amp_v sfomeg[2] = { sf[0] * omega[ipB], sf[1] * omega[imB] };
       const fptype_amp_v pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
-      volatile fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
-      volatile fptype_amp_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
-      volatile fptype_amp_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
+      MGONGPU_VOLATILE fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
+      MGONGPU_VOLATILE fptype_amp_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
+      MGONGPU_VOLATILE fptype_amp_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
       const cxtype_amp_v chi[2] = { cxmake( fpsqrt( chi0r2 ), 0. ),    // hack: dummy[ieppV] is not used if pp[ieppV]==0
                                 ( cxternary( ( pp3 == 0. ),
                                              cxmake( -nh, 0. ),
@@ -868,14 +868,14 @@
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.
       const fptype_amp_sv p0mp3 = pvec0 - pvec3;
-      volatile fptype_amp_sv p0mp3DENOM = fpternary( p0mp3 > 0, p0mp3, 1. ); // hack: dummy p0mp3DENOM[ieppV]=1 if p0mp3[ieppV]<=0
-      volatile fptype_amp_sv p0p3 = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
+      MGONGPU_VOLATILE fptype_amp_sv p0mp3DENOM = fpternary( p0mp3 > 0, p0mp3, 1. ); // hack: dummy p0mp3DENOM[ieppV]=1 if p0mp3[ieppV]<=0
+      MGONGPU_VOLATILE fptype_amp_sv p0p3 = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
                                               ( pvec1 * pvec1 + pvec2 * pvec2 ) / (const fptype_amp_sv)p0mp3DENOM,
                                               fpmax( pvec0 + pvec3, 0 ) ); // volatile fixes #736
-      volatile fptype_amp_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
+      MGONGPU_VOLATILE fptype_amp_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
                                              fpsqrt( p0p3 ) * (fptype_amp)nsf );
-      volatile fptype_amp_v sqp0p3DENOM = fpternary( sqp0p3 != 0, (fptype_amp_sv)sqp0p3, 1. ); // hack: sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
+      MGONGPU_VOLATILE fptype_amp_v sqp0p3DENOM = fpternary( sqp0p3 != 0, (fptype_amp_sv)sqp0p3, 1. ); // hack: sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
       const cxtype_amp_v chi[2] = { cxmake( (fptype_amp_v)sqp0p3, 0. ),
                                 cxternary( ( sqp0p3 == 0. ),
                                            cxmake( (fptype_amp)-nhel, 0. ) * fpsqrt( (fptype_amp)2. * pvec0 ),

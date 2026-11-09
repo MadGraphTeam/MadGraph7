@@ -165,10 +165,10 @@ namespace
     if( m2_out ) m2_out[i_event + offset] = matrix_elements[i_event];
     if( amp2_out )
     {
-      double denominator = denominators[i_event];
+      double denominator = static_cast<double>( denominators[i_event] );
       for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
       {
-        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_event * ProcessData::ndiagrams + i_diag], denominator );
+        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( static_cast<double>( numerators[i_event * ProcessData::ndiagrams + i_diag] ), denominator );
       }
     }
     if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;

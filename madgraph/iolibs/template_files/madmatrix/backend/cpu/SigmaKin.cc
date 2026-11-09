@@ -641,15 +641,15 @@ namespace madmatrix
           for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
           {
             if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-            normalization += allNumerators[ievt / neppV * neppV * ndiagrams +
-                                           ichan * neppV + ieppV % neppV];
+            normalization += fpentry( allNumerators, ievt / neppV * neppV * ndiagrams +
+                                                     ichan * neppV + ieppV % neppV );
           }
           channelIdVec[ieppV] = mgOnGpu::nchannels;
           for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
           {
             if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-            numerator_sum += allNumerators[ievt / neppV * neppV * ndiagrams +
-                                           ichan * neppV + ieppV % neppV];
+            numerator_sum += fpentry( allNumerators, ievt / neppV * neppV * ndiagrams +
+                                                     ichan * neppV + ieppV % neppV );
             if( allrnddiagram[ievt] < numerator_sum / normalization )
             {
               channelIdVec[ieppV] = ichan + 1;
@@ -753,8 +753,8 @@ namespace madmatrix
           // A vanishing denominator means every diagram's |amp|^2 is zero for this event; clamp to the
           // smallest normal value so the channel-weight division stays finite (0/tiny is 0) rather than
           // turning a matrix element that is simply zero into a nan (see color_sum.cc fix #435 note).
-          const fptype_sv safe_den = denominators_sv + std::numeric_limits<fptype>::min();
-          MEs_sv *= numerators_sv[channelId - 1] / safe_den;
+          const fptype_sv safe_den = static_cast<fptype_sv>( denominators_sv ) + std::numeric_limits<fptype>::min();
+          MEs_sv *= static_cast<fptype_sv>( numerators_sv[channelId - 1] ) / safe_den;
         }
       }
     }

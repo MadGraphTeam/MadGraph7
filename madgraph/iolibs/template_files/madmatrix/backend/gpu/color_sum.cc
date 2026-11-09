@@ -53,7 +53,7 @@ namespace madmatrix
 
   __global__ void
   color_sum_kernel( fptype* allMEs,                 // output: allMEs[nevt], add |M|^2 for one specific helicity
-                    const fptype* allJamps,         // input: jamp[ncolor*2*nevt] for one specific helicity
+                    const fptype_amp* allJamps,     // input: jamp[ncolor*2*nevt] for one specific helicity
                     const int nGoodHel,             // input: number of good helicities
                     const int nevtIfAllHelicities ) // input: zero in single-helicity mode, number of events in multi-helicity mode
   {
@@ -69,16 +69,16 @@ namespace madmatrix
     {
       constexpr int ihel0 = 0; // the input buffer allJamps already points to a specific helicity
       cxtype_amp jamp = J_ACCESS::kernelAccessIcolIhelNhelConst( allJamps, icol, ihel0, nGoodHel );
-      jampR[icol] = jamp.real();
-      jampI[icol] = jamp.imag();
+      jampR[icol] = cxreal( jamp );
+      jampI[icol] = cximag( jamp );
     }
     fptype deltaMEs = { 0 };
     for( int icol = 0; icol < ncolor; icol++ )
     {
       fptype_colour ztempR = { 0 };
       fptype_colour ztempI = { 0 };
-      fptype_colour jampRi = jampR[icol];
-      fptype_colour jampIi = jampI[icol];
+      fptype_colour jampRi = static_cast<fptype_colour>( jampR[icol] );
+      fptype_colour jampIi = static_cast<fptype_colour>( jampI[icol] );
       // OLD IMPLEMENTATION (ihel3: symmetric square matrix) - Loop over all jcol
       //for( int jcol = 0; jcol < ncolor; jcol++ )
       //{
@@ -92,8 +92,8 @@ namespace madmatrix
       ztempI += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampIi; // use fptype_colour version of color matrix
       for( int jcol = 0; jcol < icol; jcol++ )
       {
-        fptype_colour jampRj = jampR[jcol];
-        fptype_colour jampIj = jampI[jcol];
+        fptype_colour jampRj = static_cast<fptype_colour>( jampR[jcol] );
+        fptype_colour jampIj = static_cast<fptype_colour>( jampI[jcol] );
         ztempR += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype_colour version of color matrix
         ztempI += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype_colour version of color matrix
       }

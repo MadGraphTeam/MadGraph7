@@ -17,8 +17,13 @@ namespace madmatrix
   // A class describing the internal layout of memory buffers for numerators
   // This implementation reuses the plain ARRAY[nevt] implementation of MemoryAccessGs
 
+#ifdef MGONGPU_DWTYPE
+  typedef KernelAccessDW HostAccessNumerators;
+  typedef KernelAccessDW DeviceAccessNumerators;
+#else
   typedef KernelAccessGs<false> HostAccessNumerators;
   typedef KernelAccessGs<true> DeviceAccessNumerators;
+#endif
 
   //----------------------------------------------------------------------------
 

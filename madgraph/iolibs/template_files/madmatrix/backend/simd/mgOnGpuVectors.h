@@ -212,16 +212,16 @@ namespace madmatrix
   // --- Type definition (using vector compiler extensions: need -march=...)
 #ifdef __clang__ // https://clang.llvm.org/docs/LanguageExtensions.html#vectors-and-extended-vectors
   typedef unsigned int uint_v __attribute__( ( ext_vector_type( neppV ) ) );
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MGONGPU_LANE_DOUBLE
   typedef long int bool_v __attribute__( ( ext_vector_type( neppV ) ) ); // bbbb
-#elif defined MGONGPU_FPTYPE_FLOAT
+#else
   typedef int bool_v __attribute__( ( ext_vector_type( neppV ) ) );                         // bbbb
 #endif
 #else // gcc
   typedef unsigned int uint_v __attribute__( ( vector_size( neppV * sizeof( unsigned int ) ), aligned( neppV * sizeof( unsigned int ) ) ) );
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MGONGPU_LANE_DOUBLE
   typedef long int bool_v __attribute__( ( vector_size( neppV * sizeof( long int ) ), aligned( neppV * sizeof( long int ) ) ) ); // bbbb
-#elif defined MGONGPU_FPTYPE_FLOAT
+#else
   typedef int bool_v __attribute__( ( vector_size( neppV * sizeof( int ) ), aligned( neppV * sizeof( int ) ) ) ); // bbbb
 #endif
 #endif
@@ -569,6 +569,7 @@ namespace madmatrix
   //--------------------------------------------------------------------------
 
   // Functions and operators for bool_v (ternary and masks)
+#ifndef MGONGPU_DWTYPE_FLOAT // FP64 buffer vectors: their masks are not the float-lane bool_v of FPTYPE=ff
 
 
   inline fptype_v
@@ -680,6 +681,8 @@ namespace madmatrix
 #endif
   }
 
+#endif
+
   /*
   inline bool
   maskor( const bool_v& mask )
@@ -702,6 +705,7 @@ namespace madmatrix
   //--------------------------------------------------------------------------
 
   // Functions and operators for fptype_v (min/max)
+#ifndef MGONGPU_DWTYPE_FLOAT // FP64 buffer vectors: their masks are not the float-lane bool_v of FPTYPE=ff
 
 
   inline fptype_v
@@ -743,6 +747,8 @@ namespace madmatrix
     return fpternary( ( a < b ), a, b );
   }
   */
+
+#endif
 
   //--------------------------------------------------------------------------
 
@@ -870,11 +876,22 @@ namespace madmatrix
   typedef uint_v uint_sv;
   typedef cxtype_v cxtype_sv;
   typedef cxtype_v_ref cxtype_sv_ref;
+#ifdef MGONGPU_DWTYPE
+  typedef fptype_amp_v fptype_amp_sv;
+  typedef cxtype_amp_v cxtype_amp_sv;
+#else
   typedef fptype_v fptype_amp_v;              typedef fptype_v fptype_amp_sv;
   typedef cxtype_v cxtype_amp_v;              typedef cxtype_v cxtype_amp_sv;
+#endif
   typedef fptype2_v fptype_colour_v;          typedef fptype2_v fptype_colour_sv;
   typedef cxtype_v cxtype_colour_v;           typedef cxtype_v cxtype_colour_sv;
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MGONGPU_DWTYPE
+  // FPTYPE=ff/dd: kernel momenta, their sums and the denominators in double words
+  typedef fptype_amp_v fptype_momenta_v;      typedef fptype_amp_v fptype_momenta_sv;
+  typedef fptype_amp_v fptype_denom_v;        typedef fptype_amp_v fptype_denom_sv;
+  typedef cxtype_amp_v cxtype_momenta_v;      typedef cxtype_amp_v cxtype_momenta_sv;
+  typedef cxtype_amp_v cxtype_denom_v;        typedef cxtype_amp_v cxtype_denom_sv;
+#elif defined MGONGPU_SIMD_DENOM64
   // FPTYPE=v: momenta computed 2x to fill for rest
   typedef fptype_denom_sv fptype_momenta_v;     typedef fptype_denom_sv fptype_momenta_sv;
   typedef fptype_denom_sv fptype_denom_v;       // fptype_denom_sv is the struct defined above

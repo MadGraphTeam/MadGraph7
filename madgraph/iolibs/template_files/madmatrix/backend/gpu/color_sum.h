@@ -62,7 +62,7 @@ namespace madmatrix
       return cxtype_amp_ref( buffer[0 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt],
                          buffer[1 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt] );
     }
-    static __device__ inline const cxtype
+    static __device__ inline const cxtype_amp
     kernelAccessIcolIhelNhelConst( const fptype_amp* buffer, const int icol, const int ihel, const int nhel )
     {
       const int ncolor = ProcessData::ncolor; // the number of leading colors

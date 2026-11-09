@@ -10,6 +10,7 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuFptypes.h"
+#include "mgOnGpuDW.h"
 
 #include <iostream>
 #include <type_traits>
@@ -221,6 +222,11 @@ namespace madmatrix
   typedef cxtype_momenta cxtype_denom;
   typedef std::complex<fptype_amp> cxtype_amp;
   typedef std::complex<fptype_colour> cxtype_colour;
+#elif defined MGONGPU_DWTYPE
+  typedef cxsmpl<fptype_momenta> cxtype_momenta;
+  typedef XDW<fptype_amp::BaseType> cxtype_amp;
+  typedef cxtype_amp cxtype_denom;
+  typedef cxsmpl<fptype_colour> cxtype_colour;
 #else
   typedef cxsmpl<fptype_momenta> cxtype_momenta;
   typedef cxtype_momenta cxtype_denom;

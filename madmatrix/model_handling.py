@@ -266,9 +266,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('    const cxtype_amp_sv* w%s = W_ACCESS::kernelAccessConst( %s.w );\n' % ( name, name ) )
             if name.startswith('COUP'): # AV from cxtype_sv to fptype array (running alphas #373)
                 if 'M' in self.tag:
-                    out.write('    cxtype_sv %s;\n' % name )
+                    out.write('    cxtype_amp_sv %s;\n' % name )
                 else:
-                    out.write('    const cxtype_sv %s = C_ACCESS::kernelAccessConst( all%s );\n' % ( name, name ) )
+                    out.write('    const cxtype_amp_sv %s = C_ACCESS::kernelAccessConst( all%s );\n' % ( name, name ) )
         if not self.offshell:
             vname = 'vertex'
             access = 'A_ACCESS'
@@ -2918,14 +2918,14 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             magnitude, imaginary = number.imag, True
         else:
             # never seen in practice: a color coefficient is real or imaginary
-            return 1, 'cxtype( %s, %s ) * ' % (cls.jamp_number(number.real),
+            return 1, 'cxtype_amp( %s, %s ) * ' % (cls.jamp_number(number.real),
                                                cls.jamp_number(number.imag))
         sign = -1 if magnitude < 0 else 1
         magnitude = abs(magnitude)
         if magnitude == 1:
-            return sign, ('cxtype( 0, 1 ) * ' if imaginary else '')
+            return sign, ('cxtype_amp( 0, 1 ) * ' if imaginary else '')
         if imaginary:
-            return sign, '%s * cxtype( 0, 1 ) * ' % cls.jamp_number(magnitude)
+            return sign, '%s * cxtype_amp( 0, 1 ) * ' % cls.jamp_number(magnitude)
         return sign, '%s * ' % cls.jamp_number(magnitude)
 
     @classmethod

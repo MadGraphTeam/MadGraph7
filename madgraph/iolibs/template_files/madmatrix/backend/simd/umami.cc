@@ -409,7 +409,7 @@ extern "C"
         std::size_t i_page = i_sorted / page_size;
         std::size_t i_vector = i_sorted % page_size; // vector lane
 
-        double denominator = denominators[i_sorted];
+        double denominator = fpentry( denominators, i_sorted );
         if( m2_out != nullptr )
         {
           m2_out[i_event + offset] = matrix_elements[i_sorted];
@@ -418,7 +418,7 @@ extern "C"
         {
           for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_page * page_size * ProcessData::ndiagrams + i_diag * page_size + i_vector], denominator );
+            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( fpentry( numerators, i_page * page_size * ProcessData::ndiagrams + i_diag * page_size + i_vector ), denominator );
           }
         }
         if( diagram_out != nullptr )
@@ -441,7 +441,7 @@ extern "C"
         std::size_t i_page = i_event / page_size;
         std::size_t i_vector = i_event % page_size;
 
-        double denominator = denominators[i_event];
+        double denominator = fpentry( denominators, i_event );
         if( m2_out != nullptr )
         {
           m2_out[i_event + offset] = matrix_elements[i_event];
@@ -450,7 +450,7 @@ extern "C"
         {
           for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_page * page_size * ProcessData::ndiagrams + i_diag * page_size + i_vector], denominator );
+            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( fpentry( numerators, i_page * page_size * ProcessData::ndiagrams + i_diag * page_size + i_vector ), denominator );
           }
         }
         if( diagram_out != nullptr )

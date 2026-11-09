@@ -10,6 +10,7 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuFptypes.h"
+#include "mgOnGpuDW.h"
 
 #include <cassert>
 #include <iostream>
@@ -318,7 +319,12 @@ namespace madmatrix
   static_assert( sizeof( cxtype ) == mgOnGpu::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
 
   // --- Multi-precision complex types (same platform logic as cxtype)
-#ifdef __CUDACC__ // this must be __CUDACC__
+#if defined MGONGPU_DWTYPE
+  typedef cxsmpl<fptype_momenta> cxtype_momenta;
+  typedef XDW<fptype_amp::BaseType> cxtype_amp;
+  typedef cxtype_amp cxtype_denom;
+  typedef cxsmpl<fptype_colour> cxtype_colour;
+#elif defined __CUDACC__ // this must be __CUDACC__
 #if defined MGONGPU_CUCXTYPE_THRUST
   typedef thrust::complex<fptype_momenta> cxtype_momenta;
   typedef cxtype_momenta cxtype_denom;
@@ -913,11 +919,11 @@ namespace madmatrix
   typedef unsigned int uint_sv;
   typedef cxtype cxtype_sv;
   typedef cxtype_ref cxtype_sv_ref;
-  typedef fptype_momenta fptype_momenta_sv;   typedef fptype_momenta fptype_momenta_v;
+  typedef fptype_denom fptype_momenta_sv;     typedef fptype_denom fptype_momenta_v;
   typedef fptype_denom fptype_denom_sv;       typedef fptype_denom fptype_denom_v;
   typedef fptype_amp fptype_amp_sv;           typedef fptype_amp fptype_amp_v;
   typedef fptype_colour fptype_colour_sv;     typedef fptype_colour fptype_colour_v;
-  typedef cxtype_momenta cxtype_momenta_sv;   typedef cxtype_momenta cxtype_momenta_v;
+  typedef cxtype_denom cxtype_momenta_sv;     typedef cxtype_denom cxtype_momenta_v;
   typedef cxtype_denom cxtype_denom_sv;       typedef cxtype_denom cxtype_denom_v;
   typedef cxtype_amp cxtype_amp_sv;           typedef cxtype_amp cxtype_amp_v;
   typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;

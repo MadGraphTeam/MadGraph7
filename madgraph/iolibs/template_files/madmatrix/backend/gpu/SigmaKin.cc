@@ -447,7 +447,7 @@ namespace madmatrix
       fptype_amp* numerators = allNumerators + ievt * ndiagrams;
       fptype denominator = 0;
       for( int idiag = 0; idiag < ndiagrams; ++idiag )
-        denominator += numerators[idiag];
+        denominator += static_cast<fptype>( numerators[idiag] );
       allDenominators[ievt] = denominator;
       if( mulChannelWeight )
       {
@@ -461,7 +461,7 @@ namespace madmatrix
 #elif defined MGONGPU_FPTYPE_FLOAT
         constexpr fptype fptypeMin = FLT_MIN; // smallest normal float
 #endif
-        allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
+        allMEs[ievt] *= static_cast<fptype>( numerators[channelId - 1] ) / ( denominator + fptypeMin );
       }
     }
   }
@@ -518,13 +518,13 @@ namespace madmatrix
       for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-        normalization += allNumerators[ievt * ndiagrams + ichan];
+        normalization += static_cast<fptype>( allNumerators[ievt * ndiagrams + ichan] );
       }
       channelId = mgOnGpu::nchannels;
       for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-        numerator_sum += allNumerators[ievt * ndiagrams + ichan];
+        numerator_sum += static_cast<fptype>( allNumerators[ievt * ndiagrams + ichan] );
         if( allrnddiagram[ievt] < numerator_sum / normalization )
         {
           channelId = ichan + 1;
