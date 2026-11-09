@@ -518,7 +518,7 @@ mod tests {
             currents: Vec::new(),
             row_traces: Vec::new(),
             support: None,
-            walk: std::sync::OnceLock::new(),
+            walk: Default::default(),
             dependents: crate::loop_v2::plan::DependentsCache::default(),
         };
         let columns = 5;
