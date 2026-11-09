@@ -141,6 +141,26 @@ def check_identical(paths: list, what: str) -> None:
             raise MergeError(f"{what} differs between {paths[0]} and {path}")
 
 
+_MERGED_DATA_FILES = (
+    "channels.json", "data.json", "globals.tar", "lhe_meta.json", "groups.json")
+
+
+def merge_weighting_groups(inputs: list, channel_offsets: list, output: str) -> None:
+    """Concatenate the weighting groups (one per subprocess that has weighting
+    steps, [amplicol] ones) of the gridpacks. A group refers to its channels by
+    their position in the channels of its gridpack, which is shifted by the
+    channels of the gridpacks before it, since the merged channels.json lists
+    them in the order of the gridpacks."""
+    groups = []
+    for path, offset in zip(inputs, channel_offsets):
+        with open(path) as f:
+            for group in json.load(f):
+                group["channel_indices"] = [i + offset for i in group["channel_indices"]]
+                groups.append(group)
+    with open(output, "w") as f:
+        json.dump(groups, f, separators=(",", ":"))
+
+
 def merge_gridpack_data(inputs: list, output: str) -> None:
     """Merge the data/ directories ``inputs`` into the new directory ``output``.
 
@@ -152,7 +172,7 @@ def merge_gridpack_data(inputs: list, output: str) -> None:
     if not inputs:
         raise MergeError("no gridpack to merge")
     for name in os.listdir(inputs[0]):
-        if name not in ("channels.json", "data.json", "globals.tar", "lhe_meta.json"):
+        if name not in _MERGED_DATA_FILES:
             check_identical(
                 [os.path.join(path, name) for path in inputs], f"data/{name}"
             )
@@ -171,7 +191,9 @@ def merge_gridpack_data(inputs: list, output: str) -> None:
 
     channels = {}
     estimates = set()
+    channel_offsets = []
     for path in inputs:
+        channel_offsets.append(len(channels))
         for name, (text, value) in split_channels(
             os.path.join(path, "channels.json")
         ).items():
@@ -195,7 +217,7 @@ def merge_gridpack_data(inputs: list, output: str) -> None:
     })
     os.makedirs(output)
     for name in os.listdir(inputs[0]):
-        if name not in ("channels.json", "data.json", "globals.tar", "lhe_meta.json"):
+        if name not in _MERGED_DATA_FILES:
             shutil.copy(os.path.join(inputs[0], name), output)
     merge_lhe_meta([os.path.join(path, "lhe_meta.json") for path in inputs],
                    os.path.join(output, "lhe_meta.json"))
@@ -203,6 +225,10 @@ def merge_gridpack_data(inputs: list, output: str) -> None:
         f.write(
             "{" + ",".join(f"{json.dumps(n)}:{t}" for n, t in channels.items()) + "}"
         )
+    if "groups.json" in os.listdir(inputs[0]):
+        merge_weighting_groups(
+            [os.path.join(path, "groups.json") for path in inputs], channel_offsets,
+            os.path.join(output, "groups.json"))
     data = dict(datas[0], matrix_element_indices=indices)
     with open(os.path.join(output, "data.json"), "w") as f:
         json.dump(data, f)

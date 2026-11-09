@@ -206,3 +206,21 @@ class TestMergeGridpacks(unittest.TestCase):
         merge.merge_gridpack_data(paths, self.path("out"))
         with open(os.path.join(self.path("out"), "data.json")) as f:
             self.assertEqual(json.load(f)["matrix_element_indices"], [0, 1, 2, 3])
+
+
+class TestMergeWeightingGroups(unittest.TestCase):
+
+    def test_groups_are_concatenated_with_shifted_channels(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inputs = []
+            for i, indices in enumerate([[0, 1], [0]]):
+                path = os.path.join(tmp, "groups%d.json" % i)
+                with open(path, "w") as f:
+                    json.dump([{"channel_indices": indices, "steps": [i]}], f)
+                inputs.append(path)
+            output = os.path.join(tmp, "merged.json")
+            merge.merge_weighting_groups(inputs, [0, 2], output)
+            with open(output) as f:
+                groups = json.load(f)
+        self.assertEqual(groups, [{"channel_indices": [0, 1], "steps": [0]},
+                                  {"channel_indices": [2], "steps": [1]}])

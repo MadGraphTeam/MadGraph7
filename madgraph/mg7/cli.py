@@ -755,6 +755,12 @@ def main() -> None:
              "as an interactive session: invalid \"set\" commands then only warn")
     args = parser.parse_args()
 
+    # A cluster job asks nothing, whatever stdin of the submitting process is.
+    if args.cluster_job:
+        _raise_open_file_limit()
+        run_cluster_job(os.path.abspath(args.cluster_job))
+        return
+
     # The answers to the questions are read from stdin as in an interactive
     # session, where a command that cannot be applied (e.g. an invalid "set")
     # is only a warning: refuse that mode unless asked for. --decay-widths and
@@ -775,11 +781,6 @@ def main() -> None:
             extra_make_args=args.make_arg)
         with open(args.decay_widths, "w") as f:
             json.dump(results, f)
-        return
-
-    if args.cluster_job:
-        _raise_open_file_limit()
-        run_cluster_job(os.path.abspath(args.cluster_job))
         return
 
     line = "generate_events" if args.ask_edit_cards else "generate_events -f"

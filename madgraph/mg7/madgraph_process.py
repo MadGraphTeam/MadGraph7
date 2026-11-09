@@ -28,7 +28,9 @@ from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custo
 from madgraph.mg7.observables import CutItem, HistItem, build_observable, clean_pids, observable_pids
 from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
-from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess, amplicol_subproc_args, is_amplicol
+from madgraph.mg7.subprocess_amplicol import (
+    AmplicolSubprocess, amplicol_parameters, amplicol_subproc_args, is_amplicol,
+)
 from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
 # From this many subprocess directories to compile, the standard headers are
@@ -329,6 +331,7 @@ class MadgraphProcess:
         self.contexts = []
         # AmpliCol libraries, shared by all channels of their process
         self.amplicol_apis = {}
+        self.amplicol_positions = None
         # [path format, init path, parameters] of every load_matrix_element, in order
         self.loaded_matrix_elements = []
         self.device_types = []
@@ -1402,23 +1405,41 @@ class MadgraphProcess:
         self.event_generator_config = cfg
         self.event_generator = None
 
-    def me_layout(self) -> tuple[list[str], list[int]]:
+    def me_layout(self) -> tuple[list[list], list[int], dict[str, int]]:
         """The matrix elements in the order they are loaded into a context
-        (after the custom functions), and the position of the first one of every
-        subprocess (merge group) in it. The compiled functions refer to a matrix
-        element by its position, so a run that integrates only some of the
-        subprocesses still loads them at their position in the full list, which
-        is also the order data.json of a gridpack lists them in."""
+        (after the custom functions) as [path, init path, parameters], the
+        position of the first one of every subprocess (merge group) in it, and
+        the position of every AmpliCol library by its path. The compiled
+        functions refer to a matrix element by its position, so a run that
+        integrates only some of the subprocesses still loads them at their
+        position in the full list, which is also the order data.json of a
+        gridpack lists them in. An AmpliCol library is loaded once, for the
+        first subprocess that needs it, followed by its full-colour ratio."""
         if self.merged_subprocess_data is None:
             groups = [[i] for i in range(len(self.subprocess_data))]
         else:
             groups = [meta["subprocesses"] for meta in self.merged_subprocess_data]
-        paths = []
+        full_colour = self.run_card["amplicol"]["color_accuracy"] != "lc"
+        entries = []
         offsets = []
+        amplicol_positions = {}
         for group in groups:
-            offsets.append(len(paths))
-            paths.extend(self.subprocess_data[i]["me_path"] for i in group)
-        return paths, offsets
+            offsets.append(len(entries))
+            for i in group:
+                meta = self.subprocess_data[i]
+                if not is_amplicol(meta):
+                    entries.append([meta["me_path"], self.param_card_path,
+                                    me_parameters(self.run_card)])
+                    continue
+                parameters = amplicol_parameters(meta, self)
+                libraries = [(meta["me_path"], meta["artifact"])]
+                if full_colour:
+                    libraries.append((meta["ratio_path"], meta["ratio_artifact"]))
+                for path, artifact in libraries:
+                    if path not in amplicol_positions:
+                        amplicol_positions[path] = len(entries)
+                        entries.append([path, artifact, parameters])
+        return entries, offsets, amplicol_positions
 
     def init_subprocesses(self) -> None:
         self.backends = self.compile_matrix_elements()
@@ -1433,11 +1454,11 @@ class MadgraphProcess:
                 f"the {len(metas)} of this process"
             )
         self.selected_subprocess_ids = sorted(selection) or list(range(len(metas)))
-        if selection and any(is_amplicol(meta) for meta in self.subprocess_data):
-            raise ValueError(
-                "subprocess_selection is not supported for [amplicol] processes")
-        # positions only matter for a selection, and amplicol never has one
-        me_offsets = self.me_layout()[1] if selection else None
+        # positions only matter for a selection
+        self.amplicol_positions = None
+        me_offsets = None
+        if selection:
+            _, me_offsets, self.amplicol_positions = self.me_layout()
         self.subprocesses = []
         for subproc_id in self.selected_subprocess_ids:
             meta = metas[subproc_id]
@@ -1446,7 +1467,9 @@ class MadgraphProcess:
                 meta["subprocesses"][0] if unmerged is not None else subproc_id]
             # an AmpliCol subprocess is never merged with another one
             subproc_class = AmplicolSubprocess if is_amplicol(first) else MadgraphSubprocess
-            kwargs = {} if me_offsets is None else {"me_index": me_offsets[subproc_id]}
+            # an AmpliCol subprocess finds its libraries by path, see amplicol_positions
+            kwargs = ({} if me_offsets is None or is_amplicol(first)
+                      else {"me_index": me_offsets[subproc_id]})
             self.subprocesses.append(
                 subproc_class(self, meta, subproc_id, unmerged, **kwargs))
 
@@ -2265,12 +2288,11 @@ class MadgraphProcess:
         # the runs that integrate them, so they are listed as they would load
         matrix_elements = list(self.loaded_matrix_elements)
         if self.run_card["phasespace"]["subprocess_selection"]:
-            me_paths = self.me_layout()[0]
-            matrix_elements += [None] * (len(me_paths) - len(matrix_elements))
+            layout = self.me_layout()[0]
+            matrix_elements += [None] * (len(layout) - len(matrix_elements))
             matrix_elements = [
-                entry if entry is not None
-                else [path, self.param_card_path, me_parameters(self.run_card)]
-                for path, entry in zip(me_paths, matrix_elements)
+                entry if entry is not None else full
+                for full, entry in zip(layout, matrix_elements)
             ]
         matrix_element_indices = [
             i for i, entry in enumerate(self.loaded_matrix_elements) if entry is not None]

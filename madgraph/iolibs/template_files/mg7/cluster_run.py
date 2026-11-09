@@ -23,12 +23,14 @@ import json
 import logging
 import math
 import os
+import shlex
 import shutil
 import sys
 import time
 
 from madgraph.iolibs.template_files.mg7 import combine_cluster
 from madgraph.mg7 import launch
+from madgraph.various.banner import RunCardMG7
 from madgraph.iolibs.template_files.mg7 import merge_gridpacks
 from madgraph.various import cluster as cluster_module
 
@@ -240,8 +242,16 @@ class ClusterRun:
         required output) and wait until they are done."""
         cluster = self.cluster_objects[name][0]
         for job_dir, arguments, required_output, program in jobs:
+            # Batch systems run a copy of the submitted script (slurm: in its
+            # spool directory), but bin/generate_events finds the directory it
+            # works in from its own location. A launcher script that runs the
+            # real file keeps that location.
+            launcher = os.path.join(job_dir, "launch.sh")
+            with open(launcher, "w") as f:
+                f.write("#!/bin/bash\nexec %s \"$@\"\n" % shlex.quote(program))
+            os.chmod(launcher, 0o755)
             cluster.submit2(
-                program, arguments, cwd=job_dir,
+                launcher, arguments, cwd=job_dir,
                 stdout=os.path.join(job_dir, "log"), stderr=-2,
                 required_output=required_output)
         state = []
@@ -291,7 +301,7 @@ class ClusterRun:
         cpu_mode = self.cpu_mode_of("train")
         if cpu_mode is not None:
             settings.append(("run.cpu_mode", cpu_mode))
-        card = launch.RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
         for key, value in settings:
             card.set(key, value, user=True)
         card.write(os.path.join(job_dir, "run_card.toml"))
@@ -352,7 +362,7 @@ class ClusterRun:
             raise ClusterRunError(f"merging the gridpacks failed: {error}") from error
         # the shell of the gridpack is the one for the generation pass: its
         # devices, and the resolved backend of its cpu
-        card = launch.RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
         card.set("cluster.enable", False, user=True)
         card.set("run.device", self.devices["deploy"], user=True)
         launch.MadgraphProcess.write_gridpack_shell(
