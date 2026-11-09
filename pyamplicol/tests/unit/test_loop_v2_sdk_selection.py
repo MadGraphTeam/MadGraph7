@@ -247,8 +247,48 @@ def _bitwise(found: list, expected: list) -> bool:
     )
 
 
-def _compare(label, found: dict, expected, resolved: bool) -> None:
-    """Values bitwise, statuses, failure reasons and the reduction record."""
+def _choice(runtime, options):
+    """The call's resolved reduction choice (``VirtualReduction``: requested,
+    effective, reason, the per-point fallback and the unchecked setting) of
+    a selection call with ``options``, as the artifact runtime resolves it
+    before any point (every call here is a selection: the resolved route)."""
+
+    from pyamplicol.loops.v2 import reduction
+
+    (choice,) = runtime._backend._reduction_choices(
+        options["reduction"],
+        None,
+        None,
+        None,
+        reduction.RESOLVED,
+        None,
+        options.get("reduction_target"),
+        options.get("reduction_unchecked"),
+    ).values()
+    return choice
+
+
+def _moved(expected, choice) -> dict:
+    """The C ABI's per-point fallback record (diagnostics "fallbacks") of the
+    Python API's lanes: every point another backend than the call's served
+    or failed on, by point index, with the backend that served it (None: it
+    failed there too) and the reason."""
+
+    return {
+        str(index): {
+            "effective": lane.reduction.effective
+            if expected.values[index] is not None
+            else None,
+            "reason": lane.reduction.reason,
+        }
+        for index, lane in enumerate(expected.diagnostics)
+        if lane.reduction is not None and lane.reduction.effective != choice.effective
+    }
+
+
+def _compare(label, found: dict, expected, resolved: bool, choice) -> None:
+    """Values bitwise, statuses, failure reasons and the reduction record
+    (the call's, from its resolved ``choice``; per point, the fallback's)."""
 
     assert found["status"] == 0, (label, found.get("error"))
     served = [value is not None for value in expected.values]
@@ -266,26 +306,21 @@ def _compare(label, found: dict, expected, resolved: bool) -> None:
                 expected.diagnostics[index].failures[0].detail
             ), label
     # The call-level record with m-lit F3's per-point fallback: the call's
-    # fallback and how many points it evaluated again (the lanes recording
-    # another backend than the call's; ``test_loop_v2_sdk_induced._record``).
-    # A lane the fallback served records its own choice (no fallback of its
-    # own), so the call's record is that of a lane with the fallback armed.
-    records = [lane.reduction for lane in expected.diagnostics if lane.reduction]
-    record = next((r for r in records if r.fallback is not None), records[0])
-    moved = [
-        lane
-        for lane in expected.diagnostics
-        if lane.reduction is not None and lane.reduction.effective != record.effective
-    ]
+    # resolved choice (also when every point falls back) and how many points
+    # its fallback evaluated again (the lanes recording another backend than
+    # the call's; ``test_loop_v2_sdk_induced._record``), and per point the
+    # fallback's record (DECISIONS 2026-11-09 02:02 (a), (b)).
+    moved = _moved(expected, choice)
     assert found["diagnostics"]["reduction"] == {
-        "requested": record.requested,
-        "effective": record.effective,
-        "reason": record.reason,
-        "fallback": record.fallback,
+        "requested": choice.requested,
+        "effective": choice.effective,
+        "reason": choice.reason,
+        "fallback": choice.fallback,
         "fallback_points": len(moved),
         # The call's unchecked setting (m-lit lit-unchecked; off by default).
-        "unchecked": record.unchecked,
+        "unchecked": choice.unchecked,
     }, label
+    assert found["diagnostics"]["fallbacks"] == moved, label
     if resolved:
         assert found["axes"]["helicity_ids"] == list(expected.helicity_ids), label
         assert found["axes"]["color_ids"] == list(expected.virtual_color_ids), label
@@ -325,7 +360,10 @@ def _check_selections(sdk, handle, runtime, inputs, selectors, tag, **options):
 
     points, scales, exact, exact_scales = inputs
     one, subset, by_point = selectors
-    backend = options["reduction"]
+    choice = _choice(runtime, options)
+    # The per-point reference takes the call's options (its backend, target
+    # and unchecked setting; DECISIONS 2026-11-09 02:02 (a)).
+    per_point = {key: value for key, value in options.items() if key != "on_failure"}
     calls = {
         "anchors": (
             {"resolved": True, "resolution": "amplitude-basis"},
@@ -367,7 +405,7 @@ def _check_selections(sdk, handle, runtime, inputs, selectors, tag, **options):
         ),
         "by-point": (
             {"by_point": by_point},
-            _per_point(runtime, exact, exact_scales, by_point, reduction=backend),
+            _per_point(runtime, exact, exact_scales, by_point, **per_point),
             False,
         ),
     }
@@ -394,8 +432,22 @@ def _check_selections(sdk, handle, runtime, inputs, selectors, tag, **options):
             assert found[label]["diagnostics"]["selection"] == {
                 "helicity_ids": [[f"h{row}"] for row in by_point]
             }
+            # The record of the row-grouped call (one SDK evaluation per
+            # helicity row group, its per-point fallback mapped back to the
+            # call's point indices): the call's choice and, per point, the
+            # fallback's record of the point's own Python call.
+            moved = _moved(expected, choice)
+            assert found[label]["diagnostics"]["reduction"] == {
+                "requested": choice.requested,
+                "effective": choice.effective,
+                "reason": choice.reason,
+                "fallback": choice.fallback,
+                "fallback_points": len(moved),
+                "unchecked": choice.unchecked,
+            }, label
+            assert found[label]["diagnostics"]["fallbacks"] == moved, label
             continue
-        _compare(f"{tag}:{label}", found[label], expected, resolved)
+        _compare(f"{tag}:{label}", found[label], expected, resolved, choice)
     return calls
 
 
@@ -551,6 +603,17 @@ def test_c_abi_selections_on_fresh_points_equal_the_python_api(
             on_failure="return",
             **({} if target is None else {"reduction_target": target}),
         )
+        if backend == "auto" and target is not None:
+            # The row-grouped per-point selection exercises the per-point
+            # fallback (several row groups, a fallback point in them).
+            choice = _choice(
+                runtime, {"reduction": backend, "reduction_target": target}
+            )
+            assert choice.fallback is not None
+            assert _moved(calls["by-point"][1], choice), (
+                "no fresh point falls back in the per-point selection: extend "
+                "the point set"
+            )
         if backend == "tirust":
             every = [v is not None for v in calls["anchors"][1].values]
             kept = [v is not None for v in calls["anchors-subset"][1].values]

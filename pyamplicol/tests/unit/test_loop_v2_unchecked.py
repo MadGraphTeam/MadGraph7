@@ -273,6 +273,10 @@ def test_unchecked_tirust_serves_every_point_and_keeps_the_checked_values(
     inspect = runtime._backend._reduction_summary()
     assert inspect["unchecked"] is True
     assert checked_runtime._backend._reduction_summary()["unchecked"] is False
+    # The public loader takes the target as a load-time default too (it was
+    # refused as an unknown option before lit-unchecked's loader keywords).
+    targeted = Runtime.load(artifact, process="p", reduction_target=1e-3)
+    assert targeted._backend._reduction_summary()["target"] == 1e-3
 
 
 @pytest.mark.loop_physics

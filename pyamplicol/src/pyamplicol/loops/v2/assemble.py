@@ -186,7 +186,7 @@ from .poles import (
     strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
-from .reduction import executor_options
+from .reduction import current_target, executor_options
 from .refusals import (
     LoopRequestUnsupported,
     LoopRequestUnsupportedValue,
@@ -4369,7 +4369,10 @@ class _PointEvaluation:
         """A reducer of the call's reduction backend (``reduction.running``):
         NinjaRS's ``V2Reducer`` at the evaluation's arithmetic, or TIRust's
         ``V2TirReducer`` (in the carrier of the lanes it receives: binary64
-        or arbitrary precision). Every reduction of the point takes it (its
+        or arbitrary precision) at the call's target accuracy
+        (``reduction.current_target``: its calibrated method-choice
+        acceptance, ``tir_acceptance``; the default target when the call
+        names none). Every reduction of the point takes it (its
         lanes here, the loop-induced term scale's unit numerators,
         ``induced._moments``):
         the backend is read once, at the point's first reduction, so a term
@@ -4382,7 +4385,19 @@ class _PointEvaluation:
         # when set, so a checked call constructs what it did before).
         unchecked = {"unchecked": True} if executor_options().get("unchecked") else {}
         if backend == "tirust":
-            return self.slice.native.V2TirReducer(**unchecked)
+            # The call's target (m-lit F3 (a); lit-unchecked, DECISIONS
+            # 2026-11-09 02:02 (c)), passed only when the call names one:
+            # a call at the default target constructs what it did before.
+            target = current_target()
+            acceptance = (
+                None if target is None else self.slice.native.tir_acceptance(target)
+            )
+            tir = (
+                unchecked
+                if acceptance is None
+                else {**unchecked, "acceptance": acceptance}
+            )
+            return self.slice.native.V2TirReducer(**tir)
         return self.slice.native.V2Reducer(
             "double" if numbers.double else "arbitrary",
             None if numbers.double else numbers.precision.digits,
