@@ -64,7 +64,7 @@ fn py_max(a: f64, b: f64) -> f64 {
 /// constant folding, which would replace `pow(x, 0.5)` by `sqrt(x)` and
 /// `pow(x, 2.0)` by `x * x`: libm's `pow` differs from both in the last bit
 /// for about 0.1 % of the arguments.
-fn py_pow(x: f64, y: f64) -> f64 {
+pub(crate) fn py_pow(x: f64, y: f64) -> f64 {
     x.powf(std::hint::black_box(y))
 }
 
@@ -808,6 +808,9 @@ pub struct Estimate {
     pub roundoff: f64,
     /// Each requested check that did not run, with its reason.
     pub not_run: Vec<(String, String)>,
+    /// The reference Laurent values per sector the estimate measures
+    /// against (`StabilityEstimate.reference`; [`Estimate::subset`]).
+    pub reference: Budget,
 }
 
 impl Estimate {
@@ -872,7 +875,49 @@ impl Estimate {
             scale,
             roundoff,
             not_run,
+            reference: reference.clone(),
         })
+    }
+
+    /// The estimate an evaluation with only the checks `names` returns
+    /// (`StabilityEstimate.subset`); an error when one of them did not run.
+    pub fn subset(&self, names: &[&str]) -> RusticolResult<Self> {
+        let mut budgets = Vec::with_capacity(names.len());
+        for name in names {
+            let found = self
+                .budgets
+                .iter()
+                .find(|(own, _)| own == name)
+                .ok_or_else(|| invalid(format!("check {name:?} did not run")))?;
+            budgets.push(found.clone());
+        }
+        Self::from_checks(
+            &self.reference,
+            budgets,
+            self.scale.clone(),
+            self.roundoff,
+            self.not_run.clone(),
+        )
+    }
+
+    /// The relative estimate of the cached reduction-direction check alone
+    /// ([`REDUCTION`]; this estimate's, or its [`Estimate::subset`] when
+    /// other checks ran too): the per-point fallback's guard (m-lit
+    /// lit-fallback-guard, `loops.v2.reduction._guard_estimate`). None when
+    /// that check did not run; NaN when its budget is not a number.
+    pub fn reduction_direction(&self) -> Option<f64> {
+        if !self.budgets.iter().any(|(name, _)| name == REDUCTION) {
+            return None;
+        }
+        let alone = if self.budgets.len() == 1 {
+            self.clone()
+        } else {
+            self.subset(&[REDUCTION]).ok()?
+        };
+        if alone.relative.is_nan() || alone.absolute.iter().flatten().any(|x| x.is_nan()) {
+            return Some(f64::NAN);
+        }
+        Some(alone.relative)
     }
 }
 
@@ -1448,5 +1493,57 @@ mod tests {
         assert_eq!(estimate.absolute[0][0], e0);
         assert_eq!(estimate.coefficients[2], f64::INFINITY);
         assert!(Estimate::from_checks(&reference, vec![], vec![], u, vec![]).is_err());
+    }
+
+    #[test]
+    fn the_fallback_guard_reads_the_cached_reduction_check_alone() {
+        // `StabilityEstimate.subset([REDUCTION])` (m-lit lit-fallback-guard):
+        // the estimate of the reduction-direction check alone, bitwise the
+        // estimate an evaluation with that check alone returns.
+        let reference = vec![vec![1.0, -2.0, 0.5]];
+        let rotation = ("rotation-0".to_string(), vec![vec![1e-15, 2e-15, 0.0]]);
+        let reduction = (REDUCTION.to_string(), vec![vec![4e-16, 1e-16, 1e-17]]);
+        let scale = vec![vec![2.0, 3.0, 1.0]];
+        let u = 2f64.powi(-53);
+        let both = Estimate::from_checks(
+            &reference,
+            vec![rotation.clone(), reduction.clone()],
+            scale.clone(),
+            u,
+            vec![],
+        )
+        .unwrap();
+        let alone = Estimate::from_checks(
+            &reference,
+            vec![reduction.clone()],
+            scale.clone(),
+            u,
+            vec![],
+        )
+        .unwrap();
+        assert_eq!(both.subset(&[REDUCTION]).unwrap(), alone);
+        assert_eq!(both.reduction_direction(), Some(alone.relative));
+        assert_eq!(alone.reduction_direction(), Some(alone.relative));
+        assert!(both.subset(&[RESCALED]).is_err());
+        // Without the cached check (the rescaled variant): no reuse.
+        let rescaled = Estimate::from_checks(
+            &reference,
+            vec![(RESCALED.to_string(), reduction.1.clone())],
+            scale.clone(),
+            u,
+            vec![],
+        )
+        .unwrap();
+        assert_eq!(rescaled.reduction_direction(), None);
+        // A NaN budget is no estimate (Python's `max` passes over it).
+        let nan = Estimate::from_checks(
+            &reference,
+            vec![(REDUCTION.to_string(), vec![vec![f64::NAN, 0.0, 0.0]])],
+            scale,
+            u,
+            vec![],
+        )
+        .unwrap();
+        assert!(nan.reduction_direction().unwrap().is_nan());
     }
 }

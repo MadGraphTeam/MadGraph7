@@ -460,6 +460,263 @@ impl V2Runtime {
         result
     }
 
+    /// The per-point fallback's GUARD (m-lit lit-fallback-guard,
+    /// `reduction_policy::FALLBACK_CHECK`; the Python API's
+    /// `loops.v2.reduction.with_fallback`): per point the relative estimate
+    /// of the cached reduction-direction re-test (the reversed frame, the
+    /// coefficients and the cached masters reused) of the point's summed
+    /// value, in the carrier `precision` (never escalated), on the runtime's
+    /// current backend (the fallback's, inside [`V2Runtime::on_other`]),
+    /// NaN where it is not a number; a point the evaluation or its re-test
+    /// fails keeps its reasons. Binary64 is [`V2Runtime::evaluate_checked`]
+    /// with that check alone (the one estimate implementation,
+    /// `crate::v2_stability`, bitwise the Python API's); double-double and
+    /// arbitrary precision run the monitored evaluation in the carrier and
+    /// read its re-test budget, term scale (loop-induced) or lanes
+    /// (Born-interfered) and values in binary64 into the same estimate
+    /// functions, as the Python API's assembly reads them (`float(x)`), at
+    /// the carrier's unit roundoff ([`V2Precision::unit_roundoff`]).
+    pub fn fallback_estimates(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+    ) -> RusticolResult<Vec<Result<f64, Vec<String>>>> {
+        let alone = StabilityChecks::new(Vec::new(), true, false, false)?;
+        let read = |estimate: Option<&Estimate>| {
+            estimate
+                .and_then(Estimate::reduction_direction)
+                .unwrap_or(f64::NAN)
+        };
+        if precision == V2Precision::Double {
+            return Ok(self
+                .evaluate_checked(momenta, scales, mode, &alone)?
+                .into_iter()
+                .map(|(point, estimate, _)| point.map(|_| read(estimate.as_ref())))
+                .collect());
+        }
+        self.check_batch(momenta, scales)?;
+        self.check_poles(mode)?;
+        if mode.split() {
+            return Err(RusticolError::unsupported_runtime_capability(
+                "stability checks",
+                "the native stability checks serve the pole selections \"all\" and \"none\"",
+            ));
+        }
+        let arith = DecimalArith::new(precision.working_digits());
+        let induced = self.induced.clone();
+        let mut batch = |runtime: &mut Self,
+                         momenta: &[Vec<Rational>],
+                         scales: &[Rational]|
+         -> RusticolResult<Vec<Result<f64, Vec<String>>>> {
+            match (precision, &induced) {
+                (V2Precision::DoubleDouble, Some(induced)) => runtime.induced_estimates(
+                    induced,
+                    momenta,
+                    scales,
+                    mode,
+                    precision,
+                    &DoubleFloat::from(0.0),
+                    &arith,
+                ),
+                (V2Precision::DoubleDouble, None) => runtime.lane_estimates(
+                    momenta,
+                    scales,
+                    mode,
+                    precision,
+                    &DoubleFloat::from(0.0),
+                    &arith,
+                ),
+                (_, Some(induced)) => runtime.induced_estimates(
+                    induced,
+                    momenta,
+                    scales,
+                    mode,
+                    precision,
+                    &Float::with_val(precision.bits()?, 0),
+                    &arith,
+                ),
+                (_, None) => runtime.lane_estimates(
+                    momenta,
+                    scales,
+                    mode,
+                    precision,
+                    &Float::with_val(precision.bits()?, 0),
+                    &arith,
+                ),
+            }
+        };
+        self.partitioned(momenta, scales, mode, &mut batch)
+    }
+
+    /// [`V2Runtime::fallback_estimates`] of one loop-induced batch of one
+    /// scale partition in an extended carrier (`induced_checked_batch`'s
+    /// reference evaluation: the re-test frame and the term scale).
+    #[allow(clippy::too_many_arguments)]
+    fn induced_estimates<T: Native>(
+        &mut self,
+        induced: &Induced,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+        zero: &T,
+        arith: &DecimalArith,
+    ) -> RusticolResult<Vec<Result<f64, Vec<String>>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let width = if mode.poles() { 3 } else { 1 };
+        let gram = induced.carrier(arith, induced.metric())?;
+        let rows = induced.plan_rows();
+        let average = self.record.average;
+        let mut collected = Vec::with_capacity(momenta.len());
+        let points = self.induced_points_with(
+            induced,
+            momenta,
+            scales,
+            mode,
+            precision,
+            zero,
+            arith,
+            Monitoring {
+                check: Some(ReductionCheck::REVERSED),
+                term_scale: true,
+                collected: Some(&mut collected),
+            },
+            None,
+            &mut |_, vectors, width| {
+                induced.square_vectors(arith, vectors, &rows, &gram, width, average)
+            },
+        )?;
+        // The estimate reads binary64 (the Python assembly's floats): the
+        // colour metric, the values and the collected vectors.
+        let metric = induced.carrier(&Binary64, induced.metric())?;
+        let shape = InducedShape {
+            size: induced.size(),
+            width,
+            gram: metric.iter().map(|z| (z.re, z.im)).collect(),
+            rows: (0..rows.len()).collect(),
+            sectors: induced.pairs().to_vec(),
+            average: average as f64,
+        };
+        let mut orders: Vec<Orders> = induced.slots().to_vec();
+        let mut out = Vec::with_capacity(points.len());
+        for (index, point) in points.into_iter().enumerate() {
+            let squared = match point {
+                Ok(squared) => squared,
+                Err(reasons) => {
+                    out.push(Err(reasons));
+                    continue;
+                }
+            };
+            let found = collected[index]
+                .as_ref()
+                .ok_or_else(|| invalid("a successful point without its collected vectors"))?;
+            let direct = induced_point_of(induced, &rows, &mut orders, found, Decimal::to_f64)?;
+            let reference: Vec<Vec<f64>> = squared
+                .iter()
+                .map(|laurent| laurent.iter().map(Decimal::to_f64).collect())
+                .collect();
+            let estimate = stability::induced_estimate(
+                &shape,
+                precision.unit_roundoff(),
+                &reference,
+                &direct,
+                &[],
+                Some(stability::REDUCTION),
+                None,
+            )?;
+            out.push(Ok(estimate.reduction_direction().unwrap_or(f64::NAN)));
+        }
+        Ok(out)
+    }
+
+    /// [`V2Runtime::fallback_estimates`] of one Born-interfered batch of one
+    /// scale partition in an extended carrier (`checked_batch`'s reference
+    /// evaluation with the re-test lanes).
+    fn lane_estimates<T: Native>(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+        precision: V2Precision,
+        zero: &T,
+        arith: &DecimalArith,
+    ) -> RusticolResult<Vec<Result<f64, Vec<String>>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let mut collected: Vec<Option<Collected<Decimal>>> = Vec::with_capacity(momenta.len());
+        let points = self.evaluate_batch::<T, DecimalArith, true>(
+            momenta,
+            scales,
+            mode,
+            precision,
+            zero,
+            arith,
+            Some(ReductionCheck::REVERSED),
+            &mut collected,
+        )?;
+        let shape = LaneShape {
+            sectors: self.record.sectors.len(),
+            width: if mode.poles() { 3 } else { 1 },
+            factor: stability::lane_factor(self.record.average as f64),
+        };
+        let lanes = |lanes: &[CollectedLane<Decimal>]| -> Vec<stability::Lane<LaneKey>> {
+            lanes
+                .iter()
+                .map(|(key, sector, values)| {
+                    (
+                        *key,
+                        *sector,
+                        values
+                            .iter()
+                            .map(|z| (z.re.to_f64(), z.im.to_f64()))
+                            .collect(),
+                    )
+                })
+                .collect()
+        };
+        let reals = |rows: &[Vec<Decimal>]| -> Vec<Vec<f64>> {
+            rows.iter()
+                .map(|row| row.iter().map(Decimal::to_f64).collect())
+                .collect()
+        };
+        let mut out = Vec::with_capacity(points.len());
+        for (index, point) in points.into_iter().enumerate() {
+            if let Err(reasons) = point {
+                out.push(Err(reasons));
+                continue;
+            }
+            let found = collected[index]
+                .as_ref()
+                .ok_or_else(|| invalid("a successful point without its collected lanes"))?;
+            let retest = found
+                .retest
+                .as_deref()
+                .ok_or_else(|| invalid("the reduction check returned no re-test"))?;
+            let direct = PointLanes {
+                lanes: lanes(&found.lanes),
+                local: found.local.iter().map(|rows| reals(rows)).collect(),
+            };
+            let estimate = stability::born_interfered_estimate(
+                shape,
+                precision.unit_roundoff(),
+                &reals(&found.reference),
+                &direct,
+                &[],
+                Some((stability::REDUCTION, lanes(retest).as_slice())),
+                None,
+            )?;
+            out.push(Ok(estimate.reduction_direction().unwrap_or(f64::NAN)));
+        }
+        Ok(out)
+    }
+
     /// Run `evaluate` on the other reduction backend ([`cross_reduction`]),
     /// then return to this one: the evaluations of `"auto"`'s per-point
     /// fallback (`reduction_policy::Choice::fallback`, m-lit F3 (c)) at the
@@ -524,6 +781,19 @@ fn induced_point(
     orders: &mut Vec<Orders>,
     found: &InducedCollected<f64>,
 ) -> RusticolResult<InducedPoint> {
+    induced_point_of(induced, rows, orders, found, |x: &f64| *x)
+}
+
+/// [`induced_point`] of a run collected in any carrier, its values read in
+/// binary64 by `real` (an extended carrier's, as the Python API's
+/// `induced.read_native` reads the executor's budgets: `float(x)`).
+fn induced_point_of<N>(
+    induced: &Induced,
+    rows: &[induced::Row],
+    orders: &mut Vec<Orders>,
+    found: &InducedCollected<N>,
+    real: impl Fn(&N) -> f64,
+) -> RusticolResult<InducedPoint> {
     let mut key = |order: &Orders, row: &induced::Row| -> RusticolResult<(usize, usize)> {
         let o = match orders.iter().position(|o| o == order) {
             Some(o) => o,
@@ -538,7 +808,7 @@ fn induced_point(
             .ok_or_else(|| invalid("a vector of a row outside the plan's rows"))?;
         Ok((o, r))
     };
-    let mut cells = |vectors: &induced::Vectors<f64>| -> RusticolResult<_> {
+    let mut cells = |vectors: &induced::Vectors<N>| -> RusticolResult<_> {
         vectors
             .iter()
             .map(|((order, row), vector)| {
@@ -546,7 +816,7 @@ fn induced_point(
                     key(order, row)?,
                     vector
                         .iter()
-                        .map(|cell| cell.iter().map(|z| (z.re, z.im)).collect())
+                        .map(|cell| cell.iter().map(|z| (real(&z.re), real(&z.im))).collect())
                         .collect(),
                 ))
             })
@@ -557,7 +827,7 @@ fn induced_point(
     let kets = cells(&found.parts.kets)?;
     let size = induced.size();
     let columns = rows.len() * size;
-    let mut slots = |values: &Option<Vec<Vec<f64>>>| -> RusticolResult<Option<_>> {
+    let mut slots = |values: &Option<Vec<Vec<N>>>| -> RusticolResult<Option<_>> {
         let Some(values) = values else {
             return Ok(None);
         };
@@ -569,7 +839,7 @@ fn induced_point(
                     .map(|t| {
                         values
                             .get(base + t)
-                            .cloned()
+                            .map(|slot| slot.iter().map(&real).collect::<Vec<f64>>())
                             .ok_or_else(|| invalid("the executor's slots differ from the plan's"))
                     })
                     .collect::<RusticolResult<Vec<_>>>()?;

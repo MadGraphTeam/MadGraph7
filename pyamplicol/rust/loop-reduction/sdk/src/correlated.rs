@@ -221,8 +221,17 @@ impl Runtime {
         let Engine::V4(native) = &mut self.engine;
         let evaluation = match arithmetic {
             Arithmetic::Double => {
-                let (found, fallbacks) =
-                    with_fallback(native, &reduction, momenta.len(), |native, indices| {
+                let (found, fallbacks) = with_fallback(
+                    native,
+                    &reduction,
+                    momenta.len(),
+                    Guard {
+                        momenta: &momenta,
+                        scales: &scales,
+                        mode: poles.v2(),
+                        precision: arithmetic.v2(),
+                    },
+                    |native, indices| {
                         native.evaluate_columns(
                             "correlated",
                             &pick(&momenta, indices),
@@ -230,14 +239,24 @@ impl Runtime {
                             &pick_rows(&spins, indices),
                             poles.v2(),
                         )
-                    })?;
+                    },
+                )?;
                 CorrelatedEvaluation::from_columns(
                     inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
                 )?
             }
             _ => {
-                let (found, fallbacks) =
-                    with_fallback(native, &reduction, momenta.len(), |native, indices| {
+                let (found, fallbacks) = with_fallback(
+                    native,
+                    &reduction,
+                    momenta.len(),
+                    Guard {
+                        momenta: &momenta,
+                        scales: &scales,
+                        mode: poles.v2(),
+                        precision: arithmetic.v2(),
+                    },
+                    |native, indices| {
                         native.evaluate_columns_extended(
                             "correlated",
                             &pick(&momenta, indices),
@@ -246,7 +265,8 @@ impl Runtime {
                             poles.v2(),
                             arithmetic.v2(),
                         )
-                    })?;
+                    },
+                )?;
                 CorrelatedEvaluation::from_columns(
                     inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
                 )?
