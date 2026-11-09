@@ -283,6 +283,8 @@ def _compare(label, found: dict, expected, resolved: bool) -> None:
         "reason": record.reason,
         "fallback": record.fallback,
         "fallback_points": len(moved),
+        # The call's unchecked setting (m-lit lit-unchecked; off by default).
+        "unchecked": record.unchecked,
     }, label
     if resolved:
         assert found["axes"]["helicity_ids"] == list(expected.helicity_ids), label

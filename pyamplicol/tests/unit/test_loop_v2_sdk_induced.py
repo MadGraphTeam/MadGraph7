@@ -99,6 +99,8 @@ def _record(record, expected) -> dict:
         "reason": record.reason,
         "fallback": record.fallback,
         "fallback_points": len(moved),
+        # The call's unchecked setting (m-lit lit-unchecked; off by default).
+        "unchecked": record.unchecked,
     }
 
 
