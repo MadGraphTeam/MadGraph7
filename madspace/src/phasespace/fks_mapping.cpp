@@ -387,6 +387,18 @@ NamedVector<Value> FKSMapping::build_events(
         outputs.push_back(name + "_xi", real.at(name + "_xi"));
         outputs.push_back(name + "_xi_max", real.at(name + "_xi_max"));
     }
+    const auto& resonance = _radiation.resonance();
+    if (!resonance.empty()) {
+        // the momentum of the resonance in the lab frame, the sum of its
+        // members in the real emission (which the emission keeps)
+        std::vector<double> mask(_real_masses.size(), 0.);
+        for (auto r : resonance) {
+            mask.at(r) = 1.;
+        }
+        auto [p_frame, k, sqrt_s_k] =
+            fb.fks_resonance_frame(outputs.at("momenta"), Value(mask), Value(0.));
+        outputs.push_back("resonance_momentum", k);
+    }
     return outputs;
 }
 
@@ -415,6 +427,9 @@ NamedVector<Type> FKSMapping::counter_event_types() const {
         types.push_back(name + "_p_i_hat", batch_four_vec);
         types.push_back(name + "_xi", batch_float);
         types.push_back(name + "_xi_max", batch_float);
+    }
+    if (!_radiation.resonance().empty()) {
+        types.push_back("resonance_momentum", batch_four_vec);
     }
     return types;
 }
@@ -661,8 +676,10 @@ FKSConfigurationMapping::FKSConfigurationMapping(
                 )
                     .resonance();
             std::vector<double> born_mask(n, 0.), layout_mask(n + 1, 0.);
+            std::vector<double> real_mask(n + 1, 0.);
             for (auto r : resonance) {
                 _any_resonance = true;
+                real_mask.at(r) = 1.;
                 if (r == i_fks) {
                     layout_mask.at(n) = 1.;
                 } else {
@@ -675,6 +692,7 @@ FKSConfigurationMapping::FKSConfigurationMapping(
             _resonance_born_masks.push_back(born_mask);
             _resonance_layout_masks.push_back(layout_mask);
             _resonance_emission_masks.push_back(emission_mask);
+            _resonance_real_masks.push_back(real_mask);
         }
         _resonances.push_back(config_resonances);
         auto kind = j_fks < INCOMING_COUNT ? incoming
@@ -801,6 +819,9 @@ NamedVector<Type> FKSConfigurationMapping::counter_event_types() const {
         types.push_back("one_minus_x1", batch_float);
         types.push_back("one_minus_x2", batch_float);
         types.push_back("collinear_born_momenta", batch_four_vec_array(n));
+    }
+    if (_any_resonance) {
+        types.push_back("resonance_momentum", batch_four_vec);
     }
     return types;
 }
@@ -1359,6 +1380,17 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
             );
         }
         outputs.push_back("collinear_born_momenta", collinear_born);
+    }
+    if (_any_resonance) {
+        // the momentum of the resonance of the event in the lab frame, the sum
+        // of its members in the real emission (which the emission keeps), zero
+        // without one
+        auto [p_frame, k, sqrt_s_k] = fb.fks_resonance_frame(
+            outputs.at("momenta"),
+            fb.gather_vector(resonance_row(fb, conditions), _resonance_real_masks),
+            Value(0.)
+        );
+        outputs.push_back("resonance_momentum", k);
     }
     return outputs;
 }

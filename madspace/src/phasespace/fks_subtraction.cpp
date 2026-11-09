@@ -96,7 +96,8 @@ FKSSubtraction::FKSSubtraction(
     PdfScheme pdf_scheme,
     double n_f,
     const std::vector<double>& upc_radii,
-    bool collinear_born
+    bool collinear_born,
+    bool resonance
 ) :
     FunctionGenerator(
         "FKSSubtraction",
@@ -141,6 +142,9 @@ FKSSubtraction::FKSSubtraction(
                  {"alpha_s", "alpha", "ren_scale", "fact_scale1", "fact_scale2"}) {
                 types.push_back(name, batch_float);
             }
+            if (resonance) {
+                types.push_back("resonance_momentum", batch_four_vec);
+            }
             types.push_back("fks_index", batch_int);
             return types;
         }(),
@@ -157,8 +161,8 @@ FKSSubtraction::FKSSubtraction(
     _sector_function(
         configurations, fks_a, fks_b, use_energy, use_beta, h_damp_one, h_damp_power
     ),
-    _limits(configurations, orders, collinear_born),
-    _prefactors(configurations, xicut, xi_s_cut, delta_o, delta_i, delta_s),
+    _limits(configurations, orders, collinear_born, resonance),
+    _prefactors(configurations, xicut, xi_s_cut, delta_o, delta_i, delta_s, resonance),
     _xi_s_cut(xi_s_cut),
     _delta_s(delta_s),
     _tiny(tiny),
@@ -236,6 +240,7 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
             .at(0);
     };
     bool collinear_born = _limits.collinear_born();
+    bool resonance = _limits.resonance();
     auto limit_arguments =
         [&](const std::string& soft,
             const std::string& collinear,
@@ -256,6 +261,9 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
             }
             arguments.push_back(args.at("alpha_s"));
             arguments.push_back(args.at("alpha"));
+            if (resonance) {
+                arguments.push_back(args.at("resonance_momentum"));
+            }
             arguments.push_back(index);
             return arguments;
         };
@@ -280,17 +288,22 @@ NamedVector<Value> FKSSubtraction::build_function_impl(
     auto limits = _limits.build_function(
         fb, limit_arguments("soft_", "collinear_", "soft_collinear_")
     );
-    auto prefactors = _prefactors.build_function(
-        fb,
-        {args.at("xi"),
-         args.at("y"),
-         args.at("xi_max"),
-         args.at("collinear_xi"),
-         args.at("collinear_xi_max"),
-         args.at("collinear_momenta"),
-         args.at("soft_collinear_momenta"),
-         index}
-    );
+    ValueVec prefactor_args{
+        args.at("xi"),
+        args.at("y"),
+        args.at("xi_max"),
+        args.at("collinear_xi"),
+        args.at("collinear_xi_max"),
+        args.at("collinear_momenta"),
+        args.at("soft_collinear_momenta"),
+    };
+    if (resonance) {
+        prefactor_args.push_back(args.at("soft_momenta"));
+        prefactor_args.push_back(args.at("soft_p_i_hat"));
+        prefactor_args.push_back(args.at("resonance_momentum"));
+    }
+    prefactor_args.push_back(index);
+    auto prefactors = _prefactors.build_function(fb, prefactor_args);
     auto s_c = sector("collinear_"), s_sc = sector("soft_collinear_");
     auto [remnant_c, remnant_sc] = fb.fks_collinear_remnants(
         args.at("born"),

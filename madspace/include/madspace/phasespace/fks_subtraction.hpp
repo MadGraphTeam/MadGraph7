@@ -126,6 +126,10 @@ namespace madspace {
  *   the renormalization scale (the Ellis-Sexton scale of the UPC scheme) and
  *   the factorization scales of the two beams, as @ref EnergyScale returns
  *   them.
+ * - `resonance_momentum` – `float`, shape `(batch, 4)` – the momentum of the
+ *   resonance of the resonance-local recoil of the event, zero where it has
+ *   none, for @ref FKSLimits and @ref FKSPrefactors. Present only with
+ *   @p resonance.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
  *   from 0 to the number of configurations minus one.
  *
@@ -209,6 +213,9 @@ public:
      *                        used by the other schemes.
      * @param collinear_born  Take the Born of the collinear counter-event
      *                        apart, for lepton beams (see @ref FKSLimits).
+     * @param resonance       Take the momentum of the resonance of the
+     *                        resonance-local recoil (`resonance_momentum`,
+     *                        see @ref FKSLimits and @ref FKSPrefactors).
      * @throws std::invalid_argument as @ref FKSLimits or for parameters out
      *         of their range.
      */
@@ -230,7 +237,8 @@ public:
         PdfScheme pdf_scheme = msbar,
         double n_f = 5.,
         const std::vector<double>& upc_radii = {},
-        bool collinear_born = false
+        bool collinear_born = false,
+        bool resonance = false
     );
     /// Number of configurations.
     std::size_t configuration_count() const { return _symmetry.size(); }

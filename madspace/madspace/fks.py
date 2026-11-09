@@ -609,24 +609,26 @@ def fks_sector_function(born, configurations, **options):
     return FKSSectorFunction(fks_configurations(born, configurations), **options)
 
 
-def fks_eikonals(born, configurations):
+def fks_eikonals(born, configurations, resonance=False):
     """The FKSEikonals of the FKS configurations of a Born, with fks_index as
-    for fks_sector_function.
+    for fks_sector_function, with the momentum of the resonance of the
+    resonance-local recoil for resonance.
 
     Raises:
         ValueError: as fks_configurations.
     """
-    return FKSEikonals(fks_configurations(born, configurations))
+    return FKSEikonals(fks_configurations(born, configurations), resonance)
 
 
-def fks_splitting_kernels(born, configurations):
+def fks_splitting_kernels(born, configurations, resonance=False):
     """The FKSSplittingKernels of the FKS configurations of a Born, with
-    fks_index as for fks_sector_function.
+    fks_index as for fks_sector_function, with the momentum of the resonance
+    of the resonance-local recoil for resonance.
 
     Raises:
         ValueError: as fks_configurations.
     """
-    return FKSSplittingKernels(fks_configurations(born, configurations))
+    return FKSSplittingKernels(fks_configurations(born, configurations), resonance)
 
 
 def fks_prefactors(born, configurations, **parameters):
@@ -639,7 +641,8 @@ def fks_prefactors(born, configurations, **parameters):
         configurations: the content of fks_configurations.json (see
             read_fks_configurations).
         parameters: the parameters of the subtraction of fks_powers.inc
-            (xicut, xi_s_cut, delta_o, delta_i, delta_s), see FKSPrefactors.
+            (xicut, xi_s_cut, delta_o, delta_i, delta_s), and resonance for
+            the cuts of the resonance-local recoil, see FKSPrefactors.
 
     Raises:
         ValueError: as fks_configurations.
@@ -647,11 +650,12 @@ def fks_prefactors(born, configurations, **parameters):
     return FKSPrefactors(fks_configurations(born, configurations), **parameters)
 
 
-def fks_limits(born, configurations, collinear_born=False):
+def fks_limits(born, configurations, collinear_born=False, resonance=False):
     """The FKSLimits of the FKS configurations of a Born, with fks_index as
     for fks_sector_function and the coupling orders of fks_coupling_orders,
     with the Born of the collinear counter-event apart for lepton beams
-    (collinear_born).
+    (collinear_born) and the momentum of the resonance of the resonance-local
+    recoil (resonance).
 
     Raises:
         ValueError: as fks_configurations and fks_coupling_orders, and for a
@@ -661,6 +665,7 @@ def fks_limits(born, configurations, collinear_born=False):
         fks_configurations(born, configurations),
         fks_coupling_orders(configurations),
         collinear_born,
+        resonance,
     )
 
 
@@ -678,9 +683,10 @@ def fks_subtraction(born, configurations, **parameters):
             functions (fks_a, fks_b, use_energy, use_beta, h_damp_one,
             h_damp_power), tiny of sreal, the PDF scheme (pdf_scheme), the
             number of light flavors (n_f), for the UPC scheme xi_A R_A of the
-            nuclei of the beams (upc_radii), and for lepton beams the Born of
-            the collinear counter-event apart (collinear_born), see
-            FKSSubtraction.
+            nuclei of the beams (upc_radii), for lepton beams the Born of
+            the collinear counter-event apart (collinear_born), and the
+            momentum of the resonance of the resonance-local recoil
+            (resonance), see FKSSubtraction.
 
     Raises:
         ValueError: as fks_limits.

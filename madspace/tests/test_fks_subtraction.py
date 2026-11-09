@@ -383,9 +383,13 @@ def test_pdf_schemes_match_madfks(path, scheme):
     check_against_madfks(reference(path), scheme)
 
 
-def check_against_madfks(data, scheme=None):
+def check_against_madfks(data, scheme=None, resonance=False, rounding=None):
     """FKSSubtraction against the contributions of MadFKS at the points of a
-    reference, in its PDF scheme or in another one of pdfscheme (1 to 7)."""
+    reference, in its PDF scheme or in another one of pdfscheme (1 to 7), with
+    the momentum of the resonance of the resonance-local recoil (zero where a
+    configuration has none) for resonance. rounding gives per point a factor of
+    the rounding of the terms of the soft limit where they cancel (one by
+    default)."""
     pdf_scheme = data["pdf_scheme"] if scheme is None else scheme
     subtraction = fks_subtraction(
         born_mapping(data),
@@ -395,6 +399,7 @@ def check_against_madfks(data, scheme=None):
         n_f=data["n_f"],
         upc_radii=UPC_RADII,
         collinear_born=has_collinear_born(data),
+        resonance=resonance,
     )
     assert subtraction.configuration_count() == len(data["configs"])
     rows = [
@@ -423,6 +428,20 @@ def check_against_madfks(data, scheme=None):
         switched[:, None], np.nan, sreal[:, 0] / (xi**2 * (1 - y))[:, None]
     )
     *blocks, index = born_blocks(data, rows, collinear=True)
+    resonance_args = []
+    if resonance:
+        resonance_args.append(
+            np.array(
+                [
+                    (
+                        point["resonance_momentum"]
+                        if conf["resonance"]["resonance_recoil"]
+                        else [0.0] * 4
+                    )
+                    for conf, point in rows
+                ]
+            )
+        )
     ours = np.stack(
         evaluate(
             subtraction,
@@ -449,6 +468,7 @@ def check_against_madfks(data, scheme=None):
             *blocks,
             np.full(len(rows), np.sqrt(data["scales"]["qes2"])),
             *fact_scales(data, len(rows)),
+            *resonance_args,
             fks_index=index,
         ),
         axis=1,
@@ -479,13 +499,18 @@ def check_against_madfks(data, scheme=None):
     initial = np.array([conf["j_fks"] <= 2 for conf, _ in rows])
     rtol = 1e-11 + np.where(switched, 1e-9 + initial * xi, 0) + zeroed / kept
     rtol = rtol[:, None]
-    # the soft contribution per unit soft limit, times the scale of the limit
-    fx_s = sreal[:, 1]
-    per_limit = np.divide(theirs[:, 1], fx_s, out=np.zeros_like(fx_s), where=fx_s != 0)
-    soft_tolerance = 1e-13 * np.abs(per_limit) * soft_scale(rows)[:, None]
+    # the soft contribution per unit soft limit, times the scale of the limit,
+    # also for the real emission where it switches to the soft limit
+    scale = soft_scale(rows) * (1.0 if rounding is None else rounding(rows))
+    soft_tolerance = []
+    for k in (0, 1):
+        fx = sreal[:, k]
+        per_limit = np.divide(theirs[:, k], fx, out=np.zeros_like(fx), where=fx != 0)
+        soft_tolerance.append(1e-13 * np.abs(per_limit) * scale[:, None])
+    soft_tolerance[0] = np.where(switched[:, None], soft_tolerance[0], 0.0)
     names = ["real", "soft", "collinear", "soft_collinear"]
     for k, name in enumerate(names):
-        tolerance = rtol * np.abs(theirs[:, k]) + (soft_tolerance if k == 1 else 0)
+        tolerance = rtol * np.abs(theirs[:, k]) + (soft_tolerance[k] if k < 2 else 0)
         # sreal at the soft counter-event of y = 1 takes the collinear limit
         valid = (1 - y >= TINY) if name == "soft" else np.full(len(rows), True)
         deviation = np.abs(ours[valid, k] - theirs[valid, k])

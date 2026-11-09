@@ -102,6 +102,10 @@ c (RESK) and the azimuthal phase of the collinear limit (AOR).
       double precision ch_i,ch_j,ch_m
       common/cparticle_types/ch_i,ch_j,ch_m,i_type,j_type,m_type,j_pdg
       double precision e_i,e_j,zz,tt,ap(2),qq(2),coll(6,2)
+      double precision dot,total(0:3),soft_scale,coll_scale
+     &     ,angular_scale,mismatch_log
+      logical scale_pass
+      external dot
       double precision f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
       common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
       double precision fkssymmetryfactor,fkssymmetryfactorBorn
@@ -386,8 +390,18 @@ c is massive
                   if (j_fks.gt.nincoming) then
                      e_i=p1_cnt(0,i_fks,k)
                      e_j=p1_cnt(0,j_fks,k)
+                     tt=shat
+c with the resonance-local recoil, the energies and the energy squared in
+c the rest frame of the resonance, as sborncol_fsr takes them
+                     if (resonance_recoil) then
+                        e_i=dot(resonance_momentum,p1_cnt(0,i_fks,k))
+     &                       /sqrt(resonance_mass2)
+                        e_j=dot(resonance_momentum,p1_cnt(0,j_fks,k))
+     &                       /sqrt(resonance_mass2)
+                        tt=resonance_mass2
+                     endif
                      zz=1d0-e_i/(e_i+e_j)
-                     tt=zz*shat/4d0
+                     tt=zz*tt/4d0
                      call AP_reduced(j_type,i_type,ch_j,ch_i,tt,zz,ap)
                      call Qterms_reduced_timelike(j_type,i_type,ch_j
      &                    ,ch_i,tt,zz,qq)
@@ -428,6 +442,22 @@ c (nocntevents as 1 or 0), where the event is generated
      &              ,(xinorm_cnt(k),k=-2,2),xicut_used,xiScut_used
      &              ,delta_used,deltaS,deltaO,deltaI,s_ev,f_pdfsch_d
      &              ,f_pdfsch_p,f_pdfsch_l
+c the scales of the cuts of the resonance-local recoil, as
+c compute_prefactors_n1body takes them from resonance_subtraction_scales
+c at the soft counter-event (all 1 and mismatch_log 0 without it)
+               soft_scale=1d0
+               coll_scale=1d0
+               angular_scale=1d0
+               mismatch_log=0d0
+               if (resonance_recoil.and..not.nocntevents) then
+                  total=p1_cnt(:,1,0)+p1_cnt(:,2,0)
+                  call resonance_subtraction_scales(total
+     &                 ,resonance_momentum,p1_cnt(:,j_fks,0)
+     &                 ,p_i_fks_cnt(:,0),soft_scale,coll_scale
+     &                 ,angular_scale,mismatch_log,scale_pass)
+               endif
+               write (*,fmt) 'SCALES',soft_scale,coll_scale
+     &              ,angular_scale,mismatch_log
             endif
 c The reduced matrix elements of sreal at the event and at the soft,
 c collinear and soft-collinear counter-events, with the arguments of

@@ -8,9 +8,9 @@ directories (the dump of make_fks_reference.py ported to the fks_phase_space
 modules of the branch) and runs it for some Born configurations (iconfig),
 the channels of the integration. The branch installs the resonance-local
 recoil by default (select_fks_recoil, with the members of the resonance from
-set_granny). The script keeps the kinematics of the points of every FKS
-configuration (the entries of make_fks_reference.py that genps_fks.f sets) and
-writes one file per channel to
+set_granny). The script keeps the entries of make_fks_reference.py, the
+subtraction with the scales of the resonance too, with the Born blocks from the
+Fortran (fortran_born_blocks), and writes one file per channel to
 madspace/tests/test_data/fks_resonance/<name>_<subprocess>_c<iconfig>.json,
 with the fks_configurations of the same process from MadGraph7 of this
 repository (--main-root; the exporter of the branch does not write them) and
@@ -27,8 +27,13 @@ repository (--main-root; the exporter of the branch does not write them) and
         resonance: resonance_recoil, initial_recoil_leg and
             resonance_members of select_fks_recoil (1-based, as booleans)
     points[]: those of make_fks_reference.py, and resonance_mass2,
-        resonance_momentum (the momentum K of the resonance) and xij_aor
+        resonance_momentum (the momentum K of the resonance), xij_aor
         (the azimuthal phase of the collinear limit, real and imaginary part)
+        and resonance_scales (soft, collinear, angular and mismatch_log of
+        resonance_subtraction_scales at the soft counter-event, where the
+        event is generated, 1, 1, 1 and 0 without a resonance). coll_cnt
+        has z and t of sborncol_fsr, from the energies in the rest frame of
+        the resonance and t = z M_K^2 / 4.
 
 Run from anywhere with a gfortran in the PATH:
 
@@ -41,6 +46,7 @@ of the first subprocess of NAME, to choose the channels.
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -51,7 +57,6 @@ import tempfile
 HERE = os.path.dirname(os.path.realpath(__file__))
 OUT_DIR = os.path.join(HERE, "..", "test_data", "fks_resonance")
 sys.path.insert(0, HERE)
-import make_fks_asymmetric_reference as mfa  # noqa: E402
 import make_fks_reference as mfr  # noqa: E402
 
 # name: the process, its run_card values, the subprocess, its channels and
@@ -112,7 +117,7 @@ def dump(pdir, iconfig, points, massive, limit, log):
 
 def parse_resonance(text, data):
     """The entries of the resonance (NCONFIGS, FOREST, PROPS, GRANNY,
-    RESONANCE, RESK, AOR), added to the configurations and points that
+    RESONANCE, RESK, AOR, SCALES), added to the configurations and points that
     make_fks_reference.parse made of the same text."""
     configs = {conf["nfks"]: conf for conf in data["configs"]}
     forest, props = [], []
@@ -151,17 +156,52 @@ def parse_resonance(text, data):
                 initial_recoil_leg=v[1],
                 resonance_members=[bool(f) for f in v[2:]],
             )
-        elif key in ("RESK", "AOR"):
+        elif key in ("RESK", "AOR", "SCALES"):
             points = conf["limit_points" if limit else "points"]
             point = points[counts[conf["nfks"], limit] - 1]
             v = mfr.floats(rest)
             if key == "RESK":
                 point["resonance_mass2"] = v[0]
                 point["resonance_momentum"] = v[1:5]
-            else:
+            elif key == "AOR":
                 point["xij_aor"] = v
+            else:
+                point["resonance_scales"] = dict(
+                    soft=v[0], collinear=v[1], angular=v[2], mismatch_log=v[3]
+                )
     data["born_forest"] = forest
     data["born_props"] = props
+
+
+def fortran_born_blocks(data):
+    """The Born blocks of every point where the event is generated, from the
+    Fortran of the branch (make_fks_reference.fortran_orders): the Born of
+    amp_split_cnt and the color-correlated Borns from the color-linked Borns
+    of sborn_sf, summed over the Born orders. The emitters of PROCESSES are
+    quarks, so there are no spin-correlated Borns. pyAmpliCol is not used
+    since MadGraph drops the widths of t-channel propagators
+    (zerowidth_tchannel), here the Z of the t-channel diagrams."""
+    data["born_blocks"] = dict(
+        source="MadFKS of the branch per Born order: the Born of amp_split_cnt "
+        "and the color-linked Borns of sborn_sf, see fortran_orders",
+        alpha_s=data["g"] ** 2 / (4 * math.pi),
+        top_width=0.0,
+    )
+    for conf in data["configs"]:
+        for point in conf["points"] + conf["limit_points"]:
+            if "born" not in point:
+                continue
+            per_order = mfr.fortran_orders(data, conf, point)
+            blocks = dict(
+                born=math.fsum(b["born"] for b in per_order),
+                color_correlated=[
+                    [math.fsum(column) for column in zip(*rows)]
+                    for rows in zip(*(b["color_correlated"] for b in per_order))
+                ],
+            )
+            if len(per_order) > 1:
+                blocks["orders"] = per_order
+            point["born_blocks"] = blocks
 
 
 def run_card_cuts(out):
@@ -287,7 +327,8 @@ def main():
             text = dump(pdir, iconfig, points, massive, args.limit, log)
             parsed = mfr.parse(text)
             parse_resonance(text, parsed)
-            data = {key: parsed[key] for key in mfa.TOP_LEVEL}
+            # everything make_fks_reference.parse reads, the subtraction too
+            data = {key: value for key, value in parsed.items() if key != "configs"}
             data.update(
                 process=process,
                 subprocess=sub,
@@ -306,12 +347,10 @@ def main():
                 if [conf["i_fks"], conf["j_fks"]] != [entry["i_fks"], entry["j_fks"]]:
                     raise ValueError(f"{name} {sub}: the configurations differ")
                 conf = dict(conf)
-                conf["points"] = [mfa.kinematics(p) for p in conf["points"]]
-                conf["limit_points"] = [
-                    mfa.kinematics(p) for p in conf.get("limit_points", [])
-                ]
+                conf.setdefault("limit_points", [])
                 configs.append(conf)
             data["configs"] = configs
+            fortran_born_blocks(data)
             path = os.path.join(OUT_DIR, f"{name}_{sub}_c{iconfig}.json")
             with open(path, "w") as f:
                 json.dump(data, f, separators=(",", ":"))

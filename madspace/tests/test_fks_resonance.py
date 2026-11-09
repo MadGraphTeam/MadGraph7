@@ -280,6 +280,9 @@ def test_resonance_local_recoil(masses, j_fks):
     out = dict(zip(names, [to_numpy(t) for t in runtime.call([to_torch(r_all)])]))
     p = out["momenta"]
     k = p[:, 4:].sum(1)
+    np.testing.assert_allclose(
+        out["resonance_momentum"] / SQRT_S, k / SQRT_S, rtol=0, atol=1e-13
+    )
     m_k = np.sqrt(minkowski(k, k))
     p_i, p_j = rest_frame(p[:, 6], k), rest_frame(p[:, j_fks], k)
     np.testing.assert_allclose(out["xi"], 2 * p_i[:, 0] / m_k, rtol=1e-12)
@@ -464,6 +467,12 @@ def test_lepton_beams():
     np.testing.assert_array_equal(p[resonant, :4], born_p[resonant, :4])
     k_real, k_born = p[resonant, 4:].sum(1), born_p[resonant, 4:].sum(1)
     np.testing.assert_allclose(k_real / SQRT_S, k_born / SQRT_S, rtol=0, atol=1e-13)
+    # K of each event for the counterterms, zero without a resonance
+    k = out["resonance_momentum"]
+    np.testing.assert_allclose(
+        k[resonant] / SQRT_S, k_real / SQRT_S, rtol=0, atol=1e-13
+    )
+    np.testing.assert_array_equal(k[index < 2], 0.0)
     inputs = [out[name] for name in ("momenta", "x1", "x2")]
     inputs += [out["one_minus_x1"], out["one_minus_x2"]]
     r_inv, det_inv = mapping.map_inverse(

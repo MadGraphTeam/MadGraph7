@@ -257,16 +257,39 @@ KERNELSPEC void kernel_fks_sector_function(
     s = hfact / inverse;
 }
 
+// the sum of the two incoming momenta of p
+template <typename T>
+KERNELSPEC FourMom<T> fks_incoming_sum(FIn<T, 2> p) {
+    auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
+    return {p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+}
+
+// the momentum k of the resonance of the resonance-local recoil where the event
+// has one (k_0 > 0), q where it has none (k = 0)
+template <typename T>
+KERNELSPEC FourMom<T> fks_frame_of(FIn<T, 1> k, FourMom<T> q) {
+    auto res = load_mom<T>(k);
+    auto resonant = res[0] > 0.;
+    FourMom<T> frame;
+    for (int mu = 0; mu < 4; ++mu) {
+        frame[mu] = where(resonant, res[mu], q[mu]);
+    }
+    return frame;
+}
+
 // Reduced eikonal factors of eikonal_reduced (fks_singular.f) for the pairs
 // (m, n) of the configuration: (p_m p_n) (1 - y) / ((p_m p_i_hat) (p_n
-// p_i_hat)), with (p_j p_i_hat) / (1 - y) = sqrt_s E_j / 2 for a massless j,
-// which is finite at y = 1. Entries past the pairs of the configuration are
-// zero.
+// p_i_hat)), with (p_j p_i_hat) / (1 - y) = (P p_j) / 2 for a massless j,
+// which is finite at y = 1. P is the sum of the incoming momenta, sqrt_s E_j
+// in the partonic center-of-mass frame, or the momentum of the resonance of
+// the resonance-local recoil (frame). Entries past the pairs of the
+// configuration are zero.
 template <typename T>
-KERNELSPEC void kernel_fks_eikonals(
+KERNELSPEC void fks_eikonals_in_frame(
     FIn<T, 2> p,
     FIn<T, 1> p_i_hat,
     FIn<T, 0> y,
+    FourMom<T> p_tot,
     IIn<T, 0> index,
     IIn<T, 1> fks_j,
     IIn<T, 1> pair_count,
@@ -280,8 +303,6 @@ KERNELSPEC void kernel_fks_eikonals(
     std::size_t count = single_index(pair_count[c]);
     FVal<T> mj = masses[c][jj];
     bool massless_j = mj == 0.;
-    auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
-    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
     auto i_hat = load_mom<T>(p_i_hat);
     FVal<T> one_minus_y = 1. - FVal<T>(y);
     for (std::size_t k = 0; k < eik.size(); ++k) {
@@ -308,6 +329,65 @@ KERNELSPEC void kernel_fks_eikonals(
         }
         eik[k] = dot_nm / (dot_ni * dot_mi) * fact;
     }
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_eikonals(
+    FIn<T, 2> p,
+    FIn<T, 1> p_i_hat,
+    FIn<T, 0> y,
+    IIn<T, 0> index,
+    IIn<T, 1> fks_j,
+    IIn<T, 1> pair_count,
+    IIn<T, 2> pair_m,
+    IIn<T, 2> pair_n,
+    FIn<T, 2> masses,
+    FOut<T, 1> eik
+) {
+    fks_eikonals_in_frame<T>(
+        p,
+        p_i_hat,
+        y,
+        fks_incoming_sum<T>(p),
+        index,
+        fks_j,
+        pair_count,
+        pair_m,
+        pair_n,
+        masses,
+        eik
+    );
+}
+
+// the same with the momentum k of the resonance of the resonance-local recoil
+// in place of the sum of the incoming momenta where the event has one (k_0 > 0)
+template <typename T>
+KERNELSPEC void kernel_fks_eikonals_resonance(
+    FIn<T, 2> p,
+    FIn<T, 1> p_i_hat,
+    FIn<T, 0> y,
+    FIn<T, 1> k,
+    IIn<T, 0> index,
+    IIn<T, 1> fks_j,
+    IIn<T, 1> pair_count,
+    IIn<T, 2> pair_m,
+    IIn<T, 2> pair_n,
+    FIn<T, 2> masses,
+    FOut<T, 1> eik
+) {
+    fks_eikonals_in_frame<T>(
+        p,
+        p_i_hat,
+        y,
+        fks_frame_of<T>(k, fks_incoming_sum<T>(p)),
+        index,
+        fks_j,
+        pair_count,
+        pair_m,
+        pair_n,
+        masses,
+        eik
+    );
 }
 
 // The collinear factors of sborncol_fsr and sborncol_isr (fks_singular.f):
@@ -337,9 +417,14 @@ KERNELSPEC FVal<T> fks_ap_shape(std::size_t kind, FVal<T> z) {
     }
 }
 
+// The kernels with energies and energy squared s in the rest frame of p_tot,
+// the sum of the incoming momenta or, for a final-state j, the momentum of the
+// resonance of the resonance-local recoil (sborncol_fsr of its MadGraph7
+// branch: E = (K p) / M_K and t = z M_K^2 / 4).
 template <typename T>
-KERNELSPEC void kernel_fks_splitting_kernels(
+KERNELSPEC void fks_splitting_kernels_in_frame(
     FIn<T, 2> p,
+    FourMom<T> p_tot,
     IIn<T, 0> index,
     IIn<T, 1> fks_i,
     IIn<T, 1> fks_j,
@@ -351,10 +436,8 @@ KERNELSPEC void kernel_fks_splitting_kernels(
 ) {
     std::size_t c = single_index(index);
     std::size_t ii = single_index(fks_i[c]), jj = single_index(fks_j[c]);
-    auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
-    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
     auto s = lsquare<T>(p_tot);
-    // energies in the center-of-mass frame, up to the common 1 / sqrt(s)
+    // energies in the rest frame of p_tot, up to the common 1 / sqrt(s)
     auto e_i = ldot<T>(load_mom<T>(p[ii]), p_tot);
     bool final_state = jj >= 2;
     FVal<T> zz;
@@ -376,23 +459,71 @@ KERNELSPEC void kernel_fks_splitting_kernels(
     z = zz;
 }
 
-// The transverse direction of the emission k_perp (xij_kperp of genps_fks.f):
-// the momentum of i per unit xi made orthogonal to the Born emitter and to the
-// sum of the incoming Born momenta, normalized to k_perp^2 = -1. In the
-// partonic center-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of
-// the emitter (the beam axis for an initial-state one), up to its sign.
 template <typename T>
-KERNELSPEC void kernel_fks_transverse_vector(
+KERNELSPEC void kernel_fks_splitting_kernels(
+    FIn<T, 2> p,
+    IIn<T, 0> index,
+    IIn<T, 1> fks_i,
+    IIn<T, 1> fks_j,
+    IIn<T, 1> kind,
+    FIn<T, 2> factors,
+    FOut<T, 0> z,
+    FOut<T, 1> ap,
+    FOut<T, 1> q
+) {
+    fks_splitting_kernels_in_frame<T>(
+        p, fks_incoming_sum<T>(p), index, fks_i, fks_j, kind, factors, z, ap, q
+    );
+}
+
+// the same with the momentum k of the resonance of the resonance-local recoil
+// where the event has one (k_0 > 0)
+template <typename T>
+KERNELSPEC void kernel_fks_splitting_kernels_resonance(
+    FIn<T, 2> p,
+    FIn<T, 1> k,
+    IIn<T, 0> index,
+    IIn<T, 1> fks_i,
+    IIn<T, 1> fks_j,
+    IIn<T, 1> kind,
+    FIn<T, 2> factors,
+    FOut<T, 0> z,
+    FOut<T, 1> ap,
+    FOut<T, 1> q
+) {
+    fks_splitting_kernels_in_frame<T>(
+        p,
+        fks_frame_of<T>(k, fks_incoming_sum<T>(p)),
+        index,
+        fks_i,
+        fks_j,
+        kind,
+        factors,
+        z,
+        ap,
+        q
+    );
+}
+
+// The transverse direction of the emission k_perp (xij_kperp of genps_fks.f):
+// the momentum of i per unit xi made orthogonal to the Born emitter and to P,
+// normalized to k_perp^2 = -1. With P the sum of the incoming Born momenta it
+// is (0, cos phi, sin phi, 0) in the frame of the emitter (the beam axis for
+// an initial-state one) in the partonic center-of-mass frame, up to its sign.
+// With P the momentum of the resonance of the resonance-local recoil it is that
+// vector in the rest frame of the resonance, boosted with the momenta
+// (resonance_collinear_phase of the MadGraph7 branch).
+template <typename T>
+KERNELSPEC void fks_transverse_vector_in_frame(
     FIn<T, 1> p_i_hat,
     FIn<T, 2> p_born,
+    FourMom<T> P,
     IIn<T, 0> index,
     IIn<T, 1> born_j,
     FOut<T, 1> k_perp
 ) {
     std::size_t c = single_index(index);
     auto q = load_mom<T>(p_born[single_index(born_j[c])]);
-    auto p1 = load_mom<T>(p_born[0]), p2 = load_mom<T>(p_born[1]);
-    FourMom<T> P{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
     auto v = load_mom<T>(p_i_hat);
     // v - a q - b P orthogonal to q and P
     auto qq = ldot<T>(q, q), qP = ldot<T>(q, P), PP = ldot<T>(P, P);
@@ -410,11 +541,117 @@ KERNELSPEC void kernel_fks_transverse_vector(
     }
 }
 
+template <typename T>
+KERNELSPEC void kernel_fks_transverse_vector(
+    FIn<T, 1> p_i_hat,
+    FIn<T, 2> p_born,
+    IIn<T, 0> index,
+    IIn<T, 1> born_j,
+    FOut<T, 1> k_perp
+) {
+    fks_transverse_vector_in_frame<T>(
+        p_i_hat, p_born, fks_incoming_sum<T>(p_born), index, born_j, k_perp
+    );
+}
+
+// the same with the momentum k of the resonance of the resonance-local recoil
+// where the event has one (k_0 > 0)
+template <typename T>
+KERNELSPEC void kernel_fks_transverse_vector_resonance(
+    FIn<T, 1> p_i_hat,
+    FIn<T, 2> p_born,
+    FIn<T, 1> k,
+    IIn<T, 0> index,
+    IIn<T, 1> born_j,
+    FOut<T, 1> k_perp
+) {
+    fks_transverse_vector_in_frame<T>(
+        p_i_hat,
+        p_born,
+        fks_frame_of<T>(k, fks_incoming_sum<T>(p_born)),
+        index,
+        born_j,
+        k_perp
+    );
+}
+
 // The prefactors of the real emission and its counterterms of
 // compute_prefactors_n1body (fks_singular.f), for the Jacobians of the
 // events without the factor xi and without the symmetry factors: the
 // plus distributions in xi and 1 - y with their cuts xicut, xiScut, delta and
-// deltaS. The collinear ones vanish for a massive emitter.
+// deltaS. The collinear ones vanish for a massive emitter. soft_cut and
+// coll_cut are the cuts of the plus distribution in xi of the soft and of the
+// collinear counter-events, delta_c that in 1 - y: xicut and delta, or those
+// of the resonance-local recoil.
+template <typename T>
+KERNELSPEC void fks_prefactors_with_cuts(
+    FIn<T, 0> xi,
+    FIn<T, 0> y,
+    FIn<T, 0> xi_max,
+    FIn<T, 0> xi_c,
+    FIn<T, 0> xi_max_c,
+    FIn<T, 2> p_c,
+    FIn<T, 2> p_sc,
+    FVal<T> soft_cut,
+    FVal<T> coll_cut,
+    FVal<T> delta_c,
+    bool collinear,
+    FIn<T, 1> options,
+    FOut<T, 0> f_r,
+    FOut<T, 0> f_s,
+    FOut<T, 0> f_c,
+    FOut<T, 0> f_dc,
+    FOut<T, 0> f_sc,
+    FOut<T, 1> f_dsc,
+    FOut<T, 1> f_pdf
+) {
+    constexpr double pi = 3.14159265358979323846;
+    FVal<T> xicut = options[0], xi_s_cut = options[1], delta_s = options[2];
+    FVal<T> omy = 1. - FVal<T>(y);
+    FVal<T> x = xi;
+    f_r = 1. / (x * omy);
+    auto xi_lim = min(FVal<T>(xi_max), xi_s_cut);
+    f_s = (1. / x + log(soft_cut / xi_lim) / xi_lim) / omy;
+    if (!collinear) {
+        f_c = 0.;
+        f_dc = 0.;
+        f_sc = 0.;
+        for (std::size_t k = 0; k < 4; ++k) {
+            f_dsc[k] = 0.;
+        }
+        for (std::size_t k = 0; k < 3; ++k) {
+            f_pdf[k] = 0.;
+        }
+        return;
+    }
+    FVal<T> x_c = xi_c;
+    auto l_delta = log(delta_c / delta_s) / delta_s;
+    auto in_y = 1. / omy + l_delta;
+    f_c = in_y / x_c;
+    auto s_c = lsquare<T>(fks_incoming_sum<T>(p_c));
+    f_dc = 32. * pi * pi / (s_c * x_c * delta_s);
+    auto xi_lim_c = min(FVal<T>(xi_max_c), xi_s_cut);
+    auto l_xi = log(coll_cut / xi_lim_c);
+    f_sc = in_y * (1. / x_c + l_xi / xi_lim_c);
+    auto s_sc = lsquare<T>(fks_incoming_sum<T>(p_sc));
+    auto g = 32. * pi * pi / (s_sc * delta_s);
+    auto log_cut = log(xicut), log_lim = log(xi_lim_c);
+    f_dsc[0] = g / x_c;
+    f_dsc[1] = g * l_xi / xi_lim_c;
+    // as a product, which vanishes exactly for xi_lim_c = xicut
+    f_dsc[2] = g * (log_cut - log_lim) * (log_cut + log_lim) / (2. * xi_lim_c);
+    f_dsc[3] = g * (1. / x_c + l_xi / xi_lim_c);
+    // the delta, plus and log-plus parts of a change of the PDF scheme:
+    // delta(xi) spread over the range of the soft-collinear counterterm, up to
+    // xi_lim_c, and log(xi_lim_c) and log^2(xi_lim_c) / 2 that turn its
+    // [1/xi] and [log(xi)/xi] into [1/(1 - z)]_+ and [log(1 - z)/(1 - z)]_+.
+    // MadFKS takes xiScut for xi_lim_c, which misses part of them where the
+    // range of xi ends below xiScut.
+    f_pdf[0] = g / xi_lim_c;
+    f_pdf[1] = g * log_lim / xi_lim_c;
+    f_pdf[2] = g * log_lim * log_lim / (2. * xi_lim_c);
+}
+
 template <typename T>
 KERNELSPEC void kernel_fks_prefactors(
     FIn<T, 0> xi,
@@ -436,58 +673,105 @@ KERNELSPEC void kernel_fks_prefactors(
     FOut<T, 1> f_dsc,
     FOut<T, 1> f_pdf
 ) {
-    constexpr double pi = 3.14159265358979323846;
     std::size_t c = single_index(index);
-    FVal<T> xicut = options[0], xi_s_cut = options[1], delta_s = options[2];
-    FVal<T> omy = 1. - FVal<T>(y);
-    FVal<T> x = xi;
-    f_r = 1. / (x * omy);
-    auto xi_lim = min(FVal<T>(xi_max), xi_s_cut);
-    f_s = (1. / x + log(xicut / xi_lim) / xi_lim) / omy;
-    if (single_index(collinear[c]) == 0) {
-        f_c = 0.;
-        f_dc = 0.;
-        f_sc = 0.;
-        for (std::size_t k = 0; k < 4; ++k) {
-            f_dsc[k] = 0.;
-        }
-        for (std::size_t k = 0; k < 3; ++k) {
-            f_pdf[k] = 0.;
-        }
-        return;
+    FVal<T> xicut = options[0];
+    fks_prefactors_with_cuts<T>(
+        xi,
+        y,
+        xi_max,
+        xi_c,
+        xi_max_c,
+        p_c,
+        p_sc,
+        xicut,
+        xicut,
+        FVal<T>(delta[c]),
+        single_index(collinear[c]) != 0,
+        options,
+        f_r,
+        f_s,
+        f_c,
+        f_dc,
+        f_sc,
+        f_dsc,
+        f_pdf
+    );
+}
+
+// The same with the cuts of the resonance-local recoil where the event has a
+// resonance of momentum k (k_0 > 0), as compute_prefactors_n1body of the
+// MadGraph7 branch takes them from resonance_subtraction_scales at the soft
+// counter-event (momenta p_s, i per unit xi p_i_hat_s): with the sum P of its
+// incoming momenta, s = P^2, the emitter j and a(q) = s (k q) / (k^2 (P q)),
+// the ratio of xi in the rest frame of k to xi in that of P for a soft
+// momentum q, the soft cut xicut a(p_i_hat_s), the collinear one
+// xicut a(p_j) and delta s / (k^2 a(p_j)^2), delta / D_j^2 with D_j the ratio
+// of the energies of j in the two frames. The local counterterms then match
+// the integrated ones of the partonic center-of-mass frame.
+template <typename T>
+KERNELSPEC void kernel_fks_prefactors_resonance(
+    FIn<T, 0> xi,
+    FIn<T, 0> y,
+    FIn<T, 0> xi_max,
+    FIn<T, 0> xi_c,
+    FIn<T, 0> xi_max_c,
+    FIn<T, 2> p_c,
+    FIn<T, 2> p_sc,
+    FIn<T, 2> p_s,
+    FIn<T, 1> p_i_hat_s,
+    FIn<T, 1> k,
+    IIn<T, 0> index,
+    IIn<T, 1> fks_j,
+    IIn<T, 1> collinear,
+    FIn<T, 1> delta,
+    FIn<T, 1> options,
+    FOut<T, 0> f_r,
+    FOut<T, 0> f_s,
+    FOut<T, 0> f_c,
+    FOut<T, 0> f_dc,
+    FOut<T, 0> f_sc,
+    FOut<T, 1> f_dsc,
+    FOut<T, 1> f_pdf
+) {
+    std::size_t c = single_index(index);
+    FVal<T> xicut = options[0], delta_c = delta[c];
+    auto res = load_mom<T>(k);
+    auto resonant = res[0] > 0.;
+    auto total = fks_incoming_sum<T>(p_s);
+    auto phat = load_mom<T>(p_i_hat_s);
+    auto pj = load_mom<T>(p_s[single_index(fks_j[c])]);
+    // as resonance_subtraction_scales, at a pass-through k without a resonance
+    FourMom<T> q;
+    for (int mu = 0; mu < 4; ++mu) {
+        q[mu] = where(resonant, res[mu], total[mu]);
     }
-    FVal<T> x_c = xi_c;
-    auto l_delta = log(FVal<T>(delta[c]) / delta_s) / delta_s;
-    auto in_y = 1. / omy + l_delta;
-    f_c = in_y / x_c;
-    auto pc1 = load_mom<T>(p_c[0]), pc2 = load_mom<T>(p_c[1]);
-    auto s_c = lsquare<T>(
-        FourMom<T>{pc1[0] + pc2[0], pc1[1] + pc2[1], pc1[2] + pc2[2], pc1[3] + pc2[3]}
+    auto s = lsquare<T>(total), mass2 = lsquare<T>(q);
+    auto kq = ldot<T>(phat, q), kt = ldot<T>(phat, total);
+    auto jq = ldot<T>(pj, q), jt = ldot<T>(pj, total);
+    auto soft_scale = (s / mass2) * (kq / kt);
+    auto coll_scale = (s / mass2) * (jq / jt);
+    auto angular_scale = (s / mass2) / (coll_scale * coll_scale);
+    fks_prefactors_with_cuts<T>(
+        xi,
+        y,
+        xi_max,
+        xi_c,
+        xi_max_c,
+        p_c,
+        p_sc,
+        where(resonant, xicut * soft_scale, xicut),
+        where(resonant, xicut * coll_scale, xicut),
+        where(resonant, delta_c * angular_scale, delta_c),
+        single_index(collinear[c]) != 0,
+        options,
+        f_r,
+        f_s,
+        f_c,
+        f_dc,
+        f_sc,
+        f_dsc,
+        f_pdf
     );
-    f_dc = 32. * pi * pi / (s_c * x_c * delta_s);
-    auto xi_lim_c = min(FVal<T>(xi_max_c), xi_s_cut);
-    auto l_xi = log(xicut / xi_lim_c);
-    f_sc = in_y * (1. / x_c + l_xi / xi_lim_c);
-    auto ps1 = load_mom<T>(p_sc[0]), ps2 = load_mom<T>(p_sc[1]);
-    auto s_sc = lsquare<T>(
-        FourMom<T>{ps1[0] + ps2[0], ps1[1] + ps2[1], ps1[2] + ps2[2], ps1[3] + ps2[3]}
-    );
-    auto g = 32. * pi * pi / (s_sc * delta_s);
-    auto log_cut = log(xicut), log_lim = log(xi_lim_c);
-    f_dsc[0] = g / x_c;
-    f_dsc[1] = g * l_xi / xi_lim_c;
-    // as a product, which vanishes exactly for xi_lim_c = xicut
-    f_dsc[2] = g * (log_cut - log_lim) * (log_cut + log_lim) / (2. * xi_lim_c);
-    f_dsc[3] = g * (1. / x_c + l_xi / xi_lim_c);
-    // the delta, plus and log-plus parts of a change of the PDF scheme:
-    // delta(xi) spread over the range of the soft-collinear counterterm, up to
-    // xi_lim_c, and log(xi_lim_c) and log^2(xi_lim_c) / 2 that turn its
-    // [1/xi] and [log(xi)/xi] into [1/(1 - z)]_+ and [log(1 - z)/(1 - z)]_+.
-    // MadFKS takes xiScut for xi_lim_c, which misses part of them where the
-    // range of xi ends below xiScut.
-    f_pdf[0] = g / xi_lim_c;
-    f_pdf[1] = g * log_lim / xi_lim_c;
-    f_pdf[2] = g * log_lim * log_lim / (2. * xi_lim_c);
 }
 
 // The soft limit of xi^2 (1 - y) times the real matrix element of sbornsoft

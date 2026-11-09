@@ -145,7 +145,10 @@ public:
      *   counter-event without the factor @f$\xi@f$, times the weight of the
      *   Born (0 where the counter-event does not exist), `k_p_i_hat`, the
      *   momentum of i per unit @f$\xi@f$, and `k_xi`, `k_xi_max`, its
-     *   @f$\xi@f$ and the upper end of the range of @f$\xi@f$.
+     *   @f$\xi@f$ and the upper end of the range of @f$\xi@f$;
+     * - with a resonance, `resonance_momentum`: its momentum @f$K@f$, the
+     *   sum of its members, which the emission keeps, for the subtraction in
+     *   its rest frame (see @ref FKSSubtraction).
      */
     NamedVector<Value> build_counter_events(
         FunctionBuilder& fb,
@@ -437,6 +440,8 @@ public:
      * and of every counter-event) and `collinear_born_momenta`, the Born that
      * the collinear limit takes: for an incoming emitter the momenta of the
      * collinear counter-event without i, with @f$j - i@f$ for j, else the Born.
+     * With resonances also `resonance_momentum`, the momentum of the
+     * resonance of the event in the lab frame, zero where it has none.
      */
     NamedVector<Value> build_counter_events(
         FunctionBuilder& fb,
@@ -619,6 +624,8 @@ private:
     nested_vector2<double> _resonance_born_masks;
     nested_vector2<double> _resonance_layout_masks;
     nested_vector2<double> _resonance_emission_masks;
+    // and in the order of the real process, for the momentum of the resonance
+    nested_vector2<double> _resonance_real_masks;
 };
 
 /**

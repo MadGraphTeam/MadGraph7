@@ -27,7 +27,12 @@ namespace madspace {
  * (sbornsoft) and the momentum of i per unit @f$\xi@f$, @f$\hat p_i@f$
  * (`p_i_hat` of @ref FKSKinematics). For a massless j,
  * @f$(p_j \hat p_i) / (1 - y) = \sqrt{s} E_j / 2@f$ in the partonic
- * center-of-mass frame, so that the factors are finite at @f$y = 1@f$. The
+ * center-of-mass frame, so that the factors are finite at @f$y = 1@f$. With
+ * the resonance-local recoil (@p resonance, see @ref FKSConfigurationMapping)
+ * @f$\xi@f$, @f$y@f$ and @f$\hat p_i@f$ are those of the rest frame of the
+ * resonance of momentum @f$K@f$, and @f$(p_j \hat p_i) / (1 - y) =
+ * (K p_j) / 2@f$ where the event has one, as eikonal_reduced of the
+ * MCcntRefactor_Sfun branch of MadGraph7 takes it. The
  * pairs are those of sbornsoft, in its order: every unordered pair of the
  * particles that form an FKS pair with i, a particle with itself only where it
  * is massive. They are evaluated on the momenta of the soft counter-event.
@@ -43,6 +48,11 @@ namespace madspace {
  * - `p_i_hat` – `float`, shape `(batch, 4)` – momentum of i per unit
  *   @f$\xi@f$ at the soft counter-event.
  * - `y` – `float`, shape `(batch,)` – cosine of the angle between i and j.
+ * - `resonance_momentum` – `float`, shape `(batch, 4)` – the momentum
+ *   @f$K@f$ of the resonance of the event, in the frame of the momenta, zero
+ *   where it has none (`resonance_momentum` of
+ *   FKSConfigurationMapping::build_counter_events). Present only with
+ *   @p resonance.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
  *   from 0 to the number of configurations minus one.
  *
@@ -64,8 +74,12 @@ public:
     /**
      * @param configurations  The FKS configurations, in the order of
      *                        `fks_index` (their FKS pairs and masses).
+     * @param resonance       Take the momentum of the resonance of the
+     *                        resonance-local recoil (`resonance_momentum`).
      */
-    explicit FKSEikonals(const std::vector<FKSConfiguration>& configurations);
+    explicit FKSEikonals(
+        const std::vector<FKSConfiguration>& configurations, bool resonance = false
+    );
     /// Number of configurations.
     std::size_t configuration_count() const { return _i_fks.size(); }
     /// Number of particles of the real processes, incoming included.
@@ -95,6 +109,7 @@ private:
     std::vector<std::size_t> _j_fks;
     std::vector<std::vector<std::pair<std::size_t, std::size_t>>> _pairs;
     nested_vector2<double> _masses;
+    bool _resonance;
 };
 
 /**
@@ -119,7 +134,14 @@ private:
  * spin-correlated Born contracted with the transverse direction of the emission
  * @f$k_\perp@f$ (xij_kperp of genps_fks.f): the momentum of i per unit @f$\xi@f$ at the
  * event made orthogonal to the Born emitter and to the sum of the incoming
- * Born momenta, @f$k_\perp^2 = -1@f$.
+ * Born momenta, @f$k_\perp^2 = -1@f$. With the resonance-local recoil
+ * (@p resonance, see @ref FKSConfigurationMapping) a final-state j takes the
+ * rest frame of the resonance of momentum @f$K@f$ where the event has one, as
+ * sborncol_fsr of the MCcntRefactor_Sfun branch of MadGraph7: the energies
+ * there, @f$t = z K^2 / 4@f$ and @f$k_\perp@f$ orthogonal to @f$K@f$ in
+ * place of the incoming momenta, the transverse direction in the rest frame of
+ * the resonance boosted with the momenta (resonance_collinear_phase of the
+ * branch).
  *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the real process, incoming included.
@@ -132,6 +154,9 @@ private:
  *   @f$\xi@f$ at the event.
  * - `born_momenta` – `float`, shape `(batch, n - 1, 4)` – momenta of the Born,
  *   in the frame of `p_i_hat`.
+ * - `resonance_momentum` – `float`, shape `(batch, 4)` – the momentum
+ *   @f$K@f$ of the resonance of the event, zero where it has none. Present
+ *   only with @p resonance.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
  *   from 0 to the number of configurations minus one.
  *
@@ -156,8 +181,12 @@ public:
     /**
      * @param configurations  The FKS configurations, in the order of
      *                        `fks_index` (their colors and charges).
+     * @param resonance       Take the momentum of the resonance of the
+     *                        resonance-local recoil (`resonance_momentum`).
      */
-    explicit FKSSplittingKernels(const std::vector<FKSConfiguration>& configurations);
+    explicit FKSSplittingKernels(
+        const std::vector<FKSConfiguration>& configurations, bool resonance = false
+    );
     /// Number of configurations.
     std::size_t configuration_count() const { return _i_fks.size(); }
     /// Number of particles of the real processes, incoming included.
@@ -181,6 +210,7 @@ private:
     std::vector<std::size_t> _j_fks;
     std::vector<int> _kind;
     nested_vector2<double> _factors;
+    bool _resonance;
 };
 
 /**
@@ -258,6 +288,10 @@ private:
  *   @ref FKSConfigurationMapping).
  * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
  * - `alpha` – `float`, shape `(batch,)` – the QED coupling.
+ * - `resonance_momentum` – `float`, shape `(batch, 4)` – the momentum of the
+ *   resonance of the resonance-local recoil of the event, zero where it has
+ *   none, for @ref FKSEikonals and @ref FKSSplittingKernels. Present only
+ *   with @p resonance.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
  *   from 0 to the number of configurations minus one.
  *
@@ -289,6 +323,8 @@ public:
      * @param collinear_born  Take the Born of the collinear counter-event
      *                        apart (`collinear_born` and
      *                        `collinear_spin_correlated`), for lepton beams.
+     * @param resonance       Take the momentum of the resonance of the
+     *                        resonance-local recoil (`resonance_momentum`).
      * @throws std::invalid_argument for a splitting that is not one of QCD or
      *         QED, an extra counterterm that the coupling orders do not have
      *         or coupling orders without the splitting types.
@@ -296,7 +332,8 @@ public:
     FKSLimits(
         const std::vector<FKSConfiguration>& configurations,
         const FKSCouplingOrders& orders,
-        bool collinear_born = false
+        bool collinear_born = false,
+        bool resonance = false
     );
     /// Number of configurations.
     std::size_t configuration_count() const { return _collinear_factor.size(); }
@@ -311,6 +348,9 @@ public:
     std::size_t nlo_order_count() const { return _nlo_order_count; }
     /// Whether the collinear counter-event takes a Born of its own.
     bool collinear_born() const { return _collinear_born; }
+    /// Whether it takes the momentum of the resonance of the resonance-local
+    /// recoil.
+    bool resonance() const { return _resonance; }
     /// Whether a configuration has a soft limit (i is a gluon or a photon).
     bool soft(std::size_t index) const { return _pair_count.at(index) > 0; }
     /// Whether a configuration has collinear limits (j is massless).
@@ -351,6 +391,7 @@ private:
     std::size_t _born_input_count;
     std::size_t _nlo_order_count;
     bool _collinear_born;
+    bool _resonance;
     std::vector<me_int_t> _fks_i;
     std::vector<me_int_t> _fks_j;
     std::vector<me_int_t> _pair_count;
@@ -422,6 +463,20 @@ std::size_t check_splitting_configurations(
  * @f$y > 1 - \delta_S@f$) is left to @ref FKSSubtraction, which also adds
  * the symmetry factors.
  *
+ * With the resonance-local recoil (@p resonance, see
+ * @ref FKSConfigurationMapping) @f$\xi@f$ and @f$y@f$ are those of the rest
+ * frame of the resonance of momentum @f$K@f$ where the event has one, while the
+ * integrated counterterms stay in the partonic center-of-mass frame. The cuts
+ * then follow from those of that frame, as compute_prefactors_n1body of the
+ * MCcntRefactor_Sfun branch of MadGraph7 takes them from
+ * resonance_subtraction_scales: with @f$P@f$ the sum of the incoming momenta
+ * of the soft counter-event, @f$s = P^2@f$ and
+ * @f$a(q) = s (K q) / (K^2 (P q))@f$, the ratio of @f$\xi@f$ in the two frames
+ * for a soft momentum along @f$q@f$, @f$\xi_\mathrm{cut} a(\hat p_i)@f$ in
+ * @f$f_s@f$, @f$\xi_\mathrm{cut} a(p_j)@f$ in @f$f_{sc}@f$ and the second and
+ * fourth @f$f_{dsc}@f$, and @f$\delta s / (K^2 a(p_j)^2)@f$ in @f$L_\delta@f$,
+ * with @f$\hat p_i@f$ and @f$p_j@f$ at the soft counter-event.
+ *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the real process, incoming included.
  *
@@ -433,6 +488,14 @@ std::size_t check_splitting_configurations(
  * - `collinear_momenta`, `soft_collinear_momenta` – `float`, shape
  *   `(batch, n, 4)` – momenta of the collinear and soft-collinear
  *   counter-events, in any frame.
+ * - `soft_momenta` – `float`, shape `(batch, n, 4)` – momenta of the soft
+ *   counter-event, in the frame of the others. Present only with
+ *   @p resonance.
+ * - `soft_p_i_hat` – `float`, shape `(batch, 4)` – momentum of i per unit
+ *   @f$\xi@f$ at the soft counter-event. Present only with @p resonance.
+ * - `resonance_momentum` – `float`, shape `(batch, 4)` – the momentum
+ *   @f$K@f$ of the resonance of the event, zero where it has none. Present
+ *   only with @p resonance.
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
  *   from 0 to the number of configurations minus one.
  *
@@ -464,6 +527,9 @@ public:
      * @param delta_i         The same for an initial-state emitter (deltaI).
      * @param delta_s         The lower end of the collinear counterterms in
      *                        @f$1 - y@f$ (deltaS).
+     * @param resonance       Take the cuts of the resonance-local recoil
+     *                        (`soft_momenta`, `soft_p_i_hat` and
+     *                        `resonance_momentum`).
      */
     FKSPrefactors(
         const std::vector<FKSConfiguration>& configurations,
@@ -471,7 +537,8 @@ public:
         double xi_s_cut = 0.5,
         double delta_o = 1.,
         double delta_i = 1.,
-        double delta_s = 1.
+        double delta_s = 1.,
+        bool resonance = false
     );
     /// Number of configurations.
     std::size_t configuration_count() const { return _j_fks.size(); }
@@ -487,6 +554,7 @@ private:
     std::vector<std::size_t> _j_fks;
     nested_vector2<double> _masses;
     double _xicut, _xi_s_cut, _delta_o, _delta_i, _delta_s;
+    bool _resonance;
 };
 
 } // namespace madspace

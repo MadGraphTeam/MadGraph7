@@ -2102,8 +2102,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "FKSEikonals", pydoc::doc("FKSEikonals")
     )
         .def(
-            py::init<const std::vector<FKSConfiguration>&>(),
+            py::init<const std::vector<FKSConfiguration>&, bool>(),
             py::arg("configurations"),
+            py::arg("resonance") = false,
             pydoc::doc("FKSEikonals::FKSEikonals")
         )
         .def(
@@ -2138,8 +2139,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "FKSSplittingKernels", pydoc::doc("FKSSplittingKernels")
     )
         .def(
-            py::init<const std::vector<FKSConfiguration>&>(),
+            py::init<const std::vector<FKSConfiguration>&, bool>(),
             py::arg("configurations"),
+            py::arg("resonance") = false,
             pydoc::doc("FKSSplittingKernels::FKSSplittingKernels")
         )
         .def(
@@ -2170,10 +2172,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const std::vector<FKSConfiguration>&,
                 const FKSCouplingOrders&,
+                bool,
                 bool>(),
             py::arg("configurations"),
             py::arg("orders"),
             py::arg("collinear_born") = false,
+            py::arg("resonance") = false,
             pydoc::doc("FKSLimits::FKSLimits")
         )
         .def(
@@ -2181,6 +2185,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             &FKSLimits::collinear_born,
             pydoc::doc("FKSLimits::collinear_born")
         )
+        .def("resonance", &FKSLimits::resonance, pydoc::doc("FKSLimits::resonance"))
         .def(
             "configuration_count",
             &FKSLimits::configuration_count,
@@ -2245,13 +2250,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double,
-                double>(),
+                double,
+                bool>(),
             py::arg("configurations"),
             py::arg("xicut") = 0.5,
             py::arg("xi_s_cut") = 0.5,
             py::arg("delta_o") = 1.,
             py::arg("delta_i") = 1.,
             py::arg("delta_s") = 1.,
+            py::arg("resonance") = false,
             pydoc::doc("FKSPrefactors::FKSPrefactors")
         )
         .def(
@@ -2340,6 +2347,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 FKSSubtraction::PdfScheme,
                 double,
                 const std::vector<double>&,
+                bool,
                 bool>(),
             py::arg("configurations"),
             py::arg("orders"),
@@ -2359,6 +2367,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("n_f") = 5.,
             py::arg("upc_radii") = std::vector<double>{},
             py::arg("collinear_born") = false,
+            py::arg("resonance") = false,
             pydoc::doc("FKSSubtraction::FKSSubtraction")
         )
         .def(

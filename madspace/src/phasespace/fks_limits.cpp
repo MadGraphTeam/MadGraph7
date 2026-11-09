@@ -36,17 +36,23 @@ eikonal_pairs(const FKSConfiguration& config) {
 
 } // namespace
 
-FKSEikonals::FKSEikonals(const std::vector<FKSConfiguration>& configurations) :
+FKSEikonals::FKSEikonals(
+    const std::vector<FKSConfiguration>& configurations, bool resonance
+) :
     FunctionGenerator(
         "FKSEikonals",
         [&] {
             std::size_t n = check_fks_configurations(configurations, "FKSEikonals");
-            return NamedVector<Type>{
+            NamedVector<Type> types{
                 {"momenta", batch_four_vec_array(n)},
                 {"p_i_hat", batch_four_vec},
                 {"y", batch_float},
-                {"fks_index", batch_int},
             };
+            if (resonance) {
+                types.push_back("resonance_momentum", batch_four_vec);
+            }
+            types.push_back("fks_index", batch_int);
+            return types;
         }(),
         [&] {
             // checked here too: the order of the two arguments is unspecified
@@ -61,7 +67,8 @@ FKSEikonals::FKSEikonals(const std::vector<FKSConfiguration>& configurations) :
         }()
     ),
     _particle_count(configurations.at(0).particle_count()),
-    _max_pair_count(1) {
+    _max_pair_count(1),
+    _resonance(resonance) {
     for (const auto& config : configurations) {
         _i_fks.push_back(config.i_fks);
         _j_fks.push_back(config.j_fks);
@@ -100,6 +107,23 @@ NamedVector<Value> FKSEikonals::build_function_impl(
         }
         pair_m.push_back(ms);
         pair_n.push_back(ns);
+    }
+    if (_resonance) {
+        return {
+            {"eikonals",
+             fb.fks_eikonals_resonance(
+                 args.at("momenta"),
+                 args.at("p_i_hat"),
+                 args.at("y"),
+                 args.at("resonance_momentum"),
+                 index,
+                 fks_j,
+                 pair_count,
+                 pair_m,
+                 pair_n,
+                 _masses
+             )}
+        };
     }
     auto eikonals = fb.fks_eikonals(
         args.at("momenta"),
@@ -177,26 +201,31 @@ Splitting splitting(int col1, int col2, double ch1, double ch2, bool final_state
 } // namespace
 
 FKSSplittingKernels::FKSSplittingKernels(
-    const std::vector<FKSConfiguration>& configurations
+    const std::vector<FKSConfiguration>& configurations, bool resonance
 ) :
     FunctionGenerator(
         "FKSSplittingKernels",
         [&] {
             std::size_t n =
                 check_fks_configurations(configurations, "FKSSplittingKernels");
-            return NamedVector<Type>{
+            NamedVector<Type> types{
                 {"momenta", batch_four_vec_array(n)},
                 {"p_i_hat", batch_four_vec},
                 {"born_momenta", batch_four_vec_array(n - 1)},
-                {"fks_index", batch_int},
             };
+            if (resonance) {
+                types.push_back("resonance_momentum", batch_four_vec);
+            }
+            types.push_back("fks_index", batch_int);
+            return types;
         }(),
         {{"z", batch_float},
          {"ap", batch_float_array(2)},
          {"q_terms", batch_float_array(2)},
          {"k_perp", batch_four_vec}}
     ),
-    _particle_count(configurations.at(0).particle_count()) {
+    _particle_count(configurations.at(0).particle_count()),
+    _resonance(resonance) {
     for (const auto& config : configurations) {
         std::size_t i = config.i_fks, j = config.j_fks;
         _i_fks.push_back(i);
@@ -228,6 +257,16 @@ NamedVector<Value> FKSSplittingKernels::build_function_impl(
         fks_j.push_back(j);
         kind.push_back(_kind.at(c));
         born_j.push_back(j < i ? j : j - 1);
+    }
+    if (_resonance) {
+        Value k = args.at("resonance_momentum");
+        auto [z, ap, q_terms] = fb.fks_splitting_kernels_resonance(
+            args.at("momenta"), k, index, fks_i, fks_j, kind, _factors
+        );
+        auto k_perp = fb.fks_transverse_vector_resonance(
+            args.at("p_i_hat"), args.at("born_momenta"), k, index, born_j
+        );
+        return {{"z", z}, {"ap", ap}, {"q_terms", q_terms}, {"k_perp", k_perp}};
     }
     auto [z, ap, q_terms] = fb.fks_splitting_kernels(
         args.at("momenta"), index, fks_i, fks_j, kind, _factors
@@ -296,7 +335,8 @@ std::size_t madspace::check_splitting_configurations(
 FKSLimits::FKSLimits(
     const std::vector<FKSConfiguration>& configurations,
     const FKSCouplingOrders& orders,
-    bool collinear_born
+    bool collinear_born,
+    bool resonance
 ) :
     FunctionGenerator(
         "FKSLimits",
@@ -323,6 +363,9 @@ FKSLimits::FKSLimits(
             }
             types.push_back("alpha_s", batch_float);
             types.push_back("alpha", batch_float);
+            if (resonance) {
+                types.push_back("resonance_momentum", batch_four_vec);
+            }
             types.push_back("fks_index", batch_int);
             return types;
         }(),
@@ -337,12 +380,13 @@ FKSLimits::FKSLimits(
             };
         }()
     ),
-    _eikonals(configurations),
-    _kernels(configurations),
+    _eikonals(configurations, resonance),
+    _kernels(configurations, resonance),
     _born_order_count(orders.born_count()),
     _born_input_count(orders.born_input_count()),
     _nlo_order_count(orders.nlo_count()),
-    _collinear_born(collinear_born) {
+    _collinear_born(collinear_born),
+    _resonance(resonance) {
     std::size_t largest = _eikonals.max_pair_count();
     for (std::size_t c = 0; c < configurations.size(); ++c) {
         const auto& config = configurations.at(c);
@@ -439,13 +483,14 @@ NamedVector<Value> FKSLimits::build_function_impl(
 ) const {
     Value index = args.at("fks_index");
     Value alpha_s = args.at("alpha_s"), alpha = args.at("alpha");
-    auto eikonals =
-        _eikonals
-            .build_function(
-                fb,
-                {args.at("soft_momenta"), args.at("soft_p_i_hat"), args.at("y"), index}
-            )
-            .at(0);
+    ValueVec eikonal_args{
+        args.at("soft_momenta"), args.at("soft_p_i_hat"), args.at("y")
+    };
+    if (_resonance) {
+        eikonal_args.push_back(args.at("resonance_momentum"));
+    }
+    eikonal_args.push_back(index);
+    auto eikonals = _eikonals.build_function(fb, eikonal_args).at(0);
     auto soft = fb.fks_soft_limit(
         eikonals,
         args.at("born"),
@@ -468,9 +513,19 @@ NamedVector<Value> FKSLimits::build_function_impl(
     }
     NamedVector<Value> result{{"soft", soft}};
     for (std::string name : {"collinear", "soft_collinear"}) {
-        auto [z, ap, q] = fb.fks_splitting_kernels(
-            args.at(name + "_momenta"), index, _fks_i, _fks_j, kind, factors
-        );
+        auto [z, ap, q] = _resonance
+            ? fb.fks_splitting_kernels_resonance(
+                  args.at(name + "_momenta"),
+                  args.at("resonance_momentum"),
+                  index,
+                  _fks_i,
+                  _fks_j,
+                  kind,
+                  factors
+              )
+            : fb.fks_splitting_kernels(
+                  args.at(name + "_momenta"), index, _fks_i, _fks_j, kind, factors
+              );
         // the collinear counter-event can have a Born of its own
         bool own = _collinear_born && name == "collinear";
         result.push_back(
@@ -498,7 +553,8 @@ FKSPrefactors::FKSPrefactors(
     double xi_s_cut,
     double delta_o,
     double delta_i,
-    double delta_s
+    double delta_s,
+    bool resonance
 ) :
     FunctionGenerator(
         "FKSPrefactors",
@@ -511,7 +567,7 @@ FKSPrefactors::FKSPrefactors(
                     "positive"
                 );
             }
-            return NamedVector<Type>{
+            NamedVector<Type> types{
                 {"xi", batch_float},
                 {"y", batch_float},
                 {"xi_max", batch_float},
@@ -519,8 +575,14 @@ FKSPrefactors::FKSPrefactors(
                 {"collinear_xi_max", batch_float},
                 {"collinear_momenta", batch_four_vec_array(n)},
                 {"soft_collinear_momenta", batch_four_vec_array(n)},
-                {"fks_index", batch_int},
             };
+            if (resonance) {
+                types.push_back("soft_momenta", batch_four_vec_array(n));
+                types.push_back("soft_p_i_hat", batch_four_vec);
+                types.push_back("resonance_momentum", batch_four_vec);
+            }
+            types.push_back("fks_index", batch_int);
+            return types;
         }(),
         {{"f_r", batch_float},
          {"f_s", batch_float},
@@ -535,7 +597,8 @@ FKSPrefactors::FKSPrefactors(
     _xi_s_cut(xi_s_cut),
     _delta_o(delta_o),
     _delta_i(delta_i),
-    _delta_s(delta_s) {
+    _delta_s(delta_s),
+    _resonance(resonance) {
     for (const auto& config : configurations) {
         _j_fks.push_back(config.j_fks);
         _masses.push_back(config.masses);
@@ -554,19 +617,38 @@ NamedVector<Value> FKSPrefactors::build_function_impl(
         collinear.push_back(_masses.at(c).at(j) == 0. ? 1 : 0);
         delta.push_back(j < INCOMING_COUNT ? _delta_i : _delta_o);
     }
-    auto [f_r, f_s, f_c, f_dc, f_sc, f_dsc, f_pdf] = fb.fks_prefactors(
-        args.at("xi"),
-        args.at("y"),
-        args.at("xi_max"),
-        args.at("collinear_xi"),
-        args.at("collinear_xi_max"),
-        args.at("collinear_momenta"),
-        args.at("soft_collinear_momenta"),
-        index,
-        collinear,
-        delta,
-        std::vector<double>{_xicut, _xi_s_cut, _delta_s}
-    );
+    std::vector<double> options{_xicut, _xi_s_cut, _delta_s};
+    auto [f_r, f_s, f_c, f_dc, f_sc, f_dsc, f_pdf] = _resonance
+        ? fb.fks_prefactors_resonance(
+              args.at("xi"),
+              args.at("y"),
+              args.at("xi_max"),
+              args.at("collinear_xi"),
+              args.at("collinear_xi_max"),
+              args.at("collinear_momenta"),
+              args.at("soft_collinear_momenta"),
+              args.at("soft_momenta"),
+              args.at("soft_p_i_hat"),
+              args.at("resonance_momentum"),
+              index,
+              std::vector<me_int_t>(_j_fks.begin(), _j_fks.end()),
+              collinear,
+              delta,
+              options
+          )
+        : fb.fks_prefactors(
+              args.at("xi"),
+              args.at("y"),
+              args.at("xi_max"),
+              args.at("collinear_xi"),
+              args.at("collinear_xi_max"),
+              args.at("collinear_momenta"),
+              args.at("soft_collinear_momenta"),
+              index,
+              collinear,
+              delta,
+              options
+          );
     return {
         {"f_r", f_r},
         {"f_s", f_s},
