@@ -2733,6 +2733,30 @@ def test_report_builder_backend_table_and_missing_box(tmp_path):
     assert [e["table"] for e in missing] == sorted(e["table"] for e in missing)
 
 
+def test_report_builder_accuracy_line_without_a_truth_is_the_labelled_cross_backend_difference():
+    """A row whose 256-bit truth is not obtainable within its row budget
+    (lit-report R2) carries the two backends' difference at the timed
+    points, labelled, with the 1e-5 note rule; a row with a truth keeps
+    the truth's line per backend."""
+
+    builder = _report_builder()
+    acc = {"lax": 1e-5, "rows": {
+        "li_gg_aagg": {"points": 128, "revision": "bbbbbbbb", "cross_backend": {
+            "points": 126, "failed": 2, "max_relative": 3e-5, "above_1e-5": 1,
+            "reason": "256-bit truth 405 s per point"}},
+        "li_gg_hh": {"points": 128, "revision": "bbbbbbbb", "tirust": {
+            "max_relative": 1e-9, "above_1e-5": [], "failed": []}},
+    }}
+    for backend in ("tirust", "ninjars"):
+        line = builder._li_accuracy(acc, "li_gg_aagg", backend)
+        assert line["cross_backend"] and line["note"] and line["above"] == 1
+        assert line["worst"] == 3e-5 and line["failed"] == 2
+        assert line["source"] == "li-unchecked-accuracy.json rows[li_gg_aagg].cross_backend"
+    truth = builder._li_accuracy(acc, "li_gg_hh", "tirust")
+    assert truth["max_relative"] == 1e-9 and "cross_backend" not in truth
+    assert builder._li_accuracy(acc, "li_gg_hh", "ninjars") is None
+
+
 def test_report_builder_figure_one_draws_loop_induced_rows_with_a_time_and_a_provider():
     """Figure 1's loop-induced rows (USER 2026-11-07 ~10:40): every row of the
     loop-induced table with a batched pyAmpliCol time and a matched provider

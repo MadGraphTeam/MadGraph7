@@ -164,3 +164,44 @@ def test_the_stage_split_is_labelled_and_complete():
     assert grouped["moments"] == 0.15 and grouped["contraction"] == 0.0
     assert grouped["glue"] == pytest.approx(0.01 + 0.05)
     assert "ninjars" not in grouped and "masters" not in grouped
+
+
+def test_cross_backend_agreement_and_born_records():
+    """The two backends' agreement at the timed points (finite part, the
+    largest over sectors, points either fails counted apart), and a
+    Born-interfered row's record for the backend table (lit-report R4)."""
+
+    import types
+
+    module = _module()
+    tirust = types.SimpleNamespace(
+        values=[[(2.0, 0, 0)], [(1.0, 0, 0), (4.0, 0, 0)], None]
+    )
+    ninjars = types.SimpleNamespace(
+        values=[[(2.0, 0, 0)], [(1.0, 0, 0), (4.4, 0, 0)], [(1.0, 0, 0)]]
+    )
+    cross = module.cross_backend(tirust, ninjars)
+    assert cross["points"] == 2 and cross["failed"] == 1
+    assert cross["max_relative"] == pytest.approx(0.4 / 4.4)
+    assert cross["above_1e-5"] == 1 and cross["per_point"][0] == 0.0
+    record = {
+        "key": "gg_ggg",
+        "process": "gg_ggg",
+        "revision": "b" * 40,
+        "backend": "tirust",
+        "batch": 128,
+        "seconds_per_point": 0.01,
+        "failed_points": [0],
+        "cross_backend": {k: v for k, v in cross.items() if k != "per_point"},
+    }
+    born = module._born_record(record)
+    assert born["seconds_per_point"] == 0.01 and "failed_points" not in born
+    assert born["agreement"] == {
+        "max_relative": cross["max_relative"],
+        "points": 2,
+        "metric": cross["metric"],
+    }
+    failed = dict(record, backend="ninjars", failed_points=[3])
+    del failed["seconds_per_point"]
+    failed = module._born_record(failed)
+    assert failed["failed_points"] == 3 and "agreement" not in failed
