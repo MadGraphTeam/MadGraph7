@@ -484,9 +484,9 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                     )
                 else:
                     # A scalar current (H or a Goldstone): one component.
-                    fk = np.transpose(
-                        fk, [axes.index(axis) for axis in colour_axes]
-                    )[..., None]
+                    fk = np.transpose(fk, [axes.index(axis) for axis in colour_axes])[
+                        ..., None
+                    ]
                 rows = [
                     (block, row)
                     for block in members
@@ -678,7 +678,10 @@ def test_three_line_block_currents_equal_feynkit_tree_sums(models):
 DAG_LANES = [pytest.param(False, id="oracle"), pytest.param(True, id="native")]
 ELECTROWEAK_SINGLET_MERGES = [
     pytest.param("u u~ > d d~ a", {"QCD": 0, "QED": 3}, id="uux_ddxa"),
-    pytest.param("u c~ > d s~ e+ e-", {"QCD": 0, "QED": 4}, id="ucx_dsxepem"),
+    # The W-only pairing (no neutral boson joins u and c~). External leptons
+    # stay out: ``_feynkit_ordering_sign`` counts every fermion of the
+    # group, the block pairing sign the coloured endpoints only.
+    pytest.param("u c~ > d s~ a", {"QCD": 0, "QED": 3}, id="ucx_dsxa"),
     pytest.param("u u~ > s s~ t t~", {"QCD": 0, "QED": 4}, id="uux_ssxttx"),
     pytest.param("u u~ > d d~ a a", {"QCD": 0, "QED": 4}, id="uux_ddxaa"),
 ]

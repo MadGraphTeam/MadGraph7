@@ -1618,8 +1618,7 @@ class ColorEngine:
         ):
             return True
         inputs = [
-            _known_color_representation(self.model, pdg)
-            for pdg in vertex.particles[:2]
+            _known_color_representation(self.model, pdg) for pdg in vertex.particles[:2]
         ]
         if inputs == [8, 8] or (
             inputs == [1, 1]
