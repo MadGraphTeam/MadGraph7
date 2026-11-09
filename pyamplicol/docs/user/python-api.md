@@ -361,9 +361,16 @@ flag such values.
 When the call's checks run that cached check it is reused; beside other
 checks (rotations, or the rescaled variant of the recommended checks and of
 every default rescue level) the served points are evaluated once more with
-it. On the resolved, correlated and selected outputs the guard decides on
-the point's summed |A|^2 (one more evaluation of the served points, as in
-the native SDKs). Points TIRust serves run nothing more.
+it. The guard decides on the outputs the call returns: the summed value,
+or on the resolved, correlated and selected calls each output (a helicity
+row, a colour correlator, a helicity selection), from the fallback's
+evaluation of the call's own rows only (only the selected helicities are
+evaluated), each output's estimate against its own magnitude and an output
+that vanishes (its magnitude within the estimate's rounding floor, 16 units
+of the arithmetic's roundoff times the output's term scale: a numerical
+zero) against the largest output the call returns for the point; the
+largest ratio is the point's `guard_estimate`. Points TIRust serves run
+nothing more.
 The estimate is a sampled measure, not a proven bound.
 
 **Near-planar NinjaRS hazard.** NinjaRS (pin 5b6a8f57) can return finite,

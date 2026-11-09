@@ -30,8 +30,14 @@ binary64 fallback point is served unguarded, as before the guard.
 * (c') default binary64 ``"auto"`` at the 13 tilt points stays within 1e-5
   of the truth;
 * the guard at double-double and arbitrary precision (and its absence in
-  binary64) through the public API and the SDKs, and the loop-induced
-  default rescue stack at 44 and 57.
+  binary64) through the public API and the SDKs, on the summed route and on
+  the resolved, correlated and selected routes, where it decides on the
+  outputs the call returns (DECISIONS 2026-11-09 14:30, RULING Q7: each
+  output against its own magnitude, a vanishing one against the largest
+  returned output; ``reduction_policy::fallback_estimate``), and
+  ``on_failure="raise"``;
+* the loop-induced default rescue stack at 44 and 57 (loop_nightly: its
+  57-digit level takes minutes).
 
 The fixture ``tests/fixtures/loop/fallback_guard_zzz.json`` holds the
 binary64 texts, mu_R^2 and truths (its ``provenance``).
@@ -42,6 +48,7 @@ from __future__ import annotations
 import ctypes
 import json
 import math
+import re
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
@@ -141,14 +148,16 @@ class _Point:
     tag: str = ""
 
 
-def _estimate(value: float, budgets: dict[str, float]) -> Any:
+def _estimate(
+    value: float, budgets: dict[str, float], scale: float = 0.0, roundoff=2.0**-53
+) -> Any:
     from pyamplicol.loops.v2.stability import Budget, StabilityEstimate
 
     return StabilityEstimate.from_checks(
         {"s": Budget((value,))},
         {name: {"s": Budget((budget,))} for name, budget in budgets.items()},
-        scale={"s": Budget((0.0,))},
-        roundoff=2.0**-53,
+        scale={"s": Budget((scale,))},
+        roundoff=roundoff,
     )
 
 
@@ -420,12 +429,111 @@ def test_the_target_nan_and_calls_without_fallback(loop_native):
     ), failures[1]
     explicit = VirtualReduction("ninjars", "ninjars", "requested")
     runner = _Runner(refused=set(), cached={})
-    with_fallback(runner, explicit, 8)
+    with_fallback(runner, explicit, 8, None, dd)
     assert len(runner.calls) == 1
     with pytest.raises(ValueError, match="guard_estimate is a per-point"):
         replace(_choice(), guard_estimate=1.0)
     with pytest.raises(TypeError):
         VirtualReduction("auto", "ninjars", "x", guard_estimate="1")
+
+
+@dataclass
+class _Outputs:
+    """A batch runner of a call with several outputs per point (the
+    resolved, correlated and selected routes: a mapping of outputs per
+    point): TIRust refuses point 1; NinjaRS serves it with the outputs
+    ``outputs`` (key -> (value, cached budget, term scale))."""
+
+    outputs: dict[str, tuple[float, float, float]]
+    roundoff: float = 2.0**-104
+    calls: list[tuple[str, Any]] = field(default_factory=list)
+
+    def __call__(self, indices, checks):
+        from pyamplicol.loops.v2.reduction import current
+        from pyamplicol.loops.v2.stability import REDUCTION
+
+        backend = current()
+        self.calls.append((backend, checks))
+        points = [0, 1] if indices is None else list(indices)
+        results: list[Any] = []
+        failures: dict[int, list[str]] = {}
+        for local, index in enumerate(points):
+            if backend == "tirust" and index == 1:
+                results.append(None)
+                failures[local] = ["TIRust refused point 1"]
+                continue
+            checked = checks is not None and checks.reduction_direction
+            results.append(
+                {
+                    key: _Point(
+                        value,
+                        _estimate(value, {REDUCTION: budget}, scale, self.roundoff)
+                        if checked
+                        else None,
+                        None,
+                        backend,
+                    )
+                    for key, (value, budget, scale) in self.outputs.items()
+                }
+            )
+        return results, failures
+
+
+@pytest.mark.loop_fast
+def test_the_guard_decides_on_the_outputs_the_call_returns(loop_native):
+    """DECISIONS 2026-11-09 14:30 (RULING Q7): on the resolved, correlated
+    and selected routes the guard decides on the outputs the call returns,
+    from the fallback's evaluation of those outputs alone: each output's
+    cached estimate against its own magnitude; an output that vanishes (its
+    magnitude within the estimate's rounding floor, 16 u S) against the
+    largest returned output of the point. The one rule is the native
+    policy's (``reduction_policy::fallback_estimate``); for one output it is
+    the "relative" metric of the output's own estimate."""
+
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.loops.v2.reduction import fallback_estimate, with_fallback
+
+    u = 2.0**-104
+    # One output: its own relative estimate (the summed route's metric).
+    assert fallback_estimate([[(4.0, 1e-3, 4.0)]], u) == 1e-3 / 4.0
+    # A small output on its own magnitude: rejected, although its error is
+    # 1e-8 of the point's largest output (a decision on the sum would pass).
+    small = {"h0": (2.0, 2e-12 / 2, 2.0), "h1": (1e-6, 1e-8 / 2, 1.0)}
+    runner = _Outputs(small)
+    results, failures, records = with_fallback(
+        runner, _choice(), 2, VirtualStabilityChecks(), "double-double"
+    )
+    # One evaluation of the served point, carrying the cached check.
+    assert [call[0] for call in runner.calls] == ["tirust", "ninjars"]
+    assert runner.calls[1][1].reduction_direction and not runner.calls[1][1].rescaled
+    assert results[1] is None and "reduction-direction check" in failures[1][0]
+    assert records[1].guard_estimate == pytest.approx(1e-8 / 1e-6, rel=1e-12)
+    # A vanishing output (a numerical zero: 1e-31 <= 16 u S): judged against
+    # the largest returned output, accepted, its error 3e-30 of it.
+    zero = {"h0": (2.0, 2e-12 / 2, 2.0), "h1": (1e-31, 3e-30 / 2, 2.0)}
+    assert 16 * u * 2.0 >= 1e-31
+    results, failures, records = with_fallback(
+        _Outputs(zero), _choice(), 2, None, "double-double"
+    )
+    assert 1 not in failures, failures
+    # (Each estimate is SAFETY x budget + 16 u S.)
+    floor = 16 * u * 2.0
+    assert records[1].guard_estimate == pytest.approx(
+        max((2e-12 + floor) / 2.0, (3e-30 + floor) / 2.0), rel=1e-12
+    )
+    # The accepted outputs are those of an evaluation without checks.
+    assert results[1] == {
+        "h0": _Point(2.0, None, None, "ninjars"),
+        "h1": _Point(1e-31, None, None, "ninjars"),
+    }
+    # Alone, the same output is its own largest one: rejected.
+    results, failures, records = with_fallback(
+        _Outputs({"h1": zero["h1"]}), _choice(), 2, None, "double-double"
+    )
+    assert results[1] is None
+    assert records[1].guard_estimate == pytest.approx(
+        (3e-30 + floor) / 1e-31, rel=1e-12
+    )
 
 
 @pytest.mark.loop_fast
@@ -592,6 +700,17 @@ def test_c_default_auto_binary64_stays_accurate_on_the_tilt_points(zzz, loop_nat
 
     keys, points, scales, truths = _tilt()
     runtime = Runtime.load(zzz, process="p")
+    if not _tirust(loop_native):
+        # Without TIRust default "auto" is NinjaRS binary64 for the whole
+        # call, with no per-point fallback: explicit NinjaRS's documented
+        # near-planar hazard (8.9e13 off at eps 1e-11, ninjars-dd-zzz
+        # C/out/tilt.json 'nj_b64'), which lit-ninja-planar's conditioning
+        # bound addresses; (c') is the default (TIRust) path's.
+        found = runtime.evaluate(
+            points[:1], mu_r2=scales[:1], poles="none", on_failure="return"
+        )
+        assert found.diagnostics[0].reduction.fallback is None
+        return
     found = runtime.evaluate(points, mu_r2=scales, poles="none", on_failure="return")
     errors = {}
     for key, lane, value, truth in zip(
@@ -667,9 +786,11 @@ def test_a_binary64_fallback_value_is_served_unguarded(zzz, loop_native):
     assert "method-choice" in lane.reduction.reason, lane.reduction.reason
 
 
-@pytest.mark.loop_physics
+@pytest.mark.loop_nightly
 def test_the_default_rescue_stack_escalates_the_guarded_fallback(zzz, loop_native):
-    """The loop-induced default stack (TIRust b64 -> NinjaRS b64 ->
+    """(loop_nightly: ~340 s, its 57-digit level; DECISIONS 2026-11-09 14:30:
+    the CI tier keeps the guard's rejections on every route below.) The
+    loop-induced default stack (TIRust b64 -> NinjaRS b64 ->
     double-double -> 57 digits) at z z z points 44 and 57: before the guard
     both escalated past the double-double level on that level's rescaled
     estimates (64 / 31, ninjars-dd-zzz B.md §2.1). The double-double level is
@@ -1088,3 +1209,295 @@ def test_the_sdk_guard_fails_typed_and_records_its_estimate(
     wrapper = json.loads(diagnostics.split(" ", 1)[1])["fallbacks"]
     assert wrapper == records["double-double", 0]
     assert any(item["guard_estimate"] is not None for item in wrapper.values())
+
+
+# ------------------------- the resolved, correlated and selected routes (Q7)
+
+# The spin source of gluon 1 (test_loop_v2_sdk_induced.SPIN: a literal
+# complex vector, not transverse).
+SPIN = [(0.5, 0.25), (0.75, -0.125), (0.375, 1.0), (-0.625, 0.5)]
+
+
+def _lanes(found) -> list:
+    """Per point of a Python result: (failed, its per-point fallback
+    record)."""
+
+    return [(lane.status == "failed", lane.reduction) for lane in found.diagnostics]
+
+
+def _correlated_lanes(found: dict) -> list:
+    """``_lanes`` of an ``evaluate_correlated_many`` call (one batch: every
+    request carries the same per-point records)."""
+
+    lanes = [_lanes(evaluation) for evaluation in found.values()]
+    assert all(item == lanes[0] for item in lanes), lanes
+    return lanes[0]
+
+
+def _sdk_correlated(sdk, handle, points, scales, spin=None) -> dict:
+    """One ``rusticol_virtual_evaluate_correlated`` call (with ``spin``: the
+    ``_with_sources`` one, one broadcast row): statuses, the decimal record
+    and the diagnostics."""
+
+    from tests.unit.test_loop_v2_sdk_extras import _error, _request, _Sources
+    from tests.unit.test_loop_v2_sdk_induced import _json
+
+    request, _keep = _request(points, scales, False)
+    result = ctypes.c_void_p()
+    if spin is None:
+        status = sdk.rusticol_virtual_evaluate_correlated(
+            handle, ctypes.byref(request), ctypes.byref(result)
+        )
+    else:
+        legs = sorted(spin)
+        row = [x for leg in legs for pair in spin[leg] for x in pair]
+        values = (ctypes.c_double * len(row))(*row)
+        sources = _Sources(
+            (ctypes.c_size_t * len(legs))(*legs), len(legs), values, len(row) // 2
+        )
+        status = sdk.rusticol_virtual_evaluate_correlated_with_sources(
+            handle, ctypes.byref(request), ctypes.byref(sources), ctypes.byref(result)
+        )
+    assert status == 0, _error(sdk)
+    try:
+        statuses = (ctypes.c_uint32 * len(points))()
+        assert (
+            sdk.rusticol_virtual_correlated_result_copy_statuses(
+                result, statuses, len(points)
+            )
+            == 0
+        )
+        return {
+            "statuses": list(statuses),
+            "decimal": _json(
+                sdk, sdk.rusticol_virtual_correlated_result_decimal_json, result
+            ),
+            "diagnostics": _json(
+                sdk, sdk.rusticol_virtual_correlated_result_diagnostics_json, result
+            ),
+        }
+    finally:
+        sdk.rusticol_virtual_correlated_result_free(result)
+
+
+def _decimal_per_point(found: dict) -> list:
+    """The C ABI's decimal values per point (None: a failed point, which
+    has none), from its decimal record (the copy layout over the successful
+    points)."""
+
+    from tests.unit.test_loop_v2_sdk_induced import FAILED_STATUS
+
+    served = [status != FAILED_STATUS for status in found["statuses"]]
+    flat = found["decimal"]["virtual"]
+    width = len(flat) // max(1, sum(served))
+    values = iter(flat)
+    return [[next(values) for _ in range(width)] if ok else None for ok in served]
+
+
+def _route_guard(route: str, sdk_found: dict, lanes: list, arithmetic: str, target):
+    """The guard of one route in both APIs on the same exact inputs: the
+    same points evaluated again on the fallback, the same decisions, the
+    guard's estimates equal within ``ULPS`` (none where the fallback failed
+    the point); a rejected point fails typed (status Failed in the SDK) with
+    the one reason naming the arithmetic and an estimate above the limit, an
+    accepted one is within it. Returns (served, rejected) point indices."""
+
+    from tests.unit.test_loop_v2_sdk_induced import FAILED_STATUS
+
+    record = sdk_found["diagnostics"]["fallbacks"]
+    served, rejected = [], []
+    for p, (failed, reduction) in enumerate(lanes):
+        if reduction is None or reduction.effective != "ninjars":
+            assert str(p) not in record, (route, p, record)
+            continue
+        mine, theirs = record[str(p)], reduction.guard_estimate
+        assert (sdk_found["statuses"][p] == FAILED_STATUS) == failed, (route, p)
+        if theirs is None:
+            # The fallback failed the point too.
+            assert failed and mine["guard_estimate"] is None, (route, p, mine)
+            continue
+        assert mine["guard_estimate"] is not None, (route, p, mine)
+        assert _ulps(mine["guard_estimate"], theirs) <= ULPS, (route, p, mine, theirs)
+        if failed:
+            assert not theirs <= _limit(target), (route, p, reduction)
+            assert re.search(ESTIMATE, reduction.reason), reduction.reason
+            for reason in (reduction.reason, mine["reason"]):
+                assert reason.endswith(f"({arithmetic})"), (route, p, reason)
+            assert mine["effective"] is None, (route, p, mine)
+            rejected.append(p)
+        else:
+            assert theirs <= _limit(target), (route, p, reduction)
+            assert mine["effective"] == "ninjars", (route, p, mine)
+            served.append(p)
+    return served, rejected
+
+
+@pytest.mark.loop_physics
+def test_the_guard_on_a_helicity_selection_at_the_defect(zzz, loop_native):
+    """DECISIONS 2026-11-09 14:30 (RULING Q7) at the defect: g g > z z z
+    stream point 44 in double-double (TIRust refuses it at its Gram gate),
+    a one-helicity selection of row h1 in both APIs on the same exact
+    inputs (Python ``evaluate(helicities=["h1"])``, the C ABI's
+    ``rusticol_virtual_evaluate_selected``). The fallback evaluates that
+    row only; NinjaRS's h1 value is 8.6e4 times its truth there (truth:
+    TIRust at 60 digits on the same inputs) and the guard's estimate of the
+    row is 1.4e2 (``tmp/lit-fallback-guard/fix3/probe10.json``): the point
+    fails typed in both APIs with the same estimate, the SDK's status
+    Failed, and ``on_failure="raise"`` raises ``EvaluationError`` with the
+    one reason."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import EvaluationError
+    from tests.unit.test_loop_v2_sdk_extras import _sdk
+    from tests.unit.test_loop_v2_sdk_induced import _open
+    from tests.unit.test_loop_v2_sdk_selection import _call
+
+    points, scales, _truths = _stream(("44",))
+    runtime = Runtime.load(zzz, process="p")
+    same, same_scales = _same_inputs(points, scales)
+    c_points, c_scales = _c_inputs(points, scales)
+    options = {
+        "mu_r2": same_scales,
+        "arithmetic": "double-double",
+        "poles": "none",
+        "helicities": ["h1"],
+    }
+    python = runtime.evaluate(same, on_failure="return", **options)
+    if not _tirust(loop_native):
+        assert all(lane.reduction.fallback is None for lane in python.diagnostics)
+        return
+    sdk = _sdk()
+    handle = _open(sdk, zzz)
+    try:
+        assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0
+        assert sdk.rusticol_virtual_set_arithmetic(handle, b"double-double", 0) == 0
+        found = _call(sdk, handle, c_points, c_scales, ids=["h1"])
+    finally:
+        sdk.rusticol_virtual_free(handle)
+    assert found["status"] == 0, found
+    decided = _route_guard("selected", found, _lanes(python), "double-double", TARGET)
+    assert decided == ([], [0]), _lanes(python)
+    with pytest.raises(EvaluationError, match=ESTIMATE):
+        runtime.evaluate(same, on_failure="raise", **options)
+
+
+@pytest.mark.loop_physics
+def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_native):
+    """The guard on the resolved, correlated and selected routes in both
+    extended carriers and both APIs (DECISIONS 2026-11-09 14:30, RULING
+    Q7), on the same exact inputs: at the near-forward g g > h h points
+    TIRust's gates refuse points (all three in double-double, 1 and 2 at 16
+    digits) and the fallback serves them in the call's own arithmetic on a
+    helicity selection, the resolved call, the correlated call and the
+    spin-correlated call (a literal source on gluon 1). In both APIs the
+    guard's estimate of the call's outputs is the same (bitwise on record,
+    ``ULPS`` allowed) and so is the decision. Double-double: the accepted
+    outputs are the explicit NinjaRS call's bitwise (Python ``repr``, the C
+    ABI's decimal record). 16 digits at the target 1e-6 (the limit stays
+    1e-5): point 1 is accepted and point 2 rejected typed on every route
+    (estimates 1.6e-6..3.7e-6 and 3.8e-3..1.8e-2 at pin 5b6a8f57,
+    ``tmp/lit-fallback-guard/fix3/probe9.json``)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.correlators import CorrelatedRequest
+    from tests.unit.test_loop_v2_sdk_extras import _sdk
+    from tests.unit.test_loop_v2_sdk_induced import _open
+    from tests.unit.test_loop_v2_sdk_selection import _call
+
+    artifact, points, scales = hh
+    runtime = Runtime.load(artifact, process="p")
+    same, same_scales = _same_inputs(points, scales)
+    c_points, c_scales = _c_inputs(points, scales)
+    if not _tirust(loop_native):
+        found = runtime.evaluate_resolved(
+            same, mu_r2=same_scales, arithmetic="double-double", poles="none"
+        )
+        assert all(lane.reduction.fallback is None for lane in found.diagnostics)
+        return
+    histories = [item.id for item in runtime.available_color_correlations()]
+    assert histories[0] == "born" and len(histories) > 1
+    vector = {1: [(str(Decimal(re)), str(Decimal(im))) for re, im in SPIN]}
+
+    def python(options):
+        return {
+            "selected": runtime.evaluate(same, helicities=["h0"], **options),
+            "resolved": runtime.evaluate_resolved(same, **options),
+            "correlated": runtime.evaluate_correlated_many(
+                same, {h: CorrelatedRequest(h) for h in histories}, **options
+            ),
+            "spin": runtime.evaluate_correlated_many(
+                same, {h: CorrelatedRequest(h, vector) for h in histories}, **options
+            ),
+        }
+
+    def sdk_calls(arithmetic, digits, target, reduction=None):
+        sdk = _sdk()
+        sdk.rusticol_virtual_set_reduction_target.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_double,
+        ]
+        handle = _open(sdk, artifact)
+        try:
+            assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0
+            assert sdk.rusticol_virtual_set_reduction_target(handle, target) == 0
+            assert sdk.rusticol_virtual_set_arithmetic(handle, arithmetic, digits) == 0
+            if reduction is not None:
+                assert sdk.rusticol_virtual_set_reduction(handle, reduction) == 0
+            return {
+                "selected": _call(sdk, handle, c_points, c_scales, ids=["h0"]),
+                "resolved": _call(sdk, handle, c_points, c_scales, resolved=True),
+                "correlated": _sdk_correlated(sdk, handle, c_points, c_scales),
+                "spin": _sdk_correlated(sdk, handle, c_points, c_scales, {1: SPIN}),
+            }
+        finally:
+            sdk.rusticol_virtual_free(handle)
+
+    def lanes_of(result):
+        return _correlated_lanes(result) if isinstance(result, dict) else _lanes(result)
+
+    def by_key(result):
+        return result if isinstance(result, dict) else {"": result}
+
+    # Double-double: the accepted outputs are the unguarded ones.
+    options = {
+        "mu_r2": same_scales,
+        "arithmetic": "double-double",
+        "poles": "none",
+        "on_failure": "return",
+    }
+    found, explicit = python(options), python({**options, "reduction": "ninjars"})
+    sdk_found = sdk_calls(b"double-double", 0, TARGET)
+    sdk_explicit = sdk_calls(b"double-double", 0, TARGET, b"ninjars")
+    for route, result in found.items():
+        served, _rejected = _route_guard(
+            route, sdk_found[route], lanes_of(result), "double-double", TARGET
+        )
+        assert served, (route, lanes_of(result))
+        theirs = by_key(explicit[route])
+        for key, evaluation in by_key(result).items():
+            for p in served:
+                assert repr(evaluation.values[p]) == repr(theirs[key].values[p]), (
+                    route,
+                    key,
+                    p,
+                )
+        mine = _decimal_per_point(sdk_found[route])
+        plain = _decimal_per_point(sdk_explicit[route])
+        for p in served:
+            assert mine[p] is not None and mine[p] == plain[p], (route, p)
+
+    # 16 digits at the target 1e-6: one point accepted, one rejected typed.
+    options = {
+        "mu_r2": same_scales,
+        "arithmetic": "arbitrary",
+        "precision": 16,
+        "reduction_target": 1e-6,
+        "poles": "none",
+        "on_failure": "return",
+    }
+    found, sdk_found = python(options), sdk_calls(b"arbitrary", 16, 1e-6)
+    for route, result in found.items():
+        decided = _route_guard(
+            route, sdk_found[route], lanes_of(result), "arbitrary", 1e-6
+        )
+        assert decided == ([1], [2]), (route, lanes_of(result))

@@ -831,19 +831,20 @@ reasons in `"failures"`, or its guard rejected it; such a point's
 cross-backend check is in `not_run`). In double-double and arbitrary
 precision every point the fallback serves is guarded, as in the Python API:
 its NinjaRS value runs the reduction-direction check (the reversed re-test
-frame, cached masters) in the call's own arithmetic (on the summed calls
-within the fallback's own evaluation of the point; on the resolved,
-correlated and selected calls one more evaluation of it), and its relative
-estimate (each sector against its largest Laurent coefficient) is the
+frame, cached masters) in the call's own arithmetic, within the fallback's
+own evaluation of the point, and the relative estimate of the outputs the
+call returns (each sector against its largest Laurent coefficient: the
+summed |A|²; on the resolved, correlated and selected calls each output of
+the call's rows only, against its own magnitude, an output that vanishes
+against the largest output of the point, as in the Python API) is the
 entry's `"guard_estimate"`. A point whose estimate exceeds the guard's
 limit, the call's target (below) never below 1e-5, has status `Failed`, not
 `AccuracyNotEstablished`, with one reason naming the fallback, TIRust's
 failure, the arithmetic, the estimate and the limit; a point within it keeps
-the fallback's value unchanged. On the resolved, correlated and selected
-calls the guard decides on the point's summed |A|² (the SDKs estimate no
-single output). On the same exact inputs the guard's estimates are the
-Python API's, bitwise or one unit in the last place apart (the SDK forms
-the colour-metric norms in binary64). In binary64 the fallback's value is
+the fallback's value unchanged. On the same exact inputs the guard's
+estimates are the Python API's, bitwise or a few units in the last place
+apart (the SDK forms the colour-metric norms of the inclusive |A|² in
+binary64). In binary64 the fallback's value is
 served unguarded (`"guard_estimate"` null), as before the guard. An explicit `"ninjars"`
 or `"tirust"` has no fallback and no guard, nor has a TIR-only artifact
 (NinjaRS refused typed); a library built without TIRust takes NinjaRS under
