@@ -1,0 +1,304 @@
+{
+  "coefficient_threshold": "1E-10",
+  "completed_pairs": 7,
+  "correctness_failures": [],
+  "cpu_poles_over_full": {
+    "confidence_interval_95": [
+      0.9386323086877915,
+      0.9637497379445112
+    ],
+    "geometric_mean": 0.9511081124268211,
+    "method": "paired log-ratio Student-t, df=6, critical value 2.447",
+    "ratios": [
+      0.9708315967334968,
+      0.9446723479459664,
+      0.9594925718946317,
+      0.9501003571361841,
+      0.9270714885943717,
+      0.9506038865849273,
+      0.9555648975109601
+    ]
+  },
+  "finite_placeholder": "NaN+0i from generated adapter",
+  "fixture": {
+    "ctmode": 1,
+    "mass2": [
+      [
+        9,
+        0
+      ],
+      [
+        4,
+        0
+      ]
+    ],
+    "max_calibrations": 4,
+    "max_loops": 10000000,
+    "mu2": 7,
+    "n": 2,
+    "name": "massive-bubble-r4",
+    "pairs": 7,
+    "rank": 4,
+    "scope": "generated_adapter",
+    "shifts": [
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        4,
+        1,
+        2,
+        0.5
+      ]
+    ],
+    "target_seconds": 1.1
+  },
+  "frames": [
+    {
+      "count": 70,
+      "cpu_seconds": 0.020057,
+      "finite": 1,
+      "loops": 1,
+      "phase": 0,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 0.020266733
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 9.99999999999994e-05,
+      "finite": 0,
+      "loops": 1,
+      "phase": 0,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 0.00010484
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 2.9000000000001247e-05,
+      "finite": 1,
+      "loops": 1,
+      "phase": 1,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 2.593e-05
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 0.495825,
+      "finite": 1,
+      "loops": 42422,
+      "phase": 1,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 0.499409699
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.093409,
+      "finite": 1,
+      "loops": 93439,
+      "phase": 1,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.101180192
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 4.2999999999793204e-05,
+      "finite": 0,
+      "loops": 1,
+      "phase": 1,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 4.076e-05
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 0.300411,
+      "finite": 0,
+      "loops": 26988,
+      "phase": 1,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 0.302625448
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0959050000000001,
+      "finite": 0,
+      "loops": 98098,
+      "phase": 1,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.104070343
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0916579999999998,
+      "finite": 1,
+      "loops": 93439,
+      "phase": 2,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 1.099654276
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.11266,
+      "finite": 0,
+      "loops": 98098,
+      "phase": 2,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 1.121119914
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0870389999999999,
+      "finite": 0,
+      "loops": 98098,
+      "phase": 2,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 1.094950745
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0960540000000005,
+      "finite": 1,
+      "loops": 93439,
+      "phase": 2,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 1.104186334
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0974580000000005,
+      "finite": 1,
+      "loops": 93439,
+      "phase": 2,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.105705681
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.1055069999999994,
+      "finite": 0,
+      "loops": 98098,
+      "phase": 2,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.113680794
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0940890000000003,
+      "finite": 0,
+      "loops": 98098,
+      "phase": 2,
+      "repetition": 4,
+      "stable": true,
+      "wall_seconds": 1.102139366
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0968599999999995,
+      "finite": 1,
+      "loops": 93439,
+      "phase": 2,
+      "repetition": 4,
+      "stable": true,
+      "wall_seconds": 1.104473796
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.1209050000000005,
+      "finite": 1,
+      "loops": 93439,
+      "phase": 2,
+      "repetition": 5,
+      "stable": true,
+      "wall_seconds": 1.128940816
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0909730000000017,
+      "finite": 0,
+      "loops": 98098,
+      "phase": 2,
+      "repetition": 5,
+      "stable": true,
+      "wall_seconds": 1.098789342
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.1015829999999998,
+      "finite": 0,
+      "loops": 98098,
+      "phase": 2,
+      "repetition": 6,
+      "stable": true,
+      "wall_seconds": 1.109723227
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.1037880000000015,
+      "finite": 1,
+      "loops": 93439,
+      "phase": 2,
+      "repetition": 6,
+      "stable": true,
+      "wall_seconds": 1.111351564
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.1000690000000013,
+      "finite": 1,
+      "loops": 93439,
+      "phase": 2,
+      "repetition": 7,
+      "stable": true,
+      "wall_seconds": 1.107684019
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.1036010000000012,
+      "finite": 0,
+      "loops": 98098,
+      "phase": 2,
+      "repetition": 7,
+      "stable": true,
+      "wall_seconds": 1.111267025
+    }
+  ],
+  "maximum_scaled_coefficient_residual": "0",
+  "performance_eligible": false,
+  "scope": "warm tensor diagnostic; no physical-amplitude acceptance",
+  "status": "measured",
+  "timing_failures": [],
+  "timing_qualified": true,
+  "wall_poles_over_full": {
+    "confidence_interval_95": [
+      0.9387105177837504,
+      0.9639398184343444
+    ],
+    "geometric_mean": 0.9512415287795618,
+    "method": "paired log-ratio Student-t, df=6, critical value 2.447",
+    "ratios": [
+      0.9710999421410076,
+      0.9445397606186661,
+      0.9593768129764482,
+      0.9504934466509148,
+      0.9270673626415866,
+      0.9511110773364355,
+      0.9555877335795584
+    ]
+  }
+}

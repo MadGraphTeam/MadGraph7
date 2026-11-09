@@ -1,0 +1,294 @@
+{
+  "coefficient_threshold": "1E-10",
+  "completed_pairs": 7,
+  "correctness_failures": [],
+  "cpu_poles_over_full": {
+    "confidence_interval_95": [
+      1.0323931170633598,
+      1.0491112088688526
+    ],
+    "geometric_mean": 1.0407185936026242,
+    "method": "paired log-ratio Student-t, df=6, critical value 2.447",
+    "ratios": [
+      1.0400981937344032,
+      1.0358966074806057,
+      1.0318170519418832,
+      1.0526666781560348,
+      1.0457917254595472,
+      1.0291072477448058,
+      1.0498881380696936
+    ]
+  },
+  "finite_placeholder": "zero raw bridge placeholder; unevaluated",
+  "fixture": {
+    "ctmode": 1,
+    "mass2": [
+      [
+        4,
+        0
+      ]
+    ],
+    "max_calibrations": 4,
+    "max_loops": 10000000,
+    "mu2": 7,
+    "n": 1,
+    "name": "massive-tadpole-r6",
+    "pairs": 7,
+    "rank": 6,
+    "scope": "public_fortran_bridge",
+    "shifts": [
+      [
+        0,
+        0,
+        0,
+        0
+      ]
+    ],
+    "target_seconds": 1.1
+  },
+  "frames": [
+    {
+      "count": 210,
+      "cpu_seconds": 0.014529,
+      "finite": 1,
+      "loops": 1,
+      "phase": 0,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 0.01462336
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 0.0007680000000000048,
+      "finite": 0,
+      "loops": 1,
+      "phase": 0,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 0.000771483
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 3.899999999999737e-05,
+      "finite": 1,
+      "loops": 1,
+      "phase": 1,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 3.682e-05
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 0.264195,
+      "finite": 1,
+      "loops": 29876,
+      "phase": 1,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 0.266216237
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.0996970000000001,
+      "finite": 1,
+      "loops": 123448,
+      "phase": 1,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.108015287
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 3.2999999999949736e-05,
+      "finite": 0,
+      "loops": 1,
+      "phase": 1,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 3.1e-05
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 0.3316729999999999,
+      "finite": 0,
+      "loops": 35484,
+      "phase": 1,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 0.334080057
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.0872390000000003,
+      "finite": 0,
+      "loops": 116836,
+      "phase": 1,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.096405359
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.1038710000000003,
+      "finite": 1,
+      "loops": 123448,
+      "phase": 2,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 1.112399036
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.086639,
+      "finite": 0,
+      "loops": 116836,
+      "phase": 2,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 1.095589237
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.1018910000000002,
+      "finite": 0,
+      "loops": 116836,
+      "phase": 2,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 1.109955876
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.1239050000000006,
+      "finite": 1,
+      "loops": 123448,
+      "phase": 2,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 1.133063421
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.1157399999999997,
+      "finite": 1,
+      "loops": 123448,
+      "phase": 2,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.124841777
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.0895779999999995,
+      "finite": 0,
+      "loops": 116836,
+      "phase": 2,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.098057527
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.0916929999999994,
+      "finite": 0,
+      "loops": 116836,
+      "phase": 2,
+      "repetition": 4,
+      "stable": true,
+      "wall_seconds": 1.100243936
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.095763999999999,
+      "finite": 1,
+      "loops": 123448,
+      "phase": 2,
+      "repetition": 4,
+      "stable": true,
+      "wall_seconds": 1.104563514
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.102824,
+      "finite": 1,
+      "loops": 123448,
+      "phase": 2,
+      "repetition": 5,
+      "stable": true,
+      "wall_seconds": 1.111791724
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.091550999999999,
+      "finite": 0,
+      "loops": 116836,
+      "phase": 2,
+      "repetition": 5,
+      "stable": true,
+      "wall_seconds": 1.100346367
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.0924639999999997,
+      "finite": 0,
+      "loops": 116836,
+      "phase": 2,
+      "repetition": 6,
+      "stable": true,
+      "wall_seconds": 1.101482271
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.1216410000000003,
+      "finite": 1,
+      "loops": 123448,
+      "phase": 2,
+      "repetition": 6,
+      "stable": true,
+      "wall_seconds": 1.129925308
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.1021389999999975,
+      "finite": 1,
+      "loops": 123448,
+      "phase": 2,
+      "repetition": 7,
+      "stable": true,
+      "wall_seconds": 1.110317088
+    },
+    {
+      "count": 210,
+      "cpu_seconds": 1.0951459999999997,
+      "finite": 0,
+      "loops": 116836,
+      "phase": 2,
+      "repetition": 7,
+      "stable": true,
+      "wall_seconds": 1.103179819
+    }
+  ],
+  "maximum_scaled_coefficient_residual": "0",
+  "performance_eligible": false,
+  "scope": "warm tensor diagnostic; no physical-amplitude acceptance",
+  "status": "measured",
+  "timing_failures": [],
+  "timing_qualified": true,
+  "wall_poles_over_full": {
+    "confidence_interval_95": [
+      1.0324653937834383,
+      1.0489839938744583
+    ],
+    "geometric_mean": 1.040691919978298,
+    "method": "paired log-ratio Student-t, df=6, critical value 2.447",
+    "ratios": [
+      1.040625662082219,
+      1.0350441462822773,
+      1.0314330271943704,
+      1.0524601682105799,
+      1.04571504215824,
+      1.029995087763043,
+      1.049800228476567
+    ]
+  }
+}

@@ -1,0 +1,284 @@
+{
+  "coefficient_threshold": "1E-24",
+  "completed_pairs": 7,
+  "correctness_failures": [],
+  "cpu_poles_over_full": {
+    "confidence_interval_95": [
+      0.6438815464069467,
+      0.6489329988586997
+    ],
+    "geometric_mean": 0.6464023381916536,
+    "method": "paired log-ratio Student-t, df=6, critical value 2.447",
+    "ratios": [
+      0.6437810356236985,
+      0.6469147747491942,
+      0.650488399534263,
+      0.6449869567759159,
+      0.6497210652048067,
+      0.6450293192765952,
+      0.6439294536334199
+    ]
+  },
+  "finite_placeholder": "NaN+0i from generated adapter",
+  "fixture": {
+    "ctmode": 4,
+    "mass2": [
+      [
+        9,
+        0
+      ],
+      [
+        4,
+        0
+      ]
+    ],
+    "max_calibrations": 4,
+    "max_loops": 10000000,
+    "mu2": 7,
+    "n": 2,
+    "name": "massive-bubble-r4",
+    "pairs": 7,
+    "rank": 4,
+    "scope": "generated_adapter",
+    "shifts": [
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        4,
+        1,
+        2,
+        0.5
+      ]
+    ],
+    "target_seconds": 1.1
+  },
+  "frames": [
+    {
+      "count": 70,
+      "cpu_seconds": 0.021788000000000002,
+      "finite": 1,
+      "loops": 1,
+      "phase": 0,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 0.02196385
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 0.0016700000000000048,
+      "finite": 0,
+      "loops": 1,
+      "phase": 0,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 0.001684476
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 0.0018400000000000014,
+      "finite": 1,
+      "loops": 1,
+      "phase": 1,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 0.001854018
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.039767,
+      "finite": 1,
+      "loops": 594,
+      "phase": 1,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 1.048218664
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 0.0011699999999998933,
+      "finite": 0,
+      "loops": 1,
+      "phase": 1,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 0.001177335
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0413799999999998,
+      "finite": 0,
+      "loops": 935,
+      "phase": 1,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 1.049848791
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0244749999999998,
+      "finite": 1,
+      "loops": 594,
+      "phase": 2,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 1.032974851
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0381610000000001,
+      "finite": 0,
+      "loops": 935,
+      "phase": 2,
+      "repetition": 1,
+      "stable": true,
+      "wall_seconds": 1.047827193
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0395700000000003,
+      "finite": 0,
+      "loops": 935,
+      "phase": 2,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 1.048085404
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0208959999999996,
+      "finite": 1,
+      "loops": 594,
+      "phase": 2,
+      "repetition": 2,
+      "stable": true,
+      "wall_seconds": 1.029201206
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.023752,
+      "finite": 1,
+      "loops": 594,
+      "phase": 2,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.032276558
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0482370000000012,
+      "finite": 0,
+      "loops": 935,
+      "phase": 2,
+      "repetition": 3,
+      "stable": true,
+      "wall_seconds": 1.05685426
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0389300000000006,
+      "finite": 0,
+      "loops": 935,
+      "phase": 2,
+      "repetition": 4,
+      "stable": true,
+      "wall_seconds": 1.048190044
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0233169999999987,
+      "finite": 1,
+      "loops": 594,
+      "phase": 2,
+      "repetition": 4,
+      "stable": true,
+      "wall_seconds": 1.032174369
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0308650000000004,
+      "finite": 1,
+      "loops": 594,
+      "phase": 2,
+      "repetition": 5,
+      "stable": true,
+      "wall_seconds": 1.039468079
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0542750000000005,
+      "finite": 0,
+      "loops": 935,
+      "phase": 2,
+      "repetition": 5,
+      "stable": true,
+      "wall_seconds": 1.062840016
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0406390000000005,
+      "finite": 0,
+      "loops": 935,
+      "phase": 2,
+      "repetition": 6,
+      "stable": true,
+      "wall_seconds": 1.049195919
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.024932999999999,
+      "finite": 1,
+      "loops": 594,
+      "phase": 2,
+      "repetition": 6,
+      "stable": true,
+      "wall_seconds": 1.033869365
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0222429999999996,
+      "finite": 1,
+      "loops": 594,
+      "phase": 2,
+      "repetition": 7,
+      "stable": true,
+      "wall_seconds": 1.030896934
+    },
+    {
+      "count": 70,
+      "cpu_seconds": 1.0361379999999993,
+      "finite": 0,
+      "loops": 935,
+      "phase": 2,
+      "repetition": 7,
+      "stable": true,
+      "wall_seconds": 1.04459244
+    }
+  ],
+  "maximum_scaled_coefficient_residual": "0",
+  "performance_eligible": false,
+  "scope": "warm tensor diagnostic; no physical-amplitude acceptance",
+  "status": "measured",
+  "timing_failures": [],
+  "timing_qualified": true,
+  "wall_poles_over_full": {
+    "confidence_interval_95": [
+      0.6439818271221176,
+      0.648868232740958
+    ],
+    "geometric_mean": 0.6464204127980656,
+    "method": "paired log-ratio Student-t, df=6, critical value 2.447",
+    "ratios": [
+      0.6444285176731078,
+      0.6469507498351504,
+      0.6504199764926129,
+      0.6451516227578519,
+      0.6495783986116095,
+      0.6447120092391944,
+      0.6437340247930045
+    ]
+  }
+}
