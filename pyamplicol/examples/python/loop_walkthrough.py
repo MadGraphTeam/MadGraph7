@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 """One-loop walkthrough of a packaged loop example, from its generate card.
 
-Generation (typed API, with the example's correlator declaration), the
-`pyamplicol check` pole and Ward checks, evaluation with the per-type default
-reduction backend and the other one, the coloured per-stage profile (checked
-and unchecked), colour- and spin-correlated evaluation, helicity selection,
-partial weights per squared coupling order with their sum check, and the
-native SDK client. Run from an examples workspace, e.g.
+The `pyamplicol check` pole and Ward checks of the card's request, generation
+(typed API, with the example's correlator declaration), evaluation with the
+per-type default reduction backend and the other one, the coloured per-stage
+profile (checked and unchecked), colour- and spin-correlated evaluation,
+helicity selection, partial weights per squared coupling order with their sum
+check, and the native SDK client. Run from an examples workspace, e.g.
 
     python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2
 """
@@ -114,11 +114,11 @@ def _generate(card: Path, artifact: Path, regenerate: bool) -> float:
     return seconds
 
 
-def _check(artifact: Path, points: int, color: str) -> int:
-    """`pyamplicol check` on the artifact, in its own process (it regenerates
-    the request in memory)."""
+def _check(target: Path, points: int, color: str) -> int:
+    """`pyamplicol check` on a card or an artifact, in its own process (it
+    regenerates the request in memory)."""
 
-    command = [sys.executable, "-m", "pyamplicol", "check", str(artifact)]
+    command = [sys.executable, "-m", "pyamplicol", "check", str(target)]
     command += ["--points", str(points), "--progress", "off", "--color", color]
     print("$", " ".join(command[2:]), flush=True)
     return subprocess.run(command, check=False).returncode
@@ -276,14 +276,19 @@ def main() -> int:
     times: dict[str, float] = {}
     begin = time.perf_counter()
 
-    _step("1. Generation")
-    times["generation"] = _generate(card, artifact, args.regenerate)
-
-    _step("2. pyamplicol check (poles and Ward identities)")
+    # The check first: it regenerates the card's request in memory in its own
+    # process, so its memory never adds to this process's generation.
+    _step("1. pyamplicol check of the card (poles and Ward identities)")
     clock = time.perf_counter()
-    code = _check(artifact, args.points, args.color)
+    code = _check(card, args.points, args.color)
     times["check"] = time.perf_counter() - clock
-    print(f"check exit code {code}")
+    print(
+        f"check exit code {code} (the artifact's: pyamplicol check {artifact.name} "
+        f"or pyamplicol {_example_name(card)}_check.toml)"
+    )
+
+    _step("2. Generation")
+    times["generation"] = _generate(card, artifact, args.regenerate)
 
     _step("3. Evaluation on both reduction backends")
     runtime = Runtime.load(artifact)
