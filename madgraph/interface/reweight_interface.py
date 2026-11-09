@@ -147,6 +147,7 @@ class ReweightInterface(extended_cmd.Cmd):
         self.beampol_legs = None # per incoming leg: is it polarised
         self._beampol_set = {} # id(module) -> value its /to_beampol/ holds
         self._spin_cache = {}
+        self._pickled_spins = {} # pdg -> spin, from rwgt.pkl (see save_to_pickle)
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
@@ -1206,12 +1207,20 @@ class ReweightInterface(extended_cmd.Cmd):
         return tuple(pol)
 
     def _is_fermion(self, model, pid):
-        """True when pid is a spin-1/2 particle of model"""
+        """True when pid is a spin-1/2 particle of model, or -- for a job set
+        up from rwgt.pkl, which has no model -- of the spins saved there. An
+        unknown spin is an error: taking it as "not a fermion" would silently
+        reweight with unpolarised matrix elements."""
         if pid not in self._spin_cache:
-            try:
-                spin = model.get_particle(pid).get('spin')
-            except Exception:
-                spin = None
+            particle = model.get_particle(pid) if model else None
+            spin = particle.get('spin') if particle else None
+            if spin is None:
+                spin = getattr(self, '_pickled_spins', {}).get(pid)
+            if spin is None:
+                raise self.InvalidCmd('The spin of particle %s is not known: the beam '
+                                      'polarisation (polbeam1/polbeam2) can not be '
+                                      'applied. Remove the rw_me directory to have it '
+                                      'regenerated.' % pid)
             self._spin_cache[pid] = spin == 2
         return self._spin_cache[pid]
 
@@ -3209,6 +3218,15 @@ class ReweightInterface(extended_cmd.Cmd):
         to_save['allow_missing_finalstate'] = self.options['allow_missing_finalstate']
         to_save['identical_particle_in_prod_and_decay'] = self.options['identical_particle_in_prod_and_decay']
         to_save['nb_library'] = self.nb_library
+        # the jobs that load this pickle (--multicore=wait, a reused rwgt_dir)
+        # have no model, and get_beampol needs the spin of the incoming
+        # particles, flavour-merged ones included
+        spins = {}
+        for model in (getattr(self, 'original_model', None), self.model):
+            if model:
+                spins.update((pid, part.get('spin'))
+                             for pid, part in model.get('particle_dict').items())
+        to_save['spins'] = spins
 
         name = pjoin(self.rwgt_dir, 'rw_me', 'rwgt.pkl')
         save_load_object.save_to_file(name, to_save)
@@ -3258,6 +3276,7 @@ class ReweightInterface(extended_cmd.Cmd):
         self.second_model = obj['second_model']
         self.has_nlo = obj['has_nlo']
         self.nb_library = obj['nb_library']
+        self._pickled_spins = obj.get('spins') or {}
         if not self.rwgt_mode:
             self.rwgt_mode = obj['rwgt_mode']
             logger.info("mode set to %s" % self.rwgt_mode)

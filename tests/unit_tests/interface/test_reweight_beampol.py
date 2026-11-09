@@ -110,6 +110,19 @@ class TestGetBeampol(unittest.TestCase):
         stub = _Stub(_card(-80, 30), processes=[((22, 22), (13, -13))])
         self.assertIsNone(stub.get_beampol())
 
+    def test_job_without_model_uses_the_pickled_spins(self):
+        """a --multicore=wait job is set up from rwgt.pkl and has no model: the
+        spins come from the pickle (flavour-merged codes included), and an
+        unknown one is an error rather than an unpolarised leg"""
+        stub = _Stub(_card(-80, 30), processes=[((82, -82), (13, -13))])
+        stub.model = None
+        stub._pickled_spins = {82: 2, -82: 2}
+        self.assertEqual(stub.get_beampol(), (-1.8, 1.3))
+        self.assertEqual(stub.beampol_legs, [True, True])
+        stub = _Stub(_card(-80, 30), processes=[((82, -82), (13, -13))])
+        stub.model = None
+        self.assertRaises(madgraph.InvalidCmd, stub.get_beampol)
+
     def test_eva_beam_is_left_to_the_pdf(self):
         self.assertEqual(_Stub(_card(-80, 30, pdlabel2='eva')).get_beampol(), (-1.8, 1.))
         self.assertIsNone(_Stub(_card(-80, 30, pdlabel='eva')).get_beampol())
