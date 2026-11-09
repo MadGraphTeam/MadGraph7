@@ -1213,6 +1213,11 @@ class MadgraphSubprocess:
             weights.append(factor * (2. if flav["mirror"] else 1.))
         return flavor_initials, flavor_contents, weights
 
+    def parton_density_output(self) -> bool:
+        """Whether the events carry the parton densities of all partons, for a
+        weighting step that switches their flavour."""
+        return False
+
     def build_integrands(
         self,
         phasespace: PhaseSpace,
@@ -1305,6 +1310,7 @@ class MadgraphSubprocess:
                 None if self.process.leptonic else self.process.pdf_grid2,
                 phasespace.mapping_chan_weights,
                 mlm_history_qcd_power,
+                parton_density_output=self.parton_density_output() and not madnis_training,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

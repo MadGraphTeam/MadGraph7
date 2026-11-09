@@ -327,10 +327,35 @@ def resonance_pdg(model, pdg, decay_pdgs):
     return abs(pdg) if abs(particle.get_charge() - charge) < 1e-6 else -abs(pdg)
 
 
+def switch_resonance_pdg(model, pdg, decay_pdgs):
+    """resonance_pdg for the legs of a flavour-switch target, 0 if the resonance
+    cannot decay to them (it is then not written)."""
+    particle = model.get_particle(abs(pdg))
+    charge = sum(model.get_particle(p).get_charge() for p in decay_pdgs)
+    if particle.get('self_antipart'):
+        return abs(pdg) if abs(charge) < 1e-6 else 0
+    if abs(abs(particle.get_charge()) - abs(charge)) > 1e-6:
+        return 0
+    return resonance_pdg(model, pdg, decay_pdgs)
+
+
+SWITCH_LINES = 3
+
+
+def switch_lines(procdef, model):
+    """The quark lines from which the flavours are only reached by the flavour
+    switch of the full-colour pass, None if it does not apply (no two incoming
+    partons)."""
+    initial = [leg_pdgs(leg, model) for leg in procdef.get('legs') if not leg.get('state')]
+    partons = all(pdg == 21 or 0 < abs(pdg) <= 6 for pdgs in initial for pdg in pdgs)
+    return SWITCH_LINES if len(initial) == 2 and partons else None
+
+
 def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
-                       initial_legs):
+                       initial_legs, switch=None):
     """One subprocesses.json entry per channel of a UMAMI provider; initial_legs
-    are the pdg ids allowed for each initial leg."""
+    are the pdg ids allowed for each initial leg; switch is (path, sidecar) of
+    the flavour switch of the provider, if any."""
     pdg_ids = metadata['pdg_ids']
     provider = metadata['provider']
     incoming = provider['incoming_count']
@@ -363,6 +388,15 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
                 flavor['factor'] += term['factor']
             flavors.extend(by_kind.values())
         first = flavors[0]['options'][0]
+        switch_entry = {}
+        if switch is not None and switch[1]['targets']:
+            switch_entry['flavor_switch'] = switch[0]
+            if any(ps['resonances'] for ps in phasespace):
+                # the resonance charges of every target in each phase-space channel
+                switch_entry['switch_resonance_pdgs'] = [
+                    [[switch_resonance_pdg(model, r['pdg'], [pdgs[leg] for leg in r['legs']])
+                      for r in ps['resonances']] for ps in phasespace]
+                    for pdgs in switch[1]['targets']]
         entries.append({
             'backend': 'amplicol',
             'incoming': first[:incoming],
@@ -389,6 +423,7 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
             'diagram_count': 0,
             'interference': False,
             'parameters': parameter_references(metadata),
+            **switch_entry,
         })
     return entries
 
@@ -435,7 +470,11 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
                     (procdef.nice_string(prefix=False), path))
         processes.append({'name': name, 'path': path, 'expression': expression,
                           'multiparticles': process_multiparticles,
-                          'orders': coupling_orders(procdef, model)})
+                          'orders': coupling_orders(procdef, model),
+                          'switch_lines': switch_lines(procdef, model),
+                          'initial_legs': [
+                              sorted(leg_pdgs(leg, model))
+                              for leg in procdef.get('legs') if not leg.get('state')]})
     from madgraph.iolibs import amplicol_generation
     try:
         providers = amplicol_generation.generate({
@@ -463,8 +502,14 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
             copies.append('\tcp $(BUILD)/lc/%s ../../%s' % (library, me_path))
             copies.append('\tcp $(BUILD)/reweight/libreweight_%s.so ../../%s' %
                           (provider_id, ratio_path))
+            switch_file = 'flavor_switch_%s.json' % provider_id
+            switch = None
+            if os.path.isfile(pjoin(path, 'reweight', switch_file)):
+                with open(pjoin(path, 'reweight', switch_file)) as stream:
+                    switch = (pjoin(rel_dir, 'reweight', switch_file), json.load(stream))
             entries.extend(subprocess_entries(metadata, model, rel_dir, me_path,
-                                              ratio_path, qcd_power, initial_legs))
+                                              ratio_path, qcd_power, initial_legs,
+                                              switch))
         with open(pjoin(path, 'makefile'), 'w') as stream:
             stream.write(MAKEFILE % {'copies': '\n'.join(copies)})
         with open(pjoin(path, 'process.json'), 'w') as stream:

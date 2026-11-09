@@ -2276,6 +2276,11 @@ class MadgraphProcess:
                     os.path.join(gridpack_path, artifact_dir, name),
                 )
             os.makedirs(os.path.join(gridpack_path, artifact_dir, "reweight"))
+            # the tables of the flavour switch, read at launch
+            for switch in glob.glob(
+                os.path.join(artifact_dir, "reweight", "flavor_switch_*.json")
+            ):
+                shutil.copy(switch, os.path.join(gridpack_path, artifact_dir, "reweight"))
 
         cards_path = os.path.join(gridpack_path, "Cards")
         os.mkdir(cards_path)

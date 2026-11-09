@@ -180,8 +180,9 @@ first_pass_max_overweight_truncation = %(amplicol.first_pass_max_overweight_trun
 first_pass_freeze_max_weight_after = %(amplicol.first_pass_freeze_max_weight_after)s
 # divide each flavour's sampling prior by its number of phase-space channels
 prior_partner_share = %(amplicol.prior_partner_share)s
-# flavours at leading colour: all, or two_lines (at most two quark lines; the
-# others neglected)
+# flavours at leading colour: all; two_lines_resample (at most two quark lines,
+# the full-colour pass switches events to the others); or two_lines (at most
+# two quark lines, the others neglected)
 lc_flavors = %(amplicol.lc_flavors)s
 
 [multiparticles]
