@@ -630,7 +630,7 @@ class V2ObservablesRuntime:
             checks = options.get("stability")
             plain = (
                 {**options, "stability": replace(checks, cross_backend=False)}
-                if getattr(checks, "cross_backend", False)
+                if checks is not None and getattr(checks, "cross_backend", False)
                 else options
             )
 
