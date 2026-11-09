@@ -22,21 +22,25 @@ chooses the effective backend once per call and carrier, never per point:
   inputs, at the call's carrier, after the TIRust call (``with_fallback``),
   and the backend that served it and the reason are recorded per point
   (``VirtualLaneDiagnostic.reduction``); a point NinjaRS fails too fails
-  with both reasons. Every point the fallback serves is GUARDED (m-lit
-  lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1)): NinjaRS (pin
-  5b6a8f57) can return finite, badly wrong values as success at near-planar
-  2 -> 3 points of rank-n pentagon families, so the fallback's value runs
-  the reduction-direction re-reduction (the cached-master check of
-  ``stability.REDUCTION``, never its rescaled variant) at the call's own
-  carrier, and the point fails typed (one reason, ``text("rejected")``,
-  naming the fallback, TIRust's failure, the carrier, the estimate and the
-  target) when the check's relative estimate exceeds the call's target
-  (``fallback_accepted``; the only threshold); the estimate is in the
-  point's record (``VirtualReduction.guard_estimate``), an accepted point
-  keeps the fallback's value bitwise and its public estimate is the call's
-  checks' own. The call's own cached reduction check is reused; beside
-  other checks the guard's runs in addition, on the served points only
-  (``with_fallback``). Points TIRust serves run nothing more;
+  with both reasons. In the extended carriers (double-double, arbitrary
+  precision; ``fallback_guarded``) every point the fallback serves is
+  GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and
+  11:53): NinjaRS (pin 5b6a8f57) can return finite, badly wrong values as
+  success at near-planar 2 -> 3 points of rank-n pentagon families, so the
+  fallback's value runs the reduction-direction re-reduction (the
+  cached-master check of ``stability.REDUCTION``, never its rescaled
+  variant) at the call's own carrier, and the point fails typed (one
+  reason, ``text("rejected")``, naming the fallback, TIRust's failure, the
+  carrier, the estimate and the limit) when the check's relative estimate
+  exceeds the guard's limit, the call's target never below 1e-5
+  (``fallback_accepted``: max(target, 1e-5), USER 2026-11-09 ~11:53); the
+  estimate is in the point's record (``VirtualReduction.guard_estimate``),
+  an accepted point keeps the fallback's value bitwise and its public
+  estimate is the call's checks' own. The call's own cached reduction check
+  is reused; beside other checks the guard's runs in addition, on the
+  served points only (``with_fallback``). A binary64 fallback point is
+  served unguarded (its protection is NinjaRS's own conditioning bound,
+  m-lit lit-ninja-planar). Points TIRust serves run nothing more;
 * an explicit backend that cannot serve the call is refused typed
   (``ReductionUnavailable``): never a silent switch, and it has no
   fallback.
@@ -197,9 +201,9 @@ def text(
     ``detail``), ``"failed"`` (a reason ``detail`` of the fallback ``a``),
     ``"rejected"`` (a point the fallback ``b`` served after ``a`` refused or
     failed it, ``detail``, whose value the fallback's guard rejected at the
-    call's ``carrier``: its reduction-direction ``estimate`` above the call's
-    ``target``; m-lit lit-fallback-guard) or ``"cross"`` (the cross-backend
-    check's refusal ``detail``)."""
+    call's ``carrier``: its reduction-direction ``estimate`` above the
+    guard's limit at the call's ``target``; m-lit lit-fallback-guard) or
+    ``"cross"`` (the cross-backend check's refusal ``detail``)."""
 
     from pyamplicol.loops.native import load_loop_native
 
@@ -223,11 +227,23 @@ def fallback_accepted(estimate: float, target: float) -> bool:
     """Whether the per-point fallback's guard accepts a served point whose
     reduction-direction estimate is ``estimate`` at the call's ``target``:
     the native policy's one rule (``reduction_policy::fallback_accepted``: a
-    number at most the target; a NaN estimate is rejected)."""
+    number at most the guard's limit, max(target, 1e-5), ``FALLBACK_FLOOR``,
+    USER 2026-11-09 ~11:53; a NaN estimate is rejected)."""
 
     from pyamplicol.loops.native import load_loop_native
 
     return bool(load_loop_native().reduction_fallback_accepted(estimate, target))
+
+
+def fallback_guarded(carrier: str) -> bool:
+    """Whether the per-point fallback's guard runs in the carrier
+    ``carrier``: the native policy's rule (``reduction_policy::
+    fallback_guarded``: the extended carriers only, double-double and
+    arbitrary precision; USER 2026-11-09 ~11:53 'Double-double+ only')."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return bool(load_loop_native().reduction_fallback_guarded(carrier))
 
 
 class Route(NamedTuple):
@@ -525,12 +541,15 @@ def with_fallback(
     same ``carrier``, after the primary call, with the call's checks less
     the cross-backend check (a fallback point's is not run, m-lit R6).
 
-    Every point the fallback SERVED is GUARDED (m-lit lit-fallback-guard,
-    DECISIONS 2026-11-09 05:56 (1)): the cached reduction-direction
-    re-reduction (``stability.REDUCTION``: every loop numerator reduced a
-    second time in the reversed frame, its coefficients and the cached
-    masters reused; never the rescaled variant) runs at the call's carrier
-    (never escalated, USER 2026-11-08 ~20:55) and its relative estimate
+    In the extended carriers (``fallback_guarded``: double-double and
+    arbitrary precision, USER 2026-11-09 ~11:53; a binary64 fallback point
+    is served unguarded, with no estimate) every point the fallback SERVED
+    is GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and
+    11:53): the cached reduction-direction re-reduction
+    (``stability.REDUCTION``: every loop numerator reduced a second time in
+    the reversed frame, its coefficients and the cached masters reused;
+    never the rescaled variant) runs at the call's carrier (never
+    escalated, USER 2026-11-08 ~20:55) and its relative estimate
     (``_guard_estimate``) is recorded in the point's record
     (``VirtualReduction.guard_estimate``). When the call's checks run that
     cached check they are reused (no second re-reduction); without checks
@@ -544,11 +563,11 @@ def with_fallback(
     check alone, which then decides on every served point (as the native
     SDKs decide on the point's summed |A|^2). A point the guard's check
     fails is a point the fallback failed. A point whose estimate exceeds
-    the call's target (``choice.target``, else the default target;
-    ``fallback_accepted``) fails typed with one reason
-    (``text("rejected")``); an accepted point
-    keeps the fallback's value and the call's own estimate. The public
-    estimate is always the call's checks' own.
+    the guard's limit (the call's target, ``choice.target`` else the
+    default target, never below 1e-5: ``fallback_accepted``) fails typed
+    with one reason (``text("rejected")``); an accepted point keeps the
+    fallback's value and the call's own estimate. The public estimate is
+    always the call's checks' own.
 
     Returns every point's result, the failures (a point the fallback fails
     too keeps both backends' reasons; a guard-rejected point the one
@@ -589,15 +608,18 @@ def with_fallback(
     enabled = plain is not None and bool(plain.rotations or plain.reduction_direction)
     reused = enabled and plain.reduction_direction and not plain.rescaled
     target = choice.target if choice.target is not None else default_target()
+    checking = fallback_guarded(carrier)
     with running(fallback, choice.target, choice.unchecked):
         # Without the call's checks (and without a guard pass) the
         # fallback's evaluation carries the guard's check.
-        merged = guard is None and not enabled
+        merged = checking and guard is None and not enabled
         again, still = run(indices, _reduction_check(plain) if merged else plain)
         still = dict(still)
         served = [local for local in range(len(indices)) if local not in still]
         guarded: dict[int, float] = {}
-        if guard is None and (reused or merged):
+        if not checking:
+            pass
+        elif guard is None and (reused or merged):
             guarded = {local: _guard_estimate(again[local]) for local in served}
         elif served:
             chosen = [indices[local] for local in served]
@@ -627,8 +649,8 @@ def with_fallback(
                 unchecked=choice.unchecked,
             )
             continue
-        estimate = guarded[local]
-        if not fallback_accepted(estimate, target):
+        estimate = guarded[local] if checking else None
+        if estimate is not None and not fallback_accepted(estimate, target):
             reason = text(
                 "rejected",
                 choice.effective,
@@ -676,6 +698,7 @@ __all__ = [
     "default_unchecked",
     "executor_options",
     "fallback_accepted",
+    "fallback_guarded",
     "native_backends",
     "policy",
     "prepare",

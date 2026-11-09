@@ -223,8 +223,8 @@ fn tir_acceptance(target: f64) -> PyResult<Option<f64>> {
 /// `text`: the primary backend, the fallback and the primary's failure),
 /// "failed" (`a`: the fallback, `text`: its reason), "rejected" (as
 /// "served", with the call's `carrier`, the fallback guard's `estimate` and
-/// the call's `target`: the point the guard rejected, m-lit
-/// lit-fallback-guard) or "cross" (`text`: the refusal).
+/// the call's `target`, whose limit it names: the point the guard rejected,
+/// m-lit lit-fallback-guard) or "cross" (`text`: the refusal).
 #[pyfunction]
 #[pyo3(signature = (kind, a, b, text, *, carrier="", estimate=f64::NAN, target=f64::NAN))]
 fn reduction_text(
@@ -253,10 +253,19 @@ fn reduction_text(
 /// Whether the per-point fallback's guard accepts a served point whose
 /// reduction-direction estimate is `estimate` at the call's `target`
 /// (`reduction_policy::fallback_accepted`, the one rule: a number at most
-/// the target; m-lit lit-fallback-guard).
+/// the guard's limit, the target never below `FALLBACK_FLOOR`; m-lit
+/// lit-fallback-guard).
 #[pyfunction]
 fn reduction_fallback_accepted(estimate: f64, target: f64) -> bool {
     rusticol_loop_reduction::reduction_policy::fallback_accepted(estimate, target)
+}
+
+/// Whether the per-point fallback's guard runs in the carrier `carrier`
+/// (`reduction_policy::fallback_guarded`: the extended carriers only; m-lit
+/// lit-fallback-guard, USER 2026-11-09 ~11:53).
+#[pyfunction]
+fn reduction_fallback_guarded(carrier: &str) -> bool {
+    rusticol_loop_reduction::reduction_policy::fallback_guarded(carrier)
 }
 
 #[pymodule]
@@ -288,6 +297,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_auto_default, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_text, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_accepted, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_fallback_guarded, module)?)?;
     module.add_function(wrap_pyfunction!(tir_acceptance, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;

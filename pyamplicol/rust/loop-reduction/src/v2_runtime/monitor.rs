@@ -459,17 +459,15 @@ impl V2Runtime {
     /// `loops.v2.reduction.with_fallback`): per point the relative estimate
     /// of the cached reduction-direction re-test (the reversed frame, the
     /// coefficients and the cached masters reused) of the point's summed
-    /// value, in the carrier `precision` (never escalated), on the runtime's
-    /// current backend (the fallback's, inside [`V2Runtime::on_other`]),
-    /// NaN where it is not a number; a point the evaluation or its re-test
-    /// fails keeps its reasons. Binary64 is [`V2Runtime::evaluate_checked`]
-    /// with that check alone ([`StabilityChecks::fallback_guard`]: the one
-    /// estimate implementation, `crate::v2_stability`, bitwise the Python
-    /// API's); double-double and arbitrary precision are
-    /// [`V2Runtime::evaluate_extended_guarded`]. The SDK's summed calls
+    /// value, in the extended carrier `precision` (the guard runs in
+    /// double-double and arbitrary precision only, USER 2026-11-09 ~11:53;
+    /// never escalated), on the runtime's current backend (the fallback's,
+    /// inside [`V2Runtime::on_other`]), NaN where it is not a number; a
+    /// point the evaluation or its re-test fails keeps its reasons
+    /// ([`V2Runtime::evaluate_extended_guarded`]). The SDK's summed calls
     /// take the estimate with the fallback's own evaluation instead (one
     /// evaluation per served point, as the Python API's); this pass serves
-    /// the calls whose fallback evaluation runs no cached check.
+    /// the resolved, correlated and selected calls.
     pub fn fallback_estimates(
         &mut self,
         momenta: &[Vec<Rational>],
@@ -477,13 +475,6 @@ impl V2Runtime {
         mode: V2Poles,
         precision: V2Precision,
     ) -> RusticolResult<Vec<Result<f64, Vec<String>>>> {
-        if precision == V2Precision::Double {
-            return Ok(self
-                .evaluate_checked(momenta, scales, mode, &StabilityChecks::fallback_guard())?
-                .into_iter()
-                .map(|(point, estimate, _)| point.map(|_| guard_estimate(estimate.as_ref())))
-                .collect());
-        }
         Ok(self
             .evaluate_extended_guarded(momenta, scales, mode, precision)?
             .into_iter()
@@ -514,7 +505,7 @@ impl V2Runtime {
     ) -> RusticolResult<Vec<(V2Point<Decimal>, Option<f64>)>> {
         if precision == V2Precision::Double {
             return Err(invalid(
-                "the binary64 guard is V2Runtime::evaluate_checked's",
+                "the per-point fallback's guard runs in the extended carriers only",
             ));
         }
         self.check_batch(momenta, scales)?;
@@ -652,10 +643,7 @@ impl V2Runtime {
                 None,
             )?;
             let values = sector_index.iter().map(|&s| squared[s].clone()).collect();
-            out.push((
-                Ok((Vec::new(), values)),
-                Some(guard_estimate(Some(&estimate))),
-            ));
+            out.push((Ok((Vec::new(), values)), Some(guard_estimate(&estimate))));
         }
         Ok(out)
     }
@@ -734,7 +722,7 @@ impl V2Runtime {
                 Some((stability::REDUCTION, lanes(retest).as_slice())),
                 None,
             )?;
-            out.push((point, Some(guard_estimate(Some(&estimate)))));
+            out.push((point, Some(guard_estimate(&estimate))));
         }
         Ok(out)
     }
@@ -816,14 +804,15 @@ fn induced_point(
     induced_point_of(induced, rows, orders, found, |x: &f64| *x)
 }
 
-/// The guard's estimate of a monitored point (m-lit lit-fallback-guard):
-/// the cached reduction-direction check's relative estimate
-/// ([`Estimate::reduction_direction`]), NaN where that check gave no number
-/// or did not run.
-fn guard_estimate(estimate: Option<&Estimate>) -> f64 {
-    estimate
-        .and_then(Estimate::reduction_direction)
-        .unwrap_or(f64::NAN)
+/// The guard's estimate of a point (m-lit lit-fallback-guard): the relative
+/// estimate of its one check, the cached reduction-direction re-test; NaN
+/// where it is not a number (a NaN budget: the relative estimate's largest
+/// ratio passes over it, as the Python API's `_guard_estimate` reads it).
+fn guard_estimate(estimate: &Estimate) -> f64 {
+    if estimate.relative.is_nan() || estimate.absolute.iter().flatten().any(|x| x.is_nan()) {
+        return f64::NAN;
+    }
+    estimate.relative
 }
 
 /// The loop-induced shape of a monitored batch: the colour metric `gram`

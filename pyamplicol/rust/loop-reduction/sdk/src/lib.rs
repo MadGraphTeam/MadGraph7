@@ -1371,8 +1371,8 @@ fn statuses_of<T>(
 
 /// One evaluation's outcome of a point: its failure reasons when it failed
 /// (the per-point fallback's test, [`with_fallback`]) and, when the
-/// evaluation ran the cached reduction-direction check, that check's own
-/// relative estimate (the fallback guard's, reused: no second re-test).
+/// evaluation ran the fallback guard's check with it, that check's relative
+/// estimate (no second re-test).
 pub(crate) trait PointOutcome: Sized {
     fn reasons(&self) -> Option<&[String]>;
     fn failed(reasons: Vec<String>) -> Self;
@@ -1412,9 +1412,6 @@ impl PointOutcome for Monitored {
     fn failed(reasons: Vec<String>) -> Self {
         (Err(reasons), None, None)
     }
-    fn guard_estimate(&self) -> Option<f64> {
-        self.1.as_ref().and_then(Estimate::reduction_direction)
-    }
 }
 
 /// One point the per-point fallback evaluated again: the backend that served
@@ -1439,8 +1436,9 @@ pub(crate) struct Fallbacks {
 impl Fallbacks {
     /// The record of the diagnostics: per point id the backend that served
     /// the point (null: failed on both, or rejected by its guard), the reason
-    /// and the guard's relative estimate (null: the guard did not run, or
-    /// its estimate is not a number).
+    /// and the guard's relative estimate (null: the guard did not run, in
+    /// binary64 or on a point the fallback failed, or its estimate is not a
+    /// number).
     fn record(&self, ids: &[u64]) -> serde_json::Value {
         serde_json::Value::Object(
             self.points
@@ -1511,22 +1509,23 @@ fn pick<'a, T: Clone>(values: &'a [T], indices: Option<&[usize]>) -> std::borrow
 /// again on the fallback, from their original exact inputs, at the call's
 /// carrier, after the primary call: each served point takes the fallback's
 /// outcome, a point the fallback fails too fails with both backends'
-/// reasons; both recorded per point ([`Fallbacks`]). Every point the
-/// fallback serves is GUARDED (m-lit lit-fallback-guard, DECISIONS
-/// 2026-11-09 05:56 (1); the Python API's `loops.v2.reduction.
-/// with_fallback`): the relative estimate of its cached reduction-direction
-/// re-test at the call's carrier is recorded: the outcome's own
+/// reasons; both recorded per point ([`Fallbacks`]). In the extended
+/// carriers (`reduction_policy::fallback_guarded`: double-double and
+/// arbitrary precision, USER 2026-11-09 ~11:53; a binary64 fallback point
+/// is served unguarded, with no estimate) every point the fallback serves
+/// is GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and
+/// 11:53; the Python API's `loops.v2.reduction.with_fallback`): the
+/// relative estimate of its cached reduction-direction re-test at the
+/// call's carrier is recorded: the outcome's own
 /// ([`PointOutcome::guard_estimate`]) when the fallback's evaluation ran
-/// that check (a binary64 monitoring whose checks include it; the summed
-/// calls without monitoring, whose fallback evaluation runs it:
-/// `StabilityChecks::fallback_guard`, `V2Runtime::
-/// evaluate_extended_guarded`), else one pass of
-/// [`V2Runtime::fallback_estimates`] on the fallback backend (`guard`: the
-/// rescaled checks, the resolved, correlated and selected calls),
-/// and a point whose estimate exceeds the runtime's target (`V2Runtime::
-/// target`; `reduction_policy::fallback_accepted`) fails with the one
-/// reason `reduction_policy::fallback_rejected` (a point the guard's
-/// re-test fails, the fallback failed). A primary backend that refuses the
+/// that check (the summed calls, `V2Runtime::evaluate_extended_guarded`),
+/// else one pass of [`V2Runtime::fallback_estimates`] on the fallback
+/// backend (`guard`: the resolved, correlated and selected calls), and a
+/// point whose estimate exceeds the guard's limit at the runtime's target
+/// (`V2Runtime::target`; `reduction_policy::fallback_accepted`: the target
+/// never below `FALLBACK_FLOOR`) fails with the one reason
+/// `reduction_policy::fallback_rejected` (a point the guard's re-test
+/// fails, the fallback failed). A primary backend that refuses the
 /// call's plans (TIRust's capability query of a family, a typed
 /// `UnsupportedRuntimeCapability` error before any point) leaves all `count`
 /// points to the fallback. A call without a fallback (an explicit backend, a
@@ -1565,6 +1564,8 @@ pub(crate) fn with_fallback<P: PointOutcome>(
     if failed.is_empty() {
         return Ok((points, record));
     }
+    // The guard runs in the extended carriers only (USER 2026-11-09 ~11:53).
+    let checking = reduction_policy::fallback_guarded(guard.precision.name());
     let (again, guarded) = native.on_other(|native| {
         let again = evaluate(native, Some(&failed))?;
         if again.len() != failed.len() {
@@ -1580,7 +1581,9 @@ pub(crate) fn with_fallback<P: PointOutcome>(
             })
             .collect();
         let pending: Vec<usize> = (0..again.len())
-            .filter(|&local| again[local].reasons().is_none() && guarded[local].is_none())
+            .filter(|&local| {
+                checking && again[local].reasons().is_none() && guarded[local].is_none()
+            })
             .collect();
         if !pending.is_empty() {
             let indices: Vec<usize> = pending.iter().map(|&local| failed[local]).collect();
@@ -1602,46 +1605,51 @@ pub(crate) fn with_fallback<P: PointOutcome>(
     let target = native.target();
     for ((&index, point), guarded) in failed.iter().zip(again).zip(guarded) {
         let first = points[index].reasons().unwrap_or_default().to_vec();
-        let second = match (point.reasons(), guarded) {
-            (Some(second), _) => second.to_vec(),
-            (None, Some(Err(second))) => second,
-            (None, Some(Ok(estimate))) => {
-                if reduction_policy::fallback_accepted(estimate, target) {
-                    record.points.insert(
-                        index,
-                        FallbackPoint {
-                            effective: Some(fallback.to_owned()),
-                            reason: reduction_policy::fallback_served(
-                                &choice.effective,
-                                fallback,
-                                &first.join("; "),
-                            ),
-                            estimate: Some(estimate),
-                        },
-                    );
-                    points[index] = point;
-                } else {
-                    let reason = reduction_policy::fallback_rejected(
-                        &choice.effective,
-                        fallback,
-                        &first.join("; "),
-                        guard.precision.name(),
-                        estimate,
-                        target,
-                    );
-                    record.points.insert(
-                        index,
-                        FallbackPoint {
-                            effective: None,
-                            reason: reason.clone(),
-                            estimate: Some(estimate),
-                        },
-                    );
-                    points[index] = P::failed(vec![reason]);
-                }
+        let outcome = match (point.reasons(), guarded) {
+            (Some(second), _) => Err(second.to_vec()),
+            (None, Some(Err(second))) => Err(second),
+            (None, Some(Ok(estimate))) => Ok(Some(estimate)),
+            (None, None) if !checking => Ok(None),
+            (None, None) => return Err(invalid("a served fallback point without its guard")),
+        };
+        let second = match outcome {
+            Ok(Some(estimate)) if !reduction_policy::fallback_accepted(estimate, target) => {
+                let reason = reduction_policy::fallback_rejected(
+                    &choice.effective,
+                    fallback,
+                    &first.join("; "),
+                    guard.precision.name(),
+                    estimate,
+                    target,
+                );
+                record.points.insert(
+                    index,
+                    FallbackPoint {
+                        effective: None,
+                        reason: reason.clone(),
+                        estimate: Some(estimate),
+                    },
+                );
+                points[index] = P::failed(vec![reason]);
                 continue;
             }
-            (None, None) => return Err(invalid("a served fallback point without its guard")),
+            Ok(estimate) => {
+                record.points.insert(
+                    index,
+                    FallbackPoint {
+                        effective: Some(fallback.to_owned()),
+                        reason: reduction_policy::fallback_served(
+                            &choice.effective,
+                            fallback,
+                            &first.join("; "),
+                        ),
+                        estimate,
+                    },
+                );
+                points[index] = point;
+                continue;
+            }
+            Err(second) => second,
         };
         let second: Vec<String> = second
             .iter()
@@ -1727,31 +1735,19 @@ impl Evaluation {
                 )
             }
             (Arithmetic::Double, None) => {
-                // The fallback's points run with the guard's cached check
-                // (m-lit lit-fallback-guard: one evaluation per served
-                // point, as the Python API's): their values are the
-                // unchecked evaluation's, the estimate only feeds the guard.
-                let guard = StabilityChecks::fallback_guard();
                 let (points, fallbacks) = with_fallback(
                     native,
                     reduction,
                     momenta.len(),
                     Guard::new(&momenta, &scales, poles, arithmetic),
-                    |native, indices| match indices {
-                        None => Ok(native
-                            .evaluate(&momenta, &scales, poles.v2())?
-                            .into_iter()
-                            .map(|point| (point, None, None))
-                            .collect()),
-                        Some(_) => native.evaluate_checked(
+                    |native, indices| {
+                        native.evaluate(
                             &pick(&momenta, indices),
                             &pick(&scales, indices),
                             poles.v2(),
-                            &guard,
-                        ),
+                        )
                     },
                 )?;
-                let points = points.into_iter().map(|(point, _, _)| point).collect();
                 // Checks set but not run in binary64: a split pole selection.
                 let stability = monitoring.record(SPLIT_MONITORING);
                 Self::ordinary(

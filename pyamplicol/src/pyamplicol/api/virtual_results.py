@@ -378,18 +378,21 @@ class VirtualReduction:
     zero stability thresholds).
 
     ``guard_estimate`` is set on the record of a point the per-point
-    fallback served (m-lit lit-fallback-guard): the relative estimate (each
-    squared-order sector against its largest Laurent coefficient, the
-    metric of ``target``) of the fallback value's reduction-direction check
-    (every loop numerator reduced a second time in the reversed frame,
-    cached masters; ``VirtualStabilityChecks(reduction_direction=True)``
-    alone), run at the call's own carrier on every such point. A point
-    whose estimate exceeds the call's target (or is NaN) is a typed failure
-    whose reason (and this record's) names the fallback, TIRust's failure,
-    the carrier, the estimate and the target; a point within it keeps the
-    fallback's value. None on every other record (the call's own, a point
-    TIRust served, a point the fallback failed). The point's public
-    stability estimate stays the call's checks' own."""
+    fallback served in double-double or arbitrary precision (m-lit
+    lit-fallback-guard; USER 2026-11-09 ~11:53: the extended carriers only):
+    the relative estimate (each squared-order sector against its largest
+    Laurent coefficient, the metric of ``target``) of the fallback value's
+    reduction-direction check (every loop numerator reduced a second time in
+    the reversed frame, cached masters;
+    ``VirtualStabilityChecks(reduction_direction=True)`` alone), run at the
+    call's own carrier on every such point. A point whose estimate exceeds
+    the guard's limit, the call's target never below 1e-5 (max(target,
+    1e-5)), or is NaN is a typed failure whose reason (and this record's)
+    names the fallback, TIRust's failure, the carrier, the estimate and the
+    limit; a point within it keeps the fallback's value. None on every other
+    record (the call's own, a point TIRust served, a point the fallback
+    failed, a binary64 fallback point, which is served unguarded). The
+    point's public stability estimate stays the call's checks' own."""
 
     requested: Literal["auto", "ninjars", "tirust"]
     effective: Literal["ninjars", "tirust"]
