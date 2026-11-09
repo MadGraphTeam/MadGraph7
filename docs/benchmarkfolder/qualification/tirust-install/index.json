@@ -5,6 +5,14 @@
       "record": "clean-download/index.json",
       "source_scope": "Byte-copied pre-split-workspace implementation; source-inventory.json identifies the snapshot. Later bridge edits are not qualified by this run.",
       "status": "passed"
+    },
+    {
+      "cache_reuse": true,
+      "main_configuration_changed_during_concurrent_activity": true,
+      "production_native_artifacts_unchanged": true,
+      "record": "current-source/index.json",
+      "source_revision": "606603e720aff7e96df0c9c7981e7bafd09b5d1c",
+      "status": "passed"
     }
   ],
   "artifacts": {
@@ -17,8 +25,8 @@
       "size": 1074
     },
     "README.md": {
-      "sha256": "0940ccaf551e7bede12cc1724983c89340aa618fd998f166c8dc69913984f31a",
-      "size": 2926
+      "sha256": "15429ab278d8e0eb5486665627d87f02ada60fa225260863923ae48d0cf7f6d8",
+      "size": 3311
     },
     "check-installation.json": {
       "sha256": "fcf804fe459a2b169acd7ee2418cc0c5bab2cf6ee5dc07b90d801705497c1e8b",
@@ -155,6 +163,194 @@
     "configuration-transaction-tests.log": {
       "sha256": "e39235726500daa918bb978c6ebafc0e6dc4a0840c54437e251f8379f69bbe91",
       "size": 420
+    },
+    "current-source/Cargo.lock": {
+      "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+      "size": 35857
+    },
+    "current-source/Cargo.toml": {
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+      "size": 1074
+    },
+    "current-source/README.md": {
+      "sha256": "99e098461c98fae25f9b0d334ab1c35b11ff4f322e43d5de812df5644ca89c8c",
+      "size": 4231
+    },
+    "current-source/administrative-hold.json": {
+      "sha256": "4443fd1405b0131d232ea2e593a4a9c8dea3508417b74160efcc03679d72b323",
+      "size": 213
+    },
+    "current-source/allow-compilation": {
+      "sha256": "89773a3091432ae73e3577735930580d5798ba4f64dc0b22fb44425c3c13f1a4",
+      "size": 94
+    },
+    "current-source/bind_replay_evidence.py": {
+      "sha256": "4b84fc4acfa97a6567d179e3d74b5cb5deaa396a586e85f131a1a5ba20ef90af",
+      "size": 7346
+    },
+    "current-source/check-installation.json": {
+      "sha256": "e1de42b6524f7d375a4c712555123e8bd08a1d28855e92b177ca04ca122d1087",
+      "size": 4326
+    },
+    "current-source/cli.log": {
+      "sha256": "f24034184b5efa6cb07b68f74d7f2bc9a38bcb8d0a6b9272b5c7c3f075a38cc4",
+      "size": 6309
+    },
+    "current-source/compile-affinity.json": {
+      "sha256": "daed2b8352de75ddb8ef7ade59ebd0d91d76b0ce04b592177eaeb825cf5b3670",
+      "size": 1059
+    },
+    "current-source/compiled-module.sha256": {
+      "sha256": "c331d26785b651f5297017f0388077c7ae005fc04c01e109259944e97de2d9ce",
+      "size": 150
+    },
+    "current-source/config-drift-attribution.json": {
+      "sha256": "9af3afed11dad6c277ada3b992a14503df08400c065ba1d175cdadc5a7aa017b",
+      "size": 11958
+    },
+    "current-source/config-drift-search.json": {
+      "sha256": "77980dd705b0e7421ff53802a70c6faa0fcd022b9352fbddd1af827f8f683281",
+      "size": 252
+    },
+    "current-source/cpu-affinity.txt": {
+      "sha256": "cc8ad24a093e664a10fb2afed224fe055d7bcac0832ebc2a5ecc86a87d58ee66",
+      "size": 118
+    },
+    "current-source/dynamic-section.txt": {
+      "sha256": "239d694db2bd529a8c06db62e35e460a21d7856029a6ef38dbfcdb699ec998c2",
+      "size": 1955
+    },
+    "current-source/execution-observer.jsonl": {
+      "sha256": "78aa43fbe19925501ef9bc808051e7bb33ca6c6e1ad9e9107943fd155beefc1e",
+      "size": 4887
+    },
+    "current-source/execution-observer.py": {
+      "sha256": "d5783ed373b326ed67793f164b0cdda3d033b2b63d4d13bd02ab69e9be9093be",
+      "size": 1322
+    },
+    "current-source/host-overload-context.json": {
+      "sha256": "9d6370c0967e48f5e5d387bf669251961649824d9267738cf9c673e7522f1355",
+      "size": 686
+    },
+    "current-source/host-toolchain.txt": {
+      "sha256": "b97c92e09e78a905ac0bd01b98db03bf4f5885e7416fec32deeaf13da4e1e78c",
+      "size": 635
+    },
+    "current-source/index.json": {
+      "sha256": "5d7332c0aac9e83e4f4ebba5e27578f3383686da618e0d058a7e1792107cdc00",
+      "size": 7538
+    },
+    "current-source/install-start.json": {
+      "sha256": "1feb674e26daf95cab6204a2e4602489c006eae719228dbebc25d152b2b9cb6e",
+      "size": 1134
+    },
+    "current-source/install.log": {
+      "sha256": "b20aedcdf47f5654ee6c06e20ceb7ca95d0791ed67dfb97d1e2db01ee0f03a2c",
+      "size": 858343
+    },
+    "current-source/install.mg5": {
+      "sha256": "efdce26ad50135c4ffd44e7b281b2d1083ada3356df775568dfa0bf74a9e09fc",
+      "size": 124
+    },
+    "current-source/isolated-configuration-after.txt": {
+      "sha256": "b91be118cfd2bf9e58c24d778eed88030e5777654b4f8b7c5b6a0b521e0e595d",
+      "size": 10731
+    },
+    "current-source/native-exports.txt": {
+      "sha256": "3261fbd2abac0ba45b63b09946f750928ae24e0a6ec3f507c4a441f8313ec5d0",
+      "size": 515
+    },
+    "current-source/package_evidence.py": {
+      "sha256": "6a151b8271cf63283f01717ab821c3db0bc09edbb263166b80d0d1860b42179e",
+      "size": 10021
+    },
+    "current-source/prepare_snapshot.py": {
+      "sha256": "521cf14c67d125b9f3bc9c01c0c1efcb73f0ebc0f05e1788116cd53d24dd2611",
+      "size": 4658
+    },
+    "current-source/production-after.json": {
+      "sha256": "60db348b5c9aeff7589a5e99eb7106bd6a0a5dc111a209aee84252431c34f8cc",
+      "size": 540
+    },
+    "current-source/production-before.json": {
+      "sha256": "2c263b458d8309599885504774135d30e67de2c9ec9ae09f45f3ce04bb984130",
+      "size": 540
+    },
+    "current-source/production-drift-observed.json": {
+      "sha256": "ef4accb3b8f7a3c2317a78fdcac42221392585a6279dfad1ac200218e45b4bcc",
+      "size": 1361
+    },
+    "current-source/production-main-configuration-observed.txt": {
+      "sha256": "568dd763e3410fff45ed10e0772193632d37f247b119aea233e47d548d3fb0fa",
+      "size": 11122
+    },
+    "current-source/release-validation-workers/original.json": {
+      "sha256": "2f96ab2a27ec825d41903f6ef3ee6083cac9498773555faa7d5849e94a8658c5",
+      "size": 168887
+    },
+    "current-source/release-validation-workers/original.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    "current-source/release-validation-workers/split.json": {
+      "sha256": "87c94542badb5f98ee82ec182fe3efe1361b1df53a69415d8fb92228d3c6e1fd",
+      "size": 168953
+    },
+    "current-source/release-validation-workers/split.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    "current-source/release-validation.json": {
+      "sha256": "b842ea8b1d7cd0035cbeeb014fe2b3560244489489ce1f26dd340f58736aae6b",
+      "size": 6078
+    },
+    "current-source/replay-console.log": {
+      "sha256": "d5d2ae0ca2c67eab6dbc7e3e56e455aacdd7339e59580aeb6afb4523c8823a6c",
+      "size": 206
+    },
+    "current-source/replay-execution.json": {
+      "sha256": "45c07e22c60f08ccfa8ed125f8b464caa3298369b714cc1e1fea88efb6457252",
+      "size": 2019
+    },
+    "current-source/resolved-source-hashes.json": {
+      "sha256": "806e1a419516d7a6ed09828bd5fe957bb5c5f3af413453495246681354f3e146",
+      "size": 393
+    },
+    "current-source/run.sh": {
+      "sha256": "4c93d2395c854adf8d97e843ea1a0e179b0fcf4333ee50ae057efffbf2e3609c",
+      "size": 713
+    },
+    "current-source/run_final_replay.py": {
+      "sha256": "1a8de051f295ed1dfd3ff8e79b5b9b8f8f953135b7940a46391e4e95180ead70",
+      "size": 2541
+    },
+    "current-source/snapshot-result.json": {
+      "sha256": "86be466aea9de9dc0f4e9edb0af149f230c7cb21ce5126afee95fa2ddb5d70d9",
+      "size": 403
+    },
+    "current-source/source-inventory.json": {
+      "sha256": "121331077759510707d06073028fade69885f3cc66a13489eccd96921133b11a",
+      "size": 358711
+    },
+    "current-source/source-revision.json": {
+      "sha256": "19ac526c92762d1ac97ddf2d8b7bfeb73642738e44994c8b1db955acca35caec",
+      "size": 4184
+    },
+    "current-source/tirust-NOTICES.txt": {
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+      "size": 717
+    },
+    "current-source/tirust-config.json": {
+      "sha256": "a11c93e0a0d347ef027493b34a0569fbc957d5a9a5dbadb107e3756e70c3b97c",
+      "size": 3050
+    },
+    "current-source/tirust-dependency-provenance.json": {
+      "sha256": "ed9b1a93b60925540896445df49f90faca9bb282b9f3434e9255d3c69f79b4e6",
+      "size": 539552
+    },
+    "current-source/validate_release.py": {
+      "sha256": "f8d068e919642570701dad7db58e7619f22fddbcd632b83127d9fcea172ed223",
+      "size": 29655
     },
     "dynamic-section.txt": {
       "sha256": "676debcbc8e6bfd0120c103d956960b9b094fedaa69dd616f61653a4287cecd9",

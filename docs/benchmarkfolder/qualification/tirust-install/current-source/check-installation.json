@@ -1,0 +1,114 @@
+{
+  "available": true,
+  "bridge_source_sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+  "build_provenance": {
+    "git_dependencies": [
+      {
+        "name": "graphica",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+        "version": "3.0.1"
+      },
+      {
+        "name": "numerica",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+        "version": "3.0.2"
+      },
+      {
+        "name": "oneloop",
+        "source": "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#bd703d09a78f7849a6b86a07096e6f222fc01193",
+        "version": "0.1.0"
+      },
+      {
+        "name": "symbolica",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+        "version": "3.0.2"
+      }
+    ],
+    "lock_sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+    "manifest_sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+  },
+  "cache_policy": "Existing common Cargo caches reused; no clean-cache claim",
+  "checked_utc": "2026-11-09T22:55:39.305161+00:00",
+  "commands": [
+    {
+      "argv": [
+        "nm",
+        "-D",
+        "--defined-only",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "output": "native-exports.txt",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "output": "dynamic-section.txt",
+      "returncode": 0
+    }
+  ],
+  "final_native_replay": {
+    "cache_snapshots_identical": true,
+    "call_outcomes": {
+      "original": {
+        "deliberate_invalid_input_or_overflow_calls": 10,
+        "successful_evaluations": 80
+      },
+      "split": {
+        "deliberate_invalid_input_or_overflow_calls": 10,
+        "successful_evaluations": 80
+      }
+    },
+    "calls_per_library": 90,
+    "event_records_identical": 110,
+    "execution_source_and_library_identities_verified": true,
+    "installed_native_metadata_and_notice_hashes_rechecked": true,
+    "output_bytes_identical": true,
+    "record": "release-validation.json",
+    "scope": "Synthetic raw-ABI DP lifecycle/cache/failure parity only; no full-amplitude or timing claim. The actual installer smoke separately covers binary128 input and pole mode.",
+    "worker_and_log_hashes_verified": true
+  },
+  "fortran_source_sha256": "12295dca6b64a96dbd4f184cf67ed702f38c9fd82658e196fa4c5b7135fee10e",
+  "isolated_configuration_saved": true,
+  "main_configuration_unchanged": false,
+  "native_artifacts": {
+    "libmadloop_tirust.so": {
+      "bytes": 69094464,
+      "sha256": "095e957990c2e7ed87ed9ea73fee71eb132f00b330e0d38fd423163c173e358c"
+    },
+    "libtirust.a": {
+      "bytes": 26038,
+      "sha256": "04c2b1ac3b8275dd2d0060416c4147bebd5e9bd62b71509e4cb29ce3d5c47d08"
+    },
+    "mtirust.mod": {
+      "bytes": 3432,
+      "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5"
+    }
+  },
+  "native_export_count": 12,
+  "notice_files": {
+    "tirust-NOTICES.txt": {
+      "bytes": 717,
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435"
+    },
+    "tirust-dependency-notices.tar.gz": {
+      "bytes": 849513,
+      "sha256": "f4351f173253918fac5bbfa43683818126d974b757a8ace4d45e3102eacd9a60"
+    },
+    "tirust-dependency-provenance.json": {
+      "bytes": 539552,
+      "sha256": "ed9b1a93b60925540896445df49f90faca9bb282b9f3434e9255d3c69f79b4e6"
+    }
+  },
+  "protected_production_native_hashes_unchanged": true,
+  "serialized_real_native_smoke": true,
+  "source_files": 3162,
+  "source_overrides": false,
+  "source_patch_sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5",
+  "source_revision": "606603e720aff7e96df0c9c7981e7bafd09b5d1c",
+  "source_snapshot_rechecked": true,
+  "status": "passed"
+}

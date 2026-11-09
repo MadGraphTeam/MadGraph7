@@ -1,0 +1,72 @@
+{
+  "checked_utc": "2026-11-09T22:17:34.668552+00:00",
+  "installer_pid": 537506,
+  "processes": [
+    {
+      "pid": 537506,
+      "ppid": 535564,
+      "command": "python3.13",
+      "allowed_cpus": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "pid": 793524,
+      "ppid": 537506,
+      "command": "make",
+      "allowed_cpus": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "pid": 793558,
+      "ppid": 793524,
+      "command": ".cargo-wrapped",
+      "allowed_cpus": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "pid": 793566,
+      "ppid": 793558,
+      "command": "rustc",
+      "allowed_cpus": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "pid": 810602,
+      "ppid": 793558,
+      "command": "rustc",
+      "allowed_cpus": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "pid": 812893,
+      "ppid": 793558,
+      "command": "rustc",
+      "allowed_cpus": [
+        2,
+        3,
+        4,
+        5
+      ]
+    }
+  ]
+}

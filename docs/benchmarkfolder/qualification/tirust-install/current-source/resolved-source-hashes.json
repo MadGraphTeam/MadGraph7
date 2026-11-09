@@ -1,0 +1,6 @@
+{
+  "bridge/Cargo.toml": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+  "bridge/Cargo.lock": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+  "bridge/src/lib.rs": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+  "bridge/patches/0001-direct-poles-only.patch": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5"
+}

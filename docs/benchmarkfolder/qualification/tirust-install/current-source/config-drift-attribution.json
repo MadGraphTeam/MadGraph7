@@ -1,0 +1,327 @@
+{
+  "explanation": "Concurrent fresh-export CLI commands saved their options through the main install configuration fallback. The owning agent confirmed these scripts inherited saving set commands without --no_save. The final isolated installer was blocked in its native-smoke wrapper during the observed main-config mtime and its own save log names only its copied configuration.",
+  "before_bytes_available": false,
+  "text_diff_available": false,
+  "original_config_sha256": "b231a7537598a9c86d1b04dcc9be818a8a40c531baeb95f0049019d906eb7657",
+  "logs": [
+    {
+      "path": "docs/benchmarkfolder/experiments/dp-terminal-production/initial-proof-hardening/logs/generate-candidate-qcd_n1_uux_z.log",
+      "sha256": "9dbfb354d48d7cd2dc3c521a8063a39ec49a2e027adc73479c1de22fd63225d4",
+      "selected_log_lines": [
+        {
+          "line": 43,
+          "text": "set ninja to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+        },
+        {
+          "line": 44,
+          "text": "set ninjars to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib"
+        },
+        {
+          "line": 45,
+          "text": "set tirust to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib"
+        },
+        {
+          "line": 46,
+          "text": "set collier to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier"
+        },
+        {
+          "line": 52,
+          "text": "set automatic_html_opening False"
+        },
+        {
+          "line": 55,
+          "text": "set auto_update 0"
+        },
+        {
+          "line": 57,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 58,
+          "text": "set nb_core 4"
+        },
+        {
+          "line": 61,
+          "text": "set loop_optimized_output True"
+        },
+        {
+          "line": 62,
+          "text": "set loop optimized output to True"
+        },
+        {
+          "line": 63,
+          "text": "set output_dependencies external"
+        },
+        {
+          "line": 65,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 66,
+          "text": "set complex_mass_scheme False"
+        },
+        {
+          "line": 68,
+          "text": "set ninja /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+        },
+        {
+          "line": 69,
+          "text": "set ninja to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+        },
+        {
+          "line": 71,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 72,
+          "text": "set collier /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier"
+        },
+        {
+          "line": 73,
+          "text": "set collier to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier"
+        },
+        {
+          "line": 75,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 76,
+          "text": "set ninjars /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib"
+        },
+        {
+          "line": 77,
+          "text": "set ninjars to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib"
+        },
+        {
+          "line": 79,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 80,
+          "text": "set tirust /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib"
+        },
+        {
+          "line": 81,
+          "text": "set tirust to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib"
+        },
+        {
+          "line": 83,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        }
+      ]
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/dp-terminal-production/initial-proof-hardening/logs/generate-candidate-qcd_n2_gg_ttx.log",
+      "sha256": "738fce8dce82400071a47f4e8cca63b5044387b79b4d5d25cf7d45eed412bbb5",
+      "selected_log_lines": [
+        {
+          "line": 43,
+          "text": "set ninja to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+        },
+        {
+          "line": 44,
+          "text": "set ninjars to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib"
+        },
+        {
+          "line": 45,
+          "text": "set tirust to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib"
+        },
+        {
+          "line": 46,
+          "text": "set collier to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier"
+        },
+        {
+          "line": 52,
+          "text": "set automatic_html_opening False"
+        },
+        {
+          "line": 55,
+          "text": "set auto_update 0"
+        },
+        {
+          "line": 57,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 58,
+          "text": "set nb_core 4"
+        },
+        {
+          "line": 61,
+          "text": "set loop_optimized_output True"
+        },
+        {
+          "line": 62,
+          "text": "set loop optimized output to True"
+        },
+        {
+          "line": 63,
+          "text": "set output_dependencies external"
+        },
+        {
+          "line": 65,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 66,
+          "text": "set complex_mass_scheme False"
+        },
+        {
+          "line": 68,
+          "text": "set ninja /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+        },
+        {
+          "line": 69,
+          "text": "set ninja to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+        },
+        {
+          "line": 71,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 72,
+          "text": "set collier /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier"
+        },
+        {
+          "line": 73,
+          "text": "set collier to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier"
+        },
+        {
+          "line": 75,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 76,
+          "text": "set ninjars /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib"
+        },
+        {
+          "line": 77,
+          "text": "set ninjars to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib"
+        },
+        {
+          "line": 79,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 80,
+          "text": "set tirust /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib"
+        },
+        {
+          "line": 81,
+          "text": "set tirust to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib"
+        },
+        {
+          "line": 83,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        }
+      ]
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/dp-terminal-production/initial-proof-hardening/logs/generate-candidate-qcd_n3_uux_zgg.log",
+      "sha256": "a854c188703bb4f3d948e19d30cabf999ae7d89c7e51df0c9cf6da5f1418b071",
+      "selected_log_lines": [
+        {
+          "line": 43,
+          "text": "set ninja to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+        },
+        {
+          "line": 44,
+          "text": "set ninjars to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib"
+        },
+        {
+          "line": 45,
+          "text": "set tirust to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib"
+        },
+        {
+          "line": 46,
+          "text": "set collier to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier"
+        },
+        {
+          "line": 52,
+          "text": "set automatic_html_opening False"
+        },
+        {
+          "line": 55,
+          "text": "set auto_update 0"
+        },
+        {
+          "line": 57,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 58,
+          "text": "set nb_core 4"
+        },
+        {
+          "line": 61,
+          "text": "set loop_optimized_output True"
+        },
+        {
+          "line": 62,
+          "text": "set loop optimized output to True"
+        },
+        {
+          "line": 63,
+          "text": "set output_dependencies external"
+        },
+        {
+          "line": 65,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 66,
+          "text": "set complex_mass_scheme False"
+        },
+        {
+          "line": 68,
+          "text": "set ninja /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+        },
+        {
+          "line": 69,
+          "text": "set ninja to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+        },
+        {
+          "line": 71,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 72,
+          "text": "set collier /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier"
+        },
+        {
+          "line": 73,
+          "text": "set collier to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier"
+        },
+        {
+          "line": 75,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 76,
+          "text": "set ninjars /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib"
+        },
+        {
+          "line": 77,
+          "text": "set ninjars to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib"
+        },
+        {
+          "line": 79,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        },
+        {
+          "line": 80,
+          "text": "set tirust /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib"
+        },
+        {
+          "line": 81,
+          "text": "set tirust to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib"
+        },
+        {
+          "line": 83,
+          "text": "save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt"
+        }
+      ]
+    }
+  ],
+  "restoration_performed": false
+}

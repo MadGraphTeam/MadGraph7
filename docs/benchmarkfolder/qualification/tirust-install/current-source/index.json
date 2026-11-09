@@ -1,0 +1,212 @@
+{
+  "artifacts": {
+    "Cargo.lock": {
+      "bytes": 35857,
+      "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4"
+    },
+    "Cargo.toml": {
+      "bytes": 1074,
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+    },
+    "README.md": {
+      "bytes": 4231,
+      "sha256": "99e098461c98fae25f9b0d334ab1c35b11ff4f322e43d5de812df5644ca89c8c"
+    },
+    "administrative-hold.json": {
+      "bytes": 213,
+      "sha256": "4443fd1405b0131d232ea2e593a4a9c8dea3508417b74160efcc03679d72b323"
+    },
+    "allow-compilation": {
+      "bytes": 94,
+      "sha256": "89773a3091432ae73e3577735930580d5798ba4f64dc0b22fb44425c3c13f1a4"
+    },
+    "bind_replay_evidence.py": {
+      "bytes": 7346,
+      "sha256": "4b84fc4acfa97a6567d179e3d74b5cb5deaa396a586e85f131a1a5ba20ef90af"
+    },
+    "check-installation.json": {
+      "bytes": 4326,
+      "sha256": "e1de42b6524f7d375a4c712555123e8bd08a1d28855e92b177ca04ca122d1087"
+    },
+    "cli.log": {
+      "bytes": 6309,
+      "sha256": "f24034184b5efa6cb07b68f74d7f2bc9a38bcb8d0a6b9272b5c7c3f075a38cc4"
+    },
+    "compile-affinity.json": {
+      "bytes": 1059,
+      "sha256": "daed2b8352de75ddb8ef7ade59ebd0d91d76b0ce04b592177eaeb825cf5b3670"
+    },
+    "compiled-module.sha256": {
+      "bytes": 150,
+      "sha256": "c331d26785b651f5297017f0388077c7ae005fc04c01e109259944e97de2d9ce"
+    },
+    "config-drift-attribution.json": {
+      "bytes": 11958,
+      "sha256": "9af3afed11dad6c277ada3b992a14503df08400c065ba1d175cdadc5a7aa017b"
+    },
+    "config-drift-search.json": {
+      "bytes": 252,
+      "sha256": "77980dd705b0e7421ff53802a70c6faa0fcd022b9352fbddd1af827f8f683281"
+    },
+    "cpu-affinity.txt": {
+      "bytes": 118,
+      "sha256": "cc8ad24a093e664a10fb2afed224fe055d7bcac0832ebc2a5ecc86a87d58ee66"
+    },
+    "dynamic-section.txt": {
+      "bytes": 1955,
+      "sha256": "239d694db2bd529a8c06db62e35e460a21d7856029a6ef38dbfcdb699ec998c2"
+    },
+    "execution-observer.jsonl": {
+      "bytes": 4887,
+      "sha256": "78aa43fbe19925501ef9bc808051e7bb33ca6c6e1ad9e9107943fd155beefc1e"
+    },
+    "execution-observer.py": {
+      "bytes": 1322,
+      "sha256": "d5783ed373b326ed67793f164b0cdda3d033b2b63d4d13bd02ab69e9be9093be"
+    },
+    "host-overload-context.json": {
+      "bytes": 686,
+      "sha256": "9d6370c0967e48f5e5d387bf669251961649824d9267738cf9c673e7522f1355"
+    },
+    "host-toolchain.txt": {
+      "bytes": 635,
+      "sha256": "b97c92e09e78a905ac0bd01b98db03bf4f5885e7416fec32deeaf13da4e1e78c"
+    },
+    "install-start.json": {
+      "bytes": 1134,
+      "sha256": "1feb674e26daf95cab6204a2e4602489c006eae719228dbebc25d152b2b9cb6e"
+    },
+    "install.log": {
+      "bytes": 858343,
+      "sha256": "b20aedcdf47f5654ee6c06e20ceb7ca95d0791ed67dfb97d1e2db01ee0f03a2c"
+    },
+    "install.mg5": {
+      "bytes": 124,
+      "sha256": "efdce26ad50135c4ffd44e7b281b2d1083ada3356df775568dfa0bf74a9e09fc"
+    },
+    "isolated-configuration-after.txt": {
+      "bytes": 10731,
+      "sha256": "b91be118cfd2bf9e58c24d778eed88030e5777654b4f8b7c5b6a0b521e0e595d"
+    },
+    "native-exports.txt": {
+      "bytes": 515,
+      "sha256": "3261fbd2abac0ba45b63b09946f750928ae24e0a6ec3f507c4a441f8313ec5d0"
+    },
+    "package_evidence.py": {
+      "bytes": 10021,
+      "sha256": "6a151b8271cf63283f01717ab821c3db0bc09edbb263166b80d0d1860b42179e"
+    },
+    "prepare_snapshot.py": {
+      "bytes": 4658,
+      "sha256": "521cf14c67d125b9f3bc9c01c0c1efcb73f0ebc0f05e1788116cd53d24dd2611"
+    },
+    "production-after.json": {
+      "bytes": 540,
+      "sha256": "60db348b5c9aeff7589a5e99eb7106bd6a0a5dc111a209aee84252431c34f8cc"
+    },
+    "production-before.json": {
+      "bytes": 540,
+      "sha256": "2c263b458d8309599885504774135d30e67de2c9ec9ae09f45f3ce04bb984130"
+    },
+    "production-drift-observed.json": {
+      "bytes": 1361,
+      "sha256": "ef4accb3b8f7a3c2317a78fdcac42221392585a6279dfad1ac200218e45b4bcc"
+    },
+    "production-main-configuration-observed.txt": {
+      "bytes": 11122,
+      "sha256": "568dd763e3410fff45ed10e0772193632d37f247b119aea233e47d548d3fb0fa"
+    },
+    "release-validation-workers/original.json": {
+      "bytes": 168887,
+      "sha256": "2f96ab2a27ec825d41903f6ef3ee6083cac9498773555faa7d5849e94a8658c5"
+    },
+    "release-validation-workers/original.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "release-validation-workers/split.json": {
+      "bytes": 168953,
+      "sha256": "87c94542badb5f98ee82ec182fe3efe1361b1df53a69415d8fb92228d3c6e1fd"
+    },
+    "release-validation-workers/split.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "release-validation.json": {
+      "bytes": 6078,
+      "sha256": "b842ea8b1d7cd0035cbeeb014fe2b3560244489489ce1f26dd340f58736aae6b"
+    },
+    "replay-console.log": {
+      "bytes": 206,
+      "sha256": "d5d2ae0ca2c67eab6dbc7e3e56e455aacdd7339e59580aeb6afb4523c8823a6c"
+    },
+    "replay-execution.json": {
+      "bytes": 2019,
+      "sha256": "45c07e22c60f08ccfa8ed125f8b464caa3298369b714cc1e1fea88efb6457252"
+    },
+    "resolved-source-hashes.json": {
+      "bytes": 393,
+      "sha256": "806e1a419516d7a6ed09828bd5fe957bb5c5f3af413453495246681354f3e146"
+    },
+    "run.sh": {
+      "bytes": 713,
+      "sha256": "4c93d2395c854adf8d97e843ea1a0e179b0fcf4333ee50ae057efffbf2e3609c"
+    },
+    "run_final_replay.py": {
+      "bytes": 2541,
+      "sha256": "1a8de051f295ed1dfd3ff8e79b5b9b8f8f953135b7940a46391e4e95180ead70"
+    },
+    "snapshot-result.json": {
+      "bytes": 403,
+      "sha256": "86be466aea9de9dc0f4e9edb0af149f230c7cb21ce5126afee95fa2ddb5d70d9"
+    },
+    "source-inventory.json": {
+      "bytes": 358711,
+      "sha256": "121331077759510707d06073028fade69885f3cc66a13489eccd96921133b11a"
+    },
+    "source-revision.json": {
+      "bytes": 4184,
+      "sha256": "19ac526c92762d1ac97ddf2d8b7bfeb73642738e44994c8b1db955acca35caec"
+    },
+    "tirust-NOTICES.txt": {
+      "bytes": 717,
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435"
+    },
+    "tirust-config.json": {
+      "bytes": 3050,
+      "sha256": "a11c93e0a0d347ef027493b34a0569fbc957d5a9a5dbadb107e3756e70c3b97c"
+    },
+    "tirust-dependency-provenance.json": {
+      "bytes": 539552,
+      "sha256": "ed9b1a93b60925540896445df49f90faca9bb282b9f3434e9255d3c69f79b4e6"
+    },
+    "validate_release.py": {
+      "bytes": 29655,
+      "sha256": "f8d068e919642570701dad7db58e7619f22fddbcd632b83127d9fcea172ed223"
+    }
+  },
+  "final_native_replay": {
+    "cache_snapshots_identical": true,
+    "call_outcomes": {
+      "original": {
+        "deliberate_invalid_input_or_overflow_calls": 10,
+        "successful_evaluations": 80
+      },
+      "split": {
+        "deliberate_invalid_input_or_overflow_calls": 10,
+        "successful_evaluations": 80
+      }
+    },
+    "calls_per_library": 90,
+    "event_records_identical": 110,
+    "execution_source_and_library_identities_verified": true,
+    "installed_native_metadata_and_notice_hashes_rechecked": true,
+    "output_bytes_identical": true,
+    "record": "release-validation.json",
+    "scope": "Synthetic raw-ABI DP lifecycle/cache/failure parity only; no full-amplitude or timing claim. The actual installer smoke separately covers binary128 input and pole mode.",
+    "worker_and_log_hashes_verified": true
+  },
+  "schema_version": 1,
+  "source_revision": "606603e720aff7e96df0c9c7981e7bafd09b5d1c",
+  "status": "passed"
+}

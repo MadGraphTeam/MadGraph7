@@ -1,0 +1,70 @@
+Note that this is a development version.
+This version is intended for development/beta testing and NOT for production.
+This version has not been fully tested (if at all) and might have limited user support (if at all)
+Running MG7 in debug mode
+('WARNING: loading of madgraph too slow!!!', 1.7093043327331543)
+********************************************************************************
+*                                                                              *
+*                               W E L C O M E to                               *
+*                              M A D G R A P H 7                               *
+*                                                                              *
+*                                                                              *
+*                                  ..........                                  *
+*                                @          ....                               *
+*                              @               ...                             *
+*                            @    M         M    .                             *
+*                           @     MM       MM    ..                            *
+*                           .     M  M   M  M  ..                              *
+*                           ..    M   M M   M ..                               *
+*                            .    M    M    M.                                 *
+*                            ...               7777777                         *
+*                              ....                 7                          *
+*                                 ................ 7                           *
+*                                                 7                            *
+*                                                7                             *
+*                                                                              *
+*                   VERSION 0.2.1                 2026-09-24                   *
+[1;31m*                                                                              *[1;0m
+[1;31m*                    WARNING: UNKNOWN DEVELOPMENT VERSION.                     *[1;0m
+[1;31m*                      WARNING: DO NOT USE FOR PRODUCTION                      *[1;0m
+[1;31m*                                                                              *[1;0m
+*                                                                              *
+*                 The MadGraph7 Development Team - Find us at                  *
+*                        http://madgraph.phys.ucl.ac.be/                       *
+*                                      and                                     *
+*                      http://amcatnlo.web.cern.ch/amcatnlo/                   *
+*                                                                              *
+*                         Type 'help' for in-line help.                        *
+*                 Type 'tutorial' to learn how MadGraph7 works                 *
+*                                                                              *
+********************************************************************************
+load MG7 configuration from .tirust-build/current-install/mg/input/mg7_configuration.txt 
+fastjet-config does not seem to correspond to a valid fastjet-config executable (v3+). We will use fjcore instead.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/fastjet-config (including fastjet-config).
+ MadGraph7> set fastjet /PATH/TO/fastjet-config
+
+eMELA-config does not seem to correspond to a valid eMELA-config executable.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).
+ MadGraph7> set eMELA /PATH/TO/eMELA-config
+
+No valid eps viewer found. Please set in ./input/mg7_configuration.txt
+No valid web browser found. Please set in ./input/mg7_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg7_configuration.txt
+import /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/install.mg5
+The import format was not given, so we guess it as command
+set automatic_html_opening False --no_save
+set auto_update 0 --no_save
+set nb_core 4 --no_save
+install tirust --jobs=4
+INFO: TIRust: git init --quiet 
+INFO: TIRust: git fetch --depth=1 https://github.com/huashengshao/TIRust 854b79dcb7fffcb35e92b4a8a3dd443369b798c4 
+INFO: TIRust: git checkout --detach FETCH_HEAD 
+INFO: TIRust: patch -p1 --batch --forward --fuzz=0 -i /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/bridge/patches/0001-direct-poles-only.patch 
+INFO: TIRust: cargo metadata --format-version=1 
+INFO: TIRust: make install PREFIX=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/install FC=gfortran CARGO_FEATURES=poles-only 
+INFO: TIRust: gfortran -I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/install/lib /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/bridge/smoke.f90 -lgcc_s /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/install/lib/libtirust.a -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/install/lib -Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/install/lib -lmadloop_tirust -o /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/smoke 
+INFO: TIRust: /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/smoke --require-poles 
+save configuration file to /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/input/.tirust_configuration_9sdzbckd
+INFO: TIRust successfully installed in /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust. 
+quit
+quit

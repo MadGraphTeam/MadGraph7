@@ -1,0 +1,10 @@
+{
+  "revision": "606603e720aff7e96df0c9c7981e7bafd09b5d1c",
+  "copied": 3162,
+  "symlinks": 43,
+  "omitted_dangling_symlinks": {
+    "Template/NLO/MCatNLO/include/pineappl_maxproc.inc": "../../SubProcesses/pineappl_maxproc.inc",
+    "vendor/SudGen/NNPDFDriver.f": "../../Template/NLO/Source/PDF/NNPDFDriver.f"
+  },
+  "bridge_sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+}

@@ -1,0 +1,6 @@
+{
+  "requested_by": "root: extreme host overload; pause queued smoke before native execution",
+  "utc": "2026-11-09T22:47:24.168923+00:00",
+  "pid": 1126576,
+  "action": "wrapper already exited; no signal sent"
+}
