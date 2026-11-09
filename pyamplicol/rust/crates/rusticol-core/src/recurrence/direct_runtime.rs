@@ -337,6 +337,15 @@ impl DirectReplaySelectorPlan {
             .copied()
     }
 
+    pub(crate) fn mapped_external_source_sign(
+        &self,
+        representative_source_slot: u32,
+    ) -> Option<i32> {
+        self.source_momentum_signs
+            .get(representative_source_slot as usize)
+            .copied()
+    }
+
     pub(crate) fn helicity_map(&self) -> &[u32] {
         &self.helicity_map
     }
@@ -352,7 +361,7 @@ impl DirectReplaySelectorPlan {
             .sum()
     }
 
-    fn selected_row_groups(&self) -> &[DirectRowGroupDescriptor] {
+    pub(crate) fn selected_row_groups(&self) -> &[DirectRowGroupDescriptor] {
         self.destination_program
             .as_ref()
             .map_or(self.row_groups.as_ref(), |program| {
@@ -495,6 +504,10 @@ pub struct DirectRecurrenceExecutionRuntime {
 }
 
 impl DirectRecurrenceExecutionRuntime {
+    pub(crate) fn export_fanout(&self) -> &DirectContributionFanoutProgram {
+        &self.contribution_fanout
+    }
+
     /// Allocate the initial workspace and convert the plan's exact factors to
     /// their persistent binary64 split-complex catalog. Packed-capable
     /// runtimes defer aligned tiled point storage until it is needed.

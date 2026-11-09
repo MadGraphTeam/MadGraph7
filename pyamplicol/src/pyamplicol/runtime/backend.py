@@ -735,6 +735,29 @@ class RusticolRuntimeBackend:
             result["supported_precisions"] = (16,)
         return result
 
+    def export_recurrence(
+        self, *, color_flows: Sequence[str] | None = None
+    ) -> Mapping[str, object]:
+        """Read the resolved recurrence from the native runtime without execution."""
+
+        operation = getattr(self._runtime, "export_recurrence_json", None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "installed native runtime has no recurrence export binding"
+            )
+        raw = _invoke(
+            self._native_module,
+            operation,
+            color_flows=_normalized_selectors(color_flows),
+        )
+        try:
+            result = json.loads(raw)
+        except (TypeError, ValueError) as exc:
+            raise ArtifactError(f"native recurrence export is invalid: {exc}") from exc
+        if not isinstance(result, Mapping):
+            raise ArtifactError("native recurrence export must be an object")
+        return dict(result)
+
     def save(self, path: os.PathLike[str] | str) -> None:
         """Save the retained native on-the-fly structural cache."""
 

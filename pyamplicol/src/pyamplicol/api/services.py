@@ -555,6 +555,33 @@ class Runtime:
             raise EvaluationError("runtime backend returned invalid runtime inspection")
         return dict(result)
 
+    def export_recurrence(
+        self,
+        *,
+        color_flows: Sequence[str | ColorFlow] | None = None,
+    ) -> dict[str, object]:
+        """Export this process's prepared LC recurrence without evaluating it.
+
+        The versioned, JSON-serializable value describes the batched f64 path
+        at the model parameters currently set on this runtime. Omit
+        ``color_flows`` to include every provider colour flow. Kernel payloads
+        are included, so the result can be consumed without the artifact.
+        """
+
+        operation = getattr(self._backend, "export_recurrence", None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "runtime backend does not support recurrence export"
+            )
+        result = operation(
+            color_flows=_selector_ids(
+                color_flows, expected_type=ColorFlow, name="color-flow"
+            )
+        )
+        if not isinstance(result, Mapping):
+            raise EvaluationError("runtime backend returned invalid recurrence export")
+        return dict(result)
+
     def save(self, path: os.PathLike[str] | str) -> None:
         """Save the retained on-the-fly recursion after completed evaluations.
 

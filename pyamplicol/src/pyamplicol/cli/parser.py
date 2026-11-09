@@ -25,6 +25,11 @@ from pyamplicol.config import (
 )
 
 from .licensing import LicenseKind, LicenseRequestInvocation
+from .recurrence_export import (
+    RecurrenceExportInvocation,
+    add_export_options,
+    parse_export_recurrence,
+)
 from .utilities import UtilityInvocation, parse_utility
 
 _LICENSE_ACTIONS: dict[str, LicenseKind] = {
@@ -877,6 +882,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="_action", required=True)
     common = _common_parent()
 
+    export = subparsers.add_parser(
+        "export-recurrence",
+        help="Export resolved LC recurrence programs without evaluating momenta.",
+    )
+    add_export_options(export)
+
     generate = subparsers.add_parser(
         "generate",
         parents=[common],
@@ -1217,8 +1228,15 @@ def _normalize_direct_arguments(
 
 def parse_cli(
     argv: Sequence[str] | None = None,
-) -> CliInvocation | LicenseRequestInvocation | UtilityInvocation:
+) -> (
+    CliInvocation
+    | LicenseRequestInvocation
+    | UtilityInvocation
+    | RecurrenceExportInvocation
+):
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "export-recurrence":
+        return parse_export_recurrence(arguments[1:])
     if arguments and arguments[0] in _UTILITY_COMMANDS:
         return parse_utility(arguments)
     if any(argument in _REMOVED_FLAT_MODEL_COMMANDS for argument in arguments):

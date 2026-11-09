@@ -2452,3 +2452,92 @@ def test_recurrence_exact_accepts_all_flow_union_layout() -> None:
         },
         "d_dbar_to_z_g_g",
     )
+
+
+@pytest.mark.parametrize("lc_flow_layout", ("topology-replay", "all-flow-union"))
+def test_lc_recurrence_export_is_resolved_complete_and_static(
+    tmp_path: Path,
+    lc_flow_layout: str,
+    builtin_sm_current_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Export the loaded program before execution, then vary parameters and batches."""
+
+    _require_native_recurrence()
+    process = "d d~ > z g"
+    artifact = tmp_path / "capture-artifact"
+    Generator(_generation_config("recurrence", lc_flow_layout=lc_flow_layout)).generate(
+        process, artifact, model=builtin_sm_current_recurrence_jit_o2_model
+    )
+    runtime = Runtime.load(artifact)
+    capture = runtime.export_recurrence()
+    assert capture["schema_version"] == 1
+    assert capture["execution_semantics"] == "rusticol-batched-f64-v1"
+    assert capture["artifact_id"] == load_manifest(artifact).artifact_id
+    # JSON rejects non-finite values; the remaining arithmetic fields must be
+    # literal numbers, including parameters and source masses, not expressions.
+    json.dumps(capture, allow_nan=False)
+    programs = capture["programs"]
+    assert isinstance(programs, list)
+    physics = runtime.physics
+    assert [program["colour_id"] for program in programs] == [
+        flow.id for flow in physics.color_flows
+    ]
+    for program in programs:
+        assert program["process_key"] == physics.process_id
+        assert program["external_pdgs"] == [
+            particle.pdg_id for particle in physics.external_particles
+        ]
+        assert program["helicity_outputs"] == [
+            {"id": helicity.id, "helicities": list(helicity.values)}
+            for helicity in physics.helicities
+        ]
+        for value in (*program["scales"], *program["factors"]):
+            assert set(value) == {"re", "im"}
+            assert all(
+                isinstance(component, (int, float)) for component in value.values()
+            )
+        for form in program["momentum_forms"]:
+            assert all(isinstance(term["coefficient"], (int, float)) for term in form)
+        assert program["runs"]
+        for run in program["runs"]:
+            assert run["body"]
+            assert all(
+                isinstance(term["weight"], (int, float)) for term in run["reduction"]
+            )
+            for instruction in run["body"]:
+                if instruction["kind"] == "source":
+                    assert isinstance(instruction["source"]["mass"]["re"], (int, float))
+                    assert isinstance(instruction["source"]["mass"]["im"], (int, float))
+    # Different points and tile lengths cannot specialize the exported program.
+    points = _seeded_validation_points(process, 17, 23, 31)
+    runtime.evaluate_resolved(points[:2])
+    assert runtime.export_recurrence() == capture
+    runtime.evaluate_resolved(points)
+    assert runtime.export_recurrence() == capture
+    # Updating a source mass must refresh the captured scalar slots and source
+    # metadata immediately, without needing an intervening evaluation.
+    runtime.set_model_parameter("particle.23.mass", 100.0)
+    changed = runtime.export_recurrence()
+    parameters = {
+        parameter["name"]: parameter["value"] for parameter in changed["parameters"]
+    }
+    assert parameters["particle.23.mass"] == {"re": 100.0, "im": 0.0}
+    assert [program["scales"] for program in changed["programs"]] != [
+        program["scales"] for program in programs
+    ]
+    z_leg = next(
+        particle.index
+        for particle in physics.external_particles
+        if particle.pdg_id == 23
+    )
+    z_sources = [
+        instruction["source"]
+        for program in changed["programs"]
+        for run in program["runs"]
+        for instruction in run["body"]
+        if instruction["kind"] == "source" and instruction["source"]["leg"] == z_leg
+    ]
+    assert z_sources
+    assert all(source["mass"] == {"re": 100.0, "im": 0.0} for source in z_sources)
+    selected = runtime.export_recurrence(color_flows=[physics.color_flows[0].id])
+    assert selected["programs"] == [changed["programs"][0]]

@@ -24,6 +24,7 @@ from pyamplicol.reporting import (
 from .handlers import CliServices, DefaultCliServices, dispatch
 from .licensing import LicenseRequestInvocation
 from .parser import parse_cli
+from .recurrence_export import RecurrenceExportInvocation
 from .utilities import UtilityInvocation, example_card, execute_utility
 
 
@@ -116,6 +117,15 @@ def run_cli(
     sink = None
     try:
         invocation = parse_cli(argv)
+        if isinstance(invocation, RecurrenceExportInvocation):
+            result = invocation.run()
+            write_result(
+                result,
+                format=invocation.output_format,
+                stream=output_stream,
+                color=_color_enabled(invocation.output_color, output_stream),
+            )
+            return 0
         if isinstance(invocation, LicenseRequestInvocation):
             result = invocation.run(stdin=input_stream, stdout=output_stream)
             write_result(
@@ -136,7 +146,12 @@ def run_cli(
                 arguments.extend(("--color", invocation.output_color))
                 invocation = parse_cli(arguments)
                 assert not isinstance(
-                    invocation, (LicenseRequestInvocation, UtilityInvocation)
+                    invocation,
+                    (
+                        LicenseRequestInvocation,
+                        UtilityInvocation,
+                        RecurrenceExportInvocation,
+                    ),
                 )
             else:
                 result = execute_utility(invocation)

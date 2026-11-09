@@ -257,6 +257,31 @@ colour-flow selection of such a mapped process is refused; select on the
 stored process (see
 [Process grouping](process-grouping.md#one-loop-virtual-artifacts)).
 
+## Export recurrence programs
+
+`Runtime.export_recurrence()` returns a versioned, JSON-serializable dictionary
+for the loaded process and its LC provider flows. It resolves values using the
+current model parameters without evaluating any phase-space points:
+
+```python
+import json
+from pathlib import Path
+from pyamplicol import Runtime
+
+runtime = Runtime.load("artifacts/gg_ggg", model_parameters={"aS": 0.118})
+runtime.set_model_parameter("aS", 0.12)
+capture = runtime.export_recurrence()  # optionally color_flows=["flow:0"]
+Path("recurrence.json").write_text(json.dumps(capture, indent=2) + "\n")
+```
+
+The export includes the symjit kernel applications and describes the batched
+f64 program. To export every process and process-group member of an artifact,
+use [`pyamplicol export-recurrence`](command-line-interface.md#export-recurrence-programs).
+See the [export format](../reference/recurrence-export.md) for its schema and
+arithmetic conventions. Rust consumers can call
+`NativeRuntime::export_recurrence(colours)` directly, or
+`export_recurrence_json(colours)` for JSON; `None` selects all provider flows.
+
 ## Evaluate totals and resolved components
 
 ```python
