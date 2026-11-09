@@ -407,19 +407,21 @@ python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 \
 
 The walkthrough steps, in order:
 
-1. **Generation** through the typed API (`Generator`), with the example's
-   colour- and spin-correlator declaration (`data/<example>_correlators.json`;
+1. **`pyamplicol check`** of the card, in its own process (exit code 0 iff
+   every applicable check passed): the Born-interfered poles against
+   Catani's operator of the requested
+   corrections and the Ward identity of every external gluon and photon; the
+   loop-induced finiteness and Ward probes; the Goldstone-equivalence probe
+   where it applies (otherwise its row reads "not applicable" with the
+   reason). See [the command-line guide](../docs/user/command-line-interface.md#check).
+2. **Generation** through the typed API (`Generator`, in a child process so
+   that the generation's memory is returned before the evaluation steps),
+   with the example's colour- and spin-correlator declaration (`data/<example>_correlators.json`;
    on the command line `pyamplicol generate --card <card> --correlators
    data/<example>_correlators.json`). The loop-induced generation probes are
    off by default (`[generation] loop_induced_probes = true` or
    `--loop-induced-probes` enables them); `pyamplicol check` runs the same
    checks on demand, also for the Born-interfered examples.
-2. **`pyamplicol check`** (exit code 0 iff every applicable check passed): the
-   Born-interfered poles against Catani's operator of the requested
-   corrections and the Ward identity of every external gluon and photon; the
-   loop-induced finiteness and Ward probes; the Goldstone-equivalence probe
-   where it applies (otherwise its row reads "not applicable" with the
-   reason). See [the command-line guide](../docs/user/command-line-interface.md#check).
 3. **Evaluation** with `reduction = "auto"` (the per-type default: TIRust for a
    loop-induced process, NinjaRS for a Born-interfered one), poles and the
    recommended stability checks, then the finite part only, then the other
@@ -435,8 +437,10 @@ The walkthrough steps, in order:
    selected rows are formed).
 7. **Partial weights per squared coupling order**: `evaluate_orders`, one
    evaluation viewed per sector and Born order, and its explicit sum checked
-   against the correlated route's `"born"` total summed over the orders
-   (within ten times the evaluation's own estimate).
+   against the correlated route's `"born"` total at the same settings summed
+   over the orders (a public path that does not read the partials): it
+   passes within ten times the evaluation's own estimate, and the deviation
+   is printed in units of roundoff of the pre-cancellation scale S.
 8. **The native SDK** (`make -C native loop`, then `native/loop_client ARTIFACT
    PROCESS MOMENTA.txt [HELICITY]`, which the walkthrough calls with
    `SYMBOLICA_LICENSE` unset): open, `auto` and the other backend, the

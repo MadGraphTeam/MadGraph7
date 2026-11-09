@@ -602,10 +602,14 @@ view.sum_born_orders() # explicit per-point sum over the Born orders
 
 The sum of the partials is an identity: the walkthrough
 (`examples/python/loop_walkthrough.py`) checks it against the correlated
-route's `"born"` history summed over the sectors (cheap; it agrees bitwise
-on the examples), and the test suite against `evaluate_resolved(...).total()`
-summed over the sectors (a separate contraction; it costs far more memory at
-full colour), each within ten times the evaluation's own estimate.
+route's `"born"` history at the same settings, summed over the sectors (a
+separate public path that does not read the partials; on the four examples
+it agrees bitwise for the loop-induced ones and within a few tens of units of
+roundoff of the pre-cancellation scale S for the Born-interfered ones, a
+different contraction of the same amplitudes), and the test suite against
+`evaluate_resolved(...).total()` summed over the sectors (it costs far more
+memory at full colour); each passes within ten times the evaluation's own
+estimate, and the walkthrough prints the deviation in units of roundoff of S.
 
 ## Check a one-loop request
 

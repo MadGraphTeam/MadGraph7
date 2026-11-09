@@ -16,12 +16,14 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import multiprocessing
 import os
 import resource
 import statistics
 import subprocess
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -88,10 +90,11 @@ def _generate(card: Path, artifact: Path, regenerate: bool) -> float:
     print(
         f"generation.loop_induced_probes = {str(probes).lower()} (off by default; "
         "enable with [generation] loop_induced_probes = true or "
-        "--loop-induced-probes; `pyamplicol check` runs the same checks on demand)"
+        "--loop-induced-probes; `pyamplicol check` runs the same checks on demand)",
+        flush=True,
     )
     if artifact.is_dir() and not regenerate:
-        print(f"reusing {artifact} (--regenerate generates it again)")
+        print(f"reusing {artifact} (--regenerate generates it again)", flush=True)
         return 0.0
     declaration = card.parent / "data" / f"{_example_name(card)}_correlators.json"
     correlators = (
@@ -110,8 +113,18 @@ def _generate(card: Path, artifact: Path, regenerate: bool) -> float:
         requests, artifact, mode="replace", correlators=correlators
     )
     seconds = time.perf_counter() - begin
-    print(f"generated {artifact} in {seconds:.1f} s")
+    print(f"generated {artifact} in {seconds:.1f} s", flush=True)
     return seconds
+
+
+def _generate_apart(card: Path, artifact: Path, regenerate: bool) -> float:
+    """``_generate`` in a child process: the generation's memory (several GiB
+    for an electroweak request) returns to the system before the evaluation
+    steps load the artifact."""
+
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=1, mp_context=context) as pool:
+        return pool.submit(_generate, card, artifact, regenerate).result()
 
 
 def _check(target: Path, points: int, color: str) -> int:
@@ -226,32 +239,39 @@ def _selection(runtime: Any, points: Any, scales: Any) -> str:
 
 def _orders(runtime: Any, points: Any, scales: Any, color: bool) -> None:
     """The partial weights per squared coupling order of one evaluation, and
-    their explicit sum against an independent public path: the correlated
-    route's "born" history (the ordinary value, formed from the artifact's
-    stored observable columns, not from the inclusive plan) summed over the
-    orders. (The resolved evaluation summed over helicities and colour
-    components is another such path, at a far larger memory cost at full
-    colour.)"""
+    their explicit sum against an independent public path at the same
+    settings: the correlated route's "born" history (the ordinary value,
+    formed from the artifact's stored observable columns, not from the
+    inclusive plan) summed over the orders. (The resolved evaluation summed
+    over helicities and colour components is another such path, at a far
+    larger memory cost at full colour.) The deviation is shown in units of
+    the binary64 unit roundoff of the pre-cancellation scale S (the
+    estimate's ``magnitude``): two contractions of the same amplitudes agree
+    to rounding."""
 
-    view = runtime.evaluate_orders(points, mu_r2=scales, stability_checks=RECOMMENDED)
+    options = {"mu_r2": scales, "stability_checks": RECOMMENDED}
+    view = runtime.evaluate_orders(points, **options)
     print(render_summary(view, color=color))
     if len(view.orders) == 1:
         print("one squared-order sector: its partial is the value")
     total = runtime.evaluate_correlated_many(
-        points, {"total": CorrelatedRequest("born")}, mu_r2=scales
+        points, {"total": CorrelatedRequest("born")}, **options
     )["total"]
-    worst = 0.0
+    worst = ulps = 0.0
     for point, summed in enumerate(view.sum_orders()):
         estimate = view.evaluation.stability[point]
         for k in range(3):
             independent = math.fsum(complex(s[k]).real for s in total.values[point])
+            deviation = abs(float(summed[k]) - independent)
             bound = 10 * math.fsum(float(e[k]) for e in estimate.absolute)
-            ratio = abs(float(summed[k]) - independent) / bound if bound else 0.0
-            worst = max(worst, ratio)
+            worst = max(worst, deviation / bound if bound else 0.0)
+            scale = math.fsum(float(m[k]) for m in estimate.magnitude)
+            ulps = max(ulps, deviation / (scale * 2.0**-53) if scale else 0.0)
     verdict = "PASS" if worst <= 1 else "FAIL"
     print(
         f"sum over orders vs the correlated total: {verdict} (largest deviation "
-        f"{worst:.3g} x the bound 10 E, E the evaluation's own estimate)"
+        f"{worst:.3g} x the bound 10 E, E the evaluation's own estimate; "
+        f"{ulps:.3g} units of roundoff of the pre-cancellation scale S)"
     )
     if worst > 1:
         raise SystemExit("the partial weights do not sum to the total")
@@ -294,7 +314,7 @@ def main() -> int:
     )
 
     _step("2. Generation")
-    times["generation"] = _generate(card, artifact, args.regenerate)
+    times["generation"] = _generate_apart(card, artifact, args.regenerate)
 
     _step("3. Evaluation on both reduction backends")
     runtime = Runtime.load(artifact)
@@ -371,7 +391,7 @@ def main() -> int:
     elif args.lc_card is not None:
         lc_config = resolve_config(args.lc_card.resolve()).effective
         lc_artifact = lc_config.generation.output.resolve()
-        _generate(args.lc_card.resolve(), lc_artifact, args.regenerate)
+        _generate_apart(args.lc_card.resolve(), lc_artifact, args.regenerate)
         _selection(Runtime.load(lc_artifact), points, scales)
     else:
         print(
