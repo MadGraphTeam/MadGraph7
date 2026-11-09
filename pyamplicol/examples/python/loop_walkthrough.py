@@ -237,6 +237,28 @@ def _selection(runtime: Any, points: Any, scales: Any) -> str:
     return helicity
 
 
+def _deviation(label: str, evaluation: Any, reference: Any) -> None:
+    """The largest relative deviation of ``evaluation``'s finite parts from
+    ``reference``'s (the 'auto' call) over the points it served."""
+
+    deviations = [
+        abs(float(a[0]) - float(b[0])) / max(abs(float(b[0])), 1e-300)
+        for mine, theirs in zip(
+            () if evaluation is None else evaluation.values,
+            reference.values,
+            strict=False,
+        )
+        if mine is not None
+        for a, b in zip(mine, theirs, strict=True)
+    ]
+    if deviations:
+        print(
+            f"{label}: largest relative deviation of the finite part from "
+            f"'auto' {max(deviations):.2e} over "
+            f"{len(deviations)} served point(s) and order(s)"
+        )
+
+
 def _orders(runtime: Any, points: Any, scales: Any, color: bool) -> None:
     """The partial weights per squared coupling order of one evaluation, and
     their explicit sum against another public path at the same settings that
@@ -346,24 +368,27 @@ def main() -> int:
         # silent switch to the other one.
         print(f"explicit {other}: refused ({error})")
         explicit = None
-    deviations = [
-        abs(float(a[0]) - float(b[0])) / max(abs(float(b[0])), 1e-300)
-        for mine, theirs in zip(
-            () if explicit is None else explicit.values, finite.values, strict=False
-        )
-        if mine is not None
-        for a, b in zip(mine, theirs, strict=True)
-    ]
     print(f"finite only: {_finite(finite)[:4]}")
-    if deviations:
-        print(
-            f"explicit {_backend(explicit)}: largest relative deviation of the "
-            f"finite part from 'auto' {max(deviations):.2e}"
-        )
+    _deviation(f"explicit {other}", explicit, finite)
+    refused = False
     for index, lane in enumerate(() if explicit is None else explicit.diagnostics):
         if not lane.valid:
+            refused = True
             reason = lane.detail or "; ".join(map(str, lane.failures))
             print(f"explicit {other}: point {index} failed ({str(reason)[:200]})")
+    if refused:
+        # The points its own checks refuse, reduced without them: a timing
+        # mode with no accuracy certificate, shown against 'auto' only.
+        unchecked = runtime.evaluate(
+            points,
+            mu_r2=scales,
+            reduction=other,
+            reduction_unchecked=True,
+            on_failure="return",
+        )
+        _deviation(
+            f"explicit {other} unchecked (no accuracy certificate)", unchecked, finite
+        )
 
     _step("4. Profile: time per stage, checked default and unchecked setting")
     for unchecked in (False, True):
