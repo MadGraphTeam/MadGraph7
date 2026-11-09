@@ -75,7 +75,12 @@ def _restricted(executor, kept):
 
     from pyamplicol.loops.v2.plan_export import NativeExecutor
 
-    plan = json.loads(executor.exported.json())
+    # A loaded artifact's executor holds its stored plan member (decoded to
+    # the plan JSON by ``text()``); a generated slice's exports it.
+    stored = executor._plan_json
+    plan = json.loads(
+        stored.text() if hasattr(stored, "text") else executor.exported.json()
+    )
     every = range(plan["rows"])
     plan["column_rows"] = [
         [row for row in (every if rows is None else rows) if row in kept]
@@ -120,7 +125,7 @@ def test_executor_selections_run_their_row_restriction(li):
     are the row-restricted plan's (at the base the two-row and all-but-one
     selections ran every family whole)."""
 
-    from pyamplicol.precision import Precision
+    from pyamplicol.loops.v2.assemble import Precision
 
     name = "li_gg_hh"
     executor = li.executor(name, "native")
@@ -170,7 +175,7 @@ def test_api_selections_run_their_row_restriction(artifacts):
     all-but-one selection ran every family whole, and every selection closed
     every row)."""
 
-    from pyamplicol.precision import Precision
+    from pyamplicol.loops.v2.assemble import Precision
 
     from tests.unit.test_loop_v2_induced import _fixture
 
@@ -183,13 +188,6 @@ def test_api_selections_run_their_row_restriction(artifacts):
     executor = observables._observables.executor
     catalogue = observables.selection_catalogue()
     ids = [f"h{k}" for k in range(len(catalogue.rows))]
-    external = executor.slice._external_parameters()
-    fixed = executor.slice.fixed_parameters
-    parameters = {
-        key: value
-        for key, value in fixture["scheme_data"]["parameters"].items()
-        if key in external and key not in fixed
-    }
     exact = [
         [[Fraction(c) for c in momentum] for momentum in point] for point in points
     ]
@@ -202,7 +200,6 @@ def test_api_selections_run_their_row_restriction(artifacts):
         restricted.evaluate(
             exact,
             [Fraction(s) for s in scales],
-            parameters=parameters,
             precision=Precision.double(),
         )
         reference = _counts(restricted)
