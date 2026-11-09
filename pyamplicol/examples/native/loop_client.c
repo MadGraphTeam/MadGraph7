@@ -140,8 +140,10 @@ int main(int argc, char **argv) {
   check(rusticol_virtual_set_reduction(handle, "auto"), "reduction auto");
   evaluate(handle, &request, NULL, "auto (checked)");
   const char *other = induced ? "ninjars" : "tirust";
-  check(rusticol_virtual_set_reduction(handle, other), "reduction other");
-  evaluate(handle, &request, NULL, induced ? "ninjars (checked)" : "tirust (checked)");
+  if (rusticol_virtual_set_reduction(handle, other) == RUSTICOL_VIRTUAL_OK)
+    evaluate(handle, &request, NULL, induced ? "ninjars (checked)" : "tirust (checked)");
+  else /* a library built without the backend refuses it, typed */
+    printf("%s refused: %s\n", other, rusticol_virtual_last_error_message());
   /* The unchecked timing mode (no accuracy certificate). */
   check(rusticol_virtual_set_reduction(handle, "auto"), "reduction auto");
   check(rusticol_virtual_set_reduction_unchecked(handle, 1), "unchecked");

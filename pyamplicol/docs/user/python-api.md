@@ -29,6 +29,7 @@ print(pyamplicol.__version__)
 | `CorrelatedValue` | A correlated result with `Decimal` real and imaginary parts. |
 | `BenchmarkRunner` | Profile an artifact or loaded runtime. |
 | `group_processes` | Group the subprocesses of an artifact with equal matrix elements. |
+| `pyamplicol.api.check` | Pole and Ward checks of a one-loop request, regenerated in memory (`pyamplicol check`). |
 | `generate`, `load`, `benchmark` | One-shot convenience functions. |
 
 The shipped scripts under
@@ -581,6 +582,48 @@ in `evaluate`; per-point selectors (`helicity_by_point`,
 `color_flow_by_point`) are not accepted. Compiled, eager and on-the-fly
 artifacts raise `CompatibilityError`.
 
+### Virtual and loop-induced results by squared order
+
+On a virtual runtime (Born-interfered or loop-induced) `evaluate_orders` is
+an order-split view of ONE `evaluate` call with the same arguments
+(`mu_r2`, `poles`, `stability_checks`, `reduction`, ...): a
+`VirtualOrderEvaluation` whose `evaluation` is that `VirtualEvaluation`.
+Nothing is evaluated twice and no order is summed silently:
+
+```python
+view = runtime.evaluate_orders(points, mu_r2=scales)
+view.orders            # the squared-order sectors (each with its (Born, loop) pairs)
+view.born_orders       # the Born squared orders (empty for a loop-induced result)
+view.for_order(view.orders[0])        # per point: LaurentCoefficients of one sector
+view.born_for_order(view.born_orders[0])  # per point: the Born of one order
+view.sum_orders()      # explicit per-point sum over the sectors, per Laurent coefficient
+view.sum_born_orders() # explicit per-point sum over the Born orders
+```
+
+The sum of the partials is an identity: the walkthrough
+(`examples/python/loop_walkthrough.py`) checks it against an independent public
+path, `evaluate_resolved(...).total()` summed over the sectors, within ten
+times the evaluation's own estimate.
+
+## Check a one-loop request
+
+```python
+from pyamplicol.api import check
+
+report = check("loop_gg_zgg_generate.toml", points=3)  # or an artifact directory
+for process in report.processes:
+    print(process.process, process.status)
+    for row in process.rows:
+        print(row.check, row.subject, row.carrier, row.ratio, row.verdict)
+assert report.exit_code == 0
+```
+
+`check` regenerates the request in memory and runs the pole check (Catani's
+operator; loop-induced: finiteness), the Ward check and the
+Goldstone-equivalence probe where it applies; see
+[the command-line guide](command-line-interface.md#check) for the criteria,
+the carriers and the report's fields.
+
 ## Split totals by power of N_c
 
 Tree artifacts generated with `color.accuracy = "strict-lc"` or
@@ -1041,6 +1084,25 @@ counters when the runtime exposes them.
 
 The runnable reference is
 [`examples/python/benchmark.py`](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/python/benchmark.py).
+
+A one-loop artifact or runtime returns a `benchmarking.VirtualProfileResult`
+instead: the per-point time of `minimum_samples` calls of one batch
+(`seconds_per_point`, the median call; `low`, `high`) and `stages`, the time
+per point in each stage group (trees, dressing, scatter, reduction, rest)
+read from the native executor's stage report of the same calls, with the
+backend record (`reduction`) and the setting (`unchecked`). A `RunConfig`'s
+`evaluation.reduction`, `reduction_unchecked` and `mu_r2` select the backend,
+the unchecked timing mode and the scale when a path is loaded:
+
+```python
+from pyamplicol.config import resolve_config
+
+config = resolve_config(
+    {"action": "benchmark", "evaluation": {"reduction_unchecked": True}}
+).effective
+profile = BenchmarkRunner(config).run("artifacts/loop_gg_zgg", points=points)
+print(profile.seconds_per_point, dict(profile.stages))
+```
 
 ## Convenience functions
 

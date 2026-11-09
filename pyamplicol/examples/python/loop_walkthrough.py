@@ -17,6 +17,7 @@ import argparse
 import json
 import math
 import os
+import resource
 import statistics
 import subprocess
 import sys
@@ -30,6 +31,7 @@ from pyamplicol.api import (
     Generator,
     ProcessRequest,
     ProcessSet,
+    ReductionUnavailable,
     VirtualStabilityChecks,
 )
 from pyamplicol.config import resolve_config
@@ -63,14 +65,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--native-client", type=Path, help="the compiled native/loop_client"
     )
-    parser.add_argument(
-        "--color", choices=("auto", "always", "never"), default="auto"
-    )
+    parser.add_argument("--color", choices=("auto", "always", "never"), default="auto")
     return parser
 
 
 def _step(title: str) -> None:
-    print(f"\n=== {title} ===", flush=True)
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
+    print(f"\n=== {title} === (peak RSS so far {peak:.2f} GiB)", flush=True)
 
 
 def _example_name(card: Path) -> str:
@@ -191,13 +192,20 @@ def _correlated(runtime: Any, card: Path, points: Any, scales: Any, color: bool)
     print(render_summary(many, color=color))
 
 
-def _selection(runtime: Any, points: Any, scales: Any) -> None:
+def _selection(runtime: Any, points: Any, scales: Any) -> str:
     """One helicity against the summed call: its rows only are formed."""
 
-    resolved = runtime.evaluate_resolved(points[:1], mu_r2=scales[:1], poles="none")
-    rows = resolved.values[0][0]
-    largest = max(range(len(rows)), key=lambda h: abs(float(rows[h][0][0])))
-    helicity = resolved.helicity_ids[largest]
+    # The first helicity whose value at the first point is not zero (a
+    # one-helicity call forms that helicity's rows only).
+    helicity = next(
+        h
+        for h in runtime.physics.helicity_ids
+        if float(
+            runtime.evaluate(
+                points[:1], mu_r2=scales[:1], poles="none", helicities=[h]
+            ).values[0][0][0]
+        )
+    )
     one = runtime.evaluate(points, mu_r2=scales, poles="none", helicities=[helicity])
     summed = runtime.evaluate(points, mu_r2=scales, poles="none")
     t_one = _median_seconds(
@@ -205,7 +213,9 @@ def _selection(runtime: Any, points: Any, scales: Any) -> None:
             points, mu_r2=scales, poles="none", helicities=[helicity]
         )
     )
-    t_all = _median_seconds(lambda: runtime.evaluate(points, mu_r2=scales, poles="none"))
+    t_all = _median_seconds(
+        lambda: runtime.evaluate(points, mu_r2=scales, poles="none")
+    )
     print(
         f"helicity {helicity}: {_finite(one)[0]:.6e} of the summed "
         f"{_finite(summed)[0]:.6e} (point 0, first order); time one / summed = "
@@ -288,17 +298,39 @@ def main() -> int:
     print(f"backend: {_backend(checked)} (the per-type default of 'auto')")
     finite = runtime.evaluate(points, mu_r2=scales, poles="none")
     other = "ninjars" if kind == "loop-induced" else "tirust"
-    explicit = runtime.evaluate(
-        points, mu_r2=scales, reduction=other, stability_checks=RECOMMENDED
-    )
-    deviation = max(
-        abs(a - b) / max(abs(b), 1e-300)
-        for a, b in zip(_finite(explicit), _finite(finite), strict=True)
-    )
-    print(
-        f"finite only: {_finite(finite)[:4]}; explicit {_backend(explicit)}: "
-        f"largest relative deviation from 'auto' {deviation:.2e}"
-    )
+    # An explicit backend has no fallback: a point it refuses is a failed
+    # point (returned, with its reason), never a value of the other backend.
+    try:
+        explicit = runtime.evaluate(
+            points,
+            mu_r2=scales,
+            reduction=other,
+            stability_checks=RECOMMENDED,
+            on_failure="return",
+        )
+    except ReductionUnavailable as error:
+        # A native build without the backend refuses it, typed: never a
+        # silent switch to the other one.
+        print(f"explicit {other}: refused ({error})")
+        explicit = None
+    deviations = [
+        abs(float(a[0]) - float(b[0])) / max(abs(float(b[0])), 1e-300)
+        for mine, theirs in zip(
+            () if explicit is None else explicit.values, finite.values, strict=False
+        )
+        if mine is not None
+        for a, b in zip(mine, theirs, strict=True)
+    ]
+    print(f"finite only: {_finite(finite)[:4]}")
+    if deviations:
+        print(
+            f"explicit {_backend(explicit)}: largest relative deviation of the "
+            f"finite part from 'auto' {max(deviations):.2e}"
+        )
+    for index, lane in enumerate(() if explicit is None else explicit.diagnostics):
+        if not lane.valid:
+            reason = lane.detail or "; ".join(map(str, lane.failures))
+            print(f"explicit {other}: point {index} failed ({str(reason)[:200]})")
 
     _step("4. Profile: time per stage, checked default and unchecked setting")
     for unchecked in (False, True):

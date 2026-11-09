@@ -196,6 +196,31 @@ exclusive component sum. A small nonzero value is ordinary unsplit bookkeeping;
 it should not be interpreted as hidden Python overhead because the timer is
 already inside Rusticol.
 
+## One-loop artifacts: time per stage
+
+`pyamplicol profile` of a one-loop (v2 virtual) artifact, and
+`BenchmarkRunner.run` / `benchmark()` on one, measure the evaluation of one
+batch (`--batch-size` points, `--minimum-samples` timed calls after
+`--warmup-runs`, finite part only) and split its time per point into the
+groups of the native executor's always-on stage report of the same timed
+calls:
+
+| Group | Native stages |
+| --- | --- |
+| trees | the point's trees and counterterm kets (`trees`) |
+| dressing | Born-interfered: `seeds`, `factors` and `dressing`; loop-induced: `dressing` |
+| scatter | `scatter` |
+| reduction | `reduction` (TIRust or NinjaRS, its masters included) |
+| rest | every other stage and the call's untimed remainder |
+
+The table is coloured with a bar per group. No timer beyond the executor's
+own runs, so the split is the timed calls' (a split read from a separate
+instrumented run is labelled as such). `--loop-reduction` and
+`--reduction-unchecked` profile the other backend and the unchecked timing
+mode (no accuracy certificate). The loop examples' profile cards
+(`examples/loop_*_profile.toml`) and `examples/python/loop_walkthrough.py`
+print the table for the checked default and the unchecked setting.
+
 ## Native work counters
 
 The optional counter table makes a profile easier to interpret by reporting

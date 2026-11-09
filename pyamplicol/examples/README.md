@@ -70,6 +70,24 @@ These three showcase cards print colorized terminal tables by default. Add
 | `inspect_pp_4j.toml` | Summary of that artifact, including its process-group map |
 | `evaluate_pp_4j_member.toml` | Evaluate the non-generated member `u~ g > u~ g g g` through its representative |
 | `group_pp_4j.toml` | Numerical `group-processes` analysis of the generated representatives |
+| `loop_uux_ttxgg_generate.toml` | One-loop: generate `u u~ > t t~ g g`, NLO QCD virtual (Born-interfered), full colour |
+| `loop_uux_ttxgg_lc_generate.toml` | One-loop: the same at leading colour, for the Born-interfered helicity selection |
+| `loop_uux_ttxgg_check.toml` | One-loop: `pyamplicol check` (Catani poles, Ward identities of both gluons) of its artifact |
+| `loop_uux_ttxgg_evaluate.toml` | One-loop: evaluate with poles and the recommended stability checks |
+| `loop_uux_ttxgg_profile.toml` | One-loop: time per point and per stage (trees, dressing, scatter, reduction, rest) |
+| `loop_uux_ddxepem_generate.toml` | One-loop: generate `u u~ > d d~ e+ e-`, NLO QCD+EW at every order, complex-mass scheme |
+| `loop_uux_ddxepem_check.toml` | One-loop: `pyamplicol check` of its artifact (poles against Catani's QCD and QED operators) |
+| `loop_uux_ddxepem_evaluate.toml` | One-loop: evaluate its four squared-order sectors and three Born orders |
+| `loop_uux_ddxepem_orders.toml` | One-loop: partial weights per squared coupling order (`--orders`) with their explicit sums |
+| `loop_uux_ddxepem_profile.toml` | One-loop: time per point and per stage |
+| `loop_gg_zgg_generate.toml` | Loop-induced: generate `g g > z g g`, every quark loop (five massless flavours and the top) |
+| `loop_gg_zgg_check.toml` | Loop-induced: `pyamplicol check` (finiteness, Ward identity of the gluons) of its artifact |
+| `loop_gg_zgg_evaluate.toml` | Loop-induced: evaluate on TIRust (the default) with the recommended stability checks |
+| `loop_gg_zgg_profile.toml` | Loop-induced: time per point and per stage |
+| `loop_gg_epemmpmm_generate.toml` | Loop-induced: generate `g g > e+ e- m+ m-` in the complex-mass scheme |
+| `loop_gg_epemmpmm_check.toml` | Loop-induced: `pyamplicol check` of its artifact |
+| `loop_gg_epemmpmm_evaluate.toml` | Loop-induced: evaluate on TIRust with the recommended stability checks |
+| `loop_gg_epemmpmm_profile.toml` | Loop-induced: time per point and per stage |
 | `all_options.toml` | Every current schema field, active and commented |
 
 ## Generate Pure Gluons With Adjoint FFT
