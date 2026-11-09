@@ -50,12 +50,14 @@ MIRROR = np.array([1.0, -1.0, -1.0, -1.0])
 WIDTH_FREE = {"WZ": 0, "WW": 0, "WT": 0, "WH": 0}
 
 
-def _prepared_models(loop_sm_compiled_model, qed):
+def _prepared_models(loop_sm_compiled_model, qed, gauge=None):
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.models.external import CompiledUFOModel
-    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loading import load_compiled_model, with_model_gauge
 
     compiled = load_compiled_model(loop_sm_compiled_model)
+    if gauge is not None:
+        compiled = with_model_gauge(compiled, gauge)
     structure = prepare_loop_request_model(
         compiled,
         born_order_bounds={"QCD": 5, "QED": qed},
@@ -66,10 +68,13 @@ def _prepared_models(loop_sm_compiled_model, qed):
 
 @pytest.fixture(scope="module")
 def ew_models(loop_sm_compiled_model):
-    """``models`` with electroweak bounds 4: e^3 and e^4 blocks of two quark
-    lines whose bosons meet at a colour-singlet vertex."""
+    """``models`` with electroweak bounds 4, in 't Hooft-Feynman gauge as an
+    electroweak request runs (``ew_policy.feynman_gauge_model``): e^3 and e^4
+    blocks of two quark lines whose bosons meet at a colour-singlet vertex.
+    Off-shell currents through a triple-gauge vertex depend on the gauge of
+    their massive vector propagators, so the oracle needs the same gauge."""
 
-    return _prepared_models(loop_sm_compiled_model, 4)
+    return _prepared_models(loop_sm_compiled_model, 4, "feynman")
 
 
 @pytest.fixture(scope="module")
@@ -471,10 +476,17 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                     for leg, kind in keys
                 ]
                 colour_axes = [axis for axis in axes if axis != "spin"]
-                fk = np.transpose(
-                    fk,
-                    [axes.index(axis) for axis in colour_axes] + [axes.index("spin")],
-                )
+                if "spin" in axes:
+                    fk = np.transpose(
+                        fk,
+                        [axes.index(axis) for axis in colour_axes]
+                        + [axes.index("spin")],
+                    )
+                else:
+                    # A scalar current (H or a Goldstone): one component.
+                    fk = np.transpose(
+                        fk, [axes.index(axis) for axis in colour_axes]
+                    )[..., None]
                 rows = [
                     (block, row)
                     for block in members
@@ -495,7 +507,11 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                     fk = fk[..., 0:2] if chirality == 1 else fk[..., 2:4]
                 elif fk.shape[-1] == 4:
                     fk = fk * MIRROR
-                if variant == "propagated" and not model.is_fermion(particle_id):
+                if variant == "propagated" and fk.shape[-1] == 1:
+                    # Width-free scalar propagator.
+                    mass = float(model.mass(particle_id))
+                    fk = 1j * fk / (total[0] ** 2 - total[1:] @ total[1:] - mass**2)
+                elif variant == "propagated" and not model.is_fermion(particle_id):
                     # Width-free vector propagator; the P^mu P^nu / M^2 term
                     # of the unitary gauge drops on the conserved current.
                     mass = float(model.mass(particle_id))
