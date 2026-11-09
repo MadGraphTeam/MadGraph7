@@ -1,0 +1,353 @@
+{
+  "scope": "Read-only QP lifecycle/source audit; no compilation or native execution.",
+  "observed_utc": "2026-11-09T23:09:04.301744+00:00",
+  "historical_generator_revision": "c91cb85f3aa942c90299b3518bb1f195f55334a5",
+  "current_head_at_read": "4a4a59a82bfe3feafc26413f7852e6aa2c3a2e76",
+  "historical_library_sha256": "49af12f0b88252a2d06420a2ea8768529eb5ab51de34e3db2257ee61cd71ca12",
+  "historical_vs_current_qp_functions": {
+    "mp": {
+      "current_sha256": "8827b1894a3e81ed7af00dff26dc0d302999166a61cb2c839353501037fc6711",
+      "historical_sha256": "8827b1894a3e81ed7af00dff26dc0d302999166a61cb2c839353501037fc6711",
+      "identical": true
+    },
+    "mp_records": {
+      "current_sha256": "a1e95baacb574b5a9d6cf8d2f63fdd4b8b30694e4f09b42114bc13aede163439",
+      "historical_sha256": "a1e95baacb574b5a9d6cf8d2f63fdd4b8b30694e4f09b42114bc13aede163439",
+      "identical": true
+    },
+    "mp_poles": {
+      "current_sha256": "f029a0278aced50fef184224136159770eaccb4a4eed69b893d711a69f0062ad",
+      "historical_sha256": "f029a0278aced50fef184224136159770eaccb4a4eed69b893d711a69f0062ad",
+      "identical": true
+    },
+    "qp_cache_key": {
+      "current_sha256": "41bf4f2447c10e486670e67e881a27167eae7004ba535ed5b565566338daff0d",
+      "historical_sha256": "41bf4f2447c10e486670e67e881a27167eae7004ba535ed5b565566338daff0d",
+      "identical": true
+    },
+    "parse_records": {
+      "current_sha256": "53e667257fde02d4ba342f5b313076a119e62a48eb2676b477294f050fa9bba2",
+      "historical_sha256": "53e667257fde02d4ba342f5b313076a119e62a48eb2676b477294f050fa9bba2",
+      "identical": true
+    },
+    "mp_batch": {
+      "current_sha256": "50e20d658f175e7f3b9c6963c93cd1387aa981bf3d524536077c06537cb3577a",
+      "historical_sha256": "50e20d658f175e7f3b9c6963c93cd1387aa981bf3d524536077c06537cb3577a",
+      "identical": true
+    },
+    "pack_mp": {
+      "current_sha256": "1198ccd3e9f0e416fee5ecabc489c28922ffef9418bc28102f244b008c4d37ea",
+      "historical_sha256": "1198ccd3e9f0e416fee5ecabc489c28922ffef9418bc28102f244b008c4d37ea",
+      "identical": true
+    },
+    "ml_tirust_clear_cache": {
+      "current_sha256": "45d3f46f5d69b0035351470fbd0abc23a80b56fdc6d80367e1ce36292f1f18fb",
+      "historical_sha256": "45d3f46f5d69b0035351470fbd0abc23a80b56fdc6d80367e1ce36292f1f18fb",
+      "identical": true
+    },
+    "ml_tirust_evaluate_mp": {
+      "current_sha256": "c9066acf88bd8a3adf298f02aa5066c1ad0d450dbe03995ed86fa8d72df9328d",
+      "historical_sha256": "c9066acf88bd8a3adf298f02aa5066c1ad0d450dbe03995ed86fa8d72df9328d",
+      "identical": true
+    }
+  },
+  "fortran_module_historical_current_byte_identical": true,
+  "source_sha256": {
+    "vendor/tirust/src/lib.rs": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+    "vendor/tirust/mtirust.f90": "12295dca6b64a96dbd4f184cf67ed702f38c9fd82658e196fa4c5b7135fee10e",
+    ".benchmark-work/tirust/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_matrix.f": "a07804ebcb4088c8b82da923b630f845c3d4339d4bacbccdca976308ecdc437a",
+    ".benchmark-work/tirust/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/mp_compute_loop_coefs.f": "bf5c60872fea031989dcb59060d72b968cea4167a422e683785d2ac7ab60f104",
+    ".benchmark-work/tirust/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/TIRUST_interface.f": "fdb6f639e3a8e17298f10bc1b172bb7a23a1d23111eaa9230b2a38bcffa53cd8",
+    ".benchmark-work/tirust/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_max_coefs.inc": "1949bace736cdf834cc4c1428a9f3fe8f7329c3f4be1d7bf8b5055d7f791b525",
+    ".benchmark-work/tirust/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_matrix.f": "d780e132792b0779dd909036630e11137d528854f19af57afbabde14871982ff",
+    ".benchmark-work/tirust/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/mp_compute_loop_coefs.f": "d8564bad6d2fc8d3771dbf976e59d49846bd9e346193ceceb35f155acc915fd4",
+    ".benchmark-work/tirust/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/TIRUST_interface.f": "30aef60b9af5cf6911233b68d86612046cacdc60483a9212fcf9b07005004e9e",
+    ".benchmark-work/tirust/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_max_coefs.inc": "1dca06ff691666dab8f666692137cd040e407c276417611d5fcc744f5f82f19d",
+    "madgraph/loop/loop_exporters.py": "d70191aca87f27dfb9f4e6511704f91113913db75e0c05280a03887536daf2c4",
+    "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": "166ac2e2fb6555568bce4865dca462162b7a5af5b6b436fd64fa96ac23b80f89",
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec",
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+    ".tirust-build/pole-development/crates/iregi-rust/src/direct/exec.rs": "255b250f6997cfd08f017a9962ac79e6a4a87421f1f2d9f7ddb6a8bc1129eace",
+    ".tirust-build/pole-development/crates/iregi-rust/src/direct/numeric.rs": "c4189f1e59f0746ea4413319b9a85df926789c3b1c95f9e1461bf7088879ebee",
+    ".tirust-build/pole-development/crates/iregi-rust/src/direct.rs": "71f78f5b1ed56890371a5adb9081753e2a28306847957bf1a315e39189689b46",
+    ".tirust-build/pole-development/crates/iregi-rust/src/store.rs": "973b437f154fdd332d54371bafcfee1c01f3de4a03d67ccebd5314c1fe3c321f",
+    ".tirust-build/clean-install/cargo-home/git/checkouts/oneloopmaster-1e046f4c0b16c2f9/bd703d0/src/native/mod.rs": "a666d5acb3fe577de1b33f8907b4cf16a845c319d46de65da0897f44c9e13780",
+    ".tirust-build/clean-install/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/lib/numerica/src/domains/float/serialization.rs": "13650ab8708959229b538e930299089e6d1431bc11ed5ce88f35c77871fde107",
+    ".tirust-build/clean-install/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/lib/numerica/src/domains/float/multiprecision.rs": "9e3128b07f4a05020edbc099b4efb22add0d12a18df46c09131d922da49dd1ac"
+  },
+  "traces": {
+    "ew4": {
+      "source": "docs/benchmarkfolder/experiments/numerical/strict-policy-ew-n4-warmup-v2/candidate-9/candidate-initialization/warmup.dat",
+      "source_read_sha256": "24e1ee60c6321cd053b5634349ed93c220d781763d4c21a42bce200e3e247df0",
+      "complete_public_calls": 66,
+      "coefficient_rows": 132,
+      "status_counts_per_complete_call": {
+        "323": 42,
+        "219": 24
+      },
+      "last_complete_call": 65,
+      "incomplete_call_ids": [],
+      "contains_per_call_timing": false,
+      "contains_tensor_or_cache_counters": false
+    },
+    "qcd4_active_snapshot": {
+      "source": ".benchmark-work/tirust/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/warmup.dat",
+      "source_read_sha256": "1323ad06943a95e766dc3be532a08e345629ac5b144072921597995ae6752437",
+      "complete_public_calls": 21,
+      "coefficient_rows": 42,
+      "status_counts_per_complete_call": {
+        "323": 16,
+        "219": 5
+      },
+      "last_complete_call": 20,
+      "incomplete_call_ids": [],
+      "contains_per_call_timing": false,
+      "contains_tensor_or_cache_counters": false,
+      "snapshot": "docs/benchmarkfolder/qualification/benchmark-audit/qp-lifecycle/qcd4-active-warmup-snapshot.dat",
+      "active_at_read": true,
+      "final_status_unknown": true
+    },
+    "qcd4_completed_attempt": {
+      "observed_utc": "2026-11-09T23:21:25.347480+00:00",
+      "source": "docs/benchmarkfolder/experiments/numerical/strict-policy-qcd-n4-warmup-v2/candidate-9/candidate-initialization/warmup.dat",
+      "source_read_sha256": "33968008a3cd21ec02d49735eab04a44ea434c315115b02a09373a289f1eddf2",
+      "complete_public_calls": 28,
+      "coefficient_rows": 56,
+      "status_counts_per_complete_call": {
+        "323": 22,
+        "219": 6
+      },
+      "last_complete_call": 27,
+      "unique_point_ids": 27,
+      "incomplete_call_ids": [],
+      "contains_per_call_timing": false,
+      "contains_tensor_or_cache_counters": false,
+      "completed_attempt": true,
+      "status": "failed",
+      "readiness_reached": false,
+      "failure_record": "docs/benchmarkfolder/experiments/numerical/strict-policy-qcd-n4-warmup-v2/candidate-9/failure.json",
+      "failure_record_sha256": "04e17731c81abc2e9655a2cbbd6212fdc7a6bbb0b13123aec98da1187c057da4",
+      "initialization_failure_record": "docs/benchmarkfolder/experiments/numerical/strict-policy-qcd-n4-warmup-v2/candidate-9/candidate-initialization/failure.json",
+      "initialization_failure_record_sha256": "9a3b01d64a0f962fcb8f85251bc78b910c104fcb6149b79a5987442ba024d2a6",
+      "output_log": "docs/benchmarkfolder/experiments/numerical/strict-policy-qcd-n4-warmup-v2/candidate-9/candidate-output.txt",
+      "output_log_sha256": "7f13e6fea8b0794385feba703ba2a18ed0135a0f750a5ce343bfeaf7b97e1315",
+      "reported_startup_deadline_seconds": 1800,
+      "deadline_evidence": "Benchmark coordinator reported unchanged 1800s readiness bound; original failure record records ProtocolError timeout but no numeric bound.",
+      "performance_eligible": false
+    }
+  },
+  "static_process_sizes": {
+    "qcd4": {
+      "generated_loop_groups": 745,
+      "generated_helicity_combinations": 144,
+      "maximum_coefficient_capacity": 126,
+      "registered_n_rank": [
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          6,
+          5
+        ]
+      ],
+      "maximum_output_decimal_records": 1008,
+      "maximum_output_record_bytes": 64512,
+      "note": "Static generated dimensions, not measured calls; helicity sums precede reductions in steady complete-amplitude path."
+    },
+    "ew4": {
+      "generated_loop_groups": 1218,
+      "generated_helicity_combinations": 64,
+      "maximum_coefficient_capacity": 70,
+      "registered_n_rank": [
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          6,
+          2
+        ],
+        [
+          6,
+          4
+        ]
+      ],
+      "maximum_output_decimal_records": 560,
+      "maximum_output_record_bytes": 35840,
+      "note": "Static generated dimensions, not measured calls; helicity sums precede reductions in steady complete-amplitude path."
+    }
+  },
+  "native_executions": 0,
+  "compiler_executions": 0,
+  "performance_eligible": false,
+  "historical_installed_config": {
+    "path": ".benchmark-work/tirust/historical-installs/c91cb85f3a-49af12f0b88252a2/tirust/lib/tirust-config.json",
+    "sha256": "000ac5255c1ba3fa268f17524b4d30bcd5a231c38f13a10b820d7b4a208711da",
+    "upstream": {
+      "tirust": {
+        "source": "/shared/external/madloop_tirust/references/TIRust",
+        "revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
+        "source_tree_sha256": "5b60209fe4a66cc32b7b228afc46c9d0a42cd095d2ca904dd8dd2285bc4b263a",
+        "source_files": 463,
+        "patch_sha256": "53b559ade233201659a1f9678188b4c761b9cc587267067bd354e7769ac62d9a"
+      },
+      "oneloopmaster": {
+        "source": "/shared/external/madloop_tirust/references/oneloopmaster",
+        "revision": "bd703d09a78f7849a6b86a07096e6f222fc01193",
+        "source_tree_sha256": "a1c1befde1f9f9e7abce93490749ad4331ec64759542b8908e75b20c27377d87",
+        "source_files": 605
+      },
+      "pole_kernels": {
+        "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.tirust-build-vw7ma2n0/bridge/pole-kernels",
+        "revision": null,
+        "source_tree_sha256": "2d449d05ab0f52dfeab5b5c7c48fd0cb57c97961fa4608908d111b393dfed2d3",
+        "source_files": 14
+      }
+    }
+  },
+  "pins": {
+    "tirust": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
+    "oneloopmaster": "bd703d09a78f7849a6b86a07096e6f222fc01193",
+    "symbolica": "dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+  },
+  "dense_fortran_qp_cache_hypothetical_bytes": {
+    "qcd4": 18023040,
+    "ew4": 16369920
+  },
+  "upstream_execution_source_matches_historical_metadata": true,
+  "observed_policy": {
+    "ew": {
+      "source": "docs/benchmarkfolder/experiments/numerical/strict-policy-ew-n4-warmup-v2/candidate-9/candidate-inputs.json",
+      "sha256": "9881765f7834631c6186a461e4cf5ffb6ffc5442493434937a89e4f685901ebb",
+      "settings": {
+        "mlreductionlib": "9",
+        "ctmodeinit": 1,
+        "ctmoderun": -1,
+        "tirustglobalcache": -1,
+        "tirustcachemaxbytes": 268435456,
+        "tirustcomputefinite": true,
+        "useqpintegrandfortirust": true,
+        "nrotations_dp": 0,
+        "nrotations_qp": 0,
+        "looppolemode": 0
+      }
+    },
+    "qcd": {
+      "source": "docs/benchmarkfolder/experiments/numerical/strict-policy-qcd-n4-warmup-v2/candidate-9/candidate-inputs.json",
+      "sha256": "3e6ffc1465a3f8b2c66a4f3bab151d6c68cb403db99ee71d683ac1da085d7320",
+      "settings": {
+        "mlreductionlib": "9",
+        "ctmodeinit": 1,
+        "ctmoderun": -1,
+        "tirustglobalcache": -1,
+        "tirustcachemaxbytes": 268435456,
+        "tirustcomputefinite": true,
+        "useqpintegrandfortirust": true,
+        "nrotations_dp": 0,
+        "nrotations_qp": 0,
+        "looppolemode": 0
+      }
+    }
+  }
+}
