@@ -151,8 +151,8 @@ C     reset the amp_split array
       DO I = 1, NSQAMPSO
         IF (KEEP_ORDER(I)) THEN
           ANS_SUMMED = ANS_SUMMED + ANS(1,I)
-C         keep track of the separate pieces corresponding to
-C          different coupling combinations
+C         keep track of the separate pieces corresponding to different
+C          coupling combinations
           DO J = 1, NSPLITORDERS
             AMP_ORDERS(J) = GETORDPOWFROMINDEX_B(J, I)
           ENDDO

@@ -302,8 +302,8 @@ C     in which case neither is its quadruple precision version.
       LOGICAL LOOPLIBS_QPAVAILABLE(0:7)
       DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.
      $ ,.FALSE.,.FALSE.,.TRUE.,.FALSE./
-C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT
-C      MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
+C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED
+C      FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT
 C      USED ANYWHERE ELSE
       REAL*8 PS(0:3,NEXTERNAL)
@@ -1247,8 +1247,8 @@ C                filtering.
 C               The if statement below is not strictly necessary but
 C                makes it clear when it is executed.
               ELSEIF(H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-C               Make sure that no polarization constraint filters
-C                out this helicity
+C               Make sure that no polarization constraint filters out
+C                this helicity
                 IF (POLARIZATIONS(0,0).EQ.
      $           -1.OR.ML5_0_IS_HEL_SELECTED(H)) THEN
 C                 If both computational method is used, then we must
@@ -1262,8 +1262,8 @@ C                  just update RES_FROM_JAMP
                 ENDIF
               ENDIF
               IF (H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-C               Make sure that no polarization constraint filters
-C                out this helicity
+C               Make sure that no polarization constraint filters out
+C                this helicity
                 IF (POLARIZATIONS(0,0).EQ.
      $           -1.OR.ML5_0_IS_HEL_SELECTED(H)) THEN
                   CALL
@@ -1351,8 +1351,8 @@ C     Make sure that no NaN is present in the result
 
       IF (CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED)) THEN
         IF((USERHEL.EQ.-1).OR.(USERHEL.EQ.HELPICKED)) THEN
-C         Make sure that no polarization constraint filters out
-C          this helicity
+C         Make sure that no polarization constraint filters out this
+C          helicity
           IF (POLARIZATIONS(0,0).EQ.
      $     -1.OR.ML5_0_IS_HEL_SELECTED(HELPICKED)) THEN
 C           TO KEEP TRACK OF THE FINAL ANSWER TO BE RETURNED DURING
@@ -1587,7 +1587,7 @@ C        after this stage if BYPASS_CHECK was set to true at some
 C        point using SLOOPMATRIX_THRES).
 C       It is possible to simply remove the if statement below to have
 C        a running reference scale which always depends on the
-C        MAXNREF_EVALS *last* evaluations. 
+C        MAXNREF_EVALS *last* evaluations.
         IF (NPSPOINTS.LE.MAXNREF_EVALS) THEN
           TMPR = ABS(ANS(1,0)) + ABS(ANS(2,0)) + ABS(ANS(3,0))
           IF (TMPR.NE.0.0D0) THEN
