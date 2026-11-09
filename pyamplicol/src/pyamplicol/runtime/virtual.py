@@ -627,28 +627,25 @@ class V2ObservablesRuntime:
                 except FailedPoints as failed:
                     return list(failed.results), dict(failed.failures)
 
-            checks = options.get("stability")
-            plain = (
-                {**options, "stability": replace(checks, cross_backend=False)}
-                if checks is not None and getattr(checks, "cross_backend", False)
-                else options
-            )
-
-            def run(chosen: list[int] | None) -> tuple[list[Any], dict[int, list[str]]]:
-                # A fallback point's cross-backend check is not run (m-lit
-                # R6; ``_estimate`` records why).
+            def run(
+                chosen: list[int] | None, checks: Any
+            ) -> tuple[list[Any], dict[int, list[str]]]:
+                # ``checks``: the call's (every point), or the per-point
+                # fallback's (``with_fallback``: the call's less the
+                # cross-backend check, m-lit R6, ``_estimate`` records why;
+                # or its guard's reduction-direction check).
+                own = {**options, "stability": checks}
                 subset = scales if chosen is None else [scales[i] for i in chosen]
                 return isolate_scale_failures(
-                    lambda indices: batch(
-                        indices, chosen, plain if chosen else options
-                    ),
-                    subset,
+                    lambda indices: batch(indices, chosen, own), subset
                 )
 
+            checks = options.get("stability")
             if reduction is None:
                 with running(None):
-                    return (*run(None), {})
-            return with_fallback(run, reduction, len(points))
+                    return (*run(None, checks), {})
+            carrier = getattr(options.get("precision"), "arithmetic", "double")
+            return with_fallback(run, reduction, len(points), checks, carrier)
         if effective is not None:
             # The Python reference executor reduces on the backends the
             # native extension serves (``reduction.native_backends``: its

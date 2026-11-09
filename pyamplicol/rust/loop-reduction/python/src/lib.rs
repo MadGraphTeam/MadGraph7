@@ -219,21 +219,44 @@ fn tir_acceptance(target: f64) -> PyResult<Option<f64>> {
 
 /// The texts of the per-point fallback and of the cross-backend check's
 /// refusal (`reduction_policy::fallback_served`, `fallback_failed`,
-/// `cross_refusal`): `kind` "served" (`a`, `b`, `text`: the primary
-/// backend, the fallback and the primary's failure), "failed" (`a`: the
-/// fallback, `text`: its reason) or "cross" (`text`: the refusal).
+/// `fallback_rejected`, `cross_refusal`): `kind` "served" (`a`, `b`,
+/// `text`: the primary backend, the fallback and the primary's failure),
+/// "failed" (`a`: the fallback, `text`: its reason), "rejected" (as
+/// "served", with the call's `carrier`, the fallback guard's `estimate` and
+/// the call's `target`: the point the guard rejected, m-lit
+/// lit-fallback-guard) or "cross" (`text`: the refusal).
 #[pyfunction]
-#[pyo3(signature = (kind, a, b, text))]
-fn reduction_text(kind: &str, a: &str, b: &str, text: &str) -> PyResult<String> {
+#[pyo3(signature = (kind, a, b, text, *, carrier="", estimate=f64::NAN, target=f64::NAN))]
+fn reduction_text(
+    kind: &str,
+    a: &str,
+    b: &str,
+    text: &str,
+    carrier: &str,
+    estimate: f64,
+    target: f64,
+) -> PyResult<String> {
     use rusticol_loop_reduction::reduction_policy as policy;
     match kind {
         "served" => Ok(policy::fallback_served(a, b, text)),
         "failed" => Ok(policy::fallback_failed(a, text)),
+        "rejected" => Ok(policy::fallback_rejected(
+            a, b, text, carrier, estimate, target,
+        )),
         "cross" => Ok(policy::cross_refusal(text)),
         other => Err(pyo3::exceptions::PyValueError::new_err(format!(
             "unknown reduction text {other:?}"
         ))),
     }
+}
+
+/// Whether the per-point fallback's guard accepts a served point whose
+/// reduction-direction estimate is `estimate` at the call's `target`
+/// (`reduction_policy::fallback_accepted`, the one rule: a number at most
+/// the target; m-lit lit-fallback-guard).
+#[pyfunction]
+fn reduction_fallback_accepted(estimate: f64, target: f64) -> bool {
+    rusticol_loop_reduction::reduction_policy::fallback_accepted(estimate, target)
 }
 
 #[pymodule]
@@ -264,6 +287,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_resolve, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_auto_default, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_text, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_fallback_accepted, module)?)?;
     module.add_function(wrap_pyfunction!(tir_acceptance, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;

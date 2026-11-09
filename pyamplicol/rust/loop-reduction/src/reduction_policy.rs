@@ -173,6 +173,56 @@ pub fn fallback_failed(fallback: &str, reason: &str) -> String {
     format!("{} fallback: {reason}", name_of(fallback))
 }
 
+/// The check the per-point fallback's GUARD runs on every point the
+/// fallback served (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56
+/// (1)): the reduction-direction re-reduction (every loop numerator reduced
+/// a second time in the reversed frame, its coefficients and the cached
+/// master integrals reused; the Python API's `VirtualStabilityChecks(
+/// reduction_direction=True)` without `rescaled`, the SDKs' re-test frame
+/// `reversed`), at the call's own carrier (never escalated, USER 2026-11-08
+/// ~20:55 'Same precision as call'). Its estimate, in the `"relative"`
+/// metric (each squared-order sector against its largest Laurent
+/// coefficient, the metric of [`DEFAULT_TARGET`]), is recorded per point;
+/// a point whose estimate exceeds the call's target (or is not a number)
+/// fails typed ([`fallback_rejected`]), a point within it keeps the
+/// fallback's value bitwise. The only threshold is the call's target.
+pub const FALLBACK_CHECK: &str = "reduction-direction";
+
+/// Whether the per-point fallback's guard accepts a served point whose
+/// check estimate is `estimate` at the call's target `target`: the
+/// estimate is a number at most the target (a NaN estimate is rejected).
+pub fn fallback_accepted(estimate: f64, target: f64) -> bool {
+    estimate <= target
+}
+
+/// The ONE reason of a point the per-point fallback served but its guard
+/// rejected ([`FALLBACK_CHECK`]): `primary` (the call's effective backend)
+/// refused or failed it (`failure`, its reasons), `fallback` evaluated it
+/// again at the call's carrier `carrier`, and the fallback's value failed
+/// its reduction-direction check with the relative estimate `estimate`
+/// above the call's target `target`. Python (`loops.v2.reduction.text`)
+/// and the native SDKs read it from here.
+pub fn fallback_rejected(
+    primary: &str,
+    fallback: &str,
+    failure: &str,
+    carrier: &str,
+    estimate: f64,
+    target: f64,
+) -> String {
+    let verdict = if estimate.is_nan() {
+        format!("estimate NaN, not within target {target:e}")
+    } else {
+        format!("estimate {estimate:.1e} > target {target:e}")
+    };
+    format!(
+        "auto: {} refused or failed the point ({failure}); the per-point {} fallback's value \
+         failed its {FALLBACK_CHECK} check: {verdict} ({carrier})",
+        name_of(primary),
+        name_of(fallback)
+    )
+}
+
 /// The refusal of a call's cross-backend check whose other backend cannot
 /// serve the call (`message`, its refusal).
 pub fn cross_refusal(message: &str) -> String {
@@ -609,6 +659,37 @@ mod tests {
             "NinjaRS fallback: ImpreciseResult"
         );
         assert!(cross_refusal("x").ends_with("other reduction backend: x"));
+    }
+
+    #[test]
+    fn the_fallback_guard_has_one_reason_and_one_threshold() {
+        // The one reason of a guard-rejected point: the fallback, the
+        // primary backend's failure, the check, the estimate, the target
+        // and the carrier (m-lit lit-fallback-guard).
+        assert_eq!(
+            fallback_rejected(
+                "tirust",
+                "ninjars",
+                "TIRust refused the row",
+                "double-double",
+                142.37,
+                1e-5
+            ),
+            "auto: TIRust refused or failed the point (TIRust refused the row); the per-point \
+             NinjaRS fallback's value failed its reduction-direction check: estimate 1.4e2 > \
+             target 1e-5 (double-double)"
+        );
+        assert!(
+            fallback_rejected("tirust", "ninjars", "x", "double", f64::NAN, 3e-7)
+                .ends_with("check: estimate NaN, not within target 3e-7 (double)")
+        );
+        // The only threshold is the call's target; a NaN never passes.
+        assert!(fallback_accepted(1e-5, 1e-5));
+        assert!(fallback_accepted(0.0, 1e-5));
+        assert!(!fallback_accepted(1.0000001e-5, 1e-5));
+        assert!(!fallback_accepted(f64::NAN, 1e-5));
+        assert!(!fallback_accepted(f64::INFINITY, 1e-5));
+        assert_eq!(FALLBACK_CHECK, "reduction-direction");
     }
 
     #[test]

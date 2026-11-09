@@ -375,7 +375,21 @@ class VirtualReduction:
     fallback) reduced without its own acceptance and refusal checks (TIRust:
     gates and method choice as method selection, no acceptance pass, plain
     PV at gate 0 as its last resort, so the target drives nothing; NinjaRS:
-    zero stability thresholds)."""
+    zero stability thresholds).
+
+    ``guard_estimate`` is set on the record of a point the per-point
+    fallback served (m-lit lit-fallback-guard): the relative estimate (each
+    squared-order sector against its largest Laurent coefficient, the
+    metric of ``target``) of the fallback value's reduction-direction check
+    (every loop numerator reduced a second time in the reversed frame,
+    cached masters; ``VirtualStabilityChecks(reduction_direction=True)``
+    alone), run at the call's own carrier on every such point. A point
+    whose estimate exceeds the call's target (or is NaN) is a typed failure
+    whose reason (and this record's) names the fallback, TIRust's failure,
+    the carrier, the estimate and the target; a point within it keeps the
+    fallback's value. None on every other record (the call's own, a point
+    TIRust served, a point the fallback failed). The point's public
+    stability estimate stays the call's checks' own."""
 
     requested: Literal["auto", "ninjars", "tirust"]
     effective: Literal["ninjars", "tirust"]
@@ -383,6 +397,7 @@ class VirtualReduction:
     fallback: Literal["ninjars", "tirust"] | None = None
     target: float | None = None
     unchecked: bool = False
+    guard_estimate: float | None = None
 
     def __post_init__(self) -> None:
         # The choices are ``config.ReductionBackend``'s (one definition, one
@@ -402,6 +417,18 @@ class VirtualReduction:
         if self.target is not None:
             object.__setattr__(self, "target", reduction_target(self.target))
         reduction_unchecked(self.unchecked)
+        if self.guard_estimate is not None:
+            if isinstance(self.guard_estimate, bool) or not isinstance(
+                self.guard_estimate, (int, float)
+            ):
+                raise TypeError("guard_estimate is a relative estimate (a float)")
+            if self.guard_estimate < 0:
+                raise ValueError("guard_estimate is nonnegative")
+            if self.fallback is not None:
+                raise ValueError(
+                    "guard_estimate is a per-point fallback record's, not a call's"
+                )
+            object.__setattr__(self, "guard_estimate", float(self.guard_estimate))
 
 
 def _carrier_bits(arithmetic: str, precision: int | None) -> int:
