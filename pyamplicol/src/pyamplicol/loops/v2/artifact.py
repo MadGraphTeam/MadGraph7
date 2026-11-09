@@ -125,6 +125,7 @@ from pyamplicol.api.virtual_results import (
 from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.config.models import reduction_request
 from pyamplicol.config.models import reduction_target as reduction_target_value
+from pyamplicol.config.models import reduction_unchecked as reduction_unchecked_value
 from pyamplicol.generation.evaluator_container import (
     PacbinMemberKind,
     PacbinMemberSource,
@@ -1606,6 +1607,7 @@ class V2VirtualRuntime:
         stability: VirtualRescuePolicy | None = None,
         reduction: str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
         from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
@@ -1749,6 +1751,13 @@ class V2VirtualRuntime:
             None
             if reduction_target is None
             else reduction_target_value(reduction_target)
+        )
+        # The unchecked setting of a call that sets none (m-lit lit-unchecked;
+        # None: the native policy's default, off).
+        self._reduction_unchecked = (
+            None
+            if reduction_unchecked is None
+            else reduction_unchecked_value(reduction_unchecked)
         )
         self._born_orders = tuple(
             canonical_order(tuple((n, p) for n, p in order))
@@ -2083,6 +2092,7 @@ class V2VirtualRuntime:
         on_failure: Literal["raise", "return"] = "raise",
         reduction: str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
     ) -> VirtualEvaluation:
         """The virtual of every point in one carrier, or under a rescue
         policy (``stability``, else the load-time default; ``loops.v2.
@@ -2090,7 +2100,9 @@ class V2VirtualRuntime:
         ``reduction`` overrides the runtime's reduction-backend request for
         the call (resolved once per carrier, before any point is
         evaluated), ``reduction_target`` its target accuracy (a rescue
-        level's own target drives its level). With the default policy
+        level's own target drives its level), ``reduction_unchecked`` its
+        unchecked setting (every level's and the per-point fallback's
+        reductions; m-lit lit-unchecked). With the default policy
         (``VirtualRescuePolicy()``) a loop-induced call requesting ``"auto"``
         runs the loop-induced default stack (``rescue.default_stack``)."""
 
@@ -2127,6 +2139,7 @@ class V2VirtualRuntime:
             _routes.RESOLVED if selected else _routes.SUMMED,
             stability_checks,
             reduction_target,
+            reduction_unchecked,
         )
         if selected:
             # A leading-colour selection (``selection``): one summed output
@@ -2234,7 +2247,13 @@ class V2VirtualRuntime:
     def _reduction_summary(self) -> dict[str, object]:
         """``inspect``'s reduction-backend record."""
 
-        from .reduction import BACKENDS, auto_default, default_target, native_backends
+        from .reduction import (
+            BACKENDS,
+            auto_default,
+            default_target,
+            default_unchecked,
+            native_backends,
+        )
 
         return {
             "requested": self._reduction_request,
@@ -2246,6 +2265,13 @@ class V2VirtualRuntime:
                 default_target()
                 if self._reduction_target is None
                 else self._reduction_target
+            ),
+            # The unchecked setting of a call that sets none (m-lit
+            # lit-unchecked).
+            "unchecked": (
+                default_unchecked()
+                if self._reduction_unchecked is None
+                else self._reduction_unchecked
             ),
             # The backends the artifact admits (m-lit lit-eft: TIR-only).
             "admitted": sorted(BACKENDS if self._admitted is None else self._admitted),
@@ -2273,6 +2299,7 @@ class V2VirtualRuntime:
         route: Route,
         checks: VirtualStabilityChecks | None = None,
         target: float | None = None,
+        unchecked: bool | None = None,
     ) -> dict[Any, VirtualReduction]:
         """The reduction backend of a call on ``route``, resolved before any
         point is evaluated: keyed by the call's carrier, or under a rescue
@@ -2287,9 +2314,20 @@ class V2VirtualRuntime:
         carrier as well (refused typed otherwise). Each choice carries its
         target accuracy (``VirtualReduction.target``): a level's own target
         under a policy, else the call's ``target``, else the runtime's
-        (m-lit F3 (a))."""
+        (m-lit F3 (a)), and the unchecked setting (``VirtualReduction.
+        unchecked``): the call's ``unchecked``, else the runtime's, else
+        off, for every level (m-lit lit-unchecked)."""
+
+        from .reduction import default_unchecked
 
         requested = self._requested(reduction)
+        call_unchecked = (
+            reduction_unchecked_value(unchecked)
+            if unchecked is not None
+            else self._reduction_unchecked
+            if self._reduction_unchecked is not None
+            else default_unchecked()
+        )
         if policy is not None:
             # The levels own their checks (``rescue.RESCUE_OWNS_CARRIER``)
             # and their targets.
@@ -2301,6 +2339,7 @@ class V2VirtualRuntime:
                         route,
                     ),
                     target=level.target,
+                    unchecked=call_unchecked,
                 )
                 for level in policy.levels
             }
@@ -2332,7 +2371,11 @@ class V2VirtualRuntime:
             if self._reduction_target is not None
             else default_target()
         )
-        choice = replace(self._reduction(requested, carrier, route), target=call_target)
+        choice = replace(
+            self._reduction(requested, carrier, route),
+            target=call_target,
+            unchecked=call_unchecked,
+        )
         # (A checks value of another type is refused by ``v2_options``.)
         if getattr(checks, "cross_backend", False) is True:
             from .reduction import cross, text
@@ -2699,6 +2742,7 @@ class V2VirtualRuntime:
         in its lane diagnostics as they are built (``reductions``)."""
 
         target = options.pop("reduction_target", None)
+        unchecked = options.pop("reduction_unchecked", None)
         choices = self._reduction_choices(
             reduction,
             arithmetic,
@@ -2707,6 +2751,7 @@ class V2VirtualRuntime:
             _routes.RESOLVED,
             options.get("stability_checks"),
             target,
+            unchecked,
         )
         operation = getattr(self._observable_runtime(), name)
         return operation(

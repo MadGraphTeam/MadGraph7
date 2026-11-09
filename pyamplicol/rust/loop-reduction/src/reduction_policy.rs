@@ -34,6 +34,14 @@
 //! rescue's `"relative"` metric), from which TIRust's method-choice
 //! acceptance is calibrated (`v2_tir::acceptance_of`, feature `tir`).
 //!
+//! The UNCHECKED setting ([`DEFAULT_UNCHECKED`] off, validated by
+//! [`unchecked`], m-lit lit-unchecked) drops the backends' own acceptance
+//! and refusal checks for a call: each backend in its unchecked form, the
+//! same choice of backend. Under it `"auto"` keeps its rule; its per-point
+//! NinjaRS fallback (NinjaRS unchecked, at the call's carrier) acts only on
+//! what the unchecked TIRust still fails (the rows without a finite value
+//! in any scheme), so where nothing fails `"auto"` is a pure TIRust call.
+//!
 //! What a backend serves is the native capability
 //! (`runtime::backend_carriers`), passed in by the caller; an artifact may
 //! admit fewer backends (`admitted`). A route ([`Route`]) is what a call
@@ -81,6 +89,49 @@ pub fn target(value: f64) -> Result<f64, Refusal> {
         Ok(value)
     } else {
         Err(Refusal::Invalid(TARGET_REFUSAL.to_owned()))
+    }
+}
+
+/// The default of the UNCHECKED reduction setting (m-lit lit-unchecked, USER
+/// 2026-11-08 ~21:14 / ~22:34, DECISIONS 22:34 (1)): off. A call (or
+/// runtime) that sets it on reduces without the reduction backends' own
+/// acceptance and refusal checks ([`UNCHECKED_RECORD`]): TIRust keeps its a
+/// priori conditioning gates and method choice as METHOD SELECTION, never
+/// computes pyAmpliCol's a posteriori acceptance pass of the method-choice
+/// lanes (so the target accuracy drives nothing on TIRust), and serves the
+/// rows the method choice (or, where it is off, the gates) refuses with
+/// plain PV at gate 0, its last resort (`v2_tir::TirOptions::unchecked`);
+/// NinjaRS runs with zero stability thresholds (`runtime::V2Reducer::
+/// set_unchecked`). Only rows without a finite value in any scheme still
+/// fail (an exactly singular pivot, a non-finite output, TIRust's
+/// `InvalidInput` / `MasterFailure`, NinjaRS's `NonFinite` / `MasterFailed`
+/// and a NaN lane). pyAmpliCol's own stability checks, monitoring and
+/// rescue stay their own settings. The one definition: Python reads it from
+/// [`policy_json`], the native SDKs from here.
+pub const DEFAULT_UNCHECKED: bool = false;
+
+/// What the unchecked setting does, as the policy record states it (one
+/// text for every surface: the Python API's and the SDKs' inspect records).
+pub const UNCHECKED_RECORD: &str = "reduction_unchecked: TIRust keeps its conditioning gates and \
+     method choice as method selection, without pyAmpliCol's acceptance check, and serves what \
+     they refuse by plain PV at gate 0 (its last resort); NinjaRS runs with zero stability \
+     thresholds; only exactly singular or non-finite rows fail";
+
+/// The refusal of an unchecked setting that is not a boolean: one text for
+/// every surface (the Python API's `config.models.reduction_unchecked` reads
+/// it from [`policy_json`]).
+pub const UNCHECKED_REFUSAL: &str = "the unchecked reduction setting (reduction_unchecked) is a boolean: true or false \
+     (1 or 0 in the C ABI)";
+
+/// An unchecked setting given as an integer (the one validator of the
+/// native SDKs' C ABI, `rusticol_virtual_set_reduction_unchecked`; the
+/// Python API's is the language's boolean with [`UNCHECKED_REFUSAL`]): 1
+/// (on) or 0 (off).
+pub fn unchecked(value: i64) -> Result<bool, Refusal> {
+    match value {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(Refusal::Invalid(UNCHECKED_REFUSAL.to_owned())),
     }
 }
 
@@ -221,15 +272,21 @@ pub fn route(key: &str) -> Option<Route> {
 }
 
 /// The policy as JSON (what the Python API reads, `reduction.DEFAULTS`, its
-/// routes and the default target): `{"backends", "carriers", "defaults":
-/// {kind: backend}, "fallback", "target": {"default", "refusal"}, "routes": {key:
-/// {"serves", "backends", "auto"}}}`.
+/// routes, the default target and the unchecked setting): `{"backends",
+/// "carriers", "defaults": {kind: backend}, "fallback", "target":
+/// {"default", "refusal"}, "unchecked": {"default", "refusal", "record"},
+/// "routes": {key: {"serves", "backends", "auto"}}}`.
 pub fn policy_json() -> serde_json::Value {
     serde_json::json!({
         "backends": BACKENDS,
         "carriers": CARRIERS,
         "fallback": FALLBACK,
         "target": {"default": DEFAULT_TARGET, "refusal": TARGET_REFUSAL},
+        "unchecked": {
+            "default": DEFAULT_UNCHECKED,
+            "refusal": UNCHECKED_REFUSAL,
+            "record": UNCHECKED_RECORD,
+        },
         "defaults": CONTRIBUTIONS
             .iter()
             .map(|kind| ((*kind).to_owned(), serde_json::json!(default_of(kind))))
@@ -249,13 +306,17 @@ pub fn policy_json() -> serde_json::Value {
 /// The chosen backend of a call: the request, the effective backend and the
 /// reason (the Python API's `VirtualReduction`), and the per-point fallback
 /// (`"auto"` on TIRust where NinjaRS serves the call too: NinjaRS; none
-/// otherwise, an explicit request included).
+/// otherwise, an explicit request included). `unchecked` is the call's
+/// unchecked setting ([`DEFAULT_UNCHECKED`] from [`resolve`], which chooses
+/// the backend whatever the setting; the caller sets the call's), recorded
+/// with the choice.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Choice {
     pub requested: String,
     pub effective: String,
     pub reason: String,
     pub fallback: Option<String>,
+    pub unchecked: bool,
 }
 
 /// Why a request is not served.
@@ -361,6 +422,7 @@ pub fn resolve(
         effective: effective.to_owned(),
         reason,
         fallback: None,
+        unchecked: DEFAULT_UNCHECKED,
     };
     if requested != "auto" {
         if let Some(why) = unavailable(requested, carrier, served, allowed, route) {
@@ -516,6 +578,23 @@ mod tests {
                 Err(Refusal::Invalid(TARGET_REFUSAL.to_owned()))
             );
         }
+    }
+
+    #[test]
+    fn the_unchecked_setting_is_off_by_default_and_a_boolean() {
+        const { assert!(!DEFAULT_UNCHECKED) };
+        assert_eq!(unchecked(0), Ok(false));
+        assert_eq!(unchecked(1), Ok(true));
+        for bad in [-1, 2, i64::MAX, i64::MIN] {
+            assert_eq!(
+                unchecked(bad),
+                Err(Refusal::Invalid(UNCHECKED_REFUSAL.to_owned()))
+            );
+        }
+        let record = policy_json();
+        assert_eq!(record["unchecked"]["default"], false);
+        assert_eq!(record["unchecked"]["refusal"], UNCHECKED_REFUSAL);
+        assert_eq!(record["unchecked"]["record"], UNCHECKED_RECORD);
     }
 
     #[test]

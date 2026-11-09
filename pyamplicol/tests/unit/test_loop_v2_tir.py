@@ -201,6 +201,115 @@ def test_the_python_reference_path_reduces_on_what_the_query_serves():
         )
 
 
+@pytest.mark.loop_fast
+def test_the_python_reference_reducer_takes_the_calls_target():
+    """The Python reference path's TIRust reducer (``_PointEvaluation.
+    reducer``) reduces at the call's target accuracy (``reduction.running``'s
+    target, as the calibrated method-choice acceptance ``tir_acceptance``),
+    not always at the default; a call at the default target constructs what
+    it did before, and the unchecked setting rides along (DECISIONS
+    2026-11-09 02:02 (c))."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.assemble import _PointEvaluation
+    from pyamplicol.loops.v2.reduction import running
+
+    built = []
+    native = SimpleNamespace(
+        V2TirReducer=lambda **options: built.append(options),
+        tir_acceptance=lambda target: target / 580.0,
+    )
+
+    def reducer():
+        point = object.__new__(_PointEvaluation)
+        point.slice = SimpleNamespace(native=native)
+        point.numbers = SimpleNamespace(double=True)
+        point.reduction_backend = None
+        point.reducer()
+
+    with running("tirust"):
+        reducer()
+    with running("tirust", 1e-3):
+        reducer()
+    with running("tirust", 1e-3, True):
+        reducer()
+    assert built == [
+        {},
+        {"acceptance": 1e-3 / 580.0},
+        {"unchecked": True, "acceptance": 1e-3 / 580.0},
+    ]
+
+
+@pytest.mark.loop_fast
+def test_a_direct_runtimes_auto_rescue_level_keeps_its_rule(monkeypatch):
+    """A direct runtime (no artifact) resolves a rescue level's explicit
+    backend and leaves its "auto" levels to its own rule (no resolved
+    choice: NinjaRS), whatever the other levels request, as an all-"auto"
+    policy and a call without a policy do (DECISIONS 2026-11-09 02:02 (c))."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+    from pyamplicol.loops.v2 import rescue
+    from pyamplicol.loops.v2.reduction import CARRIERS
+    from pyamplicol.runtime.virtual import V2ObservablesRuntime
+
+    native = SimpleNamespace(
+        reduction_backends=lambda: json.dumps(
+            {name: list(CARRIERS) for name in ("ninjars", "tirust")}
+        )
+    )
+    legs = (None, None, None)
+    slice_ = SimpleNamespace(
+        sectors=(),
+        native=native,
+        blocks=SimpleNamespace(process=SimpleNamespace(legs=legs)),
+    )
+    runtime = V2ObservablesRuntime(
+        SimpleNamespace(slice=slice_, spin_classes=(), histories=(), rows=())
+    )
+    # A loop-induced process: its "auto" would resolve to TIRust.
+    runtime.contribution_kind = "loop-induced"
+    seen = []
+    monkeypatch.setattr(
+        runtime, "evaluate", lambda *args, **options: seen.append(options["reductions"])
+    )
+    monkeypatch.setattr(
+        rescue,
+        "rescue",
+        lambda policy, count, level, on_failure: [
+            level((0,), rung) for rung in policy.levels
+        ],
+    )
+    point = [["1", "0", "0", "1"], ["1", "0", "0", "-1"], ["2", "0", "0", "0"]]
+    for levels, expected in (
+        (("auto", "auto"), [None, None]),
+        (("auto", "tirust"), [None, "tirust"]),
+        (("ninjars", "auto"), ["ninjars", None]),
+    ):
+        seen.clear()
+        policy = VirtualRescuePolicy(
+            (
+                VirtualRescueLevel("double", reduction=levels[0]),
+                VirtualRescueLevel("double-double", reduction=levels[1]),
+            )
+        )
+        runtime._rescued(
+            [point],
+            policy,
+            mu_r2=["1"],
+            precision=None,
+            arithmetic=None,
+            helicities=None,
+            color_flows=None,
+        )
+        assert [
+            None if found is None else next(iter(found.values())).effective
+            for found in seen
+        ] == expected, levels
+
+
 # -------------------------------------------------------------------- T2, T6
 
 

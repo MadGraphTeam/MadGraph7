@@ -341,8 +341,9 @@ backend that cannot serve the call is refused before any point is evaluated
 call's executor runs: the summed `evaluate` and the resolved, correlated and
 selected outputs each check it, so a result never names a backend that did
 not reduce it. Every lane diagnostic records the requested and effective
-backend, the reason, the call's fallback and target
-(`VirtualReduction(requested, effective, reason, fallback, target)`;
+backend, the reason, the call's fallback, target and unchecked setting
+(`VirtualReduction(requested, effective, reason, fallback, target,
+unchecked)`;
 [Configuration](configuration.md#reduction-backend)).
 
 TIRust serves at a **target accuracy** (`reduction_target=` on `Runtime.load`
@@ -367,6 +368,97 @@ rescue stack for an estimate. NinjaRS has no
 setting the target drives, and in double-double and arbitrary precision,
 where TIRust's method choice is off, the target acts on nothing. A value that
 is not a finite positive number is refused (`ValueError`).
+
+**Unchecked reductions** (`reduction_unchecked=True` on `Runtime.load` and on
+every evaluation; `[evaluation] reduction_unchecked = true`; CLI
+`--reduction-unchecked`; the SDKs' `rusticol_virtual_set_reduction_unchecked`;
+default **off**). The setting drops the reduction backends' own acceptance and
+refusal checks, so that a backend serves every point it can give a finite
+value for, the way the one-loop providers' most optimistic settings run
+(OpenLoops and Recola with COLLIER's method choice and no stability system):
+
+* TIRust keeps its a priori conditioning gates and its method choice
+  (small-Gram expansions or the alternative reduction) as *method selection*
+  and returns the method-choice values as computed: the acceptance check of
+  those values (their re-evaluation at rescaled inputs and the comparison)
+  is not computed at all, so the target accuracy drives nothing on TIRust
+  under the setting. The rows the method choice refuses (an expansion that
+  does not converge, an alternative estimate above its limit, a cancelling
+  determinant, vanishing adjugates, a triangle below the requested rank, its
+  own gate) are served by their **last resort**, plain Passarino-Veltman at
+  gate 0. Every other row's value is bitwise the checked one.
+* NinjaRS runs its binary64 engine with zero stability thresholds (Ninja's
+  `stability_threshold` and `relative_tolerance` 0): a lane fails only where
+  a tested quantity is exactly zero or NaN.
+* The **residual failures**, which no scheme gives a finite value for, stay
+  failed points with their reasons: an exactly singular pivot (TIRust, after
+  its affine-relation variants), a non-finite output (TIRust's "nonfinite
+  direct-engine coefficient", a non-finite numerator, NinjaRS's `NonFinite`),
+  a master failure (TIRust's `MasterFailure`, NinjaRS's `MasterFailed`),
+  TIRust's `InvalidInput` and a NinjaRS lane whose tested quantity is exactly
+  zero or NaN (its `Unstable` status, e.g. a cut whose two momenta span a
+  Euclidean plane). A family outside TIRust's capability stays a call-level
+  `ReductionUnavailable`. A served value is not thereby accurate: see below.
+* `"auto"` keeps its rule, each backend in its unchecked form: TIRust for a
+  loop-induced process, NinjaRS for a Born-interfered one, TIRust without a
+  fallback on a TIR-only artifact, NinjaRS where the native extension has no
+  TIRust. Its per-point NinjaRS fallback (unchecked, in the call's
+  arithmetic) acts only on the residual failures of the unchecked TIRust,
+  recorded per point; where nothing fails, an `"auto"` call is a pure TIRust
+  call. Explicit `"tirust"` and `"ninjars"` have no fallback.
+* Arithmetics: in double-double and arbitrary precision TIRust's method
+  choice is off, so there the conditioning gates select and the last resort
+  serves what they refuse. NinjaRS's generic engine (double-double, arbitrary
+  precision, and the binary64 lanes the fast engine routes to it) tests no
+  stability threshold, so the setting changes nothing there.
+* pyAmpliCol's own stability checks (`stability_checks=`, the SDKs'
+  monitoring) and the rescue stack (`stability=`) stay their own settings:
+  combined with the setting they check the unchecked values, and the rescue
+  levels (each reducing unchecked) or the per-point fallback act on the
+  points those checks fail.
+
+The setting is recorded in every lane diagnostic
+(`VirtualReduction.unchecked`) and in the SDKs' `"reduction"` diagnostics.
+It is a **timing and benchmark mode with no accuracy certificate**, not a
+production default: without it, the default `"auto"` serves loop-induced
+processes on TIRust at the checked target accuracy above with the per-point
+NinjaRS fallback. A value that is not a bool is refused (`ValueError`).
+
+Measured accuracy of the setting (M-LIT `lit-unchecked`, 2026-11-08/09;
+record `docs/performance_reports/loop/data/li-unchecked-accuracy.json`):
+binary64 finite part through this API (`Runtime.load(artifact,
+reduction_unchecked=True)`, `evaluate(points, mu_r2=..., poles="none",
+on_failure="return", reduction="tirust" | "ninjars")`) on each row's first
+stream points against TIRust at 256 bits with supplied invariants; the
+largest relative error over the points, then the points above 1e-5 and the
+points that fail. TIRust's errors above 1e-5 all come from rows its last
+resort serves (plain PV at gate 0 below the conditioning gate); NinjaRS's
+zero thresholds return finite values off by up to 1e64 where its checks
+refuse the point, and keep its few points off by up to 3e-3 that the checked
+mode serves as well.
+
+| process | points | TIRust unchecked | NinjaRS unchecked |
+|---|---|---|---|
+| g g > h h | 128 | 3.4e-9 | 8.8e-11 |
+| e+ e- > g g g | 128 | 3.5e-7 | 4.6e-10 |
+| g g > h h h | 128 | 7.6e-7 | 4.5e64: 2 above 1e-5 (the checked mode refuses them) |
+| g g > h g g | 128 | 9.2e-10 | 8.0e-10 |
+| g g > z z g | 128 | 1.2e-2: 18 above 1e-5 (all on the last resort) | 5.0e-8 |
+| g g > a a g | 128 | 7.0e-6 | 3.1e-3: 1 above 1e-5 (also when checked) |
+| g g > W+ W- g | 128 | 1.4e-2: 24 above 1e-5 (all on the last resort) | 6.2e-8 |
+| g g > z z z | 128 | 2.2e-8 | 7.0e33: 2 above 1e-5 (the checked mode refuses them); 18 fail (`Unstable`) |
+| g g > h z g | 128 | 8.2e-9 | 3.0e-8; 2 fail (`MasterFailed`, `Unstable`) |
+| g g > a g g | 128 | 3.3e-6 | 6.8e-4: 1 above 1e-5 (also when checked) |
+| g g > z g g | 128 | 3.1e-5: 3 above 1e-5 (all on the last resort) | 6.2e-6 |
+| u u~ > h g g | 128 | 3.7e-9 | 3.5e-8 |
+| u u~ > d d~ h | 128 | 4.1e-10 | 4.3e-9 |
+| g g > h h g g | 32 | 7.1e-7 | 1.8e-6 |
+| g g > h g g g | 32 | 5.9e-8 | 4.4e-5: 2 above 1e-5 (also when checked) |
+| g g > e+ e- mu+ mu- | 32 | 5.4e-12 | 4.9e-10 |
+| g g > e+ e- mu+ mu- g | 16 | 8.3e-9 | 9.5e-8 |
+
+Other processes and points are not measured: check a sample against the
+default (checked) call before relying on the setting.
 
 `VirtualStabilityChecks(..., cross_backend=True)` adds the cross-backend
 check: every point is evaluated a second time on the other backend (TIRust

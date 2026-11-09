@@ -124,6 +124,28 @@ pub fn fast_engine_threshold() -> f64 {
     NATIVE_ONSHELL_THRESHOLD.max(FastOptions::default().infrared_eps)
 }
 
+/// The fast engine's options: NinjaRS's defaults (original Ninja's), or in
+/// the UNCHECKED mode (m-lit lit-unchecked, `reduction_policy::
+/// DEFAULT_UNCHECKED` off; DECISIONS 2026-11-08 22:34 (1)) zero stability
+/// thresholds, `FastOptions { stability_threshold: 0, relative_tolerance: 0
+/// }`: Ninja's stability test `relative(x, s)` becomes `x >= 0 && x > 0`, so
+/// a lane fails only where a tested quantity is exactly zero or NaN (a
+/// Euclidean-plane cut basis, `FastStatus::Unstable`), or as `NonFinite` /
+/// `MasterFailed`. `infrared_eps` keeps its meaning (a routing rule:
+/// [`fast_engine_threshold`] reads the default).
+pub fn fast_options(unchecked: bool) -> FastOptions {
+    let defaults = FastOptions::default();
+    if unchecked {
+        FastOptions {
+            stability_threshold: 0.0,
+            relative_tolerance: 0.0,
+            ..defaults
+        }
+    } else {
+        defaults
+    }
+}
+
 /// Whether one lane's binary64 inputs reach an absolute threshold of the fast
 /// engine below `threshold` (module docs): a squared mass or an off-diagonal
 /// invariant `x` with `0 < |re x| + |im x| < threshold`, or an off-diagonal
@@ -472,7 +494,12 @@ fn output_batches<T: BatchCarrier>(
 /// numerators and cached native masters; lanes that reach one of their
 /// absolute thresholds go to the generic binary64 engine (module docs).
 struct FastEngine {
-    amplitudes: HashMap<(usize, usize), FastAmplitude>,
+    /// Per (propagators, rank, unchecked) the engine's amplitude: the
+    /// options are part of the key, so a checked and an unchecked reduction
+    /// never share one ([`fast_options`]).
+    amplitudes: HashMap<(usize, usize, bool), FastAmplitude>,
+    /// The unchecked mode of the following reductions ([`fast_options`]).
+    unchecked: bool,
     numerators: HashMap<usize, TensorNumerator>,
     masters: MasterCache<OneLoopNativeMasters>,
     results: Vec<FastResult>,
@@ -492,6 +519,7 @@ impl FastEngine {
     fn new(cache_masters: bool) -> ExecutionResult<Self> {
         Ok(Self {
             amplitudes: HashMap::new(),
+            unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
             numerators: HashMap::new(),
             masters: MasterCache::new(OneLoopNativeMasters::new().map_err(error)?, cache_masters),
             results: Vec::new(),
@@ -621,11 +649,10 @@ impl FastEngine {
             .iter()
             .map(|z| C64::new(z.re, z.im))
             .collect();
-        let amplitude = match self.amplitudes.entry((n, rank)) {
+        let amplitude = match self.amplitudes.entry((n, rank, self.unchecked)) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(FastAmplitude::new(n, rank, FastOptions::default()).map_err(error)?)
-            }
+            std::collections::hash_map::Entry::Vacant(entry) => entry
+                .insert(FastAmplitude::new(n, rank, fast_options(self.unchecked)).map_err(error)?),
         };
         let numerator = self
             .numerators
@@ -803,6 +830,8 @@ enum Engines {
 pub struct V2Reducer {
     engines: Engines,
     precision_bits: u32,
+    /// [`Self::set_unchecked`].
+    unchecked: bool,
 }
 
 impl V2Reducer {
@@ -833,11 +862,31 @@ impl V2Reducer {
         Ok(Self {
             engines,
             precision_bits: bits,
+            unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
         })
     }
 
     pub fn precision_bits(&self) -> u32 {
         self.precision_bits
+    }
+
+    /// The unchecked mode of the following reductions (m-lit lit-unchecked,
+    /// off by default): the fast engine's zero stability thresholds
+    /// ([`fast_options`]; its amplitudes are kept per mode). The generic
+    /// engines (double-double, MPFR, and the binary64 lanes routed to them)
+    /// test no stability threshold (no NinjaRS cancellation test is enabled
+    /// here; only exactly singular cuts and non-finite results fail): the
+    /// mode changes nothing there.
+    pub fn set_unchecked(&mut self, unchecked: bool) {
+        self.unchecked = unchecked;
+        if let Engines::Fast(engine) = &mut self.engines {
+            engine.unchecked = unchecked;
+        }
+    }
+
+    /// The unchecked mode of the following reductions.
+    pub fn unchecked(&self) -> bool {
+        self.unchecked
     }
 
     /// Master requests of the fast engine since the last call; `None` for

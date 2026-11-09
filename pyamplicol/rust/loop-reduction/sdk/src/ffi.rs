@@ -330,6 +330,33 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction_target(
         Ok(())
     })
 }
+/// The unchecked setting of the handle's later evaluations, the Python API's
+/// `reduction_unchecked=` (m-lit lit-unchecked; additive, ABI version 2
+/// kept): 1 reduces without the reduction backends' own acceptance and
+/// refusal checks (TIRust's gates and method choice as method selection
+/// without the acceptance pass, its gate-0 PV last resort; NinjaRS's zero
+/// stability thresholds), 0 (the default) restores them. Any other value is
+/// `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` (`reduction_policy::UNCHECKED_REFUSAL`)
+/// and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_reduction_unchecked(
+    handle: *mut VirtualHandle,
+    unchecked: c_int,
+) -> c_int {
+    guard(|| unsafe {
+        let unchecked =
+            reduction_policy::unchecked(i64::from(unchecked)).map_err(|refusal| match refusal {
+                Refusal::Invalid(message) | Refusal::Unavailable(message) => bad(message),
+            })?;
+        mutable(handle)?.0.set_reduction_unchecked(unchecked);
+        Ok(())
+    })
+}
 /// The stability checks of the handle's later evaluations, the Python API's
 /// `stability_checks=` (`VirtualStabilityChecks`; additive, ABI version 2
 /// kept): `rotation_count` default rotations (the Python API's count), or,

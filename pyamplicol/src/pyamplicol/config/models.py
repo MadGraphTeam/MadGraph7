@@ -216,6 +216,24 @@ def reduction_target(value: object) -> float:
     raise ValueError(policy()["target"]["refusal"])
 
 
+def reduction_unchecked(value: object) -> bool:
+    """The value of the unchecked reduction setting (``evaluation.
+    reduction_unchecked``, the CLI's ``--reduction-unchecked``,
+    ``Runtime.load`` / ``evaluate(..., reduction_unchecked=)``; m-lit
+    lit-unchecked): True reduces without the reduction backends' own
+    acceptance and refusal checks, False (the default) with them. The
+    validator of every Python surface: a Python bool (any other type, 0 and
+    1 included, is refused) with the native policy's one refusal text
+    (``reduction_policy::UNCHECKED_REFUSAL``; the SDKs' C ABI takes 1 or 0,
+    ``reduction_policy::unchecked``). Validating a bool loads nothing."""
+
+    if isinstance(value, bool):
+        return value
+    from pyamplicol.loops.v2.reduction import policy
+
+    raise ValueError(policy()["unchecked"]["refusal"])
+
+
 class PoleSelection(StrEnum):
     """Which Laurent poles a one-loop evaluation computes (design §12.4).
 
@@ -1380,6 +1398,10 @@ class EvaluationConfig:
     reduction_target: float | None = field(
         default=None, metadata=_setting("float", nullable=True)
     )
+    # The unchecked reduction setting (``reduction_unchecked``; m-lit
+    # lit-unchecked): true drops the reduction backends' own acceptance and
+    # refusal checks; false, the default, keeps them.
+    reduction_unchecked: bool = field(default=False, metadata=_setting("bool"))
     stability_checks: EvaluationStabilityChecksConfig = field(
         default_factory=EvaluationStabilityChecksConfig, metadata=_section()
     )
@@ -1451,6 +1473,10 @@ class EvaluationConfig:
             except ValueError as exc:
                 raise ConfigurationError(f"evaluation.reduction_target: {exc}") from exc
             object.__setattr__(self, "reduction_target", target)
+        try:
+            reduction_unchecked(self.reduction_unchecked)
+        except ValueError as exc:
+            raise ConfigurationError(f"evaluation.reduction_unchecked: {exc}") from exc
         if not isinstance(self.stability_checks, EvaluationStabilityChecksConfig):
             raise ConfigurationError(
                 "evaluation.stability_checks must be an EvaluationStabilityChecksConfig"

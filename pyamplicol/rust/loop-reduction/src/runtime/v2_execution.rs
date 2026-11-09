@@ -234,6 +234,29 @@ impl V2Backends {
         let _ = target;
     }
 
+    /// The unchecked mode of the following reductions (m-lit lit-unchecked,
+    /// `reduction_policy::DEFAULT_UNCHECKED` off): TIRust's method selection
+    /// without the acceptance pass, with the gate-0 last resort
+    /// (`v2_tir::TirOptions::unchecked`); NinjaRS's zero stability
+    /// thresholds ([`V2Reducer::set_unchecked`]). Set on the built backend
+    /// (TIRust's plans stay); fixed for a call, never per point.
+    pub fn set_unchecked(&mut self, unchecked: bool) {
+        match self {
+            Self::NinjaRs(backend) => backend.reducer.set_unchecked(unchecked),
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.set_unchecked(unchecked),
+        }
+    }
+
+    /// The unchecked mode of the following reductions.
+    pub fn unchecked(&self) -> bool {
+        match self {
+            Self::NinjaRs(backend) => backend.reducer.unchecked(),
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.options().unchecked,
+        }
+    }
+
     /// [`Self::set_target`] by the acceptance itself (an expert's
     /// `TirOptions::acceptance`).
     pub fn set_target_acceptance(&mut self, acceptance: f64) {

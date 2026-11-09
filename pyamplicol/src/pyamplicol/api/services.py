@@ -23,6 +23,7 @@ from pyamplicol.config import (
 )
 from pyamplicol.config.models import reduction_request
 from pyamplicol.config.models import reduction_target as reduction_target_value
+from pyamplicol.config.models import reduction_unchecked as reduction_unchecked_value
 from pyamplicol.reporting import ProgressSink
 
 from .errors import (
@@ -419,6 +420,7 @@ class Runtime:
         stability: VirtualRescuePolicy | None = None,
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
     ) -> Runtime:
         """Load one process by stable ID, alias ID, or exact expression.
 
@@ -441,7 +443,12 @@ class Runtime:
         ``reduction_target`` (a finite positive number; default 1e-5) is the
         target accuracy of every call that sets none: the relative accuracy
         of each point's result that TIRust's method-choice acceptance follows
-        (m-lit F3).
+        (m-lit F3); ``reduction_unchecked`` (a bool; default False) is the
+        unchecked setting of every call that sets none: True reduces without
+        the reduction backends' own acceptance and refusal checks (TIRust's
+        gates and method choice as method selection without the acceptance
+        pass, plain PV at gate 0 as its last resort; NinjaRS with zero
+        stability thresholds; m-lit lit-unchecked).
         """
 
         path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
@@ -461,6 +468,10 @@ class Runtime:
             options["reduction"] = reduction_request(reduction)
         if reduction_target is not None:
             options["reduction_target"] = reduction_target_value(reduction_target)
+        if reduction_unchecked is not None:
+            options["reduction_unchecked"] = reduction_unchecked_value(
+                reduction_unchecked
+            )
         loader = _get_runtime_loader()
         if options and not _accepts_keyword_arguments(loader, *options):
             raise CompatibilityError(
@@ -634,6 +645,7 @@ class Runtime:
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
 
@@ -672,8 +684,16 @@ class Runtime:
         explicit backend has no fallback, and one that cannot serve the call
         is refused. ``reduction_target`` (default: the runtime's, else 1e-5)
         is the call's target accuracy, the relative accuracy of each point's
-        result that TIRust's method-choice acceptance follows. The requested
-        and effective backends, the reason, the fallback and the target are
+        result that TIRust's method-choice acceptance follows.
+        ``reduction_unchecked`` (default: the runtime's, else False) is the
+        call's unchecked setting: True drops the reduction backends' own
+        acceptance and refusal checks (TIRust: its gates and method choice
+        as method selection, no acceptance pass, plain PV at gate 0 for what
+        they refuse; NinjaRS: zero stability thresholds), so only points
+        without a finite value fail; ``"auto"`` keeps its backend choice and
+        its per-point fallback, which then acts only on those; the stability
+        checks stay their own settings. The requested and effective backends,
+        the reason, the fallback, the target and the unchecked setting are
         in every lane diagnostic (``VirtualLaneDiagnostic.reduction``; a point
         the fallback served records its own).
         """
@@ -714,7 +734,13 @@ class Runtime:
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
         options.update(
-            self._v2_options(poles, stability_checks, reduction, reduction_target)
+            self._v2_options(
+                poles,
+                stability_checks,
+                reduction,
+                reduction_target,
+                reduction_unchecked,
+            )
         )
         self._require_evaluation_options(self._backend.evaluate, options)
         if point_helicity_ids is None and point_color_ids is None:
@@ -809,9 +835,10 @@ class Runtime:
         checks: VirtualStabilityChecks | None,
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
     ) -> dict[str, object]:
-        """Pole-selection, stability-check, reduction-backend and target
-        accuracy options, forwarded only when set."""
+        """Pole-selection, stability-check, reduction-backend, target
+        accuracy and unchecked-reduction options, forwarded only when set."""
         options: dict[str, object] = {}
         if poles is not None:
             options["poles"] = pole_selection(poles)
@@ -823,10 +850,14 @@ class Runtime:
             options["reduction"] = reduction_request(reduction)
         if reduction_target is not None:
             options["reduction_target"] = reduction_target_value(reduction_target)
+        if reduction_unchecked is not None:
+            options["reduction_unchecked"] = reduction_unchecked_value(
+                reduction_unchecked
+            )
         if options and not self._virtual:
             raise CompatibilityError(
-                "poles, stability_checks, reduction_target and reduction are "
-                "virtual options"
+                "poles, stability_checks, reduction_target, reduction_unchecked "
+                "and reduction are virtual options"
             )
         return options
 
@@ -928,6 +959,7 @@ class Runtime:
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
@@ -943,6 +975,7 @@ class Runtime:
             stability_checks=stability_checks,
             reduction=reduction,
             reduction_target=reduction_target,
+            reduction_unchecked=reduction_unchecked,
         )
 
     def evaluate_resolved(
@@ -961,6 +994,7 @@ class Runtime:
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
@@ -993,7 +1027,13 @@ class Runtime:
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
         options.update(
-            self._v2_options(poles, stability_checks, reduction, reduction_target)
+            self._v2_options(
+                poles,
+                stability_checks,
+                reduction,
+                reduction_target,
+                reduction_unchecked,
+            )
         )
         if color_resolution is not None:
             options["color_resolution"] = color_resolution
@@ -1042,6 +1082,7 @@ class Runtime:
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
@@ -1058,6 +1099,7 @@ class Runtime:
             stability_checks=stability_checks,
             reduction=reduction,
             reduction_target=reduction_target,
+            reduction_unchecked=reduction_unchecked,
             color_resolution=color_resolution,
         )
 
@@ -1296,6 +1338,7 @@ class Runtime:
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -1319,7 +1362,13 @@ class Runtime:
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
         options.update(
-            self._v2_options(poles, stability_checks, reduction, reduction_target)
+            self._v2_options(
+                poles,
+                stability_checks,
+                reduction,
+                reduction_target,
+                reduction_unchecked,
+            )
         )
         if self._virtual:
             operation = self._virtual_correlation_operation("evaluate_correlated")
@@ -1394,6 +1443,7 @@ class Runtime:
         stability_checks: VirtualStabilityChecks | None = None,
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
+        reduction_unchecked: bool | None = None,
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
         | dict[str, VirtualEvaluation]
@@ -1419,7 +1469,13 @@ class Runtime:
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
         options.update(
-            self._v2_options(poles, stability_checks, reduction, reduction_target)
+            self._v2_options(
+                poles,
+                stability_checks,
+                reduction,
+                reduction_target,
+                reduction_unchecked,
+            )
         )
         if self._virtual:
             operation = self._virtual_correlation_operation("evaluate_correlated_many")

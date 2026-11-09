@@ -1951,11 +1951,15 @@ def load_runtime_backend(
     r2_strategy: R2Strategy | str | None = None,
     stability: VirtualRescuePolicy | None = None,
     reduction: str | None = None,
+    reduction_target: float | None = None,
+    reduction_unchecked: bool | None = None,
 ) -> RuntimeBackend:
     """Load a schema-v3 artifact without importing the extension during discovery.
 
     Virtual arithmetic and precision defaults are applied before exact model
     parameters are evaluated. Tree runtimes select precision during evaluation.
+    The reduction options (``reduction``, ``reduction_target``,
+    ``reduction_unchecked``) are the v2 virtual runtime's load-time defaults.
     """
 
     path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
@@ -1973,6 +1977,10 @@ def load_runtime_backend(
         options["stability"] = stability
     if reduction is not None:
         options["reduction"] = reduction
+    if reduction_target is not None:
+        options["reduction_target"] = reduction_target
+    if reduction_unchecked is not None:
+        options["reduction_unchecked"] = reduction_unchecked
     manifest_root = (
         path.parent if path.name == MANIFEST_NAME and path.is_file() else path
     )

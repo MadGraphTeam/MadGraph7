@@ -12,7 +12,11 @@ from types import MappingProxyType
 from typing import Any, Literal, NamedTuple, TypeAlias, cast
 
 from pyamplicol.config import PoleSelection, R2Strategy
-from pyamplicol.config.models import reduction_request, reduction_target
+from pyamplicol.config.models import (
+    reduction_request,
+    reduction_target,
+    reduction_unchecked,
+)
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
@@ -366,13 +370,19 @@ class VirtualReduction:
     ``target`` is the call's (or the rescue level's) target accuracy, the
     relative accuracy of each point's result that TIRust's acceptance
     follows (None: the default target, ``loops.v2.reduction.
-    default_target``)."""
+    default_target``). ``unchecked`` is the call's unchecked setting (m-lit
+    lit-unchecked; default False): True when the backend (and its per-point
+    fallback) reduced without its own acceptance and refusal checks (TIRust:
+    gates and method choice as method selection, no acceptance pass, plain
+    PV at gate 0 as its last resort, so the target drives nothing; NinjaRS:
+    zero stability thresholds)."""
 
     requested: Literal["auto", "ninjars", "tirust"]
     effective: Literal["ninjars", "tirust"]
     reason: str
     fallback: Literal["ninjars", "tirust"] | None = None
     target: float | None = None
+    unchecked: bool = False
 
     def __post_init__(self) -> None:
         # The choices are ``config.ReductionBackend``'s (one definition, one
@@ -391,6 +401,7 @@ class VirtualReduction:
                 raise ValueError("only an 'auto' request has a per-point fallback")
         if self.target is not None:
             object.__setattr__(self, "target", reduction_target(self.target))
+        reduction_unchecked(self.unchecked)
 
 
 def _carrier_bits(arithmetic: str, precision: int | None) -> int:

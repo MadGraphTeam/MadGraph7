@@ -1096,10 +1096,16 @@ fn carrier_gates_keep_the_share_of_the_significand() {
 /// determinant, no on-shell decision), ranks 4 and 6: rows the conditioning
 /// gates refuse.
 fn near_forward_boxes() -> Vec<FamilyLanes<f64>> {
+    forward_boxes(&[100., 1000., 9000.])
+}
+
+/// [`near_forward_boxes`] at the angles `sin(theta) = 2m / (m^2 + 1)` of
+/// `ms`.
+fn forward_boxes(ms: &[f64]) -> Vec<FamilyLanes<f64>> {
     let mut groups = Vec::new();
     let mut family = 0;
     let mt2 = C::new(173. * 173., 0.);
-    for m in [100f64, 1000., 9000.] {
+    for &m in ms {
         // (m^2 - 1, 2m, m^2 + 1) / 2^k: sin(theta) = 2m / (m^2 + 1).
         let unit = 2f64.powi(-(((m * m + 1.) / 500.).log2().ceil() as i32));
         let (a, b, c) = ((m * m - 1.) * unit, 2. * m * unit, (m * m + 1.) * unit);
@@ -1725,4 +1731,340 @@ fn the_masters_census_counts_relabelled_repeats_and_needs_the_store() {
         "{:?}",
         refused.err().map(|e| e.message().to_owned())
     );
+}
+
+/// The TIR backend in the unchecked mode (`TirOptions::unchecked`, m-lit
+/// lit-unchecked) and otherwise `options`.
+fn tir_unchecked(options: TirOptions) -> V2Backends {
+    V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+        unchecked: true,
+        ..options
+    })))
+}
+
+/// The kinematic rows of `groups` (a family's consecutive lanes of one
+/// point are one row).
+fn kinematic_rows<T>(groups: &[FamilyLanes<T>]) -> u64 {
+    groups
+        .iter()
+        .map(|g| {
+            (0..g.points.len())
+                .filter(|&k| k == 0 || g.points[k] != g.points[k - 1])
+                .count() as u64
+        })
+        .sum()
+}
+
+/// The near-forward boxes and the rotation-blind row of the method-choice
+/// tests, as one set of families (rows the gates refuse, rows the method
+/// choice serves, rows its acceptance refuses), with T1's generic families.
+fn unchecked_groups() -> Vec<FamilyLanes<f64>> {
+    let mut groups = near_forward_boxes();
+    for mut group in rotation_blind_row() {
+        group.family = groups.len();
+        for key in &mut group.keys {
+            key.family = group.family;
+        }
+        groups.push(group);
+    }
+    let mut rng = Lcg(7);
+    for (n, masses) in [
+        (3, vec![173. * 173., 173. * 173., 173. * 173.]),
+        (4, vec![0., 0., 0., 0.]),
+        (5, vec![0., 0., 0., 0., 0.]),
+    ] {
+        let points: Vec<_> = (0..2).map(|_| point(n, &masses, &mut rng)).collect();
+        let family = groups.len();
+        groups.push(lanes(family, &points, 3, 3, 2, &mut rng));
+    }
+    groups
+}
+
+/// The unchecked mode (m-lit lit-unchecked, DECISIONS 2026-11-08 22:34 (1),
+/// `TirOptions::unchecked`): the acceptance pass is never computed (no
+/// check row, no lane refused by its check, and the moment rows are the
+/// direct pass's, the method choice's retries and the last resort's only:
+/// no acceptance-frame row is requested, unlike `acceptance = 1e300`,
+/// which computes the whole pass); every lane the checked default serves is
+/// bitwise the same; the rows the method choice refuses (here forced by an
+/// expert's method-choice gate of 1, which its PV systems never pass: only
+/// its expansions still serve) are served by the gate-0 last resort and
+/// counted; every lane is served and finite (its distance from NinjaRS's
+/// generic engine at 80 digits printed: the rotation-blind row's
+/// method-choice lanes, which the checked acceptance refuses, are served as
+/// computed, about 1e-6 to 1e-5 off); the default (unchecked off) is bitwise
+/// the checked default and counts no last-resort row.
+#[test]
+fn the_unchecked_mode_skips_the_acceptance_and_serves_by_the_last_resort() {
+    let groups = unchecked_groups();
+    let rows = kinematic_rows(&groups);
+    let total: usize = groups.iter().map(|g| g.keys.len()).sum();
+    let truth = consistent_truth(&groups, 80);
+    // The checked default, and the same with an acceptance that admits
+    // everything (it still computes the acceptance pass).
+    let mut checked = tir();
+    let (served, _) = reduce(&mut checked, &groups, Poles::All, None);
+    let checked_statistics = V2Backend::<f64>::take_statistics(&mut checked);
+    eprintln!("checked: {:?}", checked_statistics.counts);
+    assert_eq!(count(&checked_statistics, "TIR last-resort rows"), 0);
+    assert!(
+        !checked_statistics
+            .counts
+            .iter()
+            .any(|(name, _)| *name == "TIR last-resort rows")
+    );
+    let mut admitting = V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+        acceptance: 1e300,
+        ..TirOptions::default()
+    })));
+    reduce(&mut admitting, &groups, Poles::All, None);
+    let admitting_statistics = V2Backend::<f64>::take_statistics(&mut admitting);
+    assert!(count(&admitting_statistics, "TIR method-choice check rows") > 0);
+    for (name, options) in [
+        ("unchecked", TirOptions::default()),
+        (
+            "unchecked, method choice refusing",
+            TirOptions {
+                method_choice_gate: 1.0,
+                ..TirOptions::default()
+            },
+        ),
+    ] {
+        let mut backend = tir_unchecked(options);
+        let (found, _) = reduce(&mut backend, &groups, Poles::All, None);
+        let statistics = V2Backend::<f64>::take_statistics(&mut backend);
+        eprintln!("{name}: {:?}", statistics.counts);
+        // (i) no acceptance pass.
+        for counter in [
+            "TIR method-choice check rows",
+            "TIR method-choice lanes refused by their check",
+        ] {
+            assert_eq!(count(&statistics, counter), 0, "{name}: {counter}");
+        }
+        let refused = count(&statistics, "TIR gate refusals");
+        let choice = count(&statistics, "TIR method-choice rows");
+        let last = count(&statistics, "TIR last-resort rows");
+        assert!(refused > 0, "{name}");
+        assert_eq!(
+            count(&statistics, "tensor moment rows"),
+            rows + refused + (refused - choice),
+            "{name}: direct, method-choice and last-resort rows only"
+        );
+        // (iii) what the method choice refuses, the last resort serves.
+        assert_eq!(last, refused - choice, "{name}");
+        if name.ends_with("refusing") {
+            assert!(last > 0, "{name}: the method choice refuses rows");
+        }
+        // (ii) and (iv): every lane served, the checked lanes bitwise.
+        let mut worst = 0f64;
+        for (g, group) in found.iter().enumerate() {
+            for (lane, value) in group.iter().enumerate() {
+                let value = value
+                    .as_ref()
+                    .unwrap_or_else(|reason| panic!("{name}: family {g} lane {lane}: {reason}"));
+                if let (Ok(checked), false) = (&served[g][lane], name.ends_with("refusing")) {
+                    assert_eq!(value, checked, "{name}: family {g} lane {lane}");
+                }
+                let error = relative(value, truth[g][lane].as_ref().unwrap());
+                worst = worst.max(error);
+                eprintln!("{name}: family {g} lane {lane}: {error:e} from the truth");
+            }
+        }
+        eprintln!("{name}: {total} lanes served, worst relative {worst:e}");
+        assert!(worst.is_finite(), "{name}");
+    }
+    // Off: the checked default, bitwise.
+    let mut off = V2Backends::TiRust(Box::new(TirReductionBackend::new(TirOptions {
+        unchecked: false,
+        ..TirOptions::default()
+    })));
+    let (again, _) = reduce(&mut off, &groups, Poles::All, None);
+    assert_eq!(again, served);
+    let statistics = V2Backend::<f64>::take_statistics(&mut off);
+    assert_eq!(statistics.counts, checked_statistics.counts);
+}
+
+/// The unchecked mode in the extended carriers (m-lit lit-unchecked; their
+/// method choice is off, DECISIONS 2026-11-08 06:08 R4): the conditioning
+/// gates stay as the selection and the gate-0 last resort serves the rows
+/// they refuse. With an expert's gate of 1 the gates refuse (nearly) every
+/// row: checked, those lanes fail closed; unchecked, the last resort serves
+/// every one, bitwise the values the default gate serves (plain PV either
+/// way: a gate only refuses, it never changes a value), in double-double
+/// and at 256 bits.
+#[test]
+fn the_unchecked_extended_carriers_serve_the_gates_refusals_by_the_last_resort() {
+    let mut rng = Lcg(7);
+    let mut groups = Vec::new();
+    for (family, (n, masses)) in [
+        (2, vec![173. * 173., 80. * 80.]),
+        (3, vec![0., 0., 0.]),
+        (4, vec![173. * 173., 0., 80. * 80., 0.]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let points: Vec<_> = (0..2).map(|_| point(n, &masses, &mut rng)).collect();
+        groups.push(lanes(family, &points, 3, 3, 2, &mut rng));
+    }
+    let rows = kinematic_rows(&groups);
+    let refusing = TirOptions {
+        gate: 1.0,
+        ..TirOptions::default()
+    };
+    let unchecked = TirOptions {
+        unchecked: true,
+        ..refusing
+    };
+    let dd: Vec<FamilyLanes<DoubleFloat>> = lifted(&groups, 106)
+        .iter()
+        .map(|g| {
+            let c = |v: &[Complex<Float>]| v.iter().map(Complex::to_double_float).collect();
+            FamilyLanes {
+                family: g.family,
+                propagators: g.propagators,
+                rank: g.rank,
+                points: g.points.clone(),
+                keys: g.keys.clone(),
+                shifts: c(&g.shifts),
+                masses: c(&g.masses),
+                scales: c(&g.scales),
+                s_matrix: c(&g.s_matrix),
+                coefficients: c(&g.coefficients),
+            }
+        })
+        .collect();
+    let mp = lifted(&groups, 256);
+    let checks = [
+        extended_last_resort(&dd, rows, refusing, unchecked),
+        extended_last_resort(&mp, rows, refusing, unchecked),
+    ];
+    eprintln!("extended carriers, unchecked statistics: {checks:?}");
+}
+
+/// [`the_unchecked_extended_carriers_serve_the_gates_refusals_by_the_last_resort`]
+/// in one carrier: `refusing` (every row refused by the gates) fails every
+/// lane closed, `unchecked` serves every one, bitwise the default's values.
+fn extended_last_resort<T>(
+    lanes: &[FamilyLanes<T>],
+    rows: u64,
+    refusing: TirOptions,
+    unchecked: TirOptions,
+) -> Vec<(&'static str, u64)>
+where
+    V2Backends: V2Backend<T>,
+    Complex<T>: std::fmt::Debug + PartialEq,
+{
+    let run = |options: TirOptions| {
+        let mut backend = V2Backends::TiRust(Box::new(TirReductionBackend::new(options)));
+        V2Backend::<T>::begin(&mut backend);
+        let (found, _) = V2Backend::<T>::reduce(&mut backend, lanes, Poles::All, None).unwrap();
+        (found, V2Backend::<T>::take_statistics(&mut backend))
+    };
+    let (default, _) = run(TirOptions::default());
+    let (closed, _) = run(refusing);
+    let mut failed = 0;
+    for group in &closed {
+        for lane in group {
+            if let Err(reason) = lane {
+                failed += 1;
+                assert!(reason.contains("method choice is off"), "{reason}");
+            }
+        }
+    }
+    assert!(failed > 0);
+    let (found, statistics) = run(unchecked);
+    let refused = count(&statistics, "TIR gate refusals");
+    assert!(refused > 0 && refused <= rows, "{refused} of {rows}");
+    assert_eq!(count(&statistics, "TIR last-resort rows"), refused);
+    assert_eq!(count(&statistics, "TIR method-choice rows"), 0);
+    for (g, group) in found.iter().enumerate() {
+        for (lane, value) in group.iter().enumerate() {
+            let value = value.as_ref().unwrap();
+            assert_eq!(
+                Some(value),
+                default[g][lane].as_ref().ok(),
+                "family {g} lane {lane}"
+            );
+        }
+    }
+    statistics.counts
+}
+
+/// NinjaRS's unchecked mode (m-lit lit-unchecked; `runtime::fast_options`:
+/// zero stability thresholds; `V2Reducer::set_unchecked`): the options are
+/// NinjaRS's defaults with `stability_threshold` and `relative_tolerance` 0
+/// (the routing `infrared_eps` kept). On T1's generic families and the
+/// near-forward boxes down to tiny angles, every lane the checked reducer
+/// serves keeps its value bitwise (a threshold only refuses), a lane it
+/// refuses is served finite or fails with a residual class (`NonFinite`,
+/// `MasterFailed`, or `Unstable` for an exact zero or NaN); the same reducer
+/// set back to checked is the checked default again, bitwise (its amplitudes
+/// are cached per mode). The physical rows where checked NinjaRS fails
+/// (g g > z z z, h h h, h z g) are lit-unchecked's accuracy records.
+#[test]
+fn ninjars_zero_thresholds_keep_the_served_lanes_and_refuse_only_residuals() {
+    use ninjars::fast::FastOptions;
+    use rusticol_loop_reduction::runtime::fast_options;
+    let defaults = FastOptions::default();
+    assert_eq!(fast_options(false), defaults);
+    assert_eq!(
+        fast_options(true),
+        FastOptions {
+            stability_threshold: 0.0,
+            relative_tolerance: 0.0,
+            ..defaults
+        }
+    );
+    let mut rng = Lcg(7);
+    let mut groups = forward_boxes(&[1e5, 1e6, 1e7, 9e7]);
+    for (n, masses) in [
+        (3, vec![0., 0., 0.]),
+        (4, vec![173. * 173., 0., 80. * 80., 0.]),
+        (5, vec![0., 0., 0., 0., 0.]),
+    ] {
+        let points: Vec<_> = (0..2).map(|_| point(n, &masses, &mut rng)).collect();
+        let family = groups.len();
+        groups.push(lanes(family, &points, 3, 3, 2, &mut rng));
+    }
+    let mut backend = ninjars("double", "fast");
+    let (checked, _) = reduce(&mut backend, &groups, Poles::All, None);
+    let V2Backends::NinjaRs(inner) = &mut backend else {
+        unreachable!("a NinjaRS backend")
+    };
+    inner.reducer.set_unchecked(true);
+    assert!(backend.unchecked());
+    let (found, _) = reduce(&mut backend, &groups, Poles::All, None);
+    let (mut refused, mut served) = (0, 0);
+    for (g, group) in checked.iter().enumerate() {
+        for (lane, value) in group.iter().enumerate() {
+            match (value, &found[g][lane]) {
+                (Ok(a), Ok(b)) => assert_eq!(a, b, "family {g} lane {lane}"),
+                (Err(reason), Ok(b)) => {
+                    refused += 1;
+                    served += 1;
+                    eprintln!("family {g} lane {lane}: refused checked ({reason}), served");
+                    assert!(b.iter().all(|z| z.re.is_finite() && z.im.is_finite()));
+                }
+                (Err(reason), Err(again)) => {
+                    refused += 1;
+                    eprintln!("family {g} lane {lane}: {reason}; unchecked: {again}");
+                    assert!(
+                        ["NonFinite", "MasterFailed", "Unstable"]
+                            .iter()
+                            .any(|class| again.contains(class)),
+                        "{again}"
+                    );
+                }
+                (Ok(_), Err(again)) => panic!("family {g} lane {lane}: {again}"),
+            }
+        }
+    }
+    eprintln!("NinjaRS checked refusals {refused}, served unchecked {served}");
+    let V2Backends::NinjaRs(inner) = &mut backend else {
+        unreachable!("a NinjaRS backend")
+    };
+    inner.reducer.set_unchecked(false);
+    let (again, _) = reduce(&mut backend, &groups, Poles::All, None);
+    assert_eq!(again, checked);
 }

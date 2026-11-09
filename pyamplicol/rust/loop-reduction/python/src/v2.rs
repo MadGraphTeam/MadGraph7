@@ -80,17 +80,22 @@ struct V2Reducer(runtime::V2Reducer);
 
 #[pymethods]
 impl V2Reducer {
+    /// `unchecked`: the unchecked setting (m-lit lit-unchecked,
+    /// `runtime::V2Reducer::set_unchecked`: the fast engine's zero
+    /// stability thresholds; default off).
     #[new]
-    #[pyo3(signature = (arithmetic="double", precision=None, engine="fast", cache_masters=true))]
+    #[pyo3(signature = (arithmetic="double", precision=None, engine="fast", cache_masters=true, *, unchecked=false))]
     fn new(
         arithmetic: &str,
         precision: Option<u32>,
         engine: &str,
         cache_masters: bool,
+        unchecked: bool,
     ) -> PyResult<Self> {
-        runtime::V2Reducer::new(arithmetic, precision, engine, cache_masters)
-            .map(Self)
-            .map_err(error)
+        let mut reducer =
+            runtime::V2Reducer::new(arithmetic, precision, engine, cache_masters).map_err(error)?;
+        reducer.set_unchecked(unchecked);
+        Ok(Self(reducer))
     }
     #[getter]
     fn precision_bits(&self) -> u32 {
@@ -318,21 +323,25 @@ struct V2TirReducer(rusticol_loop_reduction::runtime::V2Backends);
 #[pymethods]
 impl V2TirReducer {
     #[new]
-    #[pyo3(signature = (*, method_choice=None, alternative_first=Limit::default_limit(), acceptance=None, acceptance_frame=None))]
+    #[pyo3(signature = (*, method_choice=None, alternative_first=Limit::default_limit(), acceptance=None, acceptance_frame=None, unchecked=false))]
     fn new(
         method_choice: Option<bool>,
         alternative_first: Option<Limit>,
         acceptance: Option<f64>,
         acceptance_frame: Option<String>,
+        unchecked: bool,
     ) -> PyResult<Self> {
         #[cfg(feature = "tir")]
         {
-            let options = tir_options(
-                method_choice,
-                &alternative_first,
-                acceptance,
-                &acceptance_frame,
-            )?;
+            let options = rusticol_loop_reduction::v2_tir::TirOptions {
+                unchecked,
+                ..tir_options(
+                    method_choice,
+                    &alternative_first,
+                    acceptance,
+                    &acceptance_frame,
+                )?
+            };
             rusticol_loop_reduction::runtime::V2Backends::tirust_with([], 53, options)
                 .map(Self)
                 .map_err(error)
@@ -344,6 +353,7 @@ impl V2TirReducer {
                 alternative_first,
                 acceptance,
                 acceptance_frame,
+                unchecked,
             );
             rusticol_loop_reduction::runtime::V2Backends::tirust(
                 [],

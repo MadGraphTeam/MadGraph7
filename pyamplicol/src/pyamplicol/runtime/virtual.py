@@ -1018,7 +1018,7 @@ class V2ObservablesRuntime:
         on_failure: Literal["raise", "return"] = "raise",
         # Keyed by the call's carrier, or under a rescue policy by each
         # ``VirtualRescueLevel`` (``V2VirtualRuntime._reduction_choices``).
-        reductions: Mapping[Any, VirtualReduction] | None = None,
+        reductions: Mapping[Any, VirtualReduction | None] | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
         """``evaluate`` under a rescue policy: each level one ``evaluate``
@@ -1041,17 +1041,24 @@ class V2ObservablesRuntime:
         if reductions is None and any(
             item.reduction != "auto" for item in policy.levels
         ):
-            # A direct runtime resolves each level's requested backend for its
+            # A direct runtime resolves each level's EXPLICIT backend for its
             # carrier from the native extension's capability query
             # (``reduction.resolve`` on the summed route, as the artifact
             # runtime does): an explicit backend it cannot serve is refused
-            # typed.
+            # typed. Its "auto" levels keep the direct runtime's own rule,
+            # as an all-"auto" policy and a call without a policy do (no
+            # resolved choice: NinjaRS), so that a level's backend does not
+            # depend on its neighbours' requests (DECISIONS 2026-11-09 02:02
+            # (c); the artifact runtime resolves every level,
+            # ``V2VirtualRuntime._reduction_choices``).
             from pyamplicol.loops.v2.reduction import SUMMED, resolve
 
             native = self._observables.slice.native
             reductions = {
-                item: resolve(
-                    item.backend_request("auto"),
+                item: None
+                if item.reduction == "auto"
+                else resolve(
+                    item.reduction,
                     contribution=self.contribution_kind,
                     carrier=item.arithmetic,
                     native=native,
@@ -1061,6 +1068,7 @@ class V2ObservablesRuntime:
             }
 
         def level(indices: tuple[int, ...], rung: Any) -> VirtualEvaluation:
+            chosen = None if reductions is None else reductions[rung]
             return self.evaluate(
                 [points[i] for i in indices],
                 mu_r2=[scales[i] for i in indices],
@@ -1072,9 +1080,7 @@ class V2ObservablesRuntime:
                 on_failure="return",
                 # The level's own backend (the artifact runtime resolves one
                 # per level, ``V2VirtualRuntime._reduction_choices``).
-                reductions=(
-                    None if reductions is None else {rung.arithmetic: reductions[rung]}
-                ),
+                reductions=None if chosen is None else {rung.arithmetic: chosen},
                 **options,
             )
 
