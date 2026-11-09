@@ -147,7 +147,9 @@ def test_executor_selections_run_their_row_restriction(li, forms):
     selection formed every row's trees and counterterm kets, and a selection
     in the split form failed on the rows it dropped)."""
 
-    _selections_run_their_row_restriction(li, "li_gg_hh", _executor(li, "li_gg_hh", forms))
+    _selections_run_their_row_restriction(
+        li, "li_gg_hh", _executor(li, "li_gg_hh", forms)
+    )
 
 
 def test_folded_selections_run_their_row_restriction(li):
