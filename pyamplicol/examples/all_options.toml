@@ -5,7 +5,8 @@
 # This card is for resolution/documentation, not as a recommended physics run.
 
 # action: Required command action. Choices are generate, evaluate, benchmark,
-# inspect, model-inspect, model-compile, model-processes, and group-processes.
+# inspect, model-inspect, model-compile, model-processes, group-processes, and
+# check.
 action = "generate"
 
 # schema_version: Configuration schema. The only current value is 1.
@@ -459,6 +460,18 @@ helicity_ids = []
 # benchmark.color_flow_ids: Optional benchmark LC flow selectors. With both
 # selector lists empty, profiling chooses the generated layout's hot workload.
 color_flow_ids = []
+
+[check]
+# check.points: Positive count of seeded phase-space points per process of
+# `pyamplicol check` (one-loop requests). Default 3.
+points = 3
+# check.seed: Optional seed of the first point; null takes
+# generation.validation.seed. Default null.
+seed = 12345
+# check.precision: "auto" (binary64 first, double-double only where binary64
+# fails, is refused or is out of scope), "double", or "double-double".
+# Default auto.
+precision = "auto"
 
 [output]
 # output.format: typed API/config provenance default. The CLI uses --json.
