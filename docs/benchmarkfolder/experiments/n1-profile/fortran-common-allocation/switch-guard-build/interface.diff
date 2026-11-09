@@ -1,0 +1,132 @@
+--- original
++++ switch-guard
+@@ -272,6 +272,24 @@
+ 
+       SUBROUTINE ML5_0_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN,M2L)
+       IMPLICIT NONE
++      INTEGER CTMODE,NLOOPLINE
++      REAL*8 PL(0:3,NLOOPLINE)
++      REAL*8 PDEN(0:3,NLOOPLINE-1)
++      COMPLEX*16 M2L(NLOOPLINE)
++C     Enter the original array-owning worker only for a reversal.
++      IF (CTMODE.NE.2.AND.CTMODE.NE.5) THEN
++        RETURN
++      ENDIF
++
++      IF (NLOOPLINE.LE.2) THEN
++        RETURN
++      ENDIF
++
++      CALL ML5_0_SWITCH_ORDER_WORK(CTMODE,NLOOPLINE,PL,PDEN,M2L)
++      END
++
++      SUBROUTINE ML5_0_SWITCH_ORDER_WORK(CTMODE,NLOOPLINE,PL,PDEN,M2L)
++      IMPLICIT NONE
+ 
+       INTEGER CTMODE,NLOOPLINE
+ 
+@@ -284,6 +302,45 @@
+ 
+       INTEGER I,J,K
+ 
++      DO I=1,NLOOPLINE-1
++        DO J=0,3
++          NEW_PDEN(J,NLOOPLINE-I) = PDEN(J,I)
++        ENDDO
++      ENDDO
++      DO I=1,NLOOPLINE-1
++        DO J=0,3
++          PDEN(J,I) = NEW_PDEN(J,I)
++        ENDDO
++      ENDDO
++
++      DO I=2,NLOOPLINE
++        NEW_M2L(I)=M2L(NLOOPLINE-I+2)
++      ENDDO
++      DO I=2,NLOOPLINE
++        M2L(I)=NEW_M2L(I)
++      ENDDO
++
++
++      DO I=1,NLOOPLINE
++        DO J=0,3
++          NEW_PL(J,I) = -PL(J,NLOOPLINE+1-I)
++        ENDDO
++      ENDDO
++      DO I=1,NLOOPLINE
++        DO J=0,3
++          PL(J,I) = NEW_PL(J,I)
++        ENDDO
++      ENDDO
++
++      END
++
++      SUBROUTINE ML5_0_MP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN,M2L)
++      IMPLICIT NONE
++      INTEGER CTMODE,NLOOPLINE
++      REAL*16 PL(0:3,NLOOPLINE)
++      REAL*16 PDEN(0:3,NLOOPLINE-1)
++      COMPLEX*32 M2L(NLOOPLINE)
++C     Enter the original array-owning worker only for a reversal.
+       IF (CTMODE.NE.2.AND.CTMODE.NE.5) THEN
+         RETURN
+       ENDIF
+@@ -292,39 +349,10 @@
+         RETURN
+       ENDIF
+ 
+-      DO I=1,NLOOPLINE-1
+-        DO J=0,3
+-          NEW_PDEN(J,NLOOPLINE-I) = PDEN(J,I)
+-        ENDDO
+-      ENDDO
+-      DO I=1,NLOOPLINE-1
+-        DO J=0,3
+-          PDEN(J,I) = NEW_PDEN(J,I)
+-        ENDDO
+-      ENDDO
+-
+-      DO I=2,NLOOPLINE
+-        NEW_M2L(I)=M2L(NLOOPLINE-I+2)
+-      ENDDO
+-      DO I=2,NLOOPLINE
+-        M2L(I)=NEW_M2L(I)
+-      ENDDO
+-
+-
+-      DO I=1,NLOOPLINE
+-        DO J=0,3
+-          NEW_PL(J,I) = -PL(J,NLOOPLINE+1-I)
+-        ENDDO
+-      ENDDO
+-      DO I=1,NLOOPLINE
+-        DO J=0,3
+-          PL(J,I) = NEW_PL(J,I)
+-        ENDDO
+-      ENDDO
+-
+-      END
+-
+-      SUBROUTINE ML5_0_MP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN,M2L)
++      CALL ML5_0_MP_SWITCH_ORDER_WORK(CTMODE,NLOOPLINE,PL,PDEN,M2L)
++      END
++
++      SUBROUTINE ML5_0_MP_SWITCH_ORDER_WORK(CTMODE,NLOOPLINE,PL,PDEN,M2L)
+       IMPLICIT NONE
+ 
+       INTEGER CTMODE,NLOOPLINE
+@@ -337,14 +365,6 @@
+       COMPLEX*32 NEW_M2L(NLOOPLINE)
+ 
+       INTEGER I,J,K
+-
+-      IF (CTMODE.NE.2.AND.CTMODE.NE.5) THEN
+-        RETURN
+-      ENDIF
+-
+-      IF (NLOOPLINE.LE.2) THEN
+-        RETURN
+-      ENDIF
+ 
+       DO I=1,NLOOPLINE-1
+         DO J=0,3
