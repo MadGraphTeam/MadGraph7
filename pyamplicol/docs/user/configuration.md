@@ -254,20 +254,19 @@ them.
 - The Goldstone probe checks the Goldstone-side vertices and counterterms.
 
 Enable them when you generate from a new or edited loop UFO. Their cost,
-measured on the 2->3 and 2->4 loop-induced rows of loop_sm (one core, a
-loaded host): 3.5-21 s per 2->3 process against 2.5-14 s for the engine's
-own generation (the probe slice, a second generation of the process, is
-3-6 s of it); 27 s and 72 s for g g > h h g g and g g > h g g g (engine
-generation 5 s and 8 s); 161 s and 344 s for g g > a a g g and
-g g > z z z z (engine generation 10 s and 9 s). No probe needed the
-double-double rerun there; double-double alone took 5-191 s per 2->3
-process and 7 and 13 minutes for g g > h h g g and g g > h g g g. Sizing
-the probes' binary64 lanes to their few points then cut these probe times
-by a further 1.5-1.8x (g g > z z g 15.5 -> 10.4 s, g g > a a g g 149 -> 96
-s, g g > h g g g 80 -> 44 s). On the
-electroweak UFOs the probe slice and each Goldstone slice generate the
-process again, so the probes cost one generation of the process or more
-(e+ e- > g g g: 44 s, of which 39 s is the probe slice, against 43 s).
+measured on the loop-induced 2->3 and 2->4 rows of loop_sm (one pinned core
+of a loaded host): 3.3-13 s per 2->3 process against 2.5-14 s for the
+engine's own generation (the probe slice, a second generation of the
+process, is 3-5 s of it); 18 s and 29 s for g g > h h g g and g g > h g g g
+(engine generation 5 s and 8 s); 93 s and 103 s for g g > a a g g and
+g g > z z z z (engine generation 11 s and 9 s). No probe needed the
+double-double rerun there. Running every probe in double-double instead, as
+generation did before, took 5-195 s per 2->3 process, 7 and 13 minutes for
+g g > h h g g and g g > h g g g, and 70 and 74 minutes for
+g g > a a g g and g g > z z z z. On the electroweak UFOs the probe slice and
+each Goldstone slice generate the process again, so the probes cost one
+generation of the process or more (e+ e- > g g g: 43 s, of which 37 s is the
+probe slice, against 43 s for the engine's generation).
 
 Generation also drops the helicity rows of a loop-induced process that are
 zero before the loop integration (every numerator vanishes identically),
