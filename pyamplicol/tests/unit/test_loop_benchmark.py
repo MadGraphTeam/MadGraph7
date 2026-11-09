@@ -3288,6 +3288,15 @@ def test_the_most_optimistic_protocol_sets_each_provider_up_for_speed(
     assert record["recola"]["production_check"]["points"] == 2
     assert not record["openloops"]["production_check"]["passed"]
     assert record["madloop"]["production_check"]["max_relative"] == pytest.approx(7 / 9)
+    # The same through the command line (--production-json).
+    from tools.loop_benchmark.__main__ import main as cli
+
+    argv = ["providers", "gg_ggg", "--cpu", "0", "--points", "4"]
+    argv += ["--work", str(tmp_path / "cli"), "--protocol", "optimistic"]
+    argv += ["--production-json", str(production), "--json", str(tmp_path / "c.json")]
+    assert cli(argv) == 0
+    again = json.loads((tmp_path / "c.json").read_text())["providers"]
+    assert again["recola"]["production_check"] == record["recola"]["production_check"]
     assert providers.same_scale(
         {"points": [1, 2, 3], "mu_r": ["7", "5", "7"], "pdgs": []}
     ) == ({"points": [1, 3], "mu_r": ["7", "7"], "pdgs": []}, [0, 2])
