@@ -963,7 +963,7 @@ struct Kept {
 
 impl Kept {
     fn new(rows: &[bool], plan: &rusticol_core::loop_v2::plan::LoopProgramV4) -> PyResult<Self> {
-        if rows.len() != plan.rows || plan.rows == 0 || plan.columns % plan.rows != 0 {
+        if rows.len() != plan.rows || plan.rows == 0 || !plan.columns.is_multiple_of(plan.rows) {
             return Err(error(
                 "an amplitude-mode row mask needs one flag per plan row and the \
                  plan's columns row by row",
