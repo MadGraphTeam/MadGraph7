@@ -795,12 +795,19 @@ def verify_observation_inputs(source, case, inputs):
     for name, expected in (("generation", inputs["generation"]), ("compilation", inputs["compilation"])):
         if json.loads((output / (name + ".json")).read_text()) != expected:
             raise RuntimeError("Generated build provenance changed during measurement")
+    diagnostic_template = inputs.get("diagnostic_worker_template")
+    if diagnostic_template is not None:
+        if (diagnostic_template.get("performance_acceptance_eligible") is not False
+                or digest(diagnostic_template["path"]) != diagnostic_template["sha256"]):
+            raise RuntimeError("Diagnostic worker template changed during measurement")
+        verify_worker_template(inputs["compilation"], diagnostic_template["path"])
     campaign_guard("observation-after", inputs=inputs)
     return {"runtime": current, "executable_sha256": digest(directory / "check"),
             "points_sha256": digest(inputs["points_path"]), "numerical_cards": inputs["numerical_cards"]}
 
 
-def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600., points_path=None):
+def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600., points_path=None,
+                 diagnostic_template=None):
     campaign_guard("worker-before")
     from tirust_benchmark_worker import Worker
     from tirust_benchmark_compiler import capture_effective_flags
@@ -814,7 +821,9 @@ def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600.,
         raise RuntimeError("Generated source no longer matches compilation")
     if compilation.get("numerical_build_from_sources") is not True:
         raise RuntimeError("Numerical objects lack source-build provenance; rebuild the worker")
-    verify_worker_template(compilation, ROOT / "tools/tirust_benchmark_worker.f")
+    template = (Path(diagnostic_template).resolve() if diagnostic_template is not None
+                else ROOT / "tools/tirust_benchmark_worker.f")
+    verify_worker_template(compilation, template)
     dependencies = dependency_inputs(directory)
     if (compilation.get("link_inputs_before") != dependencies
             or compilation.get("link_inputs_after") != dependencies):
@@ -854,6 +863,9 @@ def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600.,
          "param_card_sha256": parameter_hash, "resolved_parameter_card": str(actual_card.resolve()),
          "runtime": runtime_identity(directory), "compilation": compilation,
          "generation": generation}
+    if diagnostic_template is not None:
+        inputs["diagnostic_worker_template"] = {"path": str(template), "sha256": digest(template),
+                                                 "performance_acceptance_eligible": False}
     campaign_guard("worker", inputs=inputs)
     dump(report / (source + "-inputs.json"), inputs)
     command = ["taskset", "-c", str(cpu), "./check", str(points)]
@@ -1164,6 +1176,8 @@ def validate_retained_result(directory, label, case, config):
             raise ValueError("Point masses differ from the compiled physical model")
         if value["compilation"].get("numerical_build_from_sources") is not True:
             raise ValueError("Numerical objects lack source-build provenance")
+        if "diagnostic_worker_template" in value:
+            raise ValueError("Diagnostic historical-template runs cannot qualify formal acceptance")
         verify_worker_template(value["compilation"], directory / "protocol-sources/tirust_benchmark_worker.f")
         runtime_dependencies = {key: value["runtime"][key] for key in ("archives", "metadata")}
         if (value["compilation"].get("link_inputs_before") != runtime_dependencies

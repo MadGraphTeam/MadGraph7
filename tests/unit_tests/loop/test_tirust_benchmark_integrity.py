@@ -97,6 +97,30 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
         self.assertEqual(result["resolved_parameter_card"],
                          str(self.outputs["candidate"] / "Cards/param_card.dat"))
 
+    def test_diagnostic_template_is_explicit_bound_and_ineligible(self):
+        template = self.directory / "historical-worker.f"
+        template.write_bytes((ROOT / "tools/tirust_benchmark_worker.f").read_bytes())
+        report = self.report / "historical-start"
+        report.mkdir()
+        with ExitStack() as stack, patch.object(protocol, "Worker"):
+            benchmark.start_worker(stack, "candidate", self.case, [9], self.config, 0,
+                                   report, diagnostic_template=template)
+        inputs = json.loads((report / "candidate-inputs.json").read_text())
+        self.assertFalse(inputs["diagnostic_worker_template"]["performance_acceptance_eligible"])
+        benchmark.verify_observation_inputs("candidate", self.case, inputs)
+        template.write_text("different historical template")
+        with self.assertRaisesRegex(RuntimeError, "Diagnostic worker template changed"):
+            benchmark.verify_observation_inputs("candidate", self.case, inputs)
+
+    def test_diagnostic_template_cannot_bypass_compilation_binding(self):
+        template = self.directory / "wrong-worker.f"
+        template.write_text("not the compiled worker")
+        with ExitStack() as stack, patch.object(protocol, "Worker") as child:
+            with self.assertRaisesRegex(RuntimeError, "Worker template differs"):
+                benchmark.start_worker(stack, "candidate", self.case, [9], self.config, 0,
+                                       self.report, diagnostic_template=template)
+            child.assert_not_called()
+
     def test_post_observation_checks_bound_inputs(self):
         inputs = self.launch()
         self.assertEqual(benchmark.verify_observation_inputs("candidate", self.case, inputs)["points_sha256"],

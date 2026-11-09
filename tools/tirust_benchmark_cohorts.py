@@ -50,6 +50,59 @@ def exclusive_json(path, value):
         stream.write("\n")
 
 
+def locations(label):
+    """Use explicit campaign paths; keep the historical CLI locations intact."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,100}", label):
+        raise ValueError("Use a new simple lowercase report label")
+    report = bench.REPORT / "experiments/cohorts" / label
+    workspace = (bench.WORK / "cohort-diagnostics" / label if bench.CAMPAIGN_ID is not None
+                 else ROOT / ".tirust-build/cohorts" / label)
+    return report, workspace
+
+
+def require_generation_binding(generation, compilation):
+    binding = bench.campaign_binding()
+    if any(record.get("campaign_binding") != binding for record in (generation, compilation)):
+        raise ValueError("Cohort generation/compilation belongs to a different campaign")
+
+
+def configure_clone(workspace, source, case, chain, config):
+    """Only card/filter edits use the private workspace; guards keep the campaign namespace."""
+    original = bench.WORK
+    try:
+        bench.WORK = workspace
+        return bench.configure(source, case, chain, config)
+    finally:
+        bench.WORK = original
+
+
+def validate_campaign_evidence(report, spec, inputs, compiled, results):
+    """Bind diagnostic evidence to the selected, retained campaign manifest."""
+    binding = spec.get("campaign_binding")
+    if binding != bench.campaign_binding():
+        raise ValueError("Select the cohort's exact campaign before validating its evidence")
+    require_generation_binding(inputs["generation"], compiled["original"])
+    if any(record.get("campaign_binding") != binding for record in (inputs, compiled, results)):
+        raise ValueError("Cohort records have inconsistent campaign bindings")
+    if binding is None:
+        return
+    manifest_path = Path(report) / "campaign-manifest.json"
+    config_path = Path(report) / "cases.json"
+    manifest = json.loads(manifest_path.read_text())
+    shared = manifest["shared_inputs"]["files"]
+    if (bench.digest(manifest_path) != binding["manifest_sha256"]
+            or manifest != bench.CAMPAIGN_MANIFEST
+            or bench.digest(config_path) != shared["cases.json"]
+            or json.loads(config_path.read_text()) != spec["config"]
+            or bench.content_digest(spec["config"]) != manifest["shared_inputs"]["policy_sha256"]
+            or inputs["points_sha256"] != shared["points/" + spec["case"]["id"] + ".dat"]
+            or inputs["point_metadata_sha256"] != shared["points/" + spec["case"]["id"] + ".json"]):
+        raise ValueError("Cohort manifest, policy or point inputs differ from campaign preregistration")
+    # Historical validation uses the snapshot and recorded native identities,
+    # not today's installed library or exporter checkout.
+    bench.campaign_guard("validate-retained", inputs=inputs)
+
+
 def category(code, retries, backend, valid=True, fpe=(False, False)):
     """Strict steady status plus absolute, immediately sampled retry counters."""
     if (not valid or len(fpe) != 2 or any(fpe)
@@ -240,6 +293,9 @@ def mutable_paths_are_local(output):
 
 def build_clone(original, output, report, env):
     compilation = json.loads((original / "compilation.json").read_text())
+    generation = json.loads((original / "generation.json").read_text())
+    require_generation_binding(generation, compilation)
+    bench.campaign_guard("cohort-build-before", inputs=generation)
     if not compilation.get("numerical_build_from_sources"):
         raise ValueError("Original numerical objects lack source-build evidence")
     if bench.generated_sources(original) != compilation["sources"]:
@@ -294,7 +350,7 @@ def build_clone(original, output, report, env):
             or dependencies != bench.dependency_inputs(directory)
             or not bench.same_compiler_policy(flags, after_flags)):
         raise ValueError("Driver-only build changed numerical objects, sources, dependencies or flags")
-    record = {"original": compilation, "original_directory": str(original),
+    record = {**bench.campaign_fields(), "original": compilation, "original_directory": str(original),
               "diagnostic_directory": str(output), "sources": sources,
               "numerical_objects_before": objects, "numerical_objects_after": after_objects,
               "link_inputs_before": dependencies, "link_inputs_after": bench.dependency_inputs(directory),
@@ -346,22 +402,25 @@ def measure(worker, report, backend, indices, loops, expected, reference):
 
 
 def run(args):
+    bench.campaign_guard("cohort-before")
     config = bench.load_config()
     case = next(case for case in config["cases"] if case["id"] == args.case)
     original = bench.output_dir(args.source, case)
-    report = bench.REPORT / "experiments/cohorts" / args.label
+    report, workspace = locations(args.label)
     report.mkdir(parents=True, exist_ok=False)
-    workspace = ROOT / ".tirust-build/cohorts" / args.label
-    original_work = bench.WORK
     env = bench.environment()
-    specification = {"scope": SCOPE, "performance_acceptance_eligible": False, "trace_schema": 2,
+    protocols = (*PROTOCOLS, "tirust_benchmark_campaign.py") if bench.CAMPAIGN_ID is not None else PROTOCOLS
+    specification = {**bench.campaign_fields(), "scope": SCOPE, "performance_acceptance_eligible": False, "trace_schema": 2,
                      "case": case, "source": args.source, "backend": args.backend,
                      "repetitions": args.repetitions, "target_seconds": args.target_seconds,
                      "cpu": args.cpu, "created_utc": bench.utc_now(), "config": config,
                      "machine": bench.machine_identity(args.cpu),
-                     "protocols": {name: bench.digest(ROOT / "tools" / name) for name in PROTOCOLS}}
-    for name in PROTOCOLS:
+                     "protocols": {name: bench.digest(ROOT / "tools" / name) for name in protocols}}
+    for name in protocols:
         shutil.copy2(ROOT / "tools" / name, report / name)
+    if bench.CAMPAIGN_ID is not None:
+        shutil.copy2(bench.REPORT / "manifest.json", report / "campaign-manifest.json")
+        shutil.copy2(bench.REPORT / "cases.json", report / "cases.json")
     exclusive_json(report / "specification.json", specification)
     try:
         with ExitStack() as stack:
@@ -372,16 +431,17 @@ def run(args):
                 print("Acquired numerical-tests lock", flush=True)
             output = workspace / "outputs" / args.source / case["id"]
             directory, compilation = build_clone(original, output, report, env)
-            bench.WORK = workspace
-            settings = bench.configure(args.source, case, [args.backend], config)
+            settings = configure_clone(workspace, args.source, case, [args.backend], config)
             bench.validate_worker_modes(settings)
             points = bench.REPORT / "points" / (case["id"] + ".dat")
             metadata = json.loads(points.with_suffix(".json").read_text())
             if bench.digest(points) != metadata["sha256"] or metadata["inputs"]["count"] != 100:
                 raise ValueError("Expected unchanged original 100-point stream")
             generation = json.loads((output / "generation.json").read_text())
+            require_generation_binding(generation, compilation["original"])
             card_hash = bench.digest(output / "Cards/param_card.dat")
-            if (generation["case"] != case or generation["parameter_card_sha256"] != card_hash
+            if (generation["case"] != case or generation["source"] != args.source
+                    or generation["parameter_card_sha256"] != card_hash
                     or metadata["inputs"]["incoming_masses"] + metadata["inputs"]["masses"]
                     != compilation["original"]["masses"]):
                 raise ValueError("Physical model/card/mass identity changed")
@@ -393,11 +453,13 @@ def run(args):
             shutil.copy2(output / "Cards/param_card.dat", report / "param_card.dat")
             shutil.copy2(output / "Cards/MadLoopParams.dat", report / "MadLoopParams.dat")
             runtime = bench.runtime_identity(directory)
-            exclusive_json(report / "inputs.json", {"settings": settings, "generation": generation,
+            inputs = {**bench.campaign_fields(), "settings": settings, "generation": generation,
                            "points_sha256": metadata["sha256"], "physical_card_sha256": card_hash,
                            "point_metadata_sha256": bench.digest(report / "points.json"),
                            "numerical_card_sha256": bench.digest(report / "MadLoopParams.dat"),
-                           "runtime": runtime})
+                           "runtime": runtime}
+            bench.campaign_guard("cohort-worker", inputs=inputs)
+            exclusive_json(report / "inputs.json", inputs)
             for name in EXTRA:
                 (directory / name).unlink(missing_ok=True)
             try:
@@ -456,18 +518,17 @@ def run(args):
                 or bench.digest(output / "Cards/MadLoopParams.dat") != bench.digest(report / "MadLoopParams.dat")
                 or bench.digest(points) != metadata["sha256"]):
             raise ValueError("Source/runtime/physical inputs changed during diagnostic")
-        exclusive_json(report / "results.json", {"scope": SCOPE, "performance_acceptance_eligible": False,
+        bench.campaign_guard("cohort-after", inputs={**inputs, "runtime": after})
+        exclusive_json(report / "results.json", {**bench.campaign_fields(), "scope": SCOPE, "performance_acceptance_eligible": False,
                        "cohorts": results, "runtime_after": after,
                        "manifest_sha256": bench.digest(report / "cohorts.json")})
         validate_report(report)
         print(json.dumps({name: {k: v for k, v in value.items() if k != "batches"}
                           for name, value in results.items()}), flush=True)
     except BaseException as error:
-        exclusive_json(report / "failure.json", {"error_type": type(error).__name__, "error": str(error),
+        exclusive_json(report / "failure.json", {**bench.campaign_fields(), "error_type": type(error).__name__, "error": str(error),
                        "performance_acceptance_eligible": False})
         raise
-    finally:
-        bench.WORK = original_work
 
 
 def validate_report(report):
@@ -484,6 +545,7 @@ def validate_report(report):
     original = compiled["original"]
     results = json.loads((report / "results.json").read_text())
     manifest = json.loads((report / "cohorts.json").read_text())
+    validate_campaign_evidence(report, spec, inputs, compiled, results)
     if spec["performance_acceptance_eligible"] or results["performance_acceptance_eligible"]:
         raise ValueError("Cohort diagnostics cannot qualify acceptance")
     if any(bench.digest(report / name) != checksum for name, checksum in spec["protocols"].items()):
@@ -590,6 +652,7 @@ def main():
     parser.add_argument("--backend", type=int, choices=(1, 6, 7, 8, 9))
     parser.add_argument("--source", choices=("baseline", "candidate"), default="candidate")
     parser.add_argument("--label", required=True)
+    parser.add_argument("--campaign", help="Explicit registered source/native/policy campaign ID")
     parser.add_argument("--cpu", type=int, default=min(bench.os.sched_getaffinity(0)))
     parser.add_argument("--repetitions", type=int, default=7)
     parser.add_argument("--target-seconds", type=float, default=1.)
@@ -603,8 +666,11 @@ def main():
         parser.error("Use at least seven repetitions and a one-second target")
     if args.cpu not in bench.os.sched_getaffinity(0):
         parser.error("CPU outside available affinity")
+    if args.campaign:
+        from tirust_benchmark_campaign import activate_campaign
+        activate_campaign(bench, args.campaign)
     if args.phase == "validate":
-        print(json.dumps(validate_report(bench.REPORT / "experiments/cohorts" / args.label)))
+        print(json.dumps(validate_report(locations(args.label)[0])))
     else:
         if not args.case or args.backend is None:
             parser.error("run requires --case and --backend")
