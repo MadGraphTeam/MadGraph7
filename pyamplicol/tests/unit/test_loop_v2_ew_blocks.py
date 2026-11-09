@@ -42,7 +42,7 @@ LINES = (
 )
 
 
-def _card(root: Path, expression: str) -> Path:
+def _card(root: Path, expression: str, extra: str = "") -> Path:
     root.mkdir(parents=True, exist_ok=True)
     card = root / "card.toml"
     card.write_text(
@@ -59,7 +59,7 @@ max_coupling_orders = {{ QCD = 0, QED = 4 }}
 fixed_parameters = {{MB = "0", MTA = "0", WT = "0", WZ = "0", WW = "0", WH = "0"}}
 [check]
 points = 2
-"""
+{extra}"""
     )
     return card
 
@@ -83,7 +83,11 @@ def test_ward_identities_of_two_photons(tmp_path):
     from pyamplicol.api.services import check
     from pyamplicol.loops.v2 import checks
 
-    report = check(_card(tmp_path, "u u~ > d d~ a a"))
+    # Untagged photons: the G_mu model has no adjustable 1/alpha(0) for
+    # tagged ones (ew_policy.ExternalPhotonError).
+    report = check(
+        _card(tmp_path, "u u~ > d d~ a a", '[loop]\nexternal_photons = "none"\n')
+    )
     (process,) = report.processes
     ward = [row for row in process.rows if row.check == "ward"]
     assert sorted({row.subject for row in ward}) == [

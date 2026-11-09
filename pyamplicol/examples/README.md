@@ -506,7 +506,8 @@ virtual equals Recola 2.3.0 (the smoke test reads the fixture
 4e-14, both poles of every sector within the evaluation's estimate, and the
 finite parts within the two codes' complex-mass counterterm prescriptions
 (2e-6 to 5e-4 relative; the difference falls as the widths squared). The
-whole walkthrough at two points: WALKTHROUGH.
+whole walkthrough at two points: 586 s (`check` 241 s, generation 315 s on
+the loaded host), peak 8.0 GiB.
 
 ### `g g > z g g`, loop-induced (every quark loop)
 
