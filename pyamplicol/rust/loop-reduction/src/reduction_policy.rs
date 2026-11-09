@@ -10,26 +10,39 @@
 //! A call requests `"auto"`, `"ninjars"` or `"tirust"`. [`resolve`] chooses
 //! the effective backend once per call and carrier, never per point:
 //!
-//! * `"auto"` takes the per-type default ([`default_of`]) when it serves the
-//!   carrier on the call's route, else NinjaRS, with the reason recorded; on
-//!   a TIR-only artifact (`admitted` = TIRust, m-lit lit-eft) it takes TIRust
-//!   for both process types, with no NinjaRS fallback;
+//! * `"auto"` takes the per-type default ([`auto_default`]: TIRust for a
+//!   loop-induced process, NinjaRS for a Born-interfered one; TIRust for both
+//!   on a TIR-only artifact, `admitted` = TIRust, m-lit lit-eft) when it
+//!   serves the carrier on the call's route, else NinjaRS, with the reason
+//!   recorded. Where `"auto"` takes TIRust and NinjaRS serves the call too,
+//!   NinjaRS is the call's PER-POINT FALLBACK ([`Choice::fallback`], m-lit
+//!   F3 (c), USER 2026-11-08 ~15:40, DECISIONS 15:19 / 15:32): a point TIRust
+//!   refuses or fails (also in the enabled binary64 stability monitoring's
+//!   own evaluations) is evaluated again on NinjaRS from its original exact
+//!   inputs, at the call's own carrier, after the TIRust call; the backend
+//!   that served each point and the fallback's reason are recorded per point
+//!   ([`fallback_served`]; a point NinjaRS fails too fails with both
+//!   reasons, [`fallback_failed`]). A TIR-only artifact has no fallback;
 //! * an explicit backend that cannot serve the call is refused typed
 //!   ([`Refusal::Unavailable`], the Python API's `ReductionUnavailable`):
-//!   never a silent switch.
+//!   never a silent switch, and an explicit backend has no fallback (its
+//!   refusals and failures stay failed points).
+//!
+//! TIRust serves at a TARGET ACCURACY ([`DEFAULT_TARGET`], set per call or
+//! runtime, validated by [`target`]): the relative accuracy of each point's
+//! evaluated result (every squared-order sector against its own size, the
+//! rescue's `"relative"` metric), from which TIRust's method-choice
+//! acceptance is calibrated (`v2_tir::acceptance_of`, feature `tir`).
 //!
 //! What a backend serves is the native capability
 //! (`runtime::backend_carriers`), passed in by the caller; an artifact may
 //! admit fewer backends (`admitted`). A route ([`Route`]) is what a call
 //! evaluates and the backends its executor runs, and `auto` there takes
-//! only the backends of its `auto` set: NinjaRS on the artifact runtime's
-//! routes ([`SUMMED`], [`RESOLVED`]), so `"auto"` keeps NinjaRS for
-//! loop-induced processes too, with the reason recorded, and TIRust serves
-//! explicit requests. The two backends' loop-induced agreement is
-//! established (m-lit lit-cache); what keeps `"auto"` on NinjaRS is that
-//! TIRust still fails closed on points NinjaRS serves (slice-status
-//! DECISIONS 2026-11-08 11:17: no automatic switch in this release; adding
-//! TIRust to the `auto` sets here is that switch).
+//! only the backends of its `auto` set: both backends on the artifact
+//! runtime's routes ([`SUMMED`], [`RESOLVED`]), so `"auto"` takes TIRust for
+//! loop-induced processes on both (m-lit F3, USER 2026-11-08 ~14:40 / ~15:40,
+//! superseding DECISIONS 2026-11-08 11:17: the per-point NinjaRS fallback
+//! serves the points TIRust fails closed on).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -39,6 +52,84 @@ pub const BACKENDS: [&str; 2] = ["ninjars", "tirust"];
 pub const CARRIERS: [&str; 3] = ["double", "double-double", "arbitrary"];
 /// The contribution kinds, by name.
 pub const CONTRIBUTIONS: [&str; 2] = ["virtual", "loop-induced"];
+
+/// The backend `"auto"` falls back to: for the whole call when the
+/// per-type default cannot serve it, per point when it serves the call
+/// ([`Choice::fallback`]).
+const FALLBACK: &str = "ninjars";
+
+/// The default target accuracy of a call (m-lit F3 (a), USER 2026-11-08
+/// ~14:40: '1e-5 is fine for many applications'): the relative accuracy of
+/// each point's evaluated result, every squared-order sector against its
+/// own size (the rescue's `"relative"` metric). TIRust's method-choice
+/// acceptance follows it through its calibration (`v2_tir::acceptance_of`);
+/// NinjaRS has no setting it drives. The one definition (Python reads it
+/// from [`policy_json`], the native SDKs from here).
+pub const DEFAULT_TARGET: f64 = 1e-5;
+
+/// The refusal of a target accuracy that is not a finite positive number:
+/// one text for every surface (the Python API's `config.models.
+/// reduction_target` reads it from [`policy_json`]).
+pub const TARGET_REFUSAL: &str =
+    "the reduction target is a relative accuracy: a finite positive number";
+
+/// A target accuracy (the one validator of the native SDKs; the Python
+/// API's states the same rule with [`TARGET_REFUSAL`]): a finite positive
+/// number.
+pub fn target(value: f64) -> Result<f64, Refusal> {
+    if value.is_finite() && value > 0.0 {
+        Ok(value)
+    } else {
+        Err(Refusal::Invalid(TARGET_REFUSAL.to_owned()))
+    }
+}
+
+/// The default of `"auto"` for a `contribution` on an artifact admitting
+/// `admitted` (`None`: every backend): TIRust on a TIR-only artifact (its
+/// only backend, m-lit lit-eft), else the per-type default ([`default_of`]).
+/// What [`resolve`], `V2Runtime::open`, the SDK capabilities and the Python
+/// API's inspect record read.
+pub fn auto_default(
+    contribution: &str,
+    admitted: Option<&BTreeSet<String>>,
+) -> Option<&'static str> {
+    if tir_only(admitted) {
+        Some("tirust")
+    } else {
+        default_of(contribution)
+    }
+}
+
+/// Whether an artifact admitting `admitted` is TIR-only.
+fn tir_only(admitted: Option<&BTreeSet<String>>) -> bool {
+    admitted.is_some_and(|set| set.len() == 1 && set.contains("tirust"))
+}
+
+/// The reason of a point the per-point fallback served: `primary` (the
+/// call's effective backend) refused or failed it (`failure`, its reasons),
+/// and `fallback` evaluated it again.
+pub fn fallback_served(primary: &str, fallback: &str, failure: &str) -> String {
+    format!(
+        "auto: {}, the per-point fallback: {} refused or failed the point ({failure})",
+        name_of(fallback),
+        name_of(primary)
+    )
+}
+
+/// A reason of a point the per-point fallback failed too (after the
+/// primary backend's own reasons).
+pub fn fallback_failed(fallback: &str, reason: &str) -> String {
+    format!("{} fallback: {reason}", name_of(fallback))
+}
+
+/// The refusal of a call's cross-backend check whose other backend cannot
+/// serve the call (`message`, its refusal).
+pub fn cross_refusal(message: &str) -> String {
+    format!(
+        "the cross-backend check (stability_checks cross_backend) compares with the \
+         other reduction backend: {message}"
+    )
+}
 
 /// The per-type default of `"auto"` (RULED Q17 / Q40): NinjaRS for
 /// Born-interfered processes, TIRust for loop-induced ones.
@@ -100,21 +191,20 @@ pub const SUMMED: &str = "summed";
 pub const RESOLVED: &str = "resolved";
 
 /// The artifact runtime's routes. Both executors run both backends (m-lit
-/// lit-tir); `"auto"` stays on NinjaRS: TIRust still fails closed on points
-/// NinjaRS serves (DECISIONS 2026-11-08 11:17; a switch adds `"tirust"` to
-/// the `auto` sets here, R3).
+/// lit-tir), and `"auto"` takes either on both (m-lit F3: TIRust for
+/// loop-induced processes, with the per-point NinjaRS fallback).
 const ROUTES: [RouteDefinition; 2] = [
     (
         SUMMED,
         "the summed virtual",
         &["ninjars", "tirust"],
-        &["ninjars"],
+        &["ninjars", "tirust"],
     ),
     (
         RESOLVED,
         "the colour-, spin- and helicity-resolved outputs and selections",
         &["ninjars", "tirust"],
-        &["ninjars"],
+        &["ninjars", "tirust"],
     ),
 ];
 
@@ -130,13 +220,16 @@ pub fn route(key: &str) -> Option<Route> {
         })
 }
 
-/// The policy as JSON (what the Python API reads, `reduction.DEFAULTS` and
-/// its routes): `{"backends", "carriers", "defaults": {kind: backend},
-/// "routes": {key: {"serves", "backends", "auto"}}}`.
+/// The policy as JSON (what the Python API reads, `reduction.DEFAULTS`, its
+/// routes and the default target): `{"backends", "carriers", "defaults":
+/// {kind: backend}, "fallback", "target": {"default", "refusal"}, "routes": {key:
+/// {"serves", "backends", "auto"}}}`.
 pub fn policy_json() -> serde_json::Value {
     serde_json::json!({
         "backends": BACKENDS,
         "carriers": CARRIERS,
+        "fallback": FALLBACK,
+        "target": {"default": DEFAULT_TARGET, "refusal": TARGET_REFUSAL},
         "defaults": CONTRIBUTIONS
             .iter()
             .map(|kind| ((*kind).to_owned(), serde_json::json!(default_of(kind))))
@@ -154,12 +247,15 @@ pub fn policy_json() -> serde_json::Value {
 }
 
 /// The chosen backend of a call: the request, the effective backend and the
-/// reason (the Python API's `VirtualReduction`).
+/// reason (the Python API's `VirtualReduction`), and the per-point fallback
+/// (`"auto"` on TIRust where NinjaRS serves the call too: NinjaRS; none
+/// otherwise, an explicit request included).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Choice {
     pub requested: String,
     pub effective: String,
     pub reason: String,
+    pub fallback: Option<String>,
 }
 
 /// Why a request is not served.
@@ -264,6 +360,7 @@ pub fn resolve(
         requested: requested.to_owned(),
         effective: effective.to_owned(),
         reason,
+        fallback: None,
     };
     if requested != "auto" {
         if let Some(why) = unavailable(requested, carrier, served, allowed, route) {
@@ -274,23 +371,20 @@ pub fn resolve(
         }
         return Ok(choice(requested, "requested".to_owned()));
     }
-    let tir_only = allowed.len() == 1 && allowed.contains("tirust");
+    let tir_only = tir_only(Some(allowed));
     // A TIR-only artifact: no NinjaRS fallback exists (m-lit Q18, Q24).
-    let default = if tir_only { "tirust" } else { type_default };
+    let default = auto_default(contribution, Some(allowed)).unwrap_or(type_default);
     let kind = kind_of(contribution);
     let why = unavailable(default, carrier, served, allowed, route);
-    if why.is_none()
-        && !route.automatic(default)
-        && !tir_only
-        && unavailable("ninjars", carrier, served, allowed, route).is_none()
-    {
-        // Served on explicit request, not yet by "auto" (`Route::auto`).
+    let fallback_serves = unavailable(FALLBACK, carrier, served, allowed, route).is_none();
+    if why.is_none() && !route.automatic(default) && !tir_only && fallback_serves {
+        // Served on explicit request, not by "auto" on this route
+        // (`Route::auto`).
         return Ok(choice(
-            "ninjars",
+            FALLBACK,
             format!(
                 "auto: NinjaRS; {}, the {kind} default, serves {} on explicit \
-                 request: it still fails closed on points NinjaRS serves, so \
-                 'auto' keeps NinjaRS",
+                 request only",
                 name_of(default),
                 route.serves
             ),
@@ -298,18 +392,38 @@ pub fn resolve(
     }
     let Some(why) = why else {
         // A TIR-only artifact's reason names its one backend for both
-        // process types (m-lit lit-eft), the loop-induced default included.
-        let reason = if !tir_only {
-            format!("auto: {}, the {kind} default", name_of(default))
-        } else {
-            format!(
-                "auto: {}, the only backend the artifact admits",
-                name_of(default)
-            )
-        };
-        return Ok(choice(default, reason));
+        // process types (m-lit lit-eft), the loop-induced default included;
+        // it has no fallback.
+        if tir_only {
+            return Ok(choice(
+                default,
+                format!(
+                    "auto: {}, the only backend the artifact admits",
+                    name_of(default)
+                ),
+            ));
+        }
+        if default != FALLBACK && fallback_serves {
+            // The per-point fallback (m-lit F3 (c)).
+            return Ok(Choice {
+                fallback: Some(FALLBACK.to_owned()),
+                ..choice(
+                    default,
+                    format!(
+                        "auto: {}, the {kind} default; a point it refuses or fails is \
+                         evaluated again on {} (the per-point fallback, recorded per point)",
+                        name_of(default),
+                        name_of(FALLBACK)
+                    ),
+                )
+            });
+        }
+        return Ok(choice(
+            default,
+            format!("auto: {}, the {kind} default", name_of(default)),
+        ));
     };
-    let fallback = "ninjars";
+    let fallback = FALLBACK;
     let other = unavailable(fallback, carrier, served, allowed, route);
     if fallback == default || other.is_some() {
         let tail = other.map(|o| format!("; {o}")).unwrap_or_default();
@@ -344,32 +458,78 @@ mod tests {
     }
 
     #[test]
-    fn auto_keeps_ninjars_on_the_artifact_routes_with_its_reason() {
-        let both = served_of(&[("ninjars", &CARRIERS), ("tirust", &["double"])]);
+    fn auto_takes_tirust_for_loop_induced_with_the_per_point_fallback() {
+        let both = served_of(&[("ninjars", &CARRIERS), ("tirust", &CARRIERS)]);
         for key in [SUMMED, RESOLVED] {
             let route = route(key).unwrap();
             assert_eq!(route.backends, set(&BACKENDS));
-            let found = resolve("auto", "virtual", "double", &both, None, &route).unwrap();
-            assert_eq!(found.effective, "ninjars");
-            assert_eq!(found.reason, "auto: NinjaRS, the Born-interfered default");
-            let found = resolve("auto", "loop-induced", "double", &both, None, &route).unwrap();
-            assert_eq!(found.effective, "ninjars");
-            assert_eq!(
-                found.reason,
-                format!(
-                    "auto: NinjaRS; TIRust, the loop-induced default, serves {} on \
-                     explicit request: it still fails closed on points NinjaRS \
-                     serves, so 'auto' keeps NinjaRS",
-                    route.serves
-                )
-            );
-            let found = resolve("tirust", "loop-induced", "double", &both, None, &route).unwrap();
-            assert_eq!(
-                (found.requested.as_str(), found.effective.as_str()),
-                ("tirust", "tirust")
-            );
-            assert_eq!(found.reason, "requested");
+            for carrier in CARRIERS {
+                let found = resolve("auto", "virtual", carrier, &both, None, &route).unwrap();
+                assert_eq!(found.effective, "ninjars");
+                assert_eq!(found.fallback, None);
+                assert_eq!(found.reason, "auto: NinjaRS, the Born-interfered default");
+                let found = resolve("auto", "loop-induced", carrier, &both, None, &route).unwrap();
+                assert_eq!(found.effective, "tirust", "{key} {carrier}");
+                assert_eq!(found.fallback.as_deref(), Some("ninjars"));
+                assert_eq!(
+                    found.reason,
+                    "auto: TIRust, the loop-induced default; a point it refuses or fails \
+                     is evaluated again on NinjaRS (the per-point fallback, recorded per point)"
+                );
+                // Explicit backends: never switched, no fallback.
+                for explicit in BACKENDS {
+                    for kind in CONTRIBUTIONS {
+                        let found = resolve(explicit, kind, carrier, &both, None, &route).unwrap();
+                        assert_eq!(
+                            (found.requested.as_str(), found.effective.as_str()),
+                            (explicit, explicit)
+                        );
+                        assert_eq!(found.reason, "requested");
+                        assert_eq!(found.fallback, None);
+                    }
+                }
+            }
         }
+    }
+
+    #[test]
+    fn one_auto_default_helper() {
+        let only = set(&["tirust"]);
+        assert_eq!(auto_default("loop-induced", None), Some("tirust"));
+        assert_eq!(auto_default("virtual", None), Some("ninjars"));
+        assert_eq!(auto_default("virtual", Some(&only)), Some("tirust"));
+        assert_eq!(auto_default("loop-induced", Some(&only)), Some("tirust"));
+        assert_eq!(
+            auto_default("virtual", Some(&set(&BACKENDS))),
+            Some("ninjars")
+        );
+        assert_eq!(auto_default("tree", None), None);
+    }
+
+    #[test]
+    fn the_target_is_a_finite_positive_number() {
+        assert_eq!(target(DEFAULT_TARGET), Ok(1e-5));
+        assert_eq!(target(1e-12), Ok(1e-12));
+        for bad in [0.0, -1e-5, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(
+                target(bad),
+                Err(Refusal::Invalid(TARGET_REFUSAL.to_owned()))
+            );
+        }
+    }
+
+    #[test]
+    fn fallback_texts() {
+        assert_eq!(
+            fallback_served("tirust", "ninjars", "family 2: refused"),
+            "auto: NinjaRS, the per-point fallback: TIRust refused or failed the point \
+             (family 2: refused)"
+        );
+        assert_eq!(
+            fallback_failed("ninjars", "ImpreciseResult"),
+            "NinjaRS fallback: ImpreciseResult"
+        );
+        assert!(cross_refusal("x").ends_with("other reduction backend: x"));
     }
 
     #[test]
@@ -395,7 +555,7 @@ mod tests {
         let tir = served_of(&[("ninjars", &CARRIERS), ("tirust", &["double"])]);
         let found = resolve("auto", "loop-induced", "double", &tir, None, &every).unwrap();
         assert_eq!(found.effective, "tirust");
-        assert_eq!(found.reason, "auto: TIRust, the loop-induced default");
+        assert_eq!(found.fallback.as_deref(), Some("ninjars"));
         let found = resolve("auto", "loop-induced", "double-double", &tir, None, &every).unwrap();
         assert!(
             found
@@ -411,6 +571,7 @@ mod tests {
         );
         let found = resolve("auto", "loop-induced", "double", &tir, Some(&only), &every).unwrap();
         assert_eq!(found.effective, "tirust");
+        assert_eq!(found.fallback, None);
         assert_eq!(
             found.reason,
             "auto: TIRust, the only backend the artifact admits"
@@ -447,8 +608,11 @@ mod tests {
         assert_eq!(record["defaults"]["virtual"], "ninjars");
         assert_eq!(
             record["routes"][SUMMED]["auto"],
-            serde_json::json!(["ninjars"])
+            serde_json::json!(["ninjars", "tirust"])
         );
+        assert_eq!(record["fallback"], "ninjars");
+        assert_eq!(record["target"]["default"], DEFAULT_TARGET);
+        assert_eq!(record["target"]["refusal"], TARGET_REFUSAL);
         assert_eq!(
             record["routes"][RESOLVED]["backends"],
             serde_json::json!(["ninjars", "tirust"])

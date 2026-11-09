@@ -44,7 +44,11 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 129
+    assert len(FIELD_REGISTRY) == 130
+    # m-lit F3: TIRust's target accuracy, a runtime option (None: 1e-5).
+    assert FIELD_REGISTRY["evaluation.reduction_target"].default is None
+    assert FIELD_REGISTRY["evaluation.reduction_target"].nullable
+    assert FIELD_REGISTRY["evaluation.reduction_target"].kind == "float"
     # m-lit LIT-API: the reduction backend (Q17 / Q18), a generation default
     # and its runtime override.
     assert FIELD_REGISTRY["loop.reduction"].default == "auto"

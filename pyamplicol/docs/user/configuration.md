@@ -731,14 +731,20 @@ reduction = "auto"             # generation default: auto, ninjars, tirust
 
 [evaluation]
 reduction = "ninjars"          # override for this evaluation (default: the artifact's)
+reduction_target = 1e-5        # TIRust's target accuracy (relative, per point; default 1e-5)
 ```
 
 `"auto"` takes the per-type default, TIRust for a loop-induced and NinjaRS
 for a Born-interfered process; where TIRust cannot serve the call (a native
-extension built without it, a carrier it does not serve yet, or an output
-whose executor does not run it: the summed virtual and the resolved,
-correlated and selected outputs are checked separately) it falls back to
-NinjaRS and records why. An explicitly requested backend that cannot serve
+extension built without it, a carrier it does not serve, or an output whose
+executor does not run it: the summed virtual and the resolved, correlated
+and selected outputs are checked separately) it falls back to NinjaRS and
+records why. On TIRust, `"auto"` has a per-point NinjaRS fallback: a point
+TIRust refuses or fails (also in the call's stability checks) is evaluated
+again on NinjaRS from its original exact inputs in the call's arithmetic,
+after the TIRust call, and that point's lane records NinjaRS with the reason
+(a point NinjaRS fails too fails with both reasons); an explicit `"ninjars"`
+or `"tirust"` has no fallback, and neither has a TIR-only artifact. An explicitly requested backend that cannot serve
 the call is refused before any point is evaluated (`ReductionUnavailable`, a
 `CompatibilityError` with key `reduction-unavailable`), never switched
 silently. The choice is made once per call and carrier (each rescue level's
@@ -748,9 +754,8 @@ the reason; also in the CLI's JSON). TIRust is built into the native
 extension by default (the cargo feature `tir`) and serves every arithmetic
 (binary64, double-double and arbitrary precision, also on every level of a
 rescue ladder) on every output of both process types when requested
-(`"tirust"`); its agreement with NinjaRS on loop-induced processes is
-established, but TIRust still fails closed on points NinjaRS serves, so
-`"auto"` stays on NinjaRS for loop-induced processes too and records why. Which loop families TIRust serves is TIRust's own capability
+(`"tirust"`), and `"auto"` takes it for loop-induced processes with the
+per-point fallback above. Which loop families TIRust serves is TIRust's own capability
 (the number of propagators, the rank, read from TIRust): a family outside it
 is refused typed with TIRust's own reason before any point. TIRust reads the
 same external invariants as NinjaRS (below), so a loop with an on-shell
@@ -759,13 +764,27 @@ loop, stays on its exact on-shell branch in every arithmetic. In every
 arithmetic TIRust serves only the kinematic rows its conditioning gates
 accept (in double-double and arbitrary precision the gate is binary64's taken
 to the arithmetic's precision): a row they refuse fails its point with the
-gates' reason (no automatic switch to NinjaRS; the rescue ladder moves the
-point to its next level). In binary64 the rows the gates refuse are tried
-once more with TIRust's own method choice (small-Gram expansions or an
-alternative reduction), and each such value is kept only if it agrees with
-the same row evaluated again at rescaled inputs (a check that sees the wrong
-values a rotated frame alone misses); a value that fails this check fails
-its point the same way. TIRust's qualified domain is up to six
+gates' reason (under `"auto"` the per-point fallback evaluates it on NinjaRS;
+under an explicit `"tirust"` it stays a failed point and a rescue's next
+level moves it). In binary64 the rows the gates refuse are tried once more
+with TIRust's own method choice (small-Gram expansions or an alternative
+reduction), and each such value is kept only if it agrees with the same row
+evaluated again at rescaled inputs (a check that sees the wrong values a
+rotated frame alone misses) within the calibrated acceptance of the
+**target accuracy** `evaluation.reduction_target` (CLI `--reduction-target`,
+Python `reduction_target=`, the SDKs' `set_reduction_target`; default 1e-5,
+the relative accuracy of each point's result, every squared-order sector
+against its own size): the target divided by 580, the largest measured ratio
+of a true error to that frame deviation against consistent high-precision
+truths; a value that fails this check fails its point the same way. The
+target only admits values (a value served at one target is the same at
+another) and governs only the values the method choice admits: rows that pass
+the conditioning gates carry binary64's own reduction error (measured up to
+about 1e-7 relative), so a target tighter than that can be missed; it is a
+calibrated acceptance, not a certificate. In double-double and arbitrary
+precision, where TIRust's method choice is off, it acts on nothing, and
+NinjaRS has no setting it drives. A target that is not a finite positive
+number is refused. TIRust's qualified domain is up to six
 loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
 than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).

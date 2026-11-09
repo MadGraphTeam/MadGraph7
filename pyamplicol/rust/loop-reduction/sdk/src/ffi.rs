@@ -307,6 +307,29 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction(
         Ok(())
     })
 }
+/// The target accuracy of the handle's later evaluations, the Python API's
+/// `reduction_target=` (m-lit F3 (a); additive, ABI version 2 kept): the
+/// relative accuracy of each point's result (every squared-order sector
+/// against its own size), 1e-5 by default (`reduction_policy::
+/// DEFAULT_TARGET`). TIRust's
+/// method-choice acceptance follows it (calibrated); NinjaRS has no setting
+/// it drives. A value that is not a finite positive number is
+/// `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_reduction_target(
+    handle: *mut VirtualHandle,
+    target: f64,
+) -> c_int {
+    guard(|| unsafe {
+        mutable(handle)?.0.set_reduction_target(target)?;
+        Ok(())
+    })
+}
 /// The stability checks of the handle's later evaluations, the Python API's
 /// `stability_checks=` (`VirtualStabilityChecks`; additive, ABI version 2
 /// kept): `rotation_count` default rotations (the Python API's count), or,

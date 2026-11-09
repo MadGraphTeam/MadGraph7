@@ -221,23 +221,34 @@ impl Runtime {
         let Engine::V4(native) = &mut self.engine;
         let evaluation = match arithmetic {
             Arithmetic::Double => {
-                let found =
-                    native.evaluate_columns("correlated", &momenta, &scales, &spins, poles.v2())?;
+                let (found, fallbacks) =
+                    with_fallback(native, &reduction, momenta.len(), |native, indices| {
+                        native.evaluate_columns(
+                            "correlated",
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            &pick_rows(&spins, indices),
+                            poles.v2(),
+                        )
+                    })?;
                 CorrelatedEvaluation::from_columns(
-                    inputs, shape, poles, arithmetic, found, &reduction, stability,
+                    inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
                 )?
             }
             _ => {
-                let found = native.evaluate_columns_extended(
-                    "correlated",
-                    &momenta,
-                    &scales,
-                    &spins,
-                    poles.v2(),
-                    arithmetic.v2(),
-                )?;
+                let (found, fallbacks) =
+                    with_fallback(native, &reduction, momenta.len(), |native, indices| {
+                        native.evaluate_columns_extended(
+                            "correlated",
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            &pick_rows(&spins, indices),
+                            poles.v2(),
+                            arithmetic.v2(),
+                        )
+                    })?;
                 CorrelatedEvaluation::from_columns(
-                    inputs, shape, poles, arithmetic, found, &reduction, stability,
+                    inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
                 )?
             }
         };
@@ -246,6 +257,16 @@ impl Runtime {
             spin_legs,
             ..evaluation
         })
+    }
+}
+
+/// The spin rows of the points at `indices` ([`pick`]; none without spin
+/// sources).
+fn pick_rows<'a, T: Clone>(rows: &'a [T], indices: Option<&[usize]>) -> std::borrow::Cow<'a, [T]> {
+    if rows.is_empty() {
+        std::borrow::Cow::Borrowed(rows)
+    } else {
+        pick(rows, indices)
     }
 }
 
@@ -333,6 +354,7 @@ impl CorrelatedEvaluation {
         arithmetic: Arithmetic,
         points: Vec<ColumnPoint<N>>,
         reduction: &Choice,
+        fallbacks: &Fallbacks,
         stability: serde_json::Value,
     ) -> RusticolResult<Self> {
         let (successful_point_ids, statuses, failures) = statuses_of(&inputs.point_ids, &points);
@@ -362,6 +384,7 @@ impl CorrelatedEvaluation {
             poles,
             arithmetic,
             reduction,
+            fallbacks,
             stability,
         )?;
         let decimal = (arithmetic != Arithmetic::Double).then(|| DecimalComplexValues {

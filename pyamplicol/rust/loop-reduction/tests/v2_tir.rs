@@ -1449,6 +1449,46 @@ fn consistent_truth(groups: &[FamilyLanes<f64>], digits: u32) -> Lanes {
         .collect()
 }
 
+/// The target accuracy's calibrated acceptance (m-lit F3 (a),
+/// lit-tirust-default): the default settings take the default target's
+/// acceptance, and the calibration factor is the largest true-error to
+/// frame-deviation ratio of the calibration record (`fixtures/
+/// tir_target_calibration.json`: lit-tir-mp's synthetic lanes and the
+/// loop-induced stream rows at the point level, each against a consistent
+/// truth), rounded up to two significant digits.
+#[test]
+fn the_acceptance_follows_the_calibrated_target() {
+    use rusticol_loop_reduction::reduction_policy::DEFAULT_TARGET;
+    use rusticol_loop_reduction::v2_tir::{UNDERSTATEMENT, acceptance_of};
+    let record: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/tir_target_calibration.json")).unwrap();
+    let worst = record["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|source| source["max_ratio"].as_f64().unwrap())
+        .fold(0.0, f64::max);
+    assert!(worst > 0.0 && UNDERSTATEMENT >= worst, "{worst}");
+    let unit = 10f64.powi(worst.log10().floor() as i32 - 1);
+    assert_eq!(UNDERSTATEMENT, (worst / unit).ceil() * unit);
+    assert_eq!(record["understatement"].as_f64(), Some(UNDERSTATEMENT));
+    assert_eq!(
+        TirOptions::default().acceptance,
+        acceptance_of(DEFAULT_TARGET)
+    );
+    assert_eq!(
+        TirOptions::for_target(1e-7).acceptance,
+        1e-7 / UNDERSTATEMENT
+    );
+    assert_eq!(
+        TirOptions {
+            acceptance: TirOptions::default().acceptance,
+            ..TirOptions::for_target(1e-7)
+        },
+        TirOptions::default()
+    );
+}
+
 /// The default's rescaled acceptance (m-lit lit-tir-mp, ruling 21:50 R4)
 /// against a rotated one on a rotation-blind row of lit-tir report §H.1:
 /// with a rotated acceptance frame the method choice serves lanes whose

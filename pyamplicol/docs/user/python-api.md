@@ -317,19 +317,56 @@ print(estimate.absolute, estimate.magnitude, estimate.scale)   # E, S per sector
 The reduction backend is chosen once per call (`reduction="auto"`, `"ninjars"`
 or `"tirust"` on `Runtime.load` and on every evaluation; default: the
 artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
-NinjaRS for a Born-interfered process and falls back to NinjaRS, with the
-reason recorded, where TIRust cannot serve the call (for now `"auto"` stays
-on NinjaRS for loop-induced processes too: TIRust still fails closed on
-points NinjaRS serves; `"tirust"` is served on request in every arithmetic,
-binary64, double-double and arbitrary precision, also on every level of a
-rescue ladder); an
-explicit backend that cannot serve it is refused before any point is
-evaluated (`pyamplicol.ReductionUnavailable`, a `CompatibilityError` with key
-`reduction-unavailable`). The effective backend is always one that
-the call's executor runs: the summed `evaluate` and the resolved, correlated
-and selected outputs each check it, so a result never names a backend that
-did not reduce it. Every lane diagnostic records the requested and effective
-backend and the reason ([Configuration](configuration.md#reduction-backend)).
+NinjaRS for a Born-interfered process (TIRust for both on a TIR-only
+artifact) and falls back to NinjaRS, with the reason recorded, where TIRust
+cannot serve the call (a native extension built without TIRust). On TIRust,
+`"auto"` has a **per-point NinjaRS fallback**: a point TIRust refuses (a
+kinematic row its conditioning gates and then its checked method choice
+refuse, or a method-choice value beyond the target, below) or fails (also in
+the call's own stability checks, e.g. a rotated evaluation) is evaluated again
+on NinjaRS from its original exact inputs, in the call's own arithmetic,
+after the TIRust call. That point's lane records its own `VirtualReduction`:
+`effective="ninjars"` and the reason, which quotes TIRust's failure; a point
+NinjaRS fails too fails with both reasons. A fallback point's cross-backend
+check (below) is not run, with the fallback's reason in `not_run`. An
+explicit `"ninjars"` or `"tirust"` has no fallback: `reduction="tirust"`
+fails such a point closed with TIRust's reason, and `reduction="ninjars"`
+forces NinjaRS for every point (for instance for a higher accuracy). A
+TIR-only artifact has no fallback (NinjaRS is refused typed there).
+`"tirust"` is served in every arithmetic (binary64, double-double and
+arbitrary precision, also on every level of a rescue stack). An explicit
+backend that cannot serve the call is refused before any point is evaluated
+(`pyamplicol.ReductionUnavailable`, a `CompatibilityError` with key
+`reduction-unavailable`). The effective backend is always one that the
+call's executor runs: the summed `evaluate` and the resolved, correlated and
+selected outputs each check it, so a result never names a backend that did
+not reduce it. Every lane diagnostic records the requested and effective
+backend, the reason, the call's fallback and target
+(`VirtualReduction(requested, effective, reason, fallback, target)`;
+[Configuration](configuration.md#reduction-backend)).
+
+TIRust serves at a **target accuracy** (`reduction_target=` on `Runtime.load`
+and on every evaluation; `[evaluation] reduction_target`; CLI
+`--reduction-target`; default 1e-5): the relative accuracy of each point's
+result, every squared-order sector against its own size (the rescue's
+`"relative"` metric). It sets the acceptance of TIRust's checked method
+choice (the rows its conditioning gates refuse, binary64): a method-choice
+value is kept when its two frames agree within the target divided by the
+calibrated factor 580, the largest ratio of a true error to that frame
+deviation measured against consistent high-precision truths (a synthetic lane
+set and the loop-induced benchmark rows' points). A tighter target refuses
+more such values (served by the fallback under `"auto"`), a looser one admits
+more; values TIRust serves at any target are the same values (the acceptance
+only admits). The target governs only the values the method choice admits:
+values of rows that pass the conditioning gates, and values already admitted
+at the shipped TIRust acceptance, carry binary64's own reduction error
+(measured up to about 1e-7 relative on the calibration sets), so a target
+tighter than about 1e-7 can be missed by construction. The target is a
+calibrated acceptance, not a certificate: request stability checks or a
+rescue stack for an estimate. NinjaRS has no
+setting the target drives, and in double-double and arbitrary precision,
+where TIRust's method choice is off, the target acts on nothing. A value that
+is not a finite positive number is refused (`ValueError`).
 
 `VirtualStabilityChecks(..., cross_backend=True)` adds the cross-backend
 check: every point is evaluated a second time on the other backend (TIRust
@@ -754,8 +791,12 @@ custom = VirtualRescuePolicy((
 ))
 ```
 
-A policy is an ordered ladder of levels in strictly increasing precision bits,
-modelled on gammaloop's built-in stability levels. Each `VirtualRescueLevel`
+A policy is an ordered stack of levels in non-decreasing precision bits,
+modelled on gammaloop's stability levels (`runtime.stability.levels`): each
+level names how stability is assessed, its working precision and its
+reduction backend. Two levels at the same precision must differ in their
+backend (`reduction`), e.g. TIRust then NinjaRS in binary64; a repeated
+(precision, backend) pair is refused (`ValueError`). Each `VirtualRescueLevel`
 has:
 
 - a carrier: `"double"`, `"double-double"` or `"arbitrary"` with `precision`
@@ -773,9 +814,13 @@ has:
 - its reduction backend `reduction`: `"auto"` (the default: the call's
   `reduction=` request when it names a backend, else the runtime's or the
   artifact's, else the per-type default with its fallback), `"ninjars"` or
-  `"tirust"`. Naming one backend per level emulates MadLoop's
+  `"tirust"`. An `"auto"` level follows the call's `"auto"` rule (on TIRust:
+  the per-point NinjaRS fallback at the level's arithmetic); a level naming a
+  backend has no fallback, its next level is the fallback. TIRust's acceptance
+  at a level follows the level's `target` (the same calibration as
+  `reduction_target`). Naming one backend per level emulates MadLoop's
   `MLReductionLib` order, e.g. `VirtualRescueLevel("double",
-  reduction="tirust")` followed by `VirtualRescueLevel("double-double",
+  reduction="tirust")` followed by `VirtualRescueLevel("double",
   reduction="ninjars")`. Each level's backend is resolved once, for its
   carrier, before the first point: an explicit one (the level's, or the
   call's inherited by an `"auto"` level) that cannot serve the level's
@@ -815,9 +860,38 @@ failure); `result.rescue_counts` counts the lanes accepted per level, plus
 
 The default `VirtualRescuePolicy()` runs binary64, then double-double, then
 57-digit arbitrary precision, each with target 1e-5 on the relative estimate,
-one rotation `"euler:0.1,0.2,0.3"` and the rescaled reduction check. It
-differs from gammaloop's defaults (f64, f128, 1000-bit arb, target 1e-5, the
-same rotation) in three ways:
+one rotation `"euler:0.1,0.2,0.3"` and the rescaled reduction check, every
+level `"auto"`. For a loop-induced call requesting `"auto"` (where `"auto"`
+takes TIRust with the NinjaRS fallback) it is the **loop-induced default
+stack**: TIRust in binary64 at the target, then NinjaRS in binary64, then the
+double-double and 57-digit levels (`"auto"`: TIRust with the per-point NinjaRS
+fallback in their arithmetic). A point TIRust refuses at level 0 is recorded
+at the NinjaRS level. A call naming a backend (`reduction="ninjars"` or
+`"tirust"`) runs the default ladder on that one backend at every level (no
+level on the other backend, no fallback): `evaluate(...,
+reduction="ninjars", stability=VirtualRescuePolicy())` never evaluates a
+point on TIRust. A stack you build keeps each level's named backend (a
+level's backend wins over the call's) and its `"auto"` levels take the
+call's request.
+
+Field by field, a level is gammaloop's `StabilityLevelSetting` with a backend
+(gammaloop `crates/gammalooprs/src/settings/runtime.rs`, `StabilitySettings`
+and `StabilityLevelSetting`; the escalation loop of
+`integrands/process/mod.rs`): `arithmetic` / `precision` is its `precision`
+(`Double`, `Quad` = double-double, `Arb`); `rotations` is gammaloop's
+`StabilitySettings.rotation_axis` (shared by every level there, set per level
+here), to which pyAmpliCol adds `reduction_check`; `target` with `metric` is
+its `required_precision_for_re` / `_im` (one target on pyAmpliCol's estimate;
+`metric="relative"` normalises by the result as gammaloop's `check_on_norm`
+does); `reduction` is the reduction backend, which gammaloop has no
+counterpart for. As in gammaloop, the levels run in order, a point stops at
+the first level that accepts it and the last level keeps its result.
+gammaloop's `escalate_if_exact_zero`, `loop_momenta_norm_escalation_factor`
+and `escalate_for_large_weight_threshold` have no counterpart (a loop-induced
+zero is accepted by the `"scale"` metric).
+
+The default ladder differs from gammaloop's defaults (f64, f128, 1000-bit arb,
+target 1e-5, the same rotation) in three ways:
 
 - the rescaled reduction check is added, because a rotation keeps every
   master integral's invariants and cannot see its own rounding;

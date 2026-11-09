@@ -451,6 +451,7 @@ class DefaultCliServices:
             or config.loop.r2_strategy != "auto"
             or evaluation.on_failure != "raise"
             or evaluation.reduction is not None
+            or evaluation.reduction_target is not None
             or v2_options
         ):
             raise ConfigurationError(
@@ -493,6 +494,11 @@ class DefaultCliServices:
                         {}
                         if evaluation.reduction is None
                         else {"reduction": str(evaluation.reduction)}
+                    ),
+                    **(
+                        {}
+                        if evaluation.reduction_target is None
+                        else {"reduction_target": evaluation.reduction_target}
                     ),
                 )
             return Runtime.load(

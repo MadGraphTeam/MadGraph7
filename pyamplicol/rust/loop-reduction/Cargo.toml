@@ -35,5 +35,5 @@ serde_json = "1"
 # A commit of TIRust's main (after its one history rewrite); its oneloop
 # revision and feature set are this manifest's, its Symbolica requirement
 # ("3.0") resolves to the root [patch.crates-io] revision.
-iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "fefb5f2b0a8aaabb4977db990219725f248dfc94", optional = true }
-iregi-masters = { git = "https://github.com/huashengshao/TIRust.git", rev = "fefb5f2b0a8aaabb4977db990219725f248dfc94", optional = true }
+iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "2bba1b2502661a8170f7b00eed9afa2ed0ac3e78", optional = true }
+iregi-masters = { git = "https://github.com/huashengshao/TIRust.git", rev = "2bba1b2502661a8170f7b00eed9afa2ed0ac3e78", optional = true }

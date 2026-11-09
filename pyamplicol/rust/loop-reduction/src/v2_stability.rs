@@ -563,6 +563,14 @@ impl StabilityChecks {
     pub fn cross_backend(&self) -> bool {
         self.cross_backend
     }
+    /// These checks without the cross-backend check (the evaluations of a
+    /// per-point fallback, whose cross-backend check is not run: m-lit R6).
+    pub fn without_cross_backend(&self) -> Self {
+        Self {
+            cross_backend: false,
+            ..self.clone()
+        }
+    }
     /// Whether any check runs (an estimate is returned).
     pub fn enabled(&self) -> bool {
         !self.rotations.is_empty() || self.reduction_direction

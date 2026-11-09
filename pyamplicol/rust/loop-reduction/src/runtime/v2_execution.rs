@@ -171,20 +171,28 @@ impl V2Backends {
     /// The TIR backend, its plans built for `families` (an artifact's
     /// (propagators, declared rank) histogram,
     /// `v2_tir::TirReductionBackend::with_histogram`) in a carrier of `bits`
-    /// bits: TIRust's typed refusal (its capability query, its plan
+    /// bits, at the target accuracy `target` (the relative accuracy of each
+    /// point's result, `reduction_policy::DEFAULT_TARGET` by default; its
+    /// calibrated method-choice acceptance, `v2_tir::TirOptions::
+    /// for_target`): TIRust's typed refusal (its capability query, its plan
     /// construction) is the capability refusal; refused typed in a build
     /// without TIRust (the cargo feature `tir`).
     pub fn tirust(
         families: impl IntoIterator<Item = (usize, usize)>,
         bits: u32,
+        target: f64,
     ) -> RusticolResult<Self> {
         #[cfg(feature = "tir")]
         {
-            Self::tirust_with(families, bits, crate::v2_tir::TirOptions::default())
+            Self::tirust_with(
+                families,
+                bits,
+                crate::v2_tir::TirOptions::for_target(target),
+            )
         }
         #[cfg(not(feature = "tir"))]
         {
-            let _ = (families.into_iter(), bits);
+            let _ = (families.into_iter(), bits, target);
             Err(RusticolError::unsupported_runtime_capability(
                 "tirust",
                 TIRUST_NOT_BUILT,
@@ -211,6 +219,31 @@ impl V2Backends {
                 ))
             }
         }
+    }
+
+    /// The target accuracy of the following reductions (TIRust: its
+    /// calibrated method-choice acceptance, `v2_tir::acceptance_of`, set on
+    /// the built backend; NinjaRS: nothing it drives).
+    pub fn set_target(&mut self, target: f64) {
+        match self {
+            Self::NinjaRs(_) => {}
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.set_acceptance(crate::v2_tir::acceptance_of(target)),
+        }
+        #[cfg(not(feature = "tir"))]
+        let _ = target;
+    }
+
+    /// [`Self::set_target`] by the acceptance itself (an expert's
+    /// `TirOptions::acceptance`).
+    pub fn set_target_acceptance(&mut self, acceptance: f64) {
+        match self {
+            Self::NinjaRs(_) => {}
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => backend.set_acceptance(acceptance),
+        }
+        #[cfg(not(feature = "tir"))]
+        let _ = acceptance;
     }
 
     /// The TIR backend's (propagators, rank) plans built so far (empty for
