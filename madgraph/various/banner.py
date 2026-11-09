@@ -7559,7 +7559,7 @@ class RunCardMG7(RunCard):
         # the colour accuracy in a second pass
         self.add_toml_param('amplicol', 'color_accuracy', "full", allowed=["full", "lc"],
             comment="colour accuracy of the [amplicol] events, lc skips the second pass")
-        self.add_toml_param('amplicol', 'mode', "reweight", allowed=["unweight", "reweight"],
+        self.add_toml_param('amplicol', 'mode', "unweight", allowed=["unweight", "reweight"],
             comment="unweight or reweight the events to the colour accuracy")
         self.add_toml_param('amplicol', 'first_pass_max_overweight_truncation', 0.01,
             gridpack=True, comment="max_overweight_truncation of the leading-colour unweighting")
