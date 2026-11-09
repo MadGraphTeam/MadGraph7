@@ -225,7 +225,7 @@ impl Runtime {
                     native,
                     &reduction,
                     momenta.len(),
-                    Guard::new(&momenta, &scales, poles, arithmetic),
+                    arithmetic,
                     |native, indices| {
                         native.evaluate_columns(
                             "correlated",
@@ -245,18 +245,29 @@ impl Runtime {
                     native,
                     &reduction,
                     momenta.len(),
-                    Guard::new(&momenta, &scales, poles, arithmetic),
-                    |native, indices| {
-                        native.evaluate_columns_extended(
+                    arithmetic,
+                    // The fallback's points run with the guard's check of
+                    // the call's outputs (m-lit lit-fallback-guard).
+                    |native, indices| match indices {
+                        None => unguarded(native.evaluate_columns_extended(
+                            "correlated",
+                            &momenta,
+                            &scales,
+                            &spins,
+                            poles.v2(),
+                            arithmetic.v2(),
+                        )),
+                        Some(_) => native.evaluate_columns_guarded(
                             "correlated",
                             &pick(&momenta, indices),
                             &pick(&scales, indices),
                             &pick_rows(&spins, indices),
                             poles.v2(),
                             arithmetic.v2(),
-                        )
+                        ),
                     },
                 )?;
+                let found = found.into_iter().map(|(point, _)| point).collect();
                 CorrelatedEvaluation::from_columns(
                     inputs, shape, poles, arithmetic, found, &reduction, &fallbacks, stability,
                 )?

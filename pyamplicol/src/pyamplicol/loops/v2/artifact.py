@@ -1855,38 +1855,8 @@ class V2VirtualRuntime:
                     precision=self.default_precision,
                 )
                 runtime.set_model_parameters(self._parameters)
-                runtime.fallback_guard = self._fallback_guard
                 self._observables = runtime
             return self._observables
-
-    def _fallback_guard(
-        self,
-        points: list[Any],
-        scales: list[Any],
-        parameters: Mapping[str, str] | None,
-        precision: Any,
-        poles: str,
-    ) -> tuple[list[Any], dict[int, list[str]]]:
-        """The per-point fallback guard's pass of the resolved, correlated
-        and selected outputs (``V2ObservablesRuntime.fallback_guard``,
-        ``reduction.with_fallback``'s ``guard``; m-lit lit-fallback-guard):
-        the summed evaluation of the points (the observable runtime's, in
-        its member's labels) in the carrier ``precision`` and pole selection
-        ``poles`` with the cached reduction-direction check alone, on the
-        current context's backend (the fallback's), as ``_evaluate_level``
-        guards a summed call."""
-
-        if self._member is not None:
-            points = [self._member.point(point) for point in points]
-        with self._lock:
-            return self._run(
-                points,
-                scales,
-                dict(self._parameters if parameters is None else parameters),
-                precision,
-                PoleSelection(poles),
-                VirtualStabilityChecks(reduction_direction=True),
-            )
 
     # -- identity and metadata ------------------------------------------------
 

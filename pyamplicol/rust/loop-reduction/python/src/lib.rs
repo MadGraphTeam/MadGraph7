@@ -260,6 +260,31 @@ fn reduction_fallback_accepted(estimate: f64, target: f64) -> bool {
     rusticol_loop_reduction::reduction_policy::fallback_accepted(estimate, target)
 }
 
+/// The per-point fallback guard's estimate of one point from the outputs
+/// the call returns (`reduction_policy::fallback_estimate`, the one rule:
+/// each output against its own magnitude, a vanishing one against the
+/// largest returned output; m-lit lit-fallback-guard, DECISIONS 2026-11-09
+/// 14:30 Q7): `outputs[o][s]` = (magnitude, error, scale) of sector s of
+/// output o, `roundoff` the carrier's unit roundoff.
+#[pyfunction]
+fn reduction_fallback_estimate(outputs: Vec<Vec<(f64, f64, f64)>>, roundoff: f64) -> f64 {
+    use rusticol_loop_reduction::reduction_policy::{GuardSector, fallback_estimate};
+    let outputs: Vec<Vec<GuardSector>> = outputs
+        .into_iter()
+        .map(|sectors| {
+            sectors
+                .into_iter()
+                .map(|(magnitude, error, scale)| GuardSector {
+                    magnitude,
+                    error,
+                    scale,
+                })
+                .collect()
+        })
+        .collect();
+    fallback_estimate(&outputs, roundoff)
+}
+
 /// Whether the per-point fallback's guard runs in the carrier `carrier`
 /// (`reduction_policy::fallback_guarded`: the extended carriers only; m-lit
 /// lit-fallback-guard, USER 2026-11-09 ~11:53).
@@ -298,6 +323,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_text, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_accepted, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_guarded, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_fallback_estimate, module)?)?;
     module.add_function(wrap_pyfunction!(tir_acceptance, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;

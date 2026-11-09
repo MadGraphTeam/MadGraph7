@@ -1156,6 +1156,50 @@ impl InducedShape {
         self.sector_form(terms, terms, |&(a, da), &(b, db)| a * db + da * b + da * db)
     }
 
+    /// The |M| bilinear form of one loop-induced output
+    /// (`induced_observables._bound`): per record sector and Laurent
+    /// coefficient k, sum_pairs kappa sum_rows sum_{i+j=k} x_i^T |M| y_j /
+    /// avg, x = `left`((l, row)) and y = `right`((l', row)) per Laurent
+    /// coefficient (absolute cells per key [t][k]; an absent key: no term)
+    /// and `magnitude` the output's matrix magnitudes |M| (row-major, `size`
+    /// x `size`; the gram of the shape is not read). The per-output
+    /// reduction-direction estimate of the per-point fallback's guard (m-lit
+    /// lit-fallback-guard, DECISIONS 2026-11-09 14:30 Q7) reads it
+    /// (`PointOutputs._perturbed` / `scale`).
+    pub fn magnitude_form(
+        &self,
+        magnitude: &[f64],
+        left: &Keyed<ErrorCells>,
+        right: &Keyed<ErrorCells>,
+    ) -> Budget {
+        let size = self.size;
+        let columns = |cells: &Keyed<ErrorCells>, key: Key| -> Option<Vec<Vec<f64>>> {
+            lookup(cells, &key).map(|vector| {
+                let width = vector.first().map_or(0, Vec::len);
+                (0..width)
+                    .map(|k| (0..size).map(|t| vector[t][k]).collect())
+                    .collect()
+            })
+        };
+        self.sector_form(
+            |key| columns(left, key),
+            |key| columns(right, key),
+            |x: &Vec<f64>, y: &Vec<f64>| {
+                let mut total = 0.0_f64;
+                for t in 0..size {
+                    if x[t] != 0.0 {
+                        let mut inner = 0.0_f64;
+                        for u in 0..size {
+                            inner += magnitude[t * size + u] * y[u];
+                        }
+                        total += x[t] * inner;
+                    }
+                }
+                total
+            },
+        )
+    }
+
     /// Per helicity row the little-group phase of `rotated` against
     /// `direct` (`induced._row_phases` with the finite parts): the phase of
     /// sum conj(a') a over the row's loop orders and t (1 where it vanishes).

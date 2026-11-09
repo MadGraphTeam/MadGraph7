@@ -231,6 +231,74 @@ pub fn fallback_accepted(estimate: f64, target: f64) -> bool {
     estimate <= fallback_limit(target)
 }
 
+/// One squared-order sector of one output a fallback-served point returns,
+/// as the guard reads that output's reduction-direction estimate
+/// ([`fallback_estimate`]): the sector's magnitude (its largest |Laurent
+/// coefficient|, the `"relative"` metric's scale of the sector), its largest
+/// absolute estimate E and its largest term scale S (the scale of the
+/// estimate's rounding floor, `FLOOR_UNITS` u S; the Python API's
+/// `StabilityEstimate.reference` / `.absolute` / `.scale`, the SDKs'
+/// `v2_stability::Estimate`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GuardSector {
+    pub magnitude: f64,
+    pub error: f64,
+    pub scale: f64,
+}
+
+/// The guard's estimate of one fallback-served point from the outputs the
+/// call RETURNS (m-lit lit-fallback-guard, DECISIONS 2026-11-09 14:30, RULING
+/// Q7; USER 2026-11-08 'only the selected helicities are evaluated and
+/// nothing more'): `outputs[o][s]` is sector s of output o (the summed
+/// value: one output; a resolved, correlated or selected call: each of its
+/// outputs, every one with the record's sectors in order), each from the
+/// reduction-direction re-test of that output alone ([`FALLBACK_CHECK`]),
+/// and `roundoff` the carrier's unit roundoff. Each output is judged
+/// relative to its own magnitude (per sector, the `"relative"` metric: its
+/// error over its magnitude); an output that VANISHES is judged relative to
+/// the largest returned output of the point (per sector). An output's
+/// sector vanishes when its magnitude lies within the estimate's rounding
+/// floor, `FLOOR_UNITS` x `roundoff` x S (a numerical zero, 'zero within the
+/// estimate', RULED Q13; the floor is the estimate's own, so no new
+/// constant). A sector whose reference is zero (no returned output has
+/// magnitude) is passed over, as the `"relative"` metric passes over it;
+/// for one output the estimate is that metric of its own estimate
+/// (`v2_stability::relative`). The largest ratio decides; any NaN input
+/// gives NaN (rejected, [`fallback_accepted`]).
+pub fn fallback_estimate(outputs: &[Vec<GuardSector>], roundoff: f64) -> f64 {
+    let sectors = outputs.iter().map(Vec::len).max().unwrap_or(0);
+    let mut largest = vec![0.0_f64; sectors];
+    for output in outputs {
+        for (s, sector) in output.iter().enumerate() {
+            if sector.magnitude.is_nan() || sector.error.is_nan() || sector.scale.is_nan() {
+                return f64::NAN;
+            }
+            if sector.magnitude > largest[s] {
+                largest[s] = sector.magnitude;
+            }
+        }
+    }
+    let floor_units = crate::v2_stability::FLOOR_UNITS;
+    let mut worst = 0.0_f64;
+    for output in outputs {
+        for (s, sector) in output.iter().enumerate() {
+            let vanishes = sector.magnitude <= floor_units * roundoff * sector.scale;
+            let against = if vanishes {
+                largest[s]
+            } else {
+                sector.magnitude
+            };
+            if against != 0.0 {
+                let ratio = sector.error / against;
+                if ratio > worst {
+                    worst = ratio;
+                }
+            }
+        }
+    }
+    worst
+}
+
 /// The ONE reason of a point the per-point fallback served but its guard
 /// rejected ([`FALLBACK_CHECK`]): `primary` (the call's effective backend)
 /// refused or failed it (`failure`, its reasons), `fallback` evaluated it
@@ -744,6 +812,42 @@ mod tests {
         assert!(!fallback_accepted(f64::NAN, 1e-5));
         assert!(!fallback_accepted(f64::INFINITY, 1e-5));
         assert_eq!(FALLBACK_CHECK, "reduction-direction");
+        // The per-output decision (DECISIONS 2026-11-09 14:30, Q7): each
+        // returned output against its own magnitude; a vanishing one (within
+        // the estimate's rounding floor 16 u S) against the largest returned
+        // output; one output is the "relative" metric of its own estimate.
+        let u = 2.0_f64.powi(-104);
+        let sector = |magnitude: f64, error: f64, scale: f64| GuardSector {
+            magnitude,
+            error,
+            scale,
+        };
+        assert_eq!(
+            fallback_estimate(&[vec![sector(4.0, 1e-3, 4.0), sector(0.0, 1e-9, 0.0)]], u),
+            1e-3 / 4.0
+        );
+        // A small output is judged on its own magnitude (a miss on the
+        // point's sum would pass it).
+        let small = sector(1e-6, 1e-8, 1.0);
+        let large = sector(2.0, 2e-12, 2.0);
+        assert_eq!(
+            fallback_estimate(&[vec![large], vec![small]], u),
+            1e-8 / 1e-6
+        );
+        // A vanishing output (a numerical zero of the carrier) against the
+        // largest returned output.
+        let zero = sector(1e-31, 3e-30, 2.0);
+        assert!(zero.magnitude <= 16.0 * u * zero.scale);
+        assert_eq!(
+            fallback_estimate(&[vec![large], vec![zero]], u),
+            3e-30 / 2.0
+        );
+        // Alone it is its own largest output: its own ratio (rejected).
+        assert_eq!(fallback_estimate(&[vec![zero]], u), 3e-30 / 1e-31);
+        // An exact zero everywhere is passed over; a NaN is rejected.
+        assert_eq!(fallback_estimate(&[vec![sector(0.0, 1.0, 0.0)]], u), 0.0);
+        assert_eq!(fallback_estimate(&[], u), 0.0);
+        assert!(fallback_estimate(&[vec![large], vec![sector(1.0, f64::NAN, 1.0)]], u).is_nan());
         // The extended carriers only (USER ~11:53, 'Double-double+ only').
         assert_eq!(
             CARRIERS.map(fallback_guarded),

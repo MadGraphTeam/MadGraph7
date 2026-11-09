@@ -1414,6 +1414,35 @@ impl PointOutcome for Monitored {
     }
 }
 
+/// A point outcome as the call returns it, without the guard's estimate
+/// (the outcomes of [`with_fallback`]; m-lit lit-fallback-guard).
+pub(crate) trait IntoPoint {
+    type Point;
+    fn into_point(self) -> Self::Point;
+}
+
+impl<T> IntoPoint for Result<T, Vec<String>> {
+    type Point = Self;
+    fn into_point(self) -> Self {
+        self
+    }
+}
+
+impl<T> IntoPoint for (Result<T, Vec<String>>, Option<f64>) {
+    type Point = Result<T, Vec<String>>;
+    fn into_point(self) -> Self::Point {
+        self.0
+    }
+}
+
+/// An evaluation's points with no guard estimate (a call's primary
+/// evaluation beside its fallback's guarded one, [`with_fallback`]).
+pub(crate) fn unguarded<T>(
+    points: RusticolResult<Vec<T>>,
+) -> RusticolResult<Vec<(T, Option<f64>)>> {
+    Ok(points?.into_iter().map(|point| (point, None)).collect())
+}
+
 /// One point the per-point fallback evaluated again: the backend that served
 /// it (None: it failed there too, or its guard rejected it), the reason
 /// (`reduction_policy::fallback_served`, the fallback's failure, or
@@ -1465,34 +1494,6 @@ impl Fallbacks {
     }
 }
 
-/// What the per-point fallback's guard re-tests (m-lit lit-fallback-guard):
-/// the batch's exact inputs, its pole selection and its carrier (the
-/// call's: the guard is never escalated).
-pub(crate) struct Guard<'a> {
-    pub(crate) momenta: &'a [Vec<Rational>],
-    pub(crate) scales: &'a [Rational],
-    pub(crate) mode: V2Poles,
-    pub(crate) precision: V2Precision,
-}
-
-impl<'a> Guard<'a> {
-    /// The guard of a batch's exact inputs in the call's pole selection and
-    /// arithmetic.
-    pub(crate) fn new(
-        momenta: &'a [Vec<Rational>],
-        scales: &'a [Rational],
-        poles: Poles,
-        arithmetic: Arithmetic,
-    ) -> Self {
-        Self {
-            momenta,
-            scales,
-            mode: poles.v2(),
-            precision: arithmetic.v2(),
-        }
-    }
-}
-
 /// The values at `indices` (None: every value, borrowed).
 fn pick<'a, T: Clone>(values: &'a [T], indices: Option<&[usize]>) -> std::borrow::Cow<'a, [T]> {
     match indices {
@@ -1515,17 +1516,20 @@ fn pick<'a, T: Clone>(values: &'a [T], indices: Option<&[usize]>) -> std::borrow
 /// is served unguarded, with no estimate) every point the fallback serves
 /// is GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and
 /// 11:53; the Python API's `loops.v2.reduction.with_fallback`): the
-/// relative estimate of its cached reduction-direction re-test at the
-/// call's carrier is recorded: the outcome's own
-/// ([`PointOutcome::guard_estimate`]) when the fallback's evaluation ran
-/// that check (the summed calls, `V2Runtime::evaluate_extended_guarded`),
-/// else one pass of [`V2Runtime::fallback_estimates`] on the fallback
-/// backend (`guard`: the resolved, correlated and selected calls), and a
+/// fallback's evaluation of the served points (`Some(indices)`) runs the
+/// cached reduction-direction re-test at the call's carrier with them and
+/// returns the guard's estimate of the outputs the call returns
+/// ([`PointOutcome::guard_estimate`]; DECISIONS 2026-11-09 14:30 Q7: the
+/// summed value, `V2Runtime::evaluate_extended_guarded`, or each resolved,
+/// correlated or selected output of the call's rows only against its own
+/// magnitude, `V2Runtime::evaluate_induced_call_guarded`; one evaluation per
+/// served point); the estimate is recorded, and a
 /// point whose estimate exceeds the guard's limit at the runtime's target
 /// (`V2Runtime::target`; `reduction_policy::fallback_accepted`: the target
 /// never below `FALLBACK_FLOOR`) fails with the one reason
 /// `reduction_policy::fallback_rejected` (a point the guard's re-test
-/// fails, the fallback failed). A primary backend that refuses the
+/// fails, the fallback failed; `arithmetic` names the carrier and decides
+/// whether the guard runs). A primary backend that refuses the
 /// call's plans (TIRust's capability query of a family, a typed
 /// `UnsupportedRuntimeCapability` error before any point) leaves all `count`
 /// points to the fallback. A call without a fallback (an explicit backend, a
@@ -1535,7 +1539,7 @@ pub(crate) fn with_fallback<P: PointOutcome>(
     native: &mut V2Runtime,
     choice: &Choice,
     count: usize,
-    guard: Guard<'_>,
+    arithmetic: Arithmetic,
     mut evaluate: impl FnMut(&mut V2Runtime, Option<&[usize]>) -> RusticolResult<Vec<P>>,
 ) -> RusticolResult<(Vec<P>, Fallbacks)> {
     let mut points = match evaluate(native, None) {
@@ -1564,53 +1568,34 @@ pub(crate) fn with_fallback<P: PointOutcome>(
     if failed.is_empty() {
         return Ok((points, record));
     }
-    // The guard runs in the extended carriers only (USER 2026-11-09 ~11:53).
-    let checking = reduction_policy::fallback_guarded(guard.precision.name());
-    let (again, guarded) = native.on_other(|native| {
-        let again = evaluate(native, Some(&failed))?;
-        if again.len() != failed.len() {
-            return Err(invalid("the fallback evaluation lost points"));
-        }
-        // The guard's estimate of every served point: the outcome's own
-        // cached re-test, else one re-test pass of those points.
-        let mut guarded: Vec<Option<Result<f64, Vec<String>>>> = again
-            .iter()
-            .map(|point| match point.reasons() {
-                Some(_) => None,
-                None => point.guard_estimate().map(Ok),
-            })
-            .collect();
-        let pending: Vec<usize> = (0..again.len())
-            .filter(|&local| {
-                checking && again[local].reasons().is_none() && guarded[local].is_none()
-            })
-            .collect();
-        if !pending.is_empty() {
-            let indices: Vec<usize> = pending.iter().map(|&local| failed[local]).collect();
-            let found = native.fallback_estimates(
-                &pick(guard.momenta, Some(&indices)),
-                &pick(guard.scales, Some(&indices)),
-                guard.mode,
-                guard.precision,
-            )?;
-            if found.len() != pending.len() {
-                return Err(invalid("the fallback guard lost points"));
-            }
-            for (local, estimate) in pending.into_iter().zip(found) {
-                guarded[local] = Some(estimate);
-            }
-        }
-        Ok((again, guarded))
-    })?;
+    // The guard runs in the extended carriers only (USER 2026-11-09 ~11:53),
+    // with the fallback's own evaluation of the served points (its outcome
+    // carries the estimate of the outputs the call returns).
+    let checking = reduction_policy::fallback_guarded(arithmetic.name());
+    let again = native.on_other(|native| evaluate(native, Some(&failed)))?;
+    if again.len() != failed.len() {
+        return Err(invalid("the fallback evaluation lost points"));
+    }
+    let guarded: Vec<Option<f64>> = again
+        .iter()
+        .map(|point| match point.reasons() {
+            Some(_) => None,
+            None => point.guard_estimate(),
+        })
+        .collect();
     let target = native.target();
     for ((&index, point), guarded) in failed.iter().zip(again).zip(guarded) {
         let first = points[index].reasons().unwrap_or_default().to_vec();
         let outcome = match (point.reasons(), guarded) {
             (Some(second), _) => Err(second.to_vec()),
-            (None, Some(Err(second))) => Err(second),
-            (None, Some(Ok(estimate))) => Ok(Some(estimate)),
+            (None, Some(estimate)) if checking => Ok(Some(estimate)),
             (None, None) if !checking => Ok(None),
-            (None, None) => return Err(invalid("a served fallback point without its guard")),
+            (None, _) => {
+                return Err(invalid(
+                    "a served fallback point without its guard's estimate (the guard runs in the \
+                     extended carriers only)",
+                ));
+            }
         };
         let second = match outcome {
             Ok(Some(estimate)) if !reduction_policy::fallback_accepted(estimate, target) => {
@@ -1618,7 +1603,7 @@ pub(crate) fn with_fallback<P: PointOutcome>(
                     &choice.effective,
                     fallback,
                     &first.join("; "),
-                    guard.precision.name(),
+                    arithmetic.name(),
                     estimate,
                     target,
                 );
@@ -1694,7 +1679,7 @@ impl Evaluation {
                     native,
                     reduction,
                     momenta.len(),
-                    Guard::new(&momenta, &scales, poles, arithmetic),
+                    arithmetic,
                     |native, indices| {
                         let checks = if indices.is_some() { &plain } else { checks };
                         native.evaluate_checked(
@@ -1739,7 +1724,7 @@ impl Evaluation {
                     native,
                     reduction,
                     momenta.len(),
-                    Guard::new(&momenta, &scales, poles, arithmetic),
+                    arithmetic,
                     |native, indices| {
                         native.evaluate(
                             &pick(&momenta, indices),
@@ -1759,7 +1744,7 @@ impl Evaluation {
                     native,
                     reduction,
                     momenta.len(),
-                    Guard::new(&momenta, &scales, poles, arithmetic),
+                    arithmetic,
                     // The fallback's points run with the guard's cached
                     // check in the call's carrier (one evaluation per
                     // served point, as the Python API's).
@@ -1860,7 +1845,7 @@ impl Evaluation {
                     native,
                     reduction,
                     momenta.len(),
-                    Guard::new(&momenta, &scales, poles, arithmetic),
+                    arithmetic,
                     |native, indices| {
                         native.evaluate_columns(
                             "resolved",
@@ -1881,18 +1866,30 @@ impl Evaluation {
                     native,
                     reduction,
                     momenta.len(),
-                    Guard::new(&momenta, &scales, poles, arithmetic),
-                    |native, indices| {
-                        native.evaluate_columns_extended(
+                    arithmetic,
+                    // The fallback's points run with the guard's check of
+                    // the outputs the call returns (one evaluation per
+                    // served point).
+                    |native, indices| match indices {
+                        None => unguarded(native.evaluate_columns_extended(
+                            "resolved",
+                            &momenta,
+                            &scales,
+                            &[],
+                            poles.v2(),
+                            arithmetic.v2(),
+                        )),
+                        Some(_) => native.evaluate_columns_guarded(
                             "resolved",
                             &pick(&momenta, indices),
                             &pick(&scales, indices),
                             &[],
                             poles.v2(),
                             arithmetic.v2(),
-                        )
+                        ),
                     },
                 )?;
+                let points = points.into_iter().map(|(point, _)| point).collect();
                 Self::resolved(
                     inputs, shape, poles, arithmetic, axes, &keys, points, reduction, &fallbacks,
                     stability,
@@ -2000,7 +1997,7 @@ impl Evaluation {
                     native,
                     request.reduction,
                     momenta.len(),
-                    Guard::new(&momenta, &scales, request.poles, request.arithmetic),
+                    request.arithmetic,
                     |native, indices| {
                         native.evaluate_induced_call(
                             call,
@@ -2032,17 +2029,28 @@ impl Evaluation {
                     native,
                     request.reduction,
                     momenta.len(),
-                    Guard::new(&momenta, &scales, request.poles, request.arithmetic),
-                    |native, indices| {
-                        native.evaluate_induced_call_extended(
+                    request.arithmetic,
+                    // The fallback's points run with the guard's check of
+                    // the call's outputs (its rows only).
+                    |native, indices| match indices {
+                        None => unguarded(native.evaluate_induced_call_extended(
+                            call,
+                            &momenta,
+                            &scales,
+                            request.poles.v2(),
+                            arithmetic.v2(),
+                        )),
+                        Some(_) => native.evaluate_induced_call_guarded(
                             call,
                             &pick(&momenta, indices),
                             &pick(&scales, indices),
+                            &[],
                             request.poles.v2(),
                             arithmetic.v2(),
-                        )
+                        ),
                     },
                 )?;
+                let points = points.into_iter().map(|(point, _)| point).collect();
                 Self::resolved(
                     inputs,
                     Shape {
@@ -2121,16 +2129,12 @@ impl Evaluation {
                         native,
                         request.reduction,
                         members.len(),
-                        Guard::new(
-                            &part_momenta,
-                            &part_scales,
-                            request.poles,
-                            request.arithmetic,
-                        ),
+                        request.arithmetic,
                         |native, indices| {
                             $evaluate(
                                 native,
                                 &call,
+                                indices.is_some(),
                                 &pick(&part_momenta, indices),
                                 &pick(&part_scales, indices),
                             )
@@ -2140,7 +2144,7 @@ impl Evaluation {
                         fallbacks.points.insert(members[local], record);
                     }
                     for (&point, value) in members.iter().zip(found) {
-                        points[point] = Some(summed(value));
+                        points[point] = Some(summed(value.into_point()));
                     }
                 }
                 let points: Vec<_> = points
@@ -2169,21 +2173,29 @@ impl Evaluation {
             Arithmetic::Double => {
                 run!(|native: &mut V2Runtime,
                       call: &InducedCall,
+                      _fallback: bool,
                       m: &[Vec<Rational>],
                       sc: &[Rational]| native
                     .evaluate_induced_call(call, m, sc, poles))
             }
             arithmetic => {
+                // The fallback's points run with the guard's check of the
+                // group's selection (its rows only).
                 run!(|native: &mut V2Runtime,
                       call: &InducedCall,
+                      fallback: bool,
                       m: &[Vec<Rational>],
-                      sc: &[Rational]| native.evaluate_induced_call_extended(
-                    call,
-                    m,
-                    sc,
-                    poles,
-                    arithmetic.v2()
-                ))
+                      sc: &[Rational]| if fallback {
+                    native.evaluate_induced_call_guarded(call, m, sc, &[], poles, arithmetic.v2())
+                } else {
+                    unguarded(native.evaluate_induced_call_extended(
+                        call,
+                        m,
+                        sc,
+                        poles,
+                        arithmetic.v2(),
+                    ))
+                })
             }
         }
     }

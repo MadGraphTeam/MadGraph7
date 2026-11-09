@@ -33,7 +33,11 @@ chooses the effective backend once per call and carrier, never per point:
   reason, ``text("rejected")``, naming the fallback, TIRust's failure, the
   carrier, the estimate and the limit) when the check's relative estimate
   exceeds the guard's limit, the call's target never below 1e-5
-  (``fallback_accepted``: max(target, 1e-5), USER 2026-11-09 ~11:53); the
+  (``fallback_accepted``: max(target, 1e-5), USER 2026-11-09 ~11:53),
+  decided on the outputs the call returns (the summed value, or each
+  resolved, correlated or selected output against its own magnitude, a
+  vanishing one against the largest returned output: ``fallback_estimate``,
+  DECISIONS 2026-11-09 14:30 Q7); the
   estimate is in the point's record (``VirtualReduction.guard_estimate``),
   an accepted point keeps the fallback's value bitwise and its public
   estimate is the call's checks' own. The call's own cached reduction check
@@ -473,34 +477,68 @@ def _without_checks(result: Any) -> Any:
     return replace(result, stability=None, finiteness=None)
 
 
+def fallback_estimate(
+    outputs: list[list[tuple[float, float, float]]], roundoff: float
+) -> float:
+    """The per-point fallback guard's estimate of one point from the
+    outputs the call returns: the native policy's one rule
+    (``reduction_policy::fallback_estimate``; m-lit lit-fallback-guard,
+    DECISIONS 2026-11-09 14:30 RULING Q7). ``outputs[o][s]`` is (magnitude,
+    error, scale) of sector s of output o (``_guard_sectors``), ``roundoff``
+    the carrier's unit roundoff: each output against its own magnitude (the
+    ``"relative"`` metric), an output that vanishes (its magnitude within the
+    estimate's rounding floor, ``FLOOR_UNITS`` u S) against the largest
+    returned output of the point; NaN when any input is not a number."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return float(load_loop_native().reduction_fallback_estimate(outputs, roundoff))
+
+
+def _guard_sectors(estimate: Any) -> list[tuple[float, float, float]]:
+    """Per sector of one output's estimate (a ``StabilityEstimate`` of the
+    reduction-direction check alone) its magnitude (the largest |Laurent
+    coefficient|, ``stability.relative``'s scale), its largest absolute
+    estimate E and its largest term scale S (NaN where a value is not a
+    number: a NaN budget is no estimate, and ``max`` would pass over it)."""
+
+    def largest(values: Any) -> float:
+        found = [abs(float(x)) for x in values]
+        return math.nan if any(math.isnan(x) for x in found) else max(found)
+
+    return [
+        (
+            largest(laurent.coefficients),
+            largest(estimate.absolute[sector].coefficients),
+            largest(estimate.scale[sector].coefficients),
+        )
+        for sector, laurent in estimate.reference.items()
+    ]
+
+
 def _guard_estimate(result: Any) -> float:
-    """The relative estimate of the cached reduction-direction check of one
-    point (``stability.REDUCTION``: alone, ``StabilityEstimate.subset`` of
-    the point's checks when they ran others too; the ``"relative"`` metric,
-    each squared-order sector against its largest Laurent coefficient;
-    largest over a point's outputs). NaN when the point has no such
-    estimate or its budget is not a number."""
+    """The guard's estimate of one point (``fallback_estimate``) from the
+    cached reduction-direction check of every output the call returns
+    (``stability.REDUCTION``: alone, ``StabilityEstimate.subset`` of the
+    point's checks when they ran others too): the summed value (one output)
+    or each resolved, correlated or selected output (DECISIONS 2026-11-09
+    14:30 Q7: the guard decides on the returned outputs, never on the
+    point's sum over rows the call does not return). NaN when an output has
+    no such estimate."""
 
     from .stability import REDUCTION
 
-    worst = 0.0
+    outputs = []
+    roundoff = math.nan
     for output in _outputs(result):
         estimate = getattr(output, "stability", None)
         if estimate is None or REDUCTION not in estimate.budgets:
             return math.nan
         if set(estimate.budgets) != {REDUCTION}:
             estimate = estimate.subset([REDUCTION])
-        value = float(estimate.relative)
-        # (A NaN budget is no estimate: ``stability.relative``'s largest
-        # ratio would pass over it.)
-        if math.isnan(value) or any(
-            math.isnan(float(x))
-            for budget in estimate.absolute.values()
-            for x in budget.coefficients
-        ):
-            return math.nan
-        worst = max(worst, value)
-    return worst
+        roundoff = estimate.roundoff
+        outputs.append(_guard_sectors(estimate))
+    return fallback_estimate(outputs, roundoff)
 
 
 def _reduction_check(checks: Any) -> Any:
@@ -525,9 +563,8 @@ def with_fallback(
     run: Callable[[list[int] | None, Any], tuple[list[_R], dict[int, list[str]]]],
     choice: VirtualReduction,
     count: int,
-    checks: Any = None,
-    carrier: str = "double",
-    guard: Callable[[list[int]], tuple[list[Any], dict[int, list[str]]]] | None = None,
+    checks: Any,
+    carrier: str,
 ) -> tuple[list[_R | None], dict[int, list[str]], dict[int, VirtualReduction]]:
     """``run`` of a batch on the call's effective backend at its target
     (``running``; ``run(None, checks)``: every point with the call's
@@ -538,8 +575,10 @@ def with_fallback(
     failures), then, for a choice with a per-point fallback
     (``VirtualReduction.fallback``, m-lit F3 (c)), the points it refused or
     failed again on the fallback, from their original exact inputs, at the
-    same ``carrier``, after the primary call, with the call's checks less
-    the cross-backend check (a fallback point's is not run, m-lit R6).
+    same ``carrier`` (the call's: ``CARRIERS``; required, so that no caller
+    skips the guard by default), after the primary call, with the call's
+    checks less the cross-backend check (a fallback point's is not run,
+    m-lit R6).
 
     In the extended carriers (``fallback_guarded``: double-double and
     arbitrary precision, USER 2026-11-09 ~11:53; a binary64 fallback point
@@ -557,12 +596,15 @@ def with_fallback(
     evaluation without checks returns; beside other checks (rotations
     only, or the rescaled variant: ``RECOMMENDED_CHECKS``, every default
     rescue level) the served points are evaluated once more with the cached
-    check alone. A caller whose results are not the summed value (the
-    resolved, correlated and selected outputs) passes ``guard``: the summed
-    evaluation of the points at the given batch indices with the cached
-    check alone, which then decides on every served point (as the native
-    SDKs decide on the point's summed |A|^2). A point the guard's check
-    fails is a point the fallback failed. A point whose estimate exceeds
+    check alone. The guard decides on the outputs the call RETURNS
+    (DECISIONS 2026-11-09 14:30, RULING Q7: a point's summed value, or each
+    output of a resolved, correlated or selected call, whose evaluation
+    dresses the selected rows only, USER 2026-11-08 'only the selected
+    helicities are evaluated and nothing more'): each output's cached
+    estimate relative to its own magnitude, an output that vanishes
+    relative to the largest returned output (``fallback_estimate``). A
+    point the guard's check fails is a point the fallback failed. A point
+    whose estimate exceeds
     the guard's limit (the call's target, ``choice.target`` else the
     default target, never below 1e-5: ``fallback_accepted``) fails typed
     with one reason (``text("rejected")``); an accepted point keeps the
@@ -610,20 +652,18 @@ def with_fallback(
     target = choice.target if choice.target is not None else default_target()
     checking = fallback_guarded(carrier)
     with running(fallback, choice.target, choice.unchecked):
-        # Without the call's checks (and without a guard pass) the
-        # fallback's evaluation carries the guard's check.
-        merged = checking and guard is None and not enabled
+        # Without the call's checks the fallback's evaluation carries the
+        # guard's check.
+        merged = checking and not enabled
         again, still = run(indices, _reduction_check(plain) if merged else plain)
         still = dict(still)
         served = [local for local in range(len(indices)) if local not in still]
         guarded: dict[int, float] = {}
-        if checking and guard is None and (reused or merged):
+        if checking and (reused or merged):
             guarded = {local: _guard_estimate(again[local]) for local in served}
         elif checking and served:
             chosen = [indices[local] for local in served]
-            found, missed = (
-                run(chosen, _reduction_check(plain)) if guard is None else guard(chosen)
-            )
+            found, missed = run(chosen, _reduction_check(plain))
             for k, local in enumerate(served):
                 if k in missed:
                     # The guard's check fails the point (as the fallback's
@@ -696,6 +736,7 @@ __all__ = [
     "default_unchecked",
     "executor_options",
     "fallback_accepted",
+    "fallback_estimate",
     "fallback_guarded",
     "native_backends",
     "policy",
