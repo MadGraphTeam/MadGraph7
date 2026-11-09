@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: 0BSD
+
 """NinjaRS's box mu-expansion conditioning bound through pyAmpliCol's native ``V2Reducer``.
 
 Near-planar 2 -> 3 lanes (a g g > z z z pentagon family at lens A's planar point 44, tilted out of the plane;
