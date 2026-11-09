@@ -32,6 +32,7 @@ from .errors import (
     DependencyError,
     EvaluationError,
     GenerationError,
+    ModelError,
 )
 from .protocols import (
     BenchmarkBackend,
@@ -64,6 +65,7 @@ from .virtual_results import (
 from .virtual_results import (
     ResolvedVirtualEvaluation,
     VirtualEvaluation,
+    VirtualOrderEvaluation,
     VirtualRescuePolicy,
     VirtualStabilityChecks,
     pole_selection,
@@ -74,6 +76,8 @@ _runtime_loader: RuntimeLoader | None = None
 _benchmark_factory: BenchmarkFactory | None = None
 
 if TYPE_CHECKING:
+    from pyamplicol.benchmarking import VirtualProfileResult
+    from pyamplicol.loops.v2.checks import CheckReport
     from pyamplicol.runtime.correlations import CorrelatorCatalogue, CorrelatorEvaluator
 
 
@@ -1110,22 +1114,40 @@ class Runtime:
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         color_flows: Sequence[str | ColorFlow] | None = None,
         precision: int | None = None,
-    ) -> TreeOrderEvaluation:
-        """Return tree values split by squared coupling order.
+        **virtual_options: Any,
+    ) -> TreeOrderEvaluation | VirtualOrderEvaluation:
+        """Return values split by squared coupling order.
 
-        Every squared coupling order of the generated amplitude, including
-        vanishing interference, is a separate ``values[point][order]`` column
-        alongside ``total``, which is exactly :meth:`evaluate`'s value for the
-        same global selectors and precision; per-point selectors are not
-        supported. Orders follow the Born order axis of virtual results
-        (:attr:`VirtualEvaluation.born_orders`). Virtual runtimes already
-        return their order axes from :meth:`evaluate`.
+        Tree runtimes: every squared coupling order of the generated
+        amplitude, including vanishing interference, is a separate
+        ``values[point][order]`` column alongside ``total``, which is exactly
+        :meth:`evaluate`'s value for the same global selectors and precision;
+        per-point selectors are not supported. Orders follow the Born order
+        axis of virtual results (:attr:`VirtualEvaluation.born_orders`).
+
+        Virtual runtimes (Born-interfered and loop-induced): ONE
+        :meth:`evaluate` call with the same arguments (``virtual_options``:
+        ``mu_r2``, ``poles``, ``stability_checks``, ``reduction``, ...), returned
+        as its :class:`VirtualOrderEvaluation` view: per squared-order sector
+        its Laurent coefficients, the Born per Born order, and the explicit
+        sums ``sum_orders()`` / ``sum_born_orders()``; nothing is evaluated
+        twice and no order is summed silently.
         """
 
         if self.contribution_kind != "tree":
+            return VirtualOrderEvaluation(
+                self.evaluate(
+                    momenta,
+                    helicities=helicities,
+                    color_flows=color_flows,
+                    precision=precision,
+                    **virtual_options,
+                )
+            )
+        if virtual_options:
             raise CompatibilityError(
-                "virtual results already carry Born and virtual order axes; "
-                "use evaluate()"
+                "tree evaluate_orders takes no virtual options: "
+                + ", ".join(sorted(virtual_options))
             )
         operation = getattr(self._backend, "evaluate_orders", None)
         if not callable(operation):
@@ -1655,9 +1677,22 @@ class BenchmarkRunner:
         target: Runtime | os.PathLike[str] | str,
         *,
         points: Momenta | None = None,
-    ) -> BenchmarkResult:
-        """Profile an artifact path or an already loaded :class:`Runtime`."""
+    ) -> BenchmarkResult | VirtualProfileResult:
+        """Profile an artifact path or an already loaded :class:`Runtime`.
 
+        A loop (v2 virtual) artifact or runtime returns its
+        ``benchmarking.VirtualProfileResult``: the per-point time and the
+        per-stage split of the timed calls (trees, dressing, scatter,
+        reduction, rest) from the native executor's own stage report."""
+
+        from pyamplicol.benchmarking import is_virtual_target, profile_virtual
+
+        if is_virtual_target(target):
+            return profile_virtual(
+                target,
+                self._config if self._config is not None else None,
+                points=points,
+            )
         backend_target: RuntimeBackend | os.PathLike[str] | str
         if isinstance(target, Runtime):
             backend_target = target._backend
@@ -1691,13 +1726,167 @@ def generate(
 load = Runtime.load
 
 
+def check(
+    target: os.PathLike[str] | str | RunConfig | ConfigResolution,
+    *,
+    points: int | None = None,
+    seed: int | None = None,
+    precision: Literal["auto", "double", "double-double"] | None = None,
+    model: ModelSource | os.PathLike[str] | str | None = None,
+    source: str | None = None,
+    progress: ProgressSink | None = None,
+) -> CheckReport:
+    """The pole and Ward checks of a one-loop request (``pyamplicol check``):
+    ``target`` is a run card (its generation request), a resolved run
+    configuration, or a generated artifact directory: every process its
+    manifest stores (id and expression), regenerated with the configuration
+    its ``config/effective.toml`` records, from the model the artifact
+    stores (the prepared model's manifest record, content hash included, must
+    match, else ``ArtifactError``). Every process is regenerated in memory
+    through the generation service (nothing is written) on the full tree
+    kernels, widths zeroed outside the complex-mass scheme, and checked at
+    ``points`` seeded phase-space points (``seed``; defaults: the
+    configuration's ``check`` section, the seed falling back to
+    ``generation.validation.seed``): Born-interfered poles against Catani's
+    operator and Ward identities, loop-induced finiteness and Ward probes,
+    Goldstone-equivalence probes where they apply (``loops.v2.checks``).
+    ``precision`` "auto" runs binary64 first and double-double only where
+    binary64 fails, is refused or is out of scope. ``model`` replaces the
+    configuration's model source (a ``ModelSource``, or a source as
+    ``model.source`` takes it, with the configuration's restriction; None
+    takes the configuration's ``check.model``, if set): e.g. an artifact
+    generated from a UFO directory, whose ``effective.toml`` keeps only the
+    directory's name.
+    ``source`` is the run card a configuration ``target`` was read from
+    (the report names it). Returns a ``CheckReport`` whose ``exit_code`` is 0 iff every
+    process passed."""
+
+    import time
+
+    from pyamplicol.artifacts.manifest import load_manifest
+    from pyamplicol.config import CheckPrecision
+    from pyamplicol.config.resolver import resolve_config
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.checks import CheckReport
+
+    started = time.perf_counter()
+    kind = "card" if source else "config"
+    label = source or "configuration"
+    stored = None
+    resolution: RunConfig | ConfigResolution
+    if isinstance(target, (RunConfig, ConfigResolution)):
+        resolution = target
+    else:
+        path = Path(os.fspath(target)).expanduser().resolve(strict=False)
+        label = str(path)
+        if path.is_dir():
+            kind = "artifact"
+            stored = load_manifest(path)
+            card = path / "config" / "effective.toml"
+            if not card.is_file():
+                raise ArtifactError(
+                    f"{path} records no generation configuration "
+                    "(config/effective.toml): check regenerates the artifact's "
+                    "processes with it"
+                )
+            resolution = resolve_config(card, action=Action.CHECK)
+        else:
+            kind = "card"
+            resolution = resolve_config(path, action=Action.CHECK)
+    run = (
+        resolution.effective if isinstance(resolution, ConfigResolution) else resolution
+    )
+    if stored is not None:
+        # The artifact's own processes, not its configuration's entries (an
+        # API-generated artifact stores what its call generated).
+        requests = tuple(
+            ProcessRequest.parse(str(process["expression"]), name=str(process["id"]))
+            for process in stored.processes
+        )
+    else:
+        if not run.process.entries:
+            raise GenerationError("check requires the process entries of a request")
+        requests = tuple(
+            ProcessRequest.parse(entry.expression, name=entry.name)
+            for entry in run.process.entries
+        )
+    count = run.check.points if points is None else int(points)
+    if count < 1:
+        raise ValueError("check needs at least one point")
+    first = (
+        seed
+        if seed is not None
+        else run.check.seed
+        if run.check.seed is not None
+        else run.generation.validation.seed
+    )
+    carrier = CheckPrecision(str(precision or run.check.precision))
+    explicit = (
+        None
+        if carrier is CheckPrecision.AUTO
+        else Precision.double()
+        if carrier is CheckPrecision.DOUBLE
+        else Precision.double_double()
+    )
+    if model is None:
+        model = run.check.model
+    if model is None:
+        try:
+            model_source = ModelSource.from_config(run.model)
+        except ModelError as error:
+            if stored is None:
+                raise
+            raise ArtifactError(
+                f"{label}: the model source its config/effective.toml records "
+                f"({run.model.source!r}) cannot be resolved ({error}); give the "
+                "stored model's source (model= / --model)"
+            ) from error
+    elif isinstance(model, ModelSource):
+        model_source = model
+    else:
+        from dataclasses import replace
+
+        model_source = ModelSource.from_config(
+            replace(run.model, source=os.fspath(model))
+        )
+    from pyamplicol.loops.v2.induced import probe_carriers
+
+    generator = Generator(config=resolution, progress=progress)
+    generator._resolve_generation_resources()
+    backend = generator._implementation()
+    operation = getattr(backend, "check", None)
+    if operation is None:
+        raise GenerationError("generator backend does not support check")
+    checked = operation(
+        _process_set(requests),
+        model=model_source,
+        points=count,
+        seed=first,
+        precision=explicit,
+        stored=stored,
+    )
+    return CheckReport(
+        label,
+        kind,
+        count,
+        first,
+        str(carrier),
+        tuple(c.arithmetic for c in probe_carriers(explicit)),
+        tuple(checked),
+        "in memory through the generation service (nothing written): the "
+        "request on the full tree kernels, widths zeroed outside the "
+        "complex-mass scheme",
+        round(time.perf_counter() - started, 3),
+    )
+
+
 def benchmark(
     target: Runtime | os.PathLike[str] | str,
     *,
     points: Momenta | None = None,
     config: BenchmarkConfig | RunConfig | None = None,
     progress: ProgressSink | None = None,
-) -> BenchmarkResult:
+) -> BenchmarkResult | VirtualProfileResult:
     """Profile a generated artifact using a one-shot convenience function."""
 
     return BenchmarkRunner(config=config, progress=progress).run(target, points=points)
@@ -1708,6 +1897,7 @@ __all__ = [
     "Generator",
     "Runtime",
     "benchmark",
+    "check",
     "generate",
     "install_backend_factories",
     "load",

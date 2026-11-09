@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: pyamplicol check (poles, Ward) of the uux_ttxgg artifact.
+# The artifact's request is regenerated in memory; exit code 0 iff
+# every applicable check passed.
+
+schema_version = 1
+action = "check"
+
+[evaluation]
+artifact = "artifacts/loop_uux_ttxgg"
+
+[check]
+points = 2
+precision = "auto"

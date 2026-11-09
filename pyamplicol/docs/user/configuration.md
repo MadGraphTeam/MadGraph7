@@ -337,6 +337,25 @@ each Goldstone slice generate the process again, so the probes cost one
 generation of the process or more (e+ e- > g g g: 43 s, of which 37 s is the
 probe slice, against 43 s for the engine's generation).
 
+The probes guard generation; `pyamplicol check` runs the same loop-induced
+checks on demand, at several points, and the pole check against Catani's
+operator and the Ward check for Born-interfered processes too, on a card's or
+an artifact's request regenerated in memory
+([command-line guide](command-line-interface.md#check)). Its card section:
+
+```toml
+action = "check"
+
+[evaluation]
+artifact = "artifacts/loop_gg_zgg"   # omit to check the card's own request
+
+[check]
+points = 3          # seeded phase-space points per process
+seed = 12345        # default: generation.validation.seed
+precision = "auto"  # binary64, then double-double where it fails; or one carrier
+# model = "my_ufo"  # default: model.source (an artifact: the source it records)
+```
+
 Generation also drops the helicity rows of a loop-induced process that are
 zero before the loop integration (every numerator vanishes identically),
 tested exactly modulo the fixed prime 2^61 - 1 at random points. Over the
@@ -1599,6 +1618,14 @@ layout's deterministic hot workload. Explicit subsets and selected-axis lists
 override that default; a complete summed-axis list is normalized to equivalent
 omission. A valid shape outside the optimized layout emits at most one pre-loop
 warning per loaded process.
+
+A one-loop artifact is profiled per stage (trees, dressing, scatter,
+reduction, rest, from the native executor's stage report of the timed
+calls): `batch_size`, `warmup_runs` and `minimum_samples` apply, and
+`[evaluation] reduction`, `reduction_unchecked` and `mu_r2` select the
+backend, the unchecked timing mode and the scale (default: per point the
+squared invariant mass of its initial state); see the
+[command-line guide](command-line-interface.md#profile).
 
 See [Runtime and Selectors](runtime-and-selectors.md) for evaluation and profiling
 semantics.

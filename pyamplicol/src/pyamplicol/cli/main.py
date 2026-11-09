@@ -33,8 +33,20 @@ def _json_value(value: object) -> object:
     from pyamplicol.api.virtual_results import (
         ResolvedVirtualEvaluation,
         VirtualEvaluation,
+        VirtualOrderEvaluation,
     )
 
+    if isinstance(value, VirtualOrderEvaluation):
+        # The one evaluation, its order axes and the explicit sums (named:
+        # orders are never summed silently).
+        return {
+            "evaluation": _json_value(value.evaluation),
+            "contribution_kind": value.contribution,
+            "orders": _json_value(value.orders),
+            "born_orders": _json_value(value.born_orders),
+            "sum_orders": _json_value(value.sum_orders()),
+            "sum_born_orders": _json_value(value.sum_born_orders()),
+        }
     if is_dataclass(value) and not isinstance(value, type):
         result = {
             item.name: _json_value(getattr(value, item.name)) for item in fields(value)
@@ -182,7 +194,9 @@ def run_cli(
         )
         logging_configured = True
         selected_services = (
-            DefaultCliServices(resolution=resolution) if services is None else services
+            DefaultCliServices(resolution=resolution, card=invocation.card)
+            if services is None
+            else services
         )
         if invocation.correlators is not None:
             from pyamplicol.correlators import CorrelatorConfig
@@ -197,7 +211,7 @@ def run_cli(
                 json.loads(invocation.correlators.read_text())
             )
             selected_services = DefaultCliServices(
-                resolution=resolution, correlators=declarations
+                resolution=resolution, correlators=declarations, card=invocation.card
             )
         result = dispatch(
             config,
@@ -215,7 +229,13 @@ def run_cli(
             stream=output_stream,
             color=color,
         )
-        return 130 if bool(getattr(result, "interrupted", False)) else 0
+        if bool(getattr(result, "interrupted", False)):
+            return 130
+        from pyamplicol.loops.v2.checks import CheckReport
+
+        # ``pyamplicol check`` carries its own exit status: 0 iff every
+        # applicable check passed (``CheckReport.exit_code``).
+        return result.exit_code if isinstance(result, CheckReport) else 0
     except (PyAmpliColError, OSError, RuntimeError, TypeError, ValueError) as exc:
         close_progress_sink(sink)
         sink = None

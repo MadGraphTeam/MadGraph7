@@ -24,6 +24,7 @@ drives the typed [Python API](python-api.md).
 | `evaluate` | Evaluate totals or resolved components | `pyamplicol evaluate artifacts/builtin_ddbar_to_zg --momenta point.json` |
 | `profile` | Calibrate and measure the optimized total path | `pyamplicol profile artifacts/builtin_ddbar_to_zg --target-runtime 1` |
 | `benchmark` | Compatibility alias for `profile` | Existing cards use `action = "benchmark"` |
+| `check` | Pole (Catani; loop-induced: finiteness) and Ward checks of a one-loop request, regenerated in memory | `pyamplicol check loop_gg_zgg_generate.toml` or `pyamplicol check artifacts/loop_gg_zgg` |
 | `inspect` | Show artifact and process metadata without running it | `pyamplicol inspect artifacts/builtin_ddbar_to_zg` |
 | `group-processes` | Find generated subprocesses with equal matrix elements | `pyamplicol group-processes artifacts/pp_jj` |
 | `model inspect` | Summarize a built-in, JSON, UFO, or compiled model | `pyamplicol model inspect models/json/sm/sm.json` |
@@ -481,6 +482,13 @@ high-precision values are decimal strings. Neither format silently sums orders
 or divides by the Born result. A successful lane can still report
 `accuracy_established: false`.
 
+`--orders` splits a virtual evaluation by squared coupling order: one
+evaluation (`Runtime.evaluate_orders`, a `VirtualOrderEvaluation` view), every
+sector's Laurent coefficients and every Born order apart as above, followed
+by a separately titled table of the explicit sums over the orders (JSON:
+`evaluation`, `orders`, `born_orders`, `sum_orders`, `sum_born_orders`). The
+sums are named and printed apart; nothing is summed silently.
+
 The precision-rescue options (`--stability-higher`,
 `--stability-relative-tolerance`, `--stability-absolute-tolerance`,
 `--verify-successful`, card section `[evaluation.stability]`) were removed with
@@ -573,6 +581,97 @@ and selector-aware profiling. If both profile selector axes are omitted, the
 stored LC layout supplies a deterministic optimized selector; explicit
 non-hot shapes are retained and produce at most one pre-loop warning per
 loaded process.
+
+A one-loop (v2 virtual) artifact is profiled per stage: `pyamplicol profile
+artifacts/loop_gg_zgg --momenta points.json` times `--minimum-samples` calls
+of one batch of `--batch-size` points (the artifact's validation points
+repeated when `--momenta` is absent), finite part only, after
+`--warmup-runs` warm-up calls, and prints the per-point time (median call,
+fastest and slowest) and a coloured table of the time per point in each stage
+group (trees: the native trees and counterterm kets; dressing: seeds, factors
+and dressing of a Born-interfered process, the dressing of a loop-induced
+one; scatter; reduction; rest: every other stage and the untimed remainder),
+read from the native executor's always-on stage reports of the same timed
+calls, every native batch of a call counted (a per-point fallback, a rescue
+level; no other timer runs). `--loop-reduction` selects the backend,
+`--reduction-unchecked` the unchecked timing mode (no accuracy certificate)
+and `--mu-r2` the scale (default: per point the squared invariant mass of its
+initial state). JSON: `benchmarking.VirtualProfileResult` (`seconds_per_point`,
+`low`, `high`, `stages`, `reduction`, `unchecked`, `batch`, `samples`,
+`failed_points`).
+
+## Check
+
+`pyamplicol check` runs the pole and Ward checks of a one-loop request:
+
+```console
+pyamplicol check loop_gg_zgg_generate.toml              # a run card's request
+pyamplicol check artifacts/loop_gg_zgg --points 4 --json  # an artifact's request
+pyamplicol loop_gg_zgg_check.toml                      # action = "check"
+```
+
+The target is a run card (its process entries as its generation would make
+them) or an artifact directory: every process its manifest stores (`id` and
+expression, `artifact.json`), regenerated with the configuration its
+`config/effective.toml` records, from the model the artifact stores. The
+prepared model must be the stored one (its manifest record: name, source
+kind, content hash and restriction) and the regenerated processes exactly the
+stored ones, else `check` refuses the artifact before generating anything
+(exit 2). An artifact generated from a UFO directory records only the
+directory's name; name the model with `--model SOURCE` (`check.model`, a
+source as `model.source` takes it; it must still be the stored model).
+Every process is **regenerated in memory** through the generation
+service (nothing is written; one model preparation shared by the process
+and its probe slices, the persistent preparation cache serving it as at
+generation): the request on the model's full tree kernels,
+with every width zeroed outside the complex-mass scheme (a fixed width in a
+tree propagator breaks the identities; the complex-mass scheme is gauge
+invariant and keeps its widths), as the generation-time probes do. Checks run
+at `--points N` (default 3, `check.points`) seeded phase-space points
+(`--seed S`, default `generation.validation.seed`) of the generation's
+validation convention, lifted to exact momentum conservation, at mu_R^2 = the
+squared invariant mass of the initial state, on NinjaRS at every carrier:
+
+| Check | Born-interfered | Loop-induced | Criterion |
+| --- | --- | --- | --- |
+| poles | every squared-order sector's 1/eps and 1/eps^2 against Catani's operator of the requested corrections (QCD; QED where requested), formed natively | the finiteness probe: the amplitude's poles against the row term floor S_k(h) (the pre-cancellation scale) | binary64 with the recommended checks: \|pole - Catani\| <= 10 E + 1e-12 \|Catani\|; double-double: 1e-12 relative; finiteness: within 10 x its own estimate |
+| ward | epsilon_j -> c p_j / p_j^0 on every external gluon and photon, c = 1 and i, Born and virtual parts (`ward.ward_row`) | epsilon_j -> p_j / E_j on one leg of every gluon and photon species, amplitude level | binary64: \|V\| <= max(1e-12 S, E) and \|V\| <= 10 E with E <= 1e-9 S (scope); double-double: 1e-25 S; Born 1e-12 / 1e-24; probes: 10 x their estimate |
+| goldstone | not applicable (the probe is amplitude-level) | k.A(V) = eta M_V A(G) on one leg of every massive-vector species with a Goldstone partner, in 't Hooft-Feynman gauge | within 10 x its estimate |
+
+`--precision auto` (default) runs binary64 first and double-double only for a
+row whose binary64 run fails, is refused or is out of its criterion's scope
+(a pole row whose relative estimate exceeds the default target accuracy
+1e-5 or that carries no estimate; a Ward row with E above 1e-9 of the
+physical scale or without an estimate); `double` or `double-double` runs one
+carrier alone, and there a row out of its carrier's scope reads "not run"
+(exit 3), never a failure or a pass. A sector Catani's operators do not
+predict (a QCD correction of a process with photon-exchange Borns, ...) is
+listed as "no prediction" with its reason (as is any sector the evaluation
+formed no pole row for); a check that does not apply (no
+external gluon or photon, no massive vector, a unitary-gauge request) reads
+"not applicable" with the reason; a Goldstone side the engine refuses reads
+"not run". None of these is a pass.
+
+Every row names the check, its subject (sector and pole, leg and factor),
+the point, the carrier that decided, `ratio` (the measured value over its
+bound: <= 1 passes), the deviation and E over the row's scale where formed
+(`dev / scale`, `E / scale`: a binary64 pole row's pre-cancellation scale S;
+a double-double pole row's |Catani|, its criterion being relative; a
+Born-interfered Ward row's physical scale; a probe's row term floor
+S_k(h)), the fallback's reason and the verdict. The exit code is 0 iff
+every applicable check passed, 1 on any failure, and 3 when a process had
+nothing to check (or an applicable check did not run). `--json` returns the
+`CheckReport` (`source`, `source_kind`, `points`, `seed`, `precision`,
+`carriers`, `regeneration`, `seconds`, `exit_code`, and per process `process`,
+`expression`, `contribution`, `widths`, `zeroed_widths`, `reduction`,
+`status`, `seconds` and `rows` with the fields above); `source` names the run
+card or artifact checked. Python: `pyamplicol.api.check(target, points=...,
+seed=..., precision=..., model=...)`.
+
+Cost: one probe-slice generation per process (about the generation's own
+cost: the request-model preparation included) plus a few evaluations per
+point; the generation-time probes (`generation.loop_induced_probes`, off by
+default) are the same loop-induced checks at one point during generation.
 
 ## Models
 
