@@ -214,6 +214,13 @@ def lc_flavors(meta: dict, mode: str) -> dict:
     return {**meta, "flavors": kept}
 
 
+def event_flavors(meta: dict, process: MadgraphProcess) -> list[dict]:
+    """The flavours of a subprocess as its events index them (LHE, systematics)."""
+    if not is_amplicol(meta):
+        return meta["flavors"]
+    return lc_flavors(meta, process.run_card["amplicol"]["lc_flavors"])["flavors"]
+
+
 def lhe_diagrams(meta: dict) -> tuple[list[tuple[int, tuple]], list[list[float]]]:
     """The diagrams that the LHE writer takes the resonances of an event from,
     one per phase-space channel and resonance charges, and per flavour a mask

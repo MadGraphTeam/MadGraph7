@@ -369,3 +369,20 @@ class AmplicolLeadingColourFlavoursTest(unittest.TestCase):
         kept = self.module.lc_flavors({'flavors': flavors}, 'two_lines')
         self.assertEqual([f['index'] for f in kept['flavors']], [0, 1, 2, 3, 4])
         self.assertIs(self.module.lc_flavors(self.meta, 'all'), self.meta)
+
+    def test_event_flavors_follow_lc_flavors(self):
+        from types import SimpleNamespace
+        from madgraph.mg7.madgraph_process import MadgraphProcess
+        flavors = self.meta['flavors'] + [{
+            'index': 5, 'options': [[1, -1, 2, -2, 3, -3]], 'factor': 1.,
+            'mirror': True, 'channels': [0]}]
+        meta = {'backend': 'amplicol', 'flavors': flavors, 'qcd_power': 4}
+        process = SimpleNamespace(
+            run_card={'amplicol': {'lc_flavors': 'two_lines'}}, subprocess_data=[meta])
+        self.assertEqual([f['index'] for f in self.module.event_flavors(meta, process)],
+                         [0, 1, 2, 3, 4])
+        self.assertIs(self.module.event_flavors({'flavors': flavors}, process), flavors)
+        # systematics index the beam pdgs like the events
+        args = MadgraphProcess.build_systematics_args(process)
+        self.assertEqual([list(pdgs) for pdgs in args[0].beam_pdgs],
+                         [[21, 21], [2, -2], [2, -2], [2, -2], [2, 1]])

@@ -28,7 +28,8 @@ from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custo
 from madgraph.mg7.observables import CutItem, HistItem, build_observable, clean_pids, observable_pids
 from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
-from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess, amplicol_subproc_args, is_amplicol
+from madgraph.mg7.subprocess_amplicol import (
+    AmplicolSubprocess, amplicol_subproc_args, event_flavors, is_amplicol)
 from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
 # From this many subprocess directories to compile, the standard headers are
@@ -966,7 +967,7 @@ class MadgraphProcess:
         for meta in self.subprocess_data:
             beam_pdgs = [
                 [int(flavor["options"][0][0]), int(flavor["options"][0][1])]
-                for flavor in meta["flavors"]
+                for flavor in event_flavors(meta, self)
             ]
             args.append(ms.SubprocessSystArgs(
                 qcd_power=int(meta.get("qcd_power", -1)), beam_pdgs=beam_pdgs))
@@ -1123,7 +1124,7 @@ class MadgraphProcess:
         matrix_elements = []
         flavor_remap = []
         for i, meta in enumerate(self.subprocess_data):
-            flavor_remap.append([int(f["index"]) for f in meta["flavors"]])
+            flavor_remap.append([int(f["index"]) for f in event_flavors(meta, self)])
             if i not in need:
                 matrix_elements.append(None)
                 continue
@@ -2050,7 +2051,7 @@ class MadgraphProcess:
             return [2212, 2212], list(self.beam_energies)
         data = self.subprocess_data[0]
         incoming = data["incoming"]
-        flavor0 = data["flavors"][0]["options"][0]
+        flavor0 = event_flavors(data, self)[0]["options"][0]
         init_pdgs = flavor0[:len(incoming)]
         beam_pdgs = [pdg if abs(code) in (81, 82) else code
                      for code, pdg in zip(incoming, init_pdgs)]
