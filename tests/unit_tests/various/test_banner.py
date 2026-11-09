@@ -1854,6 +1854,24 @@ c
         # to be 100% that wrong name is not passed to fortran
         self.assertNotIn("pdlabel = 'isronlyll'", f.getvalue())
 
+    def test_mlm_shower_start_lo(self):
+        """madevent's hidden mlm_shower_start reaches the Fortran as the logical
+        mlm_hardest_shower: true by default (hardest scale), false for the
+        collider energy, the previous behaviour."""
+        run_card = bannermod.RunCardLO()
+        self.assertEqual(run_card['mlm_shower_start'], 'hardest_scale')
+        self.assertNotIn('mlm_shower_start', run_card.display_block)
+        f = io.StringIO()
+        run_card.write_include_file(None, output_file=f)
+        self.assertIn('mlm_hardest_shower = .true.', f.getvalue().lower())
+        self.assertNotIn('mlm_shower_start', f.getvalue())
+        run_card.set('mlm_shower_start', 'collider_energy', user=True)
+        f = io.StringIO()
+        run_card.write_include_file(None, output_file=f)
+        self.assertIn('mlm_hardest_shower = .false.', f.getvalue().lower())
+        with self.assertRaises(Exception):
+            run_card.set('mlm_shower_start', 'softest_scale', user=True, raiseerror=True)
+
     def test_fixed_fac_scale_block(self):
 
         run_card = bannermod.RunCardLO()
@@ -2712,6 +2730,15 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertIn('ktdurham/ptlund with ickkw=1', ' '.join(dropped))
         mg7.check_validity()
 
+    def test_mlm_shower_start(self):
+        """Hidden [beam] switch for where the MLM shower of the non-jet
+        particles starts: the hardest scale of the event by default, the
+        collider energy as madevent."""
+        card = bannermod.RunCardMG7()
+        self.assertEqual(card['beam']['mlm_shower_start'], 'hardest_scale')
+        card.set('beam.mlm_shower_start', 'collider_energy')
+        self.assertEqual(card['beam']['mlm_shower_start'], 'collider_energy')
+
     def test_set_maxjetflavor_sets_the_mlm_jet_flavours(self):
         rc = bannermod.RunCardMG7()
         rc.set_lo_param('maxjetflavor', '5')
@@ -2729,6 +2756,10 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'mlm')
         self.assertEqual(mg7['beam']['scale_scheme'], 'madevent')
         self.assertEqual(mg7['phasespace']['xqcut'], 20.0)
+        self.assertEqual(mg7['beam']['mlm_shower_start'], 'hardest_scale')
+        lo['mlm_shower_start'] = 'collider_energy'
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['mlm_shower_start'], 'collider_energy')
         self.assertFalse(mg7['phasespace']['auto_ptj_mjj'])
         self.assertEqual(mg7['beam']['max_jet_flavor'], 5)
         joined = ' '.join(dropped)
@@ -3048,6 +3079,12 @@ class TestPhotonPDFDefault(unittest.TestCase):
         self.assertEqual(self.lo_card([2, 22])['lhaid'], 335900)
         # the user choice wins
         self.assertEqual(self.lo_card([22, 22], lhaid=331900)['lhaid'], 331900)
+
+    def test_lo_photon_photon_is_not_upc(self):
+        # a a > X takes both photons from the proton; gamma-UPC is opt-in
+        rc = self.lo_card([22, 22])
+        self.assertEqual((rc['lpp1'], rc['lpp2']), (1, 1))
+        self.assertNotIn(rc['pdlabel'], ('edff', 'chff'))
 
     def test_nlo(self):
         # plain sm has a massive b: 4-flavour set

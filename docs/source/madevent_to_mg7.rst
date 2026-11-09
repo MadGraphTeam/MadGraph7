@@ -94,9 +94,10 @@ Scales
       - ``beam.scale_factor``
       - Applies to the dynamical scale only.
 
-The MadEvent default ``dynamical_scale_choice = -1`` follows the clustering of the diagram.
-MG7's default is ``half_transverse_mass``. A card with a ``ktdurham`` or ``ptlund`` cut is
-translated to MG7's ``"ckkwl"`` clustering scale instead.
+The MadEvent default ``dynamical_scale_choice = -1`` follows the clustering of the diagram,
+as needed for MLM merging. In MG7 this is the choice ``"mlm"``, see `MLM merging`_. A card
+with a ``ktdurham`` or ``ptlund`` cut is translated to MG7's ``"ckkwl"`` clustering scale
+instead. Otherwise the MG7 default is ``half_transverse_mass``.
 
 Generation and phase space
 --------------------------
@@ -145,6 +146,42 @@ Technical settings for the MadEvent run engine, such as ``vector_size``, ``nb_wa
 ``job_strategy``, ``survey_splitting``, ``refine_evt_by_job`` and the ``hel_*`` options, have
 no counterpart. The integration and the hardware are configured in ``[run]``,
 ``[generation]``, ``[vegas]``, ``[phasespace]`` and ``[madnis]`` instead.
+
+MLM merging
+-----------
+
+As MadEvent, MG7 sets up MLM merging by itself when the process has several jet
+multiplicities (for example ``p p > w+`` with ``add process p p > w+ j``): the scale choice
+``"mlm"``, a merging cut ``xqcut = 30`` GeV and no jet ``delta_r`` cuts. The shower then does
+the jet matching (``ickkw = 1``, ``JetMatching:qCut = 1.5 xqcut``). It is not set up for an
+output with ``[amplicol]`` subprocesses.
+
+.. list-table::
+    :header-rows: 1
+    :widths: 30 30 40
+
+    * - ``run_card.dat``
+      - ``run_card.toml``
+      - Notes
+    * - ``ickkw = 1``
+      - ``beam.dynamical_scale_choice = "mlm"``
+      - The events are clustered back and their scales set as in MadEvent. Merging is
+        on when ``xqcut`` is positive as well.
+    * - ``xqcut``
+      - ``phasespace.xqcut``
+      - ``0`` disables the merging cut.
+    * - ``auto_ptj_mjj``
+      - ``phasespace.auto_ptj_mjj``
+      - ``true`` by default in both.
+    * - ``maxjetflavor``
+      - ``beam.max_jet_flavor``
+      - The heaviest quark that the clustering treats as a jet.
+    * - ``pdfwgt``
+      - ``beam.pdf_reweighting``
+      - Hidden in both.
+    * - ``sys_alpsfact``
+      - ``systematics.alps``
+      -
 
 Cuts
 ----
