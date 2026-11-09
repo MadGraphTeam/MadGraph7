@@ -54,6 +54,7 @@ use ninjars::fast::tensor_layout::ncoeff;
 pub use packed::{LinkInterner, PackedLinks, SharedLinks};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 use symbolica::domains::rational::Rational;
 
 /// The plan schema version of the seeded (Born-interfered) plans.
@@ -451,6 +452,38 @@ impl Content {
     pub fn factor_row(&self) -> usize {
         self.open.entries().len()
     }
+
+    /// The fused form of an edge of this content: its layout and its cut,
+    /// incoming and outgoing dimensions. A seeded step reads `δ_αβ` seeds
+    /// (cut and open end of dimension 1, output end `α × β'`); an open-loop
+    /// step reads `d_alpha × d_in` per row.
+    pub fn fused_shape(
+        &self,
+        seeded: bool,
+        d_alpha: usize,
+    ) -> (&SegmentLayout, usize, usize, usize) {
+        if seeded {
+            (&self.seeded, 1, 1, self.d_in * self.d_out)
+        } else {
+            (&self.open, d_alpha, self.d_in, self.d_out)
+        }
+    }
+
+    /// The fused segment of an edge of this content on products table
+    /// `products` ([`Self::fused_shape`]) and its layout.
+    pub fn fused_segment<'a>(
+        &'a self,
+        seeded: bool,
+        d_alpha: usize,
+        products: &'a MonomialProductTable,
+        rank_out: usize,
+    ) -> (super::kernels::Segment<'a>, &'a SegmentLayout) {
+        let (layout, cut, incoming, outgoing) = self.fused_shape(seeded, d_alpha);
+        (
+            super::kernels::Segment::new(cut, incoming, 1, outgoing, products, rank_out),
+            layout,
+        )
+    }
 }
 
 /// A seed term `K × conj(A0[component])`, exact: `weight` indexes the
@@ -696,6 +729,112 @@ pub struct Family {
     /// Dressed-row plans: per step its per-row closure (trace steps only);
     /// empty for seeded plans.
     pub row_traces: Vec<Option<RowTrace>>,
+    /// Dressed-row plans: the observable columns the family's trace steps
+    /// close into ([`Support`], derived at load and for every row-pruned
+    /// copy, never stored); `None`: every column (seeded plans).
+    pub support: Option<Arc<Support>>,
+    /// What a walk of the family reads besides its steps ([`Walk`]):
+    /// derived from the plan's data by the family's first walk and kept
+    /// (never stored; outside the loader's derivations and their bound).
+    pub walk: std::sync::OnceLock<Walk>,
+}
+
+/// What a family walk reads besides its steps (lit-dress: derived from the
+/// plan's data once per family or row-pruned copy, by its first walk, so no
+/// later walk recomputes it): per step the rows its output zeroes
+/// ([`super::dress::written_rows`]) and per trace step the rows it closes
+/// ([`TraceRows`]).
+#[derive(Clone, Debug, Default)]
+pub struct Walk {
+    pub written: Vec<Option<Vec<bool>>>,
+    pub traces: Vec<Option<TraceRows>>,
+}
+
+/// The rows a trace step closes: the traced object rows some link writes,
+/// ascending (every other row's trace is an exact zero, which no closure
+/// adds), and for a fused step whose every edge has a diagonal schedule
+/// (lit-dress lever A) how it forms their diagonals ([`DiagonalLinks`]).
+#[derive(Clone, Debug, Default)]
+pub struct TraceRows {
+    pub closed: Vec<u32>,
+    pub diagonal: Option<DiagonalLinks>,
+}
+
+/// A diagonal trace step's edges and links (lit-dress lever A).
+#[derive(Clone, Debug, Default)]
+pub struct DiagonalLinks {
+    /// Per edge its diagonal schedule ([`LoopProgramV4::diagonal_schedule`]).
+    pub schedules: Vec<u32>,
+    /// Per edge its input and fused factor row lengths, in lane vectors.
+    pub shapes: Vec<(usize, usize)>,
+    /// Per closed row `i` its links `links[starts[i]..starts[i + 1]]`, as
+    /// (edge, link) in edge then link order.
+    pub starts: Vec<u32>,
+    pub links: Vec<(u32, u32)>,
+}
+
+/// The support of a dressed-row family's accumulators (lit-dress lever D):
+/// the observable columns `(Born row, colour class)` some trace step of the
+/// family closes a row with a link into (the non-zero key weights of
+/// [`KeyColumns`] on the Born rows of those rows). Every other column of the
+/// family is an exact zero, so its accumulators store these columns only.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Support {
+    /// The stored columns, ascending.
+    pub columns: Vec<u32>,
+    /// Per observable column its slot in `columns`, or `u32::MAX`.
+    pub slots: Vec<u32>,
+}
+
+impl Support {
+    /// The support of `family` in a dressed-row plan of `columns`
+    /// observable columns closing through `key_columns`.
+    pub fn of(family: &Family, key_columns: &[KeyColumns], columns: usize) -> Self {
+        let mut stored = vec![false; columns];
+        for (step, trace) in family.steps.iter().zip(&family.row_traces) {
+            let Some(trace) = trace else {
+                continue;
+            };
+            let mut reached = vec![false; trace.rows.len()];
+            match &step.split {
+                None => {
+                    for link in step.edges.iter().flat_map(|edge| &edge.links) {
+                        if let Some(row) = reached.get_mut(link.output as usize) {
+                            *row = true;
+                        }
+                    }
+                }
+                Some(split) => {
+                    for link in split
+                        .parts
+                        .iter()
+                        .flatten()
+                        .flat_map(|part| part.links.iter())
+                    {
+                        if let Some(row) = reached.get_mut(link.output as usize) {
+                            *row = true;
+                        }
+                    }
+                }
+            }
+            let keys = &key_columns[trace.key as usize];
+            for (&h, _) in trace.rows.iter().zip(&reached).filter(|(_, r)| **r) {
+                for &(o, _) in keys.row(h as usize) {
+                    stored[o as usize] = true;
+                }
+            }
+        }
+        let mut slots = vec![u32::MAX; columns];
+        let mut kept = Vec::new();
+        for (o, _) in stored.iter().enumerate().filter(|(_, s)| **s) {
+            slots[o] = u32::try_from(kept.len()).expect("columns exceed u32");
+            kept.push(u32::try_from(o).expect("columns exceed u32"));
+        }
+        Self {
+            columns: kept,
+            slots,
+        }
+    }
 }
 
 impl Family {
@@ -951,12 +1090,186 @@ pub struct LoopProgramV4 {
     /// seed-weight columns `(o, w)` (the route-R1 columns of the row); empty
     /// for other plans.
     pub row_columns: Vec<Vec<(usize, usize)>>,
+    /// Dressed-row plans: per seed key, per Born row, the `(o, w)` of
+    /// `row_columns` whose amplitude-vector weight `key_vectors[key][w]` is
+    /// not exactly zero (lit-dress lever C1: the closure skips the exact
+    /// zeros; derived at load from the key vectors, which may hold any
+    /// number of non-zero weights); empty for other plans.
+    pub key_columns: Vec<KeyColumns>,
     /// The output-stationary schedules of the fused dressing edges
     /// (derived at load, never stored: [`Gathers`]).
     pub gathers: Gathers,
 }
 
+/// One seed key's closure columns per Born row ([`LoopProgramV4::key_columns`]),
+/// row major: Born row `h` closes into `pairs[starts[h]..starts[h + 1]]`.
+#[derive(Clone, Debug, Default)]
+pub struct KeyColumns {
+    starts: Vec<u32>,
+    pairs: Vec<(u32, u32)>,
+}
+
+impl KeyColumns {
+    /// The `(o, w)` of `row_columns` with a non-zero weight in `vector`.
+    pub fn new(vector: &[[Rational; 2]], row_columns: &[Vec<(usize, usize)>]) -> Self {
+        let index = |value: usize| u32::try_from(value).expect("closure columns exceed u32");
+        let mut starts = Vec::with_capacity(row_columns.len() + 1);
+        let mut pairs = Vec::new();
+        starts.push(0);
+        for columns in row_columns {
+            for &(o, w) in columns {
+                if !(vector[w][0].is_zero() && vector[w][1].is_zero()) {
+                    pairs.push((index(o), index(w)));
+                }
+            }
+            starts.push(index(pairs.len()));
+        }
+        Self { starts, pairs }
+    }
+
+    /// The closure columns `(o, w)` of Born row `h`.
+    #[inline]
+    pub fn row(&self, h: usize) -> &[(u32, u32)] {
+        &self.pairs[self.starts[h] as usize..self.starts[h + 1] as usize]
+    }
+}
+
 impl LoopProgramV4 {
+    /// The accumulator support of `family` ([`Support`]; `None` outside
+    /// dressed-row plans: every column).
+    pub fn support_of(&self, family: &Family) -> Option<Arc<Support>> {
+        self.dressed
+            .then(|| Arc::new(Support::of(family, &self.key_columns, self.columns)))
+    }
+
+    /// Derive every family's accumulator support (at load).
+    fn set_supports(&mut self) {
+        let supports: Vec<_> = self.families.iter().map(|f| self.support_of(f)).collect();
+        for (family, support) in self.families.iter_mut().zip(supports) {
+            family.support = support;
+        }
+    }
+
+    /// The walk data of `family` ([`Walk`]): its steps' written rows and
+    /// its trace steps' closed rows, from the plan's data only.
+    pub fn walk_of(&self, family: &Family) -> Walk {
+        let columns = self.object_columns();
+        let index = |value: usize| u32::try_from(value).expect("trace links exceed u32");
+        let traces = family
+            .steps
+            .iter()
+            .enumerate()
+            .map(|(s, step)| {
+                step.trace?;
+                let traced = family
+                    .row_traces
+                    .get(s)
+                    .and_then(Option::as_ref)
+                    .map_or(columns, |trace| trace.rows.len());
+                let mut reached = vec![false; traced];
+                let mut reach = |output: u32| {
+                    if let Some(row) = reached.get_mut(output as usize) {
+                        *row = true;
+                    }
+                };
+                match &step.split {
+                    None => step
+                        .edges
+                        .iter()
+                        .flat_map(|edge| &edge.links)
+                        .for_each(|link| reach(link.output)),
+                    Some(split) => split
+                        .parts
+                        .iter()
+                        .flatten()
+                        .flat_map(|part| part.links.iter())
+                        .for_each(|link| reach(link.output)),
+                }
+                let closed: Vec<u32> = (0..traced).filter(|&r| reached[r]).map(index).collect();
+                let schedules: Option<Vec<u32>> = step
+                    .split
+                    .is_none()
+                    .then(|| {
+                        step.edges
+                            .iter()
+                            .map(|edge| {
+                                (self.contents[edge.content].d_out == step.d_out)
+                                    .then(|| {
+                                        self.gathers.diagonals.get(&(
+                                            edge.content,
+                                            edge.products,
+                                            step.seeded,
+                                            step.d_alpha,
+                                        ))
+                                    })
+                                    .flatten()
+                                    .map(|&id| index(id))
+                            })
+                            .collect()
+                    })
+                    .flatten();
+                let diagonal = schedules.map(|schedules| {
+                    let shapes = step
+                        .edges
+                        .iter()
+                        .map(|edge| {
+                            let content = &self.contents[edge.content];
+                            let (segment, _layout) = content.fused_segment(
+                                step.seeded,
+                                step.d_alpha,
+                                &self.products[edge.products],
+                                step.rank_out,
+                            );
+                            (segment.input_row_len(), content.factor_row())
+                        })
+                        .collect();
+                    // The links into each closed row, in edge then link
+                    // order (the order `fused_edge_gathered` adds them).
+                    let mut slot = vec![u32::MAX; traced];
+                    for (i, &r) in closed.iter().enumerate() {
+                        slot[r as usize] = index(i);
+                    }
+                    let mut starts = vec![0u32; closed.len() + 1];
+                    for link in step.edges.iter().flat_map(|edge| &edge.links) {
+                        if let Some(&i) = slot.get(link.output as usize) {
+                            starts[i as usize + 1] += 1;
+                        }
+                    }
+                    for i in 0..closed.len() {
+                        starts[i + 1] += starts[i];
+                    }
+                    let mut next = starts.clone();
+                    let mut links = vec![(0u32, 0u32); starts[closed.len()] as usize];
+                    for (e, edge) in step.edges.iter().enumerate() {
+                        for (l, link) in edge.links.iter().enumerate() {
+                            if let Some(&i) = slot.get(link.output as usize) {
+                                links[next[i as usize] as usize] = (index(e), index(l));
+                                next[i as usize] += 1;
+                            }
+                        }
+                    }
+                    DiagonalLinks {
+                        schedules,
+                        shapes,
+                        starts,
+                        links,
+                    }
+                });
+                Some(TraceRows { closed, diagonal })
+            })
+            .collect();
+        Walk {
+            written: super::dress::written_rows(family, columns),
+            traces,
+        }
+    }
+
+    /// The diagonal schedule `id` of a [`DiagonalLinks`].
+    #[inline]
+    pub fn diagonal_schedule(&self, id: u32) -> &super::kernels::DiagonalSchedule {
+        &self.gathers.diagonal_schedules[id as usize]
+    }
+
     /// The observable columns an open-loop object carries per row: one in a
     /// dressed-row plan (its trace steps spread the rows over the columns),
     /// else every observable column.
@@ -975,6 +1288,23 @@ impl LoopProgramV4 {
     ) -> Option<&super::kernels::GatherSchedule> {
         self.gathers.get(content, products, seeded)
     }
+
+    /// The diagonal schedule of a fused trace step's edge of content
+    /// `content` on products table `products` with `d_alpha` cut indices
+    /// (lit-dress lever A; `None`: the step forms its whole output).
+    #[inline]
+    pub fn diagonal(
+        &self,
+        content: usize,
+        products: usize,
+        seeded: bool,
+        d_alpha: usize,
+    ) -> Option<&super::kernels::DiagonalSchedule> {
+        self.gathers
+            .diagonals
+            .get(&(content, products, seeded, d_alpha))
+            .map(|&id| &self.gathers.diagonal_schedules[id])
+    }
 }
 
 /// The output-stationary schedules ([`super::kernels::GatherSchedule`]) of
@@ -984,6 +1314,11 @@ impl LoopProgramV4 {
 /// receives more than one term: a property of the plan's data, decided once
 /// at load. The schedules change the order of loads and stores only, never a
 /// value; they are derived, so stored plans are unchanged.
+///
+/// The fused trace steps of schedule B also get the diagonal of their
+/// edges' segments ([`super::kernels::DiagonalSchedule`], lit-dress lever
+/// A), one per distinct (content, products table, seeded, cut indices): a
+/// trace step forms only the diagonal its trace reads.
 #[derive(Clone, Debug, Default)]
 pub struct Gathers {
     products: usize,
@@ -991,6 +1326,10 @@ pub struct Gathers {
     /// plus one (0: none).
     index: Vec<u32>,
     schedules: Vec<super::kernels::GatherSchedule>,
+    /// Per `(content, products table, seeded, d_alpha)` of a fused trace
+    /// step's edge, its index in `diagonal_schedules`.
+    diagonals: HashMap<(usize, usize, bool, usize), usize>,
+    diagonal_schedules: Vec<super::kernels::DiagonalSchedule>,
 }
 
 impl Gathers {
@@ -1001,6 +1340,8 @@ impl Gathers {
             products,
             index: vec![0; program.contents.len() * products * 2],
             schedules: Vec::new(),
+            diagonals: HashMap::new(),
+            diagonal_schedules: Vec::new(),
         };
         let mut used = BTreeSet::new();
         let fused = |step: &Step, used: &mut BTreeSet<(usize, usize, bool)>| {
@@ -1035,6 +1376,39 @@ impl Gathers {
                 let slot = gathers.slot(content, table, seeded);
                 gathers.index[slot] =
                     u32::try_from(gathers.schedules.len()).expect("gather schedules exceed u32");
+            }
+        }
+        // The diagonals of schedule B's fused trace steps (the row-pruned
+        // copies of `plan/live.rs` keep their steps' edges, so they read
+        // these too).
+        let mut traced = BTreeSet::new();
+        for family in &program.families {
+            for step in family
+                .steps
+                .iter()
+                .filter(|s| s.trace.is_some() && s.split.is_none())
+            {
+                for edge in &step.edges {
+                    traced.insert((edge.content, edge.products, step.seeded, step.d_alpha));
+                }
+            }
+        }
+        for (content, table, seeded, d_alpha) in traced {
+            let content_ = &program.contents[content];
+            let (layout, cut, incoming, _outgoing) = content_.fused_shape(seeded, d_alpha);
+            if let Some(schedule) = super::kernels::DiagonalSchedule::new(
+                layout,
+                &program.products[table],
+                cut,
+                incoming,
+                d_alpha,
+                content_.d_out,
+            ) {
+                gathers.diagonals.insert(
+                    (content, table, seeded, d_alpha),
+                    gathers.diagonal_schedules.len(),
+                );
+                gathers.diagonal_schedules.push(schedule);
             }
         }
         gathers
@@ -1901,6 +2275,7 @@ impl LoopProgramV4 {
             dressed,
             key_vectors,
             row_columns: Vec::new(),
+            key_columns: Vec::new(),
             gathers: Gathers::default(),
         };
         if dressed {
@@ -1912,6 +2287,11 @@ impl LoopProgramV4 {
                     }
                 }
             }
+            program.key_columns = program
+                .key_vectors
+                .iter()
+                .map(|vector| KeyColumns::new(vector, &row_columns))
+                .collect();
             program.row_columns = row_columns;
         }
         // Helicity-resolved and selected columns: the steps keep the rows
@@ -1919,6 +2299,7 @@ impl LoopProgramV4 {
         // close the Born rows a column reads (the exact helicity-zero
         // filter's drops are not dressed).
         program.prune_dead_rows(&mut tables.links);
+        program.set_supports();
         program.gathers = Gathers::build(&program);
         Ok(program)
     }
@@ -2107,6 +2488,8 @@ impl LoopProgramV4 {
             vertices: instances.into_iter().collect(),
             currents: currents.into_iter().collect(),
             row_traces,
+            support: None,
+            walk: std::sync::OnceLock::new(),
         })
     }
 

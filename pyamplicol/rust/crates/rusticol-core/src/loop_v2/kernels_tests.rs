@@ -682,3 +682,265 @@ fn gather_schedules_exist_only_where_terms_share_a_coefficient() {
     let terms = &schedule.terms[schedule.ends[q0 - 1] as usize..schedule.ends[q0] as usize];
     assert_eq!(terms, &[[1, 0], [0, 1]]);
 }
+
+/// One fused trace step formed whole (each edge's [`fused_edge`] into a
+/// zeroed output, then the trace of every output row: the diagonal blocks
+/// `a * d_out + a` summed in `a` order from zero), and by [`trace_row`]
+/// (lit-dress lever A) on each row's links in edge then link order; both
+/// traces per row, in carrier `T`.
+#[allow(clippy::type_complexity)]
+fn traced_both_ways<T: FloatLike + 'static, const LANES: usize>(
+    edges: &[(
+        &Segment<'_>,
+        &SegmentLayout,
+        &[Vec<Rational>; 2],
+        &[RowLink],
+    )],
+    rows: usize,
+    d_alpha: usize,
+    d_out: usize,
+    convert: impl Fn(&Rational) -> T,
+) -> [Vec<Vec<T>>; 2] {
+    let v = lane_vector_len(LANES);
+    let (segment, ..) = edges[0];
+    let out_row = segment.output_row_len() * v;
+    let targets = ncoeff(segment.output_rank());
+    let block = targets * v;
+    let zero = convert(&Rational::from(0));
+    let data: Vec<[Vec<T>; 2]> = edges
+        .iter()
+        .map(|(.., data, _)| {
+            data.each_ref()
+                .map(|values| values.iter().map(&convert).collect())
+        })
+        .collect();
+    // Whole (every row a link writes, traced or not).
+    let written = edges
+        .iter()
+        .flat_map(|(.., links)| links.iter().map(|link| link.output as usize + 1))
+        .max()
+        .unwrap_or(0)
+        .max(rows);
+    let mut output = vec![zero.clone(); written * out_row];
+    for ((segment, layout, _, links), [input, factor]) in edges.iter().zip(&data) {
+        fused_edge::<T, LANES>(segment, layout, input, factor, links, &mut output);
+    }
+    let whole = (0..rows)
+        .map(|r| {
+            let mut trace = vec![zero.clone(); block];
+            for a in 0..d_alpha {
+                let diagonal = &output[r * out_row + (a * d_out + a) * block..][..block];
+                for (c, x) in trace.iter_mut().zip(diagonal) {
+                    *c += x;
+                }
+            }
+            trace
+        })
+        .collect();
+    // Diagonal only.
+    let schedules: Vec<DiagonalSchedule> = edges
+        .iter()
+        .map(|(segment, layout, ..)| {
+            DiagonalSchedule::new(
+                layout,
+                segment.products(),
+                segment.cut(),
+                segment.incoming(),
+                d_alpha,
+                d_out,
+            )
+            .expect("a square diagonal")
+        })
+        .collect();
+    let diagonal = (0..rows)
+        .map(|r| {
+            let mut contributions = Vec::new();
+            for (((segment, layout, _, links), [input, factor]), schedule) in
+                edges.iter().zip(&data).zip(&schedules)
+            {
+                let input_row = segment.input_row_len() * v;
+                let factor_row = layout.entries().len() * v;
+                for link in links.iter().filter(|link| link.output as usize == r) {
+                    contributions.push(TraceTerm {
+                        input: &input[link.input as usize * input_row..][..input_row],
+                        factor: &factor[link.block as usize * factor_row..][..factor_row],
+                        schedule,
+                    });
+                }
+            }
+            let mut trace = vec![convert(&Rational::from(7)); block];
+            trace_row::<T, LANES>(&contributions, &mut trace);
+            trace
+        })
+        .collect();
+    [whole, diagonal]
+}
+
+#[test]
+fn traced_rows_are_bitwise_the_whole_steps_diagonal() {
+    fn sample<const LANES: usize>(rng: &mut Lcg, count: usize) -> Vec<Rational> {
+        (0..count * lane_vector_len(LANES))
+            .map(|_| rng.rational())
+            .collect()
+    }
+    fn sparse(rng: &mut Lcg, dense: SegmentLayout, keep: bool) -> SegmentLayout {
+        if keep {
+            return dense;
+        }
+        let entries = dense
+            .entries()
+            .iter()
+            .filter(|_| !rng.next().is_multiple_of(3))
+            .copied()
+            .collect();
+        SegmentLayout::new(dense.loop_in_dimension(), dense.out_dimension(), entries).unwrap()
+    }
+    /// One fused trace edge of a comparison: its segment, layout, factor
+    /// (real and imaginary rows) and row links.
+    type TraceEdge<'a> = (
+        &'a Segment<'a>,
+        &'a SegmentLayout,
+        &'a [Vec<Rational>; 2],
+        &'a [RowLink],
+    );
+    fn compare<const LANES: usize>(
+        edges: &[TraceEdge<'_>],
+        rows: usize,
+        d_alpha: usize,
+        d_out: usize,
+        what: &str,
+    ) {
+        let bits = |rows: &Vec<Vec<f64>>| {
+            rows.iter()
+                .map(|row| row.iter().map(|x| x.to_bits()).collect::<Vec<_>>())
+                .collect::<Vec<_>>()
+        };
+        let [w, d] = traced_both_ways::<f64, LANES>(edges, rows, d_alpha, d_out, |r| r.to_f64());
+        assert_eq!(bits(&w), bits(&d), "binary64, {what}");
+        let [w, d] = traced_both_ways::<DoubleFloat, LANES>(edges, rows, d_alpha, d_out, |r| {
+            DoubleFloat::from(r)
+        });
+        assert!(w == d, "double-double, {what}");
+        let [w, d] = traced_both_ways::<_, LANES>(edges, rows, d_alpha, d_out, |r| {
+            r.to_multi_prec_float(200)
+        });
+        assert!(w == d, "MPFR, {what}");
+        let [w, d] =
+            traced_both_ways::<Rational, LANES>(edges, rows, d_alpha, d_out, Rational::clone);
+        assert!(w == d, "exact, {what}");
+    }
+    // Open-loop inputs: two edges of different input ranks and layouts into
+    // a graded output (one rank above both products), several links per
+    // row from both edges, one row no link reaches, one link into a row
+    // beyond the traced ones.
+    fn open<const LANES: usize>(rng: &mut Lcg, ranks: [usize; 2], degree: usize, dense: bool) {
+        let (cut, incoming, outgoing) = (2, 3, 2);
+        let output_rank = ranks.iter().max().unwrap() + degree + 1;
+        let tables = ranks.map(|rank| MonomialProductTable::new(rank, degree));
+        let segments = tables
+            .each_ref()
+            .map(|products| Segment::new(cut, incoming, 1, outgoing, products, output_rank));
+        let layouts =
+            [dense, !dense].map(|keep| sparse(rng, dense_layout(incoming, outgoing, degree), keep));
+        let links: [Vec<RowLink>; 2] = [
+            (0..5)
+                .map(|r| RowLink {
+                    output: (r / 2) as u32,
+                    input: ((r * 3) % 5) as u32,
+                    block: (r % 2) as u32,
+                })
+                .collect(),
+            vec![
+                RowLink {
+                    output: 1,
+                    input: 2,
+                    block: 0,
+                },
+                RowLink {
+                    output: 0,
+                    input: 0,
+                    block: 1,
+                },
+                RowLink {
+                    output: 4,
+                    input: 1,
+                    block: 1,
+                },
+                RowLink {
+                    output: 1,
+                    input: 3,
+                    block: 1,
+                },
+            ],
+        ];
+        let data = [0, 1].map(|e| {
+            [
+                sample::<LANES>(rng, 5 * segments[e].input_row_len()),
+                sample::<LANES>(rng, 2 * layouts[e].entries().len()),
+            ]
+        });
+        let edges: Vec<_> = (0..2)
+            .map(|e| (&segments[e], &layouts[e], &data[e], links[e].as_slice()))
+            .collect();
+        // Rows 0..4 traced (row 3 reached by no link, row 4's link not traced).
+        compare::<LANES>(
+            &edges,
+            4,
+            cut,
+            outgoing,
+            &format!("open, ranks {ranks:?}, degree {degree}, dense {dense}"),
+        );
+    }
+    // Seeded inputs: one lane vector per row, the cut index folded into the
+    // open end (`d_alpha x d_out` = 2 x 2 output blocks of one cut index).
+    fn seeded<const LANES: usize>(rng: &mut Lcg, degree: usize, dense: bool) {
+        let products = MonomialProductTable::new(0, degree);
+        let segment = Segment::new(1, 1, 1, 4, &products, degree + 1);
+        let layout = sparse(rng, dense_layout(1, 4, degree), dense);
+        let links: Vec<RowLink> = (0..4)
+            .map(|r| RowLink {
+                output: (r % 2) as u32,
+                input: r as u32,
+                block: (r / 2) as u32,
+            })
+            .collect();
+        let data = [
+            sample::<LANES>(rng, 4 * segment.input_row_len()),
+            sample::<LANES>(rng, 2 * layout.entries().len()),
+        ];
+        compare::<LANES>(
+            &[(&segment, &layout, &data, &links)],
+            2,
+            2,
+            2,
+            &format!("seeded, degree {degree}, dense {dense}"),
+        );
+    }
+    let mut rng = Lcg(0x7a3d);
+    for degree in 1..=2 {
+        for dense in [true, false] {
+            open::<L>(&mut rng, [0, 2], degree, dense);
+            open::<L>(&mut rng, [1, 1], degree, dense);
+            seeded::<L>(&mut rng, degree, dense);
+        }
+    }
+    // The binary64 executor's width (AVX-512 where the CPU has it).
+    open::<16>(&mut rng, [2, 3], 1, false);
+    open::<16>(&mut rng, [3, 1], 2, true);
+    seeded::<16>(&mut rng, 1, false);
+}
+
+#[test]
+fn diagonal_schedules_need_a_square_diagonal() {
+    let products = MonomialProductTable::new(1, 1);
+    let layout = dense_layout(3, 2, 1);
+    // 2 cut indices x 2 open ends: the blocks (0, 0) and (1, 1).
+    let schedule = DiagonalSchedule::new(&layout, &products, 2, 3, 2, 2).unwrap();
+    assert_eq!(schedule.blocks(), 2);
+    // Every term of an open end reaches one diagonal block: half the
+    // products of the whole segment.
+    assert_eq!(schedule.work() * 2, layout.entries().len() * ncoeff(1) * 2);
+    // Output blocks that are not the segment's cut x out.
+    assert_eq!(DiagonalSchedule::new(&layout, &products, 2, 3, 3, 2), None);
+    assert_eq!(DiagonalSchedule::new(&layout, &products, 2, 2, 2, 2), None);
+}

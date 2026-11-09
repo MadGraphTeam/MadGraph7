@@ -684,6 +684,12 @@ struct Evaluation {
     /// the counterterm kets (`TreeInputs::kets`: rows × ket components in
     /// the counterterm program's layout), else None.
     counterterm_kets: Option<Vec<Values>>,
+    /// An amplitude-mode row selection (`rows`): the plan rows, ascending,
+    /// whose slots `amplitudes`, their re-test, budget and term scale and
+    /// `counterterm_kets` carry (the layout of every row restricted to
+    /// them: lit-dress (H), the unselected rows are not exported); else
+    /// None (every row).
+    amplitude_rows: Option<Vec<usize>>,
     failures: Vec<Vec<String>>,
     report: ReportObject,
 }
@@ -773,6 +779,7 @@ fn export_evaluation<T: Exchanged + Real>(
         amplitude_budget,
         amplitude_scale,
         counterterm_kets: None,
+        amplitude_rows: None,
         born,
         loop_born,
         counterterms,
@@ -943,6 +950,67 @@ fn merge_report(total: &mut Option<Report>, part: Report) {
     }
 }
 
+/// The kept rows of an amplitude-mode row selection (`evaluate_with`):
+/// what its export carries (lit-dress (H)). The executor's amplitude slots
+/// are `order * columns + column` with column `row * size + t` (the layout
+/// `induced.read_native` and the SDK read), the counterterm kets
+/// `row * components + j`.
+struct Kept {
+    rows: Vec<usize>,
+    plan_rows: usize,
+    columns: usize,
+}
+
+impl Kept {
+    fn new(rows: &[bool], plan: &rusticol_core::loop_v2::plan::LoopProgramV4) -> PyResult<Self> {
+        if rows.len() != plan.rows || plan.rows == 0 || !plan.columns.is_multiple_of(plan.rows) {
+            return Err(error(
+                "an amplitude-mode row mask needs one flag per plan row and the \
+                 plan's columns row by row",
+            ));
+        }
+        Ok(Self {
+            rows: (0..plan.rows).filter(|&row| rows[row]).collect(),
+            plan_rows: plan.rows,
+            columns: plan.columns,
+        })
+    }
+
+    /// The kept rows' values of `values` (`plan_rows` equal rows of them).
+    fn rows_of<V: Clone>(&self, values: &[V]) -> Vec<V> {
+        let width = values.len() / self.plan_rows;
+        self.rows
+            .iter()
+            .flat_map(|&row| values[row * width..][..width].iter().cloned())
+            .collect()
+    }
+
+    /// The kept rows' slots of `values` (per loop order `columns` slots,
+    /// in turn).
+    fn slots<V: Clone>(&self, values: &mut Vec<V>) {
+        if values.is_empty() {
+            return;
+        }
+        let orders = values.len() / self.columns;
+        *values = (0..orders)
+            .flat_map(|order| self.rows_of(&values[order * self.columns..][..self.columns]))
+            .collect();
+    }
+
+    /// Restrict a point's amplitude slots, their re-test, budget and term
+    /// scale to the kept rows.
+    fn restrict<T: Clone>(&self, result: &mut PointResult<T>) {
+        self.slots(&mut result.amplitudes);
+        if let Some(check) = &mut result.amplitude_check {
+            self.slots(check);
+        }
+        if let Some(budget) = &mut result.amplitude_budget {
+            self.slots(budget);
+        }
+        self.slots(&mut result.amplitude_scale);
+    }
+}
+
 /// Evaluate a batch. With native trees it streams in parts of whole lane
 /// chunks (`Bounds`; `Trees::part_points`): each part's tree fill, then its
 /// dressing and reduction, so the batch's tree states, block rows and Born
@@ -1017,13 +1085,20 @@ where
     };
     let started = std::time::Instant::now();
     let mut filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
-    // Amplitude mode: the kept rows restrict the dressing only
-    // (`live_rows`); its trees have no observable columns that read them
-    // per point (decided per call).
+    // Amplitude mode: the kept rows restrict the dressing and the tree fill
+    // (`live_rows`: the kept rows' trees and counterterm kets); its trees
+    // have no observable columns whose sources read them per point.
     if !executor.plan().amplitude {
         filling.sources = selection.sources(filling.sources.take(), batch.momenta.len());
     }
     filling.rows = tree_rows;
+    let tree_counts = trees.program.row_counts(filling.rows.as_ref());
+    // An amplitude-mode row selection exports its kept rows only (their
+    // amplitude slots and counterterm kets; lit-dress (H)).
+    let kept = match (&selection.rows, executor.plan().amplitude) {
+        (Some(rows), true) => Some(Kept::new(rows, executor.plan())?),
+        _ => None,
+    };
     // The report's "trees" stage: the whole native input fill, then its
     // parts (`TreeInputs::seconds`).
     let mut tree_seconds = started.elapsed().as_secs_f64();
@@ -1089,7 +1164,10 @@ where
             native.kets.map(|points| {
                 points
                     .iter()
-                    .map(|values| T::export(values, bits))
+                    .map(|values| match &kept {
+                        Some(kept) => T::export(&kept.rows_of(values), bits),
+                        None => T::export(values, bits),
+                    })
                     .collect()
             }),
         );
@@ -1147,6 +1225,19 @@ where
         report.seconds.insert("row liveness: trees", trees);
     }
     report.seconds.extend(tree_parts);
+    // The tree fill's work: the Born rows whose closures (Born and
+    // counterterm kets) run and the interactions of both programs.
+    report
+        .counts
+        .insert("tree closure rows", tree_counts.0 as u64);
+    report
+        .counts
+        .insert("tree interactions", tree_counts.1 as u64);
+    if let Some(kept) = &kept {
+        for result in &mut results {
+            kept.restrict(result);
+        }
+    }
     let mut evaluation = export_evaluation(
         results,
         report,
@@ -1158,6 +1249,7 @@ where
     );
     evaluation.dipoles = correlations;
     evaluation.counterterm_kets = kets;
+    evaluation.amplitude_rows = kept.map(|kept| kept.rows);
     Ok(evaluation)
 }
 
