@@ -1,0 +1,332 @@
+[
+  {
+    "after_sha256": {
+      "coef_construction_1.f": "24e01bb186b85246e11d857956ff03979dd3840b0e1b726e73d82b7c00f5142d"
+    },
+    "applied": 35,
+    "before_sha256": {
+      "coef_construction_1.f": "f40b77d81a48c3286c9ae7267bdb41f97ba282056ee5fa512514f0b2abfce33b"
+    },
+    "declined": 0,
+    "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal-production/outputs/candidate/ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+    "expected": {
+      "3": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 2,
+        "loop_mother_rank": 1,
+        "out": 3,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "4": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 2,
+        "loop_mother_rank": 1,
+        "out": 4,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "7": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 6,
+        "loop_mother_rank": 1,
+        "out": 7,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "8": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 6,
+        "loop_mother_rank": 1,
+        "out": 8,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "30": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 29,
+        "loop_mother_rank": 1,
+        "out": 30,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "31": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 29,
+        "loop_mother_rank": 1,
+        "out": 31,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "34": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 33,
+        "loop_mother_rank": 1,
+        "out": 34,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "35": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 33,
+        "loop_mother_rank": 1,
+        "out": 35,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "47": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 46,
+        "loop_mother_rank": 1,
+        "out": 47,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "53": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 46,
+        "loop_mother_rank": 1,
+        "out": 53,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "58": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 57,
+        "loop_mother_rank": 1,
+        "out": 58,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "64": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 57,
+        "loop_mother_rank": 1,
+        "out": 64,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "69": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 68,
+        "loop_mother_rank": 1,
+        "out": 69,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "70": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 68,
+        "loop_mother_rank": 1,
+        "out": 70,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "73": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 72,
+        "loop_mother_rank": 1,
+        "out": 73,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "76": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 75,
+        "loop_mother_rank": 1,
+        "out": 76,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "79": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 78,
+        "loop_mother_rank": 1,
+        "out": 79,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "80": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 78,
+        "loop_mother_rank": 1,
+        "out": 80,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "106": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 105,
+        "loop_mother_rank": 1,
+        "out": 106,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "107": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 105,
+        "loop_mother_rank": 1,
+        "out": 107,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "109": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 108,
+        "loop_mother_rank": 1,
+        "out": 109,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "110": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 108,
+        "loop_mother_rank": 1,
+        "out": 110,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "112": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 111,
+        "loop_mother_rank": 1,
+        "out": 112,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "113": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 111,
+        "loop_mother_rank": 1,
+        "out": 113,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "115": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 114,
+        "loop_mother_rank": 1,
+        "out": 115,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "116": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 114,
+        "loop_mother_rank": 1,
+        "out": 116,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "118": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 117,
+        "loop_mother_rank": 1,
+        "out": 118,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "119": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 117,
+        "loop_mother_rank": 1,
+        "out": 119,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "121": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 120,
+        "loop_mother_rank": 1,
+        "out": 121,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "122": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 120,
+        "loop_mother_rank": 1,
+        "out": 122,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "124": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 123,
+        "loop_mother_rank": 1,
+        "out": 124,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "125": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 123,
+        "loop_mother_rank": 1,
+        "out": 125,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "127": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 126,
+        "loop_mother_rank": 1,
+        "out": 127,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "128": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 126,
+        "loop_mother_rank": 1,
+        "out": 128,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "130": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 129,
+        "loop_mother_rank": 1,
+        "out": 130,
+        "out_size": 4,
+        "vertex_rank": 1
+      }
+    },
+    "prefix": "ML5_0_",
+    "proposed": 35
+  }
+]

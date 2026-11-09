@@ -1,0 +1,107 @@
+[
+  {
+    "after_sha256": {
+      "coef_construction_1.f": "35e87bc0356a51a81a1f47d9a48c733fca850d8afbdb469434753516f10b2647"
+    },
+    "applied": 10,
+    "before_sha256": {
+      "coef_construction_1.f": "bdb189b726ea89133ca27b38c0fa56b2e2b5394266fe2d807cee33c4f14380f9"
+    },
+    "declined": 0,
+    "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal-production/outputs/candidate/qcd_n2_gg_ttx/SubProcesses/P0_gg_ttx",
+    "expected": {
+      "2": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 1,
+        "loop_mother_rank": 1,
+        "out": 2,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "5": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 4,
+        "loop_mother_rank": 1,
+        "out": 5,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "8": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 7,
+        "loop_mother_rank": 1,
+        "out": 8,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "16": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 15,
+        "loop_mother_rank": 1,
+        "out": 16,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "23": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 22,
+        "loop_mother_rank": 1,
+        "out": 23,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "42": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 41,
+        "loop_mother_rank": 1,
+        "out": 42,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "45": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 44,
+        "loop_mother_rank": 1,
+        "out": 45,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "75": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 74,
+        "loop_mother_rank": 1,
+        "out": 75,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "83": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 82,
+        "loop_mother_rank": 1,
+        "out": 83,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "91": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 90,
+        "loop_mother_rank": 1,
+        "out": 91,
+        "out_size": 4,
+        "vertex_rank": 1
+      }
+    },
+    "prefix": "ML5_0_",
+    "proposed": 10
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "affinity": [
+    10
+  ],
+  "command": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/unit_tests/various/test_dp_terminal_compiled.py"
+  ],
+  "completed_utc": "2026-11-09T23:07:49.588894+00:00",
+  "log": "compiled-final-tests.log",
+  "log_sha256": "fa61953366656e77eee16572a9175e9a8418020a2b063fd2a8facec71500ee52",
+  "performance_acceptance_eligible": false,
+  "returncode": 0,
+  "source_sha256_after": {
+    "madgraph/loop/dp_terminal_proof.py": "54fb5931a822e0feb6e6c9aa9a43c428a00fc7834792e07016eff0d10b3dbf52",
+    "madgraph/loop/loop_exporters.py": "d70191aca87f27dfb9f4e6511704f91113913db75e0c05280a03887536daf2c4",
+    "madgraph/various/q_polynomial.py": "da5ca27ffbc792f56acaa5ce446ca3988672f6b6e5552b052e24efdd808a9f11",
+    "tests/unit_tests/loop/test_dp_terminal_export.py": "c055fb5a4dfbed81bbac85478f511b6e7c8298c66dd8c26d5b96a8aaaca1826b",
+    "tests/unit_tests/loop/test_dp_terminal_wavefunctions.py": "2d27353521c6a6c3ab96a3587f2275930d26aef355d6fdc9fc504951076d3a06",
+    "tests/unit_tests/various/test_dp_terminal_compiled.py": "9b0eaf064a13ec75b309a99138d960b885cc4132c801a13e9cb350b9465bea3e"
+  },
+  "source_sha256_before": {
+    "madgraph/loop/dp_terminal_proof.py": "54fb5931a822e0feb6e6c9aa9a43c428a00fc7834792e07016eff0d10b3dbf52",
+    "madgraph/loop/loop_exporters.py": "d70191aca87f27dfb9f4e6511704f91113913db75e0c05280a03887536daf2c4",
+    "madgraph/various/q_polynomial.py": "da5ca27ffbc792f56acaa5ce446ca3988672f6b6e5552b052e24efdd808a9f11",
+    "tests/unit_tests/loop/test_dp_terminal_export.py": "c055fb5a4dfbed81bbac85478f511b6e7c8298c66dd8c26d5b96a8aaaca1826b",
+    "tests/unit_tests/loop/test_dp_terminal_wavefunctions.py": "2d27353521c6a6c3ab96a3587f2275930d26aef355d6fdc9fc504951076d3a06",
+    "tests/unit_tests/various/test_dp_terminal_compiled.py": "9b0eaf064a13ec75b309a99138d960b885cc4132c801a13e9cb350b9465bea3e"
+  },
+  "sources_unchanged": true,
+  "started_utc": "2026-11-09T23:07:20.035633+00:00"
+}

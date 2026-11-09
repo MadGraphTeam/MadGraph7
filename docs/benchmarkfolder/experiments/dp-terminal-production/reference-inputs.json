@@ -1,0 +1,8 @@
+{
+  "files_sha256": {
+    "docs/benchmarkfolder/experiments/numerical/strict-policy-qcd-n1/baseline-1/baseline-inputs.json": "cd2aa6a479ee96f07337d0328a49397c54ee59aec519646200a5334b9562fc5c",
+    "docs/benchmarkfolder/experiments/numerical/strict-policy-qcd-n1/baseline-1/raw/observation.json": "d45f54a9c302829bc5657d860dc7e344e00f3a8275b9f8ba57ccd9deb36364cc",
+    "docs/benchmarkfolder/experiments/numerical/strict-policy-qcd-n1/baseline-1/raw/values.dat": "bfd831ede88f8b0259b80206b598112fd46918cc9f06eaa5a33b4e59993d3c29"
+  },
+  "scope": "Retained comparison inputs in the same repository; not a new baseline execution."
+}

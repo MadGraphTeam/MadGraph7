@@ -1,0 +1,26 @@
+[
+  {
+    "after_sha256": {
+      "coef_construction_1.f": "5543520b9ad9d999e3b488ea0c90817efa553bfbc1aa954c059b01900db6dd82"
+    },
+    "applied": 1,
+    "before_sha256": {
+      "coef_construction_1.f": "e2dbc5804c7f21139b46aa3cb6a49b97806f51e2d489e94e3e9f0f88760f3c1d"
+    },
+    "declined": 0,
+    "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal-production/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z",
+    "expected": {
+      "3": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 2,
+        "loop_mother_rank": 1,
+        "out": 3,
+        "out_size": 4,
+        "vertex_rank": 1
+      }
+    },
+    "prefix": "ML5_0_",
+    "proposed": 1
+  }
+]

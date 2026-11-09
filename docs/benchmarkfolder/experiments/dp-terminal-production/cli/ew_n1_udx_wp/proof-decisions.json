@@ -1,0 +1,71 @@
+[
+  {
+    "after_sha256": {
+      "coef_construction_1.f": "86226f60884954f591475e78cf1dd85ebb88c85379fcc5a65f12ce1df331c1d7"
+    },
+    "applied": 6,
+    "before_sha256": {
+      "coef_construction_1.f": "4b4835f38ed489f2277cf34425ee80ae2cf85bca59c6a461857817e2e30b0ef5"
+    },
+    "declined": 0,
+    "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal-production/outputs/candidate/ew_n1_udx_wp/SubProcesses/P0_udx_wp",
+    "expected": {
+      "3": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 2,
+        "loop_mother_rank": 1,
+        "out": 3,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "6": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 5,
+        "loop_mother_rank": 1,
+        "out": 6,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "9": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 8,
+        "loop_mother_rank": 1,
+        "out": 9,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "12": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 11,
+        "loop_mother_rank": 1,
+        "out": 12,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "15": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 14,
+        "loop_mother_rank": 1,
+        "out": 15,
+        "out_size": 4,
+        "vertex_rank": 1
+      },
+      "17": {
+        "in_size": 4,
+        "lcut_size": 4,
+        "loop_mother_number": 16,
+        "loop_mother_rank": 1,
+        "out": 17,
+        "out_size": 4,
+        "vertex_rank": 1
+      }
+    },
+    "prefix": "ML5_0_",
+    "proposed": 6
+  }
+]

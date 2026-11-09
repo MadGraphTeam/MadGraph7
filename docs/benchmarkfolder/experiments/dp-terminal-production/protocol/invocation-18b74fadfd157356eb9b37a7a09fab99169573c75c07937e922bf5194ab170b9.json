@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "docs/benchmarkfolder/experiments/dp-terminal-production/run_qualification.py",
+    "--case",
+    "qcd_n1_uux_z",
+    "--build-n1",
+    "--observe-n1"
+  ],
+  "performance_acceptance_eligible": false,
+  "runner_sha256": "18b74fadfd157356eb9b37a7a09fab99169573c75c07937e922bf5194ab170b9",
+  "snapshot": "protocol/runner-18b74fadfd157356eb9b37a7a09fab99169573c75c07937e922bf5194ab170b9.py",
+  "started_utc": "2026-11-09T23:02:13.766940+00:00"
+}

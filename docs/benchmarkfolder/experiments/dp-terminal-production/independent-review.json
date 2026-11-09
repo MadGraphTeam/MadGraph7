@@ -1,0 +1,21 @@
+{
+  "edits_or_native_execution": false,
+  "index_was_not_present_at_review": true,
+  "invocation_note": "Only the final build/replay invocation is recorded under protocol/invocation-<runnerhash>.json. This filename scheme can overwrite repeated identical-runner invocations. No generation-start runner snapshot is claimed; generation commands, timestamps, source identities and raw logs are retained separately.",
+  "record_kind": "Coordinator transcription of independent read-only review",
+  "reviewer": "/root/pole_fastpath/pole_patch_audit",
+  "verified": {
+    "all_statuses": 211,
+    "backend_precision": "1:DP",
+    "bitwise_matching_doubles": 800,
+    "build_artifact_hashes": 60,
+    "compilation_source_hashes": 111,
+    "declined": 0,
+    "five_configurations_unchanged": true,
+    "five_source_verdicts": true,
+    "intended_generation_to_build_source_change": "check_sa.f benchmark driver only",
+    "orders_per_point": 2,
+    "points": 100,
+    "selected_updates": 78
+  }
+}

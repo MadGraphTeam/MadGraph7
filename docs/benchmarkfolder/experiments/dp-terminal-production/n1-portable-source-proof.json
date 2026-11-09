@@ -1,0 +1,17 @@
+{
+  "expected": {
+    "3": {
+      "in_size": 4,
+      "lcut_size": 4,
+      "loop_mother_number": 2,
+      "loop_mother_rank": 1,
+      "out": 3,
+      "out_size": 4,
+      "vertex_rank": 1
+    }
+  },
+  "passed": true,
+  "prefix": "ML5_0_",
+  "scope": "Source-only rerun on the portable regular-file snapshot of the compiled n1 closure.",
+  "source": "n1-compiled-source/SubProcesses/P0_uux_z"
+}

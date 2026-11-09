@@ -1,0 +1,142 @@
+{
+  "compiled_final_tests": "compiled-final-tests.json",
+  "copied_n1_source_closure_note": "Regular-file copies of all compiler source-map entries, including the final rendered benchmark driver. Original lexical source paths and compilation flags remain in compilation.json; native binaries are represented by hashes only.",
+  "coverage": [
+    {
+      "case": {
+        "id": "ew_n1_udx_wp",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "nfinal": 1,
+        "process": "u d~ > w+ [virt=QED]",
+        "role": "main"
+      },
+      "counts": [
+        {
+          "applied": 6,
+          "declined": 0,
+          "process": "P0_udx_wp",
+          "proposed": 6
+        }
+      ],
+      "coverage": "cli/ew_n1_udx_wp/coverage.json",
+      "coverage_sha256": "692093c41768b49e1add9b12e5ff1a6aa8d34df3683121e80f8e2e6fc47ab95c"
+    },
+    {
+      "case": {
+        "id": "ew_n2_epem_mupmum",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "nfinal": 2,
+        "process": "e+ e- > mu+ mu- [virt=QED]",
+        "role": "main"
+      },
+      "counts": [
+        {
+          "applied": 35,
+          "declined": 0,
+          "process": "P0_epem_mupmum",
+          "proposed": 35
+        }
+      ],
+      "coverage": "cli/ew_n2_epem_mupmum/coverage.json",
+      "coverage_sha256": "642b908dc1b8258954b192bac346d0ef884db1220b07701a53ff7a33bb2359fc"
+    },
+    {
+      "case": {
+        "id": "qcd_n1_uux_z",
+        "model": "loop_sm",
+        "nfinal": 1,
+        "process": "u u~ > z [virt=QCD]",
+        "role": "main"
+      },
+      "counts": [
+        {
+          "applied": 1,
+          "declined": 0,
+          "process": "P0_uux_z",
+          "proposed": 1
+        }
+      ],
+      "coverage": "cli/qcd_n1_uux_z/coverage.json",
+      "coverage_sha256": "fe4780fa4b936b7acb7b2bfe20b6ffb7409e6a9cd79fe0d6347f367e1c39f9a1"
+    },
+    {
+      "case": {
+        "id": "qcd_n2_gg_ttx",
+        "model": "loop_sm",
+        "nfinal": 2,
+        "process": "g g > t t~ [virt=QCD]",
+        "role": "main"
+      },
+      "counts": [
+        {
+          "applied": 10,
+          "declined": 0,
+          "process": "P0_gg_ttx",
+          "proposed": 10
+        }
+      ],
+      "coverage": "cli/qcd_n2_gg_ttx/coverage.json",
+      "coverage_sha256": "7a462bab8ae5b9bedd6b614edb10361fc2905459f904bc771d24e8e26140ca9d"
+    },
+    {
+      "case": {
+        "id": "qcd_n3_uux_zgg",
+        "model": "loop_sm",
+        "nfinal": 3,
+        "process": "u u~ > z g g [virt=QCD]",
+        "role": "main"
+      },
+      "counts": [
+        {
+          "applied": 26,
+          "declined": 0,
+          "process": "P0_uux_zgg",
+          "proposed": 26
+        }
+      ],
+      "coverage": "cli/qcd_n3_uux_zgg/coverage.json",
+      "coverage_sha256": "504c1783a8c539c662a3773ce18b3c8572ef50a97aa9e14ddd876f7cf895e64e"
+    }
+  ],
+  "declined_updates": 0,
+  "historical_tests": {
+    "combined_regression_log": "compiled-regression-tests.log",
+    "passed": 68,
+    "scope_note": "Earlier combined regression includes legacy QP tests and compiled DP tests. Later hardening affected selection/source proof only; final compiled tests separately bind current source bytes.",
+    "subtests_passed": 80
+  },
+  "n1_replay": {
+    "backend_precision_counts": {
+      "1:DP": 100
+    },
+    "bitwise_equal": true,
+    "maximum_relative_error": 0.0,
+    "point_count": 100,
+    "post_worker_source_proof_passed": true,
+    "strict_host_threshold": 1e-06
+  },
+  "performance_acceptance_eligible": false,
+  "production_sources_sha256": {
+    "madgraph/iolibs/helas_call_writers.py": "7a267fa78b75fa5b8efc4fc2f595769f938ee59919f55c6fffc3ab86ec5707ea",
+    "madgraph/loop/dp_terminal_proof.py": "54fb5931a822e0feb6e6c9aa9a43c428a00fc7834792e07016eff0d10b3dbf52",
+    "madgraph/loop/loop_exporters.py": "d70191aca87f27dfb9f4e6511704f91113913db75e0c05280a03887536daf2c4",
+    "madgraph/various/q_polynomial.py": "da5ca27ffbc792f56acaa5ce446ca3988672f6b6e5552b052e24efdd808a9f11"
+  },
+  "protocol_note": "The build/replay runner snapshot is captured at invocation. benchmark-helper-packaging-observation.py is explicitly a packaging-time observation, not a claim that the helper snapshot was captured at generation start. The generation phase preceded invocation snapshot instrumentation; actual command files and output source identities are retained.",
+  "schema_version": 1,
+  "scope": "DP terminal rank1x1 four-component Born-interference standalone optimized Fortran; source and numerical qualification only",
+  "selected_updates": 78,
+  "source_and_test_sha256": {
+    "madgraph/loop/dp_terminal_proof.py": "54fb5931a822e0feb6e6c9aa9a43c428a00fc7834792e07016eff0d10b3dbf52",
+    "madgraph/loop/loop_exporters.py": "d70191aca87f27dfb9f4e6511704f91113913db75e0c05280a03887536daf2c4",
+    "madgraph/various/q_polynomial.py": "da5ca27ffbc792f56acaa5ce446ca3988672f6b6e5552b052e24efdd808a9f11",
+    "tests/unit_tests/loop/test_dp_terminal_export.py": "c055fb5a4dfbed81bbac85478f511b6e7c8298c66dd8c26d5b96a8aaaca1826b",
+    "tests/unit_tests/loop/test_dp_terminal_wavefunctions.py": "2d27353521c6a6c3ab96a3587f2275930d26aef355d6fdc9fc504951076d3a06",
+    "tests/unit_tests/various/test_dp_terminal_compiled.py": "9b0eaf064a13ec75b309a99138d960b885cc4132c801a13e9cb350b9465bea3e"
+  },
+  "source_tests": {
+    "log": "source-tests.log",
+    "passed": 46,
+    "subtests_passed": 117
+  }
+}
