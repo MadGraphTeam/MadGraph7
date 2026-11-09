@@ -547,6 +547,11 @@ def generation_filter(
 
     if slice_.amplitude.colour_zero or not candidates:
         return {"exact_colour_zero": bool(slice_.amplitude.colour_zero)}, frozenset()
+    fold = getattr(slice_, "fold", None)
+    if fold is not None and fold.exact_zero:
+        # An exact fold zero (M-LIT lit-fold, ``fold``): no row is left to
+        # test.
+        return {"exact_fold_zero": True}, frozenset()
     if failure == 0:
         return {"failure_probability": 0.0, "dropped": []}, frozenset()
     if counterterm_tensors(slice_):

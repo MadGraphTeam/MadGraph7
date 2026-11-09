@@ -1697,6 +1697,20 @@ class V2VirtualRuntime:
                 "colour_zero_loop_orders": [
                     dict(order) for order in sorted(stored.colour_zero_orders)
                 ],
+                # M-LIT lit-fold: the fold zero's record (USER ~22:39: an
+                # exact zero proven by the exact test), stored only with one.
+                **(
+                    {
+                        "exact_fold_zero": stored.fold_zero["exact_fold_zero"],
+                        "fold_zero_loop_orders": [
+                            dict(order)
+                            for order in stored.fold_zero["fold_zero_loop_orders"]
+                        ],
+                        "fold_certificate": dict(stored.fold_zero["certificate"]),
+                    }
+                    if stored.fold_zero is not None
+                    else {}
+                ),
             }
         if self._native_process.observables is None and not self._induced:
             raise ArtifactError(
@@ -2563,6 +2577,19 @@ class V2VirtualRuntime:
             detail = (
                 "exact colour zero: every colour coefficient of the loop "
                 "amplitude vanishes at N_c = 3 (colour algebra), the value is "
+                "exactly 0"
+            )
+        elif self._colour_zero is not None and self._colour_zero.get("exact_fold_zero"):
+            # The fold zero (M-LIT lit-fold, USER ~22:39): exactly 0 by the
+            # engine's exact algebra, with the certificate's failure bound.
+            certificate = self._colour_zero["fold_certificate"]
+            detail = (
+                "exact fold zero: the exact test certified the loop chains "
+                "proportional and their weights cancel exactly (F_p, p = "
+                f"{certificate['prime']}, {certificate['points']} point(s), "
+                f"{certificate['identities']} identities, failure bound "
+                f"{certificate['failure_bound']:.3g} <= "
+                f"{certificate['failure_probability']:.3g}), the value is "
                 "exactly 0"
             )
         arithmetic = cast(Literal["double", "double-double", "arbitrary"], carrier)

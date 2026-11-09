@@ -440,6 +440,18 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--loop-induced-folding",
+        dest="generation.loop_induced_folding",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: fold the loop chains the exact test "
+            "certifies proportional (one dressing per group; a group that "
+            "cancels exactly is an exact zero, with its certificate); on by "
+            "default, --no-loop-induced-folding writes the unfolded plans"
+        ),
+    )
+    parser.add_argument(
         "--allow-failed-probes",
         dest="generation.allow_failed_probes",
         action=argparse.BooleanOptionalAction,

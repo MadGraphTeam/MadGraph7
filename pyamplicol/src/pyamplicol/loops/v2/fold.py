@@ -247,6 +247,20 @@ class FoldVerdict:
     reason: str | None = None
     seconds: Mapping[str, float] = field(default_factory=dict)
 
+    def certificate(self) -> dict[str, Any]:
+        """The exact test's certificate: what an exact fold zero states."""
+
+        return {
+            "test": "F_p identity test of the folded chains' numerators",
+            "prime": self.prime,
+            "seed": self.seed,
+            "points": self.points,
+            "degree_bound": self.degree_bound,
+            "identities": self.identities,
+            "failure_probability": self.failure_probability,
+            "failure_bound": self.failure_bound,
+        }
+
     def record(self) -> dict[str, Any]:
         out: dict[str, Any] = {
             "enabled": self.enabled,
