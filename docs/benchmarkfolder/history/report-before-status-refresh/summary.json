@@ -1,0 +1,2252 @@
+{
+  "baseline_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+  "candidate_revision": "c91cb85f3aa942c90299b3518bb1f195f55334a5",
+  "candidate_revisions": [
+    "c91cb85f3aa942c90299b3518bb1f195f55334a5"
+  ],
+  "candidate_source_hashes": [
+    "74116e4bb2ba7abdb24a3dbcdb51cfae6547f05c3e276d3e17f5d5dab2b8d7a5"
+  ],
+  "cases": [
+    {
+      "authoritative_qualified_failures": [
+        "tirust-first-attempt-3"
+      ],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "qcd_n1_uux_z",
+      "model": "loop_sm",
+      "nfinal": 1,
+      "performance": {
+        "acceptance_eligible": true,
+        "actual_backend_precision_counts": {
+          "9:DP": 186900
+        },
+        "baseline_chain": [
+          8,
+          6,
+          7,
+          1
+        ],
+        "baseline_median_seconds_per_point": 6.318765135313532e-05,
+        "candidate_chain": [
+          9,
+          8,
+          6,
+          7,
+          1
+        ],
+        "candidate_median_seconds_per_point": 7.111997074906366e-05,
+        "complete": true,
+        "geometric_mean_ratio": 1.1210500947672746,
+        "lower_95": 1.1034925280600616,
+        "minimum_batch_duration_met": true,
+        "pairs": 7,
+        "passed": false,
+        "selected_attempt": "tirust-first-attempt-3",
+        "status": "complete",
+        "upper_95": 1.138887018281026
+      },
+      "points": 100,
+      "process": "u u~ > z [virt=QCD]",
+      "retained_attempts": [
+        {
+          "acceptance_eligible": false,
+          "directory": "tirust-first",
+          "label": "tirust-first",
+          "passed": false,
+          "selected": false,
+          "statistics": {
+            "acceptance_eligible": true,
+            "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+            "geometric_mean_ratio": 1.136737449721847,
+            "log_ratio_standard_error": 0.004443339384148477,
+            "lower_95": 1.1244452610036835,
+            "minimum_pairs": 7,
+            "pairs": 7,
+            "passed": false,
+            "student_t_critical": 2.446912,
+            "threshold": 1.05,
+            "upper_95": 1.1491640139482928
+          }
+        },
+        {
+          "acceptance_eligible": false,
+          "directory": "tirust-first-attempt-2",
+          "label": "tirust-first",
+          "passed": false,
+          "selected": false,
+          "statistics": {
+            "acceptance_eligible": true,
+            "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+            "geometric_mean_ratio": 1.11342851988568,
+            "log_ratio_standard_error": 0.015652495165654163,
+            "lower_95": 1.071590221298184,
+            "minimum_pairs": 7,
+            "pairs": 7,
+            "passed": false,
+            "student_t_critical": 2.446912,
+            "threshold": 1.05,
+            "upper_95": 1.1569003190351497
+          }
+        },
+        {
+          "acceptance_eligible": true,
+          "directory": "tirust-first-attempt-3",
+          "label": "tirust-first",
+          "passed": false,
+          "selected": true,
+          "statistics": {
+            "acceptance_eligible": true,
+            "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+            "geometric_mean_ratio": 1.1210500947672746,
+            "log_ratio_standard_error": 0.006451255745678411,
+            "lower_95": 1.1034925280600616,
+            "minimum_pairs": 7,
+            "pairs": 7,
+            "passed": false,
+            "student_t_critical": 2.446912,
+            "threshold": 1.05,
+            "upper_95": 1.138887018281026
+          }
+        }
+      ],
+      "role": "main",
+      "status": "failed",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "qcd_n2_gg_ttx",
+      "model": "loop_sm",
+      "nfinal": 2,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "g g > t t~ [virt=QCD]",
+      "retained_attempts": [],
+      "role": "main",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "qcd_n3_uux_zgg",
+      "model": "loop_sm",
+      "nfinal": 3,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "u u~ > z g g [virt=QCD]",
+      "retained_attempts": [],
+      "role": "main",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "qcd_n4_uux_zzgg",
+      "model": "loop_sm",
+      "nfinal": 4,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "u u~ > z z g g [virt=QCD]",
+      "retained_attempts": [],
+      "role": "main",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "ew_n1_udx_wp",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 1,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "u d~ > w+ [virt=QED]",
+      "retained_attempts": [],
+      "role": "main",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "ew_n2_epem_mupmum",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 2,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "e+ e- > mu+ mu- [virt=QED]",
+      "retained_attempts": [],
+      "role": "main",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "ew_n3_epem_ttxa",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 3,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "e+ e- > t t~ a [virt=QED]",
+      "retained_attempts": [],
+      "role": "main",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "ew_n4_epem_mupmumaa",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 4,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "e+ e- > mu+ mu- a a [virt=QED]",
+      "retained_attempts": [],
+      "role": "main",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "mixed_uux_ga",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 2,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "u u~ > g a [virt=QCD QED]",
+      "retained_attempts": [],
+      "role": "control",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "li_gg_h",
+      "model": "loop_sm",
+      "nfinal": 1,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "g g > h [noborn=QCD]",
+      "retained_attempts": [],
+      "role": "control",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    },
+    {
+      "authoritative_qualified_failures": [],
+      "complete": false,
+      "correctness": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "failures": [],
+          "max_relative_error": null,
+          "native_dp_only": null,
+          "ordinary_target_passed": null,
+          "passed": null,
+          "samples": 0,
+          "status": "pending"
+        }
+      ],
+      "existing_backend_regressions": [
+        {
+          "backend": 1,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 6,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 7,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        },
+        {
+          "backend": 8,
+          "complete": false,
+          "passed": null,
+          "statistics": null,
+          "status": "pending"
+        }
+      ],
+      "id": "li_gg_hh",
+      "model": "loop_sm",
+      "nfinal": 2,
+      "performance": {
+        "actual_backend_precision_counts": {},
+        "baseline_chain": null,
+        "baseline_median_seconds_per_point": null,
+        "candidate_chain": null,
+        "candidate_median_seconds_per_point": null,
+        "complete": false,
+        "geometric_mean_ratio": null,
+        "lower_95": null,
+        "pairs": 0,
+        "passed": null,
+        "status": "pending",
+        "upper_95": null
+      },
+      "points": 100,
+      "process": "g g > h h [noborn=QCD]",
+      "retained_attempts": [],
+      "role": "control",
+      "status": "pending",
+      "timings": [
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 1,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 6,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 7,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 8,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        },
+        {
+          "actual_backend_precision_counts": {},
+          "backend": 9,
+          "initialization_and_warmup_seconds": null,
+          "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
+          "lower_95": null,
+          "mad_seconds_per_point": null,
+          "median_seconds_per_point": null,
+          "native_dp_only": null,
+          "samples": 0,
+          "status": "pending",
+          "upper_95": null,
+          "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted"
+        }
+      ],
+      "validation_errors": {}
+    }
+  ],
+  "created_utc": "2026-11-09T21:26:25.859138+00:00",
+  "date": "2026-11-09",
+  "field_definitions": {
+    "actual_backend_precision_counts": "Final accepted backend and precision per amplitude evaluation; internal reducer attempts are not counted",
+    "native_dp_only": "Every accepted amplitude result used the first selected backend in DP; does not identify internal retry or higher-precision attempts"
+  },
+  "gate": {
+    "complete": false,
+    "consistent_candidate_source": true,
+    "failed_cases": [
+      "qcd_n1_uux_z"
+    ],
+    "passed": false,
+    "pending_cases": [
+      "qcd_n2_gg_ttx",
+      "qcd_n3_uux_zgg",
+      "qcd_n4_uux_zzgg",
+      "ew_n1_udx_wp",
+      "ew_n2_epem_mupmum",
+      "ew_n3_epem_ttxa",
+      "ew_n4_epem_mupmumaa"
+    ],
+    "validation_errors": []
+  },
+  "qualification": [
+    {
+      "evidence": "Final release installation and native DP/QP, pole/cache smoke pass. A later configuration-failure rollback fix passes 66 installer/control tests without changing native artifacts.",
+      "name": "CLI installation and ABI",
+      "path": "qualification/tirust-install/index.json",
+      "status": "pass"
+    },
+    {
+      "evidence": "17 final-release forced-mode runs cover external, relocated internal and NLO outputs; maximum symmetric error 1.29e-15. Forced modes do not establish stability acceptance.",
+      "name": "Generated Fortran integration",
+      "path": "qualification/madloop-adapter/README.md",
+      "status": "pass"
+    },
+    {
+      "evidence": "Nine native bridge tests include binary128 last-bit transport, 256/384-bit convergence, failed-cache cleanup, bounded QP caching and rank-six mapping. Debug builds; no runtime claim.",
+      "name": "QP transport and cache isolation",
+      "path": "qualification/tirust-bridge/README.md",
+      "status": "pass"
+    },
+    {
+      "evidence": "N=1\u20136, rank six, UV/IR/scaleless and rescue/cache checks pass; finite evaluators and arithmetic are absent. 288 scalar comparisons and byte-identical regeneration pass.",
+      "name": "Accelerated poles-only path",
+      "path": "qualification/poles-only/index.json",
+      "status": "pass"
+    },
+    {
+      "evidence": "Both link orders and both initialization orders pass with unchanged NinjaRS dependency revisions. Earlier concurrent-license failure retained; qualification runs are serialized.",
+      "name": "Native library coexistence",
+      "path": "qualification/tirust-bridge/mixed-link/",
+      "status": "pass"
+    },
+    {
+      "evidence": "96 served full/partial DP/QP pairs agree; 12 DP pairs refuse both modes and all 54 QP pairs pass. Partial finite outputs are NaN. Explicit refusals are retained and are not successful accelerated evaluations.",
+      "name": "Generated pole diagnostics",
+      "path": "experiments/poles-diagnostics/README.md",
+      "status": "partial"
+    },
+    {
+      "evidence": "59 native records cover DP/QP references, hits, independent checks, modes, topology limits, byte budgets, clear/finalize and reinitialization. Stored and uncached tensors agree at the recorded precision.",
+      "name": "Generated cache lifecycle",
+      "path": "experiments/poles-diagnostics/README.md",
+      "status": "pass"
+    },
+    {
+      "evidence": "481,536 bit/IEEE checks pass at each optimization level. Kernel timing improves; stubbed-wrapper gains vary. Physical-amplitude acceptance is separate.",
+      "name": "Fortran prefix optimization",
+      "path": "experiments/fortran-prefix/README.md",
+      "status": "pass"
+    },
+    {
+      "evidence": "Default 1e-3 native checks miss one correlated rank-five DP error. At 1e-6 the production rescue block with actual tensor callbacks switches to QP and resolves it; complete physical initialization is outside this isolated check.",
+      "name": "Default stability stress case",
+      "path": "qualification/tirust-bridge/stability-audit/README.md",
+      "status": "fail"
+    },
+    {
+      "evidence": "All five reducers pass 19 moderate points; original extreme automatic results remain unqualified. Separate QP diagnostics identify legacy CutTools scalar-cutoff and DP-input limitations; private corrections agree with TIRust within 2.11e-11 and an independent double-pole formula.",
+      "name": "Complex-mass stress campaign",
+      "path": "experiments/complex-mass/README.md",
+      "status": "partial"
+    },
+    {
+      "evidence": "24 primary requests give 12 checked completions, 11 rejected/nonfinite streams and one warmup timeout. QP resolves several discrepancies; the EW threshold comparison remains unresolved, and the soft-collinear Born result is nonfinite in every reducer.",
+      "name": "Physical stress campaign",
+      "path": "experiments/physical-stress/README.md",
+      "status": "fail"
+    },
+    {
+      "evidence": "The main matrix above records the independent physical and paired runtime gates. Completed interface checks do not substitute for those measurements.",
+      "name": "Full five-backend acceptance",
+      "path": "summary.json",
+      "status": "pending"
+    }
+  ],
+  "reduction_chains": {
+    "baseline": [
+      8,
+      6,
+      7,
+      1
+    ],
+    "candidate": [
+      9,
+      8,
+      6,
+      7,
+      1
+    ]
+  },
+  "schema": "madloop-tirust-summary-v1",
+  "source_date_epoch": 1794255047
+}

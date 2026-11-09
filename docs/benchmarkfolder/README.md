@@ -100,6 +100,24 @@ to reproduce that audit. These physics results have a separate report page and
 do not supply the pending runtime-campaign measurements.
 The standalone pole diagnostic is described in `POLES.md`.
 
+The current PDF is an intermediate report. Its main matrix preserves the
+historical c91 campaign, including the qualified n1 runtime failure. The
+separately versioned `intermediate-status.json` describes later implementation
+checks, the actual `095e9579…` installation, late ordinary/stress observations,
+cohort limitations and unpromoted experiments. It does not change the historical
+`summary.json` or declare the optimized candidate accepted. Its qualification
+rows supersede the earlier prose snapshot for display only. Final-candidate
+physics, paired runtime and regression measurements remain pending.
+
+`collect_intermediate.py` has an explicit allowlist of completed evidence; it
+hashes retained files and extracts claim anchors without executing numerical
+code. `intermediate_report.py` checks those hashes, actual installer identity,
+raw-source assertions and diagnostic ratios, and rejects missing failures or
+promotion to final acceptance. Active experiments outside the allowlist are
+excluded. The previous PDF, ledger, context and every declared document input
+are preserved under `history/report-before-status-refresh/` and still support
+`build_report.py --verify-only` independently.
+
 ## Build the report
 
 After regenerating `summary.json` from retained observations:
@@ -108,6 +126,8 @@ After regenerating `summary.json` from retained observations:
 source tools/tirust_env.sh
 python3 docs/benchmarkfolder/build_report.py
 python3 docs/benchmarkfolder/build_report.py --verify-only
+python3 -m pytest -q tests/unit_tests/various/test_tirust_report.py \
+  docs/benchmarkfolder/test_intermediate_report.py
 ```
 
 The report build does not run numerical measurements. It writes `benchmark.pdf`
@@ -116,6 +136,11 @@ version, creation timestamp, and font search paths. Typst 0.15.1, Libertinus
 7.051 and DejaVu 2.37 reproduce the recorded presentation. The renderer refuses
 a passing headline with missing main cases, absent backend comparisons,
 insufficient samples/repetitions, or a runtime bound above the agreed limit.
+The build ledger now also binds all frozen dependencies of the intermediate
+supplement. Refresh the supplement only after reviewing newly completed,
+frozen evidence, using `python3 docs/benchmarkfolder/collect_intermediate.py
+--refresh`; this does not rerun or overwrite any measurements. Rebuild and
+verify the PDF afterward.
 
 `style-provenance.json` pins the requested pyAmpliCol report to commit
 `7266c1600f6ec4e39be39986e6503a515c380c52`, including source/PDF hashes. Its

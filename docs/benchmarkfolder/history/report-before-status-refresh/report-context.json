@@ -1,0 +1,8 @@
+{
+  "campaign_id": null,
+  "cases_path": "cases.json",
+  "numerical_identity_sha256": null,
+  "predecessors": [],
+  "ratio_figure": null,
+  "summary_path": "summary.json"
+}

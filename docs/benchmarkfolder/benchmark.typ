@@ -8,9 +8,12 @@
   (cases_path: "cases.json", predecessors: (), ratio_figure: d.at("ratio_figure", default: none))
 } else { json(context-path) }
 #let pilots = json("experiments/numerical/completed-pilots-index.json")
+#let intermediate = if report.at("intermediate_path", default: none) == none { none } else { json(report.intermediate_path) }
 #let env = json("implementation-start.json")
 #show: body => report-style(body, date: d.at("date", default: "9 November 2026"),
-  revision: if d.at("candidate_revision", default: none) == none { "not yet measured" } else { d.candidate_revision.slice(0,12) })
+  revision: if d.at("candidate_revision", default: none) == none { "not yet measured" } else {
+    d.candidate_revision.slice(0,12) + if intermediate != none { " (measured)" } else { "" }
+  })
 #let names = ("1": "CutTools", "6": "Ninja", "7": "COLLIER", "8": "NinjaRS", "9": "TIRust")
 #let ids = (1, 6, 7, 8, 9)
 #let main = d.cases.filter(c => c.role == "main")
@@ -48,7 +51,7 @@
 #align(center)[
   #text(26pt, weight: "bold", fill: navy)[MadLoop with TIRust]
   #v(5pt)
-  #text(12pt, fill: ink2)[One-loop reduction · numerical agreement · runtime]
+  #text(12pt, fill: ink2)[One-loop reduction · intermediate qualification report]
   #v(4pt)
   #text(8.5pt, fill: luma(110))[CutTools · Ninja · COLLIER · NinjaRS · TIRust]
   #v(3pt)
@@ -64,6 +67,12 @@
   *Main campaign acceptance: #cell-status(if d.gate.complete and d.gate.passed { "pass" } else if d.gate.complete or known-failures { "fail" } else { "incomplete" }).* #if known-failures and not d.gate.complete { [The remaining campaign is incomplete.] }
   Every main process requires five-backend agreement, an upper 95% paired runtime-ratio bound no greater than 1.05, and passing existing-backend regression checks. Unmeasured cells are shown as —. A failed or incomplete row is not a speedup claim.
 ]
+#if intermediate != none {
+  v(5pt)
+  text(8pt, fill: ink2)[The main matrix retains the historical measured candidate.
+  Later implementation checks and failed diagnostics appear in the intermediate
+  supplement; the optimized final campaign is pending.]
+}
 #v(7pt)
 #text(8pt)[Runtime colour: green = faster, white = parity, red = slower. All displayed ratios are candidate / reference; smaller is faster.]
 #v(5pt)
@@ -265,7 +274,7 @@ MadLoop selects TIRust explicitly as #raw("MLReductionLib=9"). A Fortran adapter
 
 #raw("LoopPoleMode") selects bare-loop UV/IR residues while preserving the ordinary finite coefficient. The distinct poles-only diagnostic path omits finite scalar roots and finite tensor arithmetic; it preserves double-pole contributions to simple poles and scaleless UV/IR separation. Partial results cannot be used as complete physical amplitudes. Cache and precision stores are separated by evaluation mode, and stability rechecks use independent values.
 
-#let quals = d.at("qualification", default: ())
+#let quals = if intermediate == none { d.at("qualification", default: ()) } else { intermediate.qualification }
 #if quals.len() > 0 {
   table-style(table(columns: (1.3fr, .6fr, 3fr), inset: 5pt, stroke: table-stroke, fill: table-fill,
     table.header([Qualification], [Status], [Evidence]),
@@ -274,7 +283,7 @@ MadLoop selects TIRust explicitly as #raw("MLReductionLib=9"). A Fortran adapter
   note(fill: warm)[Detailed interface, cache, QP, poles-only, and relocation qualification records have not yet been incorporated in this data release. Their absence is not a passing result.]
 }
 
-== Measured Fortran change
+== Earlier measured Fortran change
 
 The selected optimization computes ordered momentum prefixes once, retaining the original zero seed and addition order. For six propagators it reduces prefix additions from 60 to 20. At each of #raw("-O0") and #raw("-O3"), 481,536 comparisons passed bitwise output and IEEE-exception checks across DP, QP and four rounding modes. Isolated six-propagator kernel median paired ratios were 0.443/0.347 (DP/QP, #raw("-O0")) and 0.703/0.356 (#raw("-O3")). These are shared-host microbenchmarks, not physical-amplitude speedups. Full-wrapper measurements were smaller and less consistent. Raw observations and source are retained in #raw("experiments/fortran-prefix/").
 
@@ -300,3 +309,8 @@ The accompanying #raw(report.cases_path) fixes the matrix and thresholds; #raw(s
 
 #v(6pt)
 #text(8pt, fill: ink2)[Presentation follows the #link("https://github.com/MadGraphTeam/pyamplicol/blob/7266c1600f6ec4e39be39986e6503a515c380c52/docs/performance_reports/loop/benchmarks.typ")[pyAmpliCol report at revision 7266c1600f6e]: its page geometry, fonts, navy headings, compact tables and logarithmic timing palette. All numerical measurements and conclusions in this report belong to the present MadLoop integration.]
+
+#if intermediate != none {
+  import "intermediate.typ": show-intermediate
+  show-intermediate(intermediate)
+}

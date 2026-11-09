@@ -2,13 +2,13 @@
   {
     "name": "CLI installation and ABI",
     "status": "pass",
-    "evidence": "Final release installation and native DP/QP, pole/cache smoke pass. A later configuration-failure rollback fix passes 66 installer/control tests without changing native artifacts.",
-    "path": "qualification/tirust-install/index.json"
+    "evidence": "Current-source CLI DSO 095e passes DP/binary128/poles/cache smoke and a 90-call DP replay. Cached build; concurrent main-configuration drift retained.",
+    "path": "qualification/tirust-install/current-source/check-installation.json"
   },
   {
     "name": "Generated Fortran integration",
     "status": "pass",
-    "evidence": "17 final-release forced-mode runs cover external, relocated internal and NLO outputs; maximum symmetric error 1.29e-15. Forced modes do not establish stability acceptance.",
+    "evidence": "Historical 49af forced-mode external/internal/NLO checks pass: 17 runs, maximum symmetric error 1.29e-15. These do not qualify 095e automatic amplitudes.",
     "path": "qualification/madloop-adapter/README.md"
   },
   {
@@ -26,7 +26,7 @@
   {
     "name": "Native library coexistence",
     "status": "pass",
-    "evidence": "Both link orders and both initialization orders pass with unchanged NinjaRS dependency revisions. Earlier concurrent-license failure retained; qualification runs are serialized.",
+    "evidence": "Historical link-order and initialization-order checks pass with unchanged NinjaRS dependencies. Concurrent-license failure retained; the 095e campaign is pending.",
     "path": "qualification/tirust-bridge/mixed-link/"
   },
   {
@@ -68,7 +68,7 @@
   {
     "name": "Full five-backend acceptance",
     "status": "pending",
-    "evidence": "The main matrix above records the independent physical and paired runtime gates. Completed interface checks do not substitute for those measurements.",
+    "evidence": "Historical n1 performance failure remains authoritative. The optimized final physics, runtime and existing-backend regression campaign is pending.",
     "path": "summary.json"
   }
 ]

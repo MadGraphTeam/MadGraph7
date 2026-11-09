@@ -5,6 +5,7 @@ summarizer first; incomplete evidence is rendered as incomplete, not fabricated.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -185,6 +186,9 @@ def predecessor_history(inputs, manifest, summary, report):
 
 
 def prepare_report(root=ROOT, campaign=None):
+    helper_path = Path(__file__).with_name("intermediate_report.py")
+    if (Path(root) / "intermediate-status.json").exists() and not helper_path.is_file():
+        raise ValueError("Intermediate status exists but its validator is missing")
     inputs = ReportInputs(root)
     report = "." if campaign is None else "campaigns/" + campaign_id(campaign)
     summary_name, cases_name = joined(report, "summary.json"), joined(report, "cases.json")
@@ -229,6 +233,16 @@ def prepare_report(root=ROOT, campaign=None):
     if summary.get("ratio_figure"):
         context["ratio_figure"] = joined(report, summary["ratio_figure"])
         inputs.add(context["ratio_figure"])
+    # The supplement binds later implementation and historical diagnostic
+    # evidence independently of the selected acceptance campaign. It never
+    # replaces or upgrades that campaign's numerical or performance gate.
+    if helper_path.exists():
+        spec = importlib.util.spec_from_file_location("intermediate_report", helper_path)
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        supplement = helper.validate(inputs, summary)
+        if supplement is not None:
+            context["intermediate_path"] = "intermediate-status.json"
     return summary, inputs, context, {"summary": summary_name, "manifest": manifest_name,
                                      "context": joined(report, "report-context.json")}
 
