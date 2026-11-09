@@ -1,0 +1,2948 @@
+
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/TIRUST_interface.o:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000000000 <ml5_0_mp_tirust_tensor_diagnostic_>:
+       0:	55                   	push   %rbp
+       1:	48 89 e5             	mov    %rsp,%rbp
+       4:	41 57                	push   %r15
+       6:	41 56                	push   %r14
+       8:	41 55                	push   %r13
+       a:	41 54                	push   %r12
+       c:	53                   	push   %rbx
+       d:	48 81 ec b8 0a 00 00 	sub    $0xab8,%rsp
+      14:	48 89 bd 88 f5 ff ff 	mov    %rdi,-0xa78(%rbp)
+      1b:	48 89 b5 80 f5 ff ff 	mov    %rsi,-0xa80(%rbp)
+      22:	48 89 95 78 f5 ff ff 	mov    %rdx,-0xa88(%rbp)
+      29:	48 89 8d 70 f5 ff ff 	mov    %rcx,-0xa90(%rbp)
+      30:	4c 89 85 68 f5 ff ff 	mov    %r8,-0xa98(%rbp)
+      37:	4c 89 8d 60 f5 ff ff 	mov    %r9,-0xaa0(%rbp)
+      3e:	48 8d 85 e0 fe ff ff 	lea    -0x120(%rbp),%rax
+      45:	48 89 c7             	mov    %rax,%rdi
+      48:	e8 00 00 00 00       	call   4d <ml5_0_mp_tirust_tensor_diagnostic_+0x4d>
+			49: R_X86_64_PLT32	_gfortran_ieee_procedure_entry-0x4
+      4d:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+      54:	8b 00                	mov    (%rax),%eax
+      56:	48 98                	cltq
+      58:	48 89 45 a8          	mov    %rax,-0x58(%rbp)
+      5c:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+      63:	8b 00                	mov    (%rax),%eax
+      65:	48 98                	cltq
+      67:	48 89 45 a0          	mov    %rax,-0x60(%rbp)
+      6b:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+      72:	8b 00                	mov    (%rax),%eax
+      74:	48 98                	cltq
+      76:	48 89 45 98          	mov    %rax,-0x68(%rbp)
+      7a:	48 8b 45 98          	mov    -0x68(%rbp),%rax
+      7e:	ba 00 00 00 00       	mov    $0x0,%edx
+      83:	48 85 c0             	test   %rax,%rax
+      86:	48 0f 49 d0          	cmovns %rax,%rdx
+      8a:	49 89 d4             	mov    %rdx,%r12
+      8d:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+      94:	8b 00                	mov    (%rax),%eax
+      96:	48 98                	cltq
+      98:	48 89 45 90          	mov    %rax,-0x70(%rbp)
+      9c:	4c 89 e0             	mov    %r12,%rax
+      9f:	48 0f af 45 90       	imul   -0x70(%rbp),%rax
+      a4:	ba 00 00 00 00       	mov    $0x0,%edx
+      a9:	48 85 c0             	test   %rax,%rax
+      ac:	48 0f 48 c2          	cmovs  %rdx,%rax
+      b0:	48 c1 e0 04          	shl    $0x4,%rax
+      b4:	ba 01 00 00 00       	mov    $0x1,%edx
+      b9:	48 85 c0             	test   %rax,%rax
+      bc:	48 0f 44 c2          	cmove  %rdx,%rax
+      c0:	48 89 c7             	mov    %rax,%rdi
+      c3:	e8 00 00 00 00       	call   c8 <ml5_0_mp_tirust_tensor_diagnostic_+0xc8>
+			c4: R_X86_64_PLT32	malloc-0x4
+      c8:	48 89 45 88          	mov    %rax,-0x78(%rbp)
+      cc:	4c 89 e0             	mov    %r12,%rax
+      cf:	48 f7 d0             	not    %rax
+      d2:	48 89 85 30 f5 ff ff 	mov    %rax,-0xad0(%rbp)
+      d9:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+      e0:	8b 00                	mov    (%rax),%eax
+      e2:	48 98                	cltq
+      e4:	48 89 45 80          	mov    %rax,-0x80(%rbp)
+      e8:	48 8b 45 80          	mov    -0x80(%rbp),%rax
+      ec:	ba 00 00 00 00       	mov    $0x0,%edx
+      f1:	48 85 c0             	test   %rax,%rax
+      f4:	48 0f 48 c2          	cmovs  %rdx,%rax
+      f8:	48 c1 e0 05          	shl    $0x5,%rax
+      fc:	ba 01 00 00 00       	mov    $0x1,%edx
+     101:	48 85 c0             	test   %rax,%rax
+     104:	48 0f 44 c2          	cmove  %rdx,%rax
+     108:	48 89 c7             	mov    %rax,%rdi
+     10b:	e8 00 00 00 00       	call   110 <ml5_0_mp_tirust_tensor_diagnostic_+0x110>
+			10c: R_X86_64_PLT32	malloc-0x4
+     110:	48 89 85 78 ff ff ff 	mov    %rax,-0x88(%rbp)
+     117:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     11e:	8b 00                	mov    (%rax),%eax
+     120:	48 98                	cltq
+     122:	48 89 85 70 ff ff ff 	mov    %rax,-0x90(%rbp)
+     129:	48 8b 85 70 ff ff ff 	mov    -0x90(%rbp),%rax
+     130:	ba 00 00 00 00       	mov    $0x0,%edx
+     135:	48 85 c0             	test   %rax,%rax
+     138:	48 0f 49 d0          	cmovns %rax,%rdx
+     13c:	49 89 d6             	mov    %rdx,%r14
+     13f:	4a 8d 04 b5 00 00 00 	lea    0x0(,%r14,4),%rax
+     146:	00 
+     147:	ba 00 00 00 00       	mov    $0x0,%edx
+     14c:	48 85 c0             	test   %rax,%rax
+     14f:	48 0f 48 c2          	cmovs  %rdx,%rax
+     153:	48 c1 e0 04          	shl    $0x4,%rax
+     157:	ba 01 00 00 00       	mov    $0x1,%edx
+     15c:	48 85 c0             	test   %rax,%rax
+     15f:	48 0f 44 c2          	cmove  %rdx,%rax
+     163:	48 89 c7             	mov    %rax,%rdi
+     166:	e8 00 00 00 00       	call   16b <ml5_0_mp_tirust_tensor_diagnostic_+0x16b>
+			167: R_X86_64_PLT32	malloc-0x4
+     16b:	48 89 85 68 ff ff ff 	mov    %rax,-0x98(%rbp)
+     172:	48 c7 85 28 f5 ff ff 	movq   $0xffffffffffffffff,-0xad8(%rbp)
+     179:	ff ff ff ff 
+     17d:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     184:	8b 00                	mov    (%rax),%eax
+     186:	83 e8 01             	sub    $0x1,%eax
+     189:	48 98                	cltq
+     18b:	48 89 85 60 ff ff ff 	mov    %rax,-0xa0(%rbp)
+     192:	48 8b 85 60 ff ff ff 	mov    -0xa0(%rbp),%rax
+     199:	48 83 c0 01          	add    $0x1,%rax
+     19d:	48 c1 e0 02          	shl    $0x2,%rax
+     1a1:	ba 00 00 00 00       	mov    $0x0,%edx
+     1a6:	48 85 c0             	test   %rax,%rax
+     1a9:	48 0f 48 c2          	cmovs  %rdx,%rax
+     1ad:	48 c1 e0 04          	shl    $0x4,%rax
+     1b1:	ba 01 00 00 00       	mov    $0x1,%edx
+     1b6:	48 85 c0             	test   %rax,%rax
+     1b9:	48 0f 44 c2          	cmove  %rdx,%rax
+     1bd:	48 89 c7             	mov    %rax,%rdi
+     1c0:	e8 00 00 00 00       	call   1c5 <ml5_0_mp_tirust_tensor_diagnostic_+0x1c5>
+			1c1: R_X86_64_PLT32	malloc-0x4
+     1c5:	48 89 85 58 ff ff ff 	mov    %rax,-0xa8(%rbp)
+     1cc:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     1d3:	8b 00                	mov    (%rax),%eax
+     1d5:	83 e8 01             	sub    $0x1,%eax
+     1d8:	48 98                	cltq
+     1da:	48 89 85 50 ff ff ff 	mov    %rax,-0xb0(%rbp)
+     1e1:	48 8b 85 50 ff ff ff 	mov    -0xb0(%rbp),%rax
+     1e8:	48 c1 e0 02          	shl    $0x2,%rax
+     1ec:	ba 00 00 00 00       	mov    $0x0,%edx
+     1f1:	48 85 c0             	test   %rax,%rax
+     1f4:	48 0f 48 c2          	cmovs  %rdx,%rax
+     1f8:	48 c1 e0 04          	shl    $0x4,%rax
+     1fc:	ba 01 00 00 00       	mov    $0x1,%edx
+     201:	48 85 c0             	test   %rax,%rax
+     204:	48 0f 44 c2          	cmove  %rdx,%rax
+     208:	48 89 c7             	mov    %rax,%rdi
+     20b:	e8 00 00 00 00       	call   210 <ml5_0_mp_tirust_tensor_diagnostic_+0x210>
+			20c: R_X86_64_PLT32	malloc-0x4
+     210:	48 89 85 48 ff ff ff 	mov    %rax,-0xb8(%rbp)
+     217:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     21e:	8b 00                	mov    (%rax),%eax
+     220:	48 98                	cltq
+     222:	48 89 85 40 ff ff ff 	mov    %rax,-0xc0(%rbp)
+     229:	48 8b 85 40 ff ff ff 	mov    -0xc0(%rbp),%rax
+     230:	ba 00 00 00 00       	mov    $0x0,%edx
+     235:	48 85 c0             	test   %rax,%rax
+     238:	48 0f 49 d0          	cmovns %rax,%rdx
+     23c:	49 89 d5             	mov    %rdx,%r13
+     23f:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     246:	8b 00                	mov    (%rax),%eax
+     248:	48 98                	cltq
+     24a:	48 89 85 38 ff ff ff 	mov    %rax,-0xc8(%rbp)
+     251:	4c 89 e8             	mov    %r13,%rax
+     254:	48 0f af 85 38 ff ff 	imul   -0xc8(%rbp),%rax
+     25b:	ff 
+     25c:	ba 00 00 00 00       	mov    $0x0,%edx
+     261:	48 85 c0             	test   %rax,%rax
+     264:	48 0f 48 c2          	cmovs  %rdx,%rax
+     268:	48 c1 e0 05          	shl    $0x5,%rax
+     26c:	ba 01 00 00 00       	mov    $0x1,%edx
+     271:	48 85 c0             	test   %rax,%rax
+     274:	48 0f 44 c2          	cmove  %rdx,%rax
+     278:	48 89 c7             	mov    %rax,%rdi
+     27b:	e8 00 00 00 00       	call   280 <ml5_0_mp_tirust_tensor_diagnostic_+0x280>
+			27c: R_X86_64_PLT32	malloc-0x4
+     280:	48 89 85 30 ff ff ff 	mov    %rax,-0xd0(%rbp)
+     287:	4c 89 e8             	mov    %r13,%rax
+     28a:	48 f7 d0             	not    %rax
+     28d:	48 89 85 20 f5 ff ff 	mov    %rax,-0xae0(%rbp)
+     294:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     29b:	8b 00                	mov    (%rax),%eax
+     29d:	48 98                	cltq
+     29f:	48 89 85 28 ff ff ff 	mov    %rax,-0xd8(%rbp)
+     2a6:	48 8b 85 28 ff ff ff 	mov    -0xd8(%rbp),%rax
+     2ad:	48 c1 e0 02          	shl    $0x2,%rax
+     2b1:	ba 00 00 00 00       	mov    $0x0,%edx
+     2b6:	48 85 c0             	test   %rax,%rax
+     2b9:	48 0f 48 c2          	cmovs  %rdx,%rax
+     2bd:	48 c1 e0 04          	shl    $0x4,%rax
+     2c1:	ba 01 00 00 00       	mov    $0x1,%edx
+     2c6:	48 85 c0             	test   %rax,%rax
+     2c9:	48 0f 44 c2          	cmove  %rdx,%rax
+     2cd:	48 89 c7             	mov    %rax,%rdi
+     2d0:	e8 00 00 00 00       	call   2d5 <ml5_0_mp_tirust_tensor_diagnostic_+0x2d5>
+			2d1: R_X86_64_PLT32	malloc-0x4
+     2d5:	48 89 85 20 ff ff ff 	mov    %rax,-0xe0(%rbp)
+     2dc:	48 8b 45 10          	mov    0x10(%rbp),%rax
+     2e0:	c7 00 00 00 00 00    	movl   $0x0,(%rax)
+     2e6:	48 8b 85 60 f5 ff ff 	mov    -0xaa0(%rbp),%rax
+     2ed:	48 89 c1             	mov    %rax,%rcx
+     2f0:	b8 a0 05 00 00       	mov    $0x5a0,%eax
+     2f5:	be 00 00 00 00       	mov    $0x0,%esi
+     2fa:	48 89 31             	mov    %rsi,(%rcx)
+     2fd:	89 c2                	mov    %eax,%edx
+     2ff:	48 01 ca             	add    %rcx,%rdx
+     302:	48 83 c2 08          	add    $0x8,%rdx
+     306:	48 89 72 f0          	mov    %rsi,-0x10(%rdx)
+     30a:	48 8d 51 08          	lea    0x8(%rcx),%rdx
+     30e:	48 83 e2 f8          	and    $0xfffffffffffffff8,%rdx
+     312:	48 29 d1             	sub    %rdx,%rcx
+     315:	01 c8                	add    %ecx,%eax
+     317:	83 e0 f8             	and    $0xfffffff8,%eax
+     31a:	c1 e8 03             	shr    $0x3,%eax
+     31d:	89 c1                	mov    %eax,%ecx
+     31f:	48 89 d7             	mov    %rdx,%rdi
+     322:	48 89 f0             	mov    %rsi,%rax
+     325:	f3 48 ab             	rep stos %rax,(%rdi)
+     328:	48 8b 85 78 f5 ff ff 	mov    -0xa88(%rbp),%rax
+     32f:	8b 00                	mov    (%rax),%eax
+     331:	c1 e8 1f             	shr    $0x1f,%eax
+     334:	89 c2                	mov    %eax,%edx
+     336:	48 8b 85 78 f5 ff ff 	mov    -0xa88(%rbp),%rax
+     33d:	8b 00                	mov    (%rax),%eax
+     33f:	83 f8 02             	cmp    $0x2,%eax
+     342:	0f 9f c0             	setg   %al
+     345:	0f b6 c0             	movzbl %al,%eax
+     348:	09 d0                	or     %edx,%eax
+     34a:	85 c0                	test   %eax,%eax
+     34c:	74 0a                	je     358 <ml5_0_mp_tirust_tensor_diagnostic_+0x358>
+     34e:	bb 00 00 00 00       	mov    $0x0,%ebx
+     353:	e9 f6 0f 00 00       	jmp    134e <ml5_0_mp_tirust_tensor_diagnostic_+0x134e>
+     358:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 35f <ml5_0_mp_tirust_tensor_diagnostic_+0x35f>
+			35b: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+     35f:	48 8d 90 c0 00 00 00 	lea    0xc0(%rax),%rdx
+     366:	48 8b 8d 78 f5 ff ff 	mov    -0xa88(%rbp),%rcx
+     36d:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     374:	48 89 ce             	mov    %rcx,%rsi
+     377:	48 89 c7             	mov    %rax,%rdi
+     37a:	e8 00 00 00 00       	call   37f <ml5_0_mp_tirust_tensor_diagnostic_+0x37f>
+			37b: R_X86_64_PLT32	__mtirust_MOD_tirust_supports-0x4
+     37f:	83 f0 01             	xor    $0x1,%eax
+     382:	85 c0                	test   %eax,%eax
+     384:	74 0a                	je     390 <ml5_0_mp_tirust_tensor_diagnostic_+0x390>
+     386:	bb 00 00 00 00       	mov    $0x0,%ebx
+     38b:	e9 be 0f 00 00       	jmp    134e <ml5_0_mp_tirust_tensor_diagnostic_+0x134e>
+     390:	48 8d 85 fc f6 ff ff 	lea    -0x904(%rbp),%rax
+     397:	48 89 c7             	mov    %rax,%rdi
+     39a:	e8 00 00 00 00       	call   39f <ml5_0_mp_tirust_tensor_diagnostic_+0x39f>
+			39b: R_X86_64_PLT32	ml5_0_initialize_tirust_-0x4
+     39f:	8b 85 fc f6 ff ff    	mov    -0x904(%rbp),%eax
+     3a5:	85 c0                	test   %eax,%eax
+     3a7:	74 0a                	je     3b3 <ml5_0_mp_tirust_tensor_diagnostic_+0x3b3>
+     3a9:	bb 00 00 00 00       	mov    $0x0,%ebx
+     3ae:	e9 9b 0f 00 00       	jmp    134e <ml5_0_mp_tirust_tensor_diagnostic_+0x134e>
+     3b3:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 3ba <ml5_0_mp_tirust_tensor_diagnostic_+0x3ba>
+			3b6: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+     3ba:	48 8b 80 c8 00 00 00 	mov    0xc8(%rax),%rax
+     3c1:	48 89 85 f0 f6 ff ff 	mov    %rax,-0x910(%rbp)
+     3c8:	48 8d 95 fc f6 ff ff 	lea    -0x904(%rbp),%rdx
+     3cf:	48 8d 85 f0 f6 ff ff 	lea    -0x910(%rbp),%rax
+     3d6:	48 89 d6             	mov    %rdx,%rsi
+     3d9:	48 89 c7             	mov    %rax,%rdi
+     3dc:	e8 00 00 00 00       	call   3e1 <ml5_0_mp_tirust_tensor_diagnostic_+0x3e1>
+			3dd: R_X86_64_PLT32	__mtirust_MOD_tirust_set_cache_budget-0x4
+     3e1:	8b 85 fc f6 ff ff    	mov    -0x904(%rbp),%eax
+     3e7:	85 c0                	test   %eax,%eax
+     3e9:	74 0a                	je     3f5 <ml5_0_mp_tirust_tensor_diagnostic_+0x3f5>
+     3eb:	bb 00 00 00 00       	mov    $0x0,%ebx
+     3f0:	e9 59 0f 00 00       	jmp    134e <ml5_0_mp_tirust_tensor_diagnostic_+0x134e>
+     3f5:	48 8b 8d 50 ff ff ff 	mov    -0xb0(%rbp),%rcx
+     3fc:	b8 01 00 00 00       	mov    $0x1,%eax
+     401:	48 39 c8             	cmp    %rcx,%rax
+     404:	7f 3c                	jg     442 <ml5_0_mp_tirust_tensor_diagnostic_+0x442>
+     406:	48 8d 50 ff          	lea    -0x1(%rax),%rdx
+     40a:	4c 8d 04 95 00 00 00 	lea    0x0(,%rdx,4),%r8
+     411:	00 
+     412:	ba 00 00 00 00       	mov    $0x0,%edx
+     417:	48 83 fa 03          	cmp    $0x3,%rdx
+     41b:	7f 1f                	jg     43c <ml5_0_mp_tirust_tensor_diagnostic_+0x43c>
+     41d:	4a 8d 3c 02          	lea    (%rdx,%r8,1),%rdi
+     421:	48 8b b5 48 ff ff ff 	mov    -0xb8(%rbp),%rsi
+     428:	48 c1 e7 04          	shl    $0x4,%rdi
+     42c:	48 01 fe             	add    %rdi,%rsi
+     42f:	66 0f ef c0          	pxor   %xmm0,%xmm0
+     433:	0f 29 06             	movaps %xmm0,(%rsi)
+     436:	48 83 c2 01          	add    $0x1,%rdx
+     43a:	eb db                	jmp    417 <ml5_0_mp_tirust_tensor_diagnostic_+0x417>
+     43c:	48 83 c0 01          	add    $0x1,%rax
+     440:	eb bf                	jmp    401 <ml5_0_mp_tirust_tensor_diagnostic_+0x401>
+     442:	4c 8b 7d a8          	mov    -0x58(%rbp),%r15
+     446:	bb 01 00 00 00       	mov    $0x1,%ebx
+     44b:	4c 39 fb             	cmp    %r15,%rbx
+     44e:	0f 8f 84 00 00 00    	jg     4d8 <ml5_0_mp_tirust_tensor_diagnostic_+0x4d8>
+     454:	48 8d 53 ff          	lea    -0x1(%rbx),%rdx
+     458:	48 8b 85 68 f5 ff ff 	mov    -0xa98(%rbp),%rax
+     45f:	48 c1 e2 04          	shl    $0x4,%rdx
+     463:	48 01 d0             	add    %rdx,%rax
+     466:	48 8b 00             	mov    (%rax),%rax
+     469:	66 48 0f 6e c0       	movq   %rax,%xmm0
+     46e:	e8 00 00 00 00       	call   473 <ml5_0_mp_tirust_tensor_diagnostic_+0x473>
+			46f: R_X86_64_PLT32	__extenddftf2-0x4
+     473:	0f 29 85 50 f5 ff ff 	movaps %xmm0,-0xab0(%rbp)
+     47a:	48 8d 53 ff          	lea    -0x1(%rbx),%rdx
+     47e:	48 8b 85 68 f5 ff ff 	mov    -0xa98(%rbp),%rax
+     485:	48 c1 e2 04          	shl    $0x4,%rdx
+     489:	48 01 d0             	add    %rdx,%rax
+     48c:	48 8b 40 08          	mov    0x8(%rax),%rax
+     490:	66 48 0f 6e c0       	movq   %rax,%xmm0
+     495:	e8 00 00 00 00       	call   49a <ml5_0_mp_tirust_tensor_diagnostic_+0x49a>
+			496: R_X86_64_PLT32	__extenddftf2-0x4
+     49a:	48 8d 43 ff          	lea    -0x1(%rbx),%rax
+     49e:	48 8b 95 78 ff ff ff 	mov    -0x88(%rbp),%rdx
+     4a5:	48 89 c1             	mov    %rax,%rcx
+     4a8:	48 c1 e1 05          	shl    $0x5,%rcx
+     4ac:	48 01 ca             	add    %rcx,%rdx
+     4af:	66 0f 6f b5 50 f5 ff 	movdqa -0xab0(%rbp),%xmm6
+     4b6:	ff 
+     4b7:	0f 29 32             	movaps %xmm6,(%rdx)
+     4ba:	48 8b 95 78 ff ff ff 	mov    -0x88(%rbp),%rdx
+     4c1:	48 c1 e0 05          	shl    $0x5,%rax
+     4c5:	48 01 d0             	add    %rdx,%rax
+     4c8:	48 83 c0 10          	add    $0x10,%rax
+     4cc:	0f 29 00             	movaps %xmm0,(%rax)
+     4cf:	48 83 c3 01          	add    $0x1,%rbx
+     4d3:	e9 73 ff ff ff       	jmp    44b <ml5_0_mp_tirust_tensor_diagnostic_+0x44b>
+     4d8:	48 8b bd 78 ff ff ff 	mov    -0x88(%rbp),%rdi
+     4df:	48 8b 8d 48 ff ff ff 	mov    -0xb8(%rbp),%rcx
+     4e6:	48 8b 95 70 f5 ff ff 	mov    -0xa90(%rbp),%rdx
+     4ed:	48 8b b5 80 f5 ff ff 	mov    -0xa80(%rbp),%rsi
+     4f4:	48 8b 85 88 f5 ff ff 	mov    -0xa78(%rbp),%rax
+     4fb:	49 89 f8             	mov    %rdi,%r8
+     4fe:	48 89 c7             	mov    %rax,%rdi
+     501:	e8 00 00 00 00       	call   506 <ml5_0_mp_tirust_tensor_diagnostic_+0x506>
+			502: R_X86_64_PLT32	ml5_0_mp_switch_order_-0x4
+     506:	48 8b 8d 60 ff ff ff 	mov    -0xa0(%rbp),%rcx
+     50d:	b8 00 00 00 00       	mov    $0x0,%eax
+     512:	48 39 c8             	cmp    %rcx,%rax
+     515:	7f 38                	jg     54f <ml5_0_mp_tirust_tensor_diagnostic_+0x54f>
+     517:	48 8d 34 85 00 00 00 	lea    0x0(,%rax,4),%rsi
+     51e:	00 
+     51f:	ba 00 00 00 00       	mov    $0x0,%edx
+     524:	48 83 fa 03          	cmp    $0x3,%rdx
+     528:	7f 1f                	jg     549 <ml5_0_mp_tirust_tensor_diagnostic_+0x549>
+     52a:	4c 8d 04 32          	lea    (%rdx,%rsi,1),%r8
+     52e:	48 8b bd 58 ff ff ff 	mov    -0xa8(%rbp),%rdi
+     535:	49 c1 e0 04          	shl    $0x4,%r8
+     539:	4c 01 c7             	add    %r8,%rdi
+     53c:	66 0f ef c0          	pxor   %xmm0,%xmm0
+     540:	0f 29 07             	movaps %xmm0,(%rdi)
+     543:	48 83 c2 01          	add    $0x1,%rdx
+     547:	eb db                	jmp    524 <ml5_0_mp_tirust_tensor_diagnostic_+0x524>
+     549:	48 83 c0 01          	add    $0x1,%rax
+     54d:	eb c3                	jmp    512 <ml5_0_mp_tirust_tensor_diagnostic_+0x512>
+     54f:	66 0f ef c0          	pxor   %xmm0,%xmm0
+     553:	0f 29 85 a0 fe ff ff 	movaps %xmm0,-0x160(%rbp)
+     55a:	0f 29 85 b0 fe ff ff 	movaps %xmm0,-0x150(%rbp)
+     561:	0f 29 85 c0 fe ff ff 	movaps %xmm0,-0x140(%rbp)
+     568:	0f 29 85 d0 fe ff ff 	movaps %xmm0,-0x130(%rbp)
+     56f:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+     576:	83 7d cc 03          	cmpl   $0x3,-0x34(%rbp)
+     57a:	0f 9f c0             	setg   %al
+     57d:	0f b6 c0             	movzbl %al,%eax
+     580:	85 c0                	test   %eax,%eax
+     582:	0f 85 09 01 00 00    	jne    691 <ml5_0_mp_tirust_tensor_diagnostic_+0x691>
+     588:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     58f:	8b 18                	mov    (%rax),%ebx
+     591:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+     598:	39 5d c8             	cmp    %ebx,-0x38(%rbp)
+     59b:	0f 9f c0             	setg   %al
+     59e:	0f b6 c0             	movzbl %al,%eax
+     5a1:	85 c0                	test   %eax,%eax
+     5a3:	0f 85 de 00 00 00    	jne    687 <ml5_0_mp_tirust_tensor_diagnostic_+0x687>
+     5a9:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     5ac:	48 63 d0             	movslq %eax,%rdx
+     5af:	48 8b 85 58 ff ff ff 	mov    -0xa8(%rbp),%rax
+     5b6:	48 c1 e2 04          	shl    $0x4,%rdx
+     5ba:	48 01 d0             	add    %rdx,%rax
+     5bd:	66 0f 6f 00          	movdqa (%rax),%xmm0
+     5c1:	8b 45 c8             	mov    -0x38(%rbp),%eax
+     5c4:	48 98                	cltq
+     5c6:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+     5cd:	00 
+     5ce:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     5d1:	48 98                	cltq
+     5d3:	48 01 d0             	add    %rdx,%rax
+     5d6:	48 8d 50 fc          	lea    -0x4(%rax),%rdx
+     5da:	48 8b 85 70 f5 ff ff 	mov    -0xa90(%rbp),%rax
+     5e1:	48 c1 e2 04          	shl    $0x4,%rdx
+     5e5:	48 01 d0             	add    %rdx,%rax
+     5e8:	66 0f 6f 08          	movdqa (%rax),%xmm1
+     5ec:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     5ef:	4c 63 f8             	movslq %eax,%r15
+     5f2:	e8 00 00 00 00       	call   5f7 <ml5_0_mp_tirust_tensor_diagnostic_+0x5f7>
+			5f3: R_X86_64_PLT32	__addtf3-0x4
+     5f7:	48 8b 85 58 ff ff ff 	mov    -0xa8(%rbp),%rax
+     5fe:	4c 89 fa             	mov    %r15,%rdx
+     601:	48 c1 e2 04          	shl    $0x4,%rdx
+     605:	48 01 d0             	add    %rdx,%rax
+     608:	0f 29 00             	movaps %xmm0,(%rax)
+     60b:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     60e:	48 98                	cltq
+     610:	48 c1 e0 04          	shl    $0x4,%rax
+     614:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+     618:	48 01 e8             	add    %rbp,%rax
+     61b:	48 2d 30 01 00 00    	sub    $0x130,%rax
+     621:	66 0f 6f 00          	movdqa (%rax),%xmm0
+     625:	8b 45 c8             	mov    -0x38(%rbp),%eax
+     628:	48 98                	cltq
+     62a:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+     631:	00 
+     632:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     635:	48 98                	cltq
+     637:	48 01 d0             	add    %rdx,%rax
+     63a:	48 8d 50 fc          	lea    -0x4(%rax),%rdx
+     63e:	48 8b 85 70 f5 ff ff 	mov    -0xa90(%rbp),%rax
+     645:	48 c1 e2 04          	shl    $0x4,%rdx
+     649:	48 01 d0             	add    %rdx,%rax
+     64c:	66 0f 6f 08          	movdqa (%rax),%xmm1
+     650:	66 0f 6f 15 00 00 00 	movdqa 0x0(%rip),%xmm2        # 658 <ml5_0_mp_tirust_tensor_diagnostic_+0x658>
+     657:	00 
+			654: R_X86_64_PC32	.rodata+0xc
+     658:	66 0f db ca          	pand   %xmm2,%xmm1
+     65c:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     65f:	4c 63 f8             	movslq %eax,%r15
+     662:	e8 00 00 00 00       	call   667 <ml5_0_mp_tirust_tensor_diagnostic_+0x667>
+			663: R_X86_64_PLT32	__addtf3-0x4
+     667:	4c 89 f8             	mov    %r15,%rax
+     66a:	48 c1 e0 04          	shl    $0x4,%rax
+     66e:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+     672:	48 01 e8             	add    %rbp,%rax
+     675:	48 2d 30 01 00 00    	sub    $0x130,%rax
+     67b:	0f 29 00             	movaps %xmm0,(%rax)
+     67e:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+     682:	e9 11 ff ff ff       	jmp    598 <ml5_0_mp_tirust_tensor_diagnostic_+0x598>
+     687:	90                   	nop
+     688:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+     68c:	e9 e5 fe ff ff       	jmp    576 <ml5_0_mp_tirust_tensor_diagnostic_+0x576>
+     691:	90                   	nop
+     692:	66 0f 6f 3d 00 00 00 	movdqa 0x0(%rip),%xmm7        # 69a <ml5_0_mp_tirust_tensor_diagnostic_+0x69a>
+     699:	00 
+			696: R_X86_64_PC32	.rodata+0x1c
+     69a:	0f 29 bd 40 f5 ff ff 	movaps %xmm7,-0xac0(%rbp)
+     6a1:	bb 00 00 00 00       	mov    $0x0,%ebx
+     6a6:	48 83 fb 03          	cmp    $0x3,%rbx
+     6aa:	7f 41                	jg     6ed <ml5_0_mp_tirust_tensor_diagnostic_+0x6ed>
+     6ac:	48 89 d8             	mov    %rbx,%rax
+     6af:	48 c1 e0 04          	shl    $0x4,%rax
+     6b3:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+     6b7:	48 01 e8             	add    %rbp,%rax
+     6ba:	48 2d 30 01 00 00    	sub    $0x130,%rax
+     6c0:	66 0f 6f 18          	movdqa (%rax),%xmm3
+     6c4:	0f 29 9d 50 f5 ff ff 	movaps %xmm3,-0xab0(%rbp)
+     6cb:	66 0f 6f 8d 40 f5 ff 	movdqa -0xac0(%rbp),%xmm1
+     6d2:	ff 
+     6d3:	66 0f 6f c3          	movdqa %xmm3,%xmm0
+     6d7:	e8 00 00 00 00       	call   6dc <ml5_0_mp_tirust_tensor_diagnostic_+0x6dc>
+			6d8: R_X86_64_PLT32	__getf2-0x4
+     6dc:	48 85 c0             	test   %rax,%rax
+     6df:	78 06                	js     6e7 <ml5_0_mp_tirust_tensor_diagnostic_+0x6e7>
+     6e1:	48 83 c3 01          	add    $0x1,%rbx
+     6e5:	eb 15                	jmp    6fc <ml5_0_mp_tirust_tensor_diagnostic_+0x6fc>
+     6e7:	48 83 c3 01          	add    $0x1,%rbx
+     6eb:	eb b9                	jmp    6a6 <ml5_0_mp_tirust_tensor_diagnostic_+0x6a6>
+     6ed:	66 0f 6f 35 00 00 00 	movdqa 0x0(%rip),%xmm6        # 6f5 <ml5_0_mp_tirust_tensor_diagnostic_+0x6f5>
+     6f4:	00 
+			6f1: R_X86_64_PC32	.rodata+0x2c
+     6f5:	0f 29 b5 50 f5 ff ff 	movaps %xmm6,-0xab0(%rbp)
+     6fc:	48 83 fb 03          	cmp    $0x3,%rbx
+     700:	7f 4e                	jg     750 <ml5_0_mp_tirust_tensor_diagnostic_+0x750>
+     702:	48 89 d8             	mov    %rbx,%rax
+     705:	48 c1 e0 04          	shl    $0x4,%rax
+     709:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+     70d:	48 01 e8             	add    %rbp,%rax
+     710:	48 2d 30 01 00 00    	sub    $0x130,%rax
+     716:	66 0f 6f 20          	movdqa (%rax),%xmm4
+     71a:	66 0f 6f 8d 50 f5 ff 	movdqa -0xab0(%rbp),%xmm1
+     721:	ff 
+     722:	0f 29 a5 40 f5 ff ff 	movaps %xmm4,-0xac0(%rbp)
+     729:	66 0f 6f 85 40 f5 ff 	movdqa -0xac0(%rbp),%xmm0
+     730:	ff 
+     731:	e8 00 00 00 00       	call   736 <ml5_0_mp_tirust_tensor_diagnostic_+0x736>
+			732: R_X86_64_PLT32	__gttf2-0x4
+     736:	48 85 c0             	test   %rax,%rax
+     739:	7e 0f                	jle    74a <ml5_0_mp_tirust_tensor_diagnostic_+0x74a>
+     73b:	66 0f 6f a5 40 f5 ff 	movdqa -0xac0(%rbp),%xmm4
+     742:	ff 
+     743:	0f 29 a5 50 f5 ff ff 	movaps %xmm4,-0xab0(%rbp)
+     74a:	48 83 c3 01          	add    $0x1,%rbx
+     74e:	eb ac                	jmp    6fc <ml5_0_mp_tirust_tensor_diagnostic_+0x6fc>
+     750:	66 0f 6f bd 50 f5 ff 	movdqa -0xab0(%rbp),%xmm7
+     757:	ff 
+     758:	0f 29 bd 10 ff ff ff 	movaps %xmm7,-0xf0(%rbp)
+     75f:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # 767 <ml5_0_mp_tirust_tensor_diagnostic_+0x767>
+     766:	00 
+			763: R_X86_64_PC32	.rodata+0x3c
+     767:	66 0f 6f 85 10 ff ff 	movdqa -0xf0(%rbp),%xmm0
+     76e:	ff 
+     76f:	e8 00 00 00 00       	call   774 <ml5_0_mp_tirust_tensor_diagnostic_+0x774>
+			770: R_X86_64_PLT32	__gttf2-0x4
+     774:	48 85 c0             	test   %rax,%rax
+     777:	0f 8e d2 00 00 00    	jle    84f <ml5_0_mp_tirust_tensor_diagnostic_+0x84f>
+     77d:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+     784:	83 7d cc 03          	cmpl   $0x3,-0x34(%rbp)
+     788:	0f 9f c0             	setg   %al
+     78b:	0f b6 c0             	movzbl %al,%eax
+     78e:	85 c0                	test   %eax,%eax
+     790:	0f 85 b8 00 00 00    	jne    84e <ml5_0_mp_tirust_tensor_diagnostic_+0x84e>
+     796:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # 79e <ml5_0_mp_tirust_tensor_diagnostic_+0x79e>
+     79d:	00 
+			79a: R_X86_64_PC32	.rodata+0x4c
+     79e:	66 0f 6f 85 10 ff ff 	movdqa -0xf0(%rbp),%xmm0
+     7a5:	ff 
+     7a6:	e8 00 00 00 00       	call   7ab <ml5_0_mp_tirust_tensor_diagnostic_+0x7ab>
+			7a7: R_X86_64_PLT32	__multf3-0x4
+     7ab:	66 0f 6f e8          	movdqa %xmm0,%xmm5
+     7af:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     7b2:	48 98                	cltq
+     7b4:	48 c1 e0 04          	shl    $0x4,%rax
+     7b8:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+     7bc:	48 01 e8             	add    %rbp,%rax
+     7bf:	48 2d 30 01 00 00    	sub    $0x130,%rax
+     7c5:	66 0f 6f 00          	movdqa (%rax),%xmm0
+     7c9:	0f 29 85 40 f5 ff ff 	movaps %xmm0,-0xac0(%rbp)
+     7d0:	0f 29 ad 50 f5 ff ff 	movaps %xmm5,-0xab0(%rbp)
+     7d7:	66 0f 6f 8d 50 f5 ff 	movdqa -0xab0(%rbp),%xmm1
+     7de:	ff 
+     7df:	e8 00 00 00 00       	call   7e4 <ml5_0_mp_tirust_tensor_diagnostic_+0x7e4>
+			7e0: R_X86_64_PLT32	__getf2-0x4
+     7e4:	48 85 c0             	test   %rax,%rax
+     7e7:	79 0f                	jns    7f8 <ml5_0_mp_tirust_tensor_diagnostic_+0x7f8>
+     7e9:	66 0f 6f ad 50 f5 ff 	movdqa -0xab0(%rbp),%xmm5
+     7f0:	ff 
+     7f1:	0f 29 ad 40 f5 ff ff 	movaps %xmm5,-0xac0(%rbp)
+     7f8:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     7fb:	48 63 d0             	movslq %eax,%rdx
+     7fe:	48 8b 85 58 ff ff ff 	mov    -0xa8(%rbp),%rax
+     805:	48 c1 e2 04          	shl    $0x4,%rdx
+     809:	48 01 d0             	add    %rdx,%rax
+     80c:	66 0f 6f 00          	movdqa (%rax),%xmm0
+     810:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # 818 <ml5_0_mp_tirust_tensor_diagnostic_+0x818>
+     817:	00 
+			814: R_X86_64_PC32	.rodata+0xc
+     818:	66 0f db c1          	pand   %xmm1,%xmm0
+     81c:	66 0f 6f 8d 40 f5 ff 	movdqa -0xac0(%rbp),%xmm1
+     823:	ff 
+     824:	e8 00 00 00 00       	call   829 <ml5_0_mp_tirust_tensor_diagnostic_+0x829>
+			825: R_X86_64_PLT32	__divtf3-0x4
+     829:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # 831 <ml5_0_mp_tirust_tensor_diagnostic_+0x831>
+     830:	00 
+			82d: R_X86_64_PC32	.rodata+0x4c
+     831:	e8 00 00 00 00       	call   836 <ml5_0_mp_tirust_tensor_diagnostic_+0x836>
+			832: R_X86_64_PLT32	__gttf2-0x4
+     836:	48 85 c0             	test   %rax,%rax
+     839:	7e 0a                	jle    845 <ml5_0_mp_tirust_tensor_diagnostic_+0x845>
+     83b:	bb 00 00 00 00       	mov    $0x0,%ebx
+     840:	e9 09 0b 00 00       	jmp    134e <ml5_0_mp_tirust_tensor_diagnostic_+0x134e>
+     845:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+     849:	e9 36 ff ff ff       	jmp    784 <ml5_0_mp_tirust_tensor_diagnostic_+0x784>
+     84e:	90                   	nop
+     84f:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+     856:	83 7d cc 03          	cmpl   $0x3,-0x34(%rbp)
+     85a:	0f 9f c0             	setg   %al
+     85d:	0f b6 c0             	movzbl %al,%eax
+     860:	85 c0                	test   %eax,%eax
+     862:	0f 85 a0 00 00 00    	jne    908 <ml5_0_mp_tirust_tensor_diagnostic_+0x908>
+     868:	66 0f ef c0          	pxor   %xmm0,%xmm0
+     86c:	0f 29 45 b0          	movaps %xmm0,-0x50(%rbp)
+     870:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     877:	8b 00                	mov    (%rax),%eax
+     879:	8d 58 ff             	lea    -0x1(%rax),%ebx
+     87c:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+     883:	39 5d c8             	cmp    %ebx,-0x38(%rbp)
+     886:	0f 9f c0             	setg   %al
+     889:	0f b6 c0             	movzbl %al,%eax
+     88c:	85 c0                	test   %eax,%eax
+     88e:	75 6e                	jne    8fe <ml5_0_mp_tirust_tensor_diagnostic_+0x8fe>
+     890:	8b 45 c8             	mov    -0x38(%rbp),%eax
+     893:	48 98                	cltq
+     895:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+     89c:	00 
+     89d:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     8a0:	48 98                	cltq
+     8a2:	48 01 d0             	add    %rdx,%rax
+     8a5:	48 8d 50 fc          	lea    -0x4(%rax),%rdx
+     8a9:	48 8b 85 70 f5 ff ff 	mov    -0xa90(%rbp),%rax
+     8b0:	48 c1 e2 04          	shl    $0x4,%rdx
+     8b4:	48 01 d0             	add    %rdx,%rax
+     8b7:	66 0f 6f 00          	movdqa (%rax),%xmm0
+     8bb:	66 0f 6f c8          	movdqa %xmm0,%xmm1
+     8bf:	66 0f 6f 45 b0       	movdqa -0x50(%rbp),%xmm0
+     8c4:	e8 00 00 00 00       	call   8c9 <ml5_0_mp_tirust_tensor_diagnostic_+0x8c9>
+			8c5: R_X86_64_PLT32	__addtf3-0x4
+     8c9:	0f 29 45 b0          	movaps %xmm0,-0x50(%rbp)
+     8cd:	8b 45 c8             	mov    -0x38(%rbp),%eax
+     8d0:	48 98                	cltq
+     8d2:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+     8d9:	00 
+     8da:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     8dd:	48 98                	cltq
+     8df:	48 01 c2             	add    %rax,%rdx
+     8e2:	48 8b 85 58 ff ff ff 	mov    -0xa8(%rbp),%rax
+     8e9:	48 c1 e2 04          	shl    $0x4,%rdx
+     8ed:	48 01 d0             	add    %rdx,%rax
+     8f0:	66 0f 6f 45 b0       	movdqa -0x50(%rbp),%xmm0
+     8f5:	0f 29 00             	movaps %xmm0,(%rax)
+     8f8:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+     8fc:	eb 85                	jmp    883 <ml5_0_mp_tirust_tensor_diagnostic_+0x883>
+     8fe:	90                   	nop
+     8ff:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+     903:	e9 4e ff ff ff       	jmp    856 <ml5_0_mp_tirust_tensor_diagnostic_+0x856>
+     908:	90                   	nop
+     909:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     910:	8b 00                	mov    (%rax),%eax
+     912:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+     919:	39 45 c8             	cmp    %eax,-0x38(%rbp)
+     91c:	0f 9f c2             	setg   %dl
+     91f:	0f b6 d2             	movzbl %dl,%edx
+     922:	85 d2                	test   %edx,%edx
+     924:	0f 85 e1 00 00 00    	jne    a0b <ml5_0_mp_tirust_tensor_diagnostic_+0xa0b>
+     92a:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+     931:	83 7d cc 03          	cmpl   $0x3,-0x34(%rbp)
+     935:	0f 9f c2             	setg   %dl
+     938:	0f b6 d2             	movzbl %dl,%edx
+     93b:	85 d2                	test   %edx,%edx
+     93d:	0f 85 be 00 00 00    	jne    a01 <ml5_0_mp_tirust_tensor_diagnostic_+0xa01>
+     943:	8b 55 c8             	mov    -0x38(%rbp),%edx
+     946:	83 ea 01             	sub    $0x1,%edx
+     949:	48 63 d2             	movslq %edx,%rdx
+     94c:	48 8d 0c 95 00 00 00 	lea    0x0(,%rdx,4),%rcx
+     953:	00 
+     954:	8b 55 cc             	mov    -0x34(%rbp),%edx
+     957:	48 63 d2             	movslq %edx,%rdx
+     95a:	48 8d 34 11          	lea    (%rcx,%rdx,1),%rsi
+     95e:	8b 55 c8             	mov    -0x38(%rbp),%edx
+     961:	48 63 d2             	movslq %edx,%rdx
+     964:	48 8d 0c 95 00 00 00 	lea    0x0(,%rdx,4),%rcx
+     96b:	00 
+     96c:	8b 55 cc             	mov    -0x34(%rbp),%edx
+     96f:	48 63 d2             	movslq %edx,%rdx
+     972:	48 01 ca             	add    %rcx,%rdx
+     975:	48 8d 4a fc          	lea    -0x4(%rdx),%rcx
+     979:	48 8b 95 58 ff ff ff 	mov    -0xa8(%rbp),%rdx
+     980:	48 c1 e6 04          	shl    $0x4,%rsi
+     984:	48 01 f2             	add    %rsi,%rdx
+     987:	66 0f 6f 02          	movdqa (%rdx),%xmm0
+     98b:	48 8b 95 20 ff ff ff 	mov    -0xe0(%rbp),%rdx
+     992:	48 c1 e1 04          	shl    $0x4,%rcx
+     996:	48 01 ca             	add    %rcx,%rdx
+     999:	0f 29 02             	movaps %xmm0,(%rdx)
+     99c:	8b 55 c8             	mov    -0x38(%rbp),%edx
+     99f:	48 63 d2             	movslq %edx,%rdx
+     9a2:	48 8d 0c 95 00 00 00 	lea    0x0(,%rdx,4),%rcx
+     9a9:	00 
+     9aa:	8b 55 cc             	mov    -0x34(%rbp),%edx
+     9ad:	48 63 d2             	movslq %edx,%rdx
+     9b0:	48 01 ca             	add    %rcx,%rdx
+     9b3:	48 8d 72 fc          	lea    -0x4(%rdx),%rsi
+     9b7:	8b 55 cc             	mov    -0x34(%rbp),%edx
+     9ba:	48 63 d2             	movslq %edx,%rdx
+     9bd:	49 0f af d6          	imul   %r14,%rdx
+     9c1:	48 8b 9d 28 f5 ff ff 	mov    -0xad8(%rbp),%rbx
+     9c8:	48 8d 0c 13          	lea    (%rbx,%rdx,1),%rcx
+     9cc:	8b 55 c8             	mov    -0x38(%rbp),%edx
+     9cf:	48 63 d2             	movslq %edx,%rdx
+     9d2:	48 01 d1             	add    %rdx,%rcx
+     9d5:	48 8b 95 20 ff ff ff 	mov    -0xe0(%rbp),%rdx
+     9dc:	48 c1 e6 04          	shl    $0x4,%rsi
+     9e0:	48 01 f2             	add    %rsi,%rdx
+     9e3:	66 0f 6f 02          	movdqa (%rdx),%xmm0
+     9e7:	48 8b 95 68 ff ff ff 	mov    -0x98(%rbp),%rdx
+     9ee:	48 c1 e1 04          	shl    $0x4,%rcx
+     9f2:	48 01 ca             	add    %rcx,%rdx
+     9f5:	0f 29 02             	movaps %xmm0,(%rdx)
+     9f8:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+     9fc:	e9 30 ff ff ff       	jmp    931 <ml5_0_mp_tirust_tensor_diagnostic_+0x931>
+     a01:	90                   	nop
+     a02:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+     a06:	e9 0e ff ff ff       	jmp    919 <ml5_0_mp_tirust_tensor_diagnostic_+0x919>
+     a0b:	90                   	nop
+     a0c:	48 8b 8d 30 ff ff ff 	mov    -0xd0(%rbp),%rcx
+     a13:	48 8b 95 78 ff ff ff 	mov    -0x88(%rbp),%rdx
+     a1a:	48 8b b5 68 ff ff ff 	mov    -0x98(%rbp),%rsi
+     a21:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     a28:	48 89 c7             	mov    %rax,%rdi
+     a2b:	e8 00 00 00 00       	call   a30 <ml5_0_mp_tirust_tensor_diagnostic_+0xa30>
+			a2c: R_X86_64_PLT32	ml5_0_mp_build_kinematic_matrix_-0x4
+     a30:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     a37:	8b 18                	mov    (%rax),%ebx
+     a39:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+     a40:	39 5d c8             	cmp    %ebx,-0x38(%rbp)
+     a43:	0f 9f c0             	setg   %al
+     a46:	0f b6 c0             	movzbl %al,%eax
+     a49:	85 c0                	test   %eax,%eax
+     a4b:	0f 85 de 00 00 00    	jne    b2f <ml5_0_mp_tirust_tensor_diagnostic_+0xb2f>
+     a51:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     a58:	44 8b 30             	mov    (%rax),%r14d
+     a5b:	c7 45 cc 01 00 00 00 	movl   $0x1,-0x34(%rbp)
+     a62:	44 39 75 cc          	cmp    %r14d,-0x34(%rbp)
+     a66:	0f 9f c0             	setg   %al
+     a69:	0f b6 c0             	movzbl %al,%eax
+     a6c:	85 c0                	test   %eax,%eax
+     a6e:	0f 85 b1 00 00 00    	jne    b25 <ml5_0_mp_tirust_tensor_diagnostic_+0xb25>
+     a74:	8b 45 c8             	mov    -0x38(%rbp),%eax
+     a77:	48 98                	cltq
+     a79:	49 0f af c5          	imul   %r13,%rax
+     a7d:	48 8b b5 20 f5 ff ff 	mov    -0xae0(%rbp),%rsi
+     a84:	48 8d 14 06          	lea    (%rsi,%rax,1),%rdx
+     a88:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     a8b:	48 98                	cltq
+     a8d:	48 01 c2             	add    %rax,%rdx
+     a90:	48 8b 85 30 ff ff ff 	mov    -0xd0(%rbp),%rax
+     a97:	48 c1 e2 05          	shl    $0x5,%rdx
+     a9b:	48 01 d0             	add    %rdx,%rax
+     a9e:	66 0f 6f 00          	movdqa (%rax),%xmm0
+     aa2:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     aa5:	48 98                	cltq
+     aa7:	48 8d 50 ff          	lea    -0x1(%rax),%rdx
+     aab:	48 8b 85 78 ff ff ff 	mov    -0x88(%rbp),%rax
+     ab2:	48 c1 e2 05          	shl    $0x5,%rdx
+     ab6:	48 01 d0             	add    %rdx,%rax
+     ab9:	66 0f 6f 08          	movdqa (%rax),%xmm1
+     abd:	e8 00 00 00 00       	call   ac2 <ml5_0_mp_tirust_tensor_diagnostic_+0xac2>
+			abe: R_X86_64_PLT32	__addtf3-0x4
+     ac2:	66 0f 6f d0          	movdqa %xmm0,%xmm2
+     ac6:	8b 45 c8             	mov    -0x38(%rbp),%eax
+     ac9:	48 98                	cltq
+     acb:	48 8d 50 ff          	lea    -0x1(%rax),%rdx
+     acf:	48 8b 85 78 ff ff ff 	mov    -0x88(%rbp),%rax
+     ad6:	48 c1 e2 05          	shl    $0x5,%rdx
+     ada:	48 01 d0             	add    %rdx,%rax
+     add:	66 0f 6f 00          	movdqa (%rax),%xmm0
+     ae1:	8b 45 c8             	mov    -0x38(%rbp),%eax
+     ae4:	48 98                	cltq
+     ae6:	49 0f af c4          	imul   %r12,%rax
+     aea:	48 8b b5 30 f5 ff ff 	mov    -0xad0(%rbp),%rsi
+     af1:	48 8d 14 06          	lea    (%rsi,%rax,1),%rdx
+     af5:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     af8:	48 98                	cltq
+     afa:	4c 8d 3c 02          	lea    (%rdx,%rax,1),%r15
+     afe:	66 0f 6f c8          	movdqa %xmm0,%xmm1
+     b02:	66 0f 6f c2          	movdqa %xmm2,%xmm0
+     b06:	e8 00 00 00 00       	call   b0b <ml5_0_mp_tirust_tensor_diagnostic_+0xb0b>
+			b07: R_X86_64_PLT32	__addtf3-0x4
+     b0b:	48 8b 45 88          	mov    -0x78(%rbp),%rax
+     b0f:	4c 89 fa             	mov    %r15,%rdx
+     b12:	48 c1 e2 04          	shl    $0x4,%rdx
+     b16:	48 01 d0             	add    %rdx,%rax
+     b19:	0f 29 00             	movaps %xmm0,(%rax)
+     b1c:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+     b20:	e9 3d ff ff ff       	jmp    a62 <ml5_0_mp_tirust_tensor_diagnostic_+0xa62>
+     b25:	90                   	nop
+     b26:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+     b2a:	e9 11 ff ff ff       	jmp    a40 <ml5_0_mp_tirust_tensor_diagnostic_+0xa40>
+     b2f:	90                   	nop
+     b30:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # b37 <ml5_0_mp_tirust_tensor_diagnostic_+0xb37>
+			b33: R_X86_64_REX_GOTPCRELX	rscale_-0x4
+     b37:	48 8b 00             	mov    (%rax),%rax
+     b3a:	66 48 0f 6e c0       	movq   %rax,%xmm0
+     b3f:	e8 00 00 00 00       	call   b44 <ml5_0_mp_tirust_tensor_diagnostic_+0xb44>
+			b40: R_X86_64_PLT32	__extenddftf2-0x4
+     b44:	66 0f 6f c8          	movdqa %xmm0,%xmm1
+     b48:	e8 00 00 00 00       	call   b4d <ml5_0_mp_tirust_tensor_diagnostic_+0xb4d>
+			b49: R_X86_64_PLT32	__multf3-0x4
+     b4d:	0f 29 85 00 f7 ff ff 	movaps %xmm0,-0x900(%rbp)
+     b54:	48 8b 85 78 f5 ff ff 	mov    -0xa88(%rbp),%rax
+     b5b:	8b 00                	mov    (%rax),%eax
+     b5d:	48 63 d0             	movslq %eax,%rdx
+     b60:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # b67 <ml5_0_mp_tirust_tensor_diagnostic_+0xb67>
+			b63: R_X86_64_REX_GOTPCRELX	__ml5_0_polynomial_constants_MOD_ncoef_r-0x4
+     b67:	8b 04 90             	mov    (%rax,%rdx,4),%eax
+     b6a:	89 85 0c ff ff ff    	mov    %eax,-0xf4(%rbp)
+     b70:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # b77 <ml5_0_mp_tirust_tensor_diagnostic_+0xb77>
+			b73: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+     b77:	8b 40 1c             	mov    0x1c(%rax),%eax
+     b7a:	83 f8 ff             	cmp    $0xffffffff,%eax
+     b7d:	0f 94 c0             	sete   %al
+     b80:	0f b6 d0             	movzbl %al,%edx
+     b83:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     b8a:	8b 08                	mov    (%rax),%ecx
+     b8c:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # b93 <ml5_0_mp_tirust_tensor_diagnostic_+0xb93>
+			b8f: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+     b93:	8b 40 1c             	mov    0x1c(%rax),%eax
+     b96:	39 c1                	cmp    %eax,%ecx
+     b98:	0f 9e c0             	setle  %al
+     b9b:	0f b6 c0             	movzbl %al,%eax
+     b9e:	09 d0                	or     %edx,%eax
+     ba0:	89 85 9c fe ff ff    	mov    %eax,-0x164(%rbp)
+     ba6:	48 8b 85 88 f5 ff ff 	mov    -0xa78(%rbp),%rax
+     bad:	8b 00                	mov    (%rax),%eax
+     baf:	83 f8 02             	cmp    $0x2,%eax
+     bb2:	0f 94 c0             	sete   %al
+     bb5:	0f b6 d0             	movzbl %al,%edx
+     bb8:	48 8b 85 88 f5 ff ff 	mov    -0xa78(%rbp),%rax
+     bbf:	8b 00                	mov    (%rax),%eax
+     bc1:	83 f8 05             	cmp    $0x5,%eax
+     bc4:	0f 94 c0             	sete   %al
+     bc7:	0f b6 c0             	movzbl %al,%eax
+     bca:	09 d0                	or     %edx,%eax
+     bcc:	89 85 98 fe ff ff    	mov    %eax,-0x168(%rbp)
+     bd2:	48 8b 85 28 ff ff ff 	mov    -0xd8(%rbp),%rax
+     bd9:	48 c7 85 f0 f5 ff ff 	movq   $0x10,-0xa10(%rbp)
+     be0:	10 00 00 00 
+     be4:	48 c7 85 e0 f5 ff ff 	movq   $0x0,-0xa20(%rbp)
+     beb:	00 00 00 00 
+     bef:	48 c7 85 e8 f5 ff ff 	movq   $0x0,-0xa18(%rbp)
+     bf6:	00 00 00 00 
+     bfa:	48 c7 85 e0 f5 ff ff 	movq   $0x10,-0xa20(%rbp)
+     c01:	10 00 00 00 
+     c05:	c6 85 ec f5 ff ff 02 	movb   $0x2,-0xa14(%rbp)
+     c0c:	c6 85 ed f5 ff ff 03 	movb   $0x3,-0xa13(%rbp)
+     c13:	48 c7 85 00 f6 ff ff 	movq   $0x0,-0xa00(%rbp)
+     c1a:	00 00 00 00 
+     c1e:	48 c7 85 08 f6 ff ff 	movq   $0x3,-0x9f8(%rbp)
+     c25:	03 00 00 00 
+     c29:	48 c7 85 f8 f5 ff ff 	movq   $0x1,-0xa08(%rbp)
+     c30:	01 00 00 00 
+     c34:	48 c7 85 18 f6 ff ff 	movq   $0x1,-0x9e8(%rbp)
+     c3b:	01 00 00 00 
+     c3f:	48 89 85 20 f6 ff ff 	mov    %rax,-0x9e0(%rbp)
+     c46:	48 c7 85 10 f6 ff ff 	movq   $0x4,-0x9f0(%rbp)
+     c4d:	04 00 00 00 
+     c51:	48 8b 85 20 ff ff ff 	mov    -0xe0(%rbp),%rax
+     c58:	48 89 85 d0 f5 ff ff 	mov    %rax,-0xa30(%rbp)
+     c5f:	48 c7 85 d8 f5 ff ff 	movq   $0xfffffffffffffffc,-0xa28(%rbp)
+     c66:	fc ff ff ff 
+     c6a:	48 8b 55 98          	mov    -0x68(%rbp),%rdx
+     c6e:	48 8b 45 90          	mov    -0x70(%rbp),%rax
+     c72:	48 c7 85 50 f6 ff ff 	movq   $0x10,-0x9b0(%rbp)
+     c79:	10 00 00 00 
+     c7d:	48 c7 85 40 f6 ff ff 	movq   $0x0,-0x9c0(%rbp)
+     c84:	00 00 00 00 
+     c88:	48 c7 85 48 f6 ff ff 	movq   $0x0,-0x9b8(%rbp)
+     c8f:	00 00 00 00 
+     c93:	48 c7 85 40 f6 ff ff 	movq   $0x10,-0x9c0(%rbp)
+     c9a:	10 00 00 00 
+     c9e:	c6 85 4c f6 ff ff 02 	movb   $0x2,-0x9b4(%rbp)
+     ca5:	c6 85 4d f6 ff ff 03 	movb   $0x3,-0x9b3(%rbp)
+     cac:	48 c7 85 60 f6 ff ff 	movq   $0x1,-0x9a0(%rbp)
+     cb3:	01 00 00 00 
+     cb7:	48 89 95 68 f6 ff ff 	mov    %rdx,-0x998(%rbp)
+     cbe:	48 c7 85 58 f6 ff ff 	movq   $0x1,-0x9a8(%rbp)
+     cc5:	01 00 00 00 
+     cc9:	48 c7 85 78 f6 ff ff 	movq   $0x1,-0x988(%rbp)
+     cd0:	01 00 00 00 
+     cd4:	48 89 85 80 f6 ff ff 	mov    %rax,-0x980(%rbp)
+     cdb:	4c 89 a5 70 f6 ff ff 	mov    %r12,-0x990(%rbp)
+     ce2:	48 8b 45 88          	mov    -0x78(%rbp),%rax
+     ce6:	48 89 85 30 f6 ff ff 	mov    %rax,-0x9d0(%rbp)
+     ced:	4c 89 e0             	mov    %r12,%rax
+     cf0:	48 f7 d0             	not    %rax
+     cf3:	48 89 85 38 f6 ff ff 	mov    %rax,-0x9c8(%rbp)
+     cfa:	48 8b 45 80          	mov    -0x80(%rbp),%rax
+     cfe:	48 c7 85 b0 f5 ff ff 	movq   $0x20,-0xa50(%rbp)
+     d05:	20 00 00 00 
+     d09:	48 c7 85 a0 f5 ff ff 	movq   $0x0,-0xa60(%rbp)
+     d10:	00 00 00 00 
+     d14:	48 c7 85 a8 f5 ff ff 	movq   $0x0,-0xa58(%rbp)
+     d1b:	00 00 00 00 
+     d1f:	48 c7 85 a0 f5 ff ff 	movq   $0x20,-0xa60(%rbp)
+     d26:	20 00 00 00 
+     d2a:	c6 85 ac f5 ff ff 01 	movb   $0x1,-0xa54(%rbp)
+     d31:	c6 85 ad f5 ff ff 04 	movb   $0x4,-0xa53(%rbp)
+     d38:	48 c7 85 c0 f5 ff ff 	movq   $0x1,-0xa40(%rbp)
+     d3f:	01 00 00 00 
+     d43:	48 89 85 c8 f5 ff ff 	mov    %rax,-0xa38(%rbp)
+     d4a:	48 c7 85 b8 f5 ff ff 	movq   $0x1,-0xa48(%rbp)
+     d51:	01 00 00 00 
+     d55:	48 8b 85 78 ff ff ff 	mov    -0x88(%rbp),%rax
+     d5c:	48 89 85 90 f5 ff ff 	mov    %rax,-0xa70(%rbp)
+     d63:	48 c7 85 98 f5 ff ff 	movq   $0xffffffffffffffff,-0xa68(%rbp)
+     d6a:	ff ff ff ff 
+     d6e:	8b 85 0c ff ff ff    	mov    -0xf4(%rbp),%eax
+     d74:	48 98                	cltq
+     d76:	48 c7 85 b0 f6 ff ff 	movq   $0x20,-0x950(%rbp)
+     d7d:	20 00 00 00 
+     d81:	48 c7 85 a0 f6 ff ff 	movq   $0x0,-0x960(%rbp)
+     d88:	00 00 00 00 
+     d8c:	48 c7 85 a8 f6 ff ff 	movq   $0x0,-0x958(%rbp)
+     d93:	00 00 00 00 
+     d97:	48 c7 85 a0 f6 ff ff 	movq   $0x20,-0x960(%rbp)
+     d9e:	20 00 00 00 
+     da2:	c6 85 ac f6 ff ff 02 	movb   $0x2,-0x954(%rbp)
+     da9:	c6 85 ad f6 ff ff 04 	movb   $0x4,-0x953(%rbp)
+     db0:	48 c7 85 c0 f6 ff ff 	movq   $0x1,-0x940(%rbp)
+     db7:	01 00 00 00 
+     dbb:	48 89 85 c8 f6 ff ff 	mov    %rax,-0x938(%rbp)
+     dc2:	48 c7 85 b8 f6 ff ff 	movq   $0x1,-0x948(%rbp)
+     dc9:	01 00 00 00 
+     dcd:	48 c7 85 d8 f6 ff ff 	movq   $0x1,-0x928(%rbp)
+     dd4:	01 00 00 00 
+     dd8:	48 c7 85 e0 f6 ff ff 	movq   $0x4,-0x920(%rbp)
+     ddf:	04 00 00 00 
+     de3:	48 c7 85 d0 f6 ff ff 	movq   $0xf,-0x930(%rbp)
+     dea:	0f 00 00 00 
+     dee:	48 8d 85 10 f7 ff ff 	lea    -0x8f0(%rbp),%rax
+     df5:	48 89 85 90 f6 ff ff 	mov    %rax,-0x970(%rbp)
+     dfc:	48 c7 85 98 f6 ff ff 	movq   $0xfffffffffffffff0,-0x968(%rbp)
+     e03:	f0 ff ff ff 
+     e07:	ba 00 00 00 00       	mov    $0x0,%edx
+     e0c:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # e13 <ml5_0_mp_tirust_tensor_diagnostic_+0xe13>
+			e0f: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+     e13:	8b 40 18             	mov    0x18(%rax),%eax
+     e16:	39 c2                	cmp    %eax,%edx
+     e18:	0f 4d c2             	cmovge %edx,%eax
+     e1b:	89 85 ec f6 ff ff    	mov    %eax,-0x914(%rbp)
+     e21:	4c 8d 8d 00 f7 ff ff 	lea    -0x900(%rbp),%r9
+     e28:	4c 8d 85 90 f5 ff ff 	lea    -0xa70(%rbp),%r8
+     e2f:	48 8d 8d 30 f6 ff ff 	lea    -0x9d0(%rbp),%rcx
+     e36:	48 8d 95 d0 f5 ff ff 	lea    -0xa30(%rbp),%rdx
+     e3d:	48 8b b5 78 f5 ff ff 	mov    -0xa88(%rbp),%rsi
+     e44:	48 8b 85 80 f5 ff ff 	mov    -0xa80(%rbp),%rax
+     e4b:	48 8d bd 9c fe ff ff 	lea    -0x164(%rbp),%rdi
+     e52:	57                   	push   %rdi
+     e53:	48 8d bd 98 fe ff ff 	lea    -0x168(%rbp),%rdi
+     e5a:	57                   	push   %rdi
+     e5b:	48 8b 3d 00 00 00 00 	mov    0x0(%rip),%rdi        # e62 <ml5_0_mp_tirust_tensor_diagnostic_+0xe62>
+			e5e: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+     e62:	48 8d bf c0 00 00 00 	lea    0xc0(%rdi),%rdi
+     e69:	57                   	push   %rdi
+     e6a:	48 8d bd ec f6 ff ff 	lea    -0x914(%rbp),%rdi
+     e71:	57                   	push   %rdi
+     e72:	48 8d bd fc f6 ff ff 	lea    -0x904(%rbp),%rdi
+     e79:	57                   	push   %rdi
+     e7a:	48 8d bd 90 f6 ff ff 	lea    -0x970(%rbp),%rdi
+     e81:	57                   	push   %rdi
+     e82:	48 89 c7             	mov    %rax,%rdi
+     e85:	e8 00 00 00 00       	call   e8a <ml5_0_mp_tirust_tensor_diagnostic_+0xe8a>
+			e86: R_X86_64_PLT32	__mtirust_MOD_tensor_mp-0x4
+     e8a:	48 83 c4 30          	add    $0x30,%rsp
+     e8e:	8b 85 fc f6 ff ff    	mov    -0x904(%rbp),%eax
+     e94:	85 c0                	test   %eax,%eax
+     e96:	74 0a                	je     ea2 <ml5_0_mp_tirust_tensor_diagnostic_+0xea2>
+     e98:	bb 00 00 00 00       	mov    $0x0,%ebx
+     e9d:	e9 ac 04 00 00       	jmp    134e <ml5_0_mp_tirust_tensor_diagnostic_+0x134e>
+     ea2:	8b 85 0c ff ff ff    	mov    -0xf4(%rbp),%eax
+     ea8:	44 8d 60 ff          	lea    -0x1(%rax),%r12d
+     eac:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+     eb3:	44 39 65 cc          	cmp    %r12d,-0x34(%rbp)
+     eb7:	0f 9f c0             	setg   %al
+     eba:	0f b6 c0             	movzbl %al,%eax
+     ebd:	85 c0                	test   %eax,%eax
+     ebf:	0f 85 79 04 00 00    	jne    133e <ml5_0_mp_tirust_tensor_diagnostic_+0x133e>
+     ec5:	8b 45 cc             	mov    -0x34(%rbp),%eax
+     ec8:	48 98                	cltq
+     eca:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+     ed1:	00 
+     ed2:	48 8d 05 00 00 00 00 	lea    0x0(%rip),%rax        # ed9 <ml5_0_mp_tirust_tensor_diagnostic_+0xed9>
+			ed5: R_X86_64_PC32	.data+0x1c
+     ed9:	8b 04 02             	mov    (%rdx,%rax,1),%eax
+     edc:	89 85 08 ff ff ff    	mov    %eax,-0xf8(%rbp)
+     ee2:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+     ee9:	83 7d c8 04          	cmpl   $0x4,-0x38(%rbp)
+     eed:	0f 9f c0             	setg   %al
+     ef0:	0f b6 c0             	movzbl %al,%eax
+     ef3:	85 c0                	test   %eax,%eax
+     ef5:	0f 85 70 01 00 00    	jne    106b <ml5_0_mp_tirust_tensor_diagnostic_+0x106b>
+     efb:	83 7d c8 04          	cmpl   $0x4,-0x38(%rbp)
+     eff:	0f 94 c0             	sete   %al
+     f02:	0f b6 d0             	movzbl %al,%edx
+     f05:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # f0c <ml5_0_mp_tirust_tensor_diagnostic_+0xf0c>
+			f08: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+     f0c:	8b 80 c0 00 00 00    	mov    0xc0(%rax),%eax
+     f12:	83 f0 01             	xor    $0x1,%eax
+     f15:	21 d0                	and    %edx,%eax
+     f17:	85 c0                	test   %eax,%eax
+     f19:	0f 85 42 01 00 00    	jne    1061 <ml5_0_mp_tirust_tensor_diagnostic_+0x1061>
+     f1f:	8b 45 c8             	mov    -0x38(%rbp),%eax
+     f22:	48 63 d0             	movslq %eax,%rdx
+     f25:	48 89 d0             	mov    %rdx,%rax
+     f28:	48 c1 e0 04          	shl    $0x4,%rax
+     f2c:	48 29 d0             	sub    %rdx,%rax
+     f2f:	48 89 c1             	mov    %rax,%rcx
+     f32:	8b 85 08 ff ff ff    	mov    -0xf8(%rbp),%eax
+     f38:	48 98                	cltq
+     f3a:	48 01 c8             	add    %rcx,%rax
+     f3d:	48 83 e8 10          	sub    $0x10,%rax
+     f41:	48 c1 e0 05          	shl    $0x5,%rax
+     f45:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+     f49:	48 01 e8             	add    %rbp,%rax
+     f4c:	48 2d c0 08 00 00    	sub    $0x8c0,%rax
+     f52:	66 0f 6f 00          	movdqa (%rax),%xmm0
+     f56:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # f5e <ml5_0_mp_tirust_tensor_diagnostic_+0xf5e>
+     f5d:	00 
+			f5a: R_X86_64_PC32	.rodata+0xc
+     f5e:	66 0f db c1          	pand   %xmm1,%xmm0
+     f62:	bb 01 00 00 00       	mov    $0x1,%ebx
+     f67:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # f6f <ml5_0_mp_tirust_tensor_diagnostic_+0xf6f>
+     f6e:	00 
+			f6b: R_X86_64_PC32	.rodata+0x5c
+     f6f:	0f 29 85 50 f5 ff ff 	movaps %xmm0,-0xab0(%rbp)
+     f76:	66 0f 6f 85 50 f5 ff 	movdqa -0xab0(%rbp),%xmm0
+     f7d:	ff 
+     f7e:	e8 00 00 00 00       	call   f83 <ml5_0_mp_tirust_tensor_diagnostic_+0xf83>
+			f7f: R_X86_64_PLT32	__unordtf2-0x4
+     f83:	48 85 c0             	test   %rax,%rax
+     f86:	75 1f                	jne    fa7 <ml5_0_mp_tirust_tensor_diagnostic_+0xfa7>
+     f88:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # f90 <ml5_0_mp_tirust_tensor_diagnostic_+0xf90>
+     f8f:	00 
+			f8c: R_X86_64_PC32	.rodata+0x5c
+     f90:	66 0f 6f 85 50 f5 ff 	movdqa -0xab0(%rbp),%xmm0
+     f97:	ff 
+     f98:	e8 00 00 00 00       	call   f9d <ml5_0_mp_tirust_tensor_diagnostic_+0xf9d>
+			f99: R_X86_64_PLT32	__gttf2-0x4
+     f9d:	48 85 c0             	test   %rax,%rax
+     fa0:	7f 05                	jg     fa7 <ml5_0_mp_tirust_tensor_diagnostic_+0xfa7>
+     fa2:	bb 00 00 00 00       	mov    $0x0,%ebx
+     fa7:	89 d8                	mov    %ebx,%eax
+     fa9:	83 f0 01             	xor    $0x1,%eax
+     fac:	0f b6 c0             	movzbl %al,%eax
+     faf:	83 e0 01             	and    $0x1,%eax
+     fb2:	83 f0 01             	xor    $0x1,%eax
+     fb5:	89 c3                	mov    %eax,%ebx
+     fb7:	8b 45 c8             	mov    -0x38(%rbp),%eax
+     fba:	48 63 d0             	movslq %eax,%rdx
+     fbd:	48 89 d0             	mov    %rdx,%rax
+     fc0:	48 c1 e0 04          	shl    $0x4,%rax
+     fc4:	48 29 d0             	sub    %rdx,%rax
+     fc7:	48 89 c1             	mov    %rax,%rcx
+     fca:	8b 85 08 ff ff ff    	mov    -0xf8(%rbp),%eax
+     fd0:	48 98                	cltq
+     fd2:	48 01 c8             	add    %rcx,%rax
+     fd5:	48 83 e8 10          	sub    $0x10,%rax
+     fd9:	48 c1 e0 05          	shl    $0x5,%rax
+     fdd:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+     fe1:	48 01 e8             	add    %rbp,%rax
+     fe4:	48 2d c0 08 00 00    	sub    $0x8c0,%rax
+     fea:	66 0f 6f 40 10       	movdqa 0x10(%rax),%xmm0
+     fef:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # ff7 <ml5_0_mp_tirust_tensor_diagnostic_+0xff7>
+     ff6:	00 
+			ff3: R_X86_64_PC32	.rodata+0xc
+     ff7:	66 0f db c1          	pand   %xmm1,%xmm0
+     ffb:	41 bd 01 00 00 00    	mov    $0x1,%r13d
+    1001:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # 1009 <ml5_0_mp_tirust_tensor_diagnostic_+0x1009>
+    1008:	00 
+			1005: R_X86_64_PC32	.rodata+0x5c
+    1009:	0f 29 85 50 f5 ff ff 	movaps %xmm0,-0xab0(%rbp)
+    1010:	66 0f 6f 85 50 f5 ff 	movdqa -0xab0(%rbp),%xmm0
+    1017:	ff 
+    1018:	e8 00 00 00 00       	call   101d <ml5_0_mp_tirust_tensor_diagnostic_+0x101d>
+			1019: R_X86_64_PLT32	__unordtf2-0x4
+    101d:	48 85 c0             	test   %rax,%rax
+    1020:	75 20                	jne    1042 <ml5_0_mp_tirust_tensor_diagnostic_+0x1042>
+    1022:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # 102a <ml5_0_mp_tirust_tensor_diagnostic_+0x102a>
+    1029:	00 
+			1026: R_X86_64_PC32	.rodata+0x5c
+    102a:	66 0f 6f 85 50 f5 ff 	movdqa -0xab0(%rbp),%xmm0
+    1031:	ff 
+    1032:	e8 00 00 00 00       	call   1037 <ml5_0_mp_tirust_tensor_diagnostic_+0x1037>
+			1033: R_X86_64_PLT32	__gttf2-0x4
+    1037:	48 85 c0             	test   %rax,%rax
+    103a:	7f 06                	jg     1042 <ml5_0_mp_tirust_tensor_diagnostic_+0x1042>
+    103c:	41 bd 00 00 00 00    	mov    $0x0,%r13d
+    1042:	44 89 e8             	mov    %r13d,%eax
+    1045:	83 f0 01             	xor    $0x1,%eax
+    1048:	0f b6 c0             	movzbl %al,%eax
+    104b:	83 e0 01             	and    $0x1,%eax
+    104e:	83 f0 01             	xor    $0x1,%eax
+    1051:	09 d8                	or     %ebx,%eax
+    1053:	85 c0                	test   %eax,%eax
+    1055:	74 0b                	je     1062 <ml5_0_mp_tirust_tensor_diagnostic_+0x1062>
+    1057:	bb 00 00 00 00       	mov    $0x0,%ebx
+    105c:	e9 ed 02 00 00       	jmp    134e <ml5_0_mp_tirust_tensor_diagnostic_+0x134e>
+    1061:	90                   	nop
+    1062:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+    1066:	e9 7e fe ff ff       	jmp    ee9 <ml5_0_mp_tirust_tensor_diagnostic_+0xee9>
+    106b:	90                   	nop
+    106c:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 1073 <ml5_0_mp_tirust_tensor_diagnostic_+0x1073>
+			106f: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+    1073:	8b 80 c0 00 00 00    	mov    0xc0(%rax),%eax
+    1079:	85 c0                	test   %eax,%eax
+    107b:	74 71                	je     10ee <ml5_0_mp_tirust_tensor_diagnostic_+0x10ee>
+    107d:	8b 85 08 ff ff ff    	mov    -0xf8(%rbp),%eax
+    1083:	48 98                	cltq
+    1085:	48 8d 50 2c          	lea    0x2c(%rax),%rdx
+    1089:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    108c:	48 98                	cltq
+    108e:	48 89 d1             	mov    %rdx,%rcx
+    1091:	48 c1 e1 05          	shl    $0x5,%rcx
+    1095:	48 8d 71 d0          	lea    -0x30(%rcx),%rsi
+    1099:	48 8d 0c 2e          	lea    (%rsi,%rbp,1),%rcx
+    109d:	48 81 e9 c0 08 00 00 	sub    $0x8c0,%rcx
+    10a4:	66 0f 6f 09          	movdqa (%rcx),%xmm1
+    10a8:	48 c1 e2 05          	shl    $0x5,%rdx
+    10ac:	48 8d 72 d0          	lea    -0x30(%rdx),%rsi
+    10b0:	48 8d 14 2e          	lea    (%rsi,%rbp,1),%rdx
+    10b4:	48 81 ea c0 08 00 00 	sub    $0x8c0,%rdx
+    10bb:	66 0f 6f 42 10       	movdqa 0x10(%rdx),%xmm0
+    10c0:	48 8b 95 60 f5 ff ff 	mov    -0xaa0(%rbp),%rdx
+    10c7:	48 89 c1             	mov    %rax,%rcx
+    10ca:	48 c1 e1 05          	shl    $0x5,%rcx
+    10ce:	48 01 ca             	add    %rcx,%rdx
+    10d1:	0f 29 0a             	movaps %xmm1,(%rdx)
+    10d4:	48 8b 95 60 f5 ff ff 	mov    -0xaa0(%rbp),%rdx
+    10db:	48 c1 e0 05          	shl    $0x5,%rax
+    10df:	48 01 d0             	add    %rdx,%rax
+    10e2:	48 83 c0 10          	add    $0x10,%rax
+    10e6:	0f 29 00             	movaps %xmm0,(%rax)
+    10e9:	e9 f3 00 00 00       	jmp    11e1 <ml5_0_mp_tirust_tensor_diagnostic_+0x11e1>
+    10ee:	b8 02 00 00 00       	mov    $0x2,%eax
+    10f3:	83 f8 0a             	cmp    $0xa,%eax
+    10f6:	0f 84 ab 00 00 00    	je     11a7 <ml5_0_mp_tirust_tensor_diagnostic_+0x11a7>
+    10fc:	83 f8 0a             	cmp    $0xa,%eax
+    10ff:	0f 8f 88 00 00 00    	jg     118d <ml5_0_mp_tirust_tensor_diagnostic_+0x118d>
+    1105:	83 f8 09             	cmp    $0x9,%eax
+    1108:	0f 84 8f 00 00 00    	je     119d <ml5_0_mp_tirust_tensor_diagnostic_+0x119d>
+    110e:	83 f8 09             	cmp    $0x9,%eax
+    1111:	7f 7a                	jg     118d <ml5_0_mp_tirust_tensor_diagnostic_+0x118d>
+    1113:	83 f8 08             	cmp    $0x8,%eax
+    1116:	74 7b                	je     1193 <ml5_0_mp_tirust_tensor_diagnostic_+0x1193>
+    1118:	83 f8 08             	cmp    $0x8,%eax
+    111b:	7f 70                	jg     118d <ml5_0_mp_tirust_tensor_diagnostic_+0x118d>
+    111d:	83 f8 06             	cmp    $0x6,%eax
+    1120:	74 61                	je     1183 <ml5_0_mp_tirust_tensor_diagnostic_+0x1183>
+    1122:	83 f8 06             	cmp    $0x6,%eax
+    1125:	7f 66                	jg     118d <ml5_0_mp_tirust_tensor_diagnostic_+0x118d>
+    1127:	83 f8 05             	cmp    $0x5,%eax
+    112a:	74 4d                	je     1179 <ml5_0_mp_tirust_tensor_diagnostic_+0x1179>
+    112c:	83 f8 05             	cmp    $0x5,%eax
+    112f:	7f 5c                	jg     118d <ml5_0_mp_tirust_tensor_diagnostic_+0x118d>
+    1131:	83 f8 04             	cmp    $0x4,%eax
+    1134:	74 39                	je     116f <ml5_0_mp_tirust_tensor_diagnostic_+0x116f>
+    1136:	83 f8 04             	cmp    $0x4,%eax
+    1139:	7f 52                	jg     118d <ml5_0_mp_tirust_tensor_diagnostic_+0x118d>
+    113b:	83 f8 03             	cmp    $0x3,%eax
+    113e:	74 25                	je     1165 <ml5_0_mp_tirust_tensor_diagnostic_+0x1165>
+    1140:	83 f8 03             	cmp    $0x3,%eax
+    1143:	7f 48                	jg     118d <ml5_0_mp_tirust_tensor_diagnostic_+0x118d>
+    1145:	83 f8 01             	cmp    $0x1,%eax
+    1148:	74 07                	je     1151 <ml5_0_mp_tirust_tensor_diagnostic_+0x1151>
+    114a:	83 f8 02             	cmp    $0x2,%eax
+    114d:	74 0c                	je     115b <ml5_0_mp_tirust_tensor_diagnostic_+0x115b>
+    114f:	eb 3c                	jmp    118d <ml5_0_mp_tirust_tensor_diagnostic_+0x118d>
+    1151:	66 0f 6f 05 00 00 00 	movdqa 0x0(%rip),%xmm0        # 1159 <ml5_0_mp_tirust_tensor_diagnostic_+0x1159>
+    1158:	00 
+			1155: R_X86_64_PC32	.rodata+0x6c
+    1159:	eb 54                	jmp    11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    115b:	66 0f 6f 05 00 00 00 	movdqa 0x0(%rip),%xmm0        # 1163 <ml5_0_mp_tirust_tensor_diagnostic_+0x1163>
+    1162:	00 
+			115f: R_X86_64_PC32	.rodata+0x2c
+    1163:	eb 4a                	jmp    11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    1165:	66 0f 6f 05 00 00 00 	movdqa 0x0(%rip),%xmm0        # 116d <ml5_0_mp_tirust_tensor_diagnostic_+0x116d>
+    116c:	00 
+			1169: R_X86_64_PC32	.rodata+0x1c
+    116d:	eb 40                	jmp    11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    116f:	66 0f 6f 05 00 00 00 	movdqa 0x0(%rip),%xmm0        # 1177 <ml5_0_mp_tirust_tensor_diagnostic_+0x1177>
+    1176:	00 
+			1173: R_X86_64_PC32	.rodata+0x7c
+    1177:	eb 36                	jmp    11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    1179:	66 0f 6f 05 00 00 00 	movdqa 0x0(%rip),%xmm0        # 1181 <ml5_0_mp_tirust_tensor_diagnostic_+0x1181>
+    1180:	00 
+			117d: R_X86_64_PC32	.rodata+0x8c
+    1181:	eb 2c                	jmp    11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    1183:	66 0f 6f 05 00 00 00 	movdqa 0x0(%rip),%xmm0        # 118b <ml5_0_mp_tirust_tensor_diagnostic_+0x118b>
+    118a:	00 
+			1187: R_X86_64_PC32	.rodata+0x9c
+    118b:	eb 22                	jmp    11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    118d:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    1191:	eb 1c                	jmp    11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    1193:	66 0f 6f 05 00 00 00 	movdqa 0x0(%rip),%xmm0        # 119b <ml5_0_mp_tirust_tensor_diagnostic_+0x119b>
+    119a:	00 
+			1197: R_X86_64_PC32	.rodata+0xac
+    119b:	eb 12                	jmp    11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    119d:	66 0f 6f 05 00 00 00 	movdqa 0x0(%rip),%xmm0        # 11a5 <ml5_0_mp_tirust_tensor_diagnostic_+0x11a5>
+    11a4:	00 
+			11a1: R_X86_64_PC32	.rodata+0xbc
+    11a5:	eb 08                	jmp    11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    11a7:	66 0f 6f 05 00 00 00 	movdqa 0x0(%rip),%xmm0        # 11af <ml5_0_mp_tirust_tensor_diagnostic_+0x11af>
+    11ae:	00 
+			11ab: R_X86_64_PC32	.rodata+0xcc
+    11af:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    11b2:	48 98                	cltq
+    11b4:	48 8b 95 60 f5 ff ff 	mov    -0xaa0(%rbp),%rdx
+    11bb:	48 89 c1             	mov    %rax,%rcx
+    11be:	48 c1 e1 05          	shl    $0x5,%rcx
+    11c2:	48 01 ca             	add    %rcx,%rdx
+    11c5:	0f 29 02             	movaps %xmm0,(%rdx)
+    11c8:	48 8b 95 60 f5 ff ff 	mov    -0xaa0(%rbp),%rdx
+    11cf:	48 c1 e0 05          	shl    $0x5,%rax
+    11d3:	48 01 d0             	add    %rdx,%rax
+    11d6:	48 83 c0 10          	add    $0x10,%rax
+    11da:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    11de:	0f 29 00             	movaps %xmm0,(%rax)
+    11e1:	8b 85 08 ff ff ff    	mov    -0xf8(%rbp),%eax
+    11e7:	48 98                	cltq
+    11e9:	48 83 e8 01          	sub    $0x1,%rax
+    11ed:	48 89 c2             	mov    %rax,%rdx
+    11f0:	48 c1 e2 05          	shl    $0x5,%rdx
+    11f4:	48 8d 72 d0          	lea    -0x30(%rdx),%rsi
+    11f8:	48 8d 14 2e          	lea    (%rsi,%rbp,1),%rdx
+    11fc:	48 81 ea c0 08 00 00 	sub    $0x8c0,%rdx
+    1203:	66 0f 6f 02          	movdqa (%rdx),%xmm0
+    1207:	48 c1 e0 05          	shl    $0x5,%rax
+    120b:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+    120f:	48 01 e8             	add    %rbp,%rax
+    1212:	48 2d c0 08 00 00    	sub    $0x8c0,%rax
+    1218:	66 0f 6f 50 10       	movdqa 0x10(%rax),%xmm2
+    121d:	0f 29 95 50 f5 ff ff 	movaps %xmm2,-0xab0(%rbp)
+    1224:	8b 85 08 ff ff ff    	mov    -0xf8(%rbp),%eax
+    122a:	48 98                	cltq
+    122c:	48 83 c0 0e          	add    $0xe,%rax
+    1230:	48 89 c2             	mov    %rax,%rdx
+    1233:	48 c1 e2 05          	shl    $0x5,%rdx
+    1237:	48 8d 72 d0          	lea    -0x30(%rdx),%rsi
+    123b:	48 8d 14 2e          	lea    (%rsi,%rbp,1),%rdx
+    123f:	48 81 ea c0 08 00 00 	sub    $0x8c0,%rdx
+    1246:	66 0f 6f 0a          	movdqa (%rdx),%xmm1
+    124a:	48 c1 e0 05          	shl    $0x5,%rax
+    124e:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+    1252:	48 01 e8             	add    %rbp,%rax
+    1255:	48 2d c0 08 00 00    	sub    $0x8c0,%rax
+    125b:	66 0f 6f 68 10       	movdqa 0x10(%rax),%xmm5
+    1260:	0f 29 ad 40 f5 ff ff 	movaps %xmm5,-0xac0(%rbp)
+    1267:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    126a:	48 98                	cltq
+    126c:	48 8d 58 0f          	lea    0xf(%rax),%rbx
+    1270:	e8 00 00 00 00       	call   1275 <ml5_0_mp_tirust_tensor_diagnostic_+0x1275>
+			1271: R_X86_64_PLT32	__addtf3-0x4
+    1275:	0f 29 85 30 f5 ff ff 	movaps %xmm0,-0xad0(%rbp)
+    127c:	66 0f 6f 8d 40 f5 ff 	movdqa -0xac0(%rbp),%xmm1
+    1283:	ff 
+    1284:	66 0f 6f 85 50 f5 ff 	movdqa -0xab0(%rbp),%xmm0
+    128b:	ff 
+    128c:	e8 00 00 00 00       	call   1291 <ml5_0_mp_tirust_tensor_diagnostic_+0x1291>
+			128d: R_X86_64_PLT32	__addtf3-0x4
+    1291:	48 8b 85 60 f5 ff ff 	mov    -0xaa0(%rbp),%rax
+    1298:	48 89 da             	mov    %rbx,%rdx
+    129b:	48 c1 e2 05          	shl    $0x5,%rdx
+    129f:	48 01 d0             	add    %rdx,%rax
+    12a2:	66 0f 6f b5 30 f5 ff 	movdqa -0xad0(%rbp),%xmm6
+    12a9:	ff 
+    12aa:	0f 29 30             	movaps %xmm6,(%rax)
+    12ad:	48 8b 85 60 f5 ff ff 	mov    -0xaa0(%rbp),%rax
+    12b4:	48 c1 e3 05          	shl    $0x5,%rbx
+    12b8:	48 89 da             	mov    %rbx,%rdx
+    12bb:	48 01 d0             	add    %rdx,%rax
+    12be:	48 83 c0 10          	add    $0x10,%rax
+    12c2:	0f 29 00             	movaps %xmm0,(%rax)
+    12c5:	8b 85 08 ff ff ff    	mov    -0xf8(%rbp),%eax
+    12cb:	48 98                	cltq
+    12cd:	48 8d 50 1d          	lea    0x1d(%rax),%rdx
+    12d1:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    12d4:	48 98                	cltq
+    12d6:	48 83 c0 1e          	add    $0x1e,%rax
+    12da:	48 89 d1             	mov    %rdx,%rcx
+    12dd:	48 c1 e1 05          	shl    $0x5,%rcx
+    12e1:	48 8d 71 d0          	lea    -0x30(%rcx),%rsi
+    12e5:	48 8d 0c 2e          	lea    (%rsi,%rbp,1),%rcx
+    12e9:	48 81 e9 c0 08 00 00 	sub    $0x8c0,%rcx
+    12f0:	66 0f 6f 09          	movdqa (%rcx),%xmm1
+    12f4:	48 c1 e2 05          	shl    $0x5,%rdx
+    12f8:	48 8d 5a d0          	lea    -0x30(%rdx),%rbx
+    12fc:	48 8d 14 2b          	lea    (%rbx,%rbp,1),%rdx
+    1300:	48 81 ea c0 08 00 00 	sub    $0x8c0,%rdx
+    1307:	66 0f 6f 42 10       	movdqa 0x10(%rdx),%xmm0
+    130c:	48 8b 95 60 f5 ff ff 	mov    -0xaa0(%rbp),%rdx
+    1313:	48 89 c1             	mov    %rax,%rcx
+    1316:	48 c1 e1 05          	shl    $0x5,%rcx
+    131a:	48 01 ca             	add    %rcx,%rdx
+    131d:	0f 29 0a             	movaps %xmm1,(%rdx)
+    1320:	48 8b 95 60 f5 ff ff 	mov    -0xaa0(%rbp),%rdx
+    1327:	48 c1 e0 05          	shl    $0x5,%rax
+    132b:	48 01 d0             	add    %rdx,%rax
+    132e:	48 83 c0 10          	add    $0x10,%rax
+    1332:	0f 29 00             	movaps %xmm0,(%rax)
+    1335:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+    1339:	e9 75 fb ff ff       	jmp    eb3 <ml5_0_mp_tirust_tensor_diagnostic_+0xeb3>
+    133e:	90                   	nop
+    133f:	48 8b 45 10          	mov    0x10(%rbp),%rax
+    1343:	c7 00 01 00 00 00    	movl   $0x1,(%rax)
+    1349:	bb 01 00 00 00       	mov    $0x1,%ebx
+    134e:	48 8b 85 20 ff ff ff 	mov    -0xe0(%rbp),%rax
+    1355:	48 89 c7             	mov    %rax,%rdi
+    1358:	e8 00 00 00 00       	call   135d <ml5_0_mp_tirust_tensor_diagnostic_+0x135d>
+			1359: R_X86_64_PLT32	free-0x4
+    135d:	48 8b 85 30 ff ff ff 	mov    -0xd0(%rbp),%rax
+    1364:	48 89 c7             	mov    %rax,%rdi
+    1367:	e8 00 00 00 00       	call   136c <ml5_0_mp_tirust_tensor_diagnostic_+0x136c>
+			1368: R_X86_64_PLT32	free-0x4
+    136c:	48 8b 85 48 ff ff ff 	mov    -0xb8(%rbp),%rax
+    1373:	48 89 c7             	mov    %rax,%rdi
+    1376:	e8 00 00 00 00       	call   137b <ml5_0_mp_tirust_tensor_diagnostic_+0x137b>
+			1377: R_X86_64_PLT32	free-0x4
+    137b:	48 8b 85 58 ff ff ff 	mov    -0xa8(%rbp),%rax
+    1382:	48 89 c7             	mov    %rax,%rdi
+    1385:	e8 00 00 00 00       	call   138a <ml5_0_mp_tirust_tensor_diagnostic_+0x138a>
+			1386: R_X86_64_PLT32	free-0x4
+    138a:	48 8b 85 68 ff ff ff 	mov    -0x98(%rbp),%rax
+    1391:	48 89 c7             	mov    %rax,%rdi
+    1394:	e8 00 00 00 00       	call   1399 <ml5_0_mp_tirust_tensor_diagnostic_+0x1399>
+			1395: R_X86_64_PLT32	free-0x4
+    1399:	48 8b 85 78 ff ff ff 	mov    -0x88(%rbp),%rax
+    13a0:	48 89 c7             	mov    %rax,%rdi
+    13a3:	e8 00 00 00 00       	call   13a8 <ml5_0_mp_tirust_tensor_diagnostic_+0x13a8>
+			13a4: R_X86_64_PLT32	free-0x4
+    13a8:	48 8b 45 88          	mov    -0x78(%rbp),%rax
+    13ac:	48 89 c7             	mov    %rax,%rdi
+    13af:	e8 00 00 00 00       	call   13b4 <ml5_0_mp_tirust_tensor_diagnostic_+0x13b4>
+			13b0: R_X86_64_PLT32	free-0x4
+    13b4:	48 8d 85 e0 fe ff ff 	lea    -0x120(%rbp),%rax
+    13bb:	48 89 c7             	mov    %rax,%rdi
+    13be:	e8 00 00 00 00       	call   13c3 <ml5_0_mp_tirust_tensor_diagnostic_+0x13c3>
+			13bf: R_X86_64_PLT32	_gfortran_ieee_procedure_exit-0x4
+    13c3:	83 fb 01             	cmp    $0x1,%ebx
+    13c6:	48 8d 65 d8          	lea    -0x28(%rbp),%rsp
+    13ca:	5b                   	pop    %rbx
+    13cb:	41 5c                	pop    %r12
+    13cd:	41 5d                	pop    %r13
+    13cf:	41 5e                	pop    %r14
+    13d1:	41 5f                	pop    %r15
+    13d3:	5d                   	pop    %rbp
+    13d4:	c3                   	ret
+
+00000000000013d5 <ml5_0_tirust_tensor_diagnostic_>:
+    13d5:	55                   	push   %rbp
+    13d6:	48 89 e5             	mov    %rsp,%rbp
+    13d9:	41 57                	push   %r15
+    13db:	41 56                	push   %r14
+    13dd:	41 55                	push   %r13
+    13df:	41 54                	push   %r12
+    13e1:	53                   	push   %rbx
+    13e2:	48 81 ec 98 06 00 00 	sub    $0x698,%rsp
+    13e9:	48 89 bd 78 f9 ff ff 	mov    %rdi,-0x688(%rbp)
+    13f0:	48 89 b5 70 f9 ff ff 	mov    %rsi,-0x690(%rbp)
+    13f7:	48 89 95 68 f9 ff ff 	mov    %rdx,-0x698(%rbp)
+    13fe:	48 89 8d 60 f9 ff ff 	mov    %rcx,-0x6a0(%rbp)
+    1405:	4c 89 85 58 f9 ff ff 	mov    %r8,-0x6a8(%rbp)
+    140c:	4c 89 8d 50 f9 ff ff 	mov    %r9,-0x6b0(%rbp)
+    1413:	48 8d 85 f0 fe ff ff 	lea    -0x110(%rbp),%rax
+    141a:	48 89 c7             	mov    %rax,%rdi
+    141d:	e8 00 00 00 00       	call   1422 <ml5_0_tirust_tensor_diagnostic_+0x4d>
+			141e: R_X86_64_PLT32	_gfortran_ieee_procedure_entry-0x4
+    1422:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1429:	8b 00                	mov    (%rax),%eax
+    142b:	48 98                	cltq
+    142d:	48 89 45 b8          	mov    %rax,-0x48(%rbp)
+    1431:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1438:	8b 00                	mov    (%rax),%eax
+    143a:	48 98                	cltq
+    143c:	48 89 45 b0          	mov    %rax,-0x50(%rbp)
+    1440:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1447:	8b 00                	mov    (%rax),%eax
+    1449:	48 98                	cltq
+    144b:	48 89 45 a8          	mov    %rax,-0x58(%rbp)
+    144f:	48 8b 45 a8          	mov    -0x58(%rbp),%rax
+    1453:	ba 00 00 00 00       	mov    $0x0,%edx
+    1458:	48 85 c0             	test   %rax,%rax
+    145b:	48 89 d3             	mov    %rdx,%rbx
+    145e:	48 0f 49 d8          	cmovns %rax,%rbx
+    1462:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1469:	8b 00                	mov    (%rax),%eax
+    146b:	48 98                	cltq
+    146d:	48 89 45 a0          	mov    %rax,-0x60(%rbp)
+    1471:	48 89 d8             	mov    %rbx,%rax
+    1474:	48 0f af 45 a0       	imul   -0x60(%rbp),%rax
+    1479:	ba 00 00 00 00       	mov    $0x0,%edx
+    147e:	48 85 c0             	test   %rax,%rax
+    1481:	48 0f 48 c2          	cmovs  %rdx,%rax
+    1485:	48 c1 e0 03          	shl    $0x3,%rax
+    1489:	ba 01 00 00 00       	mov    $0x1,%edx
+    148e:	48 85 c0             	test   %rax,%rax
+    1491:	48 0f 44 c2          	cmove  %rdx,%rax
+    1495:	48 89 c7             	mov    %rax,%rdi
+    1498:	e8 00 00 00 00       	call   149d <ml5_0_tirust_tensor_diagnostic_+0xc8>
+			1499: R_X86_64_PLT32	malloc-0x4
+    149d:	48 89 45 98          	mov    %rax,-0x68(%rbp)
+    14a1:	49 89 de             	mov    %rbx,%r14
+    14a4:	49 f7 d6             	not    %r14
+    14a7:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    14ae:	8b 00                	mov    (%rax),%eax
+    14b0:	48 98                	cltq
+    14b2:	48 89 45 90          	mov    %rax,-0x70(%rbp)
+    14b6:	48 8b 45 90          	mov    -0x70(%rbp),%rax
+    14ba:	ba 00 00 00 00       	mov    $0x0,%edx
+    14bf:	48 85 c0             	test   %rax,%rax
+    14c2:	48 0f 48 c2          	cmovs  %rdx,%rax
+    14c6:	48 c1 e0 04          	shl    $0x4,%rax
+    14ca:	ba 01 00 00 00       	mov    $0x1,%edx
+    14cf:	48 85 c0             	test   %rax,%rax
+    14d2:	48 0f 44 c2          	cmove  %rdx,%rax
+    14d6:	48 89 c7             	mov    %rax,%rdi
+    14d9:	e8 00 00 00 00       	call   14de <ml5_0_tirust_tensor_diagnostic_+0x109>
+			14da: R_X86_64_PLT32	malloc-0x4
+    14de:	48 89 45 88          	mov    %rax,-0x78(%rbp)
+    14e2:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    14e9:	8b 00                	mov    (%rax),%eax
+    14eb:	48 98                	cltq
+    14ed:	48 89 45 80          	mov    %rax,-0x80(%rbp)
+    14f1:	48 8b 45 80          	mov    -0x80(%rbp),%rax
+    14f5:	ba 00 00 00 00       	mov    $0x0,%edx
+    14fa:	48 85 c0             	test   %rax,%rax
+    14fd:	48 0f 49 d0          	cmovns %rax,%rdx
+    1501:	49 89 d5             	mov    %rdx,%r13
+    1504:	4a 8d 04 ad 00 00 00 	lea    0x0(,%r13,4),%rax
+    150b:	00 
+    150c:	ba 00 00 00 00       	mov    $0x0,%edx
+    1511:	48 85 c0             	test   %rax,%rax
+    1514:	48 0f 48 c2          	cmovs  %rdx,%rax
+    1518:	48 c1 e0 03          	shl    $0x3,%rax
+    151c:	ba 01 00 00 00       	mov    $0x1,%edx
+    1521:	48 85 c0             	test   %rax,%rax
+    1524:	48 0f 44 c2          	cmove  %rdx,%rax
+    1528:	48 89 c7             	mov    %rax,%rdi
+    152b:	e8 00 00 00 00       	call   1530 <ml5_0_tirust_tensor_diagnostic_+0x15b>
+			152c: R_X86_64_PLT32	malloc-0x4
+    1530:	48 89 85 78 ff ff ff 	mov    %rax,-0x88(%rbp)
+    1537:	48 c7 85 48 f9 ff ff 	movq   $0xffffffffffffffff,-0x6b8(%rbp)
+    153e:	ff ff ff ff 
+    1542:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1549:	8b 00                	mov    (%rax),%eax
+    154b:	83 e8 01             	sub    $0x1,%eax
+    154e:	48 98                	cltq
+    1550:	48 89 85 70 ff ff ff 	mov    %rax,-0x90(%rbp)
+    1557:	48 8b 85 70 ff ff ff 	mov    -0x90(%rbp),%rax
+    155e:	48 83 c0 01          	add    $0x1,%rax
+    1562:	48 c1 e0 02          	shl    $0x2,%rax
+    1566:	ba 00 00 00 00       	mov    $0x0,%edx
+    156b:	48 85 c0             	test   %rax,%rax
+    156e:	48 0f 48 c2          	cmovs  %rdx,%rax
+    1572:	48 c1 e0 03          	shl    $0x3,%rax
+    1576:	ba 01 00 00 00       	mov    $0x1,%edx
+    157b:	48 85 c0             	test   %rax,%rax
+    157e:	48 0f 44 c2          	cmove  %rdx,%rax
+    1582:	48 89 c7             	mov    %rax,%rdi
+    1585:	e8 00 00 00 00       	call   158a <ml5_0_tirust_tensor_diagnostic_+0x1b5>
+			1586: R_X86_64_PLT32	malloc-0x4
+    158a:	48 89 85 68 ff ff ff 	mov    %rax,-0x98(%rbp)
+    1591:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1598:	8b 00                	mov    (%rax),%eax
+    159a:	83 e8 01             	sub    $0x1,%eax
+    159d:	48 98                	cltq
+    159f:	48 89 85 60 ff ff ff 	mov    %rax,-0xa0(%rbp)
+    15a6:	48 8b 85 60 ff ff ff 	mov    -0xa0(%rbp),%rax
+    15ad:	48 c1 e0 02          	shl    $0x2,%rax
+    15b1:	ba 00 00 00 00       	mov    $0x0,%edx
+    15b6:	48 85 c0             	test   %rax,%rax
+    15b9:	48 0f 48 c2          	cmovs  %rdx,%rax
+    15bd:	48 c1 e0 03          	shl    $0x3,%rax
+    15c1:	ba 01 00 00 00       	mov    $0x1,%edx
+    15c6:	48 85 c0             	test   %rax,%rax
+    15c9:	48 0f 44 c2          	cmove  %rdx,%rax
+    15cd:	48 89 c7             	mov    %rax,%rdi
+    15d0:	e8 00 00 00 00       	call   15d5 <ml5_0_tirust_tensor_diagnostic_+0x200>
+			15d1: R_X86_64_PLT32	malloc-0x4
+    15d5:	48 89 85 58 ff ff ff 	mov    %rax,-0xa8(%rbp)
+    15dc:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    15e3:	8b 00                	mov    (%rax),%eax
+    15e5:	48 98                	cltq
+    15e7:	48 89 85 50 ff ff ff 	mov    %rax,-0xb0(%rbp)
+    15ee:	48 8b 85 50 ff ff ff 	mov    -0xb0(%rbp),%rax
+    15f5:	ba 00 00 00 00       	mov    $0x0,%edx
+    15fa:	48 85 c0             	test   %rax,%rax
+    15fd:	48 0f 49 d0          	cmovns %rax,%rdx
+    1601:	49 89 d4             	mov    %rdx,%r12
+    1604:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    160b:	8b 00                	mov    (%rax),%eax
+    160d:	48 98                	cltq
+    160f:	48 89 85 48 ff ff ff 	mov    %rax,-0xb8(%rbp)
+    1616:	4c 89 e0             	mov    %r12,%rax
+    1619:	48 0f af 85 48 ff ff 	imul   -0xb8(%rbp),%rax
+    1620:	ff 
+    1621:	ba 00 00 00 00       	mov    $0x0,%edx
+    1626:	48 85 c0             	test   %rax,%rax
+    1629:	48 0f 48 c2          	cmovs  %rdx,%rax
+    162d:	48 c1 e0 04          	shl    $0x4,%rax
+    1631:	ba 01 00 00 00       	mov    $0x1,%edx
+    1636:	48 85 c0             	test   %rax,%rax
+    1639:	48 0f 44 c2          	cmove  %rdx,%rax
+    163d:	48 89 c7             	mov    %rax,%rdi
+    1640:	e8 00 00 00 00       	call   1645 <ml5_0_tirust_tensor_diagnostic_+0x270>
+			1641: R_X86_64_PLT32	malloc-0x4
+    1645:	48 89 85 40 ff ff ff 	mov    %rax,-0xc0(%rbp)
+    164c:	4d 89 e7             	mov    %r12,%r15
+    164f:	49 f7 d7             	not    %r15
+    1652:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1659:	8b 00                	mov    (%rax),%eax
+    165b:	48 98                	cltq
+    165d:	48 89 85 38 ff ff ff 	mov    %rax,-0xc8(%rbp)
+    1664:	48 8b 85 38 ff ff ff 	mov    -0xc8(%rbp),%rax
+    166b:	48 c1 e0 02          	shl    $0x2,%rax
+    166f:	ba 00 00 00 00       	mov    $0x0,%edx
+    1674:	48 85 c0             	test   %rax,%rax
+    1677:	48 0f 48 c2          	cmovs  %rdx,%rax
+    167b:	48 c1 e0 03          	shl    $0x3,%rax
+    167f:	ba 01 00 00 00       	mov    $0x1,%edx
+    1684:	48 85 c0             	test   %rax,%rax
+    1687:	48 0f 44 c2          	cmove  %rdx,%rax
+    168b:	48 89 c7             	mov    %rax,%rdi
+    168e:	e8 00 00 00 00       	call   1693 <ml5_0_tirust_tensor_diagnostic_+0x2be>
+			168f: R_X86_64_PLT32	malloc-0x4
+    1693:	48 89 85 30 ff ff ff 	mov    %rax,-0xd0(%rbp)
+    169a:	48 8b 45 10          	mov    0x10(%rbp),%rax
+    169e:	c7 00 00 00 00 00    	movl   $0x0,(%rax)
+    16a4:	48 8b 85 50 f9 ff ff 	mov    -0x6b0(%rbp),%rax
+    16ab:	48 89 c1             	mov    %rax,%rcx
+    16ae:	b8 d0 02 00 00       	mov    $0x2d0,%eax
+    16b3:	be 00 00 00 00       	mov    $0x0,%esi
+    16b8:	48 89 31             	mov    %rsi,(%rcx)
+    16bb:	89 c2                	mov    %eax,%edx
+    16bd:	48 01 ca             	add    %rcx,%rdx
+    16c0:	48 83 c2 08          	add    $0x8,%rdx
+    16c4:	48 89 72 f0          	mov    %rsi,-0x10(%rdx)
+    16c8:	48 8d 51 08          	lea    0x8(%rcx),%rdx
+    16cc:	48 83 e2 f8          	and    $0xfffffffffffffff8,%rdx
+    16d0:	48 29 d1             	sub    %rdx,%rcx
+    16d3:	01 c8                	add    %ecx,%eax
+    16d5:	83 e0 f8             	and    $0xfffffff8,%eax
+    16d8:	c1 e8 03             	shr    $0x3,%eax
+    16db:	89 c1                	mov    %eax,%ecx
+    16dd:	48 89 d7             	mov    %rdx,%rdi
+    16e0:	48 89 f0             	mov    %rsi,%rax
+    16e3:	f3 48 ab             	rep stos %rax,(%rdi)
+    16e6:	48 8b 85 68 f9 ff ff 	mov    -0x698(%rbp),%rax
+    16ed:	8b 00                	mov    (%rax),%eax
+    16ef:	c1 e8 1f             	shr    $0x1f,%eax
+    16f2:	89 c2                	mov    %eax,%edx
+    16f4:	48 8b 85 68 f9 ff ff 	mov    -0x698(%rbp),%rax
+    16fb:	8b 00                	mov    (%rax),%eax
+    16fd:	83 f8 02             	cmp    $0x2,%eax
+    1700:	0f 9f c0             	setg   %al
+    1703:	0f b6 c0             	movzbl %al,%eax
+    1706:	09 d0                	or     %edx,%eax
+    1708:	85 c0                	test   %eax,%eax
+    170a:	74 0a                	je     1716 <ml5_0_tirust_tensor_diagnostic_+0x341>
+    170c:	bb 00 00 00 00       	mov    $0x0,%ebx
+    1711:	e9 10 0e 00 00       	jmp    2526 <ml5_0_tirust_tensor_diagnostic_+0x1151>
+    1716:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 171d <ml5_0_tirust_tensor_diagnostic_+0x348>
+			1719: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+    171d:	48 8d 90 c0 00 00 00 	lea    0xc0(%rax),%rdx
+    1724:	48 8b 8d 68 f9 ff ff 	mov    -0x698(%rbp),%rcx
+    172b:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1732:	48 89 ce             	mov    %rcx,%rsi
+    1735:	48 89 c7             	mov    %rax,%rdi
+    1738:	e8 00 00 00 00       	call   173d <ml5_0_tirust_tensor_diagnostic_+0x368>
+			1739: R_X86_64_PLT32	__mtirust_MOD_tirust_supports-0x4
+    173d:	83 f0 01             	xor    $0x1,%eax
+    1740:	85 c0                	test   %eax,%eax
+    1742:	74 0a                	je     174e <ml5_0_tirust_tensor_diagnostic_+0x379>
+    1744:	bb 00 00 00 00       	mov    $0x0,%ebx
+    1749:	e9 d8 0d 00 00       	jmp    2526 <ml5_0_tirust_tensor_diagnostic_+0x1151>
+    174e:	48 8d 85 f4 fa ff ff 	lea    -0x50c(%rbp),%rax
+    1755:	48 89 c7             	mov    %rax,%rdi
+    1758:	e8 00 00 00 00       	call   175d <ml5_0_tirust_tensor_diagnostic_+0x388>
+			1759: R_X86_64_PLT32	ml5_0_initialize_tirust_-0x4
+    175d:	8b 85 f4 fa ff ff    	mov    -0x50c(%rbp),%eax
+    1763:	85 c0                	test   %eax,%eax
+    1765:	74 0a                	je     1771 <ml5_0_tirust_tensor_diagnostic_+0x39c>
+    1767:	bb 00 00 00 00       	mov    $0x0,%ebx
+    176c:	e9 b5 0d 00 00       	jmp    2526 <ml5_0_tirust_tensor_diagnostic_+0x1151>
+    1771:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 1778 <ml5_0_tirust_tensor_diagnostic_+0x3a3>
+			1774: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+    1778:	48 8b 80 c8 00 00 00 	mov    0xc8(%rax),%rax
+    177f:	48 89 85 e8 fa ff ff 	mov    %rax,-0x518(%rbp)
+    1786:	48 8d 95 f4 fa ff ff 	lea    -0x50c(%rbp),%rdx
+    178d:	48 8d 85 e8 fa ff ff 	lea    -0x518(%rbp),%rax
+    1794:	48 89 d6             	mov    %rdx,%rsi
+    1797:	48 89 c7             	mov    %rax,%rdi
+    179a:	e8 00 00 00 00       	call   179f <ml5_0_tirust_tensor_diagnostic_+0x3ca>
+			179b: R_X86_64_PLT32	__mtirust_MOD_tirust_set_cache_budget-0x4
+    179f:	8b 85 f4 fa ff ff    	mov    -0x50c(%rbp),%eax
+    17a5:	85 c0                	test   %eax,%eax
+    17a7:	74 0a                	je     17b3 <ml5_0_tirust_tensor_diagnostic_+0x3de>
+    17a9:	bb 00 00 00 00       	mov    $0x0,%ebx
+    17ae:	e9 73 0d 00 00       	jmp    2526 <ml5_0_tirust_tensor_diagnostic_+0x1151>
+    17b3:	48 8b 8d 60 ff ff ff 	mov    -0xa0(%rbp),%rcx
+    17ba:	b8 01 00 00 00       	mov    $0x1,%eax
+    17bf:	48 39 c8             	cmp    %rcx,%rax
+    17c2:	7f 37                	jg     17fb <ml5_0_tirust_tensor_diagnostic_+0x426>
+    17c4:	48 8d 50 ff          	lea    -0x1(%rax),%rdx
+    17c8:	4c 8d 04 95 00 00 00 	lea    0x0(,%rdx,4),%r8
+    17cf:	00 
+    17d0:	ba 00 00 00 00       	mov    $0x0,%edx
+    17d5:	48 83 fa 03          	cmp    $0x3,%rdx
+    17d9:	7f 1a                	jg     17f5 <ml5_0_tirust_tensor_diagnostic_+0x420>
+    17db:	4a 8d 3c 02          	lea    (%rdx,%r8,1),%rdi
+    17df:	48 8b b5 58 ff ff ff 	mov    -0xa8(%rbp),%rsi
+    17e6:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    17ea:	f2 0f 11 04 fe       	movsd  %xmm0,(%rsi,%rdi,8)
+    17ef:	48 83 c2 01          	add    $0x1,%rdx
+    17f3:	eb e0                	jmp    17d5 <ml5_0_tirust_tensor_diagnostic_+0x400>
+    17f5:	48 83 c0 01          	add    $0x1,%rax
+    17f9:	eb c4                	jmp    17bf <ml5_0_tirust_tensor_diagnostic_+0x3ea>
+    17fb:	48 8b 75 b8          	mov    -0x48(%rbp),%rsi
+    17ff:	b8 01 00 00 00       	mov    $0x1,%eax
+    1804:	48 39 f0             	cmp    %rsi,%rax
+    1807:	7f 5b                	jg     1864 <ml5_0_tirust_tensor_diagnostic_+0x48f>
+    1809:	48 8d 48 ff          	lea    -0x1(%rax),%rcx
+    180d:	48 8d 50 ff          	lea    -0x1(%rax),%rdx
+    1811:	48 8b bd 58 f9 ff ff 	mov    -0x6a8(%rbp),%rdi
+    1818:	49 89 c8             	mov    %rcx,%r8
+    181b:	49 c1 e0 04          	shl    $0x4,%r8
+    181f:	4c 01 c7             	add    %r8,%rdi
+    1822:	f2 0f 10 0f          	movsd  (%rdi),%xmm1
+    1826:	48 8b bd 58 f9 ff ff 	mov    -0x6a8(%rbp),%rdi
+    182d:	48 c1 e1 04          	shl    $0x4,%rcx
+    1831:	48 01 f9             	add    %rdi,%rcx
+    1834:	f2 0f 10 41 08       	movsd  0x8(%rcx),%xmm0
+    1839:	48 8b 4d 88          	mov    -0x78(%rbp),%rcx
+    183d:	48 89 d7             	mov    %rdx,%rdi
+    1840:	48 c1 e7 04          	shl    $0x4,%rdi
+    1844:	48 01 f9             	add    %rdi,%rcx
+    1847:	f2 0f 11 09          	movsd  %xmm1,(%rcx)
+    184b:	48 8b 4d 88          	mov    -0x78(%rbp),%rcx
+    184f:	48 c1 e2 04          	shl    $0x4,%rdx
+    1853:	48 01 ca             	add    %rcx,%rdx
+    1856:	48 83 c2 08          	add    $0x8,%rdx
+    185a:	f2 0f 11 02          	movsd  %xmm0,(%rdx)
+    185e:	48 83 c0 01          	add    $0x1,%rax
+    1862:	eb a0                	jmp    1804 <ml5_0_tirust_tensor_diagnostic_+0x42f>
+    1864:	48 8b bd 58 f9 ff ff 	mov    -0x6a8(%rbp),%rdi
+    186b:	48 8b 8d 58 ff ff ff 	mov    -0xa8(%rbp),%rcx
+    1872:	48 8b 95 60 f9 ff ff 	mov    -0x6a0(%rbp),%rdx
+    1879:	48 8b b5 70 f9 ff ff 	mov    -0x690(%rbp),%rsi
+    1880:	48 8b 85 78 f9 ff ff 	mov    -0x688(%rbp),%rax
+    1887:	49 89 f8             	mov    %rdi,%r8
+    188a:	48 89 c7             	mov    %rax,%rdi
+    188d:	e8 00 00 00 00       	call   1892 <ml5_0_tirust_tensor_diagnostic_+0x4bd>
+			188e: R_X86_64_PLT32	ml5_0_switch_order_-0x4
+    1892:	48 8b 75 b8          	mov    -0x48(%rbp),%rsi
+    1896:	b8 01 00 00 00       	mov    $0x1,%eax
+    189b:	48 39 f0             	cmp    %rsi,%rax
+    189e:	7f 5b                	jg     18fb <ml5_0_tirust_tensor_diagnostic_+0x526>
+    18a0:	48 8d 48 ff          	lea    -0x1(%rax),%rcx
+    18a4:	48 8d 50 ff          	lea    -0x1(%rax),%rdx
+    18a8:	48 8b bd 58 f9 ff ff 	mov    -0x6a8(%rbp),%rdi
+    18af:	49 89 c8             	mov    %rcx,%r8
+    18b2:	49 c1 e0 04          	shl    $0x4,%r8
+    18b6:	4c 01 c7             	add    %r8,%rdi
+    18b9:	f2 0f 10 0f          	movsd  (%rdi),%xmm1
+    18bd:	48 8b bd 58 f9 ff ff 	mov    -0x6a8(%rbp),%rdi
+    18c4:	48 c1 e1 04          	shl    $0x4,%rcx
+    18c8:	48 01 f9             	add    %rdi,%rcx
+    18cb:	f2 0f 10 41 08       	movsd  0x8(%rcx),%xmm0
+    18d0:	48 8b 4d 88          	mov    -0x78(%rbp),%rcx
+    18d4:	48 89 d7             	mov    %rdx,%rdi
+    18d7:	48 c1 e7 04          	shl    $0x4,%rdi
+    18db:	48 01 f9             	add    %rdi,%rcx
+    18de:	f2 0f 11 09          	movsd  %xmm1,(%rcx)
+    18e2:	48 8b 4d 88          	mov    -0x78(%rbp),%rcx
+    18e6:	48 c1 e2 04          	shl    $0x4,%rdx
+    18ea:	48 01 ca             	add    %rcx,%rdx
+    18ed:	48 83 c2 08          	add    $0x8,%rdx
+    18f1:	f2 0f 11 02          	movsd  %xmm0,(%rdx)
+    18f5:	48 83 c0 01          	add    $0x1,%rax
+    18f9:	eb a0                	jmp    189b <ml5_0_tirust_tensor_diagnostic_+0x4c6>
+    18fb:	48 8b 8d 70 ff ff ff 	mov    -0x90(%rbp),%rcx
+    1902:	b8 00 00 00 00       	mov    $0x0,%eax
+    1907:	48 39 c8             	cmp    %rcx,%rax
+    190a:	7f 33                	jg     193f <ml5_0_tirust_tensor_diagnostic_+0x56a>
+    190c:	4c 8d 04 85 00 00 00 	lea    0x0(,%rax,4),%r8
+    1913:	00 
+    1914:	ba 00 00 00 00       	mov    $0x0,%edx
+    1919:	48 83 fa 03          	cmp    $0x3,%rdx
+    191d:	7f 1a                	jg     1939 <ml5_0_tirust_tensor_diagnostic_+0x564>
+    191f:	4a 8d 3c 02          	lea    (%rdx,%r8,1),%rdi
+    1923:	48 8b b5 68 ff ff ff 	mov    -0x98(%rbp),%rsi
+    192a:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    192e:	f2 0f 11 04 fe       	movsd  %xmm0,(%rsi,%rdi,8)
+    1933:	48 83 c2 01          	add    $0x1,%rdx
+    1937:	eb e0                	jmp    1919 <ml5_0_tirust_tensor_diagnostic_+0x544>
+    1939:	48 83 c0 01          	add    $0x1,%rax
+    193d:	eb c8                	jmp    1907 <ml5_0_tirust_tensor_diagnostic_+0x532>
+    193f:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    1943:	0f 29 85 d0 fe ff ff 	movaps %xmm0,-0x130(%rbp)
+    194a:	0f 29 85 e0 fe ff ff 	movaps %xmm0,-0x120(%rbp)
+    1951:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+    1958:	83 7d cc 03          	cmpl   $0x3,-0x34(%rbp)
+    195c:	0f 9f c0             	setg   %al
+    195f:	0f b6 c0             	movzbl %al,%eax
+    1962:	85 c0                	test   %eax,%eax
+    1964:	0f 85 d2 00 00 00    	jne    1a3c <ml5_0_tirust_tensor_diagnostic_+0x667>
+    196a:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1971:	8b 08                	mov    (%rax),%ecx
+    1973:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+    197a:	39 4d c8             	cmp    %ecx,-0x38(%rbp)
+    197d:	0f 9f c0             	setg   %al
+    1980:	0f b6 c0             	movzbl %al,%eax
+    1983:	85 c0                	test   %eax,%eax
+    1985:	0f 85 a7 00 00 00    	jne    1a32 <ml5_0_tirust_tensor_diagnostic_+0x65d>
+    198b:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    198e:	48 63 d0             	movslq %eax,%rdx
+    1991:	48 8b 85 68 ff ff ff 	mov    -0x98(%rbp),%rax
+    1998:	f2 0f 10 0c d0       	movsd  (%rax,%rdx,8),%xmm1
+    199d:	8b 45 c8             	mov    -0x38(%rbp),%eax
+    19a0:	48 98                	cltq
+    19a2:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+    19a9:	00 
+    19aa:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    19ad:	48 98                	cltq
+    19af:	48 01 d0             	add    %rdx,%rax
+    19b2:	48 8d 50 fc          	lea    -0x4(%rax),%rdx
+    19b6:	48 8b 85 60 f9 ff ff 	mov    -0x6a0(%rbp),%rax
+    19bd:	f2 0f 10 04 d0       	movsd  (%rax,%rdx,8),%xmm0
+    19c2:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    19c5:	48 63 d0             	movslq %eax,%rdx
+    19c8:	f2 0f 58 c1          	addsd  %xmm1,%xmm0
+    19cc:	48 8b 85 68 ff ff ff 	mov    -0x98(%rbp),%rax
+    19d3:	f2 0f 11 04 d0       	movsd  %xmm0,(%rax,%rdx,8)
+    19d8:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    19db:	48 98                	cltq
+    19dd:	f2 0f 10 8c c5 d0 fe 	movsd  -0x130(%rbp,%rax,8),%xmm1
+    19e4:	ff ff 
+    19e6:	8b 45 c8             	mov    -0x38(%rbp),%eax
+    19e9:	48 98                	cltq
+    19eb:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+    19f2:	00 
+    19f3:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    19f6:	48 98                	cltq
+    19f8:	48 01 d0             	add    %rdx,%rax
+    19fb:	48 8d 50 fc          	lea    -0x4(%rax),%rdx
+    19ff:	48 8b 85 60 f9 ff ff 	mov    -0x6a0(%rbp),%rax
+    1a06:	f2 0f 10 04 d0       	movsd  (%rax,%rdx,8),%xmm0
+    1a0b:	f3 0f 7e 15 00 00 00 	movq   0x0(%rip),%xmm2        # 1a13 <ml5_0_tirust_tensor_diagnostic_+0x63e>
+    1a12:	00 
+			1a0f: R_X86_64_PC32	.rodata+0xdc
+    1a13:	66 0f 54 c2          	andpd  %xmm2,%xmm0
+    1a17:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    1a1a:	48 98                	cltq
+    1a1c:	f2 0f 58 c1          	addsd  %xmm1,%xmm0
+    1a20:	f2 0f 11 84 c5 d0 fe 	movsd  %xmm0,-0x130(%rbp,%rax,8)
+    1a27:	ff ff 
+    1a29:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+    1a2d:	e9 48 ff ff ff       	jmp    197a <ml5_0_tirust_tensor_diagnostic_+0x5a5>
+    1a32:	90                   	nop
+    1a33:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+    1a37:	e9 1c ff ff ff       	jmp    1958 <ml5_0_tirust_tensor_diagnostic_+0x583>
+    1a3c:	90                   	nop
+    1a3d:	f2 0f 10 0d 00 00 00 	movsd  0x0(%rip),%xmm1        # 1a45 <ml5_0_tirust_tensor_diagnostic_+0x670>
+    1a44:	00 
+			1a41: R_X86_64_PC32	.rodata+0xec
+    1a45:	b8 00 00 00 00       	mov    $0x0,%eax
+    1a4a:	48 83 f8 03          	cmp    $0x3,%rax
+    1a4e:	7f 1b                	jg     1a6b <ml5_0_tirust_tensor_diagnostic_+0x696>
+    1a50:	f2 0f 10 84 c5 d0 fe 	movsd  -0x130(%rbp,%rax,8),%xmm0
+    1a57:	ff ff 
+    1a59:	66 0f 2f c1          	comisd %xmm1,%xmm0
+    1a5d:	72 06                	jb     1a65 <ml5_0_tirust_tensor_diagnostic_+0x690>
+    1a5f:	48 83 c0 01          	add    $0x1,%rax
+    1a63:	eb 0e                	jmp    1a73 <ml5_0_tirust_tensor_diagnostic_+0x69e>
+    1a65:	48 83 c0 01          	add    $0x1,%rax
+    1a69:	eb df                	jmp    1a4a <ml5_0_tirust_tensor_diagnostic_+0x675>
+    1a6b:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 1a73 <ml5_0_tirust_tensor_diagnostic_+0x69e>
+    1a72:	00 
+			1a6f: R_X86_64_PC32	.rodata+0xf4
+    1a73:	48 83 f8 03          	cmp    $0x3,%rax
+    1a77:	7f 19                	jg     1a92 <ml5_0_tirust_tensor_diagnostic_+0x6bd>
+    1a79:	f2 0f 10 8c c5 d0 fe 	movsd  -0x130(%rbp,%rax,8),%xmm1
+    1a80:	ff ff 
+    1a82:	66 0f 2f c8          	comisd %xmm0,%xmm1
+    1a86:	76 04                	jbe    1a8c <ml5_0_tirust_tensor_diagnostic_+0x6b7>
+    1a88:	66 0f 28 c1          	movapd %xmm1,%xmm0
+    1a8c:	48 83 c0 01          	add    $0x1,%rax
+    1a90:	eb e1                	jmp    1a73 <ml5_0_tirust_tensor_diagnostic_+0x69e>
+    1a92:	f2 0f 11 85 28 ff ff 	movsd  %xmm0,-0xd8(%rbp)
+    1a99:	ff 
+    1a9a:	f2 0f 10 85 28 ff ff 	movsd  -0xd8(%rbp),%xmm0
+    1aa1:	ff 
+    1aa2:	66 0f 2f 05 00 00 00 	comisd 0x0(%rip),%xmm0        # 1aaa <ml5_0_tirust_tensor_diagnostic_+0x6d5>
+    1aa9:	00 
+			1aa6: R_X86_64_PC32	.rodata+0xfc
+    1aaa:	76 78                	jbe    1b24 <ml5_0_tirust_tensor_diagnostic_+0x74f>
+    1aac:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+    1ab3:	83 7d cc 03          	cmpl   $0x3,-0x34(%rbp)
+    1ab7:	0f 9f c0             	setg   %al
+    1aba:	0f b6 c0             	movzbl %al,%eax
+    1abd:	85 c0                	test   %eax,%eax
+    1abf:	75 62                	jne    1b23 <ml5_0_tirust_tensor_diagnostic_+0x74e>
+    1ac1:	f2 0f 10 8d 28 ff ff 	movsd  -0xd8(%rbp),%xmm1
+    1ac8:	ff 
+    1ac9:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 1ad1 <ml5_0_tirust_tensor_diagnostic_+0x6fc>
+    1ad0:	00 
+			1acd: R_X86_64_PC32	.rodata+0x104
+    1ad1:	f2 0f 59 c1          	mulsd  %xmm1,%xmm0
+    1ad5:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    1ad8:	48 98                	cltq
+    1ada:	f2 0f 10 8c c5 d0 fe 	movsd  -0x130(%rbp,%rax,8),%xmm1
+    1ae1:	ff ff 
+    1ae3:	f2 0f 5f c8          	maxsd  %xmm0,%xmm1
+    1ae7:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    1aea:	48 63 d0             	movslq %eax,%rdx
+    1aed:	48 8b 85 68 ff ff ff 	mov    -0x98(%rbp),%rax
+    1af4:	f2 0f 10 04 d0       	movsd  (%rax,%rdx,8),%xmm0
+    1af9:	f3 0f 7e 15 00 00 00 	movq   0x0(%rip),%xmm2        # 1b01 <ml5_0_tirust_tensor_diagnostic_+0x72c>
+    1b00:	00 
+			1afd: R_X86_64_PC32	.rodata+0xdc
+    1b01:	66 0f 54 c2          	andpd  %xmm2,%xmm0
+    1b05:	f2 0f 5e c1          	divsd  %xmm1,%xmm0
+    1b09:	66 0f 2f 05 00 00 00 	comisd 0x0(%rip),%xmm0        # 1b11 <ml5_0_tirust_tensor_diagnostic_+0x73c>
+    1b10:	00 
+			1b0d: R_X86_64_PC32	.rodata+0x104
+    1b11:	76 0a                	jbe    1b1d <ml5_0_tirust_tensor_diagnostic_+0x748>
+    1b13:	bb 00 00 00 00       	mov    $0x0,%ebx
+    1b18:	e9 09 0a 00 00       	jmp    2526 <ml5_0_tirust_tensor_diagnostic_+0x1151>
+    1b1d:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+    1b21:	eb 90                	jmp    1ab3 <ml5_0_tirust_tensor_diagnostic_+0x6de>
+    1b23:	90                   	nop
+    1b24:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+    1b2b:	83 7d cc 03          	cmpl   $0x3,-0x34(%rbp)
+    1b2f:	0f 9f c0             	setg   %al
+    1b32:	0f b6 c0             	movzbl %al,%eax
+    1b35:	85 c0                	test   %eax,%eax
+    1b37:	0f 85 92 00 00 00    	jne    1bcf <ml5_0_tirust_tensor_diagnostic_+0x7fa>
+    1b3d:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    1b41:	f2 0f 11 45 c0       	movsd  %xmm0,-0x40(%rbp)
+    1b46:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1b4d:	8b 00                	mov    (%rax),%eax
+    1b4f:	8d 48 ff             	lea    -0x1(%rax),%ecx
+    1b52:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+    1b59:	39 4d c8             	cmp    %ecx,-0x38(%rbp)
+    1b5c:	0f 9f c0             	setg   %al
+    1b5f:	0f b6 c0             	movzbl %al,%eax
+    1b62:	85 c0                	test   %eax,%eax
+    1b64:	75 5f                	jne    1bc5 <ml5_0_tirust_tensor_diagnostic_+0x7f0>
+    1b66:	8b 45 c8             	mov    -0x38(%rbp),%eax
+    1b69:	48 98                	cltq
+    1b6b:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+    1b72:	00 
+    1b73:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    1b76:	48 98                	cltq
+    1b78:	48 01 d0             	add    %rdx,%rax
+    1b7b:	48 8d 50 fc          	lea    -0x4(%rax),%rdx
+    1b7f:	48 8b 85 60 f9 ff ff 	mov    -0x6a0(%rbp),%rax
+    1b86:	f2 0f 10 04 d0       	movsd  (%rax,%rdx,8),%xmm0
+    1b8b:	f2 0f 10 4d c0       	movsd  -0x40(%rbp),%xmm1
+    1b90:	f2 0f 58 c1          	addsd  %xmm1,%xmm0
+    1b94:	f2 0f 11 45 c0       	movsd  %xmm0,-0x40(%rbp)
+    1b99:	8b 45 c8             	mov    -0x38(%rbp),%eax
+    1b9c:	48 98                	cltq
+    1b9e:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+    1ba5:	00 
+    1ba6:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    1ba9:	48 98                	cltq
+    1bab:	48 01 c2             	add    %rax,%rdx
+    1bae:	48 8b 85 68 ff ff ff 	mov    -0x98(%rbp),%rax
+    1bb5:	f2 0f 10 45 c0       	movsd  -0x40(%rbp),%xmm0
+    1bba:	f2 0f 11 04 d0       	movsd  %xmm0,(%rax,%rdx,8)
+    1bbf:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+    1bc3:	eb 94                	jmp    1b59 <ml5_0_tirust_tensor_diagnostic_+0x784>
+    1bc5:	90                   	nop
+    1bc6:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+    1bca:	e9 5c ff ff ff       	jmp    1b2b <ml5_0_tirust_tensor_diagnostic_+0x756>
+    1bcf:	90                   	nop
+    1bd0:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1bd7:	8b 00                	mov    (%rax),%eax
+    1bd9:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+    1be0:	39 45 c8             	cmp    %eax,-0x38(%rbp)
+    1be3:	0f 9f c2             	setg   %dl
+    1be6:	0f b6 d2             	movzbl %dl,%edx
+    1be9:	85 d2                	test   %edx,%edx
+    1beb:	0f 85 cb 00 00 00    	jne    1cbc <ml5_0_tirust_tensor_diagnostic_+0x8e7>
+    1bf1:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+    1bf8:	83 7d cc 03          	cmpl   $0x3,-0x34(%rbp)
+    1bfc:	0f 9f c2             	setg   %dl
+    1bff:	0f b6 d2             	movzbl %dl,%edx
+    1c02:	85 d2                	test   %edx,%edx
+    1c04:	0f 85 a8 00 00 00    	jne    1cb2 <ml5_0_tirust_tensor_diagnostic_+0x8dd>
+    1c0a:	8b 55 c8             	mov    -0x38(%rbp),%edx
+    1c0d:	83 ea 01             	sub    $0x1,%edx
+    1c10:	48 63 d2             	movslq %edx,%rdx
+    1c13:	48 8d 0c 95 00 00 00 	lea    0x0(,%rdx,4),%rcx
+    1c1a:	00 
+    1c1b:	8b 55 cc             	mov    -0x34(%rbp),%edx
+    1c1e:	48 63 d2             	movslq %edx,%rdx
+    1c21:	48 8d 34 11          	lea    (%rcx,%rdx,1),%rsi
+    1c25:	8b 55 c8             	mov    -0x38(%rbp),%edx
+    1c28:	48 63 d2             	movslq %edx,%rdx
+    1c2b:	48 8d 0c 95 00 00 00 	lea    0x0(,%rdx,4),%rcx
+    1c32:	00 
+    1c33:	8b 55 cc             	mov    -0x34(%rbp),%edx
+    1c36:	48 63 d2             	movslq %edx,%rdx
+    1c39:	48 01 ca             	add    %rcx,%rdx
+    1c3c:	48 8d 4a fc          	lea    -0x4(%rdx),%rcx
+    1c40:	48 8b 95 68 ff ff ff 	mov    -0x98(%rbp),%rdx
+    1c47:	f2 0f 10 04 f2       	movsd  (%rdx,%rsi,8),%xmm0
+    1c4c:	48 8b 95 30 ff ff ff 	mov    -0xd0(%rbp),%rdx
+    1c53:	f2 0f 11 04 ca       	movsd  %xmm0,(%rdx,%rcx,8)
+    1c58:	8b 55 c8             	mov    -0x38(%rbp),%edx
+    1c5b:	48 63 d2             	movslq %edx,%rdx
+    1c5e:	48 8d 0c 95 00 00 00 	lea    0x0(,%rdx,4),%rcx
+    1c65:	00 
+    1c66:	8b 55 cc             	mov    -0x34(%rbp),%edx
+    1c69:	48 63 d2             	movslq %edx,%rdx
+    1c6c:	48 01 ca             	add    %rcx,%rdx
+    1c6f:	48 8d 72 fc          	lea    -0x4(%rdx),%rsi
+    1c73:	8b 55 cc             	mov    -0x34(%rbp),%edx
+    1c76:	48 63 d2             	movslq %edx,%rdx
+    1c79:	49 0f af d5          	imul   %r13,%rdx
+    1c7d:	48 8b bd 48 f9 ff ff 	mov    -0x6b8(%rbp),%rdi
+    1c84:	48 8d 0c 17          	lea    (%rdi,%rdx,1),%rcx
+    1c88:	8b 55 c8             	mov    -0x38(%rbp),%edx
+    1c8b:	48 63 d2             	movslq %edx,%rdx
+    1c8e:	48 01 d1             	add    %rdx,%rcx
+    1c91:	48 8b 95 30 ff ff ff 	mov    -0xd0(%rbp),%rdx
+    1c98:	f2 0f 10 04 f2       	movsd  (%rdx,%rsi,8),%xmm0
+    1c9d:	48 8b 95 78 ff ff ff 	mov    -0x88(%rbp),%rdx
+    1ca4:	f2 0f 11 04 ca       	movsd  %xmm0,(%rdx,%rcx,8)
+    1ca9:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+    1cad:	e9 46 ff ff ff       	jmp    1bf8 <ml5_0_tirust_tensor_diagnostic_+0x823>
+    1cb2:	90                   	nop
+    1cb3:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+    1cb7:	e9 24 ff ff ff       	jmp    1be0 <ml5_0_tirust_tensor_diagnostic_+0x80b>
+    1cbc:	90                   	nop
+    1cbd:	48 8b 8d 40 ff ff ff 	mov    -0xc0(%rbp),%rcx
+    1cc4:	48 8b 55 88          	mov    -0x78(%rbp),%rdx
+    1cc8:	48 8b b5 78 ff ff ff 	mov    -0x88(%rbp),%rsi
+    1ccf:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1cd6:	48 89 c7             	mov    %rax,%rdi
+    1cd9:	e8 00 00 00 00       	call   1cde <ml5_0_tirust_tensor_diagnostic_+0x909>
+			1cda: R_X86_64_PLT32	ml5_0_build_kinematic_matrix_-0x4
+    1cde:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1ce5:	8b 00                	mov    (%rax),%eax
+    1ce7:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+    1cee:	39 45 c8             	cmp    %eax,-0x38(%rbp)
+    1cf1:	0f 9f c2             	setg   %dl
+    1cf4:	0f b6 d2             	movzbl %dl,%edx
+    1cf7:	85 d2                	test   %edx,%edx
+    1cf9:	0f 85 b7 00 00 00    	jne    1db6 <ml5_0_tirust_tensor_diagnostic_+0x9e1>
+    1cff:	48 8b 95 70 f9 ff ff 	mov    -0x690(%rbp),%rdx
+    1d06:	8b 0a                	mov    (%rdx),%ecx
+    1d08:	c7 45 cc 01 00 00 00 	movl   $0x1,-0x34(%rbp)
+    1d0f:	39 4d cc             	cmp    %ecx,-0x34(%rbp)
+    1d12:	0f 9f c2             	setg   %dl
+    1d15:	0f b6 d2             	movzbl %dl,%edx
+    1d18:	85 d2                	test   %edx,%edx
+    1d1a:	0f 85 8c 00 00 00    	jne    1dac <ml5_0_tirust_tensor_diagnostic_+0x9d7>
+    1d20:	8b 55 c8             	mov    -0x38(%rbp),%edx
+    1d23:	48 63 d2             	movslq %edx,%rdx
+    1d26:	49 0f af d4          	imul   %r12,%rdx
+    1d2a:	49 8d 34 17          	lea    (%r15,%rdx,1),%rsi
+    1d2e:	8b 55 cc             	mov    -0x34(%rbp),%edx
+    1d31:	48 63 d2             	movslq %edx,%rdx
+    1d34:	48 01 d6             	add    %rdx,%rsi
+    1d37:	48 8b 95 40 ff ff ff 	mov    -0xc0(%rbp),%rdx
+    1d3e:	48 c1 e6 04          	shl    $0x4,%rsi
+    1d42:	48 01 f2             	add    %rsi,%rdx
+    1d45:	f2 0f 10 0a          	movsd  (%rdx),%xmm1
+    1d49:	8b 55 cc             	mov    -0x34(%rbp),%edx
+    1d4c:	48 63 d2             	movslq %edx,%rdx
+    1d4f:	48 8d 72 ff          	lea    -0x1(%rdx),%rsi
+    1d53:	48 8b 55 88          	mov    -0x78(%rbp),%rdx
+    1d57:	48 c1 e6 04          	shl    $0x4,%rsi
+    1d5b:	48 01 f2             	add    %rsi,%rdx
+    1d5e:	f2 0f 10 02          	movsd  (%rdx),%xmm0
+    1d62:	f2 0f 58 c8          	addsd  %xmm0,%xmm1
+    1d66:	8b 55 c8             	mov    -0x38(%rbp),%edx
+    1d69:	48 63 d2             	movslq %edx,%rdx
+    1d6c:	48 8d 72 ff          	lea    -0x1(%rdx),%rsi
+    1d70:	48 8b 55 88          	mov    -0x78(%rbp),%rdx
+    1d74:	48 c1 e6 04          	shl    $0x4,%rsi
+    1d78:	48 01 f2             	add    %rsi,%rdx
+    1d7b:	f2 0f 10 02          	movsd  (%rdx),%xmm0
+    1d7f:	8b 55 c8             	mov    -0x38(%rbp),%edx
+    1d82:	48 63 d2             	movslq %edx,%rdx
+    1d85:	48 0f af d3          	imul   %rbx,%rdx
+    1d89:	49 8d 34 16          	lea    (%r14,%rdx,1),%rsi
+    1d8d:	8b 55 cc             	mov    -0x34(%rbp),%edx
+    1d90:	48 63 d2             	movslq %edx,%rdx
+    1d93:	48 01 d6             	add    %rdx,%rsi
+    1d96:	f2 0f 58 c1          	addsd  %xmm1,%xmm0
+    1d9a:	48 8b 55 98          	mov    -0x68(%rbp),%rdx
+    1d9e:	f2 0f 11 04 f2       	movsd  %xmm0,(%rdx,%rsi,8)
+    1da3:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+    1da7:	e9 63 ff ff ff       	jmp    1d0f <ml5_0_tirust_tensor_diagnostic_+0x93a>
+    1dac:	90                   	nop
+    1dad:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+    1db1:	e9 38 ff ff ff       	jmp    1cee <ml5_0_tirust_tensor_diagnostic_+0x919>
+    1db6:	90                   	nop
+    1db7:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 1dbe <ml5_0_tirust_tensor_diagnostic_+0x9e9>
+			1dba: R_X86_64_REX_GOTPCRELX	rscale_-0x4
+    1dbe:	f2 0f 10 00          	movsd  (%rax),%xmm0
+    1dc2:	f2 0f 59 c0          	mulsd  %xmm0,%xmm0
+    1dc6:	f2 0f 11 85 f8 fa ff 	movsd  %xmm0,-0x508(%rbp)
+    1dcd:	ff 
+    1dce:	48 8b 85 68 f9 ff ff 	mov    -0x698(%rbp),%rax
+    1dd5:	8b 00                	mov    (%rax),%eax
+    1dd7:	48 63 d0             	movslq %eax,%rdx
+    1dda:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 1de1 <ml5_0_tirust_tensor_diagnostic_+0xa0c>
+			1ddd: R_X86_64_REX_GOTPCRELX	__ml5_0_polynomial_constants_MOD_ncoef_r-0x4
+    1de1:	8b 04 90             	mov    (%rax,%rdx,4),%eax
+    1de4:	89 85 24 ff ff ff    	mov    %eax,-0xdc(%rbp)
+    1dea:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 1df1 <ml5_0_tirust_tensor_diagnostic_+0xa1c>
+			1ded: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+    1df1:	8b 40 1c             	mov    0x1c(%rax),%eax
+    1df4:	83 f8 ff             	cmp    $0xffffffff,%eax
+    1df7:	0f 94 c0             	sete   %al
+    1dfa:	0f b6 d0             	movzbl %al,%edx
+    1dfd:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    1e04:	8b 08                	mov    (%rax),%ecx
+    1e06:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 1e0d <ml5_0_tirust_tensor_diagnostic_+0xa38>
+			1e09: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+    1e0d:	8b 40 1c             	mov    0x1c(%rax),%eax
+    1e10:	39 c1                	cmp    %eax,%ecx
+    1e12:	0f 9e c0             	setle  %al
+    1e15:	0f b6 c0             	movzbl %al,%eax
+    1e18:	09 d0                	or     %edx,%eax
+    1e1a:	89 85 cc fe ff ff    	mov    %eax,-0x134(%rbp)
+    1e20:	48 8b 85 78 f9 ff ff 	mov    -0x688(%rbp),%rax
+    1e27:	8b 00                	mov    (%rax),%eax
+    1e29:	83 f8 02             	cmp    $0x2,%eax
+    1e2c:	0f 94 c0             	sete   %al
+    1e2f:	0f b6 d0             	movzbl %al,%edx
+    1e32:	48 8b 85 78 f9 ff ff 	mov    -0x688(%rbp),%rax
+    1e39:	8b 00                	mov    (%rax),%eax
+    1e3b:	83 f8 05             	cmp    $0x5,%eax
+    1e3e:	0f 94 c0             	sete   %al
+    1e41:	0f b6 c0             	movzbl %al,%eax
+    1e44:	09 d0                	or     %edx,%eax
+    1e46:	89 85 c8 fe ff ff    	mov    %eax,-0x138(%rbp)
+    1e4c:	48 8b 85 38 ff ff ff 	mov    -0xc8(%rbp),%rax
+    1e53:	48 c7 85 e0 f9 ff ff 	movq   $0x8,-0x620(%rbp)
+    1e5a:	08 00 00 00 
+    1e5e:	48 c7 85 d0 f9 ff ff 	movq   $0x0,-0x630(%rbp)
+    1e65:	00 00 00 00 
+    1e69:	48 c7 85 d8 f9 ff ff 	movq   $0x0,-0x628(%rbp)
+    1e70:	00 00 00 00 
+    1e74:	48 c7 85 d0 f9 ff ff 	movq   $0x8,-0x630(%rbp)
+    1e7b:	08 00 00 00 
+    1e7f:	c6 85 dc f9 ff ff 02 	movb   $0x2,-0x624(%rbp)
+    1e86:	c6 85 dd f9 ff ff 03 	movb   $0x3,-0x623(%rbp)
+    1e8d:	48 c7 85 f0 f9 ff ff 	movq   $0x0,-0x610(%rbp)
+    1e94:	00 00 00 00 
+    1e98:	48 c7 85 f8 f9 ff ff 	movq   $0x3,-0x608(%rbp)
+    1e9f:	03 00 00 00 
+    1ea3:	48 c7 85 e8 f9 ff ff 	movq   $0x1,-0x618(%rbp)
+    1eaa:	01 00 00 00 
+    1eae:	48 c7 85 08 fa ff ff 	movq   $0x1,-0x5f8(%rbp)
+    1eb5:	01 00 00 00 
+    1eb9:	48 89 85 10 fa ff ff 	mov    %rax,-0x5f0(%rbp)
+    1ec0:	48 c7 85 00 fa ff ff 	movq   $0x4,-0x600(%rbp)
+    1ec7:	04 00 00 00 
+    1ecb:	48 8b 85 30 ff ff ff 	mov    -0xd0(%rbp),%rax
+    1ed2:	48 89 85 c0 f9 ff ff 	mov    %rax,-0x640(%rbp)
+    1ed9:	48 c7 85 c8 f9 ff ff 	movq   $0xfffffffffffffffc,-0x638(%rbp)
+    1ee0:	fc ff ff ff 
+    1ee4:	48 8b 55 a8          	mov    -0x58(%rbp),%rdx
+    1ee8:	48 8b 45 a0          	mov    -0x60(%rbp),%rax
+    1eec:	48 c7 85 40 fa ff ff 	movq   $0x8,-0x5c0(%rbp)
+    1ef3:	08 00 00 00 
+    1ef7:	48 c7 85 30 fa ff ff 	movq   $0x0,-0x5d0(%rbp)
+    1efe:	00 00 00 00 
+    1f02:	48 c7 85 38 fa ff ff 	movq   $0x0,-0x5c8(%rbp)
+    1f09:	00 00 00 00 
+    1f0d:	48 c7 85 30 fa ff ff 	movq   $0x8,-0x5d0(%rbp)
+    1f14:	08 00 00 00 
+    1f18:	c6 85 3c fa ff ff 02 	movb   $0x2,-0x5c4(%rbp)
+    1f1f:	c6 85 3d fa ff ff 03 	movb   $0x3,-0x5c3(%rbp)
+    1f26:	48 c7 85 50 fa ff ff 	movq   $0x1,-0x5b0(%rbp)
+    1f2d:	01 00 00 00 
+    1f31:	48 89 95 58 fa ff ff 	mov    %rdx,-0x5a8(%rbp)
+    1f38:	48 c7 85 48 fa ff ff 	movq   $0x1,-0x5b8(%rbp)
+    1f3f:	01 00 00 00 
+    1f43:	48 c7 85 68 fa ff ff 	movq   $0x1,-0x598(%rbp)
+    1f4a:	01 00 00 00 
+    1f4e:	48 89 85 70 fa ff ff 	mov    %rax,-0x590(%rbp)
+    1f55:	48 89 9d 60 fa ff ff 	mov    %rbx,-0x5a0(%rbp)
+    1f5c:	48 8b 45 98          	mov    -0x68(%rbp),%rax
+    1f60:	48 89 85 20 fa ff ff 	mov    %rax,-0x5e0(%rbp)
+    1f67:	48 89 d8             	mov    %rbx,%rax
+    1f6a:	48 f7 d0             	not    %rax
+    1f6d:	48 89 85 28 fa ff ff 	mov    %rax,-0x5d8(%rbp)
+    1f74:	48 8b 45 90          	mov    -0x70(%rbp),%rax
+    1f78:	48 c7 85 a0 f9 ff ff 	movq   $0x10,-0x660(%rbp)
+    1f7f:	10 00 00 00 
+    1f83:	48 c7 85 90 f9 ff ff 	movq   $0x0,-0x670(%rbp)
+    1f8a:	00 00 00 00 
+    1f8e:	48 c7 85 98 f9 ff ff 	movq   $0x0,-0x668(%rbp)
+    1f95:	00 00 00 00 
+    1f99:	48 c7 85 90 f9 ff ff 	movq   $0x10,-0x670(%rbp)
+    1fa0:	10 00 00 00 
+    1fa4:	c6 85 9c f9 ff ff 01 	movb   $0x1,-0x664(%rbp)
+    1fab:	c6 85 9d f9 ff ff 04 	movb   $0x4,-0x663(%rbp)
+    1fb2:	48 c7 85 b0 f9 ff ff 	movq   $0x1,-0x650(%rbp)
+    1fb9:	01 00 00 00 
+    1fbd:	48 89 85 b8 f9 ff ff 	mov    %rax,-0x648(%rbp)
+    1fc4:	48 c7 85 a8 f9 ff ff 	movq   $0x1,-0x658(%rbp)
+    1fcb:	01 00 00 00 
+    1fcf:	48 8b 45 88          	mov    -0x78(%rbp),%rax
+    1fd3:	48 89 85 80 f9 ff ff 	mov    %rax,-0x680(%rbp)
+    1fda:	48 c7 85 88 f9 ff ff 	movq   $0xffffffffffffffff,-0x678(%rbp)
+    1fe1:	ff ff ff ff 
+    1fe5:	8b 85 24 ff ff ff    	mov    -0xdc(%rbp),%eax
+    1feb:	48 98                	cltq
+    1fed:	48 c7 85 a0 fa ff ff 	movq   $0x10,-0x560(%rbp)
+    1ff4:	10 00 00 00 
+    1ff8:	48 c7 85 90 fa ff ff 	movq   $0x0,-0x570(%rbp)
+    1fff:	00 00 00 00 
+    2003:	48 c7 85 98 fa ff ff 	movq   $0x0,-0x568(%rbp)
+    200a:	00 00 00 00 
+    200e:	48 c7 85 90 fa ff ff 	movq   $0x10,-0x570(%rbp)
+    2015:	10 00 00 00 
+    2019:	c6 85 9c fa ff ff 02 	movb   $0x2,-0x564(%rbp)
+    2020:	c6 85 9d fa ff ff 04 	movb   $0x4,-0x563(%rbp)
+    2027:	48 c7 85 b0 fa ff ff 	movq   $0x1,-0x550(%rbp)
+    202e:	01 00 00 00 
+    2032:	48 89 85 b8 fa ff ff 	mov    %rax,-0x548(%rbp)
+    2039:	48 c7 85 a8 fa ff ff 	movq   $0x1,-0x558(%rbp)
+    2040:	01 00 00 00 
+    2044:	48 c7 85 c8 fa ff ff 	movq   $0x1,-0x538(%rbp)
+    204b:	01 00 00 00 
+    204f:	48 c7 85 d0 fa ff ff 	movq   $0x4,-0x530(%rbp)
+    2056:	04 00 00 00 
+    205a:	48 c7 85 c0 fa ff ff 	movq   $0xf,-0x540(%rbp)
+    2061:	0f 00 00 00 
+    2065:	48 8d 85 00 fb ff ff 	lea    -0x500(%rbp),%rax
+    206c:	48 89 85 80 fa ff ff 	mov    %rax,-0x580(%rbp)
+    2073:	48 c7 85 88 fa ff ff 	movq   $0xfffffffffffffff0,-0x578(%rbp)
+    207a:	f0 ff ff ff 
+    207e:	ba 00 00 00 00       	mov    $0x0,%edx
+    2083:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 208a <ml5_0_tirust_tensor_diagnostic_+0xcb5>
+			2086: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+    208a:	8b 40 18             	mov    0x18(%rax),%eax
+    208d:	39 c2                	cmp    %eax,%edx
+    208f:	0f 4d c2             	cmovge %edx,%eax
+    2092:	89 85 e4 fa ff ff    	mov    %eax,-0x51c(%rbp)
+    2098:	4c 8d 8d f8 fa ff ff 	lea    -0x508(%rbp),%r9
+    209f:	4c 8d 85 80 f9 ff ff 	lea    -0x680(%rbp),%r8
+    20a6:	48 8d 8d 20 fa ff ff 	lea    -0x5e0(%rbp),%rcx
+    20ad:	48 8d 95 c0 f9 ff ff 	lea    -0x640(%rbp),%rdx
+    20b4:	48 8b b5 68 f9 ff ff 	mov    -0x698(%rbp),%rsi
+    20bb:	48 8b 85 70 f9 ff ff 	mov    -0x690(%rbp),%rax
+    20c2:	48 8d bd cc fe ff ff 	lea    -0x134(%rbp),%rdi
+    20c9:	57                   	push   %rdi
+    20ca:	48 8d bd c8 fe ff ff 	lea    -0x138(%rbp),%rdi
+    20d1:	57                   	push   %rdi
+    20d2:	48 8b 3d 00 00 00 00 	mov    0x0(%rip),%rdi        # 20d9 <ml5_0_tirust_tensor_diagnostic_+0xd04>
+			20d5: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+    20d9:	48 8d bf c0 00 00 00 	lea    0xc0(%rdi),%rdi
+    20e0:	57                   	push   %rdi
+    20e1:	48 8d bd e4 fa ff ff 	lea    -0x51c(%rbp),%rdi
+    20e8:	57                   	push   %rdi
+    20e9:	48 8d bd f4 fa ff ff 	lea    -0x50c(%rbp),%rdi
+    20f0:	57                   	push   %rdi
+    20f1:	48 8d bd 80 fa ff ff 	lea    -0x580(%rbp),%rdi
+    20f8:	57                   	push   %rdi
+    20f9:	48 89 c7             	mov    %rax,%rdi
+    20fc:	e8 00 00 00 00       	call   2101 <ml5_0_tirust_tensor_diagnostic_+0xd2c>
+			20fd: R_X86_64_PLT32	__mtirust_MOD_tensor_dp-0x4
+    2101:	48 83 c4 30          	add    $0x30,%rsp
+    2105:	8b 85 f4 fa ff ff    	mov    -0x50c(%rbp),%eax
+    210b:	85 c0                	test   %eax,%eax
+    210d:	74 0a                	je     2119 <ml5_0_tirust_tensor_diagnostic_+0xd44>
+    210f:	bb 00 00 00 00       	mov    $0x0,%ebx
+    2114:	e9 0d 04 00 00       	jmp    2526 <ml5_0_tirust_tensor_diagnostic_+0x1151>
+    2119:	8b 85 24 ff ff ff    	mov    -0xdc(%rbp),%eax
+    211f:	8d 70 ff             	lea    -0x1(%rax),%esi
+    2122:	c7 45 cc 00 00 00 00 	movl   $0x0,-0x34(%rbp)
+    2129:	39 75 cc             	cmp    %esi,-0x34(%rbp)
+    212c:	0f 9f c0             	setg   %al
+    212f:	0f b6 c0             	movzbl %al,%eax
+    2132:	85 c0                	test   %eax,%eax
+    2134:	0f 85 dc 03 00 00    	jne    2516 <ml5_0_tirust_tensor_diagnostic_+0x1141>
+    213a:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    213d:	48 98                	cltq
+    213f:	48 8d 14 85 00 00 00 	lea    0x0(,%rax,4),%rdx
+    2146:	00 
+    2147:	48 8d 05 00 00 00 00 	lea    0x0(%rip),%rax        # 214e <ml5_0_tirust_tensor_diagnostic_+0xd79>
+			214a: R_X86_64_PC32	.data+0x5c
+    214e:	8b 04 02             	mov    (%rdx,%rax,1),%eax
+    2151:	89 85 20 ff ff ff    	mov    %eax,-0xe0(%rbp)
+    2157:	c7 45 c8 01 00 00 00 	movl   $0x1,-0x38(%rbp)
+    215e:	83 7d c8 04          	cmpl   $0x4,-0x38(%rbp)
+    2162:	0f 9f c0             	setg   %al
+    2165:	0f b6 c0             	movzbl %al,%eax
+    2168:	85 c0                	test   %eax,%eax
+    216a:	0f 85 fd 00 00 00    	jne    226d <ml5_0_tirust_tensor_diagnostic_+0xe98>
+    2170:	83 7d c8 04          	cmpl   $0x4,-0x38(%rbp)
+    2174:	0f 94 c0             	sete   %al
+    2177:	0f b6 d0             	movzbl %al,%edx
+    217a:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 2181 <ml5_0_tirust_tensor_diagnostic_+0xdac>
+			217d: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+    2181:	8b 80 c0 00 00 00    	mov    0xc0(%rax),%eax
+    2187:	83 f0 01             	xor    $0x1,%eax
+    218a:	21 d0                	and    %edx,%eax
+    218c:	85 c0                	test   %eax,%eax
+    218e:	0f 85 cf 00 00 00    	jne    2263 <ml5_0_tirust_tensor_diagnostic_+0xe8e>
+    2194:	8b 45 c8             	mov    -0x38(%rbp),%eax
+    2197:	48 63 d0             	movslq %eax,%rdx
+    219a:	48 89 d0             	mov    %rdx,%rax
+    219d:	48 c1 e0 04          	shl    $0x4,%rax
+    21a1:	48 29 d0             	sub    %rdx,%rax
+    21a4:	48 89 c1             	mov    %rax,%rcx
+    21a7:	8b 85 20 ff ff ff    	mov    -0xe0(%rbp),%eax
+    21ad:	48 98                	cltq
+    21af:	48 01 c8             	add    %rcx,%rax
+    21b2:	48 83 e8 10          	sub    $0x10,%rax
+    21b6:	48 c1 e0 04          	shl    $0x4,%rax
+    21ba:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+    21be:	48 01 e8             	add    %rbp,%rax
+    21c1:	48 2d d0 04 00 00    	sub    $0x4d0,%rax
+    21c7:	f2 0f 10 00          	movsd  (%rax),%xmm0
+    21cb:	f3 0f 7e 0d 00 00 00 	movq   0x0(%rip),%xmm1        # 21d3 <ml5_0_tirust_tensor_diagnostic_+0xdfe>
+    21d2:	00 
+			21cf: R_X86_64_PC32	.rodata+0xdc
+    21d3:	66 0f 54 c8          	andpd  %xmm0,%xmm1
+    21d7:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 21df <ml5_0_tirust_tensor_diagnostic_+0xe0a>
+    21de:	00 
+			21db: R_X86_64_PC32	.rodata+0x10c
+    21df:	66 0f 2e c1          	ucomisd %xmm1,%xmm0
+    21e3:	0f 92 c0             	setb   %al
+    21e6:	83 f0 01             	xor    $0x1,%eax
+    21e9:	0f b6 c0             	movzbl %al,%eax
+    21ec:	83 e0 01             	and    $0x1,%eax
+    21ef:	83 f0 01             	xor    $0x1,%eax
+    21f2:	89 c1                	mov    %eax,%ecx
+    21f4:	8b 45 c8             	mov    -0x38(%rbp),%eax
+    21f7:	48 63 d0             	movslq %eax,%rdx
+    21fa:	48 89 d0             	mov    %rdx,%rax
+    21fd:	48 c1 e0 04          	shl    $0x4,%rax
+    2201:	48 29 d0             	sub    %rdx,%rax
+    2204:	48 89 c7             	mov    %rax,%rdi
+    2207:	8b 85 20 ff ff ff    	mov    -0xe0(%rbp),%eax
+    220d:	48 98                	cltq
+    220f:	48 01 f8             	add    %rdi,%rax
+    2212:	48 83 e8 10          	sub    $0x10,%rax
+    2216:	48 c1 e0 04          	shl    $0x4,%rax
+    221a:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+    221e:	48 01 e8             	add    %rbp,%rax
+    2221:	48 2d d0 04 00 00    	sub    $0x4d0,%rax
+    2227:	f2 0f 10 40 08       	movsd  0x8(%rax),%xmm0
+    222c:	f3 0f 7e 0d 00 00 00 	movq   0x0(%rip),%xmm1        # 2234 <ml5_0_tirust_tensor_diagnostic_+0xe5f>
+    2233:	00 
+			2230: R_X86_64_PC32	.rodata+0xdc
+    2234:	66 0f 54 c8          	andpd  %xmm0,%xmm1
+    2238:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 2240 <ml5_0_tirust_tensor_diagnostic_+0xe6b>
+    223f:	00 
+			223c: R_X86_64_PC32	.rodata+0x10c
+    2240:	66 0f 2e c1          	ucomisd %xmm1,%xmm0
+    2244:	0f 92 c0             	setb   %al
+    2247:	83 f0 01             	xor    $0x1,%eax
+    224a:	0f b6 c0             	movzbl %al,%eax
+    224d:	83 e0 01             	and    $0x1,%eax
+    2250:	83 f0 01             	xor    $0x1,%eax
+    2253:	09 c8                	or     %ecx,%eax
+    2255:	85 c0                	test   %eax,%eax
+    2257:	74 0b                	je     2264 <ml5_0_tirust_tensor_diagnostic_+0xe8f>
+    2259:	bb 00 00 00 00       	mov    $0x0,%ebx
+    225e:	e9 c3 02 00 00       	jmp    2526 <ml5_0_tirust_tensor_diagnostic_+0x1151>
+    2263:	90                   	nop
+    2264:	83 45 c8 01          	addl   $0x1,-0x38(%rbp)
+    2268:	e9 f1 fe ff ff       	jmp    215e <ml5_0_tirust_tensor_diagnostic_+0xd89>
+    226d:	90                   	nop
+    226e:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 2275 <ml5_0_tirust_tensor_diagnostic_+0xea0>
+			2271: R_X86_64_REX_GOTPCRELX	madloop_-0x4
+    2275:	8b 80 c0 00 00 00    	mov    0xc0(%rax),%eax
+    227b:	85 c0                	test   %eax,%eax
+    227d:	74 73                	je     22f2 <ml5_0_tirust_tensor_diagnostic_+0xf1d>
+    227f:	8b 85 20 ff ff ff    	mov    -0xe0(%rbp),%eax
+    2285:	48 98                	cltq
+    2287:	48 8d 50 2c          	lea    0x2c(%rax),%rdx
+    228b:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    228e:	48 98                	cltq
+    2290:	48 89 d1             	mov    %rdx,%rcx
+    2293:	48 c1 e1 04          	shl    $0x4,%rcx
+    2297:	48 8d 59 d0          	lea    -0x30(%rcx),%rbx
+    229b:	48 8d 0c 2b          	lea    (%rbx,%rbp,1),%rcx
+    229f:	48 81 e9 d0 04 00 00 	sub    $0x4d0,%rcx
+    22a6:	f2 0f 10 09          	movsd  (%rcx),%xmm1
+    22aa:	48 c1 e2 04          	shl    $0x4,%rdx
+    22ae:	48 8d 5a d0          	lea    -0x30(%rdx),%rbx
+    22b2:	48 8d 14 2b          	lea    (%rbx,%rbp,1),%rdx
+    22b6:	48 81 ea d0 04 00 00 	sub    $0x4d0,%rdx
+    22bd:	f2 0f 10 42 08       	movsd  0x8(%rdx),%xmm0
+    22c2:	48 8b 95 50 f9 ff ff 	mov    -0x6b0(%rbp),%rdx
+    22c9:	48 89 c1             	mov    %rax,%rcx
+    22cc:	48 c1 e1 04          	shl    $0x4,%rcx
+    22d0:	48 01 ca             	add    %rcx,%rdx
+    22d3:	f2 0f 11 0a          	movsd  %xmm1,(%rdx)
+    22d7:	48 8b 95 50 f9 ff ff 	mov    -0x6b0(%rbp),%rdx
+    22de:	48 c1 e0 04          	shl    $0x4,%rax
+    22e2:	48 01 d0             	add    %rdx,%rax
+    22e5:	48 83 c0 08          	add    $0x8,%rax
+    22e9:	f2 0f 11 00          	movsd  %xmm0,(%rax)
+    22ed:	e9 f5 00 00 00       	jmp    23e7 <ml5_0_tirust_tensor_diagnostic_+0x1012>
+    22f2:	b8 02 00 00 00       	mov    $0x2,%eax
+    22f7:	83 f8 0a             	cmp    $0xa,%eax
+    22fa:	0f 84 ab 00 00 00    	je     23ab <ml5_0_tirust_tensor_diagnostic_+0xfd6>
+    2300:	83 f8 0a             	cmp    $0xa,%eax
+    2303:	0f 8f 88 00 00 00    	jg     2391 <ml5_0_tirust_tensor_diagnostic_+0xfbc>
+    2309:	83 f8 09             	cmp    $0x9,%eax
+    230c:	0f 84 8f 00 00 00    	je     23a1 <ml5_0_tirust_tensor_diagnostic_+0xfcc>
+    2312:	83 f8 09             	cmp    $0x9,%eax
+    2315:	7f 7a                	jg     2391 <ml5_0_tirust_tensor_diagnostic_+0xfbc>
+    2317:	83 f8 08             	cmp    $0x8,%eax
+    231a:	74 7b                	je     2397 <ml5_0_tirust_tensor_diagnostic_+0xfc2>
+    231c:	83 f8 08             	cmp    $0x8,%eax
+    231f:	7f 70                	jg     2391 <ml5_0_tirust_tensor_diagnostic_+0xfbc>
+    2321:	83 f8 06             	cmp    $0x6,%eax
+    2324:	74 61                	je     2387 <ml5_0_tirust_tensor_diagnostic_+0xfb2>
+    2326:	83 f8 06             	cmp    $0x6,%eax
+    2329:	7f 66                	jg     2391 <ml5_0_tirust_tensor_diagnostic_+0xfbc>
+    232b:	83 f8 05             	cmp    $0x5,%eax
+    232e:	74 4d                	je     237d <ml5_0_tirust_tensor_diagnostic_+0xfa8>
+    2330:	83 f8 05             	cmp    $0x5,%eax
+    2333:	7f 5c                	jg     2391 <ml5_0_tirust_tensor_diagnostic_+0xfbc>
+    2335:	83 f8 04             	cmp    $0x4,%eax
+    2338:	74 39                	je     2373 <ml5_0_tirust_tensor_diagnostic_+0xf9e>
+    233a:	83 f8 04             	cmp    $0x4,%eax
+    233d:	7f 52                	jg     2391 <ml5_0_tirust_tensor_diagnostic_+0xfbc>
+    233f:	83 f8 03             	cmp    $0x3,%eax
+    2342:	74 25                	je     2369 <ml5_0_tirust_tensor_diagnostic_+0xf94>
+    2344:	83 f8 03             	cmp    $0x3,%eax
+    2347:	7f 48                	jg     2391 <ml5_0_tirust_tensor_diagnostic_+0xfbc>
+    2349:	83 f8 01             	cmp    $0x1,%eax
+    234c:	74 07                	je     2355 <ml5_0_tirust_tensor_diagnostic_+0xf80>
+    234e:	83 f8 02             	cmp    $0x2,%eax
+    2351:	74 0c                	je     235f <ml5_0_tirust_tensor_diagnostic_+0xf8a>
+    2353:	eb 3c                	jmp    2391 <ml5_0_tirust_tensor_diagnostic_+0xfbc>
+    2355:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 235d <ml5_0_tirust_tensor_diagnostic_+0xf88>
+    235c:	00 
+			2359: R_X86_64_PC32	.rodata+0x114
+    235d:	eb 54                	jmp    23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    235f:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 2367 <ml5_0_tirust_tensor_diagnostic_+0xf92>
+    2366:	00 
+			2363: R_X86_64_PC32	.rodata+0xf4
+    2367:	eb 4a                	jmp    23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    2369:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 2371 <ml5_0_tirust_tensor_diagnostic_+0xf9c>
+    2370:	00 
+			236d: R_X86_64_PC32	.rodata+0xec
+    2371:	eb 40                	jmp    23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    2373:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 237b <ml5_0_tirust_tensor_diagnostic_+0xfa6>
+    237a:	00 
+			2377: R_X86_64_PC32	.rodata+0x11c
+    237b:	eb 36                	jmp    23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    237d:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 2385 <ml5_0_tirust_tensor_diagnostic_+0xfb0>
+    2384:	00 
+			2381: R_X86_64_PC32	.rodata+0x124
+    2385:	eb 2c                	jmp    23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    2387:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 238f <ml5_0_tirust_tensor_diagnostic_+0xfba>
+    238e:	00 
+			238b: R_X86_64_PC32	.rodata+0x12c
+    238f:	eb 22                	jmp    23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    2391:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    2395:	eb 1c                	jmp    23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    2397:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 239f <ml5_0_tirust_tensor_diagnostic_+0xfca>
+    239e:	00 
+			239b: R_X86_64_PC32	.rodata+0x134
+    239f:	eb 12                	jmp    23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    23a1:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 23a9 <ml5_0_tirust_tensor_diagnostic_+0xfd4>
+    23a8:	00 
+			23a5: R_X86_64_PC32	.rodata+0x13c
+    23a9:	eb 08                	jmp    23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    23ab:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 23b3 <ml5_0_tirust_tensor_diagnostic_+0xfde>
+    23b2:	00 
+			23af: R_X86_64_PC32	.rodata+0x144
+    23b3:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    23b6:	48 98                	cltq
+    23b8:	48 8b 95 50 f9 ff ff 	mov    -0x6b0(%rbp),%rdx
+    23bf:	48 89 c1             	mov    %rax,%rcx
+    23c2:	48 c1 e1 04          	shl    $0x4,%rcx
+    23c6:	48 01 ca             	add    %rcx,%rdx
+    23c9:	f2 0f 11 02          	movsd  %xmm0,(%rdx)
+    23cd:	48 8b 95 50 f9 ff ff 	mov    -0x6b0(%rbp),%rdx
+    23d4:	48 c1 e0 04          	shl    $0x4,%rax
+    23d8:	48 01 d0             	add    %rdx,%rax
+    23db:	48 83 c0 08          	add    $0x8,%rax
+    23df:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    23e3:	f2 0f 11 00          	movsd  %xmm0,(%rax)
+    23e7:	8b 85 20 ff ff ff    	mov    -0xe0(%rbp),%eax
+    23ed:	48 98                	cltq
+    23ef:	48 83 e8 01          	sub    $0x1,%rax
+    23f3:	48 89 c2             	mov    %rax,%rdx
+    23f6:	48 c1 e2 04          	shl    $0x4,%rdx
+    23fa:	48 8d 5a d0          	lea    -0x30(%rdx),%rbx
+    23fe:	48 8d 14 2b          	lea    (%rbx,%rbp,1),%rdx
+    2402:	48 81 ea d0 04 00 00 	sub    $0x4d0,%rdx
+    2409:	f2 0f 10 1a          	movsd  (%rdx),%xmm3
+    240d:	48 c1 e0 04          	shl    $0x4,%rax
+    2411:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+    2415:	48 01 e8             	add    %rbp,%rax
+    2418:	48 2d d0 04 00 00    	sub    $0x4d0,%rax
+    241e:	f2 0f 10 50 08       	movsd  0x8(%rax),%xmm2
+    2423:	8b 85 20 ff ff ff    	mov    -0xe0(%rbp),%eax
+    2429:	48 98                	cltq
+    242b:	48 83 c0 0e          	add    $0xe,%rax
+    242f:	48 89 c2             	mov    %rax,%rdx
+    2432:	48 c1 e2 04          	shl    $0x4,%rdx
+    2436:	48 8d 5a d0          	lea    -0x30(%rdx),%rbx
+    243a:	48 8d 14 2b          	lea    (%rbx,%rbp,1),%rdx
+    243e:	48 81 ea d0 04 00 00 	sub    $0x4d0,%rdx
+    2445:	f2 0f 10 0a          	movsd  (%rdx),%xmm1
+    2449:	48 c1 e0 04          	shl    $0x4,%rax
+    244d:	48 8d 40 d0          	lea    -0x30(%rax),%rax
+    2451:	48 01 e8             	add    %rbp,%rax
+    2454:	48 2d d0 04 00 00    	sub    $0x4d0,%rax
+    245a:	f2 0f 10 40 08       	movsd  0x8(%rax),%xmm0
+    245f:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    2462:	48 98                	cltq
+    2464:	48 83 c0 0f          	add    $0xf,%rax
+    2468:	f2 0f 58 cb          	addsd  %xmm3,%xmm1
+    246c:	f2 0f 58 c2          	addsd  %xmm2,%xmm0
+    2470:	48 8b 95 50 f9 ff ff 	mov    -0x6b0(%rbp),%rdx
+    2477:	48 89 c1             	mov    %rax,%rcx
+    247a:	48 c1 e1 04          	shl    $0x4,%rcx
+    247e:	48 01 ca             	add    %rcx,%rdx
+    2481:	f2 0f 11 0a          	movsd  %xmm1,(%rdx)
+    2485:	48 8b 95 50 f9 ff ff 	mov    -0x6b0(%rbp),%rdx
+    248c:	48 c1 e0 04          	shl    $0x4,%rax
+    2490:	48 01 d0             	add    %rdx,%rax
+    2493:	48 83 c0 08          	add    $0x8,%rax
+    2497:	f2 0f 11 00          	movsd  %xmm0,(%rax)
+    249b:	8b 85 20 ff ff ff    	mov    -0xe0(%rbp),%eax
+    24a1:	48 98                	cltq
+    24a3:	48 8d 50 1d          	lea    0x1d(%rax),%rdx
+    24a7:	8b 45 cc             	mov    -0x34(%rbp),%eax
+    24aa:	48 98                	cltq
+    24ac:	48 83 c0 1e          	add    $0x1e,%rax
+    24b0:	48 89 d1             	mov    %rdx,%rcx
+    24b3:	48 c1 e1 04          	shl    $0x4,%rcx
+    24b7:	48 8d 59 d0          	lea    -0x30(%rcx),%rbx
+    24bb:	48 8d 0c 2b          	lea    (%rbx,%rbp,1),%rcx
+    24bf:	48 81 e9 d0 04 00 00 	sub    $0x4d0,%rcx
+    24c6:	f2 0f 10 09          	movsd  (%rcx),%xmm1
+    24ca:	48 c1 e2 04          	shl    $0x4,%rdx
+    24ce:	48 8d 5a d0          	lea    -0x30(%rdx),%rbx
+    24d2:	48 8d 14 2b          	lea    (%rbx,%rbp,1),%rdx
+    24d6:	48 81 ea d0 04 00 00 	sub    $0x4d0,%rdx
+    24dd:	f2 0f 10 42 08       	movsd  0x8(%rdx),%xmm0
+    24e2:	48 8b 95 50 f9 ff ff 	mov    -0x6b0(%rbp),%rdx
+    24e9:	48 89 c1             	mov    %rax,%rcx
+    24ec:	48 c1 e1 04          	shl    $0x4,%rcx
+    24f0:	48 01 ca             	add    %rcx,%rdx
+    24f3:	f2 0f 11 0a          	movsd  %xmm1,(%rdx)
+    24f7:	48 8b 95 50 f9 ff ff 	mov    -0x6b0(%rbp),%rdx
+    24fe:	48 c1 e0 04          	shl    $0x4,%rax
+    2502:	48 01 d0             	add    %rdx,%rax
+    2505:	48 83 c0 08          	add    $0x8,%rax
+    2509:	f2 0f 11 00          	movsd  %xmm0,(%rax)
+    250d:	83 45 cc 01          	addl   $0x1,-0x34(%rbp)
+    2511:	e9 13 fc ff ff       	jmp    2129 <ml5_0_tirust_tensor_diagnostic_+0xd54>
+    2516:	90                   	nop
+    2517:	48 8b 45 10          	mov    0x10(%rbp),%rax
+    251b:	c7 00 01 00 00 00    	movl   $0x1,(%rax)
+    2521:	bb 01 00 00 00       	mov    $0x1,%ebx
+    2526:	48 8b 85 30 ff ff ff 	mov    -0xd0(%rbp),%rax
+    252d:	48 89 c7             	mov    %rax,%rdi
+    2530:	e8 00 00 00 00       	call   2535 <ml5_0_tirust_tensor_diagnostic_+0x1160>
+			2531: R_X86_64_PLT32	free-0x4
+    2535:	48 8b 85 40 ff ff ff 	mov    -0xc0(%rbp),%rax
+    253c:	48 89 c7             	mov    %rax,%rdi
+    253f:	e8 00 00 00 00       	call   2544 <ml5_0_tirust_tensor_diagnostic_+0x116f>
+			2540: R_X86_64_PLT32	free-0x4
+    2544:	48 8b 85 58 ff ff ff 	mov    -0xa8(%rbp),%rax
+    254b:	48 89 c7             	mov    %rax,%rdi
+    254e:	e8 00 00 00 00       	call   2553 <ml5_0_tirust_tensor_diagnostic_+0x117e>
+			254f: R_X86_64_PLT32	free-0x4
+    2553:	48 8b 85 68 ff ff ff 	mov    -0x98(%rbp),%rax
+    255a:	48 89 c7             	mov    %rax,%rdi
+    255d:	e8 00 00 00 00       	call   2562 <ml5_0_tirust_tensor_diagnostic_+0x118d>
+			255e: R_X86_64_PLT32	free-0x4
+    2562:	48 8b 85 78 ff ff ff 	mov    -0x88(%rbp),%rax
+    2569:	48 89 c7             	mov    %rax,%rdi
+    256c:	e8 00 00 00 00       	call   2571 <ml5_0_tirust_tensor_diagnostic_+0x119c>
+			256d: R_X86_64_PLT32	free-0x4
+    2571:	48 8b 45 88          	mov    -0x78(%rbp),%rax
+    2575:	48 89 c7             	mov    %rax,%rdi
+    2578:	e8 00 00 00 00       	call   257d <ml5_0_tirust_tensor_diagnostic_+0x11a8>
+			2579: R_X86_64_PLT32	free-0x4
+    257d:	48 8b 45 98          	mov    -0x68(%rbp),%rax
+    2581:	48 89 c7             	mov    %rax,%rdi
+    2584:	e8 00 00 00 00       	call   2589 <ml5_0_tirust_tensor_diagnostic_+0x11b4>
+			2585: R_X86_64_PLT32	free-0x4
+    2589:	48 8d 85 f0 fe ff ff 	lea    -0x110(%rbp),%rax
+    2590:	48 89 c7             	mov    %rax,%rdi
+    2593:	e8 00 00 00 00       	call   2598 <ml5_0_tirust_tensor_diagnostic_+0x11c3>
+			2594: R_X86_64_PLT32	_gfortran_ieee_procedure_exit-0x4
+    2598:	83 fb 01             	cmp    $0x1,%ebx
+    259b:	48 8d 65 d8          	lea    -0x28(%rbp),%rsp
+    259f:	5b                   	pop    %rbx
+    25a0:	41 5c                	pop    %r12
+    25a2:	41 5d                	pop    %r13
+    25a4:	41 5e                	pop    %r14
+    25a6:	41 5f                	pop    %r15
+    25a8:	5d                   	pop    %rbp
+    25a9:	c3                   	ret
+
+00000000000025aa <ml5_0_initialize_tirust_>:
+    25aa:	55                   	push   %rbp
+    25ab:	48 89 e5             	mov    %rsp,%rbp
+    25ae:	53                   	push   %rbx
+    25af:	48 83 ec 48          	sub    $0x48,%rsp
+    25b3:	48 89 7d b8          	mov    %rdi,-0x48(%rbp)
+    25b7:	48 8d 45 c0          	lea    -0x40(%rbp),%rax
+    25bb:	48 89 c7             	mov    %rax,%rdi
+    25be:	e8 00 00 00 00       	call   25c3 <ml5_0_initialize_tirust_+0x19>
+			25bf: R_X86_64_PLT32	_gfortran_ieee_procedure_entry-0x4
+    25c3:	48 8b 45 b8          	mov    -0x48(%rbp),%rax
+    25c7:	c7 00 00 00 00 00    	movl   $0x0,(%rax)
+    25cd:	e8 00 00 00 00       	call   25d2 <ml5_0_initialize_tirust_+0x28>
+			25ce: R_X86_64_PLT32	__mtirust_MOD_tirust_context_generation-0x4
+    25d2:	89 c2                	mov    %eax,%edx
+    25d4:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 25db <ml5_0_initialize_tirust_+0x31>
+			25d7: R_X86_64_REX_GOTPCRELX	ml5_0_tirust_init_-0x4
+    25db:	8b 00                	mov    (%rax),%eax
+    25dd:	39 c2                	cmp    %eax,%edx
+    25df:	75 07                	jne    25e8 <ml5_0_initialize_tirust_+0x3e>
+    25e1:	bb 00 00 00 00       	mov    $0x0,%ebx
+    25e6:	eb 41                	jmp    2629 <ml5_0_initialize_tirust_+0x7f>
+    25e8:	48 8b 45 b8          	mov    -0x48(%rbp),%rax
+    25ec:	48 8d 35 00 00 00 00 	lea    0x0(%rip),%rsi        # 25f3 <ml5_0_initialize_tirust_+0x49>
+			25ef: R_X86_64_PC32	.rodata-0x4
+    25f3:	48 8d 0d 00 00 00 00 	lea    0x0(%rip),%rcx        # 25fa <ml5_0_initialize_tirust_+0x50>
+			25f6: R_X86_64_PC32	.rodata
+    25fa:	48 89 c2             	mov    %rax,%rdx
+    25fd:	48 89 cf             	mov    %rcx,%rdi
+    2600:	e8 00 00 00 00       	call   2605 <ml5_0_initialize_tirust_+0x5b>
+			2601: R_X86_64_PLT32	__mtirust_MOD_tirust_register_plan-0x4
+    2605:	48 8b 45 b8          	mov    -0x48(%rbp),%rax
+    2609:	8b 00                	mov    (%rax),%eax
+    260b:	85 c0                	test   %eax,%eax
+    260d:	74 07                	je     2616 <ml5_0_initialize_tirust_+0x6c>
+    260f:	bb 00 00 00 00       	mov    $0x0,%ebx
+    2614:	eb 13                	jmp    2629 <ml5_0_initialize_tirust_+0x7f>
+    2616:	e8 00 00 00 00       	call   261b <ml5_0_initialize_tirust_+0x71>
+			2617: R_X86_64_PLT32	__mtirust_MOD_tirust_context_generation-0x4
+    261b:	48 8b 15 00 00 00 00 	mov    0x0(%rip),%rdx        # 2622 <ml5_0_initialize_tirust_+0x78>
+			261e: R_X86_64_REX_GOTPCRELX	ml5_0_tirust_init_-0x4
+    2622:	89 02                	mov    %eax,(%rdx)
+    2624:	bb 01 00 00 00       	mov    $0x1,%ebx
+    2629:	48 8d 45 c0          	lea    -0x40(%rbp),%rax
+    262d:	48 89 c7             	mov    %rax,%rdi
+    2630:	e8 00 00 00 00       	call   2635 <ml5_0_initialize_tirust_+0x8b>
+			2631: R_X86_64_PLT32	_gfortran_ieee_procedure_exit-0x4
+    2635:	83 fb 01             	cmp    $0x1,%ebx
+    2638:	48 8b 5d f8          	mov    -0x8(%rbp),%rbx
+    263c:	c9                   	leave
+    263d:	c3                   	ret
+
+000000000000263e <ml5_0_tirustloop_>:
+    263e:	55                   	push   %rbp
+    263f:	48 89 e5             	mov    %rsp,%rbp
+    2642:	48 83 ec 40          	sub    $0x40,%rsp
+    2646:	48 89 7d e8          	mov    %rdi,-0x18(%rbp)
+    264a:	48 89 75 e0          	mov    %rsi,-0x20(%rbp)
+    264e:	48 89 55 d8          	mov    %rdx,-0x28(%rbp)
+    2652:	48 89 4d d0          	mov    %rcx,-0x30(%rbp)
+    2656:	4c 89 45 c8          	mov    %r8,-0x38(%rbp)
+    265a:	4c 89 4d c0          	mov    %r9,-0x40(%rbp)
+    265e:	48 8b 45 e0          	mov    -0x20(%rbp),%rax
+    2662:	8b 00                	mov    (%rax),%eax
+    2664:	48 98                	cltq
+    2666:	48 89 45 f8          	mov    %rax,-0x8(%rbp)
+    266a:	48 8b 45 e0          	mov    -0x20(%rbp),%rax
+    266e:	8b 00                	mov    (%rax),%eax
+    2670:	48 98                	cltq
+    2672:	48 89 45 f0          	mov    %rax,-0x10(%rbp)
+    2676:	4c 8b 45 c0          	mov    -0x40(%rbp),%r8
+    267a:	48 8b 7d c8          	mov    -0x38(%rbp),%rdi
+    267e:	48 8b 4d d0          	mov    -0x30(%rbp),%rcx
+    2682:	48 8b 55 d8          	mov    -0x28(%rbp),%rdx
+    2686:	48 8b 75 e0          	mov    -0x20(%rbp),%rsi
+    268a:	48 8b 45 e8          	mov    -0x18(%rbp),%rax
+    268e:	48 83 ec 08          	sub    $0x8,%rsp
+    2692:	ff 75 10             	push   0x10(%rbp)
+    2695:	4d 89 c1             	mov    %r8,%r9
+    2698:	49 89 f8             	mov    %rdi,%r8
+    269b:	48 89 c7             	mov    %rax,%rdi
+    269e:	e8 00 00 00 00       	call   26a3 <ml5_0_tirustloop_+0x65>
+			269f: R_X86_64_PLT32	ml5_0_tirust_tensor_diagnostic_-0x4
+    26a3:	48 83 c4 10          	add    $0x10,%rsp
+    26a7:	90                   	nop
+    26a8:	c9                   	leave
+    26a9:	c3                   	ret
+
+00000000000026aa <ml5_0_mp_tirust_loop_>:
+    26aa:	55                   	push   %rbp
+    26ab:	48 89 e5             	mov    %rsp,%rbp
+    26ae:	41 54                	push   %r12
+    26b0:	53                   	push   %rbx
+    26b1:	48 81 ec f0 06 00 00 	sub    $0x6f0,%rsp
+    26b8:	48 89 bd a8 f9 ff ff 	mov    %rdi,-0x658(%rbp)
+    26bf:	48 89 b5 a0 f9 ff ff 	mov    %rsi,-0x660(%rbp)
+    26c6:	48 89 95 98 f9 ff ff 	mov    %rdx,-0x668(%rbp)
+    26cd:	48 89 8d 90 f9 ff ff 	mov    %rcx,-0x670(%rbp)
+    26d4:	4c 89 85 88 f9 ff ff 	mov    %r8,-0x678(%rbp)
+    26db:	4c 89 8d 80 f9 ff ff 	mov    %r9,-0x680(%rbp)
+    26e2:	48 8d 45 b0          	lea    -0x50(%rbp),%rax
+    26e6:	48 89 c7             	mov    %rax,%rdi
+    26e9:	e8 00 00 00 00       	call   26ee <ml5_0_mp_tirust_loop_+0x44>
+			26ea: R_X86_64_PLT32	_gfortran_ieee_procedure_entry-0x4
+    26ee:	48 8b 85 a8 f9 ff ff 	mov    -0x658(%rbp),%rax
+    26f5:	8b 00                	mov    (%rax),%eax
+    26f7:	48 98                	cltq
+    26f9:	48 89 45 e0          	mov    %rax,-0x20(%rbp)
+    26fd:	48 8b 85 a8 f9 ff ff 	mov    -0x658(%rbp),%rax
+    2704:	8b 00                	mov    (%rax),%eax
+    2706:	48 98                	cltq
+    2708:	48 89 45 d8          	mov    %rax,-0x28(%rbp)
+    270c:	48 8b 85 88 f9 ff ff 	mov    -0x678(%rbp),%rax
+    2713:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    2717:	0f 11 00             	movups %xmm0,(%rax)
+    271a:	0f 11 40 10          	movups %xmm0,0x10(%rax)
+    271e:	0f 11 40 20          	movups %xmm0,0x20(%rax)
+    2722:	4c 8d 85 10 fa ff ff 	lea    -0x5f0(%rbp),%r8
+    2729:	48 8b bd 98 f9 ff ff 	mov    -0x668(%rbp),%rdi
+    2730:	48 8b 8d a0 f9 ff ff 	mov    -0x660(%rbp),%rcx
+    2737:	48 8b 95 90 f9 ff ff 	mov    -0x670(%rbp),%rdx
+    273e:	48 8b b5 a8 f9 ff ff 	mov    -0x658(%rbp),%rsi
+    2745:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 274c <ml5_0_mp_tirust_loop_+0xa2>
+			2748: R_X86_64_REX_GOTPCRELX	ml5_0_ct_-0x4
+    274c:	48 8d 40 08          	lea    0x8(%rax),%rax
+    2750:	48 83 ec 08          	sub    $0x8,%rsp
+    2754:	ff b5 80 f9 ff ff    	push   -0x680(%rbp)
+    275a:	4d 89 c1             	mov    %r8,%r9
+    275d:	49 89 f8             	mov    %rdi,%r8
+    2760:	48 89 c7             	mov    %rax,%rdi
+    2763:	e8 00 00 00 00       	call   2768 <ml5_0_mp_tirust_loop_+0xbe>
+			2764: R_X86_64_PLT32	ml5_0_mp_tirust_tensor_diagnostic_-0x4
+    2768:	48 83 c4 10          	add    $0x10,%rsp
+    276c:	48 8b 85 80 f9 ff ff 	mov    -0x680(%rbp),%rax
+    2773:	8b 00                	mov    (%rax),%eax
+    2775:	83 f0 01             	xor    $0x1,%eax
+    2778:	85 c0                	test   %eax,%eax
+    277a:	74 18                	je     2794 <ml5_0_mp_tirust_loop_+0xea>
+    277c:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 2783 <ml5_0_mp_tirust_loop_+0xd9>
+			277f: R_X86_64_REX_GOTPCRELX	ml5_0_fpe_in_reduction_-0x4
+    2783:	c7 40 04 01 00 00 00 	movl   $0x1,0x4(%rax)
+    278a:	bb 00 00 00 00       	mov    $0x0,%ebx
+    278f:	e9 54 04 00 00       	jmp    2be8 <ml5_0_mp_tirust_loop_+0x53e>
+    2794:	48 8d 95 b0 f9 ff ff 	lea    -0x650(%rbp),%rdx
+    279b:	b8 00 00 00 00       	mov    $0x0,%eax
+    27a0:	b9 0c 00 00 00       	mov    $0xc,%ecx
+    27a5:	48 89 d7             	mov    %rdx,%rdi
+    27a8:	f3 48 ab             	rep stos %rax,(%rdi)
+    27ab:	c7 45 ec 01 00 00 00 	movl   $0x1,-0x14(%rbp)
+    27b2:	83 7d ec 03          	cmpl   $0x3,-0x14(%rbp)
+    27b6:	0f 9f c0             	setg   %al
+    27b9:	0f b6 c0             	movzbl %al,%eax
+    27bc:	85 c0                	test   %eax,%eax
+    27be:	0f 85 ea 03 00 00    	jne    2bae <ml5_0_mp_tirust_loop_+0x504>
+    27c4:	48 8b 85 90 f9 ff ff 	mov    -0x670(%rbp),%rax
+    27cb:	8b 00                	mov    (%rax),%eax
+    27cd:	48 63 d0             	movslq %eax,%rdx
+    27d0:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 27d7 <ml5_0_mp_tirust_loop_+0x12d>
+			27d3: R_X86_64_REX_GOTPCRELX	__ml5_0_polynomial_constants_MOD_ncoef_r-0x4
+    27d7:	8b 04 90             	mov    (%rax,%rdx,4),%eax
+    27da:	44 8d 60 ff          	lea    -0x1(%rax),%r12d
+    27de:	c7 45 e8 00 00 00 00 	movl   $0x0,-0x18(%rbp)
+    27e5:	44 39 65 e8          	cmp    %r12d,-0x18(%rbp)
+    27e9:	0f 9f c0             	setg   %al
+    27ec:	0f b6 c0             	movzbl %al,%eax
+    27ef:	85 c0                	test   %eax,%eax
+    27f1:	0f 85 2f 02 00 00    	jne    2a26 <ml5_0_mp_tirust_loop_+0x37c>
+    27f7:	8b 45 ec             	mov    -0x14(%rbp),%eax
+    27fa:	48 98                	cltq
+    27fc:	48 83 e8 01          	sub    $0x1,%rax
+    2800:	48 89 c2             	mov    %rax,%rdx
+    2803:	48 c1 e2 05          	shl    $0x5,%rdx
+    2807:	48 8d 7a f0          	lea    -0x10(%rdx),%rdi
+    280b:	48 8d 14 2f          	lea    (%rdi,%rbp,1),%rdx
+    280f:	48 81 ea 40 06 00 00 	sub    $0x640,%rdx
+    2816:	66 0f 6f 32          	movdqa (%rdx),%xmm6
+    281a:	0f 29 b5 30 f9 ff ff 	movaps %xmm6,-0x6d0(%rbp)
+    2821:	48 c1 e0 05          	shl    $0x5,%rax
+    2825:	48 8d 40 f0          	lea    -0x10(%rax),%rax
+    2829:	48 01 e8             	add    %rbp,%rax
+    282c:	48 2d 40 06 00 00    	sub    $0x640,%rax
+    2832:	66 0f 6f 78 10       	movdqa 0x10(%rax),%xmm7
+    2837:	0f 29 bd 20 f9 ff ff 	movaps %xmm7,-0x6e0(%rbp)
+    283e:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 2845 <ml5_0_mp_tirust_loop_+0x19b>
+			2841: R_X86_64_REX_GOTPCRELX	ml5_0_loop_-0x4
+    2845:	8b 00                	mov    (%rax),%eax
+    2847:	48 63 d0             	movslq %eax,%rdx
+    284a:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 2851 <ml5_0_mp_tirust_loop_+0x1a7>
+			284d: R_X86_64_REX_GOTPCRELX	ml5_0_loop_-0x4
+    2851:	8b 40 04             	mov    0x4(%rax),%eax
+    2854:	48 98                	cltq
+    2856:	48 01 c2             	add    %rax,%rdx
+    2859:	48 89 d0             	mov    %rdx,%rax
+    285c:	48 c1 e0 04          	shl    $0x4,%rax
+    2860:	48 29 d0             	sub    %rdx,%rax
+    2863:	48 89 c1             	mov    %rax,%rcx
+    2866:	8b 45 e8             	mov    -0x18(%rbp),%eax
+    2869:	48 98                	cltq
+    286b:	48 01 c8             	add    %rcx,%rax
+    286e:	48 83 e8 1e          	sub    $0x1e,%rax
+    2872:	48 8b 15 00 00 00 00 	mov    0x0(%rip),%rdx        # 2879 <ml5_0_mp_tirust_loop_+0x1cf>
+			2875: R_X86_64_REX_GOTPCRELX	ml5_0_mp_lcoefs_-0x4
+    2879:	48 89 c1             	mov    %rax,%rcx
+    287c:	48 c1 e1 05          	shl    $0x5,%rcx
+    2880:	48 01 ca             	add    %rcx,%rdx
+    2883:	66 0f 6f 12          	movdqa (%rdx),%xmm2
+    2887:	48 8b 15 00 00 00 00 	mov    0x0(%rip),%rdx        # 288e <ml5_0_mp_tirust_loop_+0x1e4>
+			288a: R_X86_64_REX_GOTPCRELX	ml5_0_mp_lcoefs_-0x4
+    288e:	48 c1 e0 05          	shl    $0x5,%rax
+    2892:	48 01 d0             	add    %rdx,%rax
+    2895:	66 0f 6f 58 10       	movdqa 0x10(%rax),%xmm3
+    289a:	0f 29 9d 60 f9 ff ff 	movaps %xmm3,-0x6a0(%rbp)
+    28a1:	8b 45 ec             	mov    -0x14(%rbp),%eax
+    28a4:	48 63 d0             	movslq %eax,%rdx
+    28a7:	48 89 d0             	mov    %rdx,%rax
+    28aa:	48 c1 e0 04          	shl    $0x4,%rax
+    28ae:	48 29 d0             	sub    %rdx,%rax
+    28b1:	48 89 c1             	mov    %rax,%rcx
+    28b4:	8b 45 e8             	mov    -0x18(%rbp),%eax
+    28b7:	48 98                	cltq
+    28b9:	48 01 c8             	add    %rcx,%rax
+    28bc:	48 83 e8 0f          	sub    $0xf,%rax
+    28c0:	48 89 c2             	mov    %rax,%rdx
+    28c3:	48 c1 e2 05          	shl    $0x5,%rdx
+    28c7:	48 8d 5a f0          	lea    -0x10(%rdx),%rbx
+    28cb:	48 8d 14 2b          	lea    (%rbx,%rbp,1),%rdx
+    28cf:	48 81 ea e0 05 00 00 	sub    $0x5e0,%rdx
+    28d6:	66 0f 6f 22          	movdqa (%rdx),%xmm4
+    28da:	48 c1 e0 05          	shl    $0x5,%rax
+    28de:	48 8d 40 f0          	lea    -0x10(%rax),%rax
+    28e2:	48 01 e8             	add    %rbp,%rax
+    28e5:	48 2d e0 05 00 00    	sub    $0x5e0,%rax
+    28eb:	66 0f 6f 68 10       	movdqa 0x10(%rax),%xmm5
+    28f0:	0f 29 ad 40 f9 ff ff 	movaps %xmm5,-0x6c0(%rbp)
+    28f7:	0f 29 a5 50 f9 ff ff 	movaps %xmm4,-0x6b0(%rbp)
+    28fe:	66 0f 6f 8d 50 f9 ff 	movdqa -0x6b0(%rbp),%xmm1
+    2905:	ff 
+    2906:	0f 29 95 70 f9 ff ff 	movaps %xmm2,-0x690(%rbp)
+    290d:	66 0f 6f 85 70 f9 ff 	movdqa -0x690(%rbp),%xmm0
+    2914:	ff 
+    2915:	e8 00 00 00 00       	call   291a <ml5_0_mp_tirust_loop_+0x270>
+			2916: R_X86_64_PLT32	__multf3-0x4
+    291a:	0f 29 85 10 f9 ff ff 	movaps %xmm0,-0x6f0(%rbp)
+    2921:	66 0f 6f 8d 40 f9 ff 	movdqa -0x6c0(%rbp),%xmm1
+    2928:	ff 
+    2929:	66 0f 6f 85 60 f9 ff 	movdqa -0x6a0(%rbp),%xmm0
+    2930:	ff 
+    2931:	e8 00 00 00 00       	call   2936 <ml5_0_mp_tirust_loop_+0x28c>
+			2932: R_X86_64_PLT32	__multf3-0x4
+    2936:	0f 29 85 00 f9 ff ff 	movaps %xmm0,-0x700(%rbp)
+    293d:	66 0f 6f 8d 40 f9 ff 	movdqa -0x6c0(%rbp),%xmm1
+    2944:	ff 
+    2945:	66 0f 6f 85 70 f9 ff 	movdqa -0x690(%rbp),%xmm0
+    294c:	ff 
+    294d:	e8 00 00 00 00       	call   2952 <ml5_0_mp_tirust_loop_+0x2a8>
+			294e: R_X86_64_PLT32	__multf3-0x4
+    2952:	0f 29 85 70 f9 ff ff 	movaps %xmm0,-0x690(%rbp)
+    2959:	66 0f 6f 8d 50 f9 ff 	movdqa -0x6b0(%rbp),%xmm1
+    2960:	ff 
+    2961:	66 0f 6f 85 60 f9 ff 	movdqa -0x6a0(%rbp),%xmm0
+    2968:	ff 
+    2969:	e8 00 00 00 00       	call   296e <ml5_0_mp_tirust_loop_+0x2c4>
+			296a: R_X86_64_PLT32	__multf3-0x4
+    296e:	0f 29 85 60 f9 ff ff 	movaps %xmm0,-0x6a0(%rbp)
+    2975:	66 0f 6f 8d 00 f9 ff 	movdqa -0x700(%rbp),%xmm1
+    297c:	ff 
+    297d:	66 0f 6f 85 10 f9 ff 	movdqa -0x6f0(%rbp),%xmm0
+    2984:	ff 
+    2985:	e8 00 00 00 00       	call   298a <ml5_0_mp_tirust_loop_+0x2e0>
+			2986: R_X86_64_PLT32	__subtf3-0x4
+    298a:	0f 29 85 50 f9 ff ff 	movaps %xmm0,-0x6b0(%rbp)
+    2991:	66 0f 6f 8d 60 f9 ff 	movdqa -0x6a0(%rbp),%xmm1
+    2998:	ff 
+    2999:	66 0f 6f 85 70 f9 ff 	movdqa -0x690(%rbp),%xmm0
+    29a0:	ff 
+    29a1:	e8 00 00 00 00       	call   29a6 <ml5_0_mp_tirust_loop_+0x2fc>
+			29a2: R_X86_64_PLT32	__addtf3-0x4
+    29a6:	0f 29 85 70 f9 ff ff 	movaps %xmm0,-0x690(%rbp)
+    29ad:	8b 45 ec             	mov    -0x14(%rbp),%eax
+    29b0:	48 98                	cltq
+    29b2:	48 8d 58 ff          	lea    -0x1(%rax),%rbx
+    29b6:	66 0f 6f 8d 50 f9 ff 	movdqa -0x6b0(%rbp),%xmm1
+    29bd:	ff 
+    29be:	66 0f 6f 85 30 f9 ff 	movdqa -0x6d0(%rbp),%xmm0
+    29c5:	ff 
+    29c6:	e8 00 00 00 00       	call   29cb <ml5_0_mp_tirust_loop_+0x321>
+			29c7: R_X86_64_PLT32	__addtf3-0x4
+    29cb:	0f 29 85 60 f9 ff ff 	movaps %xmm0,-0x6a0(%rbp)
+    29d2:	66 0f 6f 8d 70 f9 ff 	movdqa -0x690(%rbp),%xmm1
+    29d9:	ff 
+    29da:	66 0f 6f 85 20 f9 ff 	movdqa -0x6e0(%rbp),%xmm0
+    29e1:	ff 
+    29e2:	e8 00 00 00 00       	call   29e7 <ml5_0_mp_tirust_loop_+0x33d>
+			29e3: R_X86_64_PLT32	__addtf3-0x4
+    29e7:	48 89 d8             	mov    %rbx,%rax
+    29ea:	48 c1 e0 05          	shl    $0x5,%rax
+    29ee:	48 8d 40 f0          	lea    -0x10(%rax),%rax
+    29f2:	48 01 e8             	add    %rbp,%rax
+    29f5:	48 2d 40 06 00 00    	sub    $0x640,%rax
+    29fb:	66 0f 6f 9d 60 f9 ff 	movdqa -0x6a0(%rbp),%xmm3
+    2a02:	ff 
+    2a03:	0f 29 18             	movaps %xmm3,(%rax)
+    2a06:	48 89 d8             	mov    %rbx,%rax
+    2a09:	48 c1 e0 05          	shl    $0x5,%rax
+    2a0d:	48 8d 40 f0          	lea    -0x10(%rax),%rax
+    2a11:	48 01 e8             	add    %rbp,%rax
+    2a14:	48 2d 30 06 00 00    	sub    $0x630,%rax
+    2a1a:	0f 29 00             	movaps %xmm0,(%rax)
+    2a1d:	83 45 e8 01          	addl   $0x1,-0x18(%rbp)
+    2a21:	e9 bf fd ff ff       	jmp    27e5 <ml5_0_mp_tirust_loop_+0x13b>
+    2a26:	90                   	nop
+    2a27:	8b 45 ec             	mov    -0x14(%rbp),%eax
+    2a2a:	48 98                	cltq
+    2a2c:	48 83 e8 01          	sub    $0x1,%rax
+    2a30:	48 c1 e0 05          	shl    $0x5,%rax
+    2a34:	48 8d 40 f0          	lea    -0x10(%rax),%rax
+    2a38:	48 01 e8             	add    %rbp,%rax
+    2a3b:	48 2d 40 06 00 00    	sub    $0x640,%rax
+    2a41:	66 0f 6f 00          	movdqa (%rax),%xmm0
+    2a45:	66 0f 6f 0d 00 00 00 	movdqa 0x0(%rip),%xmm1        # 2a4d <ml5_0_mp_tirust_loop_+0x3a3>
+    2a4c:	00 
+			2a49: R_X86_64_PC32	.rodata+0x14c
+    2a4d:	e8 00 00 00 00       	call   2a52 <ml5_0_mp_tirust_loop_+0x3a8>
+			2a4e: R_X86_64_PLT32	__multf3-0x4
+    2a52:	8b 45 ec             	mov    -0x14(%rbp),%eax
+    2a55:	48 98                	cltq
+    2a57:	48 83 e8 01          	sub    $0x1,%rax
+    2a5b:	48 89 c2             	mov    %rax,%rdx
+    2a5e:	48 c1 e2 05          	shl    $0x5,%rdx
+    2a62:	48 8d 72 f0          	lea    -0x10(%rdx),%rsi
+    2a66:	48 8d 14 2e          	lea    (%rsi,%rbp,1),%rdx
+    2a6a:	48 81 ea 40 06 00 00 	sub    $0x640,%rdx
+    2a71:	0f 29 02             	movaps %xmm0,(%rdx)
+    2a74:	48 c1 e0 05          	shl    $0x5,%rax
+    2a78:	48 8d 40 f0          	lea    -0x10(%rax),%rax
+    2a7c:	48 01 e8             	add    %rbp,%rax
+    2a7f:	48 2d 30 06 00 00    	sub    $0x630,%rax
+    2a85:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    2a89:	0f 29 00             	movaps %xmm0,(%rax)
+    2a8c:	8b 45 ec             	mov    -0x14(%rbp),%eax
+    2a8f:	48 98                	cltq
+    2a91:	48 83 e8 01          	sub    $0x1,%rax
+    2a95:	48 c1 e0 05          	shl    $0x5,%rax
+    2a99:	48 8d 40 f0          	lea    -0x10(%rax),%rax
+    2a9d:	48 01 e8             	add    %rbp,%rax
+    2aa0:	48 2d 40 06 00 00    	sub    $0x640,%rax
+    2aa6:	66 0f 6f 00          	movdqa (%rax),%xmm0
+    2aaa:	e8 00 00 00 00       	call   2aaf <ml5_0_mp_tirust_loop_+0x405>
+			2aab: R_X86_64_PLT32	__trunctfdf2-0x4
+    2aaf:	66 48 0f 7e c3       	movq   %xmm0,%rbx
+    2ab4:	8b 45 ec             	mov    -0x14(%rbp),%eax
+    2ab7:	48 98                	cltq
+    2ab9:	48 83 e8 01          	sub    $0x1,%rax
+    2abd:	48 c1 e0 05          	shl    $0x5,%rax
+    2ac1:	48 8d 40 f0          	lea    -0x10(%rax),%rax
+    2ac5:	48 01 e8             	add    %rbp,%rax
+    2ac8:	48 2d 40 06 00 00    	sub    $0x640,%rax
+    2ace:	66 0f 6f 40 10       	movdqa 0x10(%rax),%xmm0
+    2ad3:	e8 00 00 00 00       	call   2ad8 <ml5_0_mp_tirust_loop_+0x42e>
+			2ad4: R_X86_64_PLT32	__trunctfdf2-0x4
+    2ad8:	66 48 0f 7e c2       	movq   %xmm0,%rdx
+    2add:	8b 45 ec             	mov    -0x14(%rbp),%eax
+    2ae0:	48 98                	cltq
+    2ae2:	48 83 e8 01          	sub    $0x1,%rax
+    2ae6:	48 8b 8d 88 f9 ff ff 	mov    -0x678(%rbp),%rcx
+    2aed:	48 89 c6             	mov    %rax,%rsi
+    2af0:	48 c1 e6 04          	shl    $0x4,%rsi
+    2af4:	48 01 f1             	add    %rsi,%rcx
+    2af7:	48 89 19             	mov    %rbx,(%rcx)
+    2afa:	48 8b 8d 88 f9 ff ff 	mov    -0x678(%rbp),%rcx
+    2b01:	48 c1 e0 04          	shl    $0x4,%rax
+    2b05:	48 01 c8             	add    %rcx,%rax
+    2b08:	48 83 c0 08          	add    $0x8,%rax
+    2b0c:	48 89 10             	mov    %rdx,(%rax)
+    2b0f:	48 8b 85 80 f9 ff ff 	mov    -0x680(%rbp),%rax
+    2b16:	8b 00                	mov    (%rax),%eax
+    2b18:	8b 55 ec             	mov    -0x14(%rbp),%edx
+    2b1b:	48 63 d2             	movslq %edx,%rdx
+    2b1e:	48 8d 4a ff          	lea    -0x1(%rdx),%rcx
+    2b22:	48 8b 95 88 f9 ff ff 	mov    -0x678(%rbp),%rdx
+    2b29:	48 c1 e1 04          	shl    $0x4,%rcx
+    2b2d:	48 01 ca             	add    %rcx,%rdx
+    2b30:	f2 0f 10 02          	movsd  (%rdx),%xmm0
+    2b34:	f3 0f 7e 0d 00 00 00 	movq   0x0(%rip),%xmm1        # 2b3c <ml5_0_mp_tirust_loop_+0x492>
+    2b3b:	00 
+			2b38: R_X86_64_PC32	.rodata+0xdc
+    2b3c:	66 0f 54 c8          	andpd  %xmm0,%xmm1
+    2b40:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 2b48 <ml5_0_mp_tirust_loop_+0x49e>
+    2b47:	00 
+			2b44: R_X86_64_PC32	.rodata+0x10c
+    2b48:	66 0f 2e c1          	ucomisd %xmm1,%xmm0
+    2b4c:	0f 92 c2             	setb   %dl
+    2b4f:	83 f2 01             	xor    $0x1,%edx
+    2b52:	0f b6 d2             	movzbl %dl,%edx
+    2b55:	83 e2 01             	and    $0x1,%edx
+    2b58:	21 c2                	and    %eax,%edx
+    2b5a:	8b 45 ec             	mov    -0x14(%rbp),%eax
+    2b5d:	48 98                	cltq
+    2b5f:	48 8d 48 ff          	lea    -0x1(%rax),%rcx
+    2b63:	48 8b 85 88 f9 ff ff 	mov    -0x678(%rbp),%rax
+    2b6a:	48 c1 e1 04          	shl    $0x4,%rcx
+    2b6e:	48 01 c8             	add    %rcx,%rax
+    2b71:	f2 0f 10 40 08       	movsd  0x8(%rax),%xmm0
+    2b76:	f3 0f 7e 0d 00 00 00 	movq   0x0(%rip),%xmm1        # 2b7e <ml5_0_mp_tirust_loop_+0x4d4>
+    2b7d:	00 
+			2b7a: R_X86_64_PC32	.rodata+0xdc
+    2b7e:	66 0f 54 c8          	andpd  %xmm0,%xmm1
+    2b82:	f2 0f 10 05 00 00 00 	movsd  0x0(%rip),%xmm0        # 2b8a <ml5_0_mp_tirust_loop_+0x4e0>
+    2b89:	00 
+			2b86: R_X86_64_PC32	.rodata+0x10c
+    2b8a:	66 0f 2e c1          	ucomisd %xmm1,%xmm0
+    2b8e:	0f 92 c0             	setb   %al
+    2b91:	83 f0 01             	xor    $0x1,%eax
+    2b94:	0f b6 c0             	movzbl %al,%eax
+    2b97:	83 e0 01             	and    $0x1,%eax
+    2b9a:	21 c2                	and    %eax,%edx
+    2b9c:	48 8b 85 80 f9 ff ff 	mov    -0x680(%rbp),%rax
+    2ba3:	89 10                	mov    %edx,(%rax)
+    2ba5:	83 45 ec 01          	addl   $0x1,-0x14(%rbp)
+    2ba9:	e9 04 fc ff ff       	jmp    27b2 <ml5_0_mp_tirust_loop_+0x108>
+    2bae:	90                   	nop
+    2baf:	48 8b 85 80 f9 ff ff 	mov    -0x680(%rbp),%rax
+    2bb6:	8b 00                	mov    (%rax),%eax
+    2bb8:	83 f0 01             	xor    $0x1,%eax
+    2bbb:	85 c0                	test   %eax,%eax
+    2bbd:	74 24                	je     2be3 <ml5_0_mp_tirust_loop_+0x539>
+    2bbf:	48 8b 85 88 f9 ff ff 	mov    -0x678(%rbp),%rax
+    2bc6:	66 0f ef c0          	pxor   %xmm0,%xmm0
+    2bca:	0f 11 00             	movups %xmm0,(%rax)
+    2bcd:	0f 11 40 10          	movups %xmm0,0x10(%rax)
+    2bd1:	0f 11 40 20          	movups %xmm0,0x20(%rax)
+    2bd5:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 2bdc <ml5_0_mp_tirust_loop_+0x532>
+			2bd8: R_X86_64_REX_GOTPCRELX	ml5_0_fpe_in_reduction_-0x4
+    2bdc:	c7 40 04 01 00 00 00 	movl   $0x1,0x4(%rax)
+    2be3:	bb 01 00 00 00       	mov    $0x1,%ebx
+    2be8:	48 8d 45 b0          	lea    -0x50(%rbp),%rax
+    2bec:	48 89 c7             	mov    %rax,%rdi
+    2bef:	e8 00 00 00 00       	call   2bf4 <ml5_0_mp_tirust_loop_+0x54a>
+			2bf0: R_X86_64_PLT32	_gfortran_ieee_procedure_exit-0x4
+    2bf4:	83 fb 01             	cmp    $0x1,%ebx
+    2bf7:	48 8d 65 f0          	lea    -0x10(%rbp),%rsp
+    2bfb:	5b                   	pop    %rbx
+    2bfc:	41 5c                	pop    %r12
+    2bfe:	5d                   	pop    %rbp
+    2bff:	c3                   	ret
+
+0000000000002c00 <ml5_0_clear_tirust_cache_>:
+    2c00:	55                   	push   %rbp
+    2c01:	48 89 e5             	mov    %rsp,%rbp
+    2c04:	48 83 ec 30          	sub    $0x30,%rsp
+    2c08:	48 8d 45 d0          	lea    -0x30(%rbp),%rax
+    2c0c:	48 89 c7             	mov    %rax,%rdi
+    2c0f:	e8 00 00 00 00       	call   2c14 <ml5_0_clear_tirust_cache_+0x14>
+			2c10: R_X86_64_PLT32	_gfortran_ieee_procedure_entry-0x4
+    2c14:	bf 00 00 00 00       	mov    $0x0,%edi
+    2c19:	e8 00 00 00 00       	call   2c1e <ml5_0_clear_tirust_cache_+0x1e>
+			2c1a: R_X86_64_PLT32	__mtirust_MOD_tirust_clear_cache-0x4
+    2c1e:	48 8d 45 d0          	lea    -0x30(%rbp),%rax
+    2c22:	48 89 c7             	mov    %rax,%rdi
+    2c25:	e8 00 00 00 00       	call   2c2a <ml5_0_clear_tirust_cache_+0x2a>
+			2c26: R_X86_64_PLT32	_gfortran_ieee_procedure_exit-0x4
+    2c2a:	c9                   	leave
+    2c2b:	c3                   	ret
+
+0000000000002c2c <ml5_0_finalize_tirust_>:
+    2c2c:	55                   	push   %rbp
+    2c2d:	48 89 e5             	mov    %rsp,%rbp
+    2c30:	48 83 ec 30          	sub    $0x30,%rsp
+    2c34:	48 8d 45 d0          	lea    -0x30(%rbp),%rax
+    2c38:	48 89 c7             	mov    %rax,%rdi
+    2c3b:	e8 00 00 00 00       	call   2c40 <ml5_0_finalize_tirust_+0x14>
+			2c3c: R_X86_64_PLT32	_gfortran_ieee_procedure_entry-0x4
+    2c40:	bf 00 00 00 00       	mov    $0x0,%edi
+    2c45:	e8 00 00 00 00       	call   2c4a <ml5_0_finalize_tirust_+0x1e>
+			2c46: R_X86_64_PLT32	__mtirust_MOD_tirust_finalize-0x4
+    2c4a:	48 8b 05 00 00 00 00 	mov    0x0(%rip),%rax        # 2c51 <ml5_0_finalize_tirust_+0x25>
+			2c4d: R_X86_64_REX_GOTPCRELX	ml5_0_tirust_init_-0x4
+    2c51:	c7 00 fe ff ff ff    	movl   $0xfffffffe,(%rax)
+    2c57:	48 8d 45 d0          	lea    -0x30(%rbp),%rax
+    2c5b:	48 89 c7             	mov    %rax,%rdi
+    2c5e:	e8 00 00 00 00       	call   2c63 <ml5_0_finalize_tirust_+0x37>
+			2c5f: R_X86_64_PLT32	_gfortran_ieee_procedure_exit-0x4
+    2c63:	c9                   	leave
+    2c64:	c3                   	ret

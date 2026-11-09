@@ -1,0 +1,15 @@
+{
+  "scope": "Read-only source identities observed for the finite-output contract audit. Native identity remains the pinned split diagnostic DSO.",
+  "qualified_abi": "GNU Fortran 15.2.0, x86_64 Linux, c_double_complex output transport",
+  "installed_and_repository_fortran_module_sources_identical": true,
+  "sha256": {
+    ".tirust-build/n1-profile/split-bridge/src/lib.rs": "acc21eb665e523a99906d5e071781c966c5f06d57de8f8683cd713147bc73252",
+    "vendor/tirust/src/lib.rs": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+    "vendor/tirust/mtirust.f90": "12295dca6b64a96dbd4f184cf67ed702f38c9fd82658e196fa4c5b7135fee10e",
+    "HEPTools/tirust/include/mtirust.f90": "12295dca6b64a96dbd4f184cf67ed702f38c9fd82658e196fa4c5b7135fee10e",
+    "vendor/tirust/tirust.h": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad",
+    "madgraph/various/tirust_install.py": "352052637afbd82ab84f27508eda1bdfd9abc6115409adc23f8262e94c38d370",
+    ".benchmark-work/tirust/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/TIR_interface.f": "b5d5487df140ea69aed722086dc853e5fa26cdacdd5af7785efa3590ef3c2d5f",
+    "tests/unit_tests/loop/test_tirust_fortran.py": "7983b90aa78a52916e24a1b71592496972fe120df035080d64de580da4044b0c"
+  }
+}

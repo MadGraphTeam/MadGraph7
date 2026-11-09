@@ -1,0 +1,20 @@
+{
+  "scope": "Read-only disassembly audit; original compiler flags unchanged",
+  "qp_disassembly_and_relocations_exactly_identical": true,
+  "dp_ieee_runtime_calls": {
+    "original": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "_gfortran_ieee_procedure_exit": 1
+    },
+    "candidate": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "_gfortran_ieee_procedure_exit": 1
+    }
+  },
+  "evidence_sha256": {
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-dp-finite/adapter-finite-build/original-object-symbols.log": "a50292787c2e42db6e51bb581b6eb8cba72ec0b74297bc1e08f7771beca35dee",
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-dp-finite/adapter-finite-build/original-object-disassembly.log": "be6dd6e8fe1242870c819acb5156288f91a395a6a2609d72acc487c0974f943e",
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-dp-finite/adapter-finite-build/candidate-object-disassembly.log": "225135c9de128e1082fad3f27d67548a6505078fd11ef573fc1771ff8a984cec",
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-dp-finite/adapter-finite-build/candidate-object-symbols.log": "1171142d162bc0570100a35e4b154f2709292900cf20c1d4a5645a58f6e5de80"
+  }
+}
