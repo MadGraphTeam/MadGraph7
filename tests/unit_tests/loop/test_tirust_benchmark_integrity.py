@@ -97,6 +97,51 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
         self.assertEqual(result["resolved_parameter_card"],
                          str(self.outputs["candidate"] / "Cards/param_card.dat"))
 
+    def test_post_observation_checks_bound_inputs(self):
+        inputs = self.launch()
+        self.assertEqual(benchmark.verify_observation_inputs("candidate", self.case, inputs)["points_sha256"],
+                         inputs["points_sha256"])
+        changed = self.directories["candidate"] / "check"
+        original = changed.read_text()
+        changed.write_text("different executable")
+        with self.assertRaisesRegex(RuntimeError, "Executable changed"):
+            benchmark.verify_observation_inputs("candidate", self.case, inputs)
+        changed.write_text(original)
+        with patch.object(benchmark, "runtime_identity", return_value={
+                "libraries": {"/lib/common.so": "changed"}, **self.dependencies}):
+            with self.assertRaisesRegex(RuntimeError, "Runtime dependencies changed"):
+                benchmark.verify_observation_inputs("candidate", self.case, inputs)
+        self.points.write_text("changed saved point bytes")
+        with self.assertRaisesRegex(RuntimeError, "Frozen points changed"):
+            benchmark.verify_observation_inputs("candidate", self.case, inputs)
+
+    def test_post_observation_rejects_new_numerical_card_or_source(self):
+        inputs = self.launch()
+        card = self.outputs["candidate"] / "Cards/MadLoopParams.dat"
+        card.write_text("new settings")
+        with self.assertRaisesRegex(RuntimeError, "Numerical cards changed"):
+            benchmark.verify_observation_inputs("candidate", self.case, inputs)
+        card.unlink()
+        with patch.object(benchmark, "generated_sources", return_value={"loop.f": "changed"}):
+            with self.assertRaisesRegex(RuntimeError, "Generated sources changed"):
+                benchmark.verify_observation_inputs("candidate", self.case, inputs)
+        (self.directories["candidate"] / "param_card.dat").write_text("late shadow card")
+        with self.assertRaisesRegex(RuntimeError, "Physical parameter card changed"):
+            benchmark.verify_observation_inputs("candidate", self.case, inputs)
+
+    def test_foreign_campaign_records_are_rejected_before_launch(self):
+        for name in ("generation.json", "compilation.json"):
+            path = self.outputs["candidate"] / name
+            original = path.read_text()
+            record = json.loads(original)
+            record["campaign_binding"] = {"id": "another-candidate", "manifest_sha256": "different"}
+            benchmark.dump(path, record)
+            with self.subTest(name=name), patch.object(protocol, "Worker") as child:
+                with self.assertRaisesRegex(RuntimeError, "another campaign"):
+                    self.launch()
+                child.assert_not_called()
+            path.write_text(original)
+
     def test_fixed_precision_modes_do_not_enter_automatic_worker(self):
         for settings in ({"ctmoderun": 4, "ctmodeinit": 1},
                          {"ctmoderun": -1, "ctmodeinit": 4}):
@@ -166,7 +211,11 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
             compilation = json.loads((self.outputs[source] / "compilation.json").read_text())
             checksum = "different" if library_mismatch and source == "candidate" else "same"
             benchmark.dump(report / (source + "-inputs.json"), {
-                "points_sha256": "different" if point_mismatch and source == "candidate" else "same",
+                "points_sha256": "different" if point_mismatch and source == "candidate" else benchmark.digest(self.points),
+                "points_path": str(self.points), "points_metadata_sha256": benchmark.digest(self.points.with_suffix(".json")),
+                "numerical_cards": {}, "param_card_sha256": benchmark.digest(self.outputs[source] / "Cards/param_card.dat"),
+                "resolved_parameter_card": str(self.outputs[source] / "Cards/param_card.dat"),
+                "generation": json.loads((self.outputs[source] / "generation.json").read_text()),
                 "compilation": compilation, "runtime": {"libraries": {"/lib/common.so": checksum}, **self.dependencies}})
             return child, {"mlreductionlib": chain, "ctmoderun": -1}
         return start

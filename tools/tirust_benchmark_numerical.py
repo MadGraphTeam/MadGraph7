@@ -15,6 +15,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", required=True)
     parser.add_argument("--label", required=True)
+    parser.add_argument("--campaign", help="Registered source/native/policy campaign ID")
+    parser.add_argument("--warmup-only", action="store_true",
+                        help="Use the final complete steady warmup stream for correctness; record no timing")
     parser.add_argument("--backends", nargs="+", type=int, default=[1, 6, 7, 8, 9])
     parser.add_argument("--cpu", type=int)
     parser.add_argument("--timeout", type=float, default=3600.)
@@ -23,6 +26,9 @@ def main():
         parser.error(f"Run from {bench.ROOT}")
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.label) or set(args.backends) - {1, 6, 7, 8, 9}:
         parser.error("Invalid label or backend selection")
+    if args.campaign:
+        from tirust_benchmark_campaign import activate_campaign
+        activate_campaign(bench, args.campaign)
     config = bench.load_config()
     case = next((value for value in config["cases"] if value["id"] == args.case), None)
     if case is None:
@@ -35,10 +41,17 @@ def main():
     protocols = [Path(__file__), bench.ROOT / "tools/tirust_benchmark.py",
                  bench.ROOT / "tools/tirust_benchmark_worker.py", bench.ROOT / "tools/tirust_benchmark_worker.f",
                  bench.ROOT / "tools/tirust_benchmark_compiler.py"]
+    if bench.CAMPAIGN_ID is not None:
+        protocols.append(bench.ROOT / "tools/tirust_benchmark_campaign.py")
+        shutil.copy2(bench.REPORT / "manifest.json", report / "campaign-manifest.json")
+    if args.warmup_only:
+        protocols.append(bench.ROOT / "tools/tirust_benchmark_warmup.py")
     for path in protocols:
         shutil.copy2(path, report / path.name)
     shutil.copy2(bench.REPORT / "cases.json", report / "cases.json")
-    specification = {"case": case, "performance_eligible": False,
+    specification = {**bench.campaign_fields(), "case": case, "performance_eligible": False,
+                     "worker_timeout_seconds": args.timeout,
+                     "measurement_phase": "steady-warmup" if args.warmup_only else "post-warmup-observation",
                      "purpose": "native numerical integration check during build preparation",
                      "machine": bench.machine_identity(cpu), "host_load": bench.host_load_snapshot(),
                      "configuration_sha256": bench.digest(report / "cases.json"),
@@ -55,8 +68,22 @@ def main():
                     fcntl.flock(lock, fcntl.LOCK_EX)
                 worker, _ = bench.start_worker(stack, source, case, [backend], config, cpu, run_dir,
                                                timeout=args.timeout)
-                observation = bench.observe(worker, [backend], 1, run_dir / "raw",
-                                            count=config["points_per_case"])
+                if args.warmup_only:
+                    from tirust_benchmark_warmup import parse_warmup
+                    raw = run_dir / "raw"
+                    raw.mkdir(exist_ok=False)
+                    for name in ("warmup.dat", "dimensions.dat"):
+                        shutil.copy2(worker.directory / name, raw / name)
+                    ready = {key: getattr(worker, key) for key in ("points", "ndim", "nso", "nborn", "cold_seconds")}
+                    bench.dump(raw / "ready.json", ready)
+                    observation = parse_warmup(raw, [backend], config["points_per_case"], ready)
+                    bench.dump(raw / "observation.json", observation)
+                else:
+                    observation = bench.observe(worker, [backend], 1, run_dir / "raw",
+                                                count=config["points_per_case"])
+            inputs = json.loads((run_dir / (source + "-inputs.json")).read_text())
+            after = bench.verify_observation_inputs(source, case, inputs)
+            bench.dump(run_dir / "inputs-after.json", after)
             if source == "baseline":
                 reference = observation
             result = {"source": source, "backend": backend, "status": "complete",

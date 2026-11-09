@@ -27,10 +27,18 @@ import time
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-REPORT = ROOT / "docs/benchmarkfolder"
-WORK = ROOT / ".benchmark-work/tirust"
+LEGACY_REPORT = ROOT / "docs/benchmarkfolder"
+LEGACY_WORK = ROOT / ".benchmark-work/tirust"
+REPORT = LEGACY_REPORT
+WORK = LEGACY_WORK
 BASELINE_REVISION = "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"
-BASELINE = WORK / "baseline"
+BASELINE = LEGACY_WORK / "baseline"
+BASELINE_RECORD = LEGACY_WORK / "baseline.json"
+MODEL_ROOT = WORK / "models"
+TIRUST_PREFIX = ROOT / "HEPTools/tirust"
+CAMPAIGN_ID = None
+CAMPAIGN_MANIFEST = None
+CAMPAIGN_MANIFEST_SHA256 = None
 GENERATOR_PATHS = ("madgraph", "aloha", "Template", "bin", "models", "input", "vendor")
 sys.path.insert(0, str(ROOT))
 
@@ -56,6 +64,23 @@ def utc_now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def campaign_binding():
+    if CAMPAIGN_ID is None:
+        return None
+    return {"id": CAMPAIGN_ID, "manifest_sha256": CAMPAIGN_MANIFEST_SHA256}
+
+
+def campaign_fields():
+    binding = campaign_binding()
+    return {"campaign_binding": binding} if binding is not None else {}
+
+
+def campaign_guard(stage, inputs=None):
+    if CAMPAIGN_ID is not None:
+        from tirust_benchmark_campaign import verify_campaign
+        return verify_campaign(sys.modules[__name__], stage=stage, inputs=inputs)
+
+
 def load_config():
     config = json.loads((REPORT / "cases.json").read_text())
     if config["baseline_revision"] != BASELINE_REVISION:
@@ -72,7 +97,7 @@ def environment():
     env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1",
                RAYON_NUM_THREADS="1", XDG_CONFIG_HOME=str(WORK / "config"))
     libraries = [ROOT / "HEPTools/ninja/lib", ROOT / "HEPTools/collier",
-                 ROOT / "HEPTools/ninjars/lib", ROOT / "HEPTools/tirust/lib"]
+                 ROOT / "HEPTools/ninjars/lib", TIRUST_PREFIX / "lib"]
     env["LD_LIBRARY_PATH"] = os.pathsep.join(map(str, libraries)) + (
         os.pathsep + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
     env["MAKEFLAGS"] = "SHELL=" + (shutil.which("bash") or "/bin/bash")
@@ -102,9 +127,9 @@ def tree_files(directory):
             and "__pycache__" not in path.parts and path.suffix not in (".pyc", ".pkl", ".log")}
 
 
-def source_identity(tree):
+def source_identity(tree, persist=True):
     if tree == BASELINE:
-        record = json.loads((WORK / "baseline.json").read_text())
+        record = json.loads(BASELINE_RECORD.read_text())
         # Check frozen tracked source bytes before every generation.
         changed = [name for name, checksum in record["files"].items()
                    if not (tree / name).is_file() or digest(tree / name) != checksum]
@@ -124,15 +149,16 @@ def source_identity(tree):
               "files_sha256": content_digest(files), "files": files,
               "dirty": bool(patch or any(untracked)),
               "dirty_patch_sha256": hashlib.sha256(patch).hexdigest()}
-    identity = content_digest(result)
-    target = REPORT / "inputs/source-identities" / identity
-    dump(target.with_suffix(".json"), result)
-    if patch:
-        target.with_suffix(".patch").write_bytes(patch)
-    for name in filter(None, untracked):
-        if (ROOT / name).is_file():
-            target.mkdir(exist_ok=True)
-            (target / digest(ROOT / name)).write_bytes((ROOT / name).read_bytes())
+    if persist:
+        identity = content_digest(result)
+        target = REPORT / "inputs/source-identities" / identity
+        dump(target.with_suffix(".json"), result)
+        if patch:
+            target.with_suffix(".patch").write_bytes(patch)
+        for name in filter(None, untracked):
+            if (ROOT / name).is_file():
+                target.mkdir(exist_ok=True)
+                (target / digest(ROOT / name)).write_bytes((ROOT / name).read_bytes())
     return result
 
 
@@ -141,9 +167,9 @@ def prepare_baseline():
         source_identity(BASELINE)
         prepare_baseline_dependencies()
         return
-    WORK.mkdir(parents=True, exist_ok=True)
+    BASELINE.parent.mkdir(parents=True, exist_ok=True)
     archive = subprocess.check_output(["git", "archive", "--format=tar", BASELINE_REVISION], cwd=ROOT)
-    stage = WORK / "baseline.stage"
+    stage = BASELINE.parent / "baseline.stage"
     stage.mkdir(exist_ok=False)
     try:
         with tarfile.open(fileobj=io.BytesIO(archive)) as handle:
@@ -153,7 +179,7 @@ def prepare_baseline():
         record = {"revision": BASELINE_REVISION, "archive_sha256": hashlib.sha256(archive).hexdigest(),
                   "created_utc": utc_now(), "files": files,
                   "default_MadLoopParams": (BASELINE / "Template/loop_material/StandAlone/Cards/MadLoopParams.dat").read_text()}
-        dump(WORK / "baseline.json", record)
+        dump(BASELINE_RECORD, record)
         dump(REPORT / "inputs/baseline.json", record)
         prepare_baseline_dependencies()
     except BaseException:
@@ -179,7 +205,7 @@ def prepare_baseline_dependencies():
 def acquire_model(source=None, url=None):
     """Freeze downloaded model bytes; later runs refuse silent model changes."""
     name = "loop_qcd_qed_sm_Gmu"
-    destination = WORK / "models" / name
+    destination = MODEL_ROOT / name
     pin = REPORT / "inputs" / (name + ".json")
     expected = json.loads(pin.read_text()) if pin.exists() else None
     if destination.exists():
@@ -212,7 +238,7 @@ def acquire_model(source=None, url=None):
             archive = response.read()
         archive_hash = hashlib.sha256(archive).hexdigest()
         origin = url
-        stage = WORK / "models/download.stage"
+        stage = MODEL_ROOT / "download.stage"
         stage.mkdir(parents=True, exist_ok=False)
         try:
             with tarfile.open(fileobj=io.BytesIO(archive), mode="r:*") as handle:
@@ -243,6 +269,83 @@ def output_dir(source, case):
     return WORK / "outputs" / source / case["id"]
 
 
+def numerical_objects(root):
+    return {str(path.relative_to(root)): digest(path) for path in sorted(root.rglob("*"))
+            if path.is_file() and path.suffix.lower() in (".o", ".mod", ".a")
+            and "build-history" not in path.parts and "worker-raw" not in path.parts}
+
+
+def reuse_baseline(case):
+    """Copy a frozen predecessor export into private campaign working files.
+
+    The shared baseline source remains immutable. Copied numerical objects are
+    inventoried byte-for-byte; build() must still relink the worker and bind its
+    private archive paths before this campaign can execute it.
+    """
+    if CAMPAIGN_ID is None:
+        raise ValueError("Baseline reuse requires an explicit registered campaign")
+    campaign_guard("reuse-baseline")
+    predecessor = CAMPAIGN_MANIFEST["predecessor"]["id"]
+    parent_work = LEGACY_WORK if predecessor == "legacy" else LEGACY_WORK / "campaigns" / predecessor
+    original = parent_work / "outputs/baseline" / case["id"]
+    target = output_dir("baseline", case)
+    if target.exists():
+        raise RuntimeError("Campaign baseline output already exists; reuse never overwrites it")
+    if any(original.rglob("worker-protocol.fifo")):
+        raise RuntimeError("Predecessor baseline worker is active; wait before copying its artifacts")
+    generation = json.loads((original / "generation.json").read_text())
+    compilation = json.loads((original / "compilation.json").read_text())
+    directories = sorted(original.glob("SubProcesses/P*_*"))
+    if len(directories) != 1:
+        raise RuntimeError("Predecessor baseline does not have one subprocess")
+    if (generation["case"] != case or generation["source"] != "baseline"
+            or generation["source_identity"]["revision"] != BASELINE_REVISION
+            or compilation.get("numerical_build_from_sources") is not True
+            or generated_sources(original) != compilation["sources"]
+            or digest(directories[0] / "check") != compilation["executable_sha256"]):
+        raise RuntimeError("Predecessor baseline artifacts differ from their frozen provenance")
+    dependencies = dependency_inputs(directories[0])
+    if any(compilation.get(name) != dependencies for name in ("link_inputs_before", "link_inputs_after")):
+        raise RuntimeError("Predecessor baseline link dependencies changed")
+    from tirust_benchmark_compiler import capture_effective_flags
+    if not same_compiler_policy(compilation["effective_compiler_flags"],
+                                capture_effective_flags(directories[0], env=environment())):
+        raise RuntimeError("Predecessor baseline compiler policy changed")
+    native_runtime = runtime_identity(directories[0])
+    from tirust_benchmark_relink import prove_object_relink
+    proof_directory = WORK / "reuse-proofs" / case["id"]
+    proof = prove_object_relink(directories[0], compilation["executable_sha256"],
+                               proof_directory, environment())
+    objects = numerical_objects(original)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    stage = target.with_name(target.name + ".reuse-stage")
+    shutil.copytree(original, stage, symlinks=True,
+                    ignore=shutil.ignore_patterns("worker-raw", "build-history", "*.fifo",
+                        "timing.dat", "values.dat", "timed_status.dat", "dimensions.dat", "warmup.dat"))
+    if (generated_sources(stage) != compilation["sources"] or numerical_objects(stage) != objects
+            or digest(stage / directories[0].relative_to(original) / "check") != compilation["executable_sha256"]):
+        raise RuntimeError("Copied baseline artifacts changed; incomplete staging retained")
+    # No source or object mutation may race the copy.
+    if generated_sources(original) != compilation["sources"] or numerical_objects(original) != objects:
+        raise RuntimeError("Predecessor baseline changed while copying; incomplete staging retained")
+    current_runtime = runtime_identity(directories[0])
+    if any(current_runtime[key] != native_runtime[key] for key in ("libraries", "archives", "metadata")):
+        raise RuntimeError("Baseline runtime changed while copying; incomplete staging retained")
+    generation = {**generation, **campaign_fields(), "reused_from": {
+        "directory": str(original), "generation_sha256": digest(original / "generation.json"),
+        "compilation_sha256": digest(original / "compilation.json"), "numerical_objects": objects,
+        "runtime": native_runtime, "object_relink_proof": proof, "worker_only_relink_required": True}}
+    dump(stage / "generation.json", generation)
+    stage.rename(target)
+    evidence = REPORT / "inputs/baseline" / case["id"]
+    dump(evidence / "generation.json", generation)
+    shutil.copy2(target / "Cards/param_card.dat", evidence / "param_card.dat")
+    for name in ("proof.json", "make.log", "link.log"):
+        shutil.copy2(proof_directory / name, evidence / ("object-relink-" + name))
+    shutil.copy2(ROOT / "tools/tirust_benchmark_relink.py", evidence / "tirust_benchmark_relink.py")
+    return generation
+
+
 def subprocess_dir(source, case):
     directories = sorted(output_dir(source, case).glob("SubProcesses/P*_*"))
     if len(directories) != 1:
@@ -257,7 +360,7 @@ def cli_lines(tree, source, case, output):
              f"set complex_mass_scheme {bool(case.get('complex_mass_scheme', False))}"]
     for name, suffix in (("ninja", "ninja/lib"), ("collier", "collier"),
                          ("ninjars", "ninjars/lib"), ("tirust", "tirust/lib")):
-        path = ROOT / "HEPTools" / suffix
+        path = TIRUST_PREFIX / "lib" if name == "tirust" else ROOT / "HEPTools" / suffix
         if path.is_dir() and (source == "candidate" or name != "tirust"):
             lines.append(f"set {name} {path}")
     # The frozen CLI reserves noborn for integration outputs; sqrvirt exposes
@@ -269,10 +372,14 @@ def cli_lines(tree, source, case, output):
 
 
 def generate(source, case):
+    campaign_guard("generate")
     tree = BASELINE if source == "baseline" else ROOT
     output = output_dir(source, case)
     if (output / "generation.json").exists():
-        return json.loads((output / "generation.json").read_text())
+        record = json.loads((output / "generation.json").read_text())
+        if record.get("campaign_binding") != campaign_binding():
+            raise RuntimeError("Generation belongs to another campaign")
+        return record
     if output.exists():
         raise RuntimeError(f"Incomplete generation exists; retain and move aside before retry: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -296,7 +403,7 @@ def generate(source, case):
     param.write(str(param_path))
     from madgraph.various.banner import MadLoopParam
     default_chain = MadLoopParam(str(output / "Cards/MadLoopParams.dat"))["MLReductionLib"]
-    record = {"case": case, "source": source, "seconds": seconds, "source_identity": identity,
+    record = {**campaign_fields(), "case": case, "source": source, "seconds": seconds, "source_identity": identity,
               "created_utc": utc_now(), "command_sha256": digest(command_file),
               "default_chain": str(default_chain), "parameter_card_sha256": digest(param_path)}
     dump(output / "generation.json", record)
@@ -342,9 +449,12 @@ def same_compiler_policy(left, right):
 
 
 def build(source, case, jobs=4):
+    campaign_guard("build")
     from tirust_benchmark_compiler import capture_effective_flags
     output = output_dir(source, case)
     directory = subprocess_dir(source, case)
+    generation = json.loads((output / "generation.json").read_text())
+    reused = generation.get("reused_from")
     compilation_path = output / "compilation.json"
     template_path = ROOT / "tools/tirust_benchmark_worker.f"
     previous = None
@@ -360,6 +470,7 @@ def build(source, case, jobs=4):
                 and previous.get("link_inputs_after") == current_dependencies
                 and same_compiler_policy(previous.get("effective_compiler_flags"), current_flags)
                 and previous.get("numerical_build_from_sources") is True
+                and previous.get("campaign_binding") == campaign_binding()
                 and previous.get("worker_template_sha256") == digest(template_path)):
             verify_worker_template(previous, template_path)
             return previous["masses"]
@@ -419,6 +530,13 @@ def build(source, case, jobs=4):
     link_after = dependency_inputs(directory)
     if link_before != link_after:
         raise RuntimeError("Static dependencies or provenance changed during link")
+    if reused and not full_rebuild:
+        expected_objects = {key: value for key, value in reused["numerical_objects"].items()
+                            if Path(key).name != "check_sa.o"}
+        actual_objects = {key: value for key, value in numerical_objects(output).items()
+                          if Path(key).name != "check_sa.o"}
+        if expected_objects != actual_objects:
+            raise RuntimeError("Proven baseline numerical objects changed during worker relink")
     flags_after = capture_effective_flags(directory, env=environment())
     dump(attempt / "compiler-after.json", flags_after)
     if not same_compiler_policy(flags_before, flags_after):
@@ -427,7 +545,7 @@ def build(source, case, jobs=4):
     masses = [float(x) for x in (directory / "masses.dat").read_text().split()]
     if len(masses) != case["nfinal"] + 2:
         raise RuntimeError("Driver returned wrong external mass count")
-    record = {"seconds": seconds, "masses": masses, "driver_sha256": digest(driver_path),
+    record = {**campaign_fields(), "seconds": seconds, "masses": masses, "driver_sha256": digest(driver_path),
               "worker_template_sha256": digest(template_path), "worker_render_parameters": render_parameters,
               "executable_sha256": digest(directory / "check"), "sources": before,
               "settings": {str(p.relative_to(output)): p.read_text() for p in (
@@ -643,11 +761,53 @@ def validate_worker_modes(settings):
         raise ValueError("The benchmark worker requires CTModeInit=1 for its recorded DP initialization policy")
 
 
+def numerical_card_inputs(output):
+    paths = [output / "Cards/MadLoopParams.dat", *(output / "SubProcesses").rglob("MadLoopParams.dat")]
+    return {str(path.relative_to(output)): digest(path) for path in paths if path.is_file()}
+
+
+def resolved_parameter_card(directory):
+    candidates = [directory / "param_card.dat"] + [
+        directory.joinpath(*([".."] * level), "Cards/param_card.dat") for level in range(6)]
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def verify_observation_inputs(source, case, inputs):
+    """Reject a completed observation if any bound numerical input changed."""
+    output, directory = output_dir(source, case), subprocess_dir(source, case)
+    current = runtime_identity(directory)
+    if any(current[key] != inputs["runtime"][key] for key in ("libraries", "archives", "metadata")):
+        raise RuntimeError("Runtime dependencies changed during measurement")
+    if digest(directory / "check") != inputs["compilation"]["executable_sha256"]:
+        raise RuntimeError("Executable changed during measurement")
+    if generated_sources(output) != inputs["compilation"]["sources"]:
+        raise RuntimeError("Generated sources changed during measurement")
+    actual_card = resolved_parameter_card(directory)
+    if (actual_card is None or digest(actual_card) != inputs["param_card_sha256"]
+            or digest(output / "Cards/param_card.dat") != inputs["param_card_sha256"]
+            or digest(inputs["resolved_parameter_card"]) != inputs["param_card_sha256"]):
+        raise RuntimeError("Physical parameter card changed during measurement")
+    if numerical_card_inputs(output) != inputs["numerical_cards"]:
+        raise RuntimeError("Numerical cards changed during measurement")
+    if (digest(inputs["points_path"]) != inputs["points_sha256"]
+            or digest(Path(inputs["points_path"]).with_suffix(".json")) != inputs["points_metadata_sha256"]):
+        raise RuntimeError("Frozen points changed during measurement")
+    for name, expected in (("generation", inputs["generation"]), ("compilation", inputs["compilation"])):
+        if json.loads((output / (name + ".json")).read_text()) != expected:
+            raise RuntimeError("Generated build provenance changed during measurement")
+    campaign_guard("observation-after", inputs=inputs)
+    return {"runtime": current, "executable_sha256": digest(directory / "check"),
+            "points_sha256": digest(inputs["points_path"]), "numerical_cards": inputs["numerical_cards"]}
+
+
 def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600., points_path=None):
+    campaign_guard("worker-before")
     from tirust_benchmark_worker import Worker
     from tirust_benchmark_compiler import capture_effective_flags
     directory = subprocess_dir(source, case)
     compilation = json.loads((output_dir(source, case) / "compilation.json").read_text())
+    if compilation.get("campaign_binding") != campaign_binding():
+        raise RuntimeError("Compilation belongs to another campaign")
     if digest(directory / "check") != compilation["executable_sha256"]:
         raise RuntimeError("Executable no longer matches compilation")
     if generated_sources(output_dir(source, case)) != compilation["sources"]:
@@ -663,6 +823,8 @@ def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600.,
                                 compilation.get("effective_compiler_flags")):
         raise RuntimeError("Compiler flags no longer match compilation")
     generation = json.loads((output_dir(source, case) / "generation.json").read_text())
+    if generation.get("campaign_binding") != campaign_binding():
+        raise RuntimeError("Generation belongs to another campaign")
     if generation["case"] != case:
         raise RuntimeError("Generated process differs from the requested case")
     parameter_card = output_dir(source, case) / "Cards/param_card.dat"
@@ -672,9 +834,7 @@ def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600.,
     # SETPARA's first LHA_open_file call tries a local card before Cards/ in
     # this directory and five parents. A stale local card must not shadow the
     # pinned canonical card recorded below.
-    candidates = [directory / "param_card.dat"] + [
-        directory.joinpath(*([".."] * level), "Cards/param_card.dat") for level in range(6)]
-    actual_card = next((path for path in candidates if path.is_file()), None)
+    actual_card = resolved_parameter_card(directory)
     if actual_card is None or digest(actual_card) != parameter_hash:
         raise RuntimeError("Fortran resolves a parameter card different from the frozen card")
     settings = configure(source, case, chain, config)
@@ -688,10 +848,14 @@ def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600.,
         raise RuntimeError("Saved point masses differ from the compiled process/card")
     if metadata["inputs"]["count"] != config["points_per_case"]:
         raise RuntimeError("Saved point count differs from the campaign configuration")
-    dump(report / (source + "-inputs.json"), {"settings": settings, "points_sha256": digest(points),
+    inputs = {**campaign_fields(), "settings": settings, "points_sha256": digest(points),
+         "points_path": str(points.resolve()), "points_metadata_sha256": digest(points.with_suffix(".json")),
+         "numerical_cards": numerical_card_inputs(output_dir(source, case)),
          "param_card_sha256": parameter_hash, "resolved_parameter_card": str(actual_card.resolve()),
          "runtime": runtime_identity(directory), "compilation": compilation,
-         "generation": generation})
+         "generation": generation}
+    campaign_guard("worker", inputs=inputs)
+    dump(report / (source + "-inputs.json"), inputs)
     command = ["taskset", "-c", str(cpu), "./check", str(points)]
     try:
         worker = Worker(command, directory, report / (source + "-output.txt"), env=environment(), timeout=timeout)
@@ -725,6 +889,7 @@ def observe(worker, chain, loops, destination, count=100):
 
 
 def pair(case, baseline_chain, candidate_chain, config, cpu, label, attempt_name=None):
+    campaign_guard("pair-before")
     from tirust_benchmark_worker import paired_statistics
     from tirust_benchmark_compiler import validate_compiler_equality
     if attempt_name is not None and not re.fullmatch(re.escape(label) + r"-attempt-(?:[2-9]|[1-9][0-9]+)", attempt_name):
@@ -733,11 +898,15 @@ def pair(case, baseline_chain, candidate_chain, config, cpu, label, attempt_name
     report.mkdir(parents=True, exist_ok=False)
     protocol_sources = (Path(__file__), ROOT / "tools/tirust_benchmark_worker.py",
                         ROOT / "tools/tirust_benchmark_worker.f", ROOT / "tools/tirust_benchmark_compiler.py")
+    if CAMPAIGN_ID is not None:
+        protocol_sources += (ROOT / "tools/tirust_benchmark_campaign.py",)
     retained_protocol = report / "protocol-sources"
     retained_protocol.mkdir()
     for path in protocol_sources:
         shutil.copy2(path, retained_protocol / path.name)
-    specification = {"created_utc": utc_now(), "case": case, "cpu": cpu,
+    if CAMPAIGN_ID is not None:
+        shutil.copy2(REPORT / "manifest.json", report / "campaign-manifest.json")
+    specification = {**campaign_fields(), "created_utc": utc_now(), "case": case, "cpu": cpu,
                      "logical_label": label, "attempt_directory": report.name,
                      "machine": machine_identity(cpu),
                      "host_load_before": host_load_snapshot(),
@@ -834,23 +1003,18 @@ def pair(case, baseline_chain, candidate_chain, config, cpu, label, attempt_name
             enough_time = all(obs["seconds"] >= .95 * config["minimum_batch_seconds"]
                               for series in observations.values() for obs in series)
             numerical_pass = all(value["passed"] for value in all_parity)
-            summary = {"status": "complete", "label": label, "timings": timings, "statistics": stats,
+            summary = {**campaign_fields(), "status": "complete", "label": label, "timings": timings, "statistics": stats,
                        "parity": all_parity, "numerical_pass": numerical_pass,
                        "minimum_batch_duration_met": enough_time,
                        "acceptance_eligible": enough_time and numerical_pass,
                        "passed": enough_time and numerical_pass and stats["passed"],
                        "host_load": host_load,
                        "raw_observations": observations}
-            for source in workers:
-                directory = subprocess_dir(source, case)
-                current_runtime = runtime_identity(directory)
-                if any(current_runtime[key] != inputs[source]["runtime"][key]
-                       for key in ("libraries", "archives", "metadata")):
-                    raise RuntimeError("Runtime dependencies changed during measurement")
-                if digest(directory / "check") != inputs[source]["compilation"]["executable_sha256"]:
-                    raise RuntimeError("Executable changed during measurement")
         # A failing STOP/BYE exchange is a failed measurement. Publish only
         # after ExitStack has successfully closed every persistent worker.
+        for source in workers:
+            summary.setdefault("inputs_after", {})[source] = verify_observation_inputs(source, case, inputs[source])
+        campaign_guard("pair-after")
         dump(report / "summary.json", summary)
         return summary
     except BaseException as error:
@@ -937,6 +1101,10 @@ def validate_retained_result(directory, label, case, config):
         raise ValueError("Run has a retained failure, including possible worker shutdown failure")
     result = json.loads((directory / "summary.json").read_text())
     spec = json.loads((directory / "specification.json").read_text())
+    if any(record.get("campaign_binding") != campaign_binding() for record in (result, spec)):
+        raise ValueError("Run belongs to another campaign manifest")
+    if CAMPAIGN_ID is not None and digest(directory / "campaign-manifest.json") != CAMPAIGN_MANIFEST_SHA256:
+        raise ValueError("Retained campaign manifest changed")
     if spec["case"] != case or spec["config_sha256"] != digest(REPORT / "cases.json"):
         raise ValueError("Run case/configuration differs from this campaign")
     if result.get("status") != "complete" or result["label"] != label:
@@ -946,6 +1114,8 @@ def validate_retained_result(directory, label, case, config):
             raise ValueError("Retained measurement protocol source changed")
     expected_protocol = {"tirust_benchmark.py", "tirust_benchmark_worker.py", "tirust_benchmark_worker.f",
                          "tirust_benchmark_compiler.py"}
+    if CAMPAIGN_ID is not None:
+        expected_protocol.add("tirust_benchmark_campaign.py")
     if set(spec["protocol_sources"]) != expected_protocol:
         raise ValueError("Incomplete measurement protocol source inventory")
     inputs = {source: json.loads((directory / (source + "-inputs.json")).read_text())
@@ -965,11 +1135,23 @@ def validate_retained_result(directory, label, case, config):
     actual_observations = {}
     for source in inputs:
         value = inputs[source]
+        if any(record.get("campaign_binding") != campaign_binding()
+               for record in (value, value["generation"], value["compilation"])):
+            raise ValueError("Run input belongs to another campaign manifest")
+        campaign_guard("validate-retained", inputs=value)
         generation = value["generation"]
         if generation["case"] != case or generation["source"] != source:
             raise ValueError("Generation record belongs to a different source/process")
         if value["points_sha256"] != digest(point_path):
             raise ValueError("Measurement used a different point stream")
+        if "numerical_cards" in value:
+            after = result.get("inputs_after", {}).get(source)
+            if (not after or any(after.get("runtime", {}).get(key) != value["runtime"][key]
+                                 for key in ("libraries", "archives", "metadata"))
+                    or after.get("executable_sha256") != value["compilation"]["executable_sha256"]
+                    or after.get("points_sha256") != value["points_sha256"]
+                    or after.get("numerical_cards") != value["numerical_cards"]):
+                raise ValueError("Post-measurement numerical input bindings are missing or differ")
         if value["param_card_sha256"] != generation["parameter_card_sha256"]:
             raise ValueError("Physical card differs from the frozen generated card")
         if source == "baseline" and generation["source_identity"]["revision"] != BASELINE_REVISION:
@@ -1040,6 +1222,7 @@ def validate_retained_result(directory, label, case, config):
 
 def summarize(config):
     """Report observed evidence only; pending/failure never becomes zero time."""
+    campaign_guard("summarize")
     cases = []
     candidate_revisions = set()
     candidate_source_hashes = set()
@@ -1171,7 +1354,7 @@ def summarize(config):
     qualification = json.loads(qualification_path.read_text()) if qualification_path.exists() else []
     if not isinstance(qualification, list):
         raise ValueError("qualification.json must contain an array of observed qualification records")
-    summary = {"schema": "madloop-tirust-summary-v1", "created_utc": utc_now(),
+    summary = {**campaign_fields(), "schema": "madloop-tirust-summary-v1", "created_utc": utc_now(),
         "field_definitions": {"native_dp_only": "Every accepted amplitude result used the first selected backend in DP; does not identify internal retry or higher-precision attempts",
                               "actual_backend_precision_counts": "Final accepted backend and precision per amplitude evaluation; internal reducer attempts are not counted"},
         "candidate_revision": candidate_revision, "candidate_revisions": sorted(candidate_revisions),
@@ -1186,13 +1369,22 @@ def summarize(config):
                                        if len(candidate_source_hashes) > 1 else []),
                  "pending_cases": [case["id"] for case in main if case["status"] == "pending"],
                  "failed_cases": [case["id"] for case in main if case["status"] == "failed"]}}
+    if CAMPAIGN_ID is not None:
+        from tirust_benchmark_campaign import campaign_summary_fields
+        summary.update(campaign_summary_fields(sys.modules[__name__]))
     dump(REPORT / "summary.json", summary)
     return summary
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("init", "model", "generate", "build", "pair", "campaign", "summarize"))
+    parser.add_argument("command", choices=("init", "model", "generate", "build", "pair", "campaign", "summarize",
+                                             "register-campaign", "reuse-baseline"))
+    parser.add_argument("--campaign", "--campaign-id", dest="campaign_id",
+                        help="Explicit append-only source/native/policy campaign namespace")
+    parser.add_argument("--tirust-prefix", type=Path, help="Pinned installation prefix for register-campaign")
+    parser.add_argument("--predecessor", default="legacy", help="Predecessor campaign ID, or legacy")
+    parser.add_argument("--reason", help="Pre-registered concrete optimization for a new campaign")
     parser.add_argument("--source", choices=("baseline", "candidate", "both"), default="both")
     parser.add_argument("--cases", nargs="*", default=[])
     parser.add_argument("--model-source", type=Path)
@@ -1207,6 +1399,19 @@ def main():
     args = parser.parse_args()
     if Path.cwd() != ROOT:
         parser.error(f"Run from {ROOT}")
+    if args.command == "register-campaign":
+        if not args.campaign_id or not args.tirust_prefix or not args.reason:
+            parser.error("register-campaign requires --campaign, --tirust-prefix and --reason")
+        from tirust_benchmark_campaign import register_campaign
+        manifest = register_campaign(sys.modules[__name__], args.campaign_id,
+                                     args.tirust_prefix, predecessor=args.predecessor, reason=args.reason)
+        print(json.dumps({"id": manifest["id"], "manifest": str(LEGACY_REPORT / "campaigns" / manifest["id"] / "manifest.json")}))
+        return
+    if args.tirust_prefix is not None or args.reason is not None or args.predecessor != "legacy":
+        parser.error("Installation prefix, predecessor and reason are immutable registration arguments")
+    if args.campaign_id:
+        from tirust_benchmark_campaign import activate_campaign
+        activate_campaign(sys.modules[__name__], args.campaign_id)
     if args.attempt < 1 or (args.attempt > 1 and (args.command != "pair" or not args.retry_reason)):
         parser.error("Retries require pair, --attempt >=2 and --retry-reason")
     if args.cpu is None:
@@ -1221,6 +1426,11 @@ def main():
     if unknown:
         parser.error(f"Unknown cases: {sorted(unknown)}")
     cases = [case for case in config["cases"] if not args.cases or case["id"] in args.cases]
+    if args.command == "reuse-baseline":
+        for case in cases:
+            reuse_baseline(case)
+            print(f"reuse-baseline: {case['id']}", flush=True)
+        return
     if args.command == "init":
         prepare_baseline()
         print(json.dumps({"baseline": str(BASELINE), "revision": BASELINE_REVISION}))
