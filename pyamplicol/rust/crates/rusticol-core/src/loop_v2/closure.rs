@@ -518,7 +518,7 @@ mod tests {
             currents: Vec::new(),
             row_traces: Vec::new(),
             support: None,
-            walk: None,
+            walk: std::sync::OnceLock::new(),
         };
         let columns = 5;
         let support = Arc::new(Support {

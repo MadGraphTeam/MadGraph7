@@ -124,18 +124,11 @@ pub fn run_family_on<T: Carrier, const L: usize>(
         .collect();
     // A split part's row links, unpacked (`plan::PackedLinks`).
     let mut links = Vec::new();
-    // The walk data derived at load (`plan::Walk`): the rows each fused
-    // step writes (and its consumer reads; only those are zeroed, a
-    // row-pruned copy writes the kept rows only) and the rows each trace
-    // step closes.
-    let derived;
-    let walk: &Walk = match &family.walk {
-        Some(walk) => walk,
-        None => {
-            derived = plan.walk_of(family);
-            &derived
-        }
-    };
+    // The family's walk data (`plan::Walk`, derived by its first walk):
+    // the rows each fused step writes (and its consumer reads; only those
+    // are zeroed, a row-pruned copy writes the kept rows only) and the rows
+    // each trace step closes.
+    let walk: &Walk = family.walk.get_or_init(|| plan.walk_of(family));
     let mut closures = 0;
     for (s, step) in family.steps.iter().enumerate() {
         let traced = walk.traces[s].as_ref();
@@ -313,7 +306,7 @@ fn key_vector<T: Carrier, const L: usize>(
 /// are the row closure's rows (dressed rows) or the object columns (seeded
 /// plans, as `trace_into`); a link into another row is not formed (no
 /// closure reads it), nor is a row no link reaches closed (it would add
-/// exact zeros). The row and link order are derived at load
+/// exact zeros). The row and link order are derived once per family
 /// ([`DiagonalLinks`]).
 #[allow(clippy::too_many_arguments)]
 fn close_diagonal<T: Carrier, const L: usize>(

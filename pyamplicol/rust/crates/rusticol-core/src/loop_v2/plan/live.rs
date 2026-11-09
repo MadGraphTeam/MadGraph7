@@ -166,9 +166,9 @@ impl LoopProgramV4 {
 /// kept whenever it drops a link, so the call dresses, closes, scatters and
 /// reduces exactly the restriction of its kept rows (a copy is a subset of
 /// its template, the memory a call adds); a family whose every link is
-/// reached runs its template. A kept copy gets its walk data (`plan::Walk`:
-/// written rows, closed trace rows) when it is formed, as a loaded family
-/// does at load. A family left without a step is never
+/// reached runs its template. A copy derives its walk data (`plan::Walk`:
+/// written rows, closed trace rows) on its first walk, as a loaded family
+/// does. A family left without a step is never
 /// dressed. In a seeded plan, if the kept copies together would hold more
 /// heap than the dressed families themselves (their own lists, steps,
 /// edges, fused links, split groups and parts, and the part lists they
@@ -417,7 +417,6 @@ impl LoopProgramV4 {
                 };
                 if copy.steps.is_empty() || kept {
                     let bytes = own_bytes(&copy) + steps_bytes(&copy) + lists;
-                    copy.walk = Some(self.walk_of(&copy));
                     (Some(copy), links, bytes)
                 } else {
                     (None, whole, 0)
@@ -731,7 +730,7 @@ fn prune_family(
         currents: currents.into_iter().collect(),
         row_traces,
         support: None,
-        walk: None,
+        walk: std::sync::OnceLock::new(),
     };
     (family, lists)
 }

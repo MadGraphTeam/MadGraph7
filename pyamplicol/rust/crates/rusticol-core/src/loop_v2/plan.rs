@@ -733,15 +733,15 @@ pub struct Family {
     /// close into ([`Support`], derived at load and for every row-pruned
     /// copy, never stored); `None`: every column (seeded plans).
     pub support: Option<Arc<Support>>,
-    /// What a walk of the family reads besides its steps ([`Walk`],
-    /// derived at load and for every row-pruned copy, never stored);
-    /// `None`: derived by the walk.
-    pub walk: Option<Arc<Walk>>,
+    /// What a walk of the family reads besides its steps ([`Walk`]):
+    /// derived from the plan's data by the family's first walk and kept
+    /// (never stored; outside the loader's derivations and their bound).
+    pub walk: std::sync::OnceLock<Walk>,
 }
 
 /// What a family walk reads besides its steps (lit-dress: derived from the
-/// plan's data at load and for every row-pruned copy, never stored, so no
-/// walk recomputes it): per step the rows its output zeroes
+/// plan's data once per family or row-pruned copy, by its first walk, so no
+/// later walk recomputes it): per step the rows its output zeroes
 /// ([`super::dress::written_rows`]) and per trace step the rows it closes
 /// ([`TraceRows`]).
 #[derive(Clone, Debug, Default)]
@@ -1150,17 +1150,9 @@ impl LoopProgramV4 {
         }
     }
 
-    /// Derive every family's walk data (at load, after the gathers).
-    fn set_walks(&mut self) {
-        let walks: Vec<_> = self.families.iter().map(|f| self.walk_of(f)).collect();
-        for (family, walk) in self.families.iter_mut().zip(walks) {
-            family.walk = Some(walk);
-        }
-    }
-
     /// The walk data of `family` ([`Walk`]): its steps' written rows and
     /// its trace steps' closed rows, from the plan's data only.
-    pub fn walk_of(&self, family: &Family) -> Arc<Walk> {
+    pub fn walk_of(&self, family: &Family) -> Walk {
         let columns = self.object_columns();
         let index = |value: usize| u32::try_from(value).expect("trace links exceed u32");
         let traces = family
@@ -1266,10 +1258,10 @@ impl LoopProgramV4 {
                 Some(TraceRows { closed, diagonal })
             })
             .collect();
-        Arc::new(Walk {
+        Walk {
             written: super::dress::written_rows(family, columns),
             traces,
-        })
+        }
     }
 
     /// The diagonal schedule `id` of a [`DiagonalLinks`].
@@ -2309,7 +2301,6 @@ impl LoopProgramV4 {
         program.prune_dead_rows(&mut tables.links);
         program.set_supports();
         program.gathers = Gathers::build(&program);
-        program.set_walks();
         Ok(program)
     }
 
@@ -2498,7 +2489,7 @@ impl LoopProgramV4 {
             currents: currents.into_iter().collect(),
             row_traces,
             support: None,
-            walk: None,
+            walk: std::sync::OnceLock::new(),
         })
     }
 
