@@ -58,7 +58,10 @@ public:
         momentum_fraction_in, ///< Momentum fraction of an incoming parton.
         scale_in,             ///< Energy scale, e.g. the factorization scale.
         pdg_id_in,            ///< PDG id of a single parton.
-        beam_index_in         ///< Index of the beam (0 or 1).
+        beam_index_in,        ///< Index of the beam (0 or 1).
+        random_flavor_in,     ///< Random number for the flavour draw.
+        /// x f(x, mu_F) of both incoming legs for the PDG ids -6..6 (6: gluon).
+        parton_densities_in
     };
 
     /// A quantity the matrix element can be asked to produce.
@@ -76,7 +79,8 @@ public:
         bias_out,           ///< Custom event bias.
         /// Ratio of the matrix element to a reference matrix element, for a
         /// @ref WeightingStep.
-        matrix_element_ratio_out
+        matrix_element_ratio_out,
+        flavor_index_out ///< Selected flavour, -1 if unchanged.
     };
 
     /**
@@ -155,6 +159,11 @@ public:
     const std::vector<MatrixElementOutput>& outputs() const { return _outputs; }
     /// Whether the `random_*` inputs are drawn internally.
     bool sample_random_inputs() const { return _sample_random_inputs; }
+    /// Whether the input is one of the `random_*` inputs.
+    static bool is_random_input(MatrixElementInput input) {
+        return input == random_color_in || input == random_helicity_in ||
+            input == random_diagram_in || input == random_flavor_in;
+    }
     /// The fixed channel passed as `channel_in`, or -1 if it is an input.
     me_int_t channel() const { return _channel; }
     /// The inputs that must be supplied by the caller (excludes the `random_*`

@@ -586,6 +586,8 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"scale", UMAMI_IN_SCALE},
              {"pdg_id", UMAMI_IN_PDG_ID},
              {"beam_index", UMAMI_IN_BEAM_INDEX},
+             {"random_flavor", UMAMI_IN_RANDOM_FLAVOR},
+             {"parton_densities", UMAMI_IN_PARTON_DENSITIES},
          }) {
         umami_input_keys[name] = key;
     }
@@ -601,6 +603,7 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"pdf", UMAMI_OUT_PDF},
              {"bias", UMAMI_OUT_BIAS},
              {"matrix_element_ratio", UMAMI_OUT_MATRIX_ELEMENT_RATIO},
+             {"flavor_index", UMAMI_OUT_FLAVOR_INDEX},
          }) {
         umami_output_keys[name] = key;
     }
@@ -1639,6 +1642,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"scale_in", MatrixElement::scale_in},
             {"pdg_id_in", MatrixElement::pdg_id_in},
             {"beam_index_in", MatrixElement::beam_index_in},
+            {"random_flavor_in", MatrixElement::random_flavor_in},
+            {"parton_densities_in", MatrixElement::parton_densities_in},
         }
     );
     add_enum<MatrixElement::MatrixElementOutput>(
@@ -1657,6 +1662,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"pdf_out", MatrixElement::pdf_out},
             {"bias_out", MatrixElement::bias_out},
             {"matrix_element_ratio_out", MatrixElement::matrix_element_ratio_out},
+            {"flavor_index_out", MatrixElement::flavor_index_out},
         }
     );
     matrix_element
