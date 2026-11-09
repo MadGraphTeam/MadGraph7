@@ -316,13 +316,17 @@ def _residue(value: Fraction) -> int:
     return value.numerator % PRIME * pow(denominator, PRIME - 2, PRIME) % PRIME
 
 
-def random_inputs(executor: Any, rng: random.Random, lcm: Mapping[Any, int]) -> dict:
+def random_inputs(
+    executor: Any, rng: random.Random, lcm: Mapping[Any, int], values: Any = None
+) -> dict:
     """The batch of one random point of the exact test (``NativeExecutor
-    ._inputs``' layout, values as residues)."""
+    ._inputs``' layout, values as residues). ``values`` is the class of the
+    point's base values (``_Values``, the filter's, by default; the fold's
+    test takes every base free, ``fold._FreeValues``)."""
 
     exported = executor.exported
     legs = len(executor.slice.blocks.process.legs)
-    values = _Values(rng, lcm)
+    values = (_Values if values is None else values)(rng, lcm)
 
     def pair() -> list[str]:
         return [str(values.draw()), str(values.draw())]

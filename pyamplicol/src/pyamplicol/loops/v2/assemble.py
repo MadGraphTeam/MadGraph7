@@ -2129,6 +2129,11 @@ class LoopSlice:
     # (``_frame_dressed_rows``, ``plan_export.dressed_frames``: seconds,
     # modelled dressing work before and after, families re-framed).
     dressed_frames: Mapping[str, Any] | None = None
+    # Loop-induced: the F1 fold of route R2's chains (M-LIT lit-fold,
+    # ``fold.fold_slice``: certified proportional chains dressed once, exact
+    # zero groups dropped), read by ``plan_export.export_plan``; None keeps
+    # every chain (byte-identical plans).
+    fold: Any = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property

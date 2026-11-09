@@ -609,6 +609,10 @@ class _Exporter:
     dressed: bool = False
     # Seed combination -> its amplitude vector (``_vector``).
     vectors: dict[Any, tuple] = field(default_factory=dict)
+    # The class tries of folded dressed-row families (``fold.FoldedDressing``
+    # or a chain-resolved probe, ``fold.ProbeDressing``), else None: every
+    # family's class tries are its amplitude-vector groups.
+    dressing: Any = None
 
     # -- kernels ------------------------------------------------------------
 
@@ -974,13 +978,18 @@ class _Exporter:
             )
             return self._step(steps, edges, out_mask, shift, accumulator)
 
-        def leaf(seed: int | None):
+        def leaf(seed: int | None, weights: Mapping[Any, Fraction] | None = None):
             def make(skeleton, contents) -> _Object:
                 dimension = self.kinematics.shape(contents[0]).loop_in
+                weight = (
+                    slice_.weights(skeleton, contents)
+                    if weights is None
+                    else weights[skeleton]
+                )
                 leaves.append(
                     {
                         "seed": self.seed(skeleton, contents) if seed is None else seed,
-                        "weight": _fraction_text(slice_.weights(skeleton, contents)),
+                        "weight": _fraction_text(weight),
                     }
                 )
                 rows = self.rows if seed is None else ((),)
@@ -988,30 +997,55 @@ class _Exporter:
 
             return make
 
-        if self.dressed:
+        folded = (
+            None
+            if self.dressing is None or not self.dressed
+            else self.dressing.tries(key)
+        )
+        if folded is not None:
+            # Folded class tries (``fold``): per trie its seed key and its
+            # chains with their exact leaf weights.
+            tries = []
+            for seed_key, chains in folded:
+                seed = self.seeds.setdefault(seed_key, len(self.seeds))
+                group = [(skeleton, ring) for skeleton, ring, _weight in chains]
+                weights = {skeleton: weight for skeleton, _ring, weight in chains}
+                tries.append(
+                    (seed, build_trie(schedule.family, trie.frame, group), weights)
+                )
+        elif self.dressed:
             tries = []
             for group in vector_groups(
                 trie.leaves, view.content, slice_.class_of, self._vector
             ):
                 skeleton, ring = group[0]
                 seed = self.seed(skeleton, [view.content(s.label) for s in ring])
-                tries.append((seed, build_trie(schedule.family, trie.frame, group)))
+                tries.append(
+                    (seed, build_trie(schedule.family, trie.frame, group), None)
+                )
         else:
-            tries = [(None, trie)]
-        for seed, part in tries:
-            # A class trie's rings are the family's: within its rank.
+            tries = [(None, trie, None)]
+        # A class trie's rings are the family's: within its rank. Folded
+        # class tries keep a subset of the family's chains: the largest of
+        # their own ranks.
+        rank = (
+            trie.rank
+            if folded is None
+            else max((part.rank for _seed, part, _weights in tries), default=0)
+        )
+        for seed, part, weights in tries:
             walk_trie(
                 part,
                 sequence,
-                trie.rank,
+                rank,
                 view.content,
                 self.kinematics.shape,
-                leaf(seed),
+                leaf(seed, weights),
                 step,
             )
         return {
             "sequence": [[mask, self._mass(mass)] for mask, mass in sequence],
-            "rank": family_rank(trie.rank, steps),
+            "rank": family_rank(rank, steps),
             "orders": [
                 self.orders.setdefault(order, len(self.orders))
                 for order in accumulators
@@ -1536,6 +1570,7 @@ def export_plan(
     keep_kets: bool = False,
     column_sets: Mapping[str, Sequence[Any]] | None = None,
     route: Literal["R1", "R2"] | None = None,
+    dressing: Any = None,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
@@ -1565,6 +1600,15 @@ def export_plan(
     schedule B only and so refuses ``forward`` and ``merged``; or ``"R1"``,
     its oracle (one-hot (row, t) columns on the seeded rows). A
     Born-interfered slice refuses any route.
+
+    ``dressing`` replaces the class tries of route R2's families (M-LIT
+    lit-fold, ``fold``): ``tries(key)`` gives a family's class tries, each
+    its seed key and its chains (skeleton, ring, exact leaf weight), or None
+    for the family's own amplitude-vector groups; a family left without a
+    chain is not exported. A dressing with its own basis (``fold``'s
+    chain-resolved probe, ``amplitude`` its column count) also forms the
+    seed records (``seed_records(exporter, size)``). Without it (the
+    default) the plan is exported as before, byte for byte.
     """
 
     from .refusals import require_nc_exact
@@ -1581,6 +1625,13 @@ def export_plan(
     elif route not in ("R1", "R2"):
         raise ValueError(f"unknown amplitude-mode route {route!r}")
     dressed = route == "R2"
+    if dressing is not None and not dressed:
+        raise ValueError("a folded dressing is a route R2 (dressed-row) option")
+    if dressing is None and dressed:
+        # The slice's fold (``LoopSlice.fold``, ``fold.fold_slice``), as the
+        # filter's dropped rows (``zero_rows``): every route-R2 export of a
+        # folded slice is folded; route R1 (the oracle) never is.
+        dressing = getattr(slice_, "fold", None)
     if dressed and (forward or merged is not None):
         raise ValueError(
             "route R2 (dressed rows) runs schedule B only: export with "
@@ -1612,9 +1663,13 @@ def export_plan(
         links=links,
         content_sink=contents_sink,
         dressed=dressed,
+        dressing=dressing,
     )
     families, keys, family_orders = [], [], []
     for key, schedule in slice_.plan.schedules.items():
+        if dressing is not None and dressing.tries(key) == []:
+            # Every chain of the family folded away (an exact zero).
+            continue
         keys.append(key)
         record = exporter.family(key, schedule)
         family_orders.append(record["orders"])
@@ -1652,8 +1707,15 @@ def export_plan(
                 "amplitude vectors (induced_observables), never column sets"
             )
         size = len(amplitude)
+        probe = getattr(dressing, "amplitude", None)
+        if probe is not None:
+            size = probe
         columns = tuple(range(len(rows) * size))
-        seed_classes, seeds = exporter.amplitude_seed_records(size)
+        seed_classes, seeds = (
+            exporter.amplitude_seed_records(size)
+            if probe is None
+            else dressing.seed_records(exporter, size)
+        )
         column_weights = [t for _row in rows for t in range(size)]
         fourier = None
     else:
@@ -1700,9 +1762,11 @@ def export_plan(
         # A row the exact helicity-zero filter dropped (``helicity_filter``,
         # an integrand zero) keeps its (row, t) columns without a row: they
         # seed nothing (R1), are never closed into (R2), stay zero and are
-        # not reduced.
+        # not reduced. A probe dressing may keep fewer rows (``fold``'s
+        # exact ratios: the rows its probe reads).
+        zero_rows = slice_.zero_rows | getattr(dressing, "zero_rows", frozenset())
         program["column_rows"] = [
-            [] if row in slice_.zero_rows else [r]
+            [] if row in zero_rows else [r]
             for r, row in enumerate(rows)
             for _t in range(size)
         ]
