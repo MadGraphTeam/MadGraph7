@@ -591,6 +591,34 @@ def test_c_abi_selections_on_fresh_points_equal_the_python_api(
         one, subset, _ = _selectors(capabilities, 1)
         count = len(capabilities["helicity_rows"])
         by_point = [r % count for r in (1, 1, 4, 1, 4, 7, 7, 1)][: len(inputs[0])]
+        if target is not None:
+            # A point whose own helicity row TIRust refuses at this target:
+            # the per-point selection names that row there, so that "auto"'s
+            # per-point fallback acts inside the row-grouped call (one SDK
+            # evaluation per row group; DECISIONS 2026-11-09 02:02 (a)).
+            _, _, exact, exact_scales = inputs
+            refused = next(
+                (
+                    (p, r)
+                    for p in range(len(by_point))
+                    for r in range(count)
+                    if runtime.evaluate(
+                        [exact[p]],
+                        mu_r2=[exact_scales[p]],
+                        helicities=[f"h{r}"],
+                        reduction="tirust",
+                        reduction_target=target,
+                        on_failure="return",
+                    ).values[0]
+                    is None
+                ),
+                None,
+            )
+            assert refused is not None, (
+                "TIRust serves every fresh point's every row at this target: "
+                "extend the point set"
+            )
+            by_point[refused[0]] = refused[1]
         assert len(set(by_point)) < len(by_point)
         calls = _check_selections(
             sdk,
