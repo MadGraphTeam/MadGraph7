@@ -16,7 +16,7 @@
 //! `O' += T · V` once per group and target row.
 
 use super::closure::{FamilyNumerator, close_column, close_row, trace_into, trace_rows_into};
-use super::dress::{Carrier, ChunkInputs, LaneData, Pool, Workspaces, dress_edge};
+use super::dress::{Carrier, ChunkInputs, LaneData, Pool, Workspaces, dress_edge, written_rows};
 use super::kernels::{
     DiagonalSchedule, Segment, TraceTerm, lane_vector_len, split_edge, split_vertex, trace_row,
 };
@@ -121,6 +121,9 @@ pub fn run_family_on<T: Carrier, const L: usize>(
         .collect();
     // A split part's row links, unpacked (`plan::PackedLinks`).
     let mut links = Vec::new();
+    // The rows each fused step writes (and its consumer reads): only those
+    // are zeroed (a row-pruned copy writes the kept rows only).
+    let written = written_rows(family, columns);
     for (s, step) in family.steps.iter().enumerate() {
         // A fused trace step forms only the diagonal its trace reads
         // (lit-dress lever A; decided per step from the plan).
@@ -153,7 +156,14 @@ pub fn run_family_on<T: Carrier, const L: usize>(
             }
             continue;
         }
-        let mut out = pool.take(step.rows * columns * step.out_row() * v);
+        let mut out = match &written[s] {
+            Some(rows) => pool.take_rows(
+                step.rows * columns * step.out_row() * v,
+                step.out_row() * v,
+                rows,
+            ),
+            None => pool.take(step.rows * columns * step.out_row() * v),
+        };
         match &step.split {
             None => {
                 for edge in &step.edges {

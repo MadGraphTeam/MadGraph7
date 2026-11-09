@@ -158,11 +158,16 @@ impl LoopProgramV4 {
 ///
 /// Memory: a pruned copy is built fresh at the lengths it keeps (a split
 /// part's list keeping every link stays shared with the template, a shorter
-/// one is packed and interned), and it is kept only when it runs at most
-/// [`KEPT_SHARE`] of its family's row links (it then saves at least the
-/// rest of its dressing): a family keeping more runs whole on the masked
-/// seeds (the template's steps, the unpruned path's values), and a family
-/// left without a step is never dressed. If the kept copies together would
+/// one is packed and interned). In a seeded plan it is kept only when it runs
+/// at most [`KEPT_SHARE`] of its family's row links (it then saves at least
+/// the rest of its dressing): a family keeping more runs whole on the masked
+/// seeds (the template's steps, the unpruned path's values). In a
+/// dressed-row plan (a loop-induced helicity selection, lit-dress) a copy is
+/// kept whenever it drops a link, so the call dresses, closes, scatters and
+/// reduces exactly the restriction of its kept rows (a copy is a subset of
+/// its template, the memory a call adds); a family whose every link is
+/// reached runs its template. A family left without a step is never
+/// dressed. If the kept copies together would
 /// hold more heap than the dressed families themselves (their own lists,
 /// steps, edges, fused links, split groups and parts, and the part lists
 /// they read, each once), every family runs whole. The families are pruned
@@ -387,7 +392,18 @@ impl LoopProgramV4 {
                 let mut copy = copy;
                 copy.support = self.support_of(&copy);
                 let (links, whole) = (family_links(&copy), family_links(template));
-                if copy.steps.is_empty() || links * share.1 <= whole * share.0 {
+                // Dressed rows (loop-induced helicity selections): the call
+                // evaluates exactly the restriction of the kept rows, so a
+                // family dressing a link outside it runs its copy; one whose
+                // every link is reached runs its template (the same links).
+                // Seeded plans keep a copy up to `share` of its family's
+                // links (the masked seeds' zeros run otherwise).
+                let kept = if self.dressed {
+                    links < whole
+                } else {
+                    links * share.1 <= whole * share.0
+                };
+                if copy.steps.is_empty() || kept {
                     let bytes = own_bytes(&copy) + steps_bytes(&copy) + lists;
                     (Some(copy), links, bytes)
                 } else {

@@ -996,10 +996,92 @@ impl<T: Carrier> Pool<T> {
         buffer
     }
 
+    /// A buffer of `len` reals, `row` reals per row, of which only the rows
+    /// `written` flags are zeroed (the others hold any values: no link reads
+    /// them, [`written_rows`]); a held buffer of the smallest capacity that
+    /// fits, else a new (zero) one.
+    pub fn take_rows(&mut self, len: usize, row: usize, written: &[bool]) -> Vec<T> {
+        let fit = self
+            .free
+            .iter()
+            .enumerate()
+            .filter(|(_, buffer)| buffer.capacity() >= len)
+            .min_by_key(|(_, buffer)| buffer.capacity())
+            .map(|(index, _)| index);
+        let buffer = match fit {
+            Some(index) => {
+                let mut buffer = self.free.swap_remove(index);
+                buffer.truncate(len);
+                let held = buffer.len();
+                buffer.resize(len, self.zero.clone());
+                for (r, values) in buffer[..held].chunks_mut(row.max(1)).enumerate() {
+                    if written.get(r).copied().unwrap_or(true) {
+                        clear(values);
+                    }
+                }
+                buffer
+            }
+            None => vec![self.zero.clone(); len],
+        };
+        self.live += len;
+        self.peak = self.peak.max(self.live);
+        buffer
+    }
+
     pub fn give(&mut self, buffer: Vec<T>) {
         self.live -= buffer.len();
         self.free.push(buffer);
     }
+}
+
+/// Per step of `family`, the object rows its fused links write, where every
+/// link that reads the step's output reads one of them (`None`: the step's
+/// whole output is zeroed). A row-pruned copy (`plan/live.rs`) writes and
+/// reads the rows of the kept Born rows only, so a selection zeroes those
+/// (lit-dress, the run-time helicity selection); the rows no link writes
+/// are never read.
+pub fn written_rows(family: &super::plan::Family, columns: usize) -> Vec<Option<Vec<bool>>> {
+    let steps = &family.steps;
+    let mut written: Vec<Option<Vec<bool>>> = steps
+        .iter()
+        .map(|step| {
+            (step.split.is_none() && step.trace.is_none()).then(|| {
+                let mut rows = vec![false; step.rows * columns];
+                for link in step.edges.iter().flat_map(|edge| &edge.links) {
+                    if let Some(row) = rows.get_mut(link.output as usize) {
+                        *row = true;
+                    }
+                }
+                rows
+            })
+        })
+        .collect();
+    // A consumer link reading a row no link writes keeps its source whole.
+    let mut whole = vec![false; steps.len()];
+    for step in steps {
+        for (e, edge) in step.edges.iter().enumerate() {
+            let super::plan::Source::Step(child) = edge.source else {
+                continue;
+            };
+            let Some(rows) = &written[child] else {
+                continue;
+            };
+            let reads_unwritten = |input: u32| !rows.get(input as usize).copied().unwrap_or(false);
+            whole[child] |= match &step.split {
+                None => edge.links.iter().any(|link| reads_unwritten(link.input)),
+                Some(split) => split.parts[e]
+                    .iter()
+                    .flat_map(|part| part.links.iter())
+                    .any(|link| reads_unwritten(link.input)),
+            };
+        }
+    }
+    for (rows, whole) in written.iter_mut().zip(whole) {
+        if whole {
+            *rows = None;
+        }
+    }
+    written
 }
 
 /// The buffer pools of one evaluation (lit-dress lever E): per worker thread
