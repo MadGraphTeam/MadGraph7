@@ -120,11 +120,13 @@ def load_metadata(artifact):
 
 
 def leg_pdgs(leg, model):
-    """The pdg ids of a leg: the flavours MG merged into a group id, or the ids
-    with the group ids expanded."""
-    if leg.get('flavor'):
-        return list(leg.get('flavor'))
+    """The pdg ids of a leg: its ids with the group ids replaced by the
+    flavours MG merged into them, or by all members of the group."""
     merged = model.get('merged_particles')
+    if leg.get('flavor'):
+        # the flavour list only holds the group's flavours, not the other ids
+        ids = leg.get('ids') if 'ids' in leg else [leg.get('id')]
+        return [pid for pid in ids if abs(pid) not in merged] + list(leg.get('flavor'))
     pdgs = []
     for pid in leg.get('ids'):
         members = merged.get(abs(pid), [abs(pid)])
