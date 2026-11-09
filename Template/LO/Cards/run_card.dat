@@ -45,6 +45,13 @@ $frame
 #          eva=Effective W/Z/A Approx.       [2111.02442, 2502.07878]*
 #          edff=EDFF in gamma-UPC            [eq.(11) in 2207.03012] *
 #          chff=ChFF in gamma-UPC            [eq.(13) in 2207.03012] *
+#          edf<y>n<z>n, chf<y>n<z>n = EDFF, ChFF with forward        *
+#           neutron tagging of beam 1 (<y>) and beam 2 (<z>):        *
+#           i (0n+Xn), x (Xn, X>=1), 0, 1, 2, 3, 4 (0n, ..., 4n)     *
+#           Only for Pb208, Au197 and O16 (O16: up to 2n, 2n being   *
+#           >=2n). The tag of a proton beam is ignored.              *
+#           Neutron-emission uncertainty: rerun with edp/edm (EDFF)  *
+#           or chp/chm (ChFF) in place of edf/chf, e.g. edp1n1n      *
 #          none=No PDF, same as lhapdf with lppx=0                   *
 #*********************************************************************
 $pdlabel
