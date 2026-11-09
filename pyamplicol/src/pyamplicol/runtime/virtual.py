@@ -1016,7 +1016,9 @@ class V2ObservablesRuntime:
         helicities: Sequence[str] | None,
         color_flows: Sequence[str] | None,
         on_failure: Literal["raise", "return"] = "raise",
-        reductions: Mapping[str, VirtualReduction] | None = None,
+        # Keyed by the call's carrier, or under a rescue policy by each
+        # ``VirtualRescueLevel`` (``V2VirtualRuntime._reduction_choices``).
+        reductions: Mapping[Any, VirtualReduction] | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
         """``evaluate`` under a rescue policy: each level one ``evaluate``
