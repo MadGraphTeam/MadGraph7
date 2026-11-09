@@ -11,6 +11,8 @@ Usage:
 Example:
     ./vfold/myTimingTable.py Events/REF3/n200f111k32/step9h
     ./vfold/myTimingTable.py -g ctmc Events/REF3/n200f111k32/step9h
+    ./vfold/myTimingTable.py --skip nonstd -f tex2 Events/REF7/GOLD/n200f841k64g1/step15d
+    ./vfold/myTimingTable.py --skip nonstd --vecsizes 64,512,1024 -f tex2 Events/REF7/CUDA/n200f841k64g1/step15d
 
 PREFIX is the common path prefix of the per-mode run directories, e.g.
 Events/REF3/n200f111k32/step9h for step9hZ, step9hS, ..., step9hCavx2.
@@ -52,6 +54,9 @@ MODES = [
     ('Ccudb', 'C/cudb'),  # cuda with BLAS colour sums (CUDACPP_RUNTIME_BLASCOLORSUM=1)
     ('Ccudbr', 'C/cudbr'),  # step 14n: BLAS colour sums for the Real libraries only
 ]
+
+# Step 15e: directory suffixes of the non-standard columns (--skip nonstd)
+NONSTANDARD = ('Sn', 'Sc', 'Su', 'Ccudb', 'Ccudbr')
 
 # GPU columns: the only ones that accept vecsize scans
 MODES_GPU = ('C/cuda', 'C/cudb', 'C/cudbr')
@@ -228,12 +233,14 @@ def read_mode(rundir):
             'env': read_env(os.path.join(rundir, 'LOG.txt'))}
 
 
-def read_step(prefix):
+def read_step(prefix, skip=(), vecsizes=None):
     """Read all the modes of one step: returns an ordered dict name -> data.
     If PREFIX is itself a single run directory (e.g. Events/run_01), it is
     read as one column, named after its ENV_VFOLD_ME_MODE (and backend)."""
     data = {}
     for suffix, name in MODES:
+        if suffix in skip:  # step 15e (without Sn and Sc, the column F1 keeps its plain name)
+            continue
         d = read_mode(prefix + suffix)
         if d is not None:
             data[name] = d
@@ -253,6 +260,8 @@ def read_step(prefix):
                 sys.exit('ERROR! vecsize scans are only supported for cuda, not for %s: %s'
                          % (name, ', '.join(sorted(p for n, p in scan))))
             for num, path in sorted(scan):
+                if vecsizes is not None and num not in vecsizes:  # step 15e: --vecsizes
+                    continue
                 d = read_mode(path)
                 if d is not None:
                     data['%s#%d' % (name, num)] = d
@@ -451,8 +460,8 @@ def build_table(data, step, grouping='default', rescale=RESCALE_BASELINE, isTex=
             # getrusage columns only (the usual case is F0*, F1 vs all others)
             others = [names.get(t, t) for t in bytimer if t != 'rusage']
             if 'rusage' in bytimer and len(others) == 1:
-                subtitles.append('timers: getrusage in %s (a syscall per timer call, which'
-                                 ' inflates these columns), %s in all other modes'
+                subtitles.append('timers: getrusage in %s (a syscall per timer call),'
+                                 ' %s in all other modes'
                                  % (', '.join(dict.fromkeys(bytimer['rusage'])), others[0]))
             else:
                 subtitles.append('timers: %s' % '; '.join(parts))
@@ -546,7 +555,12 @@ def build_table(data, step, grouping='default', rescale=RESCALE_BASELINE, isTex=
                     ('born_batch_avg', bornavgs),
                     ('real_batch_avg', realavgs), ('cpu_timer', cputimers)]
     else:
-        headrows = [('cudacpp_vecsize', vecsizes), ('ml_reduction', mlreductions)]
+        headrows = [('cudacpp_vecsize', vecsizes)]
+        # Step 15e: a header line instead of a row, if all columns use the same reduction library
+        if len(set(mlreductions)) == 1:
+            subtitles.append('ml_reduction: %s for all' % mlreductions[0])
+        else:
+            headrows.append(('ml_reduction', mlreductions))
     return {'title': title, 'subtitles': subtitles, 'columns': columns, 'rows': rows,
             'vecsizes': vecsizes, 'colnames': [n.split('#')[0] for n in columns],
             'headrows': headrows}
@@ -563,9 +577,10 @@ def render_text(table, fmt='%7.3f', prefix=None):
     # Column width: as many as needed for the header rows (e.g. 7 for 'collier' as of step 14h)
     width = max([6] + [len(str(v)) for label, values in table['headrows'] for v in values])
     numfmt = '%%%d%s' % (width + 1, fmt[fmt.index('.'):])
-    columns = [('%%%ds'%width)%col for col in table['colnames']]
+    # Step 15e: as in the rows of numbers, a name one character longer (C/cudbr) touches the left wall
+    columns = [('%%%ds'%(width + 1))%col for col in table['colnames']]
     hline = '|-%s-|'%(llen*'-') + '-%s-|'%(width*'-') * len(columns)
-    out += [hline, '| %s | '%(lfmt%modebknd) + ' | '.join(columns) + ' |']
+    out += [hline, '| %s |'%(lfmt%modebknd) + ' |'.join(columns) + ' |']
     for label, values in table['headrows']:
         out.append('| %s | '%(lfmt%label) + ' | '.join(('%%%ds'%width)%v for v in values) + ' |')
     out += [hline]
@@ -641,9 +656,34 @@ def main():
     ap.add_argument('--raw-baseline', action='store_true',
                     help='show %s as measured, not rescaled to the kpoints of %s'
                     % (MODE_BASELINE, MODE_BATCHED))
+    ap.add_argument('--skip', default='',
+                    help="columns to skip, as comma-separated directory suffixes (e.g. Sn,Sc,Su,Ccudb,Ccudbr); "
+                    "'nonstd' means all of these (not with -f txt, to keep the full table)")
+    ap.add_argument('--vecsizes', default=None,
+                    help='cudacpp_vecsize values to keep in the GPU scans, comma-separated, '
+                    'e.g. 64,512,1024 (not with -f txt, to keep the full table)')
     args = ap.parse_args()
     prefix = args.prefix.rstrip('/')
-    data = read_step(prefix)
+    skip = set()
+    for s in filter(None, args.skip.split(',')):
+        if s == 'nonstd':
+            skip.update(NONSTANDARD)
+        elif s in [suffix for suffix, _ in MODES]:
+            skip.add(s)
+        else:
+            sys.exit('ERROR! unknown column to skip: %s' % s)
+    vecsizes = None
+    if args.vecsizes is not None:
+        if not re.fullmatch(r'\d+(,\d+)*', args.vecsizes):
+            sys.exit('ERROR! invalid --vecsizes (it must be comma-separated numbers): %s' % args.vecsizes)
+        vecsizes = set(int(v) for v in args.vecsizes.split(','))
+    if (skip or vecsizes is not None) and args.format == 'txt':
+        sys.exit('ERROR! --skip and --vecsizes are not allowed with -f txt: they would overwrite the full timing table')
+    data = read_step(prefix, skip, vecsizes)
+    if vecsizes is not None:
+        found = set(int(n.split('#')[1]) for n in data if '#' in n)
+        if found and vecsizes - found:  # e.g. the same list for two tests (no warning without GPU scans)
+            sys.stderr.write('WARNING! --vecsizes: no column for %s\n' % sorted(vecsizes - found))
     if not data:
         sys.exit('ERROR! no run directories with P*/GF*/log_MINT2.txt found for prefix %s' % prefix)
     isTex = ( args.format == 'tex1' ) or ( args.format == 'tex2' )
@@ -654,6 +694,7 @@ def main():
         m = re.match(r'^Events/REF(\d*)/(.*)$', prefix)  # Events/REF<n>/... -> Events/TEX<n>/...
         if not m:
             sys.exit('ERROR! tex output needs a prefix in Events/REF, Events/REF2 or Events/REF3: %s' % prefix)
+        os.makedirs('Events/TEX'+m.group(1), exist_ok=True)  # step 15e
         with open('Events/TEX'+m.group(1)+'/'+m.group(2).replace('/','_')+'.tex', 'w') as f:
             f.write(RENDERERS[args.format](table, prefix=prefix))
     elif args.format == 'txt':
