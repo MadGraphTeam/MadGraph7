@@ -737,6 +737,50 @@ pub struct Family {
     /// derived from the plan's data by the family's first walk and kept
     /// (never stored; outside the loader's derivations and their bound).
     pub walk: std::sync::OnceLock<Walk>,
+    /// Dressed-row plans: the stored columns that are exact multiples of
+    /// another of the same accumulator ([`Dependents`], M-LIT lit-fold
+    /// F1d), derived from the plan's exact key vectors by the family's
+    /// first reduction and kept (never stored; as [`Walk`]).
+    pub dependents: std::sync::OnceLock<Dependents>,
+}
+
+/// The dependent columns of a dressed-row family (M-LIT lit-fold F1d): a
+/// stored column `o'` of accumulator `k` is `c` times another stored column
+/// `o` of the same Born row when every trace step closing into `k` closes
+/// the two with key weights in the exact ratio `c` (`U[key][w'] = c
+/// U[key][w]` for each of the accumulator's seed keys, the key vectors
+/// being exact). Folded chains (`fold`) close an orientation pair into
+/// both columns with `U_t + eta U_t'`; the reduction is linear in the
+/// numerator, so `o'` is not reduced: its Laurent integrals (re-test,
+/// term scale) are `c` (`|c|`) times `o`'s, formed after the reduction.
+/// Empty for seeded plans and for a family without such columns (every
+/// stored column reduced, as before).
+#[derive(Clone, Debug, Default)]
+pub struct Dependents {
+    /// Per accumulator, per observable column whether it is dependent (not
+    /// reduced); empty when no accumulator has a dependent column. In
+    /// columns, not slots: it holds for the family's row-pruned copies too
+    /// (a dependency of every trace step holds for any subset of them).
+    pub dependent: Vec<Vec<bool>>,
+    /// Per accumulator `(representative, dependent, c)` sorted by
+    /// representative column, `c` exact `[re, im]`.
+    pub columns: Vec<Vec<(u32, u32, [Rational; 2])>>,
+}
+
+impl Dependents {
+    /// Whether no column of the family is dependent.
+    pub fn is_empty(&self) -> bool {
+        self.dependent.is_empty()
+    }
+
+    /// The positions in `columns[k]` of the dependents of representative
+    /// column `column` of accumulator `k`.
+    pub fn of(&self, k: usize, column: usize) -> std::ops::Range<usize> {
+        let list = &self.columns[k];
+        let start = list.partition_point(|&(rep, _, _)| (rep as usize) < column);
+        let end = list.partition_point(|&(rep, _, _)| (rep as usize) <= column);
+        start..end
+    }
 }
 
 /// What a family walk reads besides its steps (lit-dress: derived from the
@@ -1140,6 +1184,110 @@ impl LoopProgramV4 {
     pub fn support_of(&self, family: &Family) -> Option<Arc<Support>> {
         self.dressed
             .then(|| Arc::new(Support::of(family, &self.key_columns, self.columns)))
+    }
+
+    /// The dependent columns of `family` ([`Dependents`]): from the exact
+    /// key vectors of its trace steps per accumulator, on its support; empty
+    /// outside dressed-row plans.
+    pub fn dependents_of(&self, family: &Family) -> Dependents {
+        let Some(support) = family.support.as_deref().filter(|_| self.dressed) else {
+            return Dependents::default();
+        };
+        let zero = |z: &[Rational; 2]| z[0].is_zero() && z[1].is_zero();
+        let width = self.key_vectors.first().map_or(0, Vec::len);
+        let mut keys: Vec<Vec<u32>> = vec![Vec::new(); family.orders.len()];
+        for (step, trace) in family.steps.iter().zip(&family.row_traces) {
+            if let (Some(k), Some(trace)) = (step.trace, trace) {
+                keys[k].push(trace.key);
+            }
+        }
+        let mut columns = Vec::with_capacity(keys.len());
+        for mut keys in keys {
+            keys.sort_unstable();
+            keys.dedup();
+            // Weight columns grouped by the keys weighting them (a column can
+            // only be a multiple of one with the same keys), in column order.
+            let mut groups: BTreeMap<Vec<u32>, Vec<usize>> = BTreeMap::new();
+            for w in 0..width {
+                let weighting: Vec<u32> = keys
+                    .iter()
+                    .copied()
+                    .filter(|&key| !zero(&self.key_vectors[key as usize][w]))
+                    .collect();
+                if !weighting.is_empty() {
+                    groups.entry(weighting).or_default().push(w);
+                }
+            }
+            let mut representative: Vec<Option<(usize, [Rational; 2])>> = vec![None; width];
+            for (weighting, ws) in &groups {
+                let mut kept: Vec<usize> = Vec::new();
+                for &w in ws {
+                    match kept
+                        .iter()
+                        .find_map(|&r| self.key_ratio(weighting, w, r).map(|c| (r, c)))
+                    {
+                        Some(found) => representative[w] = Some(found),
+                        None => kept.push(w),
+                    }
+                }
+            }
+            let mut found = Vec::new();
+            for row in &self.row_columns {
+                let mut of_weight = vec![usize::MAX; width];
+                for &(o, w) in row {
+                    of_weight[w] = o;
+                }
+                for &(o, w) in row {
+                    let Some((r, c)) = &representative[w] else {
+                        continue;
+                    };
+                    let rep = of_weight[*r];
+                    let stored = |column: usize| support.slots[column] != u32::MAX;
+                    if rep != usize::MAX && stored(rep) && stored(o) {
+                        let index = |v: usize| u32::try_from(v).expect("columns exceed u32");
+                        found.push((index(rep), index(o), c.clone()));
+                    }
+                }
+            }
+            found.sort_by_key(|&(rep, dependent, _)| (rep, dependent));
+            columns.push(found);
+        }
+        if columns.iter().all(Vec::is_empty) {
+            return Dependents::default();
+        }
+        let dependent = columns
+            .iter()
+            .map(|found| {
+                let mut dependent = vec![false; self.columns];
+                for &(_, o, _) in found {
+                    dependent[o as usize] = true;
+                }
+                dependent
+            })
+            .collect();
+        Dependents { dependent, columns }
+    }
+
+    /// `c` with `U[key][w] = c U[key][r]` for every key of `keys` (each
+    /// weighting both columns), exact; `None` when the ratio varies.
+    fn key_ratio(&self, keys: &[u32], w: usize, r: usize) -> Option<[Rational; 2]> {
+        let vector = |key: u32| &self.key_vectors[key as usize];
+        let (first, rest) = keys.split_first()?;
+        let [a, b] = &vector(*first)[w];
+        let [x, y] = &vector(*first)[r];
+        let norm = x.clone() * x + y.clone() * y;
+        let c = [
+            (a.clone() * x + b.clone() * y) / &norm,
+            (b.clone() * x - a.clone() * y) / &norm,
+        ];
+        rest.iter()
+            .all(|&key| {
+                let [a, b] = &vector(key)[w];
+                let [x, y] = &vector(key)[r];
+                *a == c[0].clone() * x - c[1].clone() * y
+                    && *b == c[0].clone() * y + c[1].clone() * x
+            })
+            .then_some(c)
     }
 
     /// Derive every family's accumulator support (at load).
@@ -2490,6 +2638,7 @@ impl LoopProgramV4 {
             row_traces,
             support: None,
             walk: std::sync::OnceLock::new(),
+            dependents: std::sync::OnceLock::new(),
         })
     }
 

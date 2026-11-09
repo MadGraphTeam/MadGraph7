@@ -1534,6 +1534,20 @@ impl V2Runtime {
         })
     }
 
+    /// A loop-induced process's fold-zero record (M-LIT lit-fold, USER
+    /// 2026-11-08 ~22:39: an exact zero the exact fold test certifies):
+    /// whether the whole request is an exact fold zero, its fold-zero loop
+    /// orders and the certificate; none without one (and for a
+    /// Born-interfered process).
+    pub fn fold_zero(&self) -> Option<(bool, Vec<Orders>, serde_json::Value)> {
+        let record = self.induced.as_ref()?.record.fold_zero.as_ref()?;
+        Some((
+            record.exact_fold_zero,
+            record.fold_zero_loop_orders.clone(),
+            record.certificate.clone(),
+        ))
+    }
+
     /// The generation request's reduction backend (`[loop] reduction`, the
     /// artifact's default of a call that names none; "auto" when absent).
     pub fn artifact_reduction(&self) -> &str {
