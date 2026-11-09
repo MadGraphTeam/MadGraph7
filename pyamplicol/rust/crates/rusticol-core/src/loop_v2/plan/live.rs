@@ -731,6 +731,7 @@ fn prune_family(
         row_traces,
         support: None,
         walk: Default::default(),
+        dependents: super::DependentsCache::default(),
     };
     (family, lists)
 }

@@ -1584,6 +1584,14 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                     candidates = _loop_induced_candidates(
                         context, entry, process, validation, index
                     )
+                    # M-LIT lit-fold (USER ~22:39, F1): the fold of a
+                    # loop-induced process's certified proportional chains
+                    # (None for a virtual or with generation.
+                    # loop_induced_folding off); a folded process is
+                    # exported again, folded.
+                    folding, process = _loop_induced_fold(
+                        backend, context, process, request, candidates, correlators
+                    )
                     # m-lit Q10 (LIT-R2): the exact helicity-zero filter of a
                     # loop-induced process (None for a virtual); rows it
                     # drops are exported again without their row.
@@ -1669,6 +1677,11 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 **(
                                     {"loop_induced_helicity_filter": helicity}
                                     if helicity is not None
+                                    else {}
+                                ),
+                                **(
+                                    {"loop_induced_fold": folding}
+                                    if folding is not None
                                     else {}
                                 ),
                                 # The request's gauge (WP3.2 EWI-4b), recorded
@@ -1989,6 +2002,39 @@ def _loop_induced_candidates(context, entry, process, validation, index):
     return candidates
 
 
+def _loop_induced_fold(backend, context, process, request, candidates, correlators):
+    """The F1 fold of a loop-induced process (M-LIT lit-fold, USER ~22:39
+    "Yes, and allow exact zeros"; ``fold.fold_slice``): chains whose
+    numerators the exact test certifies proportional are dressed once, a
+    group whose weights cancel exactly is dropped, a process left with no
+    chain and no counterterm ket is an exact zero. Its record (None for a
+    virtual and with ``generation.loop_induced_folding`` off: that artifact
+    is the unfolded one) and the process, exported again when anything
+    folded. The identities are certified at the filter's stated failure
+    probability (``generation.helicity_filter_failure_probability``; 0 folds
+    nothing). An exact colour zero has no chain to fold."""
+
+    from pyamplicol.loops.v2 import fold
+    from pyamplicol.loops.v2.artifact import reexport_process
+
+    generation = backend._run_config.generation
+    if candidates is None or not generation.loop_induced_folding:
+        return None, process
+    slice_ = process.slice
+    failure = generation.helicity_filter_failure_probability
+    if slice_.amplitude.colour_zero:
+        return {"exact_colour_zero": True}, process
+    if failure == 0:
+        return fold.disabled(failure, "zero failure probability"), process
+    folded = fold.fold_slice(slice_, failure=failure)
+    if not folded.families:
+        # Nothing folds: the plan keeps its bytes.
+        return folded.verdict.record(), process
+    slice_.fold = folded
+    process = reexport_process(process, context.resolved.compiled, request, correlators)
+    return folded.verdict.record(), process
+
+
 def _loop_induced_filter(backend, context, process, request, candidates, correlators):
     """The exact helicity-zero filter of a loop-induced process (m-lit Q10,
     ``helicity_filter.generation_filter``, at the stated failure probability
@@ -2034,6 +2080,11 @@ def _loop_induced_probes(backend, context, process, native, candidates, memo=Non
     generation = backend._run_config.generation
     if process.slice.amplitude.colour_zero:
         return {"exact_colour_zero": True}
+    fold = getattr(process.slice, "fold", None)
+    if fold is not None and fold.exact_zero and generation.loop_induced_probes:
+        # An exact fold zero (M-LIT lit-fold): no chain and no counterterm
+        # ket is left to probe.
+        return {"exact_fold_zero": True}
     if not generation.loop_induced_probes:
         return {"status": "off"}
     from pyamplicol.loops.v2.induced import generation_probes
