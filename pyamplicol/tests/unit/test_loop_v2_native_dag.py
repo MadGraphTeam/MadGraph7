@@ -698,8 +698,9 @@ def test_contact_vertices_enter_each_block_current_once(ew_models):
     coloured labels: the smaller first coloured label on the left; one
     without: ``_singlet_order_allowed``), as the Born counts the whole
     contact once (``_singlet_contact_orientation_allowed``). Before the rule
-    the partial merge of two W currents of different quark lines entered in
-    both orders (two auxiliary words)."""
+    a merge of two inputs that both carry quark lines (here the final merge
+    of the W A auxiliary with the other W) entered in both orders: two words
+    of one colour factor."""
 
     compiled, model = ew_models
     python, native = _assert_equal(
@@ -710,13 +711,17 @@ def test_contact_vertices_enter_each_block_current_once(ew_models):
         counts, currents = _contact_paths(dag, model)
         assert counts
         assert set(counts.values()) == {1}, [k for k, n in counts.items() if n != 1]
-        # The case the rule decides: both partial inputs carry quark lines.
+
+        # The case the rule decides: both inputs of the partial merge, or the
+        # auxiliary and the third leg of the final merge, carry quark lines.
+        def carries(current_id, currents=currents):
+            labels = currents[current_id].ordered_external_labels
+            return bool(coloured.intersection(labels))
+
         assert any(
-            all(
-                coloured.intersection(currents[leg].ordered_external_labels)
-                for leg in pair
-            )
-            for (_group, pair, _z) in counts
+            all(carries(leg) for leg in pair)
+            or (any(carries(leg) for leg in pair) and carries(z))
+            for (_group, pair, z) in counts
         )
 
 
