@@ -736,6 +736,18 @@ impl Runtime {
                     .collect::<Vec<_>>(),
             })
         });
+        // M-LIT lit-fold: the fold zero's record beside the colour zero's
+        // (null without one).
+        let fold_zero = native.fold_zero().map(|(exact, orders, certificate)| {
+            serde_json::json!({
+                "exact_fold_zero": exact,
+                "fold_zero_loop_orders": orders
+                    .iter()
+                    .map(|order| order.iter().cloned().collect::<BTreeMap<String, i64>>())
+                    .collect::<Vec<_>>(),
+                "certificate": certificate,
+            })
+        });
         serde_json::to_string(&serde_json::json!({
             "contribution_kind":metadata.contribution_kind,
             "interference":metadata.interference,
@@ -754,6 +766,7 @@ impl Runtime {
                 "default_unchecked": reduction_policy::DEFAULT_UNCHECKED,
             },
             "colour_zero": colour_zero,
+            "fold_zero": fold_zero,
             "execution_mode":"loop_recurrence",
             "engine":"v2", "plan_sha256":native.plan_sha256(),
             "point_inputs":"native-v2",

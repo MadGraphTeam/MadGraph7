@@ -96,6 +96,7 @@ _VIRTUAL_ONLY_LEAVES = frozenset(
         "generation.loop_induced_probes",
         "generation.allow_failed_probes",
         "generation.helicity_filter_failure_probability",
+        "generation.loop_induced_folding",
         "loop.alpha_s_parameter",
         "loop.alpha0_inverse_parameter",
     }
@@ -525,3 +526,78 @@ def test_user_docs_and_examples_exclude_retired_workflows() -> None:
         "parent project",
     ):
         assert retired not in combined
+
+
+LOOP_EXAMPLES = {
+    "loop_uux_ttxgg": ("u u~ > t t~ g g", "loop_sm", ("QCD",)),
+    "loop_uux_ddxepem": ("u u~ > d d~ e+ e-", "loop_qcd_qed_sm_Gmu", ("QCD", "QED")),
+    "loop_gg_zgg": ("g g > z g g", "loop_sm", ("QCD",)),
+    "loop_gg_epemmpmm": ("g g > e+ e- m+ m-", "loop_qcd_qed_sm_Gmu", ("QCD",)),
+}
+
+
+def test_loop_examples_ship_their_cards_data_and_documentation() -> None:
+    """The four one-loop examples (m-lit lit-examples): generate, check,
+    evaluate and profile cards on the shipped models by bare name, their
+    momenta and correlator declarations, the walkthrough script, the native
+    loop client with its Makefile target, README rows and sections, and no
+    generated file in the examples tree (artifacts are written to the
+    workspace)."""
+
+    readme = (EXAMPLES / "README.md").read_text(encoding="utf-8")
+    gallery = (ROOT / "docs/user/examples-gallery.md").read_text(encoding="utf-8")
+    assert "## One-Loop Examples" in readme and "## One-loop walkthroughs" in gallery
+    for stem, (expression, model, corrections) in LOOP_EXAMPLES.items():
+        generate = resolve_config(EXAMPLES / f"{stem}_generate.toml").effective
+        assert generate.action == "generate"
+        assert Path(str(generate.model.source)).name == model
+        assert generate.process.entries[0].expression == expression
+        assert generate.process.loop_coupling_orders == corrections
+        assert generate.generation.output == EXAMPLES / "artifacts" / stem
+        assert not generate.generation.loop_induced_probes
+        for step, action in (
+            ("check", "check"),
+            ("evaluate", "evaluate"),
+            ("profile", "benchmark"),
+        ):
+            card = EXAMPLES / f"{stem}_{step}.toml"
+            config = resolve_config(card).effective
+            assert config.action == action, card
+            assert config.evaluation.artifact == EXAMPLES / "artifacts" / stem
+            assert f"`{card.name}`" in readme, card
+        points = json.loads(
+            (EXAMPLES / "data" / f"{stem}_momenta.json").read_text(encoding="utf-8")
+        )
+        assert points and all(
+            math.isclose(
+                sum(leg[mu] for leg in point[:2]),
+                sum(leg[mu] for leg in point[2:]),
+                rel_tol=1e-12,
+                abs_tol=1e-9,
+            )
+            for point in points
+            for mu in range(4)
+        )
+        declaration = json.loads(
+            (EXAMPLES / "data" / f"{stem}_correlators.json").read_text(encoding="utf-8")
+        )
+        assert declaration["color_correlations"]
+    assert (EXAMPLES / "loop_uux_ttxgg_lc_generate.toml").is_file()
+    assert resolve_config(
+        EXAMPLES / "loop_uux_ddxepem_orders.toml"
+    ).effective.evaluation.orders
+    client = (EXAMPLES / "native/loop_client.c").read_text(encoding="utf-8")
+    assert client.startswith("/* SPDX-License-Identifier: 0BSD */")
+    for call in (
+        "rusticol_virtual_set_reduction(",
+        "rusticol_virtual_set_reduction_unchecked(",
+        "rusticol_virtual_evaluate_correlated(",
+        "rusticol_virtual_evaluate_selected(",
+        "rusticol_virtual_metadata_json",
+    ):
+        assert call in client
+    makefile = (EXAMPLES / "native/Makefile").read_text(encoding="utf-8")
+    assert "loop_client: loop_client.c" in makefile
+    assert "LOOP_SDK_LIBS ?= $(RUSTICOL_LIBS)" in makefile
+    assert (EXAMPLES / "python/loop_walkthrough.py").is_file()
+    assert not (EXAMPLES / "artifacts").exists()

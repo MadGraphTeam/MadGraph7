@@ -274,10 +274,39 @@ finiteness cross-check); with the stability checks each lane diagnostic also
 carries the amplitude-level finiteness ratio (`finiteness`: the amplitude's
 poles in the colour-metric norm against their pre-cancellation scale, of the
 order of the unit roundoff). Zeros are never declared by a physics rule
-(Landau-Yang, Furry, J_z): a vanishing |A_loop|^2 (`g g > h a`,
-`g g > a a a`) is reported as zero within its absolute estimate, `|value| <=
+(Landau-Yang, Furry, J_z). Two exact zeros are proven by the engine's own
+exact algebra: an exact colour zero (every colour coefficient vanishes at
+N_c = 3), and an exact fold zero (below). Every other vanishing
+|A_loop|^2 is reported as zero within its absolute estimate, `|value| <=
 E` with the estimate's `absolute` E and `magnitude` S (the size of what
-cancelled); only an exact colour zero is an exact 0.
+cancelled).
+
+Generation folds the loop chains of every loop-induced process (on by
+default; switch it off with `[generation] loop_induced_folding = false`,
+the CLI flag `--no-loop-induced-folding`, or
+`GenerationConfig(loop_induced_folding=False)`). Within a loop family,
+chains whose numerators are exactly proportional with a rational ratio,
+such as a quark loop's two orientations with vector or scalar couplings or
+the up- and down-type copies of a photon loop, are dressed once with their
+combined colour weights. An exact test decides this per process, with no
+physics rule: every input of the dressing is replaced by a random value and
+each identity is checked in the prime field F_p, p = 2^61 - 1. Its stated
+failure probability is `[generation] helicity_filter_failure_probability`
+(default 1e-12; 0 folds nothing), the same setting as the helicity filter.
+Chains whose orientations differ by an axial coupling, and ratios that are
+complex or go through an irrational constant or a model parameter, fail the
+test, and those chains stay unfolded. A group whose weights cancel exactly is dropped. A process
+left with no chain and no counterterm is an exact fold zero (`g g > a a a`,
+`g g > h a`): its value is exactly 0, and the result's detail, the runtime's
+`inspect()` record (`exact_fold_zero`, `fold_certificate`) and the native
+SDK's capabilities record (`fold_zero`) carry the certificate with its
+failure bound. Folding changes values at the rounding level only. The
+artifact records the fold per process in its generation filters
+(`loop_induced_fold`): prime, seed, points, degree bound, identities
+certified, failure probability and bound, and the counts of chains before
+and after, groups, chains folded and zero groups. With folding off the
+artifact is the unfolded one, and a vanishing |A_loop|^2 is again a
+numerical zero within its estimate.
 
 Generation can also probe every loop-induced process (off by default; enable
 with `[generation] loop_induced_probes = true`, the CLI flag
@@ -336,6 +365,25 @@ g g > a a g g and g g > z z z z. On the electroweak UFOs the probe slice and
 each Goldstone slice generate the process again, so the probes cost one
 generation of the process or more (e+ e- > g g g: 43 s, of which 37 s is the
 probe slice, against 43 s for the engine's generation).
+
+The probes guard generation; `pyamplicol check` runs the same loop-induced
+checks on demand, at several points, and the pole check against Catani's
+operator and the Ward check for Born-interfered processes too, on a card's or
+an artifact's request regenerated in memory
+([command-line guide](command-line-interface.md#check)). Its card section:
+
+```toml
+action = "check"
+
+[evaluation]
+artifact = "artifacts/loop_gg_zgg"   # omit to check the card's own request
+
+[check]
+points = 3          # seeded phase-space points per process
+seed = 12345        # default: generation.validation.seed
+precision = "auto"  # binary64, then double-double where it fails; or one carrier
+# model = "my_ufo"  # default: model.source (an artifact: the source it records)
+```
 
 Generation also drops the helicity rows of a loop-induced process that are
 zero before the loop integration (every numerator vanishes identically),
@@ -1611,6 +1659,14 @@ layout's deterministic hot workload. Explicit subsets and selected-axis lists
 override that default; a complete summed-axis list is normalized to equivalent
 omission. A valid shape outside the optimized layout emits at most one pre-loop
 warning per loaded process.
+
+A one-loop artifact is profiled per stage (trees, dressing, scatter,
+reduction, rest, from the native executor's stage report of the timed
+calls): `batch_size`, `warmup_runs` and `minimum_samples` apply, and
+`[evaluation] reduction`, `reduction_unchecked` and `mu_r2` select the
+backend, the unchecked timing mode and the scale (default: per point the
+squared invariant mass of its initial state); see the
+[command-line guide](command-line-interface.md#profile).
 
 See [Runtime and Selectors](runtime-and-selectors.md) for evaluation and profiling
 semantics.

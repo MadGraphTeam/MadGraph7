@@ -49,6 +49,22 @@ pub(crate) struct AmplitudeRecord {
     /// absent without a declaration.
     #[serde(default)]
     pub(crate) correlators: Option<CorrelatorsRecord>,
+    /// The fold zero (M-LIT lit-fold, `induced.fold_zero_record`: an exact
+    /// zero the exact fold test certifies, USER 2026-11-08 ~22:39): absent
+    /// without one.
+    #[serde(default)]
+    pub(crate) fold_zero: Option<FoldZeroRecord>,
+}
+
+/// A loop-induced process's fold-zero record (`induced.fold_zero_record`):
+/// whether the whole request is an exact fold zero, its exact fold-zero
+/// loop orders and the exact test's certificate (prime, seed, points,
+/// degree bound, identities, failure probability and bound).
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct FoldZeroRecord {
+    pub(crate) exact_fold_zero: bool,
+    pub(crate) fold_zero_loop_orders: Vec<Orders>,
+    pub(crate) certificate: serde_json::Value,
 }
 
 /// A loop-induced process's declared observables

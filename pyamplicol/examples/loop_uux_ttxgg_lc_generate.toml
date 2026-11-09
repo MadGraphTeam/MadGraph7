@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: u u~ > t t~ g g at leading colour, for the Born-interfered
+# run-time helicity selection (served at leading colour only).
+
+schema_version = 1
+action = "generate"
+
+[model]
+source = "loop_sm"
+restriction = "no_b_mass"
+
+[process]
+entries = [{ expression = "u u~ > t t~ g g", name = "uux_ttxgg_lc" }]
+loop_coupling_orders = ["QCD"]
+
+[loop.preparation]
+# A coloured particle's width breaks gauge invariance in a fixed-width tree
+# propagator; the top is an on-shell external state here.
+fixed_parameters = { WT = "0" }
+
+[color]
+accuracy = "lc"
+
+[generation]
+output = "artifacts/loop_uux_ttxgg_lc"

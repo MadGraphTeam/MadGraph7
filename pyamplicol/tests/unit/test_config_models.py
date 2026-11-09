@@ -44,7 +44,21 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 133
+    # 138: lit-ewprep's model.loop_preparation_cache, M-LIT lit-fold's
+    # generation.loop_induced_folding (USER ~22:39) and lit-examples' check section.
+    assert len(FIELD_REGISTRY) == 138
+    # m-lit lit-examples: `pyamplicol check` (the check action's section).
+    assert FIELD_REGISTRY["check.points"].default == 3
+    assert FIELD_REGISTRY["check.seed"].nullable
+    assert FIELD_REGISTRY["check.seed"].default is None
+    assert FIELD_REGISTRY["check.precision"].choices == (
+        "auto",
+        "double",
+        "double-double",
+    )
+    assert "check" in FIELD_REGISTRY["action"].choices
+    assert FIELD_REGISTRY["check.model"].nullable
+    assert FIELD_REGISTRY["check.model"].default is None
     # m-lit lit-unchecked: the unchecked reduction setting, a runtime option
     # (off by default).
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False
@@ -101,6 +115,9 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["generation.loop_induced_probes"].default is False
     filter_failure = FIELD_REGISTRY["generation.helicity_filter_failure_probability"]
     assert filter_failure.kind == "float" and filter_failure.default == 1e-12
+    # M-LIT lit-fold (USER 2026-11-08 ~22:39): F1 folding, on by default.
+    assert FIELD_REGISTRY["generation.loop_induced_folding"].kind == "bool"
+    assert FIELD_REGISTRY["generation.loop_induced_folding"].default is True
     assert FIELD_REGISTRY["evaluation.poles"].default == "all"
     assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none", "uv", "ir")
     assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"
@@ -140,6 +157,21 @@ def test_loop_induced_probes_is_an_explicit_boolean_option() -> None:
             match=r"^generation\.loop_induced_probes must be true or false$",
         ):
             GenerationConfig(loop_induced_probes=value)
+
+
+def test_loop_induced_folding_is_an_explicit_boolean_option() -> None:
+    """M-LIT lit-fold (USER 2026-11-08 ~22:39, F1): the fold of loop-induced
+    chains is on by default and switched off only by a boolean; any other
+    value is refused with the one message."""
+
+    assert GenerationConfig().loop_induced_folding is True
+    assert GenerationConfig(loop_induced_folding=False).loop_induced_folding is False
+    for value in (1, 0, "false", "off", None, 0.0):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"^generation\.loop_induced_folding must be true or false$",
+        ):
+            GenerationConfig(loop_induced_folding=value)
 
 
 def test_helicity_filter_failure_probability_is_a_probability_below_one() -> None:

@@ -50,6 +50,17 @@ class Action(StrEnum):
     MODEL_COMPILE = "model-compile"
     MODEL_PROCESSES = "model-processes"
     GROUP_PROCESSES = "group-processes"
+    CHECK = "check"
+
+
+class CheckPrecision(StrEnum):
+    """The carriers of ``pyamplicol check``: binary64 first and double-double
+    where binary64 fails, is refused or is out of scope (``auto``), or one
+    carrier alone."""
+
+    AUTO = "auto"
+    DOUBLE = "double"
+    DOUBLE_DOUBLE = "double-double"
 
 
 class CouplingOrderPolicy(StrEnum):
@@ -970,6 +981,12 @@ class GenerationConfig:
     helicity_filter_failure_probability: float = field(
         default=1e-12, metadata=_setting("float")
     )
+    # M-LIT lit-fold (USER 2026-11-08 ~22:39, F1): fold the loop chains of a
+    # loop-induced process whose numerators the exact test certifies
+    # proportional (one dressing per group; a group that cancels exactly is
+    # an exact zero), at helicity_filter_failure_probability (0 folds
+    # nothing); on by default; off writes the unfolded plans.
+    loop_induced_folding: bool = field(default=True, metadata=_setting("bool"))
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
     )
@@ -1004,6 +1021,10 @@ class GenerationConfig:
             )
         if not isinstance(self.allow_failed_probes, bool):
             raise ConfigurationError("generation.allow_failed_probes must be a boolean")
+        if not isinstance(self.loop_induced_folding, bool):
+            raise ConfigurationError(
+                "generation.loop_induced_folding must be true or false"
+            )
         failure = _finite_float(
             self.helicity_filter_failure_probability,
             "generation.helicity_filter_failure_probability",
@@ -1563,6 +1584,39 @@ class BenchmarkConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class CheckConfig:
+    """``pyamplicol check`` (the ``check`` action): the seeded phase-space
+    points per process (``points``, ``seed``: None takes
+    ``generation.validation.seed``), the carriers (``precision``) and the
+    model source the request is regenerated from (``model``: None takes
+    ``model.source``, or for an artifact the source its
+    ``config/effective.toml`` records; resolved as ``model.source``)."""
+
+    points: int = field(default=3, metadata=_setting("int"))
+    seed: int | None = field(default=None, metadata=_setting("int", nullable=True))
+    precision: CheckPrecision = field(
+        default=CheckPrecision.AUTO,
+        metadata=_setting("str", choices=tuple(CheckPrecision)),
+    )
+    model: str | None = field(default=None, metadata=_setting("str", nullable=True))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "points", _integer(self.points, "check.points"))
+        object.__setattr__(
+            self, "seed", _optional_integer(self.seed, "check.seed", minimum=0)
+        )
+        object.__setattr__(
+            self,
+            "precision",
+            _enum(self.precision, CheckPrecision, "check.precision"),
+        )
+        if self.model is not None and (
+            not isinstance(self.model, str) or not self.model
+        ):
+            raise ConfigurationError("check.model must be a non-empty string or null")
+
+
+@dataclass(frozen=True, slots=True)
 class OutputConfig:
     format: OutputFormat = field(
         default=OutputFormat.HUMAN,
@@ -1875,6 +1929,7 @@ class RunConfig:
     benchmark: BenchmarkConfig = field(
         default_factory=BenchmarkConfig, metadata=_section()
     )
+    check: CheckConfig = field(default_factory=CheckConfig, metadata=_section())
     output: OutputConfig = field(default_factory=OutputConfig, metadata=_section())
     symbolica: SymbolicaConfig = field(
         default_factory=SymbolicaConfig, metadata=_section()
@@ -1896,6 +1951,7 @@ class RunConfig:
             ("evaluator", EvaluatorConfig),
             ("evaluation", EvaluationConfig),
             ("benchmark", BenchmarkConfig),
+            ("check", CheckConfig),
             ("output", OutputConfig),
             ("symbolica", SymbolicaConfig),
         )
@@ -2049,6 +2105,8 @@ __all__ = [
     "AutoBool",
     "AutoInt",
     "BenchmarkConfig",
+    "CheckConfig",
+    "CheckPrecision",
     "ColorAccuracy",
     "ColorConfig",
     "ColorContraction",

@@ -450,6 +450,18 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--loop-induced-folding",
+        dest="generation.loop_induced_folding",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: fold the loop chains the exact test "
+            "certifies proportional (one dressing per group; a group that "
+            "cancels exactly is an exact zero, with its certificate); on by "
+            "default, --no-loop-induced-folding writes the unfolded plans"
+        ),
+    )
+    parser.add_argument(
         "--allow-failed-probes",
         dest="generation.allow_failed_probes",
         action=argparse.BooleanOptionalAction,
@@ -881,6 +893,35 @@ def _add_evaluation_options(
 
 def _add_profile_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("target", type=Path, nargs="?", default=None, metavar="OUTPUT")
+    # Loop (v2 virtual) artifacts: the profiled calls' backend, setting and
+    # scale (the per-stage table of ``benchmarking.profile_virtual``).
+    parser.add_argument(
+        "--loop-reduction",
+        dest="evaluation.reduction",
+        choices=tuple(ReductionBackend),
+        default=argparse.SUPPRESS,
+        help="loop artifacts: the reduction backend of the profiled calls",
+    )
+    parser.add_argument(
+        "--reduction-unchecked",
+        dest="evaluation.reduction_unchecked",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: profile the unchecked timing mode (no accuracy "
+            "certificate); default off"
+        ),
+    )
+    parser.add_argument(
+        "--mu-r2",
+        dest="evaluation.mu_r2",
+        default=argparse.SUPPRESS,
+        metavar="EXACT_VALUE",
+        help=(
+            "loop artifacts: the renormalisation scale squared (default: per "
+            "point the squared invariant mass of its initial state)"
+        ),
+    )
     parser.add_argument(
         "--process",
         dest="evaluation.process",
@@ -1025,6 +1066,64 @@ def build_parser() -> argparse.ArgumentParser:
         help="Compatibility alias for the profile command.",
     )
     _add_profile_options(benchmark)
+
+    check = subparsers.add_parser(
+        "check",
+        parents=[common],
+        help=(
+            "Check the poles (Catani; loop-induced: finiteness) and Ward "
+            "identities of a one-loop request, regenerated in memory."
+        ),
+    )
+    check.add_argument(
+        "_check_target",
+        type=Path,
+        nargs="?",
+        default=None,
+        metavar="CARD_OR_ARTIFACT",
+        help=(
+            "a run card (its generation request) or a generated one-loop "
+            "artifact directory (the processes its artifact.json stores, "
+            "regenerated with its config/effective.toml; refused when the "
+            "model or processes differ from the stored ones)"
+        ),
+    )
+    check.add_argument(
+        "--points",
+        dest="check.points",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="seeded phase-space points per process (default 3)",
+    )
+    check.add_argument(
+        "--seed",
+        dest="check.seed",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="seed of the first point (default: generation.validation.seed)",
+    )
+    check.add_argument(
+        "--precision",
+        dest="check.precision",
+        choices=("auto", "double", "double-double"),
+        default=argparse.SUPPRESS,
+        help=(
+            "auto (default): binary64 first, double-double only where binary64 "
+            "fails, is refused or is out of scope; or one carrier alone"
+        ),
+    )
+    check.add_argument(
+        "--model",
+        dest="check.model",
+        default=argparse.SUPPRESS,
+        metavar="SOURCE",
+        help=(
+            "the model source to regenerate the request from (default: the "
+            "card's model.source; an artifact: the source its "
+            "config/effective.toml records, which must resolve to the stored "
+            "model)"
+        ),
+    )
 
     inspect = subparsers.add_parser(
         "inspect",
@@ -1260,6 +1359,18 @@ def _namespace_to_invocation(
     positional_target = raw.pop("target", None)
     if positional_target != argparse.SUPPRESS and positional_target is not None:
         raw["evaluation.artifact"] = positional_target
+    check_target = raw.pop("_check_target", None)
+    if check_target != argparse.SUPPRESS and check_target is not None:
+        resolved_target = Path(os.fspath(check_target)).expanduser()
+        if resolved_target.is_file():
+            if card is not None:
+                raise ConfigurationError(
+                    "check takes a run card or an artifact: give the card "
+                    "either as CARD_OR_ARTIFACT or with --card"
+                )
+            card = resolved_target.resolve(strict=False)
+        else:
+            raw["evaluation.artifact"] = check_target
     positional_source = raw.pop("source", None)
     if positional_source != argparse.SUPPRESS and positional_source is not None:
         raw["model.source"] = positional_source

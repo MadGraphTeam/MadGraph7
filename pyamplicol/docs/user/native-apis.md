@@ -186,6 +186,16 @@ prepares their input. Build all four with `make -C examples/native correlated`;
 each executable accepts `ARTIFACT PROCESS`. The generated ordinary standalone
 drivers still demonstrate total/resolved evaluation, not correlations.
 
+The one-loop example client
+[`examples/native/loop_client.c`](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/native/loop_client.c)
+(`make -C examples/native loop`; `loop_client ARTIFACT PROCESS MOMENTA.txt
+[HELICITY]`) opens a loop artifact through `rusticol_virtual.h`, prints its
+squared-order axes and evaluates it with `reduction = "auto"` and the other
+backend, in the unchecked setting, the declared colour and spin correlations
+and, for a loop-induced process, one helicity against the summed call; it
+needs no Symbolica licence. `examples/python/loop_walkthrough.py` writes its
+momenta file and runs it.
+
 ## What the wheel provides
 
 The installed SDK is owned by the wheel:

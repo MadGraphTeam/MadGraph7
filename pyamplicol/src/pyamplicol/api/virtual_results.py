@@ -1446,6 +1446,107 @@ class VirtualEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
+class VirtualOrderEvaluation:
+    """A virtual result split by squared coupling order
+    (:meth:`pyamplicol.Runtime.evaluate_orders` on a virtual runtime): a view
+    of ONE :class:`VirtualEvaluation` (``evaluation``), nothing evaluated
+    again. Per squared-order sector (``orders``, ``sectors``: each with its
+    contributing (Born, loop) order pairs; loop x loop pairs for a
+    loop-induced result) the Laurent coefficients of every point
+    (:meth:`for_order`), and for a Born-interfered result the Born per Born
+    order (:meth:`born_for_order`). Orders are never summed silently:
+    :meth:`sum_orders` and :meth:`sum_born_orders` are the explicit sums
+    (``None`` for a failed point; a pole of a finite-only evaluation stays
+    ``None``)."""
+
+    evaluation: VirtualEvaluation
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.evaluation, VirtualEvaluation):
+            raise TypeError("a virtual order view wraps one VirtualEvaluation")
+
+    @property
+    def contribution(self) -> str:
+        return self.evaluation.contribution
+
+    @property
+    def orders(self) -> tuple[CouplingOrders, ...]:
+        return tuple(sector.order for sector in self.evaluation.sectors)
+
+    @property
+    def sectors(self) -> tuple[VirtualOrderSector, ...]:
+        return self.evaluation.sectors
+
+    @property
+    def born_orders(self) -> tuple[CouplingOrders, ...]:
+        return self.evaluation.born_orders
+
+    @property
+    def values(self) -> VirtualValues:
+        return self.evaluation.values
+
+    @property
+    def born_values(self) -> OrderCoefficients:
+        return self.evaluation.born_values
+
+    @property
+    def shape(self) -> tuple[int, int, int]:
+        return self.evaluation.shape
+
+    def for_order(
+        self, order: CouplingOrders
+    ) -> tuple[LaurentCoefficients | None, ...]:
+        """Per point the Laurent coefficients of one squared-order sector."""
+
+        index = _order_index(self.orders, order)
+        return tuple(None if point is None else point[index] for point in self.values)
+
+    def born_for_order(self, order: CouplingOrders) -> tuple[VirtualScalar | None, ...]:
+        """Per point the Born of one squared Born order."""
+
+        index = _order_index(self.born_orders, order)
+        return tuple(
+            None if point is None else point[index] for point in self.born_values
+        )
+
+    def sum_orders(self) -> tuple[LaurentCoefficients | None, ...]:
+        """Explicitly sum the virtual's squared-order axis per point and
+        Laurent coefficient (``math.fsum``, exactly for decimals)."""
+
+        def summed(point: tuple[LaurentCoefficients, ...]) -> LaurentCoefficients:
+            # A pole of a finite-only evaluation is explicitly absent.
+            absent = cast(VirtualScalar, None)
+            return LaurentCoefficients(
+                *(
+                    absent
+                    if any(sector[k] is None for sector in point)
+                    else _sum(tuple(sector[k] for sector in point))
+                    for k in range(3)
+                )
+            )
+
+        return tuple(None if point is None else summed(point) for point in self.values)
+
+    def sum_born_orders(self) -> tuple[VirtualScalar | None, ...]:
+        """Explicitly sum the Born's squared-order axis per point (zero for a
+        loop-induced result, which has no Born)."""
+
+        return tuple(
+            None if point is None else _sum(tuple(point)) for point in self.born_values
+        )
+
+
+def _order_index(orders: Sequence[CouplingOrders], order: CouplingOrders) -> int:
+    wanted = canonical_order(order)
+    try:
+        return tuple(orders).index(wanted)
+    except ValueError as error:
+        raise ValueError(
+            f"squared coupling order {wanted!r} is absent from the catalogue"
+        ) from error
+
+
+@dataclass(frozen=True, slots=True)
 class ResolvedVirtualEvaluation:
     """Interference [point, order, helicity, virtual colour component, epsilon].
 

@@ -1000,8 +1000,11 @@ pub mod v2 {
         // One pass over the accumulators gives every lane's finiteness; the
         // stored columns (a dressed-row family's support, lit-dress lever D)
         // are those that can be non-zero, read in column order straight into
-        // the lanes (an all-zero column has no lane, as before).
+        // the lanes (an all-zero column has no lane, as before). A dependent
+        // column (lit-fold F1d, `plan::Dependents`) has no lane: it is formed
+        // from its representative's after the reduction.
         let finite = numerator.finite_lanes::<L>();
+        let dependents = family_dependents(plan, family);
         for lane in 0..data.active {
             let point = data.points[lane];
             if !failures[point].is_empty() {
@@ -1012,7 +1015,11 @@ pub mod v2 {
                 continue;
             }
             for (k, &order) in family.orders.iter().enumerate() {
+                let skip = dependents.map(|d| d.dependent[k].as_slice());
                 for (slot, column) in numerator.stored() {
+                    if skip.is_some_and(|skip| skip[column]) {
+                        continue;
+                    }
                     let block = numerator.block::<L>(k, slot);
                     if block
                         .chunks_exact(v)
@@ -1049,6 +1056,116 @@ pub mod v2 {
             }
         }
         lanes
+    }
+
+    /// The dependent columns of a dressed-row family (lit-fold F1d,
+    /// [`crate::loop_v2::plan::Dependents`], derived by its first
+    /// reduction), or `None` when every stored column is reduced (seeded
+    /// plans, families without one).
+    fn family_dependents<'a>(
+        plan: &LoopProgramV4,
+        family: &'a Family,
+    ) -> Option<&'a crate::loop_v2::plan::Dependents> {
+        if !plan.dressed {
+            return None;
+        }
+        let dependents = family.dependents.get_or_init(|| plan.dependents_of(family));
+        (!dependents.is_empty()).then_some(dependents)
+    }
+
+    /// The dependent columns of one family as a reduction forms them
+    /// (lit-fold F1d): the family's [`crate::loop_v2::plan::Dependents`]
+    /// with each exact `c` cast to the carrier once.
+    struct Formed<'a, T> {
+        family: &'a Family,
+        dependents: &'a crate::loop_v2::plan::Dependents,
+        /// Per accumulator, per entry of `dependents.columns[k]`: `c`
+        /// (re, and im unless it is exactly zero) and `|c|`.
+        factors: Vec<Vec<(T, Option<T>, T)>>,
+    }
+
+    impl<'a, T: Carrier + Real> Formed<'a, T> {
+        fn of<const L: usize>(
+            plan: &'a LoopProgramV4,
+            family: usize,
+            data: &LaneData<T, L>,
+        ) -> Option<Self> {
+            let family = &plan.families[family];
+            let dependents = family_dependents(plan, family)?;
+            let factors = dependents
+                .columns
+                .iter()
+                .map(|list| {
+                    list.iter()
+                        .map(|(_, _, [re, im])| {
+                            let (x, y) = (data.cast(re), data.cast(im));
+                            let size = Complex::new(x.clone(), y.clone()).norm().re;
+                            (x, (!im.is_zero()).then_some(y), size)
+                        })
+                        .collect()
+                })
+                .collect();
+            Some(Self {
+                family,
+                dependents,
+                factors,
+            })
+        }
+
+        /// The accumulator of `key`'s loop orders.
+        fn accumulator(&self, key: &LaneKey) -> usize {
+            self.family
+                .orders
+                .iter()
+                .position(|&order| order == key.order)
+                .expect("a lane of the family's loop orders")
+        }
+
+        /// Push the dependents of `key`'s column: `c value` (a real `c`
+        /// scales both parts) under their own keys.
+        fn push(
+            &self,
+            key: &LaneKey,
+            value: &[Complex<T>],
+            out: &mut Vec<(LaneKey, Vec<Complex<T>>)>,
+        ) {
+            let k = self.accumulator(key);
+            for e in self.dependents.of(k, key.column) {
+                let (_, column, _) = &self.dependents.columns[k][e];
+                let (re, im, _) = &self.factors[k][e];
+                let formed = match im {
+                    None => value
+                        .iter()
+                        .map(|z| Complex::new(re.clone() * &z.re, re.clone() * &z.im))
+                        .collect(),
+                    Some(im) => {
+                        let factor = Complex::new(re.clone(), im.clone());
+                        value.iter().map(|z| factor.clone() * z).collect()
+                    }
+                };
+                out.push((
+                    LaneKey {
+                        column: *column as usize,
+                        ..*key
+                    },
+                    formed,
+                ));
+            }
+        }
+
+        /// The dependents of `key`'s column with `|c|`.
+        fn sizes(&self, key: &LaneKey) -> Vec<(usize, T)> {
+            let k = self.accumulator(key);
+            self.dependents
+                .of(k, key.column)
+                .map(|e| {
+                    (
+                        self.dependents.columns[k][e].1 as usize,
+                        self.factors[k][e].2.clone(),
+                    )
+                })
+                .collect()
+        }
     }
 
     /// What the reductions of one evaluation collect per point.
@@ -1172,15 +1289,28 @@ pub mod v2 {
             }
             let sink = &mut *self.sink;
             for (index, group) in groups.iter().enumerate() {
+                // A family's dependent columns (lit-fold F1d): `c` times
+                // their representative's integrals, direct and re-test.
+                let dependents = Formed::of(self.plan, group.family, self.data);
                 for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
                     match &direct[index][row] {
-                        Ok(value) => sink.families[point].push((key, value.clone())),
+                        Ok(value) => {
+                            if let Some(formed) = &dependents {
+                                formed.push(&key, value, &mut sink.families[point]);
+                            }
+                            sink.families[point].push((key, value.clone()));
+                        }
                         Err(status) => sink.failures[point]
                             .push(format!("family {} lane {key:?}: {status}", group.family)),
                     }
                     if let Some(check) = &check {
                         match &check[index][row] {
-                            Ok(value) => sink.checks[point].push((key, value.clone())),
+                            Ok(value) => {
+                                if let Some(formed) = &dependents {
+                                    formed.push(&key, value, &mut sink.checks[point]);
+                                }
+                                sink.checks[point].push((key, value.clone()));
+                            }
                             Err(status) => sink.failures[point].push(format!(
                                 "re-test of family {} lane {key:?}: {status}",
                                 group.family
@@ -1218,6 +1348,7 @@ pub mod v2 {
             let sink = &mut *self.sink;
             for ((group, unit), moments) in groups.iter().zip(&units).zip(&moments) {
                 let monomials = group.coefficients.len() / group.keys.len().max(1);
+                let formed = Formed::of(self.plan, group.family, self.data);
                 let mut first = 0;
                 for (lane, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
                     if lane > 0 && group.points[lane - 1] != point {
@@ -1245,6 +1376,24 @@ pub mod v2 {
                                 "term scale of family {} monomial {alpha}: {status}",
                                 group.family
                             )),
+                        }
+                    }
+                    // Dependent columns (lit-fold F1d): |c| times the term
+                    // scale of their representative, in the same terms.
+                    if let Some(formed) = &formed {
+                        for (column, size) in formed.sizes(&key) {
+                            let slot = &mut terms[key.order * self.plan.columns + column];
+                            for (alpha, n) in numerator.iter().enumerate() {
+                                if n.re.is_fully_zero() && n.im.is_fully_zero() {
+                                    continue;
+                                }
+                                if let Ok(moment) = &moments[first + alpha] {
+                                    let n = size.clone() * &n.clone().norm().re;
+                                    for (s, z) in slot.iter_mut().zip(moment) {
+                                        *s += n.clone() * &z.clone().norm().re;
+                                    }
+                                }
+                            }
                         }
                     }
                 }

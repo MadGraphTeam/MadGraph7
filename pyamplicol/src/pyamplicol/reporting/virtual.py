@@ -272,3 +272,116 @@ def virtual_evaluation_summary(
     if stability is not None:
         tables.append(stability)
     return "\n\n".join((header, *(str(table.get_string()) for table in tables)))
+
+
+def virtual_order_summary(result: Any, *, prettytable: Any) -> str:
+    """A ``VirtualOrderEvaluation``: the evaluation's tables (every sector
+    and Born order apart) followed by the explicit sums over the squared
+    orders, labelled as such."""
+
+    table = prettytable.PrettyTable(
+        (
+            "point",
+            "Born summed over orders",
+            "finite [0]",
+            "single pole [-1]",
+            "double pole [-2]",
+        )
+    )
+    table.title = "Explicit sums over the squared coupling orders (sum_orders)"
+    table.align = "l"
+    table.hrules = prettytable.HRuleStyle.FRAME
+    born = result.sum_born_orders()
+    for point, laurent in enumerate(result.sum_orders()):
+        coefficients = (
+            ("unavailable",) * 3 if laurent is None else tuple(map(_scalar, laurent))
+        )
+        table.add_row(
+            (
+                point,
+                "unavailable" if born[point] is None else _scalar(born[point]),
+                *coefficients,
+            )
+        )
+    return (
+        virtual_evaluation_summary(result.evaluation, prettytable=prettytable)
+        + "\n\n"
+        + str(table.get_string())
+    )
+
+
+# Bar colours of the profile's stage groups (``runtime.virtual.PROFILE_GROUPS``).
+_STAGE_COLOURS = {
+    "trees": "CYAN",
+    "dressing": "MAGENTA",
+    "scatter": "YELLOW",
+    "reduction": "GREEN",
+    "rest": "WHITE",
+}
+_BAR_WIDTH = 40
+
+
+def virtual_profile_summary(result: Any, *, prettytable: Any, color: bool) -> str:
+    """A ``benchmarking.VirtualProfileResult``: the run (process, backend,
+    setting, batch, samples, per-point time) and the coloured per-stage table
+    (seconds per point, share and a bar per stage group)."""
+
+    from .summary import _paint, _seconds_text
+
+    reduction = result.reduction
+    backend = reduction.get("effective", "N/A")
+    if reduction.get("requested") and reduction.get("requested") != backend:
+        backend = f"{backend} (requested {reduction['requested']})"
+    lanes = reduction.get("lanes") or {}
+    if len(lanes) > 1:
+        backend += "; lanes per effective backend: " + ", ".join(
+            f"{name} {count}" for name, count in sorted(lanes.items())
+        )
+    header = prettytable.PrettyTable(("field", "value"))
+    header.title = _paint("pyAmpliCol loop profile", "CYAN", enabled=color, bold=True)
+    header.align = "l"
+    header.max_width = 96
+    header.add_rows(
+        (
+            ("process", f"{result.process_id} ({result.process_expression})"),
+            ("contribution", result.contribution),
+            ("reduction", backend),
+            (
+                "setting",
+                "unchecked (timing mode, no accuracy certificate)"
+                if result.unchecked
+                else "checked (the backends' own acceptance checks)",
+            ),
+            (
+                "batch",
+                f"{result.batch} points per call, finite part only; "
+                f"{result.warmup} warm-up + {result.samples} timed calls",
+            ),
+            (
+                "time per point",
+                f"{_seconds_text(result.seconds_per_point)} (median call; "
+                f"{_seconds_text(result.low)} to {_seconds_text(result.high)})",
+            ),
+            ("failed points", str(result.failed_points)),
+        )
+    )
+    stages = prettytable.PrettyTable(("stage", "time per point", "share", "bar"))
+    stages.title = (
+        "Time per stage (native executor stage report of the timed calls)"
+        if result.label is None
+        else f"Time per stage ({result.label})"
+    )
+    stages.align = "l"
+    total = sum(result.stages.values()) or 1.0
+    for group, seconds in result.stages.items():
+        share = seconds / total
+        bar = "#" * max(round(share * _BAR_WIDTH), 1 if seconds else 0)
+        stages.add_row(
+            (
+                _paint(group, _STAGE_COLOURS.get(group), enabled=color, bold=True),
+                _seconds_text(seconds),
+                f"{100 * share:5.1f} %",
+                _paint(bar, _STAGE_COLOURS.get(group), enabled=color),
+            )
+        )
+    return str(header.get_string()) + "\n\n" + str(stages.get_string())

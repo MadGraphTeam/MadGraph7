@@ -47,6 +47,8 @@ class CliServices(Protocol):
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object: ...
 
+    def check(self, config: RunConfig, progress: ProgressSink) -> object: ...
+
     def inspect(
         self,
         config: RunConfig,
@@ -92,6 +94,8 @@ def dispatch(
         return services.evaluate(config, progress)
     if config.action == "benchmark":
         return services.benchmark(config, progress)
+    if config.action == "check":
+        return services.check(config, progress)
     if config.action == "inspect":
         if full_physics:
             return services.inspect(config, progress, full_physics=True)
@@ -165,23 +169,11 @@ def _read_json(
 
 
 def _virtual_artifact_hint(path: Path) -> bool:
-    """Choose CLI ingress only; the native loader checks the artifact itself.
+    """Choose CLI ingress only; the native loader checks the artifact itself
+    (``benchmarking.is_virtual_artifact``)."""
+    from pyamplicol.benchmarking import is_virtual_artifact
 
-    Any v2 loop runtime makes a virtual artifact (Born-interfered and
-    loop-induced processes, in any mix), as ``Runtime.load`` dispatches."""
-    from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITIES
-    from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
-
-    path = path.expanduser().resolve(strict=False)
-    root = path.parent if path.name == MANIFEST_NAME and path.is_file() else path
-    if not (root / MANIFEST_NAME).is_file():
-        return False
-    manifest = load_manifest(root, verify_payloads=False)
-    return bool(
-        LOOP_V2_RUNTIME_CAPABILITIES.intersection(
-            cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"])
-        )
-    )
+    return is_virtual_artifact(path)
 
 
 def _load_process_output(
@@ -365,9 +357,11 @@ class DefaultCliServices:
         *,
         resolution: ConfigResolution | None = None,
         correlators: CorrelatorConfig | None = None,
+        card: Path | None = None,
     ) -> None:
         self._resolution = resolution
         self._correlators = correlators
+        self._card = card
 
     def _generation_config(self, config: RunConfig) -> RunConfig | ConfigResolution:
         if self._resolution is None:
@@ -533,10 +527,22 @@ class DefaultCliServices:
                 arithmetic=evaluation.arithmetic,
             )
         if evaluation.orders:
-            if virtual or requests is not None:
+            if requests is not None:
                 raise ConfigurationError(
-                    "--orders applies to tree evaluation; virtual results already "
-                    "carry their squared-order axes"
+                    "--orders splits an evaluation by squared coupling order; "
+                    "correlated requests carry their own order axes"
+                )
+            if virtual:
+                # One evaluation, viewed per squared-order sector with the
+                # explicit sums (``VirtualOrderEvaluation``).
+                return runtime.evaluate_orders(
+                    cast("Momenta", momenta),
+                    precision=evaluation.precision,
+                    helicities=evaluation.helicity_ids or None,
+                    color_flows=evaluation.color_flow_ids or None,
+                    mu_r2=scales,
+                    on_failure=evaluation.on_failure,
+                    **v2_options,
                 )
             return runtime.evaluate_orders(
                 cast("Momenta", momenta),
@@ -578,6 +584,34 @@ class DefaultCliServices:
         return BenchmarkRunner(config=config, progress=progress).run(
             config.evaluation.artifact,
             points=points,
+        )
+
+    def check(self, config: RunConfig, progress: ProgressSink) -> object:
+        """``pyamplicol check``: the artifact given (``evaluation.artifact``),
+        else the configuration's own request."""
+
+        from pyamplicol.api.services import check
+
+        target: Path | RunConfig | ConfigResolution
+        if config.evaluation.artifact is not None:
+            target = config.evaluation.artifact
+        elif config.process.entries:
+            target = self._generation_config(config)
+        else:
+            raise ConfigurationError(
+                "check requires a one-loop run card (its process entries) or an "
+                "artifact directory"
+            )
+        return check(
+            target,
+            points=config.check.points,
+            seed=config.check.seed,
+            precision=cast(
+                Literal["auto", "double", "double-double"], str(config.check.precision)
+            ),
+            model=config.check.model,
+            source=None if self._card is None else str(self._card),
+            progress=progress,
         )
 
     def inspect(

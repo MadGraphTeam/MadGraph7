@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
@@ -51,6 +52,117 @@ from pyamplicol.runtime.correlated_exact import (
     _copy_spin_vectors,
     _prepare_spin_vectors,
 )
+
+# --------------------------------------------------------- stage profile
+
+# The per-stage split of a v2 virtual call (``pyamplicol profile`` of a loop
+# artifact, ``benchmarking.profile_virtual``): groups of the native
+# executor's always-on stage report (``NativeExecutor.last_report
+# ["seconds"]``, top-level stages only; "x: y" names are sub-stages), in
+# order; ``REST`` is every other stage plus the call's untimed remainder.
+# A Born-interfered call's dressing is its seeds, factors and dressing; a
+# loop-induced call's (whose seeds and factors are the amplitude basis's
+# few) is the dressing stage, as the report's loop-induced bars read it.
+PROFILE_TREES = "trees"
+PROFILE_DRESSING = "dressing"
+PROFILE_SCATTER = "scatter"
+PROFILE_REDUCTION = "reduction"
+PROFILE_REST = "rest"
+PROFILE_GROUPS = (
+    PROFILE_TREES,
+    PROFILE_DRESSING,
+    PROFILE_SCATTER,
+    PROFILE_REDUCTION,
+    PROFILE_REST,
+)
+
+
+def profile_stage_names(contribution: str) -> dict[str, tuple[str, ...]]:
+    """The native stages of each timed group of a ``contribution`` call
+    ("virtual" or "loop-induced"); every other stage is ``PROFILE_REST``."""
+
+    dressing = (
+        ("seeds", "factors", "dressing") if contribution == "virtual" else ("dressing",)
+    )
+    return {
+        PROFILE_TREES: ("trees",),
+        PROFILE_DRESSING: dressing,
+        PROFILE_SCATTER: ("scatter",),
+        PROFILE_REDUCTION: ("reduction",),
+    }
+
+
+def profile_stages(
+    seconds: Mapping[str, float], wall: float, contribution: str
+) -> dict[str, float]:
+    """The call's wall time ``wall`` split into ``PROFILE_GROUPS`` from the
+    executor's stage report ``seconds``: each group the sum of its stages,
+    ``PROFILE_REST`` the remainder (never negative)."""
+
+    out = {
+        group: sum(float(seconds.get(name, 0.0)) for name in names)
+        for group, names in profile_stage_names(contribution).items()
+    }
+    out[PROFILE_REST] = max(wall - sum(out.values()), 0.0)
+    return out
+
+
+@contextmanager
+def collected_stage_seconds(runtime: Any) -> Iterator[dict[str, float] | None]:
+    """Collect the stage seconds of every native call a loaded v2 virtual
+    runtime's executor makes while the context is active: each call's
+    always-on stage report (``NativeExecutor.last_report["seconds"]``) is
+    added to the yielded mapping, so a public call that runs several native
+    batches (a per-point fallback, a rescue level, one batch per scale)
+    counts every one. Nothing is timed for it, and only this runtime's
+    executor records, for the duration of the context (its class is switched
+    to a recording subclass and back); None is yielded for a runtime without
+    a native executor report."""
+
+    backend = getattr(runtime, "_backend", runtime)
+    executor = getattr(backend, "_executor", None)
+    if not hasattr(executor, "last_report") or not hasattr(executor, "__dict__"):
+        yield None
+        return
+    original = type(executor)
+    totals: dict[str, float] = {}
+    executor.__class__ = _recording_executor(original)
+    executor.__dict__[_STAGE_TOTALS] = totals
+    try:
+        yield totals
+    finally:
+        executor.__class__ = original
+        executor.__dict__.pop(_STAGE_TOTALS, None)
+
+
+_STAGE_TOTALS = "_collected_stage_seconds"
+_RECORDING: dict[type, type] = {}
+
+
+def _recording_executor(base: type) -> type:
+    """``base`` with a ``last_report`` that also adds each assigned report's
+    stage seconds to the instance's collected totals (``_STAGE_TOTALS``)."""
+
+    found = _RECORDING.get(base)
+    if found is not None:
+        return found
+
+    def get(self: Any) -> Any:
+        return self.__dict__.get("last_report")
+
+    def put(self: Any, report: Any) -> None:
+        self.__dict__["last_report"] = report
+        totals = self.__dict__.get(_STAGE_TOTALS)
+        seconds = report.get("seconds") if isinstance(report, Mapping) else None
+        if totals is not None and isinstance(seconds, Mapping):
+            for name, value in seconds.items():
+                totals[str(name)] = totals.get(str(name), 0.0) + float(value)
+
+    recording = type(base.__name__, (base,), {"last_report": property(get, put)})
+    recording.__qualname__ = base.__qualname__
+    recording.__module__ = base.__module__
+    _RECORDING[base] = recording
+    return recording
 
 
 def _number(value: object, description: str) -> str:
