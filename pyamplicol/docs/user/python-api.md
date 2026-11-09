@@ -390,15 +390,25 @@ value for, the way the one-loop providers' most optimistic settings run
   gate 0. Every other row's value is bitwise the checked one.
 * NinjaRS runs its binary64 engine with zero stability thresholds (Ninja's
   `stability_threshold` and `relative_tolerance` 0): a lane fails only where
-  a tested quantity is exactly zero or NaN.
+  a tested quantity is exactly zero or NaN, or where its box mu-expansion's
+  conditioning bound refuses it. The bound is not a stability threshold and
+  stays active in every carrier: it flags a lane whose predicted loss of
+  digits exceeds the carrier's precision minus 14 bits (near-planar 2 -> 3
+  points with a rank-n numerator, e.g. g g > z z z with the event plane
+  containing the beam); the binary64 engine refuses a flagged lane
+  (`Unstable`) when the first-order rounding estimate of its boxes'
+  mu-expansion terms exceeds 2^-17 of the lane's value, the generic engine
+  (double-double, arbitrary precision) refuses every flagged lane
+  (`CutFailed { SingularParameter }`), with or without the setting.
 * The **residual failures**, which no scheme gives a finite value for, stay
   failed points with their reasons: an exactly singular pivot (TIRust, after
   its affine-relation variants), a non-finite output (TIRust's "nonfinite
   direct-engine coefficient", a non-finite numerator, NinjaRS's `NonFinite`),
   a master failure (TIRust's `MasterFailure`, NinjaRS's `MasterFailed`),
   TIRust's `InvalidInput` and a NinjaRS lane whose tested quantity is exactly
-  zero or NaN (its `Unstable` status, e.g. a cut whose two momenta span a
-  Euclidean plane). A family outside TIRust's capability stays a call-level
+  zero or NaN or that its conditioning bound refuses (its `Unstable` status,
+  e.g. a cut whose two momenta span a Euclidean plane, a near-planar box
+  mu-expansion). A family outside TIRust's capability stays a call-level
   `ReductionUnavailable`. A served value is not thereby accurate: see below.
 * `"auto"` keeps its rule, each backend in its unchecked form: TIRust for a
   loop-induced process, NinjaRS for a Born-interfered one, TIRust without a
@@ -411,7 +421,9 @@ value for, the way the one-loop providers' most optimistic settings run
   choice is off, so there the conditioning gates select and the last resort
   serves what they refuse. NinjaRS's generic engine (double-double, arbitrary
   precision, and the binary64 lanes the fast engine routes to it) tests no
-  stability threshold, so the setting changes nothing there.
+  stability threshold, so the setting changes nothing there; its conditioning
+  bound refuses near-planar box mu-expansions there too, at the carrier's
+  precision.
 * pyAmpliCol's own stability checks (`stability_checks=`, the SDKs'
   monitoring) and the rescue stack (`stability=`) stay their own settings:
   combined with the setting they check the unchecked values, and the rescue
@@ -435,8 +447,12 @@ largest relative error over the points, then the points above 1e-5 and the
 points that fail. TIRust's errors above 1e-5 all come from rows its last
 resort serves (plain PV at gate 0 below the conditioning gate); NinjaRS's
 zero thresholds return finite values off by up to 1e64 where its checks
-refuse the point, and keep its few points off by up to 3e-3 that the checked
-mode serves as well.
+refuse the point (g g > h h h: a box whose three momenta are linearly
+dependent, which only its noise tests catch), and keep its few points off by
+up to 3e-3 that the checked mode serves as well (a triangle cut with a small
+Gram determinant); its conditioning bound refuses the near-planar g g > z z z
+points in both modes (NinjaRS columns re-measured at NinjaRS 71eddb15,
+M-LIT `lit-ninja-planar`).
 
 | process | points | TIRust unchecked | NinjaRS unchecked |
 |---|---|---|---|
@@ -447,7 +463,7 @@ mode serves as well.
 | g g > z z g | 128 | 1.2e-2: 18 above 1e-5 (all on the last resort) | 5.0e-8 |
 | g g > a a g | 128 | 7.0e-6 | 3.1e-3: 1 above 1e-5 (also when checked) |
 | g g > W+ W- g | 128 | 1.4e-2: 24 above 1e-5 (all on the last resort) | 6.2e-8 |
-| g g > z z z | 128 | 2.2e-8 | 7.0e33: 2 above 1e-5 (the checked mode refuses them); 18 fail (`Unstable`) |
+| g g > z z z | 128 | 2.2e-8 | 1.8e-9; 20 fail (`Unstable`: the near-planar points) |
 | g g > h z g | 128 | 8.2e-9 | 3.0e-8; 2 fail (`MasterFailed`, `Unstable`) |
 | g g > a g g | 128 | 3.3e-6 | 6.8e-4: 1 above 1e-5 (also when checked) |
 | g g > z g g | 128 | 3.1e-5: 3 above 1e-5 (all on the last resort) | 6.2e-6 |

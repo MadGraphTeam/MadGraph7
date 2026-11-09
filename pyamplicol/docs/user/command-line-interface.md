@@ -459,8 +459,9 @@ sets the calibrated acceptance of TIRust's checked method choice).
 `--reduction-unchecked` (default off) reduces without the backends' own
 acceptance and refusal checks: TIRust's gates and method choice select the
 method without re-checking its values, plain Passarino-Veltman at gate 0
-serves what they refuse, NinjaRS runs with zero stability thresholds; only
-points without a finite value still fail, `auto` keeps its backend choice and
+serves what they refuse, NinjaRS runs with zero stability thresholds (its
+box mu-expansion's conditioning bound stays active); only points without a
+finite value or refused by that bound still fail, `auto` keeps its backend choice and
 its fallback acts on those only. It is a timing and benchmark mode with no
 accuracy certificate (the measured accuracy per process: [Python
 API](python-api.md), "Unchecked reductions"). The JSON output's lane diagnostics name the requested and
