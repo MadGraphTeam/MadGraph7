@@ -1,6 +1,8 @@
 *~
 .benchmark-work/
 .ninjars-build/
+.tirust-build/
+vendor/tirust/target/
 vendor/ninjars/target/
 vendor/ninjars/smoke
 vendor/ninjars/ninjars-native-libs.txt
