@@ -202,8 +202,9 @@ already inside Rusticol.
 `BenchmarkRunner.run` / `benchmark()` on one, measure the evaluation of one
 batch (`--batch-size` points, `--minimum-samples` timed calls after
 `--warmup-runs`, finite part only) and split its time per point into the
-groups of the native executor's always-on stage report of the same timed
-calls:
+groups of the native executor's always-on stage reports of the same timed
+calls (every native batch of a call counted: a per-point fallback, a rescue
+level, one batch per scale):
 
 | Group | Native stages |
 | --- | --- |

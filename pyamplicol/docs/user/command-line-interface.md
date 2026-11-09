@@ -588,8 +588,9 @@ fastest and slowest) and a coloured table of the time per point in each stage
 group (trees: the native trees and counterterm kets; dressing: seeds, factors
 and dressing of a Born-interfered process, the dressing of a loop-induced
 one; scatter; reduction; rest: every other stage and the untimed remainder),
-read from the native executor's always-on stage report of the same timed
-calls (no other timer runs). `--loop-reduction` selects the backend,
+read from the native executor's always-on stage reports of the same timed
+calls, every native batch of a call counted (a per-point fallback, a rescue
+level; no other timer runs). `--loop-reduction` selects the backend,
 `--reduction-unchecked` the unchecked timing mode (no accuracy certificate)
 and `--mu-r2` the scale (default: per point the squared invariant mass of its
 initial state). JSON: `benchmarking.VirtualProfileResult` (`seconds_per_point`,

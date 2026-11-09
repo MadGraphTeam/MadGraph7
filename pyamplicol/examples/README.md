@@ -470,7 +470,9 @@ s at two points (every pole and Ward row passes in binary64). Per point, one
 pinned core, a batch of 8: NinjaRS (`auto`) 22-23 ms checked and unchecked;
 TIRust 26 ms with all 8 points refused (an ill-conditioned Gram matrix, a
 typed refusal: the explicit backend has no fallback) and 47-49 ms unchecked;
-at leading colour one helicity 4.9 ms against 7.6 ms summed (0.65).
+at leading colour one helicity 4.9 ms against 7.6 ms summed (0.65). The
+whole walkthrough at two points (fresh workspace, both generations included):
+67 s, peak 0.77 GiB.
 
 ### `u u~ > d d~ e+ e-`, NLO QCD+EW at every order (complex-mass scheme)
 
@@ -497,8 +499,12 @@ unchecked; TIRust 125 ms with 2 of 8 points refused, 131-133 ms unchecked.
 **`check` fails this example** (exit 1): the poles of the QCD^2 QED^8 and
 QED^10 sectors do not match Catani's prediction, in binary64 and in
 double-double, and their ultraviolet poles do not cancel there; the two
-QCD-led sectors pass. The finding is reported for the engine (package
-report lit-examples §0); the walkthrough shows it as it is.
+QCD-led sectors pass. The same request with QED corrections and the QED^4
+Born alone fails its QED^10 sector identically, while `u u~ > d d~` and
+`u u~ > d d~ a` at every order pass: the finding is reported for the engine
+(package report lit-examples §0); the walkthrough shows it as it is. The
+whole walkthrough at two points: 550 s (`check` 275 s, generation 242 s on a
+loaded host), peak 7.6 GiB in the generation's child process.
 
 ### `g g > z g g`, loop-induced (every quark loop)
 
@@ -516,6 +522,7 @@ Measured (2026-11-09): generation 10.4 s, peak 0.68 GiB (with the correlators
 probe of the gluons pass in binary64). Per point, one pinned core, a batch of
 8: TIRust (`auto`) 187-194 ms checked and 68-73 ms unchecked; NinjaRS 298-315
 ms (unchecked 299-306 ms); one helicity 20 ms against 200 ms summed (0.10).
+The whole walkthrough at two points: 64 s, peak 1.9 GiB.
 
 ### `g g > e+ e- m+ m-`, loop-induced (complex-mass scheme)
 
@@ -529,7 +536,8 @@ which 49 s is the electroweak request-model preparation (with the correlators
 147 s, 4.20 GiB); `check` of the card 149 s (preparation 50 s), 4.22 GiB. Per
 point, one pinned core, a batch of 8: TIRust (`auto`) 3.1 ms checked and
 unchecked; NinjaRS 4.6-4.7 ms; one helicity 1.8 ms against 3.1 ms summed
-(0.58). The whole walkthrough at two points: 301 s.
+(0.58). The whole walkthrough at two points: 301-367 s (two runs on a
+loaded host), peak 4.4 GiB in the generation's child process.
 
 ## Typed Python
 
