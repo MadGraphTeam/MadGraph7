@@ -963,9 +963,11 @@ post_build_validation = false
 """
 
 
-def _generate(root: Path, entries, fixture) -> Path:
+def _generate(root: Path, entries, fixture, *, folding: bool = True) -> Path:
     """Generate ``entries`` ((name, expression), ...) through the public
-    ``Generator`` into ``root / "artifact"`` (``_card``)."""
+    ``Generator`` into ``root / "artifact"`` (``_card``); ``folding`` False
+    writes the unfolded plans (``generation.loop_induced_folding``, M-LIT
+    lit-fold)."""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
@@ -973,7 +975,12 @@ def _generate(root: Path, entries, fixture) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     output = root / "artifact"
     card = root / "card.toml"
-    card.write_text(_card(output, entries, fixture))
+    text = _card(output, entries, fixture)
+    if not folding:
+        text = text.replace(
+            "[generation]\n", "[generation]\nloop_induced_folding = false\n"
+        )
+    card.write_text(text)
     Generator(resolve_config(card)).generate(
         ProcessSet(tuple(ProcessRequest.parse(e, name=n) for n, e in entries)), output
     )

@@ -288,7 +288,9 @@ def test_the_sdk_serves_an_exact_fold_zero_with_its_certificate(tmp_path):
     points, scales = _inputs(name)
     exact_points, exact_scales = _exact(points, scales)
     expected = runtime.evaluate(exact_points, mu_r2=exact_scales, poles="none")
-    assert all(x == 0 for x in _python_flat(expected))
+    # poles="none": the absent poles are NaN in the SDK's layout.
+    finite = [x for x in _python_flat(expected) if not math.isnan(x)]
+    assert finite and all(x == 0 for x in finite)
     sdk = _sdk()
     handle = _open(sdk, artifact)
     try:
@@ -302,7 +304,7 @@ def test_the_sdk_serves_an_exact_fold_zero_with_its_certificate(tmp_path):
         assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0
         found = _evaluate(sdk, handle, points, scales)
         assert found["statuses"] == [SUCCESS_STATUS] * len(points)
-        assert found["virtual"] == [0.0] * len(found["virtual"])
+        assert all(x == 0 for x in found["virtual"] if not math.isnan(x))
         assert _same(found["virtual"], _python_flat(expected))
     finally:
         sdk.rusticol_virtual_free(handle)

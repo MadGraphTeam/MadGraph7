@@ -445,23 +445,25 @@ def test_dependent_columns_are_formed_after_the_reduction(li):
         executor.raw_lanes = True
         (result,) = executor.evaluate([point], [scale], parameters=parameters)
         counts[label] = executor.last_report["counts"]["reduction lanes"]
-        raw[label] = {
-            (key.family, key.order, key.column)
-            if hasattr(key, "family")
-            else key: value
-            for key, value in result.families
-        }
-    assert counts["on"] < counts["off"]
-    assert len(raw["on"]) == len(raw["off"])
-    size = len(slice_.amplitude)
+        # Raw lanes: (family, loop orders, (Born row, t)) -> Laurent.
+        raw[label] = dict(result.families)
+    # Unfolded, every raw lane is reduced; folded, every lane is still there
+    # (each consumer sees the same lanes) but the dependent ones are formed
+    # after the reduction, not reduced.
+    assert len(raw["off"]) == counts["off"]
+    assert set(raw["on"]) == set(raw["off"])
+    assert counts["on"] < len(raw["on"])
     pairs = 0
-    for (family, order, column), value in raw["on"].items():
-        partner = (family, order, column - column % size + (1 - column % size))
-        other = raw["on"].get(partner)
-        if other is not None and all(
-            complex(x) == -complex(y) for x, y in zip(value, other, strict=True)
-        ):
-            pairs += 1
+    for (family, orders, (row, t)), value in raw["on"].items():
+        for (f, o, (r, u)), other in raw["on"].items():
+            if (f, o, r) != (family, orders, row) or u <= t:
+                continue
+            parts = ("finite", "single_pole", "double_pole")
+            if all(getattr(value, x) == -getattr(other, x) for x in parts) and any(
+                getattr(value, x) != 0 for x in parts
+            ):
+                pairs += 1
+    # g g > h g's box pairs close into U_t - U_t': c = -1, formed exactly.
     assert pairs > 0
 
 
