@@ -19,8 +19,12 @@
 //! other rows, whose Born and counterterm components stay zero, as a spin
 //! source's dropped rows do. The kept interactions run in their order on
 //! the same values and every kernel row is independent, so every value read
-//! is bitwise the full program's. Without such columns, or when the columns
-//! keep every row, the program runs whole.
+//! is bitwise the full program's. An amplitude-mode plan (loop-induced, no
+//! observable columns) restricts the same way, at load and per call: its
+//! Born components are the plan's units, so a dropped row's closures only
+//! form its counterterm kets, which stay zero (lit-dress (H)). A seeded
+//! plan without columns, or columns keeping every row, runs the program
+//! whole.
 //!
 //! **Per call** (MF-MASKS-ROWS): an evaluation-time selection's kept Born
 //! rows on a template program (`plan::LiveRows`: the dressed families
@@ -116,11 +120,18 @@ impl TreeProgram {
     }
 
     /// The row liveness of one evaluation whose schedule-B liveness is
-    /// `live` (`Executor::live_rows`, on `plan`; module docs): None without
-    /// observable columns (no per-point sources zero the dropped rows' Born
-    /// components) or when it keeps every row the program evaluates.
+    /// `live` (`Executor::live_rows`, on `plan`; module docs): None for a
+    /// seeded plan without observable columns (no per-point sources zero
+    /// the dropped rows' Born components) or when it keeps every row the
+    /// program evaluates. An amplitude-mode plan (loop-induced) restricts
+    /// without columns: its Born components are the plan's units, so the
+    /// dropped rows' closures only form their counterterm kets, which the
+    /// call does not read (lit-dress (H): a helicity selection forms the
+    /// kept rows' trees and counterterm kets only).
     pub fn live_rows(&self, plan: &LoopProgramV4, live: &LiveRows) -> Option<TreeRows> {
-        self.columns.as_ref()?;
+        if self.columns.is_none() && !plan.amplitude {
+            return None;
+        }
         let rows: Vec<bool> = (0..self.rows)
             .map(|row| {
                 live.rows.get(row).copied().unwrap_or(true)
@@ -144,6 +155,48 @@ impl TreeProgram {
                 .map(|ct| liveness(&ct.interactions, &mut counterterms)),
             closure_rows: restriction.rows,
         })
+    }
+
+    /// The work of one evaluation's tree fill with the row liveness `rows`
+    /// (None: the program as loaded): the Born rows whose root closures
+    /// run and the interactions of both interaction programs it runs (the
+    /// report's `tree closure rows` and `tree interactions`; a call's
+    /// liveness and a plan restricting the same rows at load run the same
+    /// ones).
+    pub fn row_counts(&self, rows: Option<&TreeRows>) -> (usize, usize) {
+        let closure_rows = match (rows, &self.closure_rows) {
+            (Some(rows), _) => rows.closure_rows.iter().filter(|&&k| k).count(),
+            (None, Some(kept)) => kept.iter().filter(|&&k| k).count(),
+            (None, None) => self.rows,
+        };
+        let all = |interactions: &Interactions| -> usize {
+            interactions
+                .steps
+                .iter()
+                .flat_map(|step| &step.groups)
+                .map(|(_kernel, edges)| edges.len())
+                .sum()
+        };
+        let kept = |liveness: &Liveness| -> usize {
+            liveness
+                .steps
+                .iter()
+                .flat_map(|(groups, _outputs)| groups)
+                .flatten()
+                .filter(|&&k| k)
+                .count()
+        };
+        let interactions = match rows {
+            Some(rows) => kept(&rows.trees) + rows.counterterms.as_ref().map_or(0, kept),
+            None => {
+                all(&self.interactions)
+                    + self
+                        .counterterm_trees
+                        .as_ref()
+                        .map_or(0, |ct| all(&ct.interactions))
+            }
+        };
+        (closure_rows, interactions)
     }
 
     /// The tree and counterterm state components `restriction` reads: the

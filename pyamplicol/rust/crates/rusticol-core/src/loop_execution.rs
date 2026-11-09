@@ -22,7 +22,9 @@ pub struct LoopInputs {
 
 pub mod v2 {
     use crate::loop_v2::closure::FamilyNumerator;
-    use crate::loop_v2::dress::{Carrier, ChunkInputs, LaneData, Reads, V2Batch, input_vectors};
+    use crate::loop_v2::dress::{
+        Carrier, ChunkInputs, LaneData, Reads, V2Batch, Workspaces, input_vectors,
+    };
     use crate::loop_v2::forward::{forward_factors, run_forward};
     pub use crate::loop_v2::fourier::SeedFourier;
     use crate::loop_v2::fourier::seeds_fourier;
@@ -818,6 +820,7 @@ pub mod v2 {
         report: &mut Report,
         bound: Option<(usize, &ReadChunks, usize)>,
         live: Option<&LiveRows>,
+        workspaces: &Workspaces<T>,
     ) -> RusticolResult<Vec<FamilyNumerator<T>>> {
         let families = &chunk.families;
         let start = Instant::now();
@@ -850,11 +853,25 @@ pub mod v2 {
         let inputs = &*inputs;
         let runs = families
             .par_iter()
-            .map(|&f| run_family_on::<T, L>(plan, f, family_of(plan, live, f), inputs, seeds, data))
+            .map(|&f| {
+                run_family_on::<T, L>(
+                    plan,
+                    f,
+                    family_of(plan, live, f),
+                    inputs,
+                    seeds,
+                    data,
+                    workspaces,
+                )
+            })
             .collect::<RusticolResult<Vec<_>>>()?;
         report.time("dressing", start);
         let peak = runs.iter().map(|run| run.peak_reals).max().unwrap_or(0);
         report.peak("open objects (one family walk)", peak, L);
+        report.count(
+            "closure columns",
+            runs.iter().map(|run| run.closures as u64).sum(),
+        );
         report.count("families", families.len() as u64);
         let steps = || {
             families
@@ -885,6 +902,7 @@ pub mod v2 {
         let mut out: Vec<PointNumerators<T>> = vec![Vec::new(); batch.points()];
         let mut report = Report::default();
         let merged = merged_of(plan, schedule)?;
+        let workspaces = Workspaces::new(rayon::current_num_threads(), zero);
         for points in chunks(batch.points(), L) {
             let data = LaneData::<T, L>::new(plan, batch, &points, zero)?;
             let mut seeds = seeds(plan, &data);
@@ -906,6 +924,7 @@ pub mod v2 {
                         &mut report,
                         None,
                         None,
+                        &workspaces,
                     )?;
                     if let Some(merged) = merged {
                         let parts = parts(merged, DEFAULT_PART_CHUNKS, plan);
@@ -978,24 +997,32 @@ pub mod v2 {
             s_matrix: Vec::new(),
             coefficients: Vec::new(),
         };
+        // One pass over the accumulators gives every lane's finiteness; the
+        // stored columns (a dressed-row family's support, lit-dress lever D)
+        // are those that can be non-zero, read in column order straight into
+        // the lanes (an all-zero column has no lane, as before).
+        let finite = numerator.finite_lanes::<L>();
         for lane in 0..data.active {
             let point = data.points[lane];
             if !failures[point].is_empty() {
                 continue;
             }
-            if !numerator.finite::<L>(lane) {
+            if !finite[lane] {
                 failures[point].push(format!("family {}: non-finite numerator", numerator.family));
                 continue;
             }
             for (k, &order) in family.orders.iter().enumerate() {
-                for column in 0..plan.columns {
-                    let coefficients = numerator.lane::<L>(k, column, lane);
-                    if coefficients
-                        .iter()
-                        .all(|z| z.re.is_fully_zero() && z.im.is_fully_zero())
+                for (slot, column) in numerator.stored() {
+                    let block = numerator.block::<L>(k, slot);
+                    if block
+                        .chunks_exact(v)
+                        .all(|z| z[lane].is_fully_zero() && z[L + lane].is_fully_zero())
                     {
                         continue;
                     }
+                    let coefficients = block
+                        .chunks_exact(v)
+                        .map(|z| Complex::new(z[lane].clone(), z[L + lane].clone()));
                     lanes.points.push(point);
                     lanes.keys.push(LaneKey {
                         family: numerator.family,
@@ -1316,6 +1343,9 @@ pub mod v2 {
             checks: vec![Vec::new(); points],
             terms: vec![Vec::new(); points],
         };
+        // The call's buffer pools, kept across its family walks and chunks
+        // (lit-dress lever E).
+        let workspaces = Workspaces::new(rayon::current_num_threads(), zero);
         for chunk in chunks(points, L) {
             backend.begin();
             let start = Instant::now();
@@ -1374,8 +1404,16 @@ pub mod v2 {
                     &mut report,
                     Some((k, &read_chunks, input_budget)),
                     live,
+                    &workspaces,
                 )?;
                 reduction.reduce(&numerators, &mut report)?;
+                let mut pool = workspaces
+                    .numerators
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                for numerator in numerators {
+                    numerator.recycle(&mut pool);
+                }
             }
             if !merged_parts.is_empty() {
                 let stats = run_merged(plan, &merged_parts, &mut inputs, &seeds, &data, |done| {

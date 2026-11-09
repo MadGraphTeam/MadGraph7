@@ -727,9 +727,9 @@ impl Runner {
     /// `V2Executor.evaluate(rows=...)` forms it (`evaluate_with`): the
     /// executor's families pruned to the rows the kept rows reach
     /// (`V2Executor::live_rows`, schedule B) and the tree fill's liveness
-    /// (`TreeProgram::live_rows`; none for an amplitude-mode program, whose
-    /// trees have no observable columns). Both None when `rows` drops no
-    /// seeded row.
+    /// (`TreeProgram::live_rows`: an amplitude-mode program forms the kept
+    /// rows' trees and counterterm kets only). Both None when `rows` drops
+    /// no seeded row.
     pub(crate) fn row_liveness(
         &mut self,
         lanes: usize,

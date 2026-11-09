@@ -2021,8 +2021,10 @@ class NativeExecutor:
         self.term_scale = False
         # Amplitude-mode plans: the helicity rows the next calls keep (one
         # flag per plan row; ``runs(rows=...)``, a loop-induced
-        # single-helicity selection): the native executor dresses those rows
-        # only (``plan/live.rs``); None keeps every row.
+        # single-helicity selection): the native executor evaluates those
+        # rows only (their trees and counterterm kets, dressing, closure,
+        # scatter and reduction lanes: ``plan/live.rs``, ``trees_rows.rs``)
+        # and exports them only; None keeps every row.
         self.row_mask: tuple[bool, ...] | None = None
         # The plan families the next calls dress (one flag per plan family;
         # None dresses every one): a diagnostic selection, e.g. NinjaRS on
@@ -2473,8 +2475,10 @@ class NativeExecutor:
         (a rotated run's failure names its rotation). The loop-induced
         observables (``induced_observables``) form their quadratic forms on
         the same evaluations' amplitude vectors; ``rows`` (amplitude mode)
-        keeps those helicity rows only (``row_mask``: the others are not
-        dressed, their amplitudes are not formed). ``reduction`` is the
+        keeps those helicity rows only (``row_mask``: the others' trees,
+        counterterm kets, dressing, closure, scatter and reduction lanes are
+        not formed, nor are their amplitudes exported, assembled or
+        squared). ``reduction`` is the
         effective backend the call's result records (``VirtualReduction.
         effective``; None: the current context's, ``reduction.running``): the
         executor calls of the run reduce on it."""
@@ -2918,6 +2922,9 @@ class NativeExecutor:
                 if exported.amplitude is not None:
                     # Loop-induced: the native amplitude sum per (loop order,
                     # column), its re-test, budget and scale (``induced``).
+                    # A row selection's output carries its kept rows only
+                    # (their amplitudes and counterterm kets): the
+                    # evaluation's rows, the rows it squares.
                     induced.read_native(
                         evaluation, output, index, exported, carrier, numbers
                     )

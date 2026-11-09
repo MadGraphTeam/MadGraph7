@@ -164,6 +164,43 @@ macro_rules! dispatched {
 }
 pub(crate) use dispatched;
 
+/// [`dispatched!`] at most at the AVX2 width: the same body compiled for
+/// AVX2 (taken on AVX2 and AVX-512 CPUs alike) and the baseline. For loops
+/// whose regular outer stride LLVM's AVX-512 cost model vectorises with
+/// gathers and scatters instead of the contiguous lanes (the dressed-row
+/// closure, `closure::close_row`: about 7x slower than the baseline on Zen 4
+/// in lit-dress's micro-benchmark, while AVX2 is 0.8-0.9x of it); the same
+/// operations per lane in every width.
+macro_rules! dispatched_avx2 {
+    (
+        $(#[$meta:meta])*
+        $vis:vis fn $name:ident<T: $bound:path $(, const $c:ident: usize)?>(
+            $($arg:ident: $ty:ty),* $(,)?
+        ) => $body:ident;
+    ) => {
+        $(#[$meta])*
+        $vis fn $name<T: $bound + 'static $(, const $c: usize)?>($($arg: $ty),*) {
+            #[cfg(target_arch = "x86_64")]
+            {
+                #[allow(clippy::too_many_arguments)]
+                #[target_feature(enable = "avx2")]
+                fn avx2<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
+                    $body::<T $(, $c)?>($($arg),*)
+                }
+                use $crate::loop_v2::kernels::Simd;
+                match Simd::detect::<T>() {
+                    // SAFETY: `Simd::detect` returns AVX-512 or AVX2 only when
+                    // the running CPU reports AVX2 (AVX-512 implies it).
+                    Simd::Avx512 | Simd::Avx2 => return unsafe { avx2::<T $(, $c)?>($($arg),*) },
+                    Simd::Baseline => {}
+                }
+            }
+            $body::<T $(, $c)?>($($arg),*)
+        }
+    };
+}
+pub(crate) use dispatched_avx2;
+
 /// Every entry of a `loop_in x out` segment of degree `degree`, in
 /// `[monomial][loop_in][out]` order: the layout [`fused_edge_blocked`] reads.
 pub fn dense_layout(loop_in: usize, out: usize, degree: usize) -> SegmentLayout {
@@ -569,6 +606,192 @@ fn fused_edge_gathered_body<T: FloatLike, const L: usize>(
                         d_im[l].clone_from(&acc_im[l]);
                     }
                     start = end;
+                }
+            }
+        }
+    }
+}
+
+/// The diagonal of a trace step's fused segment (lit-dress lever A): a
+/// trace step's output row is read only by its trace
+/// `τ[t] = Σ_α O'[α][α][t]` (`closure.rs`), so the step needs, per cut
+/// index α, only the output coefficients of the open end β' = α. Per
+/// diagonal block `k` (output block `k · d_out + k` of a row, in the
+/// segment's `[cut][out]` order: cut index `k` and open end `k` for an
+/// open-loop input, open end `k · d_out + k` of the one cut index for a
+/// seeded input) and output coefficient `t`, the terms
+/// `input[s] · factor[e]` that reach it, in layout entry order: the terms
+/// and the order of [`GatherSchedule`] and of [`fused_edge`] on those
+/// coefficients. `s` indexes the lane vectors of a whole input row (the cut
+/// index folded in), `e` the factor entries.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiagonalSchedule {
+    /// Diagonal blocks (`d_alpha`).
+    blocks: usize,
+    /// Output coefficients per block (`ncoeff(rank + degree)`).
+    targets: usize,
+    /// Per `k * targets + t`, the end (exclusive) of its terms in `terms`;
+    /// its start is the previous end.
+    ends: Vec<u32>,
+    /// `(input lane vector within one input row, factor entry)` per term.
+    terms: Vec<[u32; 2]>,
+}
+
+impl DiagonalSchedule {
+    /// The diagonal of a segment of `cut` cut indices and `incoming` open-end
+    /// columns in, laid out by `layout` (`incoming x out`), on input rank
+    /// `products.left_rank()`, whose output rows hold `d_alpha x d_out`
+    /// blocks; `None` where those blocks are not the segment's
+    /// `cut x out` (no square diagonal). Panics where an index exceeds `u32`.
+    pub fn new(
+        layout: &SegmentLayout,
+        products: &MonomialProductTable,
+        cut: usize,
+        incoming: usize,
+        d_alpha: usize,
+        d_out: usize,
+    ) -> Option<Self> {
+        let outgoing = layout.out_dimension();
+        if layout.loop_in_dimension() != incoming
+            || d_alpha * d_out != cut * outgoing
+            || layout.degree() > products.right_rank()
+        {
+            return None;
+        }
+        let m_in = ncoeff(products.left_rank());
+        let targets = ncoeff(products.output_rank());
+        let index = |value: usize| u32::try_from(value).expect("a diagonal index exceeds u32");
+        let mut lists: Vec<Vec<[u32; 2]>> = vec![Vec::new(); d_alpha * targets];
+        for k in 0..d_alpha {
+            let flat = k * d_out + k;
+            let (c, o) = (flat / outgoing, flat % outgoing);
+            for (e, (entry, &n)) in layout.entries().iter().zip(layout.monomials()).enumerate() {
+                if entry.out != o {
+                    continue;
+                }
+                for m in 0..m_in {
+                    let s = (c * incoming + entry.loop_in) * m_in + m;
+                    lists[k * targets + products.target(m, n)].push([index(s), index(e)]);
+                }
+            }
+        }
+        let mut ends = Vec::with_capacity(lists.len());
+        let mut terms = Vec::new();
+        for list in lists {
+            terms.extend(list);
+            ends.push(index(terms.len()));
+        }
+        Some(Self {
+            blocks: d_alpha,
+            targets,
+            ends,
+            terms,
+        })
+    }
+
+    /// Diagonal blocks (the trace's cut indices).
+    pub fn blocks(&self) -> usize {
+        self.blocks
+    }
+
+    /// Products this schedule performs per input row (one per term).
+    pub fn work(&self) -> usize {
+        self.terms.len()
+    }
+}
+
+/// One contribution to a trace row ([`trace_row`]): an input row of an
+/// edge's source, the factor row of the link's block and the edge's
+/// [`DiagonalSchedule`].
+#[derive(Clone, Copy, Debug)]
+pub struct TraceTerm<'a, T> {
+    pub input: &'a [T],
+    pub factor: &'a [T],
+    pub schedule: &'a DiagonalSchedule,
+}
+
+dispatched! {
+    /// The trace of one output row of a fused trace step (lit-dress lever
+    /// A): `trace[t] = Σ_α O'[α][α][t]` (α in order, into `trace` cleared to
+    /// zero), where each diagonal coefficient `O'[α][α][t]` is accumulated
+    /// from zero over the row's `contributions` in order (the step's edges in
+    /// order, each edge's links in order), each in its schedule's term order.
+    /// These are the operations [`fused_edge`] (or [`fused_edge_gathered`])
+    /// into a zeroed output and its row trace perform on the diagonal, so the
+    /// trace is bitwise theirs in every carrier; the off-diagonal blocks the
+    /// trace never reads are not formed. A coefficient no term reaches stays
+    /// out of the sum (the full form adds its exact zero, which changes no
+    /// value: an accumulator started at `+0` never holds `-0`). `trace`
+    /// holds `targets` lane vectors (`ncoeff` of the step's output rank),
+    /// at least every schedule's.
+    pub fn trace_row<T: FloatLike, const L: usize>(
+        contributions: &[TraceTerm<'_, T>],
+        trace: &mut [T],
+    ) => trace_row_body;
+}
+
+#[inline(always)]
+fn trace_row_body<T: FloatLike, const L: usize>(
+    contributions: &[TraceTerm<'_, T>],
+    trace: &mut [T],
+) {
+    clear(trace);
+    let Some(first) = contributions.first() else {
+        return;
+    };
+    let v = lane_vector_len(L);
+    let targets = trace.len() / v;
+    let blocks = first.schedule.blocks;
+    assert!(
+        contributions
+            .iter()
+            .all(|c| c.schedule.blocks == blocks && c.schedule.targets <= targets),
+        "trace contributions of different shapes"
+    );
+    let Some(zero) = trace.first().map(FloatLike::zero) else {
+        return;
+    };
+    let mut acc_re: [T; L] = std::array::from_fn(|_| zero.clone());
+    let mut acc_im: [T; L] = std::array::from_fn(|_| zero.clone());
+    for k in 0..blocks {
+        for (t, d) in trace.chunks_exact_mut(v).enumerate() {
+            let mut reached = false;
+            for c in contributions {
+                let schedule = c.schedule;
+                if t >= schedule.targets {
+                    continue;
+                }
+                let slot = k * schedule.targets + t;
+                let start = if slot == 0 {
+                    0
+                } else {
+                    schedule.ends[slot - 1] as usize
+                };
+                let end = schedule.ends[slot] as usize;
+                if start == end {
+                    continue;
+                }
+                if !reached {
+                    for l in 0..L {
+                        acc_re[l].clone_from(&zero);
+                        acc_im[l].clone_from(&zero);
+                    }
+                    reached = true;
+                }
+                for &[s, e] in &schedule.terms[start..end] {
+                    let (o_re, o_im) = c.input[s as usize * v..][..v].split_at(L);
+                    let (y_re, y_im) = c.factor[e as usize * v..][..v].split_at(L);
+                    for l in 0..L {
+                        acc_re[l] += o_re[l].clone() * &y_re[l] - o_im[l].clone() * &y_im[l];
+                        acc_im[l] += o_re[l].clone() * &y_im[l] + o_im[l].clone() * &y_re[l];
+                    }
+                }
+            }
+            if reached {
+                let (d_re, d_im) = d.split_at_mut(L);
+                for l in 0..L {
+                    d_re[l] += &acc_re[l];
+                    d_im[l] += &acc_im[l];
                 }
             }
         }

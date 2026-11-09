@@ -1126,7 +1126,7 @@ pub struct TreeProgram {
     weights: Vec<([Rational; 2], i32)>,
     /// The rows the plan's columns keep and the block rows its kept links
     /// read, when they restrict them (`rows::Restriction`): applied by
-    /// `set_columns` (observable columns).
+    /// `set_columns` (observable columns), or at load in amplitude mode.
     restriction: Option<rows::Restriction>,
     /// The Born rows the root closures evaluate (none: every row; set by
     /// the row restriction, `rows`).
@@ -2458,7 +2458,7 @@ impl TreeProgram {
                 )
             })
             .transpose()?;
-        Ok(Self {
+        let mut program = Self {
             legs: file.legs,
             initial: file.initial,
             state_size: file.state_size,
@@ -2494,7 +2494,16 @@ impl TreeProgram {
                 }
                 table
             },
-        })
+        };
+        // Amplitude mode (loop-induced) has no observable columns: a plan
+        // keeping some Born rows restricts the program at load (the
+        // dropped rows' counterterm kets stay zero; lit-dress (H)).
+        if plan.amplitude
+            && let Some(restriction) = program.restriction.take()
+        {
+            program.restrict_rows(restriction);
+        }
+        Ok(program)
     }
 
     /// The external parameters a batch supplies per point, in order.
@@ -3263,9 +3272,12 @@ impl TreeProgram {
                 "loop-side sources run the inclusive outputs, not observable columns",
             )?;
         }
-        // A call's row liveness drops rows only its points' sources zero.
+        // A call's row liveness drops rows only its points' sources zero;
+        // amplitude mode's Born components are the plan's units, so a
+        // dropped row there only loses counterterm kets the call does not
+        // read (`TreeProgram::live_rows`).
         require(
-            rows.is_none() || (sources.is_some() && loop_sources.is_none()),
+            rows.is_none() || (loop_sources.is_none() && (sources.is_some() || plan.amplitude)),
             "a row liveness needs the selection's sources",
         )?;
         if let Some(sources) = sources {
