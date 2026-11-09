@@ -2402,8 +2402,14 @@ class AmplitudeBasis:
         )
 
     def metric_at_three(self) -> tuple[tuple[ExactColorCoefficient, ...], ...]:
-        """G_{tt'} at N_c = 3."""
+        """G_{tt'} at N_c = 3, projected once per basis (the basis is frozen
+        and the projection exact: every call returns the same values; an
+        in-memory slice's per-point squaring no longer re-projects it)."""
 
+        return self._metric_at_three
+
+    @cached_property
+    def _metric_at_three(self) -> tuple[tuple[ExactColorCoefficient, ...], ...]:
         return tuple(
             tuple(project(cell, None, "full") for cell in row) for row in self.metric
         )

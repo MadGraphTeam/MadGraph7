@@ -168,6 +168,9 @@ def test_primitive_classes_equal_the_oracle_and_closed_forms():
         (E(Fraction(56, 3)), E(Fraction(-16, 3))),
         (E(Fraction(-16, 3)), E(Fraction(56, 3))),
     )
+    # Projected once per basis (an in-memory slice squares every point with
+    # it): the same exact values, the same object on every call.
+    assert basis.metric_at_three() is basis.metric_at_three()
     # Five gluons: adjoint rings and fundamental traces of a sample of
     # words (single and double traces of their SU(N_c) expansions) and a
     # double-trace ket.
