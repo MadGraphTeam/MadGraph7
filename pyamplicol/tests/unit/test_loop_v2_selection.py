@@ -18,7 +18,8 @@
   runtime's (LC Born per helicity and flow proportional to the tree
   engine's built-in SM values, zeros at the same entries);
 * the public route: a selected artifact equals the inclusive artifact's
-  runtime selection; NLC and full colour keep refusing selectors; requests
+  runtime selection; NLC and full colour refuse colour-flow selectors (their
+  helicity selection: ``test_loop_v2_fc_selection.py``); requests
   without a selection keep their request records (no ``selection`` entry);
 * MadLoop: the helicity IDs are MadLoop's helicity configurations, the
   full-colour rows equal ``SLOOPMATRIXHEL`` (MQ-REF's per-helicity
@@ -155,7 +156,9 @@ def _summed(results) -> list:
 def test_selection_records_catalogue_resolution_and_refusals():
     """Selections normalise and round-trip through the request record, which
     holds them only when set; selectors resolve by tree ID, runtime ID and
-    ordinal and refuse unknown ones; NLC and full colour refuse them."""
+    ordinal and refuse unknown ones; NLC and full colour refuse colour flows
+    (helicity rows are selectable at every accuracy, lit-fc-hel) and
+    generation-time selections."""
 
     from pyamplicol.loops.v2.artifact import request_from_record, request_record
     from pyamplicol.loops.v2.assemble import SliceRequest
@@ -192,11 +195,16 @@ def test_selection_records_catalogue_resolution_and_refusals():
                 accuracy=accuracy,
                 selection=selection,
             )
-        with pytest.raises(CompatibilityError, match="leading colour"):
-            lc.require_leading_colour(accuracy, ["h:-1,-1,+1,+1"], None)
-    with pytest.raises(CompatibilityError, match=r"at next-to-leading colour.*without"):
-        lc.require_leading_colour("nlc", None, ["1"], resolved=True)
-    lc.require_leading_colour("full", None, None)
+        # Colour flows exist at leading colour only (lit-fc-hel: helicity
+        # rows are selectable at every accuracy).
+        with pytest.raises(CompatibilityError, match="has no colour flows"):
+            lc.require_colour_flows(accuracy, ["1"])
+        lc.require_colour_flows(accuracy, None)
+    with pytest.raises(
+        CompatibilityError, match=r"at next-to-leading colour.*selects Born helicity"
+    ):
+        lc.require_colour_flows("nlc", ["flow:2,1,3,5,4"])
+    lc.require_colour_flows("lc", ["1"])
     # What evaluate / evaluate_resolved do not take (the correlated ones).
     with pytest.raises(CompatibilityError, match=r"correlated.*evaluate_resolved"):
         v2_options(helicities=["h:-1,-1,+1,+1"])
