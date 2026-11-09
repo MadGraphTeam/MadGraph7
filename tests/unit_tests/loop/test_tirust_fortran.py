@@ -315,6 +315,8 @@ fail=1
 call TEST_TIRUST_TENSOR_DIAGNOSTIC(1,3,1,p,m,coefs,stable)
 if(stable) stop 8
 fail=2
+call TEST_TIRUST_TENSOR_DIAGNOSTIC(1,3,1,p,m,coefs,stable)
+if(stable) stop 15
 call TEST_MP_TIRUST_TENSOR_DIAGNOSTIC(4,3,1,qp,m,qcoefs,stable)
 if(stable) stop 9
 fail=0
