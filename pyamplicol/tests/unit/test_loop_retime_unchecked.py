@@ -78,8 +78,8 @@ def test_the_dry_run_prints_the_units_and_launches_nothing(tmp_path, capsys):
     printed = capsys.readouterr().out.splitlines()
     units = [shlex.split(line) for line in printed if line.startswith("systemd-run")]
     assert [unit[2] for unit in units] == [
-        "--unit=lit-retime-t-li-gg-hgg",
-        "--unit=lit-retime-t-li-gg-emepmupmumg",
+        "--unit=lit-lit-unchecked-retime-t-li-gg-hgg",
+        "--unit=lit-lit-unchecked-retime-t-li-gg-emepmupmumg",
     ]
     for unit, process in zip(units, ("li_gg_hgg", "li_gg_emepmupmumg"), strict=True):
         assert unit[:2] == ["systemd-run", "--user"] and "--collect" in unit
