@@ -265,11 +265,24 @@ def _compare(label, found: dict, expected, resolved: bool) -> None:
             assert "; ".join(failures[str(index)]) == (
                 expected.diagnostics[index].failures[0].detail
             ), label
-    record = expected.diagnostics[0].reduction
+    # The call-level record with m-lit F3's per-point fallback: the call's
+    # fallback and how many points it evaluated again (the lanes recording
+    # another backend than the call's; ``test_loop_v2_sdk_induced._record``).
+    # A lane the fallback served records its own choice (no fallback of its
+    # own), so the call's record is that of a lane with the fallback armed.
+    records = [lane.reduction for lane in expected.diagnostics if lane.reduction]
+    record = next((r for r in records if r.fallback is not None), records[0])
+    moved = [
+        lane
+        for lane in expected.diagnostics
+        if lane.reduction is not None and lane.reduction.effective != record.effective
+    ]
     assert found["diagnostics"]["reduction"] == {
         "requested": record.requested,
         "effective": record.effective,
         "reason": record.reason,
+        "fallback": record.fallback,
+        "fallback_points": len(moved),
     }, label
     if resolved:
         assert found["axes"]["helicity_ids"] == list(expected.helicity_ids), label
@@ -493,7 +506,11 @@ def test_c_abi_selections_on_fresh_points_equal_the_python_api(
     call keeps the Python API's statuses, failure reasons and values (a
     resolved helicity selection dresses its rows only in both, so a lane
     refused in an unselected row fails neither), and the per-point
-    selection puts several points in one row group."""
+    selection puts several points in one row group. Both sides run at the
+    target whose calibrated acceptance is the former shipped one, 2^-30
+    (m-lit lit-tirust-default: the default target 1e-5 admits these
+    points), so "auto" exercises its per-point NinjaRS fallback in the
+    selections too."""
 
     from pyamplicol import Runtime
 
@@ -510,6 +527,12 @@ def test_c_abi_selections_on_fresh_points_equal_the_python_api(
             # refusal.
             assert backend == "tirust" and status == STATUS_RUNTIME_ERROR
             return
+        tir = "tirust" in json.loads(loop_native.reduction_backends())
+        target = 2.0**-30 / loop_native.tir_acceptance(1.0) if tir else None
+        if target is not None:
+            set_target = sdk.rusticol_virtual_set_reduction_target
+            set_target.argtypes = [ctypes.c_void_p, ctypes.c_double]
+            assert set_target(handle, target) == 0, _error(sdk)
         capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
         one, subset, _ = _selectors(capabilities, 1)
         count = len(capabilities["helicity_rows"])
@@ -524,6 +547,7 @@ def test_c_abi_selections_on_fresh_points_equal_the_python_api(
             f"fresh:{backend}",
             reduction=backend,
             on_failure="return",
+            **({} if target is None else {"reduction_target": target}),
         )
         if backend == "tirust":
             every = [v is not None for v in calls["anchors"][1].values]

@@ -113,6 +113,7 @@ module rusticol_virtual
     procedure :: set_poles
     procedure :: set_arithmetic
     procedure :: set_reduction
+    procedure :: set_reduction_target
     procedure :: set_stability_checks
     procedure :: evaluate
     procedure :: evaluate_selected
@@ -213,6 +214,13 @@ module rusticol_virtual
     function c_set_reduction(handle, reduction) bind(C, name="rusticol_virtual_set_reduction") result(value)
       import
       type(c_ptr), value :: handle, reduction
+      integer(c_int) :: value
+    end function
+    function c_set_reduction_target(handle, target) bind(C, name="rusticol_virtual_set_reduction_target") &
+        result(value)
+      import
+      type(c_ptr), value :: handle
+      real(c_double), value :: target
       integer(c_int) :: value
     end function
     function c_set_stability_checks(handle, rotation_count, rotations, reduction_direction, rescaled, &
@@ -693,6 +701,18 @@ contains
     character(c_char), allocatable, target :: buffer(:)
     buffer=cstring(reduction)
     call finish(c_set_reduction(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Target accuracy of later evaluations (the Python API's reduction_target=;
+  ! default 1e-5 relative per point): TIRust's acceptance follows it; a value
+  ! that is not finite and positive is refused with an invalid-argument status.
+  subroutine set_reduction_target(self,target,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    real(c_double), intent(in) :: target
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    call finish(c_set_reduction_target(handle_of(self),target),ierr, &
       error_message=error_message)
   end subroutine
 

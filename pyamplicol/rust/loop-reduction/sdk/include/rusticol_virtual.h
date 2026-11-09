@@ -143,17 +143,38 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
 /* Reduction backend of later evaluations (the Python API's reduction=;
  * additive, ABI version 2 kept): "auto" (NULL, the default), "ninjars" or
  * "tirust". "auto" takes the process type's default where it serves the call
- * (one policy, shared with the Python API: today NinjaRS for both process
- * types, the reason recorded), else NinjaRS. An explicit backend this library
- * is built without (TIRust needs the cargo feature tir) is refused here, one
- * that cannot serve a later call's carrier (the library's capability query) by that
- * call; both RUSTICOL_VIRTUAL_RUNTIME_ERROR (the Python API's
- * ReductionUnavailable), never a silent switch. Every result's diagnostics
- * record "reduction": {"requested","effective","reason"}; the handle's
- * capabilities list what this library serves ("reduction": "native").
+ * (one policy, shared with the Python API: TIRust for a loop-induced process,
+ * NinjaRS for a Born-interfered one, TIRust on a TIR-only artifact; the reason
+ * recorded), else NinjaRS. On TIRust, "auto" has a PER-POINT NinjaRS FALLBACK
+ * (where NinjaRS serves the call: not on a TIR-only artifact): a point TIRust
+ * refuses or fails (also in the enabled binary64 monitoring's own
+ * evaluations, rusticol_virtual_set_stability_checks) is evaluated again on
+ * NinjaRS from its original exact inputs, at the call's own arithmetic, after
+ * the TIRust call; a point NinjaRS fails too fails with both reasons. An
+ * explicit "ninjars" or "tirust" has no fallback (its refusals and failures
+ * stay failed points). An explicit backend this library is built without
+ * (TIRust needs the cargo feature tir; there "auto" takes NinjaRS) is refused
+ * here, one that cannot serve a later call's carrier (the library's
+ * capability query) by that call; both RUSTICOL_VIRTUAL_RUNTIME_ERROR (the
+ * Python API's ReductionUnavailable), never a silent switch. Every result's
+ * diagnostics record "reduction": {"requested","effective","reason",
+ * "fallback" (null: none),"fallback_points"} and "fallbacks": {point id:
+ * {"effective" (null: failed on both),"reason"}} per point the fallback
+ * evaluated again (every other point is the effective backend's); the
+ * handle's capabilities list what this library serves ("reduction":
+ * "native").
  */
 int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
   const char *reduction);
+/* Target accuracy of later evaluations (the Python API's reduction_target=;
+ * additive, ABI version 2 kept): the relative accuracy of each point's result
+ * (every squared-order sector against its own size), 1e-5 by default.
+ * TIRust's method-choice acceptance follows it
+ * (calibrated against consistent truths); NinjaRS has no setting it drives.
+ * A value that is not a finite positive number is
+ * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
+int rusticol_virtual_set_reduction_target(rusticol_virtual_handle *handle,
+  double target);
 /* Stability checks of later evaluations (the Python API's stability_checks=,
  * VirtualStabilityChecks; additive, ABI version 2 kept): rotation_count
  * default rotations (the Python API's count; any number), or, with
@@ -176,10 +197,14 @@ int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
  * its values (non-finite values as "inf"); a loop-induced call with poles
  * also "finiteness" per successful point (the Python API's lane diagnostic);
  * the other evaluations carry
- * {"estimates": null, "reason": ...}, and null without checks. A point whose
- * rotated evaluation fails fails ("rotation-<k>: <reason>"), as in the
- * Python API; one the other backend fails or refuses keeps the other checks'
- * estimate with the cross-backend check in not_run. A cross-backend check
+ * {"estimates": null, "reason": ...}, and null without checks. With an
+ * explicit backend, a point whose rotated evaluation fails fails
+ * ("rotation-<k>: <reason>"), as in the Python API; under "auto" on TIRust
+ * such a point (and one TIRust refuses) is evaluated again, with the same
+ * checks, on NinjaRS (the per-point fallback, rusticol_virtual_set_reduction),
+ * its cross-backend check then in not_run with the fallback's reason. A point
+ * the other backend fails or refuses keeps the other checks' estimate with
+ * the cross-backend check in not_run. A cross-backend check
  * without the other backend in this library is refused by the call
  * (RUSTICOL_VIRTUAL_RUNTIME_ERROR, the Python API's ReductionUnavailable).
  * Point statuses keep their meaning: comparing an estimate with a target,

@@ -445,10 +445,15 @@ precisions select arbitrary precision. DoubleFloat is always selected explicitly
 evaluation, overriding the artifact's default (`generate --loop-reduction`
 records that default): `auto` takes TIRust for a loop-induced and NinjaRS for
 a Born-interfered process, falling back to NinjaRS with the reason recorded
-(for now `auto` keeps NinjaRS for loop-induced processes too: TIRust still
-fails closed on points NinjaRS serves; `tirust` serves every arithmetic
-on request); an explicit backend that cannot serve the call is refused. The JSON output's
-lane diagnostics name the requested and effective backends and the reason. A
+where TIRust cannot serve the call; on TIRust a point it refuses or fails is
+evaluated again on NinjaRS (the per-point fallback, recorded in that point's
+lane diagnostic); `ninjars` and `tirust` request one backend without a
+fallback (`tirust` serves every arithmetic); an explicit backend that cannot
+serve the call is refused. `--reduction-target X` sets TIRust's target
+accuracy (the relative accuracy of each point's result, default 1e-5; it
+sets the calibrated acceptance of TIRust's checked method choice). The JSON
+output's lane diagnostics name the requested and effective backends, the
+reason, the fallback and the target. A
 loop-induced artifact (`contribution: "loop-induced"` in the JSON, empty
 `born_values`) takes `--poles all` or `none` only.
 

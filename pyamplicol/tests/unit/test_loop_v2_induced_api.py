@@ -45,6 +45,15 @@ V5 = "rusticol.loop-runtime.v5"
 NO_NATIVE_KEY = {"PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}
 
 
+# "auto"'s reason on a loop-induced call where TIRust and NinjaRS serve
+# it (the native policy, m-lit F3: TIRust with the per-point NinjaRS
+# fallback).
+AUTO_LOOP_INDUCED = (
+    "auto: TIRust, the loop-induced default; a point it refuses or fails is "
+    "evaluated again on NinjaRS (the per-point fallback, recorded per point)"
+)
+
+
 def _r2():
     from pyamplicol.config import R2Strategy
     from pyamplicol.loops.strategy import R2Selection
@@ -331,11 +340,12 @@ def test_auto_takes_the_per_type_default_and_records_every_fallback():
 def test_the_effective_backend_is_one_the_route_runs():
     """The guard of every route: the artifact runtime's summed route and its
     resolved outputs run both backends (m-lit lit-tir), so an explicit
-    TIRust is served there; ``auto`` keeps NinjaRS on them for both kinds
-    (TIRust still fails closed on points NinjaRS serves: no automatic switch
-    in this release, DECISIONS 2026-11-08 11:17), the reason saying so; a
-    route whose executor does not run TIRust refuses it
-    typed and its ``auto`` names the route. One choice list and one
+    TIRust is served there, and ``auto`` takes the per-type default on them
+    (m-lit F3: TIRust for a loop-induced call, NinjaRS for a
+    Born-interfered one); a route whose ``auto`` set leaves TIRust out
+    serves it on explicit request only, the reason saying so; a route whose
+    executor does not run TIRust refuses it typed and its ``auto`` names the
+    route. One choice list and one
     validator (``config.ReductionBackend``, ``reduction_request``)."""
 
     from pyamplicol.api.virtual_results import VirtualReduction
@@ -366,9 +376,9 @@ def test_the_effective_backend_is_one_the_route_runs():
             native=tir,
             route=route,
         )
-        assert found.effective == "ninjars"
-        assert "fails closed on points NinjaRS serves" in found.reason
-        assert route.serves in found.reason
+        assert found == VirtualReduction(
+            "auto", "tirust", AUTO_LOOP_INDUCED, fallback="ninjars"
+        )
         for kind in ("virtual", "loop-induced"):
             found = resolve(
                 "tirust", contribution=kind, carrier="double", native=tir, route=route
@@ -389,6 +399,16 @@ def test_the_effective_backend_is_one_the_route_runs():
         "auto", contribution="loop-induced", carrier="double", native=tir, route=wired
     )
     assert found.effective == "tirust"
+    explicit = Route("an explicit route", frozenset(BACKENDS), frozenset({"ninjars"}))
+    found = resolve(
+        "auto",
+        contribution="loop-induced",
+        carrier="double",
+        native=tir,
+        route=explicit,
+    )
+    assert found.effective == "ninjars"
+    assert "an explicit route on explicit request only" in found.reason
     assert tuple(item.value for item in ReductionBackend)[1:] == BACKENDS
     assert [reduction_request(item) for item in ReductionBackend] == [
         "auto",
@@ -459,8 +479,13 @@ def test_every_route_records_its_backend_and_refuses_one_it_does_not_run(
             points, born, mu_r2=scales, **kw
         ),
     }
+    # Every record carries the call's target accuracy (m-lit F3: the
+    # default, as is every default level's).
     auto = VirtualReduction(
-        "auto", "ninjars", "auto: NinjaRS, the Born-interfered default"
+        "auto",
+        "ninjars",
+        "auto: NinjaRS, the Born-interfered default",
+        target=reduction.default_target(),
     )
     built_lanes: list[object] = []
     built_results: list[object] = []
@@ -628,10 +653,12 @@ def test_shipped_self_test_artifact_equals_madloop_and_is_portable():
 @pytest.mark.loop_physics
 def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
     """On the shipped g g > h: every lane names its reduction backend (auto
-    falls back to NinjaRS while TIRust is not built in, with the reason);
-    an explicit NinjaRS request is bitwise auto's; an explicit TIRust request
-    is served (on every level of a rescue ladder too, m-lit lit-tir-mp) when
-    the native extension has TIRust, else refused before any point;
+    takes TIRust, the loop-induced default, in an extension built with it,
+    and falls back to NinjaRS while TIRust is not built in, with the
+    reason); an explicit request of auto's backend is bitwise auto's; an
+    explicit TIRust request is served (on every level of a rescue ladder
+    too, m-lit lit-tir-mp) when the native extension has TIRust, else
+    refused before any point;
     with poles and checks the lanes carry the finiteness ratio, the
     estimates E and S, and the "scale" metric accepts the points at level 0;
     the poles vanish within the absolute estimate (Q11 (b), Q13)."""
@@ -654,16 +681,19 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
     assert "ninjars" in reduction["native"]
     auto = shipped.evaluate(points, mu_r2=scales)
     assert auto.contribution == "loop-induced" and auto.born_orders == ()
+    # "auto" takes TIRust, the loop-induced default, in an extension built
+    # with it (m-lit F3), NinjaRS with the reason otherwise.
+    default = "tirust" if "tirust" in reduction["native"] else "ninjars"
     for lane in auto.diagnostics:
         assert lane.reduction.requested == "auto"
-        assert lane.reduction.effective == "ninjars"
+        assert lane.reduction.effective == default
         assert "loop-induced default" in lane.reduction.reason
         # The finiteness ratio exists exactly with poles and stability checks
         # (its scale, the term floor, needs the per-point tensor moments,
         # which only the checks form; documented in python-api.md and on
         # VirtualLaneDiagnostic.finiteness).
         assert lane.finiteness is None
-    named = shipped.evaluate(points, mu_r2=scales, reduction="ninjars")
+    named = shipped.evaluate(points, mu_r2=scales, reduction=default)
     assert named.values == auto.values
     assert {lane.reduction.reason for lane in named.diagnostics} == {"requested"}
     from pyamplicol.loops.native import load_loop_native
@@ -673,7 +703,8 @@ def test_reduction_finiteness_and_estimates_on_the_public_route(shipped):
         # rounding.
         tir = shipped.evaluate(points, mu_r2=scales, reduction="tirust")
         assert {lane.reduction.effective for lane in tir.diagnostics} == {"tirust"}
-        for mine, theirs in zip(tir.values, auto.values, strict=True):
+        ninja = shipped.evaluate(points, mu_r2=scales, reduction="ninjars")
+        for mine, theirs in zip(tir.values, ninja.values, strict=True):
             (a,), (b,) = mine, theirs
             assert abs(float(a.finite) - float(b.finite)) <= 1e-12 * abs(
                 float(b.finite)
