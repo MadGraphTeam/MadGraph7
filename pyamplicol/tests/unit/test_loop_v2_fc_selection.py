@@ -72,12 +72,31 @@ CASES = [
 ]
 
 
-@pytest.fixture(scope="module")
-def artifacts(loop_sm_colour_model, loop_native, tmp_path_factory):
-    """The public artifact of a process at an accuracy, generated once."""
+def generate_born(root: Path, model: Path, process: str, accuracy: str) -> Path:
+    """The public Born-interfered artifact of ``process`` (QCD corrections,
+    ``loop_sm`` with the committed colour declarations) at a colour
+    accuracy, generated under ``root`` (process name ``p``)."""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
+
+    card = root / "card.toml"
+    card.write_text(
+        _CARD.format(
+            model=json.dumps(str(model)),
+            output=json.dumps(str(root / "artifact")),
+            accuracy=accuracy,
+            process=json.dumps(process),
+        )
+    )
+    processes = ProcessSet((ProcessRequest.parse(process, name="p"),))
+    Generator(resolve_config(card)).generate(processes, root / "artifact")
+    return root / "artifact"
+
+
+@pytest.fixture(scope="module")
+def artifacts(loop_sm_colour_model, loop_native, tmp_path_factory):
+    """The public artifact of a process at an accuracy, generated once."""
 
     del loop_native
     built: dict[tuple[str, str], Path] = {}
@@ -85,19 +104,9 @@ def artifacts(loop_sm_colour_model, loop_native, tmp_path_factory):
     def build(process: str, accuracy: str) -> Path:
         key = (process, accuracy)
         if key not in built:
-            tmp = tmp_path_factory.mktemp("fc")
-            card = tmp / "card.toml"
-            card.write_text(
-                _CARD.format(
-                    model=json.dumps(str(loop_sm_colour_model)),
-                    output=json.dumps(str(tmp / "artifact")),
-                    accuracy=accuracy,
-                    process=json.dumps(process),
-                )
+            built[key] = generate_born(
+                tmp_path_factory.mktemp("fc"), loop_sm_colour_model, process, accuracy
             )
-            processes = ProcessSet((ProcessRequest.parse(process, name="p"),))
-            Generator(resolve_config(card)).generate(processes, tmp / "artifact")
-            built[key] = tmp / "artifact"
         return built[key]
 
     return build

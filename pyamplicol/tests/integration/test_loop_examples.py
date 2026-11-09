@@ -188,10 +188,12 @@ def test_the_example_runs_end_to_end(walkthrough, name):
     assert "auto (checked):" in output and "auto (unchecked):" in output
     assert "colour histories:" in output
     tir = _tirust()
+    # The helicity selection at the artifact's accuracy, through the Python
+    # API and the native client (every example: lit-fc-hel).
+    assert "time one / summed" in output and "one helicity / summed call" in output
     if name in LOOP_INDUCED:
         expected = "tirust" if tir else "ninjars"
         assert f"backend: {expected} (requested auto)" in output
-        assert "time one / summed" in output and "one helicity / summed call" in output
         assert "explicit ninjars" in output
     else:
         assert "backend: ninjars (requested auto)" in output
@@ -199,9 +201,7 @@ def test_the_example_runs_end_to_end(walkthrough, name):
         if not tir:
             assert "explicit tirust: refused" in output
     if name in LC_VARIANTS:
-        assert "time one / summed" in output
-    elif name not in LOOP_INDUCED:
-        assert "exists at leading colour only" in output
+        assert "leading-colour variant (--lc-card):" in output
 
 
 @pytest.mark.parametrize(

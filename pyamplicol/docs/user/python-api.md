@@ -284,7 +284,9 @@ Input shape is:
 ```
 
 At LC, resolved shape is `(point, helicity, color_flow)`. At NLC/full,
-the color dimension has length one because color is contracted.
+the color dimension has length one because color is contracted. A one-loop
+virtual's `evaluate_resolved(helicities=...)` returns the selected rows only
+(the same layout over the kept rows).
 
 ## One-loop virtuals and loop-induced processes
 
@@ -552,10 +554,40 @@ estimate of the value's own size rather than refused. One `evaluate_correlated_m
 of the points whatever its spin vectors: every request is formed on the same
 amplitudes. A single-helicity selection divides by the total's average, so
 the selections of every row sum to the total, and its dressing is pruned to
-the selected rows (a family keeping more than half of its links runs whole).
+the selected rows (every family that drops a link runs its pruned copy).
 The amplitude-basis anchors are basis-dependent parts whose sum is the
 helicity's value. Colour-flow selection does not exist for loop-induced
 processes.
+
+### Helicity selection of Born-interfered virtuals
+
+A Born-interfered virtual selects its Born helicity rows at every colour
+accuracy (lit-fc-hel), with the tree engine's helicity IDs (`h:<values in leg
+order>`) or the runtime's `h<index>`:
+
+```python
+one = runtime.evaluate(points, mu_r2=scales, helicities=["h3"])
+half = runtime.evaluate(points, mu_r2=scales, helicities=ids[: len(ids) // 2])
+rows = runtime.evaluate_resolved(points, mu_r2=scales, helicities=["h3", "h7"])
+```
+
+At next-to-leading and full colour the colour is contracted: a selection
+keeps some helicity rows with every colour component of their Born, the
+selected value is the sum of those rows' `evaluate_resolved` entries (one
+helicity is its entry, bitwise up to the sign of a zero), and a complete set
+of selections sums to the unselected value within rounding. Colour flows
+exist at leading colour only (`color_flows=` there); at NLC and full colour
+they are refused with a `CompatibilityError`. A selected call evaluates only
+the selected helicities and nothing more: it forms the kept rows' Born and
+counterterm trees, dresses the loop links those rows reach (every family
+that drops a link runs its pruned copy) and reduces only the lanes of the
+families they reach; `evaluate_resolved(helicities=...)` forms only the kept
+rows' resolved columns (at leading colour the kept rows' and kept flows'
+basis elements). A stored artifact serves the selection without
+regeneration (artifacts generated before the feature included). The
+correlated evaluations take no helicity or colour-flow selection (the v2
+rule of both process types). The native SDKs serve the same helicity
+selections ([Native APIs](native-apis.md)).
 
 ## Split totals by squared coupling order
 
@@ -1048,8 +1080,9 @@ target 1e-5, the same rotation) in three ways:
   rotated values.
 
 For a Born-interfered process every pole selection (`poles=`), colour
-accuracy and leading-colour `helicities` / `color_flows` selection is
-supported. A loop-induced process is rescued with what it serves: the pole
+accuracy and selection (`helicities=` at every accuracy, `color_flows=` at
+leading colour) is supported; every level and every rotation evaluates the
+selected rows only. A loop-induced process is rescued with what it serves: the pole
 selections `"all"` and `"none"`, full colour and its helicity selections
 (`helicities=`); it has no colour flows to select (`CompatibilityError`). The reduction backend (`reduction=`) is
 resolved for every level's carrier before the first point is evaluated: an

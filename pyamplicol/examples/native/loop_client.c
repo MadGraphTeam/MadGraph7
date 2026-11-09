@@ -10,8 +10,9 @@
  * the process, prints its squared-order axes, evaluates with the per-type
  * default backend ("auto") and the other backend explicitly, in the checked
  * default and the unchecked timing mode, evaluates the declared colour and
- * spin correlations and, for a loop-induced process, one helicity
- * (HELICITY_ID) against the summed call. */
+ * spin correlations and one helicity (HELICITY_ID) against the summed call
+ * (loop-induced and Born-interfered processes alike, at every colour
+ * accuracy). */
 #define _POSIX_C_SOURCE 200809L
 #include "rusticol_virtual.h"
 #include <stdio.h>
@@ -172,16 +173,14 @@ int main(int argc, char **argv) {
   free(cvalues);
   rusticol_virtual_correlated_result_free(correlated);
 
-  /* One helicity of a loop-induced process: only its rows are formed. */
-  if (induced && argc == 5) {
+  /* One helicity: only its rows are formed (loop-induced and
+   * Born-interfered processes alike). */
+  if (argc == 5) {
     const char *ids[1] = {argv[4]};
     rusticol_virtual_selection selection = {ids, 1, NULL, 0, NULL, 0, NULL, 0, NULL};
     double summed = evaluate(handle, &request, NULL, "summed (auto)");
     double one = evaluate(handle, &request, &selection, "one helicity (auto)");
     printf("one helicity / summed call: %.3f\n", one / summed);
-  } else if (!induced) {
-    printf("helicity selection: a Born-interfered selection is served at leading "
-           "colour by the Python API only\n");
   }
   rusticol_virtual_free(handle);
   free(momenta);

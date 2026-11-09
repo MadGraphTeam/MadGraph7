@@ -203,9 +203,12 @@ def _call(
             sdk.rusticol_virtual_result_copy_statuses(result, statuses, len(points))
             == 0
         )
+        born = (ctypes.c_double * max(shape.born_values, 1))()
+        assert sdk.rusticol_virtual_result_copy_born(result, born, shape.born_values) == 0
         return {
             "status": 0,
             "shape": shape,
+            "born": list(born)[: shape.born_values],
             "virtual": list(loop)[: shape.virtual_values],
             "statuses": list(statuses)[: len(points)],
             "decimal": _json(sdk.rusticol_virtual_result_decimal_json, result),
@@ -998,16 +1001,22 @@ def _parse(stdout: str) -> dict:
 
 
 @pytest.fixture(scope="module")
-def client_cases(artifacts):
+def client_cases(artifacts, born_artifacts):
     """Per row the client inputs and the C ABI's answer to every client
     call (the reference the clients transport: itself the Python API's,
-    above)."""
+    above): the loop-induced rows and a full-colour Born-interfered one
+    (lit-fc-hel: its colour resolutions and colour flows refused)."""
 
     sdk = _sdk()
     out = {}
-    for name in sorted(ROWS):
-        points, scales, _exact, _scales = _inputs(name)
-        handle = _open(sdk, artifacts[name])
+    rows = {name: artifacts[name] for name in sorted(ROWS)}
+    rows["born_uux_ddxg_full"] = born_artifacts["born_uux_ddxg_full"]
+    for name, artifact in rows.items():
+        if name in ROWS:
+            points, scales, _exact, _scales = _inputs(name)
+        else:
+            points, scales, _exact, _scales = _born_inputs()
+        handle = _open(sdk, artifact)
         try:
             capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
             one, subset, by_point = _selectors(capabilities, len(points))
@@ -1063,12 +1072,14 @@ def client_cases(artifacts):
                 reference[label] = _call(
                     sdk, handle, points[:count], scales[:count], **selectors
                 )
+            resolutions = capabilities["color_resolutions"] or {}
             out[name] = {
+                "artifact": artifact,
                 "points": points,
                 "scales": scales,
                 "ids": ids,
                 "by_point": by_point,
-                "anchors": len(capabilities["color_resolutions"]["amplitude-basis"]),
+                "anchors": len(resolutions.get("amplitude-basis", ())),
                 "reference": reference,
             }
         finally:
@@ -1106,7 +1117,7 @@ def test_selection_clients_return_the_c_abi_values(
         )
         command = [
             str(selection_clients[language]),
-            str(artifacts[name]),
+            str(case["artifact"]),
             "p",
             str(feed),
         ]
@@ -1229,7 +1240,7 @@ def test_packaged_rust_wrapper_serves_the_selections(artifacts, client_cases, tm
         run = subprocess.run(
             [
                 str(binary),
-                str(artifacts[name]),
+                str(case["artifact"]),
                 "p",
                 ",".join(
                     str(_bits(c) & mask)
@@ -1395,13 +1406,15 @@ def test_a_tir_off_library_serves_the_selections_on_ninjars(artifacts, client_ca
             on.rusticol_virtual_free(handles["on"])
 
 
-def test_born_interfered_selections_refuse_typed_and_null_is_ordinary():
-    """A Born-interfered process (the shipped self-test artifact
-    ``assets/selftest_virtual/ew``): a colour resolution is refused in the
-    Python API's words; a helicity selection too (at NLC / full colour in the
-    Python API's words; its leading-colour selection is the Python API's,
-    refused typed by the SDK); a NULL selection is the ordinary evaluation,
-    bitwise."""
+def test_born_interfered_selections_are_served_and_null_is_ordinary():
+    """USER 2026-11-09 ~19:53 (lit-fc-hel): a Born-interfered process (the
+    shipped self-test artifact ``assets/selftest_virtual/ew``, generated
+    before lit-fc-hel, full colour) selects its helicity rows through the C
+    ABI: one helicity and a by-point selection bitwise the Python API's
+    ``evaluate(helicities=...)``, a resolved selection its
+    ``evaluate_resolved(helicities=...)``; a colour resolution and colour
+    flows are refused in the Python API's words; a NULL selection is the
+    ordinary evaluation, bitwise."""
 
     from pyamplicol import Runtime
     from pyamplicol._internal import selftest_virtual_ew as ew
@@ -1427,7 +1440,7 @@ def test_born_interfered_selections_refuse_typed_and_null_is_ordinary():
     ), _error(sdk)
     try:
         capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
-        assert capabilities["helicity_selection"] is False
+        assert capabilities["helicity_selection"] is True
         assert capabilities["color_resolutions"] is None
         with pytest.raises(CompatibilityError) as resolution:
             runtime.evaluate_resolved(
@@ -1439,14 +1452,30 @@ def test_born_interfered_selections_refuse_typed_and_null_is_ordinary():
         assert found["status"] == STATUS_RUNTIME_ERROR
         assert str(resolution.value) in found["error"]
         accuracy = capabilities["color_accuracy"]
-        found = _call(sdk, handle, points, scales, ids=["h0"])
+        assert accuracy != "lc"
+        with pytest.raises(CompatibilityError) as flows:
+            runtime.evaluate(exact, mu_r2=exact_scales, color_flows=["1"])
+        found = _call(sdk, handle, points, scales, colours=["1"])
         assert found["status"] == STATUS_RUNTIME_ERROR
-        if accuracy == "lc":
-            assert "served by the Python API" in found["error"]
-        else:
-            with pytest.raises(CompatibilityError) as selection:
-                runtime.evaluate(exact, mu_r2=exact_scales, helicities=["h0"])
-            assert str(selection.value) in found["error"]
+        assert str(flows.value) in found["error"]
+        choice = _choice(runtime, {"reduction": "auto"})
+        one = _call(sdk, handle, points, scales, ids=["h1"])
+        reference = runtime.evaluate(exact, mu_r2=exact_scales, helicities=["h1"])
+        _compare("ew:one", one, reference, False, choice)
+        assert _bitwise(
+            one["born"], [x for point in reference.born_values for x in point]
+        )
+        rows = len(capabilities["helicity_rows"])
+        by_point = [2 % rows, 5 % rows]
+        found = _call(sdk, handle, points, scales, by_point=by_point)
+        per_point = _per_point(runtime, exact, exact_scales, by_point)
+        assert _bitwise(found["virtual"], _python_values(per_point, False))
+        resolved = _call(sdk, handle, points, scales, resolved=True, ids=["h3", "h1"])
+        reference = runtime.evaluate_resolved(
+            exact, mu_r2=exact_scales, helicities=["h3", "h1"]
+        )
+        _compare("ew:resolved", resolved, reference, True, choice)
+        assert resolved["axes"]["helicity_ids"] == ["h1", "h3"]
         flat = [c for point in points for p in point for c in p]
         momenta = (ctypes.c_double * len(flat))(*flat)
         mu = (ctypes.c_double * len(scales))(*scales)
@@ -1474,6 +1503,186 @@ def test_born_interfered_selections_refuse_typed_and_null_is_ordinary():
             values.append([_bits(x) for x in loop])
             sdk.rusticol_virtual_result_free(result)
         assert values[0] == values[1] and values[0]
+    finally:
+        sdk.rusticol_virtual_free(handle)
+
+
+# Born-interfered rows of the SDK selection checks (lit-fc-hel): the process
+# at each colour accuracy (its legacy fixture's points).
+BORN = {
+    "born_uux_ddxg_full": ("u u~ > d d~ g", "full"),
+    "born_uux_ddxg_nlc": ("u u~ > d d~ g", "nlc"),
+    "born_uux_ddxg_lc": ("u u~ > d d~ g", "lc"),
+}
+LEGACY = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "loop" / "legacy"
+
+
+@pytest.fixture(scope="module")
+def born_artifacts(loop_sm_colour_model, loop_native, tmp_path_factory):
+    from tests.unit.test_loop_v2_fc_selection import generate_born
+
+    del loop_native
+    return {
+        name: generate_born(
+            tmp_path_factory.mktemp(name), loop_sm_colour_model, process, accuracy
+        )
+        for name, (process, accuracy) in BORN.items()
+    }
+
+
+def _born_inputs(count: int = 2):
+    """The legacy fixture's first ``count`` points of u u~ > d d~ g rounded
+    to binary64 and their mu_R^2, and the exact texts of those doubles."""
+
+    fixture = json.loads((LEGACY / "uux_ddxg.json").read_text())
+    points = [
+        [[float(Decimal(str(c))) for c in momentum] for momentum in point]
+        for point in fixture["points"][:count]
+    ]
+    scales = [float(Decimal(str(s))) for s in fixture["scales_squared"][:count]]
+    exact = [[[str(Decimal(c)) for c in p] for p in point] for point in points]
+    return points, scales, exact, [str(Decimal(s)) for s in scales]
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("name", sorted(BORN))
+def test_born_interfered_c_abi_selections_equal_the_python_api(
+    born_artifacts, loop_native, name, backend
+):
+    """lit-fc-hel (H3): a Born-interfered process's helicity selections at
+    full, next-to-leading and leading colour through the C ABI are bitwise
+    the Python API's binary64 values (one helicity, a subset in both ID
+    forms, per point, resolved): the Born and the virtual, statuses, the
+    reduction record and the axes; a selection of every row equals the
+    ordinary call within rounding; colour flows are refused (NLC / full in
+    the Python API's words, leading colour as the Python API's
+    ``color_flows=``)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import CompatibilityError, ReductionUnavailable
+
+    artifact = born_artifacts[name]
+    runtime = Runtime.load(artifact, process="p")
+    points, scales, exact, exact_scales = _born_inputs()
+    sdk = _sdk()
+    handle = _open(sdk, artifact)
+    try:
+        capabilities = _json(sdk.rusticol_virtual_capabilities_json, handle)
+        assert capabilities["helicity_selection"] is True
+        accuracy = BORN[name][1]
+        assert capabilities["color_accuracy"] == accuracy
+        status = sdk.rusticol_virtual_set_reduction(handle, backend.encode())
+        options = {"reduction": backend, "on_failure": "return"}
+        if status != 0:
+            assert backend == "tirust" and status == STATUS_RUNTIME_ERROR
+            with pytest.raises(ReductionUnavailable):
+                runtime.evaluate(
+                    exact, mu_r2=exact_scales, helicities=["h0"], **options
+                )
+            return
+        one, subset, by_point = _selectors(capabilities, len(points))
+        choice = _choice(runtime, options)
+        per_point = {k: v for k, v in options.items() if k != "on_failure"}
+        calls = {
+            "one": ({"ids": [one]}, {"helicities": [one]}, False),
+            "subset": ({"ids": subset}, {"helicities": subset}, False),
+            "resolved-subset": (
+                {"resolved": True, "ids": subset},
+                {"helicities": subset},
+                True,
+            ),
+        }
+        for label, (chosen, selection, resolved) in calls.items():
+            found = _call(sdk, handle, points, scales, **chosen)
+            call = runtime.evaluate_resolved if resolved else runtime.evaluate
+            expected = call(exact, mu_r2=exact_scales, **selection, **options)
+            _compare(f"{name}:{backend}:{label}", found, expected, resolved, choice)
+            born = [
+                x
+                for point in expected.born_values
+                if point is not None
+                for x in (
+                    [c for order in point for row in order for c in row]
+                    if resolved
+                    else point
+                )
+            ]
+            assert _bitwise(found["born"], born), label
+        found = _call(sdk, handle, points, scales, by_point=by_point)
+        expected = _per_point(runtime, exact, exact_scales, by_point, **per_point)
+        assert _bitwise(found["virtual"], _python_values(expected, False))
+        assert found["diagnostics"]["selection"] == {
+            "helicity_ids": [[f"h{row}"] for row in by_point]
+        }
+        # A selection of every row: the ordinary value within rounding.
+        every = [f"h{k}" for k in range(len(capabilities["helicity_rows"]))]
+        selected = _call(sdk, handle, points, scales, ids=every)
+        ordinary = _call(sdk, handle, points, scales, ids=[])
+        for a, b in zip(selected["virtual"], ordinary["virtual"], strict=True):
+            assert (a != a and b != b) or abs(a - b) <= 1e-12 * max(abs(b), 1e-300)
+        found = _call(sdk, handle, points, scales, colours=["1"])
+        assert found["status"] == STATUS_RUNTIME_ERROR
+        if accuracy == "lc":
+            assert "color_flows=" in found["error"], found["error"]
+        else:
+            with pytest.raises(CompatibilityError) as refusal:
+                runtime.evaluate(exact, mu_r2=exact_scales, color_flows=["1"])
+            assert str(refusal.value) in found["error"]
+    finally:
+        sdk.rusticol_virtual_free(handle)
+
+
+@pytest.mark.parametrize("arithmetic,digits", [("double-double", 0), ("arbitrary", 32)])
+def test_born_interfered_extended_selections_equal_the_python_decimals(
+    born_artifacts, arithmetic, digits
+):
+    """Double-double and arbitrary precision (lit-fc-hel): a full-colour
+    helicity selection and a resolved selection equal the Python API's
+    ``Decimal`` values (one point), their doubles the nearest."""
+
+    from pyamplicol import Runtime
+
+    artifact = born_artifacts["born_uux_ddxg_full"]
+    runtime = Runtime.load(artifact, process="p")
+    points, scales, exact, exact_scales = _born_inputs(1)
+    sdk = _sdk()
+    handle = _open(sdk, artifact)
+    try:
+        status = sdk.rusticol_virtual_set_arithmetic(
+            handle, arithmetic.encode(), ctypes.c_uint32(digits)
+        )
+        assert status == 0, _error(sdk)
+        options = {"arithmetic": arithmetic}
+        if digits:
+            options["precision"] = digits
+        selected = _call(sdk, handle, points, scales, ids=["h1", "h3"])
+        expected_selected = runtime.evaluate(
+            exact, mu_r2=exact_scales, helicities=["h1", "h3"], **options
+        )
+        resolved = _call(sdk, handle, points, scales, resolved=True, ids=["h1", "h3"])
+        expected_resolved = runtime.evaluate_resolved(
+            exact, mu_r2=exact_scales, helicities=["h1", "h3"], **options
+        )
+        for found, reference, is_resolved in (
+            (selected, expected_selected, False),
+            (resolved, expected_resolved, True),
+        ):
+            assert found["status"] == 0, found.get("error")
+            literals = found["decimal"]["virtual"]
+            values: list = []
+            for point in reference.values:
+                for sector in point:
+                    cells = (
+                        [c for row in sector for c in row] if is_resolved else [sector]
+                    )
+                    for cell in cells:
+                        values += [cell.finite, cell.single_pole, cell.double_pole]
+            assert len(literals) == len(values)
+            assert _agree(values, literals), (values, literals)
+            assert all(
+                (a != a and x is None) or a == float(Decimal(x))
+                for a, x in zip(found["virtual"], literals, strict=True)
+            )
     finally:
         sdk.rusticol_virtual_free(handle)
 

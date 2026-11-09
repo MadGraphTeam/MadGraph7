@@ -62,7 +62,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--lc-card",
         type=Path,
-        help="a leading-colour variant card (Born-interfered helicity selection)",
+        help="an optional leading-colour variant card (its helicity and colour-flow selection)",
     )
     parser.add_argument(
         "--native-client", type=Path, help="the compiled native/loop_client"
@@ -206,19 +206,24 @@ def _correlated(runtime: Any, card: Path, points: Any, scales: Any, color: bool)
 
 
 def _selection(runtime: Any, points: Any, scales: Any) -> str:
-    """One helicity against the summed call: its rows only are formed."""
+    """One helicity against the summed call: its rows only are formed (a
+    loop-induced process, and a Born-interfered one at every colour
+    accuracy)."""
 
-    # The first helicity whose value at the first point is not zero (a
-    # one-helicity call forms that helicity's rows only).
-    helicity = next(
-        h
-        for h in runtime.physics.helicity_ids
-        if float(
-            runtime.evaluate(
-                points[:1], mu_r2=scales[:1], poles="none", helicities=[h]
-            ).values[0][0][0]
+    def size(helicity: str) -> float:
+        # The helicity's Born at the first point (its value for a
+        # loop-induced process, which has no Born); a one-helicity call
+        # forms that helicity's rows only.
+        one = runtime.evaluate(
+            points[:1], mu_r2=scales[:1], poles="none", helicities=[helicity]
         )
-    )
+        born = one.born_values[0]
+        if born:
+            return sum(abs(float(x)) for x in born)
+        return abs(float(one.values[0][0][0]))
+
+    # The largest at the first point: a vanishing helicity measures nothing.
+    helicity = max(runtime.physics.helicity_ids, key=size)
     one = runtime.evaluate(points, mu_r2=scales, poles="none", helicities=[helicity])
     summed = runtime.evaluate(points, mu_r2=scales, poles="none")
     t_one = _median_seconds(
@@ -417,19 +422,17 @@ def main() -> int:
     _correlated(runtime, card, points, scales, color)
 
     _step("6. Helicity selection")
-    helicity = None
-    if kind == "loop-induced":
-        helicity = _selection(runtime, points, scales)
-    elif args.lc_card is not None:
+    # Every colour accuracy: at full colour a selection keeps some helicity
+    # rows with every colour component of their Born.
+    helicity = _selection(runtime, points, scales)
+    if kind != "loop-induced" and args.lc_card is not None:
+        # The optional leading-colour variant (its colour flows are
+        # selectable too, with color_flows=).
         lc_config = resolve_config(args.lc_card.resolve()).effective
         lc_artifact = lc_config.generation.output.resolve()
         _generate_apart(args.lc_card.resolve(), lc_artifact, args.regenerate)
+        print("leading-colour variant (--lc-card):")
         _selection(Runtime.load(lc_artifact), points, scales)
-    else:
-        print(
-            "a Born-interfered helicity selection exists at leading colour only; "
-            "this full-colour artifact has none (pass --lc-card for an LC variant)"
-        )
 
     _step("7. Partial weights per squared coupling order")
     _orders(runtime, points, scales, color)

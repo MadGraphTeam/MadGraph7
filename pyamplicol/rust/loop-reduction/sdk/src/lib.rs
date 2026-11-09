@@ -944,8 +944,8 @@ impl Runtime {
     /// row index, per-point selectors of a resolved evaluation and the
     /// mutually exclusive axes (typed `Selector` / `InvalidArgument`); a
     /// colour resolution of a Born-interfered process (the Python API's
-    /// words) and its selections (at NLC and full colour the Python API's
-    /// words; its leading-colour selection is the Python API's).
+    /// words). A Born-interfered process's helicity selection is
+    /// [`Runtime::born_selected`]'s (lit-fc-hel).
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate_selected(
         &mut self,
