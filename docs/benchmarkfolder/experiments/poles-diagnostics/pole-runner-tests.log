@@ -1,0 +1,12 @@
+test_compiled_driver_dp_qp_and_nan_contract (tests.unit_tests.loop.test_tirust_benchmark_poles.TestPoleDiagnostics.test_compiled_driver_dp_qp_and_nan_contract) ... ok
+test_high_rank_omissions_are_explicit (tests.unit_tests.loop.test_tirust_benchmark_poles.TestPoleDiagnostics.test_high_rank_omissions_are_explicit) ... ok
+test_nonfinite_evaluated_pole_and_missing_frame_rejected (tests.unit_tests.loop.test_tirust_benchmark_poles.TestPoleDiagnostics.test_nonfinite_evaluated_pole_and_missing_frame_rejected) ... ok
+test_partial_nan_mask_rejects_nonfinite_imaginary_part (tests.unit_tests.loop.test_tirust_benchmark_poles.TestPoleDiagnostics.test_partial_nan_mask_rejects_nonfinite_imaginary_part) ... ok
+test_partial_result_requires_nan_finite_and_equal_poles (tests.unit_tests.loop.test_tirust_benchmark_poles.TestPoleDiagnostics.test_partial_result_requires_nan_finite_and_equal_poles) ... ok
+test_split_poles_recombine_and_finite_term_is_mode_independent (tests.unit_tests.loop.test_tirust_benchmark_poles.TestPoleDiagnostics.test_split_poles_recombine_and_finite_term_is_mode_independent) ... ok
+test_stream_expands_precision_and_separate_poles (tests.unit_tests.loop.test_tirust_benchmark_poles.TestPoleDiagnostics.test_stream_expands_precision_and_separate_poles) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.144s
+
+OK

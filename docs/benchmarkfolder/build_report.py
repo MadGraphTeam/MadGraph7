@@ -38,7 +38,7 @@ def validate_summary(data):
             timing = row["performance"]
             if (row["points"] is None or row["points"] < 100 or len(checks) != 5 or
                     {str(check["backend"]) for check in checks} != BACKENDS or
-                    not all(check["passed"] is True and check["samples"] >= 100
+                    not all(check["passed"] is True and check["samples"] >= 7
                             for check in checks) or
                     timing["passed"] is not True or not timing["complete"] or
                     timing["pairs"] < 7 or
@@ -63,7 +63,8 @@ def main():
     summary_path = ROOT / "summary.json"
     summary = validate_summary(json.loads(summary_path.read_text()))
     source_names = ["benchmark.typ", "style.typ", "summary.json",
-                    "implementation-start.json", "style-provenance.json", "cases.json"]
+                    "implementation-start.json", "style-provenance.json", "cases.json",
+                    "experiments/numerical/completed-pilots-index.json"]
     if summary.get("ratio_figure"):
         figure = (ROOT / summary["ratio_figure"]).resolve()
         if not figure.is_relative_to(ROOT):

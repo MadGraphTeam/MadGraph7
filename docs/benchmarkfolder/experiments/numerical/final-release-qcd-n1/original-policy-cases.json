@@ -1,0 +1,44 @@
+{
+  "schema": "madloop-tirust-benchmark-v1",
+  "baseline_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+  "seed": 20261109,
+  "points_per_case": 100,
+  "energy_gev": 1000.0,
+  "backends": [1, 6, 7, 8, 9],
+  "repetitions": 7,
+  "minimum_batch_seconds": 1.0,
+  "relative_tolerance": 0.000003,
+  "ordinary_target_tolerance": 0.00000001,
+  "performance_upper_ratio": 1.05,
+  "madloop_parameters": {
+    "CTModeRun": -1,
+    "CTModeInit": 1,
+    "UseLoopFilter": false,
+    "LoopPoleMode": 0,
+    "COLLIERComputeUVpoles": true,
+    "COLLIERComputeIRpoles": true,
+    "COLLIERGlobalCache": -1,
+    "UseQPIntegrandForCutTools": true,
+    "UseQPIntegrandForNinja": true,
+    "UseQPIntegrandForNinjaRS": true
+  },
+  "candidate_parameters": {
+    "TIRustComputeFinite": true,
+    "UseQPIntegrandForTIRust": true,
+    "TIRustGlobalCache": -1,
+    "TIRustCacheMaxBytes": 268435456
+  },
+  "cases": [
+    {"id": "qcd_n1_uux_z", "model": "loop_sm", "process": "u u~ > z [virt=QCD]", "nfinal": 1, "role": "main"},
+    {"id": "qcd_n2_gg_ttx", "model": "loop_sm", "process": "g g > t t~ [virt=QCD]", "nfinal": 2, "role": "main"},
+    {"id": "qcd_n3_uux_zgg", "model": "loop_sm", "process": "u u~ > z g g [virt=QCD]", "nfinal": 3, "role": "main"},
+    {"id": "qcd_n4_uux_zzgg", "model": "loop_sm", "process": "u u~ > z z g g [virt=QCD]", "nfinal": 4, "role": "main"},
+    {"id": "ew_n1_udx_wp", "model": "loop_qcd_qed_sm_Gmu", "process": "u d~ > w+ [virt=QED]", "nfinal": 1, "role": "main"},
+    {"id": "ew_n2_epem_mupmum", "model": "loop_qcd_qed_sm_Gmu", "process": "e+ e- > mu+ mu- [virt=QED]", "nfinal": 2, "role": "main"},
+    {"id": "ew_n3_epem_ttxa", "model": "loop_qcd_qed_sm_Gmu", "process": "e+ e- > t t~ a [virt=QED]", "nfinal": 3, "role": "main"},
+    {"id": "ew_n4_epem_mupmumaa", "model": "loop_qcd_qed_sm_Gmu", "process": "e+ e- > mu+ mu- a a [virt=QED]", "nfinal": 4, "role": "main"},
+    {"id": "mixed_uux_ga", "model": "loop_qcd_qed_sm_Gmu", "process": "u u~ > g a [virt=QCD QED]", "nfinal": 2, "role": "control"},
+    {"id": "li_gg_h", "model": "loop_sm", "process": "g g > h [noborn=QCD]", "nfinal": 1, "role": "control"},
+    {"id": "li_gg_hh", "model": "loop_sm", "process": "g g > h h [noborn=QCD]", "nfinal": 2, "role": "control"}
+  ]
+}

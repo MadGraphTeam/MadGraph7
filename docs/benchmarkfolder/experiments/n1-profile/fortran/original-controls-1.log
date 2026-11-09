@@ -1,0 +1,20 @@
+{
+  "statistics": {
+    "pairs": 7,
+    "geometric_mean_ratio": 1.1214546778480472,
+    "lower_95": 1.1015184367965638,
+    "upper_95": 1.1417517423719172,
+    "log_ratio_standard_error": 0.007330479011030046,
+    "student_t_critical": 2.446912,
+    "confidence_method": "two-sided 95% Student-t on paired log ratios; df capped at 30",
+    "threshold": 1.05,
+    "minimum_pairs": 7,
+    "acceptance_eligible": true,
+    "passed": false
+  },
+  "median_seconds_per_point": {
+    "baseline": 6.324231375e-05,
+    "candidate": 7.11024731e-05
+  },
+  "all_numerical_parity_passed": true
+}

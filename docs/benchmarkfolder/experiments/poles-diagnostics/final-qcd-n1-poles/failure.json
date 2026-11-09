@@ -1,0 +1,4 @@
+{
+  "error": "RuntimeError('Command exited 2; raw log: /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/poles-diagnostics/final-qcd-n1-poles/build-output.txt')",
+  "status": "failed"
+}

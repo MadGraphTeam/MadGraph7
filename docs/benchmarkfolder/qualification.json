@@ -1,0 +1,68 @@
+[
+  {
+    "name": "CLI installation and ABI",
+    "status": "pass",
+    "evidence": "Final release installation and native DP/QP, pole/cache smoke pass. A later configuration-failure rollback fix passes 66 installer/control tests without changing native artifacts.",
+    "path": "qualification/tirust-install/index.json"
+  },
+  {
+    "name": "Generated Fortran integration",
+    "status": "pass",
+    "evidence": "17 final-release forced-mode runs cover external, relocated internal and NLO outputs; maximum symmetric error 1.29e-15. Forced modes do not establish stability acceptance.",
+    "path": "qualification/madloop-adapter/README.md"
+  },
+  {
+    "name": "QP transport and cache isolation",
+    "status": "pass",
+    "evidence": "Nine native bridge tests include binary128 last-bit transport, 256/384-bit convergence, failed-cache cleanup, bounded QP caching and rank-six mapping. Debug builds; no runtime claim.",
+    "path": "qualification/tirust-bridge/README.md"
+  },
+  {
+    "name": "Accelerated poles-only path",
+    "status": "pass",
+    "evidence": "N=1–6, rank six, UV/IR/scaleless and rescue/cache checks pass; finite evaluators and arithmetic are absent. 288 scalar comparisons and byte-identical regeneration pass.",
+    "path": "qualification/poles-only/index.json"
+  },
+  {
+    "name": "Native library coexistence",
+    "status": "pass",
+    "evidence": "Both link orders and both initialization orders pass with unchanged NinjaRS dependency revisions. Earlier concurrent-license failure retained; qualification runs are serialized.",
+    "path": "qualification/tirust-bridge/mixed-link/"
+  },
+  {
+    "name": "Generated pole diagnostics",
+    "status": "partial",
+    "evidence": "96 served full/partial DP/QP pairs agree; 12 DP pairs refuse both modes and all 54 QP pairs pass. Partial finite outputs are NaN. Explicit refusals are retained and are not successful accelerated evaluations.",
+    "path": "experiments/poles-diagnostics/README.md"
+  },
+  {
+    "name": "Generated cache lifecycle",
+    "status": "pass",
+    "evidence": "59 native records cover DP/QP references, hits, independent checks, modes, topology limits, byte budgets, clear/finalize and reinitialization. Stored and uncached tensors agree at the recorded precision.",
+    "path": "experiments/poles-diagnostics/README.md"
+  },
+  {
+    "name": "Fortran prefix optimization",
+    "status": "pass",
+    "evidence": "481,536 bit/IEEE checks pass at each optimization level. Kernel timing improves; stubbed-wrapper gains vary. Physical-amplitude acceptance is separate.",
+    "path": "experiments/fortran-prefix/README.md"
+  },
+  {
+    "name": "Default stability stress case",
+    "status": "fail",
+    "evidence": "Default 1e-3 native checks miss one correlated rank-five DP error. At 1e-6 the production rescue block with actual tensor callbacks switches to QP and resolves it; complete physical initialization is outside this isolated check.",
+    "path": "qualification/tirust-bridge/stability-audit/README.md"
+  },
+  {
+    "name": "Complex-mass stress campaign",
+    "status": "pending",
+    "evidence": "All five reducers pass 19 moderate points; ordinary TIRust differences are at most 5.96e-13. Two extreme forward points fail in several reducers; forced-QP adjudication remains open.",
+    "path": "experiments/complex-mass/"
+  },
+  {
+    "name": "Full five-backend acceptance",
+    "status": "pending",
+    "evidence": "The main matrix above records the independent physical and paired runtime gates. Completed interface checks do not substitute for those measurements.",
+    "path": "summary.json"
+  }
+]

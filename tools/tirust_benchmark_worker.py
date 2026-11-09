@@ -19,7 +19,7 @@ import time
 
 
 OUTPUTS = ("timing.dat", "values.dat", "timed_status.dat")
-RAW_OUTPUTS = (*OUTPUTS, "dimensions.dat")
+RAW_OUTPUTS = (*OUTPUTS, "dimensions.dat", "warmup.dat")
 SCHEME = "tirust-persistent-worker-v1"
 BACKEND_CODES = {
     (2, 1): (1, "DP"), (3, 9): (1, "QP"),
@@ -39,6 +39,7 @@ class MeasurementError(RuntimeError):
     def __init__(self, message, raw_outputs):
         super().__init__(message)
         self.raw_outputs = raw_outputs
+        self.raw_directory = None
 
 
 def raw_outputs(directory):
@@ -50,8 +51,8 @@ def raw_outputs(directory):
 def validate_status(code, backend):
     """Decode H/T/U, requiring a warmed stable result from the selected chain.
 
-    T=1/2 means steady evaluation (cached/updated helicity filter). H, together
-    with U, distinguishes aliases such as CutTools QP and TIRust DP.
+    T=1/2 denotes steady DP/QP execution; initialization uses T=3/4. H,
+    together with U, distinguishes aliases such as CutTools QP and TIRust DP.
     """
     selected = {backend} if isinstance(backend, int) else set(backend)
     if not selected or not selected.issubset({1, 6, 7, 8, 9}):
@@ -79,6 +80,7 @@ class Worker:
         self.closed = False
         self.buffer = bytearray()
         self.last_raw_directory = None
+        self.raw_directory = None
         # Never unlink another live worker's FIFO.
         os.mkfifo(self.pipe, mode=0o600)
         try:
@@ -90,6 +92,16 @@ class Worker:
             archive_root = self.directory / "worker-raw"
             archive_root.mkdir(exist_ok=True)
             self.raw_directory = Path(tempfile.mkdtemp(prefix="session-", dir=archive_root))
+            # A previous process may have left files in the shared subprocess
+            # directory. Preserve them separately, then avoid attributing them
+            # to a child which fails before producing its own evidence.
+            previous = raw_outputs(self.directory)
+            if previous:
+                retained = self.raw_directory / "previous-outputs"
+                retained.mkdir()
+                for name, value in previous.items():
+                    (retained / name).write_text(value)
+                    (self.directory / name).unlink()
             self.process = subprocess.Popen(
                 [*map(str, command), str(self.pipe)], cwd=self.directory, env=env,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -97,6 +109,11 @@ class Worker:
             self.thread = threading.Thread(target=self._drain, daemon=True)
             self.thread.start()
             fields = self._message()
+            if len(fields) == 4 and fields[:2] in (
+                    ["ERROR", "warmup-status"], ["ERROR", "warmup-limit"]):
+                raise MeasurementError(
+                    f"Numerical warmup failure ({fields[1]}) at point {fields[2]}, "
+                    f"status {fields[3]}; see {self.log}", raw_outputs(self.directory))
             if len(fields) != 7 or fields[:2] != ["READY", "1"]:
                 raise ProtocolError(f"Invalid READY message: {fields}")
             self.points, self.ndim, self.nso, self.nborn = map(int, fields[2:6])
@@ -105,9 +122,26 @@ class Worker:
                     self.ndim != max(self.nso, self.nborn) or
                     not math.isfinite(self.cold_seconds) or self.cold_seconds <= 0):
                 raise ProtocolError(f"Invalid READY dimensions/timing: {fields}")
-        except BaseException:
+            self._archive_startup(None)
+        except BaseException as error:
             self.close(graceful=False)
+            self._archive_startup(error)
+            error.raw_outputs = raw_outputs(self.directory)
+            error.raw_directory = self.last_raw_directory
             raise
+
+    def _archive_startup(self, error):
+        if self.raw_directory is None:
+            return
+        archive = self.raw_directory / "startup"
+        archive.mkdir(exist_ok=True)
+        self.last_raw_directory = archive
+        for name, value in raw_outputs(self.directory).items():
+            (archive / name).write_text(value)
+        (archive / "startup.json").write_text(json.dumps({
+            "error": {"type": type(error).__name__, "message": str(error)}
+                     if error is not None else None,
+            "log": str(self.log)}, indent=2) + "\n")
 
     def __enter__(self):
         return self

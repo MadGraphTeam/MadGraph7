@@ -1,0 +1,2435 @@
+{
+  "compiler": "GNU Fortran (GCC) 15.2.0",
+  "created_utc": "2026-11-09T20:08:21.119014+00:00",
+  "driver_sha256": "f7aab246805ed233b5fcd7dc06f0a5eee91118ceb4b7d5a4723e8a48ad4e0d0d",
+  "effective_compiler_flags": {
+    "environment": {},
+    "schema": "madloop-effective-compiler-flags-v1",
+    "scopes": {
+      "DHELAS": {
+        "expanded_make_output": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o aloha_functions.o aloha_functions.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1L1P0_3.o FFV1L1P0_3.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1L1_2.o FFV1L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1L2P0_3.o FFV1L2P0_3.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1L2_1.o FFV1L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1L3_1.o FFV1L3_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1L3_2.o FFV1L3_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1P0_3.o FFV1P0_3.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1_0.o FFV1_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1_1.o FFV1_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV1_2.o FFV1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2L1_2.o FFV2L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2L2_1.o FFV2L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_0.o FFV2_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_1.o FFV2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_2.o FFV2_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_3L1_2.o FFV2_3L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_3L2_1.o FFV2_3L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_3_0.o FFV2_3_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_3_1.o FFV2_3_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_3_2.o FFV2_3_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_5L1_2.o FFV2_5L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_5L2_1.o FFV2_5L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_5_0.o FFV2_5_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_5_1.o FFV2_5_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV2_5_2.o FFV2_5_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV3L1_2.o FFV3L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV3L2_1.o FFV3L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV5L1_2.o FFV5L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV5L2_1.o FFV5L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV5_0.o FFV5_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV5_1.o FFV5_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o FFV5_2.o FFV5_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o GHGHGL1_2.o GHGHGL1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o GHGHGL2_1.o GHGHGL2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1L1P0_3.o MP_FFV1L1P0_3.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1L1_2.o MP_FFV1L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1L2P0_3.o MP_FFV1L2P0_3.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1L2_1.o MP_FFV1L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1L3_1.o MP_FFV1L3_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1L3_2.o MP_FFV1L3_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1P0_3.o MP_FFV1P0_3.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1_0.o MP_FFV1_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1_1.o MP_FFV1_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV1_2.o MP_FFV1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2L1_2.o MP_FFV2L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2L2_1.o MP_FFV2L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_0.o MP_FFV2_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_1.o MP_FFV2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_2.o MP_FFV2_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_3L1_2.o MP_FFV2_3L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_3L2_1.o MP_FFV2_3L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_3_0.o MP_FFV2_3_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_3_1.o MP_FFV2_3_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_3_2.o MP_FFV2_3_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_5L1_2.o MP_FFV2_5L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_5L2_1.o MP_FFV2_5L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_5_0.o MP_FFV2_5_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_5_1.o MP_FFV2_5_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV2_5_2.o MP_FFV2_5_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV3L1_2.o MP_FFV3L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV3L2_1.o MP_FFV3L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV5L1_2.o MP_FFV5L1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV5L2_1.o MP_FFV5L2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV5_0.o MP_FFV5_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV5_1.o MP_FFV5_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_FFV5_2.o MP_FFV5_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_GHGHGL1_2.o MP_GHGHGL1_2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_GHGHGL2_1.o MP_GHGHGL2_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_R2_GGGVa_0.o MP_R2_GGGVa_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_R2_GGVV_0.o MP_R2_GGVV_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_R2_GGZ_0.o MP_R2_GGZ_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_R2_GG_1_0.o MP_R2_GG_1_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_R2_GG_1_R2_GG_2_0.o MP_R2_GG_1_R2_GG_2_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_R2_GG_1_R2_GG_3_0.o MP_R2_GG_1_R2_GG_3_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_R2_GG_2_0.o MP_R2_GG_2_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_R2_GG_3_0.o MP_R2_GG_3_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_R2_QQ_1_0.o MP_R2_QQ_1_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_VVV1L2P0_1.o MP_VVV1L2P0_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_VVV1P0_1.o MP_VVV1P0_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_VVV1_0.o MP_VVV1_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_VVVV1L2P0_1.o MP_VVVV1L2P0_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_VVVV3L2P0_1.o MP_VVVV3L2P0_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o MP_VVVV4L2P0_1.o MP_VVVV4L2P0_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o R2_GGGVa_0.o R2_GGGVa_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o R2_GGVV_0.o R2_GGVV_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o R2_GGZ_0.o R2_GGZ_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o R2_GG_1_0.o R2_GG_1_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o R2_GG_1_R2_GG_2_0.o R2_GG_1_R2_GG_2_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o R2_GG_1_R2_GG_3_0.o R2_GG_1_R2_GG_3_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o R2_GG_2_0.o R2_GG_2_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o R2_GG_3_0.o R2_GG_3_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o R2_QQ_1_0.o R2_QQ_1_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o VVV1L2P0_1.o VVV1L2P0_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o VVV1P0_1.o VVV1P0_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o VVV1_0.o VVV1_0.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o VVVV1L2P0_1.o VVVV1L2P0_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o VVVV3L2P0_1.o VVVV3L2P0_1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132  -I ../MODEL -fPIC   -c -o VVVV4L2P0_1.o VVVV4L2P0_1.f\nmake: 'aloha_functions.o' is up to date.\n",
+        "make_command": [
+          "make",
+          "--no-print-directory",
+          "--dry-run",
+          "--always-make",
+          "FFV1L1P0_3.o",
+          "FFV1L1_2.o",
+          "FFV1L2P0_3.o",
+          "FFV1L2_1.o",
+          "FFV1L3_1.o",
+          "FFV1L3_2.o",
+          "FFV1P0_3.o",
+          "FFV1_0.o",
+          "FFV1_1.o",
+          "FFV1_2.o",
+          "FFV2L1_2.o",
+          "FFV2L2_1.o",
+          "FFV2_0.o",
+          "FFV2_1.o",
+          "FFV2_2.o",
+          "FFV2_3L1_2.o",
+          "FFV2_3L2_1.o",
+          "FFV2_3_0.o",
+          "FFV2_3_1.o",
+          "FFV2_3_2.o",
+          "FFV2_5L1_2.o",
+          "FFV2_5L2_1.o",
+          "FFV2_5_0.o",
+          "FFV2_5_1.o",
+          "FFV2_5_2.o",
+          "FFV3L1_2.o",
+          "FFV3L2_1.o",
+          "FFV5L1_2.o",
+          "FFV5L2_1.o",
+          "FFV5_0.o",
+          "FFV5_1.o",
+          "FFV5_2.o",
+          "GHGHGL1_2.o",
+          "GHGHGL2_1.o",
+          "MP_FFV1L1P0_3.o",
+          "MP_FFV1L1_2.o",
+          "MP_FFV1L2P0_3.o",
+          "MP_FFV1L2_1.o",
+          "MP_FFV1L3_1.o",
+          "MP_FFV1L3_2.o",
+          "MP_FFV1P0_3.o",
+          "MP_FFV1_0.o",
+          "MP_FFV1_1.o",
+          "MP_FFV1_2.o",
+          "MP_FFV2L1_2.o",
+          "MP_FFV2L2_1.o",
+          "MP_FFV2_0.o",
+          "MP_FFV2_1.o",
+          "MP_FFV2_2.o",
+          "MP_FFV2_3L1_2.o",
+          "MP_FFV2_3L2_1.o",
+          "MP_FFV2_3_0.o",
+          "MP_FFV2_3_1.o",
+          "MP_FFV2_3_2.o",
+          "MP_FFV2_5L1_2.o",
+          "MP_FFV2_5L2_1.o",
+          "MP_FFV2_5_0.o",
+          "MP_FFV2_5_1.o",
+          "MP_FFV2_5_2.o",
+          "MP_FFV3L1_2.o",
+          "MP_FFV3L2_1.o",
+          "MP_FFV5L1_2.o",
+          "MP_FFV5L2_1.o",
+          "MP_FFV5_0.o",
+          "MP_FFV5_1.o",
+          "MP_FFV5_2.o",
+          "MP_GHGHGL1_2.o",
+          "MP_GHGHGL2_1.o",
+          "MP_R2_GGGVa_0.o",
+          "MP_R2_GGVV_0.o",
+          "MP_R2_GGZ_0.o",
+          "MP_R2_GG_1_0.o",
+          "MP_R2_GG_1_R2_GG_2_0.o",
+          "MP_R2_GG_1_R2_GG_3_0.o",
+          "MP_R2_GG_2_0.o",
+          "MP_R2_GG_3_0.o",
+          "MP_R2_QQ_1_0.o",
+          "MP_VVV1L2P0_1.o",
+          "MP_VVV1P0_1.o",
+          "MP_VVV1_0.o",
+          "MP_VVVV1L2P0_1.o",
+          "MP_VVVV3L2P0_1.o",
+          "MP_VVVV4L2P0_1.o",
+          "R2_GGGVa_0.o",
+          "R2_GGVV_0.o",
+          "R2_GGZ_0.o",
+          "R2_GG_1_0.o",
+          "R2_GG_1_R2_GG_2_0.o",
+          "R2_GG_1_R2_GG_3_0.o",
+          "R2_GG_2_0.o",
+          "R2_GG_3_0.o",
+          "R2_QQ_1_0.o",
+          "VVV1L2P0_1.o",
+          "VVV1P0_1.o",
+          "VVV1_0.o",
+          "VVVV1L2P0_1.o",
+          "VVVV3L2P0_1.o",
+          "VVVV4L2P0_1.o",
+          "aloha_functions.o"
+        ],
+        "recipes": {
+          "FFV1L1P0_3.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV1L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV1L2P0_3.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV1L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV1L3_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV1L3_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV1P0_3.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV1_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV1_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_3L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_3L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_3_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_3_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_3_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_5L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_5L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_5_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_5_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV2_5_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV3L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV3L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV5L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV5L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV5_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV5_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "FFV5_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "GHGHGL1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "GHGHGL2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1L1P0_3.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1L2P0_3.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1L3_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1L3_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1P0_3.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_3L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_3L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_3_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_3_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_3_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_5L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_5L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_5_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_5_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV2_5_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV3L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV3L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV5L1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV5L2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV5_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV5_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_FFV5_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_GHGHGL1_2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_GHGHGL2_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_R2_GGGVa_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_R2_GGVV_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_R2_GGZ_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_R2_GG_1_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_R2_GG_1_R2_GG_2_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_R2_GG_1_R2_GG_3_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_R2_GG_2_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_R2_GG_3_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_R2_QQ_1_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_VVV1L2P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_VVV1P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_VVV1_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_VVVV1L2P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_VVVV3L2P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "MP_VVVV4L2P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "R2_GGGVa_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "R2_GGVV_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "R2_GGZ_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "R2_GG_1_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "R2_GG_1_R2_GG_2_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "R2_GG_1_R2_GG_3_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "R2_GG_2_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "R2_GG_3_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "R2_QQ_1_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "VVV1L2P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "VVV1P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "VVV1_0.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "VVVV1L2P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "VVVV3L2P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "VVVV4L2P0_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "aloha_functions.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          }
+        }
+      },
+      "MODEL": {
+        "expanded_make_output": "touch ../maxparticles.inc\ntouch ../run.inc\necho \"        logical fixed_extra_scale\" > ../cuts.inc\necho \"        integer maxjetflavor\" >> ../cuts.inc\necho \"        double precision mue_ref_fixed, mue_over_ref\" >> ../cuts.inc\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o couplings.o couplings.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o couplings1.o couplings1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o couplings2.o couplings2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o couplings3.o couplings3.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o flavor_couplings.o flavor_couplings.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o get_color.o get_color.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o lha_read.o lha_read.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o model_functions.o model_functions.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o mp_couplings1.o mp_couplings1.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o mp_couplings2.o mp_couplings2.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o mp_couplings3.o mp_couplings3.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o printout.o printout.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o rw_para.o rw_para.f\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o testprog.o testprog.f\n",
+        "make_command": [
+          "make",
+          "--no-print-directory",
+          "--dry-run",
+          "--always-make",
+          "couplings.o",
+          "couplings1.o",
+          "couplings2.o",
+          "couplings3.o",
+          "flavor_couplings.o",
+          "get_color.o",
+          "lha_read.o",
+          "model_functions.o",
+          "mp_couplings1.o",
+          "mp_couplings2.o",
+          "mp_couplings3.o",
+          "printout.o",
+          "rw_para.o",
+          "testprog.o"
+        ],
+        "recipes": {
+          "couplings.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "couplings1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "couplings2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "couplings3.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "flavor_couplings.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "get_color.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "lha_read.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "model_functions.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "mp_couplings1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "mp_couplings2.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "mp_couplings3.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "printout.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "rw_para.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          },
+          "testprog.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-fPIC"
+            ]
+          }
+        }
+      },
+      "process": {
+        "expanded_make_output": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -O3  -c polynomial.f -o polynomial.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c COLLIER_interface.f -o COLLIER_interface.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c CT_interface.f -o CT_interface.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c MadLoopCommons.f -o MadLoopCommons.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c MadLoopParamReader.f -o MadLoopParamReader.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c TIR_interface.f -o TIR_interface.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c born_matrix.f -o born_matrix.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c check_sa.f -o check_sa.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c check_sa_born_splitOrders.f -o check_sa_born_splitOrders.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c coef_construction_1.f -o coef_construction_1.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c f2py_wrapper.f -o f2py_wrapper.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c helas_calls_ampb_1.f -o helas_calls_ampb_1.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c helas_calls_uvct_1.f -o helas_calls_uvct_1.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c improve_ps.f -o improve_ps.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c loop_CT_calls_1.f -o loop_CT_calls_1.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c loop_matrix.f -o loop_matrix.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c loop_num.f -o loop_num.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c mg5_citation.f -o mg5_citation.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c mp_coef_construction_1.f -o mp_coef_construction_1.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c mp_compute_loop_coefs.f -o mp_compute_loop_coefs.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c mp_helas_calls_ampb_1.f -o mp_helas_calls_ampb_1.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\n/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c mp_helas_calls_uvct_1.f -o mp_helas_calls_uvct_1.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\nmake: 'polynomial.o' is up to date.\n",
+        "make_command": [
+          "make",
+          "--no-print-directory",
+          "--dry-run",
+          "--always-make",
+          "COLLIER_interface.o",
+          "CT_interface.o",
+          "MadLoopCommons.o",
+          "MadLoopParamReader.o",
+          "TIR_interface.o",
+          "born_matrix.o",
+          "check_sa.o",
+          "check_sa_born_splitOrders.o",
+          "coef_construction_1.o",
+          "f2py_wrapper.o",
+          "helas_calls_ampb_1.o",
+          "helas_calls_uvct_1.o",
+          "improve_ps.o",
+          "loop_CT_calls_1.o",
+          "loop_matrix.o",
+          "loop_num.o",
+          "mg5_citation.o",
+          "mp_coef_construction_1.o",
+          "mp_compute_loop_coefs.o",
+          "mp_helas_calls_ampb_1.o",
+          "mp_helas_calls_uvct_1.o",
+          "polynomial.o"
+        ],
+        "recipes": {
+          "COLLIER_interface.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "CT_interface.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "MadLoopCommons.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "MadLoopParamReader.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "TIR_interface.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "born_matrix.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "check_sa.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "check_sa_born_splitOrders.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "coef_construction_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "f2py_wrapper.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "helas_calls_ampb_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "helas_calls_uvct_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "improve_ps.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "loop_CT_calls_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "loop_matrix.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "loop_num.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "mg5_citation.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "mp_coef_construction_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "mp_compute_loop_coefs.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "mp_helas_calls_ampb_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "mp_helas_calls_uvct_1.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132"
+            ]
+          },
+          "polynomial.f": {
+            "compiler": [
+              {
+                "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+                "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+                "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+              }
+            ],
+            "flags": [
+              "-w",
+              "-fPIC",
+              "-ffixed-line-length-132",
+              "-O3"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "executable_sha256": "6bca649e21aecb7283de19531d22be725fd4a6bde138679bb7bd196c68ff721f",
+  "link_inputs_after": {
+    "archives": {
+      "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/baseline/vendor/IREGI/src/libiregi.a": "aca67384c89cfaa47cd01d23ab86e9d808c3d48086869f29b60f32f809e0f47d",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/baseline/qcd_n3_uux_zgg/lib/libdhelas.a": "461859f8e804fcbc49fa5e5ecde80f95341c9254f19d62ce958c155d8c12f9bb",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/baseline/qcd_n3_uux_zgg/lib/libmodel.a": "d9bbfa43f9a240cb1779904a32e97b32f75352bf5743b148302cc5cf857496cb",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.a": "70891c9d04fd5e109838a701df1ee616ab2092599c5a615d24b5f9cd33c96a07",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.a": "4d9aa36adc1df40eae062d82d3fb930a5cd64040252df5af68dc1a3e247f8fb9",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/libavh_olo.a": "10acae25536d5f7580d60980290e21033eb7413224554f167f031d2c809bab48",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d"
+    },
+    "metadata": {
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-NOTICES.txt": "6d82540c9a7bd21647da949b892f956603bf69f6ec90dca1d390f17e69de2352",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-config.json": "ebb9ebfec9c71041fc3e441e2546524025080a13692b522d5495bef710be8d56",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-dependency-notices.tar.gz": "67696adaa31e58b35ee4404d02d66194a0496f45126651a6a57ad715b2bad6b8",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-dependency-provenance.json": "231dd32ac82cf432835410970024eb48f47023a4709a10b7cadc67720e0dbaae",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-link-before.txt": "ef7dc598f2fee7b363feabeaf30bd352dbc67456f2ba8ea5b176d70ec9ed9abe",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+    }
+  },
+  "link_inputs_before": {
+    "archives": {
+      "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/baseline/vendor/IREGI/src/libiregi.a": "aca67384c89cfaa47cd01d23ab86e9d808c3d48086869f29b60f32f809e0f47d",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/baseline/qcd_n3_uux_zgg/lib/libdhelas.a": "461859f8e804fcbc49fa5e5ecde80f95341c9254f19d62ce958c155d8c12f9bb",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/baseline/qcd_n3_uux_zgg/lib/libmodel.a": "d9bbfa43f9a240cb1779904a32e97b32f75352bf5743b148302cc5cf857496cb",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.a": "70891c9d04fd5e109838a701df1ee616ab2092599c5a615d24b5f9cd33c96a07",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.a": "4d9aa36adc1df40eae062d82d3fb930a5cd64040252df5af68dc1a3e247f8fb9",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/libavh_olo.a": "10acae25536d5f7580d60980290e21033eb7413224554f167f031d2c809bab48",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d"
+    },
+    "metadata": {
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-NOTICES.txt": "6d82540c9a7bd21647da949b892f956603bf69f6ec90dca1d390f17e69de2352",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-config.json": "ebb9ebfec9c71041fc3e441e2546524025080a13692b522d5495bef710be8d56",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-dependency-notices.tar.gz": "67696adaa31e58b35ee4404d02d66194a0496f45126651a6a57ad715b2bad6b8",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-dependency-provenance.json": "231dd32ac82cf432835410970024eb48f47023a4709a10b7cadc67720e0dbaae",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-link-before.txt": "ef7dc598f2fee7b363feabeaf30bd352dbc67456f2ba8ea5b176d70ec9ed9abe",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+    }
+  },
+  "masses": [
+    0.0,
+    0.0,
+    91.188,
+    0.0,
+    0.0
+  ],
+  "previous_compilation_sha256": "fabe4424d0963e3717db5b202bba9a1e1549a1e123d8e39d6c1785b4e80c8890",
+  "seconds": 4.037588057108223,
+  "settings": {
+    "Source/make_opts": "DEFAULT_CPP_COMPILER=g++\nMACFLAG=\nSTDLIB=-lstdc++\nSTDLIB_FLAG=\nDEFAULT_F2PY_COMPILER=f2py\nDEFAULT_F_COMPILER=gfortran\nMG5AMC_VERSION=SpecifiedByMG5aMCAtRunTime\nPYTHIA8_PATH=NotInstalled\n#end_of_make_opts_variables\n\nBIASLIBDIR=../../../lib/\nBIASLIBRARY=libbias.$(libext)\n\n# Rest of the makefile\nifeq ($(origin FFLAGS),undefined)\nFFLAGS= -w -fPIC\n#FFLAGS+= -g -fbounds-check -ffpe-trap=invalid,zero,overflow,underflow,denormal -Wall\nendif\n\nFFLAGS += $(GLOBAL_FLAG)\n\n# REMOVE MACFLAG IF NOT ON MAC OR FOR F2PY\nUNAME := $(shell uname -s)\nifdef f2pymode\nMACFLAG=\nelse\nifneq ($(UNAME), Darwin)\nMACFLAG=\nendif\nendif\n\n# set the flag for dynamical library\nifeq ($(UNAME), Darwin)\nDYNLIBFLAG=-dynamiclib\nRPATHFLAG=-install_name @rpath/\nelse\nDYNLIBFLAG=-shared -fPIC\nRPATHFLAG=-Wl,-soname,\nendif\n\nifeq ($(origin CXXFLAGS),undefined)\nCXXFLAGS= -O $(STDLIB_FLAG) $(MACFLAG)\nendif\n\nifeq ($(origin CFLAGS),undefined)\nCFLAGS= -O $(STDLIB_FLAG) $(MACFLAG)\nendif\n\n# Set FC unless it's defined by an environment variable\nifeq ($(origin FC),default)\nFC=$(DEFAULT_F_COMPILER)\nendif\nifeq ($(origin F2PY), undefined)\nF2PY=$(DEFAULT_F2PY_COMPILER)\nendif\n\n# Increase the number of allowed charcters in a Fortran line\nifeq ($(FC), ftn)\nFFLAGS+= -extend-source # for ifort type of compiler\nelse\nVERS=\"$(shell $(FC) --version | grep ifort -i)\"\nifeq ($(VERS), \"\")\nFFLAGS+= -ffixed-line-length-132\nelse\nFFLAGS+= -extend-source # for ifort type of compiler\nendif\nendif\n\n\nUNAME := $(shell uname -s)\nifeq ($(origin LDFLAGS), undefined)\nLDFLAGS=$(STDLIB) $(MACFLAG)\nendif\n\n# Options: dynamic, lhapdf\n# Option dynamic\n\nifeq ($(UNAME), Darwin)\ndylibext=dylib\nelse\ndylibext=so\nendif\n\nifdef dynamic\nifeq ($(UNAME), Darwin)\nlibext=dylib\nFFLAGS+= -fno-common\nLDFLAGS += -bundle\ndefine CREATELIB\n$(FC) -dynamiclib -undefined dynamic_lookup -o $(1) $(2)\nendef\nelse\nlibext=so\nFFLAGS+= -fPIC\nLDFLAGS += -shared\ndefine CREATELIB\n$(FC) $(FFLAGS) $(LDFLAGS) -o $(1) $(2)\nendef\nendif\nelse\nlibext=a\ndefine CREATELIB\n$(AR) cru $(1) $(2)\nranlib $(1)\nendef\nendif\n\n# Option lhapdf\n\nifneq ($(lhapdf),)\nCXXFLAGS += $(shell $(lhapdf) --cppflags)\nalfas_functions=alfas_functions_lhapdf\nalfas_to_clean=alfas_functions.o\nllhapdf+= $(shell $(lhapdf) --cflags --libs) -lLHAPDF\n# check if we need to activate c++11 (for lhapdf6.2)\nifeq ($(origin CXX),default)\nifeq ($lhapdfversion$lhapdfsubversion,62)\nCXX=$(DEFAULT_CPP_COMPILER) -std=c++11\nelse\nCXX=$(DEFAULT_CPP_COMPILER)\nendif\nendif\nelse\nalfas_functions=alfas_functions\nalfas_to_clean=alfas_functions_lhapdf.o\nllhapdf=\nendif\n\n\n# Helper function to check MG5 version\ndefine CHECK_MG5AMC_VERSION\npython -c 'import re; from distutils.version import StrictVersion; print StrictVersion(\"$(MG5AMC_VERSION)\") >= StrictVersion(\"$(1)\") if re.match(\"^[\\d\\.]+$$\",\"$(MG5AMC_VERSION)\") else True;'\nendef",
+    "SubProcesses/MadLoop_makefile_definitions": "LINK_LOOP_LIBS = -L$(LIBDIR) -lcts -liregi -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/ -lninja -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/ -lavh_olo -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/ -lcollier /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a -lgcc_s -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ -lninjars -ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc\nLOOP_LIBS = $(LIBDIR)libcts.$(libext) $(LIBDIR)libiregi.$(libext) /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.$(libext) /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libavh_olo.$(libext) /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.$(libext) /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a\nDYLOOP_LIBS = /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.$(dylibext) /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libavh_olo.$(libext) /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.$(dylibext) /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a\nLOOP_INCLUDE = -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib\nLOOP_PREFIX = P\nDOTO = %.o\nDOTF = %.f\nLINK_MADLOOP_LIB = -L$(LIBDIR) -lMadLoop\nMADLOOP_LIB = $(LIBDIR)libMadLoop.$(libext)\nRPATH_LIBS = -Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib -Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib -Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier \n\n$(MADLOOP_LIB):\n\tcd ..; make -f makefile_MadLoop OLP_static\n"
+  },
+  "sources": {
+    "Source/DHELAS/FFV1L1P0_3.f": "7ad6cd7fe2c67b656f8acde5acaab59626fa1a6e8fdf43d00891a1ddeed34f29",
+    "Source/DHELAS/FFV1L1_2.f": "fd3bd40dd6c10909788d8614ac5490f8f9c10c0dfaeffa4cd8a7577752a83c0a",
+    "Source/DHELAS/FFV1L2P0_3.f": "010d7df25e7edee504af2ad6819fb155e39f6fa029a316bdb8cdc2f9de0f5c56",
+    "Source/DHELAS/FFV1L2_1.f": "1c406ff26d38308c932cb70e6788aa9f18df9e511acb82b824ae8db18be04394",
+    "Source/DHELAS/FFV1L3_1.f": "a5a9dddcce00f3aa7fe736f09b3d900d3ac2b4fd4c62b951062279d7569eba33",
+    "Source/DHELAS/FFV1L3_2.f": "0590e1459997f5abf791d14b956bc7623836788ffce5fecd4d5624cfba72229b",
+    "Source/DHELAS/FFV1P0_3.f": "414f1ded5d33c50edfed38aec24ca40437b4658723403397695666b16ee25766",
+    "Source/DHELAS/FFV1_0.f": "b142a0e477d010e6177a542dc0360b97979d356c25604a0a44812339d7f3bee8",
+    "Source/DHELAS/FFV1_1.f": "c5d397a99f812f0c6ee618363d46e58fa9f8cba2c02b7c132ea3c4585fb29ba4",
+    "Source/DHELAS/FFV1_2.f": "049b56435f003413c851707c119fcd98f24a35a5f9e83599d783bb550350b062",
+    "Source/DHELAS/FFV2L1_2.f": "3b0a8d4fd6d58f072f3b5411a154f872c4a565129a8d24b7f786da28b04db4ea",
+    "Source/DHELAS/FFV2L2_1.f": "9bbe81c62fed8c291035ba1e8f323b3c207602a1a47a67816d83e3436aff1e2d",
+    "Source/DHELAS/FFV2_0.f": "57d446d32fd78a54a30bba04d35f54894c35697c08f11171d3147b41708d6522",
+    "Source/DHELAS/FFV2_1.f": "0d323a475dd799e3fda52c54893855e3374e19b619d269bec23a3f3eb925d341",
+    "Source/DHELAS/FFV2_2.f": "cee03ecb3eeea9aea740403635ab516db23977a66b3be6198028ffeec2c5fd77",
+    "Source/DHELAS/FFV2_3L1_2.f": "bf9fa31a35e5c7a6e77ee0f067cb845db5f46345deb16c06819fdb5efc6cf569",
+    "Source/DHELAS/FFV2_3L2_1.f": "7f56b716007f0e6a386444b87e0bba46ff3b3360e40099e637b0bf681aa3093e",
+    "Source/DHELAS/FFV2_3_0.f": "aa5618f59ab8acc0eb0941797b48908301b91866a313bbc51cdb50c2d6a7227a",
+    "Source/DHELAS/FFV2_3_1.f": "1e09411c9c336a21c7b464f5b3dcbaf7c4afd7c2288c58e5d3fd1daf4ef50bb1",
+    "Source/DHELAS/FFV2_3_2.f": "33ac86195c088eaa1416d9580c710907c62086b2d78304d099030b87893e6542",
+    "Source/DHELAS/FFV2_5L1_2.f": "34e80bdb25efd3e77087ca2c0ba3e87f6d4d32311c561f91f121ade0428a5d9c",
+    "Source/DHELAS/FFV2_5L2_1.f": "6efe4a8826c0a2ea0a6046dcc3c999206af6911fde795b43dc11375c1ba2dd0b",
+    "Source/DHELAS/FFV2_5_0.f": "75bf2a4a0593f7bf2da1a55297ae640419ecc9c86291956df61d540a1438840b",
+    "Source/DHELAS/FFV2_5_1.f": "c04676a86a9f2b1520a848f94b2ceccc79293252daf670ac79fc4ce34437e038",
+    "Source/DHELAS/FFV2_5_2.f": "a6e6fa905dd5005ed935441e7d1130278afa4cac57ac8ba6d0cf4a78dc25995b",
+    "Source/DHELAS/FFV3L1_2.f": "13b82af793b5f60c7612f6f76f2773270d02e02940796517a1db9d200e00437b",
+    "Source/DHELAS/FFV3L2_1.f": "69a443a04784bc4e63a3d888c07f2c9b66f68c5c4705ec4cce36e1f47b8a136c",
+    "Source/DHELAS/FFV5L1_2.f": "e99b92129dd7071579927470658b5647afdcbafef50564a94e80629335d99e86",
+    "Source/DHELAS/FFV5L2_1.f": "ba454219d52965e99c5a992b2ccfdcd7267a6ef12a21b73ca2fe38cfb37f22fd",
+    "Source/DHELAS/FFV5_0.f": "06f779043f28be4feff12568eb999790462ef0fc1ed63764541f798fd82e9570",
+    "Source/DHELAS/FFV5_1.f": "34669682775f091595e134d33995fd95854a2c19f6abc9c3cd3fe195d0fc6896",
+    "Source/DHELAS/FFV5_2.f": "c706fe4685be103bf17facb29773f7e32a4f9a6f2654bfab6f1d6b1278bc67fa",
+    "Source/DHELAS/GHGHGL1_2.f": "36cb26be380af4ea8d898c8237c8e5b09c6267c9a70ec996f0e85c25ab4d3aef",
+    "Source/DHELAS/GHGHGL2_1.f": "c58b69a9fed929eaee94ef6ab8d177569d7cefe109059416d082b76ff1a77fe5",
+    "Source/DHELAS/MP_FFV1L1P0_3.f": "eb047a7278c1ef6cba66cc065bf1ca3d8c4f085ade22191ca3b7f1cd5916e6e4",
+    "Source/DHELAS/MP_FFV1L1_2.f": "d9f7282f0aa5f01b4601c83970aa7e52754f36eb1ab9417b1db662b9e13c986e",
+    "Source/DHELAS/MP_FFV1L2P0_3.f": "2aae3253fbcf5b528416f30ff100918dd05aa05325ff8e9752f48bdee68c0cd4",
+    "Source/DHELAS/MP_FFV1L2_1.f": "dd20ccedda42d1fb533d97f155fc7fe7996178e0cf51447dd89723f2113a2447",
+    "Source/DHELAS/MP_FFV1L3_1.f": "148a3e488ff8f5f0c28995311b8928503a7cf5531713740a54e1f1823fde3c10",
+    "Source/DHELAS/MP_FFV1L3_2.f": "c130264308029836956c40fb22423b1d18ad88e02786ae85d6c614a74f6775bc",
+    "Source/DHELAS/MP_FFV1P0_3.f": "a24bf5902529b983a61c494a993797e2731f67e9d7d198a21ebb52c58489f2f1",
+    "Source/DHELAS/MP_FFV1_0.f": "94b52f01659a6dac5c294a5ce737d0387312f541c9371078098050a0276d3eb5",
+    "Source/DHELAS/MP_FFV1_1.f": "481a7ff498a673be927545650d6f6ae3967019950f7d48c9ff352bf5df4ada2d",
+    "Source/DHELAS/MP_FFV1_2.f": "a8fe4ea5ddba2317533ae8128c67505b981667bc2514b69f716a29ec6081c986",
+    "Source/DHELAS/MP_FFV2L1_2.f": "9c8c73f741e415c007638f6875b3c9e3aeb3d9d2f061bc96aebe99858df613db",
+    "Source/DHELAS/MP_FFV2L2_1.f": "6de7ea7c23f7bb0a79571bb7dd8a1cb4d3b6f47ca0e199789ebc9cd17eff4694",
+    "Source/DHELAS/MP_FFV2_0.f": "f8b4dd33fbb1b8bf7b1a8055673b26e2d16ecb2162a10ec4a8f07a28d269b60c",
+    "Source/DHELAS/MP_FFV2_1.f": "a1bad72795988e5cff8f40799415d6345684fb4107952d3adb1533810963c5f9",
+    "Source/DHELAS/MP_FFV2_2.f": "6c44a17d16ee7e68476f78b889aad8536b14534075133d25e65cfaf11c494007",
+    "Source/DHELAS/MP_FFV2_3L1_2.f": "da2966ee0012616fddc64811587960c40fbaa5541c864f3180a216c9dd16367b",
+    "Source/DHELAS/MP_FFV2_3L2_1.f": "aad1d843e21d4fcfae3e93d313b1bd584d1f5ca9b96f03e69c09536403f9fbec",
+    "Source/DHELAS/MP_FFV2_3_0.f": "778c85a411692e6d7315fece98cf0bd4fb55f9417f1f97ca5e37767ee93e32d2",
+    "Source/DHELAS/MP_FFV2_3_1.f": "49148a8142d1c511d56aaf3f5e34a56b30b10add831e1507fe25dee2e2fd3fe1",
+    "Source/DHELAS/MP_FFV2_3_2.f": "6271d6f0f380ec9d06ec05b0414aa4bfdc22a1ac895af01cda2173c6c4b4df65",
+    "Source/DHELAS/MP_FFV2_5L1_2.f": "4a7e1d0c491a95db7483f26f94b645b61bb1acf02e8af01455fbdb74198ea26d",
+    "Source/DHELAS/MP_FFV2_5L2_1.f": "ff5e507b378444e870178f6084318ef563cc56335bd240fa16567d7d1beb0705",
+    "Source/DHELAS/MP_FFV2_5_0.f": "252337b294c5e08e4128fb766b5267cc2ecd7726d2316b6d5f56b3fa9ac9d3f2",
+    "Source/DHELAS/MP_FFV2_5_1.f": "0e35828f1a9ae0ff1225a8182db97c60ceda09c7213638c5344ad6adf17531c6",
+    "Source/DHELAS/MP_FFV2_5_2.f": "f3fc36c8c77a3cb4e91ad358df5f1eb3b6c043c6dbea98e2332315db2675f963",
+    "Source/DHELAS/MP_FFV3L1_2.f": "053d3d97efd0e3f9277b99032f6b1bfa84adc74c6166a0ae03dc99360c1c97e9",
+    "Source/DHELAS/MP_FFV3L2_1.f": "b8e492e83f4a3d82431d9576f90d0dde43b8b356a3bdab5e8856581c7d170d70",
+    "Source/DHELAS/MP_FFV5L1_2.f": "9a8c33b9a66a960b5fc595e68b51237bcfd03d28f3c7b5e57c890a87a4428153",
+    "Source/DHELAS/MP_FFV5L2_1.f": "b6e8ceebdeab07ee9d16555a02db2f0ba6f0880ec3a752d0c84ffce3ce84a0ab",
+    "Source/DHELAS/MP_FFV5_0.f": "e93bd2169fa0a0a1f7a8394e9ee78a5dd44d2f03cf1530e9e22e3f8fdca19e1b",
+    "Source/DHELAS/MP_FFV5_1.f": "fa74f2203ca6e4f786df57d0f6591feb89cd9addd44a2660fc38722f5e814616",
+    "Source/DHELAS/MP_FFV5_2.f": "0d3b27e5c6668bc3e4c21f0608b6958c8c8e7752886738c05ff194b1f40729bd",
+    "Source/DHELAS/MP_GHGHGL1_2.f": "4de54a1e59f9ef87e39288e3b9d2ce97969607693307eec70b7c01bfff94b871",
+    "Source/DHELAS/MP_GHGHGL2_1.f": "b5e7a1271618f8649d71d4c934386730e059952ab8ddbbcaf99680e23a931f2a",
+    "Source/DHELAS/MP_R2_GGGVa_0.f": "da8789f2ee9fffae4f01b53ec18bc49b98b7b8c36f67c25419c12755998cd471",
+    "Source/DHELAS/MP_R2_GGVV_0.f": "7cb24868bd85badc66d39345d2c773ec0b7a077b09758274fd054e005f6ec46b",
+    "Source/DHELAS/MP_R2_GGZ_0.f": "cc04b4f61a62b757c63c72f1ba8bc006aa04e0249750b251892fd3f939eba9ba",
+    "Source/DHELAS/MP_R2_GG_1_0.f": "d9788ab89a6d02848adda9c1412b22fb89c210b5056effaad2880a60523e40ae",
+    "Source/DHELAS/MP_R2_GG_1_R2_GG_2_0.f": "2360480e65037066c55cac571ec74dac21bc8b5b07bbd22cfc20a9bc2a76fe73",
+    "Source/DHELAS/MP_R2_GG_1_R2_GG_3_0.f": "00fd9d936524576229c4e9b0ebb8c568c355812bd5bc74f18d04f1f375e310a3",
+    "Source/DHELAS/MP_R2_GG_2_0.f": "9209f6088374d9049e54b78e6f5b7a0f913fe4cff27ed0e368e0087da4930376",
+    "Source/DHELAS/MP_R2_GG_3_0.f": "75c939262be9b1d0d88ac3c25d6aee1d2d956464e1763ea3d6a29c1815b5ac3b",
+    "Source/DHELAS/MP_R2_QQ_1_0.f": "0278403e3fa815a17b95a955e3cc556953c358d18f7cec32003ead5a596af1c3",
+    "Source/DHELAS/MP_VVV1L2P0_1.f": "20a6f9bfb0a8f539c4f31396fd2215a1574a13e17ba441fdb2faaf7da73faf0f",
+    "Source/DHELAS/MP_VVV1P0_1.f": "97acea4bdf5bdaec7a6b0cd83d588d9abf0bc926d9c7727122e9af352596361d",
+    "Source/DHELAS/MP_VVV1_0.f": "08e37c31c9296914eec1eee642a8cd980f992732546ef44af33279a3263561c1",
+    "Source/DHELAS/MP_VVVV1L2P0_1.f": "8f43f1d76e6bd33d7335c3211dc3c8d21f324897c16a6a12da2cef8609a95c1a",
+    "Source/DHELAS/MP_VVVV3L2P0_1.f": "18631f29c42afd4ced60899354a60f4a00a917f0cba7831c8fc204c60c7aa450",
+    "Source/DHELAS/MP_VVVV4L2P0_1.f": "84f0bfdfdca6b2e6c7cf7be6268bec0de5fbff0b76a48f9d41c34663673d7a11",
+    "Source/DHELAS/R2_GGGVa_0.f": "35fbbd1c3eb6a3ffe5dafd015bd42bb065b2497e99024efd0ed8b43995584fc5",
+    "Source/DHELAS/R2_GGVV_0.f": "67c1ccee61f2cee3acc7a33053ea7748a9e73119b2c2541ed7a4fd740413db7f",
+    "Source/DHELAS/R2_GGZ_0.f": "2d6347a9a1f370dcd0d48fb1d6a22824457413c8433111175a258c8c753222af",
+    "Source/DHELAS/R2_GG_1_0.f": "9c2c38421f3b229d02a43b9c792b527ee5fae69ebd45d4c5139a3201cd107fa1",
+    "Source/DHELAS/R2_GG_1_R2_GG_2_0.f": "ce81139e946f3a567eab85e66850e6bcb64f954df075f5e38cd86977035d56b5",
+    "Source/DHELAS/R2_GG_1_R2_GG_3_0.f": "1a9e75e366a26262e054babed3e50f285d8dc4465a5be8b7e6238dc17ba3da1d",
+    "Source/DHELAS/R2_GG_2_0.f": "e72b843a6ad97b38ccba00e45339c19848764e8299dbd83d7d8ff67f8cba6897",
+    "Source/DHELAS/R2_GG_3_0.f": "0824cf2a26fcca188c5d3d9e0a09158b3701e3a3b0a86afe4de398c45001cfd8",
+    "Source/DHELAS/R2_QQ_1_0.f": "cbd24e9610364c1af449d16134b2312782b1964cbabeb64867b0bc9e968c31d3",
+    "Source/DHELAS/VVV1L2P0_1.f": "dcd59095516eb4c7f91adcc335ac7d3d6c66829df62ca6a3702b2266336be557",
+    "Source/DHELAS/VVV1P0_1.f": "cf5506184046b62491abe108e8422f85461ebab0d389ec675cdc5b852bb9681d",
+    "Source/DHELAS/VVV1_0.f": "4256e3a66b573c37067fcbbf6bec827bbae6bc2486d9895de7615f97ad1b7c15",
+    "Source/DHELAS/VVVV1L2P0_1.f": "c0939d240cdd7f4fadfe2731ac0d7fb392f58167eee31c2c2307d92190af342d",
+    "Source/DHELAS/VVVV3L2P0_1.f": "8034fb8657aa0671a8b4e24ff5a9644a7952dbc13eae1ec88958db64e22928e0",
+    "Source/DHELAS/VVVV4L2P0_1.f": "d03fa37015a9dbf2f96b8b003b3a116dea0ce58c538a7279688c6d6a45cd9fc8",
+    "Source/DHELAS/aloha_file.inc": "bef16f8bf9f75f0352ede4427553a214ff45f336507cd8d749ed50d489044fab",
+    "Source/DHELAS/aloha_functions.f": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf",
+    "Source/DHELAS/coef_specs.inc": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+    "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    "Source/MODEL/actualize_mp_ext_params.inc": "4108b4fb1f82d348413a9f7f777eb94537061f7ccf339d7d23f30f4f835676ac",
+    "Source/MODEL/coupl.inc": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+    "Source/MODEL/coupl_write.inc": "e55e5bc964073b74cb45a4fe6efcbd38ed264b00ca67619bda4e373cfcb73310",
+    "Source/MODEL/couplings.f": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936",
+    "Source/MODEL/couplings1.f": "c49c0ef8ba4ecc408039bc66d0adc0d0cd5887df8b27e2c6f72d473356a4b7c9",
+    "Source/MODEL/couplings2.f": "28b4eefe950545be8c834979488b7bc11ef89ca3c8799a3e0e59f08ae902b65e",
+    "Source/MODEL/couplings3.f": "566b194403bb9580ea662c717308f63eaa0facb21da6b148d9d80d230379eb62",
+    "Source/MODEL/flavor_couplings.f": "863fa39462bb4b32dd09835ce5ca74624a4b08ee98be94fa756cd8a488ef6de7",
+    "Source/MODEL/formats.inc": "1d0c8b3a81b5c4ed3cc50e16edc2d7fa09fa2c2694b9eef3790bff2abc42c3a3",
+    "Source/MODEL/get_color.f": "e1b3eb173aa5a721e4f1dfb518987b5581edf4ddc63ed98fa14eab1daca71bcf",
+    "Source/MODEL/input.inc": "e8887e3d6b201199bc48178615968bcc6dd0291b3af2bf21533d09d48537c569",
+    "Source/MODEL/intparam_definition.inc": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084",
+    "Source/MODEL/ldme.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Source/MODEL/lha_read.f": "319682ba82c7f585b6673f81256723719ef1fc3a5c78c5debd183cd4ba171cca",
+    "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    "Source/MODEL/makeinc.inc": "b4474380dce602789c4749045fc5e726d3431039ae354b8d17405dce2c223090",
+    "Source/MODEL/model_functions.f": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+    "Source/MODEL/model_functions.inc": "be48cc65d552043c1569e2144501aa3d1c16e69834f20090aceca8ea818bb58f",
+    "Source/MODEL/mp_coupl.inc": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+    "Source/MODEL/mp_coupl_same_name.inc": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+    "Source/MODEL/mp_couplings1.f": "771ec188e8c527beb5f77278534fa207c975d02fd890ab13fb881020938d958b",
+    "Source/MODEL/mp_couplings2.f": "b4e39fa7fffc4d210b9cb075a9a96e6498c067a45ac97db19a852597d64896e6",
+    "Source/MODEL/mp_couplings3.f": "a57fe71cdd36163c2fa254b0d7d421e7fdd7597443a9ecbe9147d32024df5f4a",
+    "Source/MODEL/mp_input.inc": "aeee69196e81b8ad6f344990b346feda8fe665c355054bfa62b426f2f637b8bb",
+    "Source/MODEL/mp_intparam_definition.inc": "9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4",
+    "Source/MODEL/onia_read.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Source/MODEL/param_read.inc": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22",
+    "Source/MODEL/param_write.inc": "ba207871dd4bf5698c7d34c13354df0d18f9a8d814e63471427418b76ec39057",
+    "Source/MODEL/printout.f": "e4c1687b5b7938a0cf6119f897036208f945c4a8b8c71603f8d9d127c1ad7b40",
+    "Source/MODEL/rw_para.f": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c",
+    "Source/MODEL/testprog.f": "de3d3aaf629ce84a039d03daf2b747be690bf06a5ab3190a39cee04b8c1490bf",
+    "Source/coupl.inc": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+    "Source/cuts.inc": "0592f71fe875db3892c3c9f4179ba09627b3a241cc4090253eab42481a8618f2",
+    "Source/ldme.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    "Source/maxparticles.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Source/run.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "SubProcesses/MadLoopCommons.f": "d74df9c3a5771830b57d1a5a666a6b947be9ab7d4ac9441ac4f3bce0b21ce30a",
+    "SubProcesses/MadLoopParamReader.f": "454028f6d7777914ebd0e40d2583a9576a4e6646122f18af4b76c658266dcf02",
+    "SubProcesses/MadLoopParams.inc": "026fcef522e141cdfa0cfbcf9d308569f5ed5d4256627bd5a9f724b6739b0cf5",
+    "SubProcesses/MadLoop_makefile_definitions": "4c6eb0fda349003360dc9bd0d81e165bd7c7b81b44f2388449ee0bf3080655d3",
+    "SubProcesses/P0_uux_zgg/COLLIER_interface.f": "605000cd1d28b47fe02182673c7eed49c85a6346eb10a32c4785ab8650e41016",
+    "SubProcesses/P0_uux_zgg/CT_interface.f": "f89381ee03ee71a8498ef3d5b74092298d4c0b573ad27090fefc580e9ebab80c",
+    "SubProcesses/P0_uux_zgg/MadLoopCommons.f": "d74df9c3a5771830b57d1a5a666a6b947be9ab7d4ac9441ac4f3bce0b21ce30a",
+    "SubProcesses/P0_uux_zgg/MadLoopParamReader.f": "454028f6d7777914ebd0e40d2583a9576a4e6646122f18af4b76c658266dcf02",
+    "SubProcesses/P0_uux_zgg/MadLoopParams.inc": "026fcef522e141cdfa0cfbcf9d308569f5ed5d4256627bd5a9f724b6739b0cf5",
+    "SubProcesses/P0_uux_zgg/TIR_interface.f": "d9c8bb981ab171be817458f64567b3cf1a9fae859dafa33c4461a7078b4ca49e",
+    "SubProcesses/P0_uux_zgg/born_matrix.f": "c4996302b8b7392a0697da69533b998c0d617e81c53f027e6ae171de3f8a2f0c",
+    "SubProcesses/P0_uux_zgg/check_sa.f": "f7aab246805ed233b5fcd7dc06f0a5eee91118ceb4b7d5a4723e8a48ad4e0d0d",
+    "SubProcesses/P0_uux_zgg/check_sa_born_splitOrders.f": "2f503e7c07b2933491a6d36aa891c017020f9ad12c4eec498fcb5356049471d6",
+    "SubProcesses/P0_uux_zgg/coef_construction_1.f": "ec25695bedf1f52a895e19e0ee8a27f692823cb351cf4cd2d5a62d3a911ecf35",
+    "SubProcesses/P0_uux_zgg/coef_specs.inc": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+    "SubProcesses/P0_uux_zgg/coupl.inc": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+    "SubProcesses/P0_uux_zgg/cts_mpc.h": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+    "SubProcesses/P0_uux_zgg/cts_mprec.h": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+    "SubProcesses/P0_uux_zgg/f2py_wrapper.f": "4446bfff3ee103cd3b5b94f30ec0956d19eb9460b38aa83242bdf3fdc75abe3f",
+    "SubProcesses/P0_uux_zgg/global_specs.inc": "d48fe8ef9a16e1d7f923adbd1b50bc439840c70316bd63009b89d0360ab491d8",
+    "SubProcesses/P0_uux_zgg/helas_calls_ampb_1.f": "3eaa865b92e37552e7de056f4b63861c3736b004d9d113e1d40d0b46200e7e92",
+    "SubProcesses/P0_uux_zgg/helas_calls_uvct_1.f": "565ca16189bb810307c2b51cb308e40ce4f147af8c8ba57886795d350b23f299",
+    "SubProcesses/P0_uux_zgg/improve_ps.f": "fa190450c53d61bd82f4e9641d3c5898a576642f0d0082a1898df041af4ad8ff",
+    "SubProcesses/P0_uux_zgg/loop_CT_calls_1.f": "f49561ab2c444c44eb862cc6a43b9d0e55d79520472d23e727919d81bbf3312f",
+    "SubProcesses/P0_uux_zgg/loop_matrix.f": "cb92fd7dafcfc5e5438667794395c6a16deef037ab5d63784b8fcc0d6d34aee1",
+    "SubProcesses/P0_uux_zgg/loop_max_coefs.inc": "1dca06ff691666dab8f666692137cd040e407c276417611d5fcc744f5f82f19d",
+    "SubProcesses/P0_uux_zgg/loop_num.f": "c6a6e79e95330d222f44875d6a7a21d2648b17c01c0e32b9ca2f4027796f817a",
+    "SubProcesses/P0_uux_zgg/makefile": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab",
+    "SubProcesses/P0_uux_zgg/mg5_citation.f": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+    "SubProcesses/P0_uux_zgg/mp_coef_construction_1.f": "6be7358c85c2ecd6f2f90026b1a71b9ec1cc190bb39facb77b560417b22d6a54",
+    "SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.f": "9242baba47f8fd629123e981489dbfea7763cb2a658e769919f4d8a9cae1ff5c",
+    "SubProcesses/P0_uux_zgg/mp_coupl.inc": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+    "SubProcesses/P0_uux_zgg/mp_coupl_same_name.inc": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+    "SubProcesses/P0_uux_zgg/mp_helas_calls_ampb_1.f": "138b9f55da144b18572fa102f1d49a9168002a6a91412f392154697f179925b9",
+    "SubProcesses/P0_uux_zgg/mp_helas_calls_uvct_1.f": "943a272f19ba200075349c1e6c372812bad79860796182fbe142fee686c77a97",
+    "SubProcesses/P0_uux_zgg/nexternal.inc": "bc11cdbfcf584a63c63f7a5b4cf636143497eeb7d9b106e0ba80cee6b721ddaf",
+    "SubProcesses/P0_uux_zgg/ngraphs.inc": "d764de9cb44eea7157f19e2ef9757a0d8eea75d8a339c4eef9d3da436330176e",
+    "SubProcesses/P0_uux_zgg/nsqso_born.inc": "3b38ec895740e951986695a1de84d502519179591cff87fd84460bd597fda484",
+    "SubProcesses/P0_uux_zgg/nsquaredSO.inc": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf",
+    "SubProcesses/P0_uux_zgg/pmass.inc": "7b82ca63ebbae2ed1909b706780e51edb7d287e1a93b5be6a7b4c2b7c0cf4093",
+    "SubProcesses/P0_uux_zgg/polynomial.f": "113095641e8207b9a62679acbc37861a3df333d42d27da70988e4c96bdd70ca8",
+    "SubProcesses/P0_uux_zgg/process_info.inc": "a2163706175ae47c77e94b49ffd225a0335bed2f42f67185fd104f817719d920",
+    "SubProcesses/P0_uux_zgg/unique_id.inc": "d60a49c61df4c28973b15a4f965abf3b8fd524c9f59fa91b630abdae15124a2e",
+    "SubProcesses/coupl.inc": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+    "SubProcesses/cts_mpc.h": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+    "SubProcesses/cts_mprec.h": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+    "SubProcesses/global_specs.inc": "d48fe8ef9a16e1d7f923adbd1b50bc439840c70316bd63009b89d0360ab491d8",
+    "SubProcesses/ldme.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "SubProcesses/makefile": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab",
+    "SubProcesses/makefileP": "35afefa36a49041f54034da719b5832622f6ad47da348ab4e3bb54130d4d1962",
+    "SubProcesses/mg5_citation.f": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+    "SubProcesses/mp_coupl.inc": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+    "SubProcesses/mp_coupl_same_name.inc": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+    "SubProcesses/nsquaredSO.inc": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf"
+  }
+}

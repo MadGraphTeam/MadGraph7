@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from contextlib import ExitStack
 import datetime
+import fcntl
 import hashlib
 import io
 import json
@@ -81,8 +82,12 @@ def environment():
 def run(command, cwd, log, timeout=86400):
     log.parent.mkdir(parents=True, exist_ok=True)
     start = time.perf_counter()
+    env = environment()
+    # Legacy dependency makefiles use the inherited shell PWD rather than
+    # make's CURDIR. Keep it consistent with the actual subprocess directory.
+    env["PWD"] = str(Path(cwd).resolve())
     with log.open("wb") as stream:
-        result = subprocess.run(command, cwd=cwd, env=environment(), stdout=stream,
+        result = subprocess.run(command, cwd=cwd, env=env, stdout=stream,
                                 stderr=subprocess.STDOUT, timeout=timeout)
     seconds = time.perf_counter() - start
     if result.returncode:
@@ -162,6 +167,13 @@ def prepare_baseline_dependencies():
     target = BASELINE / "vendor/CutTools/includects"
     if source.is_dir() and not target.exists():
         target.symlink_to(source, target_is_directory=True)
+    iregi = BASELINE / "vendor/IREGI/src"
+    if shutil.which("gfortran") and not (iregi / "libiregi.a").exists():
+        # The outer IREGI makefile assumes PWD is an MG installation root.
+        # Build the frozen tree directly so a baseline export cannot compile
+        # or clean the candidate's ignored dependency objects.
+        run(["make", "-f", "makefile_ML5_lib"], iregi,
+            WORK / "logs" / "prepare-baseline-iregi.log")
 
 
 def acquire_model(source=None, url=None):
@@ -248,7 +260,10 @@ def cli_lines(tree, source, case, output):
         path = ROOT / "HEPTools" / suffix
         if path.is_dir() and (source == "candidate" or name != "tirust"):
             lines.append(f"set {name} {path}")
-    lines.extend((f"import model {model}", f"generate {case['process']}",
+    # The frozen CLI reserves noborn for integration outputs; sqrvirt exposes
+    # the same loop-induced matrix element through standalone MadLoop.
+    process = case['process'].replace('[noborn=QCD]', '[sqrvirt=QCD]')
+    lines.extend((f"import model {model}", f"generate {process}",
                   f"output standalone {output}", "quit"))
     return lines
 
@@ -298,39 +313,137 @@ def generated_sources(output):
                                or p.name in ("make_opts", "MadLoop_makefile_definitions"))}
 
 
+def render_worker(template, parameters):
+    return (template.replace("@PREFIX@", parameters["prefix"])
+            .replace("@NEXTERNAL@", str(parameters["nexternal"]))
+            .replace("@NBORN@", str(parameters["nborn"])))
+
+
+def verify_worker_template(compilation, template_path):
+    if digest(template_path) != compilation.get("worker_template_sha256"):
+        raise RuntimeError("Worker template differs from compilation")
+    rendered = render_worker(Path(template_path).read_text(), compilation["worker_render_parameters"])
+    if hashlib.sha256(rendered.encode()).hexdigest() != compilation["driver_sha256"]:
+        raise RuntimeError("Compiled driver differs from the retained worker template")
+    drivers = [checksum for name, checksum in compilation["sources"].items()
+               if re.fullmatch(r"SubProcesses/P[^/]+/check_sa\.f", name)]
+    if drivers != [compilation["driver_sha256"]]:
+        raise RuntimeError("Worker driver differs from its generated-source inventory")
+
+
+def same_compiler_policy(left, right):
+    from tirust_benchmark_compiler import validate_compiler_equality
+    try:
+        validate_compiler_equality(left or {}, right or {})
+    except ValueError:
+        return False
+    return all(set(left["scopes"][scope]["recipes"]) == set(right["scopes"][scope]["recipes"])
+               for scope in left["scopes"])
+
+
 def build(source, case, jobs=4):
+    from tirust_benchmark_compiler import capture_effective_flags
     output = output_dir(source, case)
     directory = subprocess_dir(source, case)
     compilation_path = output / "compilation.json"
+    template_path = ROOT / "tools/tirust_benchmark_worker.f"
+    previous = None
     if compilation_path.exists():
-        record = json.loads(compilation_path.read_text())
-        if digest(directory / "check") != record["executable_sha256"]:
+        previous = json.loads(compilation_path.read_text())
+        if digest(directory / "check") != previous["executable_sha256"]:
             raise RuntimeError("Compiled executable changed")
-        return record["masses"]
+        if generated_sources(output) != previous["sources"]:
+            raise RuntimeError("Generated sources changed; regenerate before building")
+        current_dependencies = dependency_inputs(directory)
+        current_flags = capture_effective_flags(directory, env=environment())
+        if (previous.get("link_inputs_before") == current_dependencies
+                and previous.get("link_inputs_after") == current_dependencies
+                and same_compiler_policy(previous.get("effective_compiler_flags"), current_flags)
+                and previous.get("numerical_build_from_sources") is True
+                and previous.get("worker_template_sha256") == digest(template_path)):
+            verify_worker_template(previous, template_path)
+            return previous["masses"]
+        if (previous.get("effective_compiler_flags") is not None
+                and not same_compiler_policy(previous["effective_compiler_flags"], current_flags)):
+            raise RuntimeError("Effective compiler flags changed; regenerate all objects before building")
+        # A legacy record or changed archive requires a new link. Preserve the
+        # old executable and evidence rather than assigning new libraries to it.
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        history = output / "build-history" / stamp
+        history.mkdir(parents=True)
+        shutil.copy2(directory / "check", history / "check")
+        shutil.copy2(directory / "check_sa.f", history / "check_sa.f")
+        shutil.copy2(compilation_path, history / "compilation.json")
+        dump(REPORT / "inputs" / source / case["id"] / "build-history" / stamp / "compilation.json", previous)
+        old_log = WORK / "logs" / f"compile-{source}-{case['id']}.log"
+        if old_log.exists():
+            shutil.copy2(old_log, history / "compile.log")
+        (directory / "check").unlink()
     driver_path = directory / "check_sa.f"
     original = driver_path.read_text()
     prefix = re.search(r"CALL\s+(\w*)GET_ANSWER_DIMENSION", original, re.I).group(1)
     born = directory / "nsqso_born.inc"
     nborn = int(re.search(r"NSQSO_BORN\s*=\s*(\d+)", born.read_text(), re.I).group(1)) if born.exists() else 0
-    driver = (ROOT / "tools/tirust_benchmark_worker.f").read_text()
-    driver_path.write_text(driver.replace("@PREFIX@", prefix).replace("@NEXTERNAL@", str(case["nfinal"] + 2))
-                          .replace("@NBORN@", str(nborn)))
+    render_parameters = {"prefix": prefix, "nexternal": case["nfinal"] + 2, "nborn": nborn}
+    driver_path.write_text(render_worker(template_path.read_text(), render_parameters))
     before = generated_sources(output)
-    seconds = run(["make", f"-j{jobs}", "check"], directory,
-                  WORK / "logs" / f"compile-{source}-{case['id']}.log")
+    flags_before = capture_effective_flags(directory, env=environment())
+    attempt = WORK / "build-attempts" / source / case["id"] / datetime.datetime.now(
+        datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    dump(attempt / "compiler-before.json", flags_before)
+    full_rebuild = not previous or previous.get("numerical_build_from_sources") is not True
+    external_before = dependency_inputs(directory)
+    # MODEL/DHELAS archives are outputs of this source build, not external
+    # dependencies. All other archive and metadata bytes remain frozen.
+    internal = {str((output / "lib" / name).resolve()) for name in ("libmodel.a", "libdhelas.a")}
+    external_before["archives"] = {key: value for key, value in external_before["archives"].items()
+                                   if key not in internal}
+    seconds = 0.
+    build_logs = {}
+    if full_rebuild:
+        for scope in ("MODEL", "DHELAS"):
+            log = WORK / "logs" / f"compile-{source}-{case['id']}-{scope}.log"
+            seconds += run(["make", "--always-make", f"-j{jobs}"], output / "Source" / scope, log)
+            build_logs[scope] = digest(log)
+    link_before = dependency_inputs(directory)
+    external_after = {"metadata": link_before["metadata"],
+                      "archives": {key: value for key, value in link_before["archives"].items() if key not in internal}}
+    if external_before != external_after:
+        raise RuntimeError("External numerical libraries changed during source build")
+    command = ["make", *(["--always-make"] if full_rebuild else []), f"-j{jobs}", "check"]
+    compile_log = WORK / "logs" / f"compile-{source}-{case['id']}.log"
+    seconds += run(command, directory, compile_log)
+    build_logs["process"] = digest(compile_log)
     if generated_sources(output) != before:
         raise RuntimeError("Sources changed during build")
+    link_after = dependency_inputs(directory)
+    if link_before != link_after:
+        raise RuntimeError("Static dependencies or provenance changed during link")
+    flags_after = capture_effective_flags(directory, env=environment())
+    dump(attempt / "compiler-after.json", flags_after)
+    if not same_compiler_policy(flags_before, flags_after):
+        raise RuntimeError("Effective compiler flags changed during build")
     run(["./check", "--masses"], directory, WORK / "logs" / f"masses-{source}-{case['id']}.log")
     masses = [float(x) for x in (directory / "masses.dat").read_text().split()]
     if len(masses) != case["nfinal"] + 2:
         raise RuntimeError("Driver returned wrong external mass count")
     record = {"seconds": seconds, "masses": masses, "driver_sha256": digest(driver_path),
+              "worker_template_sha256": digest(template_path), "worker_render_parameters": render_parameters,
               "executable_sha256": digest(directory / "check"), "sources": before,
               "settings": {str(p.relative_to(output)): p.read_text() for p in (
                   output / "Source/make_opts", output / "SubProcesses/MadLoop_makefile_definitions")},
+              "link_inputs_before": link_before, "link_inputs_after": link_after,
+              "effective_compiler_flags": flags_before, "created_utc": utc_now(),
+              "numerical_build_from_sources": True, "full_numerical_rebuild_this_invocation": full_rebuild,
+              "build_logs": build_logs, "process_build_command": command,
+              "previous_compilation_sha256": content_digest(previous) if previous else None,
               "compiler": subprocess.check_output(["gfortran", "--version"], text=True).splitlines()[0]}
     dump(compilation_path, record)
-    dump(REPORT / "inputs" / source / case["id"] / "compilation.json", record)
+    evidence = REPORT / "inputs" / source / case["id"]
+    dump(evidence / "compilation.json", record)
+    for scope in build_logs:
+        log = (compile_log if scope == "process" else WORK / "logs" / f"compile-{source}-{case['id']}-{scope}.log")
+        shutil.copy2(log, evidence / f"compilation-{scope}.log")
     return masses
 
 
@@ -427,11 +540,40 @@ pole-size exception applies. Retain undefined ratios as null, never JSON inf.
             "tolerance": tolerance, "failures": failures, "residuals": residuals}
 
 
-def runtime_identity(directory):
-    command = ["ldd", str(directory / "check")]
+def dependency_inputs(directory):
+    """Identify static link inputs and the metadata that selects their ABI."""
+    library_root = directory.parents[1] / "lib"
+    containers = [library_root, *(path for path in library_root.glob("*") if path.is_dir())]
+    archives, metadata = {}, {}
+    for container in containers:
+        for path in sorted(container.glob("*")):
+            if not path.is_file():
+                continue
+            if path.suffix == ".a":
+                archives[str(path.resolve())] = digest(path)
+            elif (path.name.endswith(("-config.json", "-native-libs.txt", "-link-before.txt",
+                                      "-dependency-provenance.json", "-dependency-notices.tar.gz", "-NOTICES.txt"))):
+                metadata[str(path.resolve())] = digest(path)
+    # NinjaRS supplies a compiler-resolved libgcc.a before its Rust archive.
+    # It lives outside output/lib and is numerically significant for QP.
+    link_texts = [Path(name).read_text() for name in metadata
+                  if name.endswith(("-link-before.txt", "-native-libs.txt", "-config.json"))]
+    for path in (directory / "makefile", directory.parent / "MadLoop_makefile_definitions"):
+        if path.is_file():
+            link_texts.append(path.read_text())
+    for content in link_texts:
+        for name in re.findall(r'(/[^\s\"\'<>]+\.a)(?=[\s\"\'<>]|$)', content):
+            if Path(name).is_file():
+                archives[str(Path(name).resolve())] = digest(name)
+    return {"archives": archives, "metadata": metadata}
+
+
+def runtime_identity(directory, executable="check"):
+    command = ["ldd", str(directory / executable)]
     text = subprocess.check_output(command, env=environment(), text=True, stderr=subprocess.STDOUT)
     paths = re.findall(r"(?:=>\s*)?(/[^\s]+)", text)
-    return {"ldd": text, "libraries": {name: digest(name) for name in paths if Path(name).is_file()}}
+    return {"ldd": text, "libraries": {name: digest(name) for name in paths if Path(name).is_file()},
+            **dependency_inputs(directory)}
 
 
 def machine_identity(cpu):
@@ -448,6 +590,38 @@ def machine_identity(cpu):
                 "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS")}}
 
 
+def host_load_snapshot():
+    """Record host interference without inspecting unrelated command lines."""
+    allowed = set(os.sched_getaffinity(0))
+    counters = {}
+    for line in Path("/proc/stat").read_text().splitlines():
+        fields = line.split()
+        if fields and re.fullmatch(r"cpu\d+", fields[0]):
+            cpu = int(fields[0][3:])
+            if cpu in allowed:
+                values = [int(value) for value in fields[1:]]
+                # guest/guest_nice are already part of user/nice.
+                counters[str(cpu)] = {"total_ticks": sum(values[:8]),
+                    "idle_ticks": values[3] + values[4], "iowait_ticks": values[4]}
+    load = Path("/proc/loadavg").read_text().split()
+    runnable, total = map(int, load[3].split("/"))
+    return {"utc": utc_now(), "monotonic_seconds": time.monotonic(), "cpus": counters,
+            "load_averages": [float(value) for value in load[:3]],
+            "runnable_tasks": runnable, "total_tasks": total}
+
+
+def select_quiet_cpu():
+    before = host_load_snapshot()
+    time.sleep(.25)
+    after = host_load_snapshot()
+    def load(cpu):
+        left, right = before["cpus"][str(cpu)], after["cpus"][str(cpu)]
+        total = right["total_ticks"] - left["total_ticks"]
+        idle = right["idle_ticks"] - left["idle_ticks"]
+        return (1. - idle / total if total else 1., cpu)
+    return min(os.sched_getaffinity(0), key=load)
+
+
 def retain_observation(directory, destination):
     destination.mkdir(parents=True, exist_ok=False)
     for name in ("timing.dat", "values.dat", "timed_status.dat", "dimensions.dat"):
@@ -456,14 +630,38 @@ def retain_observation(directory, destination):
             shutil.copy2(path, destination / name)
 
 
-def start_worker(stack, source, case, chain, config, cpu, report):
+def validate_worker_modes(settings):
+    """The qualified worker measures automatic stability/rescue dispatch only.
+
+    Fixed modes have unchecked H=1 results which FORCE_STABILITY_CHECK maps to
+    initialization codes on every call. They require a separate diagnostic
+    driver, and must never enter this worker's steady-state timing protocol.
+    """
+    if int(settings.get("ctmoderun", -1)) != -1:
+        raise ValueError("The benchmark worker requires CTModeRun=-1; use a separate unchecked diagnostic for fixed modes")
+    if int(settings.get("ctmodeinit", 1)) != 1:
+        raise ValueError("The benchmark worker requires CTModeInit=1 for its recorded DP initialization policy")
+
+
+def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600., points_path=None):
     from tirust_benchmark_worker import Worker
+    from tirust_benchmark_compiler import capture_effective_flags
     directory = subprocess_dir(source, case)
     compilation = json.loads((output_dir(source, case) / "compilation.json").read_text())
     if digest(directory / "check") != compilation["executable_sha256"]:
         raise RuntimeError("Executable no longer matches compilation")
     if generated_sources(output_dir(source, case)) != compilation["sources"]:
         raise RuntimeError("Generated source no longer matches compilation")
+    if compilation.get("numerical_build_from_sources") is not True:
+        raise RuntimeError("Numerical objects lack source-build provenance; rebuild the worker")
+    verify_worker_template(compilation, ROOT / "tools/tirust_benchmark_worker.f")
+    dependencies = dependency_inputs(directory)
+    if (compilation.get("link_inputs_before") != dependencies
+            or compilation.get("link_inputs_after") != dependencies):
+        raise RuntimeError("Dependencies no longer match link-time evidence; rebuild the worker")
+    if not same_compiler_policy(capture_effective_flags(directory, env=environment()),
+                                compilation.get("effective_compiler_flags")):
+        raise RuntimeError("Compiler flags no longer match compilation")
     generation = json.loads((output_dir(source, case) / "generation.json").read_text())
     if generation["case"] != case:
         raise RuntimeError("Generated process differs from the requested case")
@@ -480,7 +678,8 @@ def start_worker(stack, source, case, chain, config, cpu, report):
     if actual_card is None or digest(actual_card) != parameter_hash:
         raise RuntimeError("Fortran resolves a parameter card different from the frozen card")
     settings = configure(source, case, chain, config)
-    points = REPORT / "points" / (case["id"] + ".dat")
+    validate_worker_modes(settings)
+    points = Path(points_path).resolve() if points_path is not None else REPORT / "points" / (case["id"] + ".dat")
     metadata = json.loads(points.with_suffix(".json").read_text())
     if digest(points) != metadata["sha256"]:
         raise RuntimeError("Saved points changed")
@@ -494,8 +693,23 @@ def start_worker(stack, source, case, chain, config, cpu, report):
          "runtime": runtime_identity(directory), "compilation": compilation,
          "generation": generation})
     command = ["taskset", "-c", str(cpu), "./check", str(points)]
-    worker = Worker(command, directory, report / (source + "-output.txt"), env=environment())
+    try:
+        worker = Worker(command, directory, report / (source + "-output.txt"), env=environment(), timeout=timeout)
+    except Exception as error:
+        evidence = report / (source + "-initialization")
+        dump(evidence / "failure.json", {"error_class": type(error).__name__, "error": str(error)})
+        for name, value in getattr(error, "raw_outputs", {}).items():
+            if Path(name).name != name:
+                raise RuntimeError("Invalid worker evidence name") from error
+            (evidence / name).write_text(value)
+        raise
     stack.callback(worker.close)
+    for name in ("warmup.dat", "dimensions.dat"):
+        path = directory / name
+        if path.is_file():
+            evidence = report / (source + "-initialization")
+            evidence.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, evidence / name)
     return worker, settings
 
 
@@ -510,18 +724,25 @@ def observe(worker, chain, loops, destination, count=100):
     return result
 
 
-def pair(case, baseline_chain, candidate_chain, config, cpu, label):
+def pair(case, baseline_chain, candidate_chain, config, cpu, label, attempt_name=None):
     from tirust_benchmark_worker import paired_statistics
-    report = REPORT / "runs" / case["id"] / label
+    from tirust_benchmark_compiler import validate_compiler_equality
+    if attempt_name is not None and not re.fullmatch(re.escape(label) + r"-attempt-(?:[2-9]|[1-9][0-9]+)", attempt_name):
+        raise ValueError("Invalid append-only attempt name")
+    report = REPORT / "runs" / case["id"] / (attempt_name or label)
     report.mkdir(parents=True, exist_ok=False)
     protocol_sources = (Path(__file__), ROOT / "tools/tirust_benchmark_worker.py",
-                        ROOT / "tools/tirust_benchmark_worker.f")
+                        ROOT / "tools/tirust_benchmark_worker.f", ROOT / "tools/tirust_benchmark_compiler.py")
     retained_protocol = report / "protocol-sources"
     retained_protocol.mkdir()
     for path in protocol_sources:
         shutil.copy2(path, retained_protocol / path.name)
     specification = {"created_utc": utc_now(), "case": case, "cpu": cpu,
+                     "logical_label": label, "attempt_directory": report.name,
                      "machine": machine_identity(cpu),
+                     "host_load_before": host_load_snapshot(),
+                     "host_exclusivity": "Not assumed; allowed-CPU counters and host load retained for each batch",
+                     "calibration_target_seconds": 2. * config["minimum_batch_seconds"],
                      "baseline_chain": baseline_chain, "candidate_chain": candidate_chain,
                      "config_sha256": digest(REPORT / "cases.json"), "status": "running",
                      "protocol_sources": {p.name: digest(retained_protocol / p.name)
@@ -539,6 +760,11 @@ def pair(case, baseline_chain, candidate_chain, config, cpu, label):
             if baseline_chain != expected_baseline or candidate_chain != [backend]:
                 raise RuntimeError("Reserved backend label differs from the requested reduction chains")
         with ExitStack() as stack:
+            if {8, 9} & set(baseline_chain + candidate_chain):
+                lock_path = ROOT / ".tirust-build/numerical-tests.lock"
+                lock_path.parent.mkdir(parents=True, exist_ok=True)
+                lock = stack.enter_context(lock_path.open("a"))
+                fcntl.flock(lock, fcntl.LOCK_EX)
             workers, settings = {}, {}
             for source, chain in (("baseline", baseline_chain), ("candidate", candidate_chain)):
                 workers[source], settings[source] = start_worker(stack, source, case, chain, config, cpu, report)
@@ -554,6 +780,8 @@ def pair(case, baseline_chain, candidate_chain, config, cpu, label):
                 raise RuntimeError("Baseline/candidate workers read different saved points")
             if inputs["baseline"]["compilation"]["compiler"] != inputs["candidate"]["compilation"]["compiler"]:
                 raise RuntimeError("Baseline/candidate Fortran compilers differ")
+            validate_compiler_equality(inputs["baseline"]["compilation"]["effective_compiler_flags"],
+                                       inputs["candidate"]["compilation"]["effective_compiler_flags"])
             libraries = {source: {Path(path).name: checksum for path, checksum in
                                   inputs[source]["runtime"]["libraries"].items()}
                          for source in workers}
@@ -561,12 +789,25 @@ def pair(case, baseline_chain, candidate_chain, config, cpu, label):
             if any(libraries["baseline"][name] != libraries["candidate"][name]
                    for name in shared_libraries):
                 raise RuntimeError("Baseline/candidate shared runtime library bytes differ")
+            for kind in ("archives", "metadata"):
+                left, right = inputs["baseline"]["runtime"][kind], inputs["candidate"]["runtime"][kind]
+                if any(left[name] != right[name] for name in left.keys() & right.keys()):
+                    raise RuntimeError("Baseline/candidate shared static dependency bytes differ")
             chains = {"baseline": baseline_chain, "candidate": candidate_chain}
             calibration, loops = {}, {}
             for source in workers:
                 trial = observe(workers[source], chains[source], 1, report / "raw" / source / "calibrate-0")
-                loops[source] = max(1, math.ceil(config["minimum_batch_seconds"] / trial["seconds"]))
-                calibration[source] = trial
+                target_seconds = 2. * config["minimum_batch_seconds"]
+                initial_loops = max(1, math.ceil(target_seconds / trial["seconds"]))
+                # A single traversal can overestimate steady cost. Calibrate
+                # once more over a full-duration batch. A factor-two target
+                # tolerates substantial shared-host calibration speed drift;
+                # every actual duration remains visible and must pass the gate.
+                sustained = observe(workers[source], chains[source], initial_loops,
+                                    report / "raw" / source / "calibrate-1")
+                loops[source] = max(1, math.ceil(initial_loops * target_seconds
+                                                / sustained["seconds"]))
+                calibration[source] = sustained
             parity = compare_rows(calibration["baseline"]["rows"], calibration["candidate"]["rows"],
                                   config["relative_tolerance"])
             dump(report / "calibration-parity.json", parity)
@@ -574,12 +815,16 @@ def pair(case, baseline_chain, candidate_chain, config, cpu, label):
                 raise RuntimeError("Numerical disagreement during calibration")
             timings = {source: [] for source in workers}
             observations = {source: [] for source in workers}
+            host_load = []
             all_parity = []
             for repetition in range(config["repetitions"]):
                 order = ("baseline", "candidate") if repetition % 2 == 0 else ("candidate", "baseline")
                 for source in order:
+                    load_before = host_load_snapshot()
                     observation = observe(workers[source], chains[source], loops[source],
                         report / "raw" / source / f"repetition-{repetition}")
+                    host_load.append({"source": source, "repetition": repetition,
+                                      "before": load_before, "after": host_load_snapshot()})
                     timings[source].append(observation["seconds_per_point"])
                     observations[source].append(observation)
                 all_parity.append(compare_rows(observations["baseline"][-1]["rows"],
@@ -594,13 +839,24 @@ def pair(case, baseline_chain, candidate_chain, config, cpu, label):
                        "minimum_batch_duration_met": enough_time,
                        "acceptance_eligible": enough_time and numerical_pass,
                        "passed": enough_time and numerical_pass and stats["passed"],
+                       "host_load": host_load,
                        "raw_observations": observations}
+            for source in workers:
+                directory = subprocess_dir(source, case)
+                current_runtime = runtime_identity(directory)
+                if any(current_runtime[key] != inputs[source]["runtime"][key]
+                       for key in ("libraries", "archives", "metadata")):
+                    raise RuntimeError("Runtime dependencies changed during measurement")
+                if digest(directory / "check") != inputs[source]["compilation"]["executable_sha256"]:
+                    raise RuntimeError("Executable changed during measurement")
         # A failing STOP/BYE exchange is a failed measurement. Publish only
         # after ExitStack has successfully closed every persistent worker.
         dump(report / "summary.json", summary)
         return summary
     except BaseException as error:
-        dump(report / "failure.json", {"status": "failed", "error": repr(error), "utc": utc_now()})
+        from tirust_benchmark_worker import ProtocolError
+        dump(report / "failure.json", {"status": "failed", "error": repr(error), "utc": utc_now(),
+             "error_class": type(error).__name__, "retryable_protocol_failure": isinstance(error, ProtocolError)})
         raise
 
 
@@ -612,9 +868,71 @@ def aggregate_usage(observations):
     return counts
 
 
+def selected_run_directory(base, label):
+    selector = base / "selected-attempts.json"
+    selections = json.loads(selector.read_text()) if selector.exists() else {}
+    name = selections.get(label, {}).get("directory", label)
+    if name != label and not re.fullmatch(re.escape(label) + r"-attempt-(?:[2-9]|[1-9][0-9]+)", name):
+        raise ValueError("Invalid selected attempt directory")
+    return base / name
+
+
+def prepare_retry(base, label, directory, reason):
+    """Pre-register an objective retry before any new physical measurement."""
+    previous = selected_run_directory(base, label)
+    if not reason or previous == directory or directory.exists():
+        raise ValueError("Retry requires a new append-only directory and a pre-recorded reason")
+    previous_summary = previous / "summary.json"
+    previous_failure = previous / "failure.json"
+    if previous_summary.exists():
+        value = json.loads(previous_summary.read_text())
+        if value.get("acceptance_eligible") is True:
+            raise ValueError("A qualified result is authoritative; source/library changes require a new campaign")
+        if (value.get("minimum_batch_duration_met") is not False
+                or value.get("numerical_pass") is not True):
+            raise ValueError("Only objectively short-duration numerical passes may be retried")
+    elif previous_failure.exists():
+        if json.loads(previous_failure.read_text()).get("retryable_protocol_failure") is not True:
+            raise ValueError("A numerical/input failure requires adjudication, not an automatic retry")
+    else:
+        raise ValueError("Prior attempt has no classified timing/protocol failure")
+    request = base / "retry-requests" / (directory.name + ".json")
+    request.parent.mkdir(parents=True, exist_ok=True)
+    with request.open("x") as stream:
+        json.dump({"label": label, "directory": directory.name, "reason": reason,
+            "previous_directory": previous.name, "created_utc": utc_now(),
+            "prior_summary_sha256": digest(previous_summary) if previous_summary.exists() else None,
+            "prior_failure_sha256": digest(previous_failure) if previous_failure.exists() else None}, stream,
+            indent=2, sort_keys=True)
+        stream.write("\n")
+
+
+def select_attempt(base, label, directory, reason):
+    request = base / "retry-requests" / (directory.name + ".json")
+    if not request.exists():
+        raise ValueError("Retry reason must be registered before measurement")
+    registration = json.loads(request.read_text())
+    previous = selected_run_directory(base, label)
+    if (registration["label"] != label or registration["directory"] != directory.name
+            or registration["reason"] != reason or registration["previous_directory"] != previous.name):
+        raise ValueError("Retry selection differs from its pre-registered request")
+    for name, key in (("summary.json", "prior_summary_sha256"), ("failure.json", "prior_failure_sha256")):
+        if registration[key] is not None and digest(previous / name) != registration[key]:
+            raise ValueError("Prior attempt changed after retry registration")
+    selector = base / "selected-attempts.json"
+    selections = json.loads(selector.read_text()) if selector.exists() else {}
+    event = {"label": label, "directory": directory.name, "reason": reason,
+             "previous_directory": previous.name, "retry_request_sha256": digest(request), "utc": utc_now()}
+    with (base / "attempt-selection-history.jsonl").open("a") as stream:
+        stream.write(json.dumps(event, sort_keys=True) + "\n")
+    selections[label] = event
+    dump(selector, selections)
+
+
 def validate_retained_result(directory, label, case, config):
     """Recompute acceptance from immutable raw files and bind every campaign input."""
     from tirust_benchmark_worker import parse_outputs, paired_statistics
+    from tirust_benchmark_compiler import validate_compiler_equality
     if (directory / "failure.json").exists():
         raise ValueError("Run has a retained failure, including possible worker shutdown failure")
     result = json.loads((directory / "summary.json").read_text())
@@ -626,7 +944,8 @@ def validate_retained_result(directory, label, case, config):
     for name, checksum in spec["protocol_sources"].items():
         if digest(directory / "protocol-sources" / name) != checksum:
             raise ValueError("Retained measurement protocol source changed")
-    expected_protocol = {"tirust_benchmark.py", "tirust_benchmark_worker.py", "tirust_benchmark_worker.f"}
+    expected_protocol = {"tirust_benchmark.py", "tirust_benchmark_worker.py", "tirust_benchmark_worker.f",
+                         "tirust_benchmark_compiler.py"}
     if set(spec["protocol_sources"]) != expected_protocol:
         raise ValueError("Incomplete measurement protocol source inventory")
     inputs = {source: json.loads((directory / (source + "-inputs.json")).read_text())
@@ -661,12 +980,22 @@ def validate_retained_result(directory, label, case, config):
         masses = point_meta["inputs"]["incoming_masses"] + point_meta["inputs"]["masses"]
         if masses != value["compilation"]["masses"]:
             raise ValueError("Point masses differ from the compiled physical model")
+        if value["compilation"].get("numerical_build_from_sources") is not True:
+            raise ValueError("Numerical objects lack source-build provenance")
+        verify_worker_template(value["compilation"], directory / "protocol-sources/tirust_benchmark_worker.f")
+        runtime_dependencies = {key: value["runtime"][key] for key in ("archives", "metadata")}
+        if (value["compilation"].get("link_inputs_before") != runtime_dependencies
+                or value["compilation"].get("link_inputs_after") != runtime_dependencies):
+            raise ValueError("Runtime dependencies differ from retained link-time evidence")
         anchors[source] = {"point_sha256": value["points_sha256"],
             "param_card_sha256": value["param_card_sha256"], "settings": settings,
             "source_identity": generation["source_identity"],
             "executable_sha256": value["compilation"]["executable_sha256"],
             "compiler": value["compilation"]["compiler"], "build_settings": value["compilation"]["settings"],
-            "runtime_libraries": value["runtime"]["libraries"], "cpu": spec["cpu"]}
+            "effective_compiler_flags": value["compilation"]["effective_compiler_flags"],
+            "runtime_libraries": value["runtime"]["libraries"],
+            "runtime_archives": value["runtime"].get("archives", {}),
+            "runtime_metadata": value["runtime"].get("metadata", {}), "cpu": spec["cpu"]}
         anchors[source]["protocol_sources"] = spec["protocol_sources"]
         saved = result["raw_observations"][source]
         if len(saved) != config["repetitions"]:
@@ -687,6 +1016,10 @@ def validate_retained_result(directory, label, case, config):
             raise ValueError("Timing series differs from raw measurements")
     if anchors["baseline"]["param_card_sha256"] != anchors["candidate"]["param_card_sha256"]:
         raise ValueError("Baseline/candidate physics cards differ")
+    if anchors["baseline"]["compiler"] != anchors["candidate"]["compiler"]:
+        raise ValueError("Baseline/candidate Fortran compilers differ")
+    validate_compiler_equality(anchors["baseline"]["effective_compiler_flags"],
+                               anchors["candidate"]["effective_compiler_flags"])
     common = set(anchors["baseline"]["settings"]) & set(anchors["candidate"]["settings"])
     if any(anchors["baseline"]["settings"][key] != anchors["candidate"]["settings"][key] for key in common):
         raise ValueError("Baseline/candidate shared numerical settings differ")
@@ -716,10 +1049,11 @@ def summarize(config):
         anchors = {}
         validation_errors = {}
         for label in ["tirust-first", *(f"backend-{i}" for i in config["backends"])]:
-            path = base / label / "summary.json"
+            selected = selected_run_directory(base, label)
+            path = selected / "summary.json"
             if path.exists():
                 try:
-                    result, anchor = validate_retained_result(base / label, label, case, config)
+                    result, anchor = validate_retained_result(selected, label, case, config)
                     if anchors and anchor != next(iter(anchors.values())):
                         raise ValueError("Input/source/runtime/CPU identity differs between process run labels")
                     loaded[label], anchors[label] = result, anchor
@@ -733,7 +1067,7 @@ def summarize(config):
         for backend in config["backends"]:
             label = f"backend-{backend}"
             result = loaded.get(label)
-            failed = (base / label / "failure.json").exists() or label in validation_errors
+            failed = (selected_run_directory(base, label) / "failure.json").exists() or label in validation_errors
             observations = result["raw_observations"]["candidate"] if result else []
             checks = [compare_rows(left["rows"], right["rows"], config["relative_tolerance"])
                       for left, right in zip(reference, observations)]
@@ -755,29 +1089,40 @@ def summarize(config):
             # belong exclusively to performance below, not absolute time columns.
             timings.append({"backend": backend, "status": "complete" if result else "failed" if failed else "pending",
                 "median_seconds_per_point": median, "mad_seconds_per_point": mad,
+                "initialization_and_warmup_seconds": observations[0]["cold_seconds"] if observations else None,
+                "initialization_scope": "first amplitude initialization and saved-stream warmup; excludes startup/SETPARA",
                 "lower_95": None, "upper_95": None, "samples": len(seconds),
                 "actual_backend_precision_counts": usage,
+                "usage_scope": "final accepted amplitude result; internal reducer attempts are not counted",
                 "native_dp_only": all(item["native_dp_only"] for item in observations) if observations else None})
         gate = loaded.get("tirust-first")
         performance = {"status": "pending", "complete": False, "pairs": 0,
+            "baseline_chain": None, "candidate_chain": None,
             "baseline_median_seconds_per_point": None, "candidate_median_seconds_per_point": None,
             "geometric_mean_ratio": None, "lower_95": None, "upper_95": None, "passed": None,
             "actual_backend_precision_counts": {}}
         if gate:
             stats = gate["statistics"]
-            performance.update(status="complete", complete=gate["acceptance_eligible"], pairs=stats["pairs"],
+            gate_directory = selected_run_directory(base, "tirust-first")
+            gate_specification = json.loads((gate_directory / "specification.json").read_text())
+            performance.update(status="complete" if gate["acceptance_eligible"] else "timing-ineligible",
+                complete=gate["acceptance_eligible"], pairs=stats["pairs"],
+                acceptance_eligible=gate["acceptance_eligible"], minimum_batch_duration_met=gate["minimum_batch_duration_met"],
+                selected_attempt=gate_directory.name,
+                baseline_chain=gate_specification["baseline_chain"],
+                candidate_chain=gate_specification["candidate_chain"],
                 baseline_median_seconds_per_point=statistics.median(gate["timings"]["baseline"]),
                 candidate_median_seconds_per_point=statistics.median(gate["timings"]["candidate"]),
                 geometric_mean_ratio=stats["geometric_mean_ratio"], lower_95=stats["lower_95"],
                 upper_95=stats["upper_95"], passed=gate["passed"],
                 actual_backend_precision_counts=aggregate_usage(gate["raw_observations"]["candidate"]))
-        elif (base / "tirust-first/failure.json").exists() or "tirust-first" in validation_errors:
+        elif (selected_run_directory(base, "tirust-first") / "failure.json").exists() or "tirust-first" in validation_errors:
             performance["status"] = "failed"
         regressions = []
         for backend in (1, 6, 7, 8):
             label = f"backend-{backend}"
             value = loaded.get(label)
-            failed = (base / label / "failure.json").exists() or label in validation_errors
+            failed = (selected_run_directory(base, label) / "failure.json").exists() or label in validation_errors
             regressions.append({"backend": backend,
                 "status": "complete" if value else "failed" if failed else "pending",
                 "complete": value["acceptance_eligible"] if value else False,
@@ -789,13 +1134,36 @@ def summarize(config):
                     and all(item["complete"] for item in regressions))
         passed = (complete and performance["passed"] and all(item["passed"] for item in correctness)
                   and all(item["passed"] for item in regressions))
-        status = "passed" if passed else "failed" if (complete or performance["status"] == "failed"
+        status = "passed" if passed else "failed" if (complete or performance["status"] in ("failed", "timing-ineligible")
+                    or performance["passed"] is False
                     or any(item["status"] == "failed" or item["passed"] is False for item in correctness)
                     or any(item["status"] == "failed" or item["passed"] is False for item in regressions)) else "pending"
+        attempts = []
+        qualified_failures = []
+        for path in sorted(base.glob("*/summary.json")):
+            try:
+                value = json.loads(path.read_text())
+                value, _ = validate_retained_result(path.parent, value["label"], case, config)
+                attempts.append({"directory": path.parent.name, "label": value["label"],
+                    "acceptance_eligible": value["acceptance_eligible"], "passed": value["passed"],
+                    "statistics": value["statistics"], "selected": path.parent == selected_run_directory(base, value["label"])})
+                if (value["label"] in {"tirust-first", "backend-1", "backend-6", "backend-7", "backend-8"}
+                        and value["acceptance_eligible"] and not value["passed"]):
+                    qualified_failures.append(path.parent.name)
+            except (OSError, ValueError, KeyError, RuntimeError) as error:
+                attempts.append({"directory": path.parent.name, "status": "invalid-evidence", "error": str(error)})
+        if qualified_failures:
+            status = "failed"
         cases.append({**case, "status": status, "points": points, "correctness": correctness,
+                      "retained_attempts": attempts, "authoritative_qualified_failures": qualified_failures,
                       "timings": timings, "performance": performance, "complete": complete,
                       "existing_backend_regressions": regressions, "validation_errors": validation_errors})
     main = [case for case in cases if case["role"] == "main"]
+    reduction_chains = {}
+    for source in ("baseline", "candidate"):
+        observed = {tuple(case["performance"][source + "_chain"]) for case in cases
+                    if case["performance"][source + "_chain"] is not None}
+        reduction_chains[source] = list(next(iter(observed))) if len(observed) == 1 else None
     candidate_revision = next(iter(candidate_revisions)) if len(candidate_revisions) == 1 else None
     source_date_epoch = int(subprocess.check_output(
         ["git", "show", "-s", "--format=%ct", candidate_revision or BASELINE_REVISION], cwd=ROOT, text=True))
@@ -804,8 +1172,11 @@ def summarize(config):
     if not isinstance(qualification, list):
         raise ValueError("qualification.json must contain an array of observed qualification records")
     summary = {"schema": "madloop-tirust-summary-v1", "created_utc": utc_now(),
+        "field_definitions": {"native_dp_only": "Every accepted amplitude result used the first selected backend in DP; does not identify internal retry or higher-precision attempts",
+                              "actual_backend_precision_counts": "Final accepted backend and precision per amplitude evaluation; internal reducer attempts are not counted"},
         "candidate_revision": candidate_revision, "candidate_revisions": sorted(candidate_revisions),
         "candidate_source_hashes": sorted(candidate_source_hashes),
+        "reduction_chains": reduction_chains,
         "source_date_epoch": source_date_epoch, "date": utc_now()[:10], "qualification": qualification,
         "baseline_revision": BASELINE_REVISION, "cases": cases,
         "gate": {"complete": all(case["complete"] for case in main),
@@ -827,13 +1198,19 @@ def main():
     parser.add_argument("--model-source", type=Path)
     parser.add_argument("--model-url")
     parser.add_argument("--jobs", type=int, default=4)
-    parser.add_argument("--cpu", type=int, default=min(os.sched_getaffinity(0)))
+    parser.add_argument("--cpu", type=int, help="Allowed CPU; default samples per-core load and selects the quietest")
     parser.add_argument("--baseline-chain")
     parser.add_argument("--candidate-chain")
     parser.add_argument("--label", default="tirust-first")
+    parser.add_argument("--attempt", type=int, default=1, help="Append-only attempt number; retries retain earlier evidence")
+    parser.add_argument("--retry-reason", help="Required reason for selecting an appended retry")
     args = parser.parse_args()
     if Path.cwd() != ROOT:
         parser.error(f"Run from {ROOT}")
+    if args.attempt < 1 or (args.attempt > 1 and (args.command != "pair" or not args.retry_reason)):
+        parser.error("Retries require pair, --attempt >=2 and --retry-reason")
+    if args.cpu is None:
+        args.cpu = select_quiet_cpu()
     if args.cpu not in os.sched_getaffinity(0):
         parser.error("--cpu is outside the allowed CPU affinity")
     config = load_config()
@@ -861,18 +1238,41 @@ def main():
                     freeze_points(case, build(source, case, args.jobs), config)
                 print(f"{args.command}: {source} {case['id']}", flush=True)
         return
+    campaign_failures = []
     for case in cases:
         generation = json.loads((output_dir("baseline", case) / "generation.json").read_text())
         baseline_chain = parse_chain(args.baseline_chain or generation["default_chain"])
         candidate_chain = parse_chain(args.candidate_chain) if args.candidate_chain else [9, *baseline_chain]
-        if args.command == "campaign":
-            for backend in (1, 6, 7, 8):
-                pair(case, [backend], [backend], config, args.cpu, f"backend-{backend}")
-            pair(case, [1], [9], config, args.cpu, "backend-9")
-        summary = pair(case, baseline_chain, candidate_chain, config, args.cpu, args.label)
-        print(json.dumps({"case": case["id"], "statistics": summary["statistics"],
-                          "acceptance_eligible": summary["acceptance_eligible"]}), flush=True)
-        summarize(config)
+        labels = ([(f"backend-{backend}", [backend] if backend != 9 else [1], [backend])
+                   for backend in (1, 6, 7, 8, 9)] if args.command == "campaign" else [])
+        labels.append((args.label, baseline_chain, candidate_chain))
+        for label, left, right in labels:
+            base = REPORT / "runs" / case["id"]
+            attempt_name = f"{label}-attempt-{args.attempt}" if args.attempt > 1 else None
+            directory = base / attempt_name if attempt_name else selected_run_directory(base, label)
+            try:
+                if args.command == "campaign" and directory.exists():
+                    summary, _ = validate_retained_result(directory, label, case, config)
+                    spec = json.loads((directory / "specification.json").read_text())
+                    if spec["cpu"] != args.cpu:
+                        raise RuntimeError("Resume must use the retained CPU affinity")
+                else:
+                    if attempt_name:
+                        prepare_retry(base, label, directory, args.retry_reason)
+                    summary = pair(case, left, right, config, args.cpu, label, attempt_name=attempt_name)
+                    if attempt_name:
+                        select_attempt(base, label, directory, args.retry_reason)
+                print(json.dumps({"case": case["id"], "label": label, "statistics": summary["statistics"],
+                                  "acceptance_eligible": summary["acceptance_eligible"]}), flush=True)
+            except Exception as error:
+                if args.command != "campaign":
+                    raise
+                campaign_failures.append({"case": case["id"], "label": label, "error": str(error)})
+                print(json.dumps(campaign_failures[-1]), flush=True)
+            finally:
+                summarize(config)
+    if campaign_failures:
+        raise RuntimeError(f"Campaign retains {len(campaign_failures)} failed/incomplete labels; see summary.json")
 
 
 if __name__ == "__main__":

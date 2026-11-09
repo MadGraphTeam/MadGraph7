@@ -1,0 +1,20 @@
+{
+  "purpose": "built diagnostic artifacts; binaries remain ignored",
+  "artifacts": [
+    {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/fortran/pristine/SubProcesses/P0_uux_z/check",
+      "sha256": "017bf6078280a6e1eac147ddd54c2db03ef61868060046f16cf3402bfd98a711",
+      "bytes": 77819096
+    },
+    {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/fortran/instrumented/SubProcesses/P0_uux_z/check",
+      "sha256": "2d354ec34fc2a2c4cab1f555a911525763c79c2907d2776e63a48ebba2b9ea74",
+      "bytes": 77824912
+    },
+    {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/n1-profile/bridge/libmadloop_tirust.so",
+      "sha256": "aef3b0fb1404bdcd12e31ceee9eea57ee431a48d1eea922cd879436e7c9cc732",
+      "bytes": 72284216
+    }
+  ]
+}

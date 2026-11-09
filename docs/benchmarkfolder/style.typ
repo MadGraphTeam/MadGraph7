@@ -62,4 +62,4 @@
   fixed(x, if a >= 100 { 0 } else if a >= 10 { 1 } else if a >= 1 { 2 } else { 3 })
 }
 #let ratio-text(r) = if r == none { [—] } else { [×#fixed(r, 3)] }
-#let status-ink(s) = if s == "pass" { rgb("#0f7356") } else if s == "fail" { rgb("#b2182b") } else { rgb("#8a4b08") }
+#let status-ink(s) = if s in ("pass", "passed") { rgb("#0f7356") } else if s in ("fail", "failed") { rgb("#b2182b") } else { rgb("#8a4b08") }

@@ -1,0 +1,263 @@
+{
+  "checks": [
+    {
+      "fixture": "massive-tadpole-r3",
+      "ctmode": 1,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massive-tadpole-r3",
+      "ctmode": 1,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massive-tadpole-r3",
+      "ctmode": 4,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "massive-tadpole-r3",
+      "ctmode": 4,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "scaleless-lightlike-bubble-r4",
+      "ctmode": 1,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "scaleless-lightlike-bubble-r4",
+      "ctmode": 1,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "scaleless-lightlike-bubble-r4",
+      "ctmode": 4,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "scaleless-lightlike-bubble-r4",
+      "ctmode": 4,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "massive-bubble-r4",
+      "ctmode": 1,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massive-bubble-r4",
+      "ctmode": 1,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massive-bubble-r4",
+      "ctmode": 4,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "massive-bubble-r4",
+      "ctmode": 4,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "massless-offshell-bubble-r4",
+      "ctmode": 1,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massless-offshell-bubble-r4",
+      "ctmode": 1,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massless-offshell-bubble-r4",
+      "ctmode": 4,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "massless-offshell-bubble-r4",
+      "ctmode": 4,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "massive-triangle-r4",
+      "ctmode": 1,
+      "finite": true,
+      "status": "unavailable",
+      "maximum_scaled_residual": null,
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massive-triangle-r4",
+      "ctmode": 1,
+      "finite": false,
+      "status": "unavailable",
+      "maximum_scaled_residual": null,
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massive-triangle-r4",
+      "ctmode": 4,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "massive-triangle-r4",
+      "ctmode": 4,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "infrared-triangle-r3",
+      "ctmode": 1,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "2.16E-36",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "infrared-triangle-r3",
+      "ctmode": 1,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "2.16E-36",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "infrared-triangle-r3",
+      "ctmode": 4,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "4.8E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "infrared-triangle-r3",
+      "ctmode": 4,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "4.8E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "massive-box-r4",
+      "ctmode": 1,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massive-box-r4",
+      "ctmode": 1,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "massive-box-r4",
+      "ctmode": 4,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "massive-box-r4",
+      "ctmode": 4,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "complex-mass-bubble-r3",
+      "ctmode": 1,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "complex-mass-bubble-r3",
+      "ctmode": 1,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-10"
+    },
+    {
+      "fixture": "complex-mass-bubble-r3",
+      "ctmode": 4,
+      "finite": true,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    },
+    {
+      "fixture": "complex-mass-bubble-r3",
+      "ctmode": 4,
+      "finite": false,
+      "status": "passed",
+      "maximum_scaled_residual": "0E-35",
+      "threshold": "1E-24"
+    }
+  ],
+  "analysis_protocol": "../analysis-protocol/tirust_benchmark_poles.py",
+  "all_served_passed": true,
+  "complete": false
+}

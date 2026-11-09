@@ -1,0 +1,9 @@
+{
+  "compilation_sha256": "1ca12b2c81f8cebdf4cebdda801401f652c36eedc8247f246a4ffef75f493ad9",
+  "copy": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-adjudication/minimal/6-init-dp-unchecked/outputs/candidate/qcd_n3_uux_zgg",
+  "executable_sha256": "7dda9e8d986885f58c5d63579976ea9a64f7e7fe3aa1e918f3e9d623b255eb4e",
+  "link_inputs_unchanged": true,
+  "mutations": "Isolated driver-only relink plus numerical cards and filter files",
+  "original": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/candidate/qcd_n3_uux_zgg",
+  "source_inventory_unchanged": true
+}

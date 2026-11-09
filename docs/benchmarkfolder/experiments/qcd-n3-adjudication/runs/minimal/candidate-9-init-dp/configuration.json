@@ -1,0 +1,117 @@
+{
+  "backends": [
+    1,
+    6,
+    7,
+    8,
+    9
+  ],
+  "baseline_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+  "candidate_parameters": {
+    "TIRustCacheMaxBytes": 268435456,
+    "TIRustComputeFinite": true,
+    "TIRustGlobalCache": -1,
+    "UseQPIntegrandForTIRust": true
+  },
+  "cases": [
+    {
+      "id": "qcd_n1_uux_z",
+      "model": "loop_sm",
+      "nfinal": 1,
+      "process": "u u~ > z [virt=QCD]",
+      "role": "main"
+    },
+    {
+      "id": "qcd_n2_gg_ttx",
+      "model": "loop_sm",
+      "nfinal": 2,
+      "process": "g g > t t~ [virt=QCD]",
+      "role": "main"
+    },
+    {
+      "id": "qcd_n3_uux_zgg",
+      "model": "loop_sm",
+      "nfinal": 3,
+      "process": "u u~ > z g g [virt=QCD]",
+      "role": "main"
+    },
+    {
+      "id": "qcd_n4_uux_zzgg",
+      "model": "loop_sm",
+      "nfinal": 4,
+      "process": "u u~ > z z g g [virt=QCD]",
+      "role": "main"
+    },
+    {
+      "id": "ew_n1_udx_wp",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 1,
+      "process": "u d~ > w+ [virt=QED]",
+      "role": "main"
+    },
+    {
+      "id": "ew_n2_epem_mupmum",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 2,
+      "process": "e+ e- > mu+ mu- [virt=QED]",
+      "role": "main"
+    },
+    {
+      "id": "ew_n3_epem_ttxa",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 3,
+      "process": "e+ e- > t t~ a [virt=QED]",
+      "role": "main"
+    },
+    {
+      "id": "ew_n4_epem_mupmumaa",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 4,
+      "process": "e+ e- > mu+ mu- a a [virt=QED]",
+      "role": "main"
+    },
+    {
+      "id": "mixed_uux_ga",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "nfinal": 2,
+      "process": "u u~ > g a [virt=QCD QED]",
+      "role": "control"
+    },
+    {
+      "id": "li_gg_h",
+      "model": "loop_sm",
+      "nfinal": 1,
+      "process": "g g > h [noborn=QCD]",
+      "role": "control"
+    },
+    {
+      "id": "li_gg_hh",
+      "model": "loop_sm",
+      "nfinal": 2,
+      "process": "g g > h h [noborn=QCD]",
+      "role": "control"
+    }
+  ],
+  "energy_gev": 1000.0,
+  "madloop_parameters": {
+    "COLLIERComputeIRpoles": true,
+    "COLLIERComputeUVpoles": true,
+    "COLLIERGlobalCache": -1,
+    "CTModeInit": 1,
+    "CTModeRun": 4,
+    "LoopPoleMode": 0,
+    "MLStabThres": 1e-06,
+    "UseLoopFilter": false,
+    "UseQPIntegrandForCutTools": true,
+    "UseQPIntegrandForNinja": true,
+    "UseQPIntegrandForNinjaRS": true
+  },
+  "minimum_batch_seconds": 1.0,
+  "ordinary_target_tolerance": 1e-08,
+  "performance_upper_ratio": 1.05,
+  "points_per_case": 4,
+  "relative_tolerance": 3e-06,
+  "repetitions": 7,
+  "schema": "madloop-tirust-benchmark-v1",
+  "seed": 20261109
+}

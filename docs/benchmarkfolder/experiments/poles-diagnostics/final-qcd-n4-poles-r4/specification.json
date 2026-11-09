@@ -1,0 +1,1987 @@
+{
+  "fixture_source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/ninjars/tests/poles/tensor_cases.json",
+  "fixture_source_sha256": "16decf75a9ecc460406ddd87b1ee492f4e48bc6d6f73ec8b9afca5fd3b9bae0f",
+  "generated_sources": {
+    "Source/DHELAS/FFS1L1_2.f": "38e595145cac5244aa790e97da885420a45f4ceb25abfc6fb9f60434f741adf9",
+    "Source/DHELAS/FFS1L2_1.f": "b96864bb44e5944a59cdde7a766f3a72b5aaf69b0bf71d1b24ab8b9e8214b38e",
+    "Source/DHELAS/FFV1L1P0_3.f": "8d6e3405b0886c3eae5f7a9a49eb02f9210aeadef7d6f97562e69c8808b77b39",
+    "Source/DHELAS/FFV1L1_2.f": "a897c87df4b027ea9226a2d8bc2f69746bc7d16df7b13a737b9c933924b058b3",
+    "Source/DHELAS/FFV1L2P0_3.f": "44b3da5ae1463133340f1bbcff2487adabd19124b29f5b91328c29839b9d7a31",
+    "Source/DHELAS/FFV1L2_1.f": "d4e5643ea750459fd886dcb7c76ca41ac6d57d6e3b88136a70cfec8a683e3d69",
+    "Source/DHELAS/FFV1L3_1.f": "e7c2410c1e8c2e59aa5345d164376f00e302c34a76b6a4b7318dbe6ea9afa766",
+    "Source/DHELAS/FFV1L3_2.f": "bc1d550ae1be48e60aac4d7762362cb7ac9e5bd022608884dbc502c2d9c11290",
+    "Source/DHELAS/FFV1P0_3.f": "cd1f57198dc6573ac4e914a87736118f0472b2cf74da18937ee84a2837eca244",
+    "Source/DHELAS/FFV1_0.f": "b142a0e477d010e6177a542dc0360b97979d356c25604a0a44812339d7f3bee8",
+    "Source/DHELAS/FFV1_1.f": "c5d397a99f812f0c6ee618363d46e58fa9f8cba2c02b7c132ea3c4585fb29ba4",
+    "Source/DHELAS/FFV1_2.f": "049b56435f003413c851707c119fcd98f24a35a5f9e83599d783bb550350b062",
+    "Source/DHELAS/FFV2L1_2.f": "7b26d2d89270b456b1fe7cb81d42f39b3e8a0b749375473a6e5919728fad19fc",
+    "Source/DHELAS/FFV2L2_1.f": "8a72b68d19a26d834ed7adf60ce021840801a4af5b1e573e6dbb5a68d244024a",
+    "Source/DHELAS/FFV2_0.f": "57d446d32fd78a54a30bba04d35f54894c35697c08f11171d3147b41708d6522",
+    "Source/DHELAS/FFV2_1.f": "0d323a475dd799e3fda52c54893855e3374e19b619d269bec23a3f3eb925d341",
+    "Source/DHELAS/FFV2_2.f": "cee03ecb3eeea9aea740403635ab516db23977a66b3be6198028ffeec2c5fd77",
+    "Source/DHELAS/FFV2_3L1_2.f": "cfaba456eb0dcb8767aa28df782143d2b08559b7978d6414cb0e186ee3978e68",
+    "Source/DHELAS/FFV2_3L2_1.f": "572c67983481b31cc87b43379519ef4b755d652d6ef6a486fa1d9c73c672baeb",
+    "Source/DHELAS/FFV2_3_0.f": "aa5618f59ab8acc0eb0941797b48908301b91866a313bbc51cdb50c2d6a7227a",
+    "Source/DHELAS/FFV2_3_1.f": "1e09411c9c336a21c7b464f5b3dcbaf7c4afd7c2288c58e5d3fd1daf4ef50bb1",
+    "Source/DHELAS/FFV2_3_2.f": "33ac86195c088eaa1416d9580c710907c62086b2d78304d099030b87893e6542",
+    "Source/DHELAS/FFV2_5L1_2.f": "27b4d912861213b3f6a6b457032e6081be02191aa9c994a3859011e8d76ac0b7",
+    "Source/DHELAS/FFV2_5L2_1.f": "f59b770b937423b6d13a1d9f6394705b3413a0499b98cfee8cb6d1000dfd4dfa",
+    "Source/DHELAS/FFV2_5_0.f": "75bf2a4a0593f7bf2da1a55297ae640419ecc9c86291956df61d540a1438840b",
+    "Source/DHELAS/FFV2_5_1.f": "c04676a86a9f2b1520a848f94b2ceccc79293252daf670ac79fc4ce34437e038",
+    "Source/DHELAS/FFV2_5_2.f": "a6e6fa905dd5005ed935441e7d1130278afa4cac57ac8ba6d0cf4a78dc25995b",
+    "Source/DHELAS/FFV3L1_2.f": "e5d9661f4c07476a75552a5688d461fd73a9e549eefdca6c3a3b3f55491f4790",
+    "Source/DHELAS/FFV3L2_1.f": "371d92c329672d72a9938fd981a419601bd70571932be979cb0447e097eb47b2",
+    "Source/DHELAS/FFV5L1_2.f": "9f33f09ca125803f37daf967bff6d6a23c723cf57982628dc8660f168388318a",
+    "Source/DHELAS/FFV5L2_1.f": "3af9c95ba8777e67cd1787aa5f3a078429daf1dfab94b4d9ac2264ca0651f236",
+    "Source/DHELAS/FFV5_0.f": "06f779043f28be4feff12568eb999790462ef0fc1ed63764541f798fd82e9570",
+    "Source/DHELAS/FFV5_1.f": "34669682775f091595e134d33995fd95854a2c19f6abc9c3cd3fe195d0fc6896",
+    "Source/DHELAS/FFV5_2.f": "c706fe4685be103bf17facb29773f7e32a4f9a6f2654bfab6f1d6b1278bc67fa",
+    "Source/DHELAS/GHGHGL1_2.f": "7c0aa63aabf73f9fb96c3f780b257dd1beccdef4e9cbbb37648c8f5b1c40eeaf",
+    "Source/DHELAS/GHGHGL2_1.f": "f4ebb8e808178345201f8fd9f7c7ce43c8b909c30eaa7e33d1517a86c975b319",
+    "Source/DHELAS/MP_FFS1L1_2.f": "44fb4abdff8dfde9f1b1d0d5c353c3b211448487334aafef2b0aabc3348d59fa",
+    "Source/DHELAS/MP_FFS1L2_1.f": "9606c2f962fc18fc19db002894c8f9a00568945e596fc8461cfaa5e8a1c7add6",
+    "Source/DHELAS/MP_FFV1L1P0_3.f": "8da29492f91ca07873cf9b39ca91173ebeb005d8a2a6213c1946bc96ebdac776",
+    "Source/DHELAS/MP_FFV1L1_2.f": "e79c65356b04f6d4a9525e8b3b8124aacc01586e2ab8d3ee2ae38cac164520ec",
+    "Source/DHELAS/MP_FFV1L2P0_3.f": "9de9a9c65f2c6c680b273821682493563e4101bd73d61407bc960df796af5f11",
+    "Source/DHELAS/MP_FFV1L2_1.f": "eb15c40a7e028b445d87d715f751ff940e20e6d3923a3064738e78f11f8246f5",
+    "Source/DHELAS/MP_FFV1L3_1.f": "00e612a9bb0d53e44ed595201956edd211580c1cf2411b2200b37c7b08226ee5",
+    "Source/DHELAS/MP_FFV1L3_2.f": "559b57cf58d9e3bb7f4b99ca0b5ce9ab0a2b0c385c3f2064325c20d5760b4b7f",
+    "Source/DHELAS/MP_FFV1P0_3.f": "536329c2e18c50957bd03141af7cb61bc7cd884f8e1fa797e803d0465819c793",
+    "Source/DHELAS/MP_FFV1_0.f": "94b52f01659a6dac5c294a5ce737d0387312f541c9371078098050a0276d3eb5",
+    "Source/DHELAS/MP_FFV1_1.f": "481a7ff498a673be927545650d6f6ae3967019950f7d48c9ff352bf5df4ada2d",
+    "Source/DHELAS/MP_FFV1_2.f": "a8fe4ea5ddba2317533ae8128c67505b981667bc2514b69f716a29ec6081c986",
+    "Source/DHELAS/MP_FFV2L1_2.f": "d319f243f20aa04f2d69313c0ce011cf34a1a4da22c74571ac72ef30de87c0d6",
+    "Source/DHELAS/MP_FFV2L2_1.f": "23149b227fa891acf27bc639dca7751f16bab77e5ba04128f0fcf5d32ef483a0",
+    "Source/DHELAS/MP_FFV2_0.f": "f8b4dd33fbb1b8bf7b1a8055673b26e2d16ecb2162a10ec4a8f07a28d269b60c",
+    "Source/DHELAS/MP_FFV2_1.f": "a1bad72795988e5cff8f40799415d6345684fb4107952d3adb1533810963c5f9",
+    "Source/DHELAS/MP_FFV2_2.f": "6c44a17d16ee7e68476f78b889aad8536b14534075133d25e65cfaf11c494007",
+    "Source/DHELAS/MP_FFV2_3L1_2.f": "2f35f0a3a59a42de0d63bf330b145e0319b9fdda69e92f287615c97d6720538f",
+    "Source/DHELAS/MP_FFV2_3L2_1.f": "0190f8c7e56ad894356ca113a83bc47ee3cdd001cc624e14a45a6c620f609126",
+    "Source/DHELAS/MP_FFV2_3_0.f": "778c85a411692e6d7315fece98cf0bd4fb55f9417f1f97ca5e37767ee93e32d2",
+    "Source/DHELAS/MP_FFV2_3_1.f": "49148a8142d1c511d56aaf3f5e34a56b30b10add831e1507fe25dee2e2fd3fe1",
+    "Source/DHELAS/MP_FFV2_3_2.f": "6271d6f0f380ec9d06ec05b0414aa4bfdc22a1ac895af01cda2173c6c4b4df65",
+    "Source/DHELAS/MP_FFV2_5L1_2.f": "aa62182335d230f1d162b8a22c7fedfdd479b7a23282aec8606cbd90364fb76d",
+    "Source/DHELAS/MP_FFV2_5L2_1.f": "4a2012858cbfd9826e4a266a4b84fa6ad0d8ae445ae2c5432c2c0df32683886a",
+    "Source/DHELAS/MP_FFV2_5_0.f": "252337b294c5e08e4128fb766b5267cc2ecd7726d2316b6d5f56b3fa9ac9d3f2",
+    "Source/DHELAS/MP_FFV2_5_1.f": "0e35828f1a9ae0ff1225a8182db97c60ceda09c7213638c5344ad6adf17531c6",
+    "Source/DHELAS/MP_FFV2_5_2.f": "f3fc36c8c77a3cb4e91ad358df5f1eb3b6c043c6dbea98e2332315db2675f963",
+    "Source/DHELAS/MP_FFV3L1_2.f": "8243e71f7be7753d0abf0e5f06cf871a7cdaa1df7e16f2d8746c3f4b4b0c6276",
+    "Source/DHELAS/MP_FFV3L2_1.f": "ec9c3d554294d647e49c6dfbfc170a12002ac347cbb857f411c99df4997f260e",
+    "Source/DHELAS/MP_FFV5L1_2.f": "dfebf07d16042bf6d859728a42ed2a700806f8c8712762e2ffe6e1dfca6705cc",
+    "Source/DHELAS/MP_FFV5L2_1.f": "22b39c576d775d3046280791e14fac6fb2fb023f6d4928497fb8e0af2b786a7f",
+    "Source/DHELAS/MP_FFV5_0.f": "e93bd2169fa0a0a1f7a8394e9ee78a5dd44d2f03cf1530e9e22e3f8fdca19e1b",
+    "Source/DHELAS/MP_FFV5_1.f": "fa74f2203ca6e4f786df57d0f6591feb89cd9addd44a2660fc38722f5e814616",
+    "Source/DHELAS/MP_FFV5_2.f": "0d3b27e5c6668bc3e4c21f0608b6958c8c8e7752886738c05ff194b1f40729bd",
+    "Source/DHELAS/MP_GHGHGL1_2.f": "dddda882db545de90747b60da04610f6a0005951e4c946b3f1137584026de6c2",
+    "Source/DHELAS/MP_GHGHGL2_1.f": "e7f838c3c19a5596e38f34f1c07dd7754988b2faf952540ca8843dca08144b26",
+    "Source/DHELAS/MP_R2_GGGVa_0.f": "da8789f2ee9fffae4f01b53ec18bc49b98b7b8c36f67c25419c12755998cd471",
+    "Source/DHELAS/MP_R2_GGVV_0.f": "1c9d97344ca28444696d5d29d76d0f6577b480114e76fa9c35e5af581610fdb5",
+    "Source/DHELAS/MP_R2_GGZ_0.f": "fda5bb12777b5fb94e3897e1697cc1d8c7df0f9b9d33cdac8204b3352a45ca07",
+    "Source/DHELAS/MP_R2_GG_1_0.f": "d9788ab89a6d02848adda9c1412b22fb89c210b5056effaad2880a60523e40ae",
+    "Source/DHELAS/MP_R2_GG_1_R2_GG_2_0.f": "2360480e65037066c55cac571ec74dac21bc8b5b07bbd22cfc20a9bc2a76fe73",
+    "Source/DHELAS/MP_R2_GG_1_R2_GG_3_0.f": "00fd9d936524576229c4e9b0ebb8c568c355812bd5bc74f18d04f1f375e310a3",
+    "Source/DHELAS/MP_R2_GG_2_0.f": "9209f6088374d9049e54b78e6f5b7a0f913fe4cff27ed0e368e0087da4930376",
+    "Source/DHELAS/MP_R2_GG_3_0.f": "75c939262be9b1d0d88ac3c25d6aee1d2d956464e1763ea3d6a29c1815b5ac3b",
+    "Source/DHELAS/MP_R2_QQ_1_0.f": "0278403e3fa815a17b95a955e3cc556953c358d18f7cec32003ead5a596af1c3",
+    "Source/DHELAS/MP_VVS1_0.f": "f5b66d61f3a394e38a053738151c8cb89283e28e886bc629d12bf6e58c0de314",
+    "Source/DHELAS/MP_VVS1_3.f": "d67e9a8fd533a26651d3504d9027936c5a000f6e7be810ee0901189887ff5174",
+    "Source/DHELAS/MP_VVV1L2P0_1.f": "a8b15593ce465aa0aea0175c17531c5964390d7fbf4f2279afd9b76051f2cedb",
+    "Source/DHELAS/MP_VVV1P0_1.f": "97acea4bdf5bdaec7a6b0cd83d588d9abf0bc926d9c7727122e9af352596361d",
+    "Source/DHELAS/MP_VVV1_0.f": "08e37c31c9296914eec1eee642a8cd980f992732546ef44af33279a3263561c1",
+    "Source/DHELAS/MP_VVVV1L2P0_1.f": "b62cdcebd76fd62b176b68b2b6a692270932a60d79844b1563178473cc687235",
+    "Source/DHELAS/MP_VVVV3L2P0_1.f": "e82c3d9c10d71c89409a7b82bc4f3a1134b7c56967c59bed1bb228649d02b936",
+    "Source/DHELAS/MP_VVVV4L2P0_1.f": "3c64332256c3ea9bf79e8ef580b24f391592b07cf84a6a019b6b6c5f16ba4f4c",
+    "Source/DHELAS/R2_GGGVa_0.f": "35fbbd1c3eb6a3ffe5dafd015bd42bb065b2497e99024efd0ed8b43995584fc5",
+    "Source/DHELAS/R2_GGVV_0.f": "0e56993fd420d9d478d041ede6c2b19a85e6cedd05bbdc60fb740554fb903322",
+    "Source/DHELAS/R2_GGZ_0.f": "760fb179352f625a5fea2854a913b52f8b4648841fdf7162ee7695cc8db3fd32",
+    "Source/DHELAS/R2_GG_1_0.f": "9c2c38421f3b229d02a43b9c792b527ee5fae69ebd45d4c5139a3201cd107fa1",
+    "Source/DHELAS/R2_GG_1_R2_GG_2_0.f": "ce81139e946f3a567eab85e66850e6bcb64f954df075f5e38cd86977035d56b5",
+    "Source/DHELAS/R2_GG_1_R2_GG_3_0.f": "1a9e75e366a26262e054babed3e50f285d8dc4465a5be8b7e6238dc17ba3da1d",
+    "Source/DHELAS/R2_GG_2_0.f": "e72b843a6ad97b38ccba00e45339c19848764e8299dbd83d7d8ff67f8cba6897",
+    "Source/DHELAS/R2_GG_3_0.f": "0824cf2a26fcca188c5d3d9e0a09158b3701e3a3b0a86afe4de398c45001cfd8",
+    "Source/DHELAS/R2_QQ_1_0.f": "cbd24e9610364c1af449d16134b2312782b1964cbabeb64867b0bc9e968c31d3",
+    "Source/DHELAS/VVS1_0.f": "9407aa0da6e96be75243f01adfc1fd2e83b6307c778d79e7ed5dc0a2ac6ebb16",
+    "Source/DHELAS/VVS1_3.f": "02910032a5f5712959d490cb6fa19d7b54f8f7c62ee8c566c2b7b8502c997814",
+    "Source/DHELAS/VVV1L2P0_1.f": "100e2fbb5cf87e281ce9fed7eb0b522343eef53d20f58532ca3a22b1c6134233",
+    "Source/DHELAS/VVV1P0_1.f": "cf5506184046b62491abe108e8422f85461ebab0d389ec675cdc5b852bb9681d",
+    "Source/DHELAS/VVV1_0.f": "4256e3a66b573c37067fcbbf6bec827bbae6bc2486d9895de7615f97ad1b7c15",
+    "Source/DHELAS/VVVV1L2P0_1.f": "f855a745d51a735a4024f73efba6327ed3ecfafd7f894ca5122787326bacb347",
+    "Source/DHELAS/VVVV3L2P0_1.f": "32fc63d2d47cc8f0f616c1b1df99826601eab7a510f58994a27c2f7205ac6f86",
+    "Source/DHELAS/VVVV4L2P0_1.f": "4e6b225a607ca4eca05c34b703690cafadd63ccd980923530abaed84dede79ae",
+    "Source/DHELAS/aloha_file.inc": "ed5b5e794bcc53671c3cc4f98e0db8ea89a31a5abf3fb10e58098db80b8d7137",
+    "Source/DHELAS/aloha_functions.f": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf",
+    "Source/DHELAS/coef_specs.inc": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+    "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    "Source/MODEL/actualize_mp_ext_params.inc": "4108b4fb1f82d348413a9f7f777eb94537061f7ccf339d7d23f30f4f835676ac",
+    "Source/MODEL/coupl.inc": "5dd65c4f5bf4f5e79343464366986fe455cbcf5a02d451cc06a25f97b76ee818",
+    "Source/MODEL/coupl_write.inc": "6d3e51546fb391026de3409776e0b47e6f772f52aa4f1747f79a746e855226f1",
+    "Source/MODEL/couplings.f": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936",
+    "Source/MODEL/couplings1.f": "1db33c97ff252c6840c78c24cbe66e64e572387940a646dabf49a98cd3d7d359",
+    "Source/MODEL/couplings2.f": "28b4eefe950545be8c834979488b7bc11ef89ca3c8799a3e0e59f08ae902b65e",
+    "Source/MODEL/couplings3.f": "d854fee4db8524b164e5f3f1563f6f318e8132d8824b73bd0d875ac51d905461",
+    "Source/MODEL/flavor_couplings.f": "863fa39462bb4b32dd09835ce5ca74624a4b08ee98be94fa756cd8a488ef6de7",
+    "Source/MODEL/formats.inc": "1d0c8b3a81b5c4ed3cc50e16edc2d7fa09fa2c2694b9eef3790bff2abc42c3a3",
+    "Source/MODEL/get_color.f": "e1b3eb173aa5a721e4f1dfb518987b5581edf4ddc63ed98fa14eab1daca71bcf",
+    "Source/MODEL/input.inc": "e8887e3d6b201199bc48178615968bcc6dd0291b3af2bf21533d09d48537c569",
+    "Source/MODEL/intparam_definition.inc": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084",
+    "Source/MODEL/ldme.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Source/MODEL/lha_read.f": "319682ba82c7f585b6673f81256723719ef1fc3a5c78c5debd183cd4ba171cca",
+    "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    "Source/MODEL/makeinc.inc": "b4474380dce602789c4749045fc5e726d3431039ae354b8d17405dce2c223090",
+    "Source/MODEL/model_functions.f": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+    "Source/MODEL/model_functions.inc": "be48cc65d552043c1569e2144501aa3d1c16e69834f20090aceca8ea818bb58f",
+    "Source/MODEL/mp_coupl.inc": "8a3db914cea812b6429b11881bc0dd083e5bbf36e9fe19e525f00f3be797bdd4",
+    "Source/MODEL/mp_coupl_same_name.inc": "7f31ff9ea2f63bf05e287293212ce097e8cd970688b924d8385c1f419312cb0f",
+    "Source/MODEL/mp_couplings1.f": "d1ff4f0b70228ee970b951cb4ef1bfeacd1ba86b31088043f617094243563a3b",
+    "Source/MODEL/mp_couplings2.f": "b4e39fa7fffc4d210b9cb075a9a96e6498c067a45ac97db19a852597d64896e6",
+    "Source/MODEL/mp_couplings3.f": "4fdd963148f50d373d6f4476ad460f2cabe27f25b2ae383287008ca73b71aae2",
+    "Source/MODEL/mp_input.inc": "aeee69196e81b8ad6f344990b346feda8fe665c355054bfa62b426f2f637b8bb",
+    "Source/MODEL/mp_intparam_definition.inc": "9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4",
+    "Source/MODEL/onia_read.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Source/MODEL/param_read.inc": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22",
+    "Source/MODEL/param_write.inc": "ba207871dd4bf5698c7d34c13354df0d18f9a8d814e63471427418b76ec39057",
+    "Source/MODEL/printout.f": "e4c1687b5b7938a0cf6119f897036208f945c4a8b8c71603f8d9d127c1ad7b40",
+    "Source/MODEL/rw_para.f": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c",
+    "Source/MODEL/testprog.f": "de3d3aaf629ce84a039d03daf2b747be690bf06a5ab3190a39cee04b8c1490bf",
+    "Source/coupl.inc": "5dd65c4f5bf4f5e79343464366986fe455cbcf5a02d451cc06a25f97b76ee818",
+    "Source/cuts.inc": "0592f71fe875db3892c3c9f4179ba09627b3a241cc4090253eab42481a8618f2",
+    "Source/ldme.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    "Source/maxparticles.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Source/run.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "SubProcesses/MadLoopCommons.f": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+    "SubProcesses/MadLoopParamReader.f": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+    "SubProcesses/MadLoopParams.inc": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+    "SubProcesses/MadLoop_makefile_definitions": "e5aa2f9835ea12490960153d871c131e510411f6623e962db1738fa7f62dc5df",
+    "SubProcesses/P0_uux_zzgg/COLLIER_interface.f": "bfd73be07671167e0f1bb4d01671d5ea88aa210ef34e03e46ffcef1bafe95394",
+    "SubProcesses/P0_uux_zzgg/CT_interface.f": "046d23bc913bdbec4adee0608d479ad79e798141f5fbb2ddaff17a04912c832e",
+    "SubProcesses/P0_uux_zzgg/MadLoopCommons.f": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+    "SubProcesses/P0_uux_zzgg/MadLoopParamReader.f": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+    "SubProcesses/P0_uux_zzgg/MadLoopParams.inc": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+    "SubProcesses/P0_uux_zzgg/TIRUST_interface.f": "fdb6f639e3a8e17298f10bc1b172bb7a23a1d23111eaa9230b2a38bcffa53cd8",
+    "SubProcesses/P0_uux_zzgg/TIR_interface.f": "05ae4e14af288945845ba259f8f185b7257d113fa5ca8b49e80d8b43c4ef3904",
+    "SubProcesses/P0_uux_zzgg/born_matrix.f": "a3521e23fa855bb8e82281c3d7b68ffd5056693213c1b1dcd9ba9ee2ea84b900",
+    "SubProcesses/P0_uux_zzgg/check_sa.f": "261860ab6ad4a07d7c168828afc370403bdc3d96687091b20409e85b7d2762bb",
+    "SubProcesses/P0_uux_zzgg/check_sa_born_splitOrders.f": "8a3111a30571260adb6258152cdbf579e77a3947d928d7f050bf18fbd09514b5",
+    "SubProcesses/P0_uux_zzgg/coef_construction_1.f": "a96dcbad386fafe6067d3828e682950b3346f0d20ae9b01cc5b73a56b3f2ae38",
+    "SubProcesses/P0_uux_zzgg/coef_construction_2.f": "85aa415bc925757ebb4d9d600b9db17512261b34ce4ee5dd3f6a05e22a01e5a4",
+    "SubProcesses/P0_uux_zzgg/coef_construction_3.f": "33eb2317883939d51df697e5b0c15f88597b7bd68116d499876d1d730bb049d1",
+    "SubProcesses/P0_uux_zzgg/coef_specs.inc": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+    "SubProcesses/P0_uux_zzgg/coupl.inc": "5dd65c4f5bf4f5e79343464366986fe455cbcf5a02d451cc06a25f97b76ee818",
+    "SubProcesses/P0_uux_zzgg/cts_mpc.h": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+    "SubProcesses/P0_uux_zzgg/cts_mprec.h": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+    "SubProcesses/P0_uux_zzgg/f2py_wrapper.f": "4446bfff3ee103cd3b5b94f30ec0956d19eb9460b38aa83242bdf3fdc75abe3f",
+    "SubProcesses/P0_uux_zzgg/global_specs.inc": "4c894694d34d389a11ee23f0ad3faef74cd1fc1d1c9cfbb009fecee948ed99fc",
+    "SubProcesses/P0_uux_zzgg/helas_calls_ampb_1.f": "2e80c6fa816a7975e25090419f66f07031d24706718c70f261b1c59d33b568c4",
+    "SubProcesses/P0_uux_zzgg/helas_calls_uvct_1.f": "c2a98770be933251065a2c7c47409a3d2f1d27b77df3f076d2e3acb3d0256453",
+    "SubProcesses/P0_uux_zzgg/improve_ps.f": "acc1a786f419b8a7379f5d269e34a190a12558edb731bfba7523391703482620",
+    "SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f": "ca5b3592db4d7ef079566c2e15f4359d9cdaa8f547066003f369506234ff4456",
+    "SubProcesses/P0_uux_zzgg/loop_matrix.f": "a07804ebcb4088c8b82da923b630f845c3d4339d4bacbccdca976308ecdc437a",
+    "SubProcesses/P0_uux_zzgg/loop_max_coefs.inc": "1949bace736cdf834cc4c1428a9f3fe8f7329c3f4be1d7bf8b5055d7f791b525",
+    "SubProcesses/P0_uux_zzgg/loop_num.f": "0caf76e28ec7df405a6e6c5dbad1692dffab4a90e1f2bf3216a90520977498df",
+    "SubProcesses/P0_uux_zzgg/makefile": "1a2b4a6debb581a77b53b90b9b3502a021ae06371b9e4e013d238d2b5991e85a",
+    "SubProcesses/P0_uux_zzgg/mg5_citation.f": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+    "SubProcesses/P0_uux_zzgg/mp_coef_construction_1.f": "3125e52d4ca820a98a8c5bfe6127a9fdddd3e0959df89416126c06b27ea7d4a6",
+    "SubProcesses/P0_uux_zzgg/mp_coef_construction_2.f": "026a9258cbd1d43134192294e0598bf5fcae2e353fef84ebd06694dfa75021b1",
+    "SubProcesses/P0_uux_zzgg/mp_coef_construction_3.f": "09c672cd02884a2c226b178601b9897019b21a663e27029c07d52a30fbc1d529",
+    "SubProcesses/P0_uux_zzgg/mp_compute_loop_coefs.f": "bf5c60872fea031989dcb59060d72b968cea4167a422e683785d2ac7ab60f104",
+    "SubProcesses/P0_uux_zzgg/mp_coupl.inc": "8a3db914cea812b6429b11881bc0dd083e5bbf36e9fe19e525f00f3be797bdd4",
+    "SubProcesses/P0_uux_zzgg/mp_coupl_same_name.inc": "7f31ff9ea2f63bf05e287293212ce097e8cd970688b924d8385c1f419312cb0f",
+    "SubProcesses/P0_uux_zzgg/mp_helas_calls_ampb_1.f": "d168149b7b98489c6c89fed40a3fa76e3205a3311e69cbd294e9ac958306b5f2",
+    "SubProcesses/P0_uux_zzgg/mp_helas_calls_uvct_1.f": "8c341fe5dc4e44589326bb51e7b084ada4bcf2e3c08f46f415ee9db3a5f999f9",
+    "SubProcesses/P0_uux_zzgg/nexternal.inc": "68d87bc41ce52297da1872cba38488f27ba25f451b333ba0c7514752948ca245",
+    "SubProcesses/P0_uux_zzgg/ngraphs.inc": "cb12fd7b16c81385436e5735dadd18103303b3ac9b1c3d1da8775ec0e321926d",
+    "SubProcesses/P0_uux_zzgg/nsqso_born.inc": "3b38ec895740e951986695a1de84d502519179591cff87fd84460bd597fda484",
+    "SubProcesses/P0_uux_zzgg/nsquaredSO.inc": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf",
+    "SubProcesses/P0_uux_zzgg/pmass.inc": "a74f50d22fc7fdb8a5334e000cb3a150fd687844258ac9e2457682e4b7cdff33",
+    "SubProcesses/P0_uux_zzgg/polynomial.f": "bd09adeaeba93eff68cb3691994ee04504e2176e1f79d724240a964cb07e7ce1",
+    "SubProcesses/P0_uux_zzgg/process_info.inc": "a2163706175ae47c77e94b49ffd225a0335bed2f42f67185fd104f817719d920",
+    "SubProcesses/P0_uux_zzgg/unique_id.inc": "d60a49c61df4c28973b15a4f965abf3b8fd524c9f59fa91b630abdae15124a2e",
+    "SubProcesses/coupl.inc": "5dd65c4f5bf4f5e79343464366986fe455cbcf5a02d451cc06a25f97b76ee818",
+    "SubProcesses/cts_mpc.h": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+    "SubProcesses/cts_mprec.h": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+    "SubProcesses/global_specs.inc": "4c894694d34d389a11ee23f0ad3faef74cd1fc1d1c9cfbb009fecee948ed99fc",
+    "SubProcesses/ldme.inc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "SubProcesses/makefile": "1a2b4a6debb581a77b53b90b9b3502a021ae06371b9e4e013d238d2b5991e85a",
+    "SubProcesses/makefileP": "35afefa36a49041f54034da719b5832622f6ad47da348ab4e3bb54130d4d1962",
+    "SubProcesses/mg5_citation.f": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+    "SubProcesses/mp_coupl.inc": "8a3db914cea812b6429b11881bc0dd083e5bbf36e9fe19e525f00f3be797bdd4",
+    "SubProcesses/mp_coupl_same_name.inc": "7f31ff9ea2f63bf05e287293212ce097e8cd970688b924d8385c1f419312cb0f",
+    "SubProcesses/nsquaredSO.inc": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf"
+  },
+  "input_sha256": "82593661e79e7279e9bed15a3d3e2776faa5eb644b0a04b8da7f80ab316e51af",
+  "omitted": [],
+  "protocol_sources": {
+    "tirust_benchmark.py": "a79ebe44c0df88d1d940f4f8089563a5b4907348ed121cf9033e32b076f91443",
+    "tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "tirust_benchmark_poles.f": "24b0d5c351eccf3aa35b7e0b3985cb5b4b706626261f1cf6efe0def85277c6f2",
+    "tirust_benchmark_poles.py": "8fa0b765fe2d1e706392bec7be41b06ce7b54f87ac01602cafe275028c4acaff"
+  },
+  "selected": [
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 1,
+      "name": "massive-tadpole-r3",
+      "pole_mode": 0,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 1,
+      "name": "massive-tadpole-r3",
+      "pole_mode": 0,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 1,
+      "name": "massive-tadpole-r3",
+      "pole_mode": 1,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 1,
+      "name": "massive-tadpole-r3",
+      "pole_mode": 1,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 1,
+      "name": "massive-tadpole-r3",
+      "pole_mode": 2,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 1,
+      "name": "massive-tadpole-r3",
+      "pole_mode": 2,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "scaleless-lightlike-bubble-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "scaleless-lightlike-bubble-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "scaleless-lightlike-bubble-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "scaleless-lightlike-bubble-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "scaleless-lightlike-bubble-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "scaleless-lightlike-bubble-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massive-bubble-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massive-bubble-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massive-bubble-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massive-bubble-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massive-bubble-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          4,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massive-bubble-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massless-offshell-bubble-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massless-offshell-bubble-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massless-offshell-bubble-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massless-offshell-bubble-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massless-offshell-bubble-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "massless-offshell-bubble-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "massive-triangle-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0.2,
+          0.3,
+          0.4
+        ],
+        [
+          0.4,
+          -0.5,
+          0.7,
+          -0.2
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "massive-triangle-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0.2,
+          0.3,
+          0.4
+        ],
+        [
+          0.4,
+          -0.5,
+          0.7,
+          -0.2
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "massive-triangle-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0.2,
+          0.3,
+          0.4
+        ],
+        [
+          0.4,
+          -0.5,
+          0.7,
+          -0.2
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "massive-triangle-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0.2,
+          0.3,
+          0.4
+        ],
+        [
+          0.4,
+          -0.5,
+          0.7,
+          -0.2
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "massive-triangle-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0.2,
+          0.3,
+          0.4
+        ],
+        [
+          0.4,
+          -0.5,
+          0.7,
+          -0.2
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "massive-triangle-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0.2,
+          0.3,
+          0.4
+        ],
+        [
+          0.4,
+          -0.5,
+          0.7,
+          -0.2
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "infrared-triangle-r3",
+      "pole_mode": 0,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          0,
+          0,
+          5
+        ],
+        [
+          10,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "infrared-triangle-r3",
+      "pole_mode": 0,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          0,
+          0,
+          5
+        ],
+        [
+          10,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "infrared-triangle-r3",
+      "pole_mode": 1,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          0,
+          0,
+          5
+        ],
+        [
+          10,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "infrared-triangle-r3",
+      "pole_mode": 1,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          0,
+          0,
+          5
+        ],
+        [
+          10,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "infrared-triangle-r3",
+      "pole_mode": 2,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          0,
+          0,
+          5
+        ],
+        [
+          10,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 3,
+      "name": "infrared-triangle-r3",
+      "pole_mode": 2,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          5,
+          0,
+          0,
+          5
+        ],
+        [
+          10,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 4,
+      "name": "massive-box-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          3
+        ],
+        [
+          0,
+          2,
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 4,
+      "name": "massive-box-r4",
+      "pole_mode": 0,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          3
+        ],
+        [
+          0,
+          2,
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 4,
+      "name": "massive-box-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          3
+        ],
+        [
+          0,
+          2,
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 4,
+      "name": "massive-box-r4",
+      "pole_mode": 1,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          3
+        ],
+        [
+          0,
+          2,
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 4,
+      "name": "massive-box-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          3
+        ],
+        [
+          0,
+          2,
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          0
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          25,
+          0
+        ],
+        [
+          36,
+          0
+        ]
+      ],
+      "mu2": 7,
+      "n": 4,
+      "name": "massive-box-r4",
+      "pole_mode": 2,
+      "rank": 4,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          3
+        ],
+        [
+          0,
+          2,
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          -0.2
+        ],
+        [
+          4,
+          -0.1
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "complex-mass-bubble-r3",
+      "pole_mode": 0,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          -0.2
+        ],
+        [
+          4,
+          -0.1
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "complex-mass-bubble-r3",
+      "pole_mode": 0,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          -0.2
+        ],
+        [
+          4,
+          -0.1
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "complex-mass-bubble-r3",
+      "pole_mode": 1,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          -0.2
+        ],
+        [
+          4,
+          -0.1
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "complex-mass-bubble-r3",
+      "pole_mode": 1,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 1,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          -0.2
+        ],
+        [
+          4,
+          -0.1
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "complex-mass-bubble-r3",
+      "pole_mode": 2,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    },
+    {
+      "ctmode": 4,
+      "loops": 1,
+      "mass2": [
+        [
+          9,
+          -0.2
+        ],
+        [
+          4,
+          -0.1
+        ]
+      ],
+      "mu2": 7,
+      "n": 2,
+      "name": "complex-mass-bubble-r3",
+      "pole_mode": 2,
+      "rank": 3,
+      "shifts": [
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          0.5
+        ]
+      ]
+    }
+  ]
+}

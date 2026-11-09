@@ -3,6 +3,10 @@
 # fallback discovers already-installed tools without modifying reference trees.
 TIRUST_MG_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 export TIRUST_MG_ROOT
+# The Python discovery probe imports NumPy before the rest of the environment
+# is populated. Keep that probe single-threaded too on shared build hosts.
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$TIRUST_MG_ROOT/.tirust-build/matplotlib}"
 mkdir -p "$MPLCONFIGDIR"
 _tirust_find_tool() {
@@ -55,8 +59,6 @@ export SYMBOLICA_LOCK_DIR="${SYMBOLICA_LOCK_DIR:-$TIRUST_MG_ROOT/.tirust-build/s
 export SYMBOLICA_HIDE_BANNER=1
 export RUST_MIN_STACK=134217728
 export RUST_TEST_THREADS=1
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
 export CC="${CC:-$(command -v cc)}"
 export CXX="${CXX:-$(command -v c++)}"
 export FC="${FC:-$(command -v gfortran)}"

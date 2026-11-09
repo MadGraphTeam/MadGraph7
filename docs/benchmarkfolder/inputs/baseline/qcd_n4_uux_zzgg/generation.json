@@ -1,0 +1,21 @@
+{
+  "case": {
+    "id": "qcd_n4_uux_zzgg",
+    "model": "loop_sm",
+    "nfinal": 4,
+    "process": "u u~ > z z g g [virt=QCD]",
+    "role": "main"
+  },
+  "command_sha256": "cd84173d4e82dc76ecb62ec6ff076f568f52538b5005e68eb1f74b9af21917bd",
+  "created_utc": "2026-11-09T19:56:37.423440+00:00",
+  "default_chain": "8|6|7|1",
+  "parameter_card_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+  "seconds": 59.92134848469868,
+  "source": "baseline",
+  "source_identity": {
+    "archive_sha256": "c21b0acdd14916a97d2b5c6fbd9b569468ea37f34d8f02e4b3d405675e19853b",
+    "dirty": false,
+    "files_sha256": "274a9ab19bb0bd3a382eeac5680c6aad4bd761093e9c6c8a66078eb3c0002558",
+    "revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"
+  }
+}

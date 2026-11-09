@@ -1,5 +1,6 @@
 #import "style.typ": *
 #let d = json("summary.json")
+#let pilots = json("experiments/numerical/completed-pilots-index.json")
 #let env = json("implementation-start.json")
 #show: body => report-style(body, date: d.at("date", default: "9 November 2026"),
   revision: if d.at("candidate_revision", default: none) == none { "not yet measured" } else { d.candidate_revision.slice(0,12) })
@@ -7,11 +8,19 @@
 #let ids = (1, 6, 7, 8, 9)
 #let main = d.cases.filter(c => c.role == "main")
 #let controls = d.cases.filter(c => c.role != "main")
+#let known-failures = d.gate.at("failed_cases", default: ()).len() > 0
 #let tool-name(x) = names.at(str(x), default: str(x))
 #let time-us(x) = if x == none { [—] } else { [#number(x * 1000000)] }
 #let cell-status(s) = text(fill: status-ink(s), weight: "bold", str(s))
+#let scientific(x) = if x == 0 { [0] } else {
+  let exponent = calc.floor(calc.log(calc.abs(x), base: 10))
+  [#fixed(x / calc.pow(10, exponent), 2) × 10#super(str(exponent))]
+}
 #let get-timing(c, id) = c.at("timings", default: ()).find(t => str(t.backend) == str(id))
 #let get-check(c, id) = c.correctness.find(t => str(t.backend) == str(id))
+#let checks-status(items) = if items.len() == 0 or items.any(q => q.passed == none) {
+  "pending"
+} else if items.all(q => q.passed) { "pass" } else { "fail" }
 #let process-label(c) = {
   let labels = (
     "qcd_n1_uux_z": $u overline(u) -> Z$,
@@ -40,23 +49,25 @@
 ]
 #v(7pt)
 #note(fill: if d.gate.complete and d.gate.passed { pale } else { warm })[
-  *Acceptance: #cell-status(if d.gate.complete and d.gate.passed { "pass" } else if d.gate.complete { "fail" } else { "incomplete" }).*
+  *Main campaign acceptance: #cell-status(if d.gate.complete and d.gate.passed { "pass" } else if d.gate.complete or known-failures { "fail" } else { "incomplete" }).* #if known-failures and not d.gate.complete { [The remaining campaign is incomplete.] }
   Every main process requires five-backend agreement, an upper 95% paired runtime-ratio bound no greater than 1.05, and passing existing-backend regression checks. Unmeasured cells are shown as —. A failed or incomplete row is not a speedup claim.
 ]
 #v(7pt)
 #text(8pt)[Runtime colour: green = faster, white = parity, red = slower. All displayed ratios are candidate / reference; smaller is faster.]
 #v(5pt)
 #figure(
-  table-style(table(columns: (1.35fr, .75fr, .9fr, .9fr, 1.1fr),
+  table-style(table(columns: (1.35fr, .7fr, .85fr, .85fr, 1.05fr, .8fr),
     inset: (x: 4pt, y: 7pt), stroke: table-stroke, fill: table-fill,
-    table.header([Process · correction], [Physics], [Baseline µs/point], [TIRust chain µs/point], [Ratio · 95% interval]),
+    table.header([Process · correction], [Physics], [Baseline µs/point], [TIRust chain µs/point], [Ratio · 95% interval], [Existing-backend regressions]),
     ..main.map(c => {
       let p = c.performance
       let ratio = p.at("geometric_mean_ratio", default: none)
+      let regressions = c.at("existing_backend_regressions", default: ())
+      let bounds = regressions.filter(q => q.statistics != none).map(q => q.statistics.upper_95).filter(x => x != none)
       (
         [#text(9pt, font: "Libertinus Serif")[#process-label(c)]#linebreak()
          #text(7pt, fill: ink2)[#if c.id.starts-with("qcd") { [QCD] } else { [EW] } · 2→#c.nfinal · #if c.points == none { [unmeasured] } else { [#c.points points] }]],
-        [#cell-status(c.status)],
+        [#cell-status(checks-status(c.correctness))],
         [#text(11pt, weight: "bold")[#time-us(p.at("baseline_median_seconds_per_point", default: none))]],
         [#text(11pt, weight: "bold")[#time-us(p.at("candidate_median_seconds_per_point", default: none))]],
         table.cell(fill: ratio-fill(ratio), [
@@ -64,8 +75,10 @@
           #if p.at("lower_95", default: none) != none {
             [#fixed(p.lower_95,3)–#fixed(p.upper_95,3)#linebreak()]
           }
-          #cell-status(p.status)
+          #cell-status(if p.passed == none { p.status } else if p.passed { "pass" } else { "fail" })
         ]),
+        [#cell-status(checks-status(regressions))#linebreak()
+          #if bounds.len() > 0 { [max. upper#linebreak()#ratio-text(calc.max(..bounds))] }],
       )
     }).flatten(),
   )),
@@ -77,7 +90,7 @@
 #pagebreak()
 = Five-backend numerical agreement
 
-The same saved momenta, model parameters, coupling orders and scale are evaluated by all five tools. The regression criterion is #raw("3e-6"), with #raw("1e-8") as the ordinary-point target. Born, finite, simple-pole and double-pole coefficients are retained. Near-zero poles use the existing MadLoop comparison policy. Native double-precision failures and successful rescues are recorded separately in the numerical evidence.
+The same saved momenta, model parameters, coupling orders and scale are evaluated by all five tools. The regression criterion is #raw("3e-6"), with #raw("1e-8") as the ordinary-point target. Born, finite, simple-pole and double-pole coefficients are retained. Near-zero poles use the existing MadLoop comparison policy. Final accepted DP/QP outcomes and failed evaluations are retained; the histograms do not enumerate internal rescue attempts.
 
 #figure(table-style(table(columns: (1.4fr, .8fr, .8fr, .8fr, .8fr, .8fr),
   inset: (x: 4pt, y: 7pt), stroke: table-stroke, fill: table-fill,
@@ -87,23 +100,49 @@ The same saved momenta, model parameters, coupling orders and scale are evaluate
     ..ids.map(id => {
       let q = get-check(c,id)
       if q == none { [pending] } else {
-        [#cell-status(q.status)#linebreak()
+        [#cell-status(if q.passed == none { q.status } else if q.passed { "pass" } else { "fail" })#linebreak()
          #if q.at("max_relative_error", default: none) != none {
            text(7pt)[#str(q.max_relative_error)]
          }]
       }
     }),
   )).flatten(),
-)), caption: [Comparison status and largest retained relative discrepancy. A dash or pending status denotes absent evidence.]))
+)), caption: [Comparison status and largest retained relative discrepancy. A dash or pending status denotes absent evidence.])
 
 #note[
   Agreement is assessed using independent numerical backends and higher precision when a discrepancy occurs. Known difficult scalar-box regions are retained as stress cases. A backend's own success flag does not establish cross-backend agreement.
 ]
 
 #pagebreak()
+= Completed physical pilot checks
+
+These eight separately retained checks each evaluate 100 saved physical points with all five reducers. They use the common strict stability policy and pass the #raw("3e-6") regression criterion. Their timings are ineligible for performance acceptance, and they do not fill the pending timing-campaign rows above. An independent audit reparsed 4,800 evaluations and checked the retained inputs, executable provenance and raw statuses.
+
+#figure(table-style(table(columns: (1.5fr, .7fr, .8fr, 1fr, .9fr),
+  inset: (x: 4pt, y: 8pt), stroke: table-stroke, fill: table-fill,
+  table.header([Process · 100 points], [Five-backend regression], [Ordinary target], [Largest symmetric residual], [TIRust accepted DP / QP]),
+  ..pilots.cases.map(c => {
+    let t = c.backends.find(b => b.backend == 9)
+    (
+      [#text(9pt, font: "Libertinus Serif")[#process-label(c)]],
+      [#cell-status(if c.all_five_regression_pass { "pass" } else { "fail" })],
+      [#cell-status(if c.all_five_ordinary_target_pass { "pass" } else { "miss" })],
+      [#scientific(c.max_symmetric_non_negligible_residual)],
+      [#t.dp_count / #t.qp_count],
+    )
+  }).flatten(),
+)), caption: [Historical physical pilots, independent of the runtime gate. Residuals exclude poles accepted by the documented small-pole exception. All four existing reducers finally accepted 100 DP results in each row.])
+
+#note[
+  *QCD 2→3 adjudication.* The original comparison against CutTools DP misses the #raw("1e-8") target at 28 points. CutTools, Ninja and TIRust QP agree within #raw("9.89e-11") on four diagnostic points. Across all 28 target misses, the saved TIRust and COLLIER results meet the target against CutTools QP; CutTools DP misses all 28, while Ninja and NinjaRS miss only point 39. Every comparison still passes the regression criterion. These fixed-QP diagnostics are explicitly unchecked and do not establish automatic rescue stability.
+]
+
+The index #raw("experiments/numerical/completed-pilots-index.json") binds 491 retained files and preserves the original comparisons. The detailed QP adjudication is in #raw("experiments/qcd-n3-adjudication/"). Final accepted precision does not enumerate every internal reduction attempt. The remaining three large-process pilots are outside this frozen eight-case index.
+
+#pagebreak()
 = Absolute timing by reduction backend
 
-Values below are warmed full-amplitude times in µs per point. Initialization, compilation and model generation are excluded and recorded separately. All tools use matching pole, helicity/color and stability settings. Cache behaviour and actual rescue usage remain part of the measurement.
+Values below are warmed full-amplitude times in µs per point. Initialization, compilation and model generation are excluded and recorded separately. All tools use matching pole, helicity/color and stability settings. Cache behaviour and actual rescue work remain part of the measurement. Recorded backend/precision histograms identify the final accepted reducer for every timed amplitude; they do not count every internal rescue attempt.
 
 #figure(table-style(table(columns: (1.4fr, .8fr, .8fr, .8fr, .8fr, .8fr),
   inset: (x: 4pt, y: 8pt), stroke: table-stroke, fill: table-fill,
@@ -120,12 +159,38 @@ Values below are warmed full-amplitude times in µs per point. Initialization, c
       }
     }),
   )).flatten(),
-)), caption: [Per-backend timing observations. Missing measurements are not represented as zero.]))
+)), caption: [Per-backend timing observations. Missing measurements are not represented as zero.])
 
 #if d.at("ratio_figure", default: none) != none {
   figure(image(d.ratio_figure, width: 100%),
     caption: [Paired candidate/baseline ratios and 95% intervals; the acceptance limit is 1.05.])
 }
+
+#pagebreak()
+= Initialization and accepted precision
+
+Each cell gives the first-amplitude initialization plus complete-stream warmup time in seconds, followed by the fraction of timed amplitudes finally accepted in QP. Process startup and parameter-card loading are outside the cold interval. A DP-only label refers to accepted amplitudes; it does not assert that no unsuccessful internal attempt occurred. The warmed timings on the previous page include all rescue work.
+
+#figure(table-style(table(columns: (1.4fr, .8fr, .8fr, .8fr, .8fr, .8fr),
+  inset: (x: 4pt, y: 8pt), stroke: table-stroke, fill: table-fill,
+  table.header([Process], ..ids.map(id => [#tool-name(id)])),
+  ..d.cases.map(c => (
+    [#text(8.6pt, font: "Libertinus Serif")[#process-label(c)]],
+    ..ids.map(id => {
+      let t = get-timing(c,id)
+      if t == none { [—] } else {
+        let cold = t.at("initialization_and_warmup_seconds", default: none)
+        let usage = t.at("actual_backend_precision_counts", default: (:))
+        let total = usage.values().fold(0, (a,b) => a+b)
+        let qp = usage.pairs().filter(p => p.at(0).ends-with(":QP")).fold(0, (a,p) => a+p.at(1))
+        [#if cold == none { [—] } else { [#number(cold) s] }#linebreak()
+         #if total > 0 {
+           text(7pt, fill: ink2)[#if qp == 0 { [DP only] } else { [QP #fixed(100*qp/total,1)%] }]
+         }]
+      }
+    }),
+  )).flatten(),
+)), caption: [Cold intervals and final accepted precision. Exact backend/precision counts and point-level results accompany the raw observations.])
 
 #pagebreak()
 = Methods and qualification
@@ -134,7 +199,18 @@ Values below are warmed full-amplitude times in µs per point. Initialization, c
 
 The main matrix contains QCD and electroweak corrections at every multiplicity from 2→1 through 2→4, using #raw("loop_sm") and #raw("loop_qcd_qed_sm_Gmu"). Each main case declares 100 deterministic points. On-shell 2→1 points vary their boost at the physical invariant; higher multiplicities use 1 TeV. Mixed QCD/QED and loop-induced cases supplement the main matrix. Threshold, soft/collinear, small-Gram and complex-mass cases are separate stress controls.
 
-Performance acceptance uses at least seven alternating paired repetitions, with each timed batch calibrated to approximately one second. The starting revision and candidate share their compiler, library installations, model/cards, point order and physical settings. Timings use a single allowed CPU and no simultaneous compilation. The upper 95% paired ratio bound must be ≤1.05 separately for every main process. Averages cannot hide a failing row. A FULL−SKIP quantity, when reported in supporting data, is an *estimated reduction stage* rather than a pure tensor-kernel stopwatch.
+Performance acceptance uses at least seven alternating paired repetitions. The minimum batch target is one second; calibration aims for two seconds to accommodate shared-host speed variation. Actual durations are retained, and every batch must reach 95% of the minimum. The starting revision and candidate share their compiler, library installations, model/cards, point order and physical settings. Timing begins after the campaign's builds finish and uses one allowed CPU. The upper 95% paired ratio bound must be ≤1.05 separately for every main process. Averages cannot hide a failing row. A FULL−SKIP quantity, when reported in supporting data, is an *estimated reduction stage* rather than a pure tensor-kernel stopwatch.
+
+All timing attempts are retained. Only an objectively short series with passing numerical checks can be retried within the same candidate campaign. A qualified runtime failure remains authoritative; a later favorable repetition cannot erase it. Source optimizations require a new candidate identity and campaign.
+
+#let chains = d.at("reduction_chains", default: (:))
+#if chains.at("baseline", default: none) != none and chains.at("candidate", default: none) != none {
+  [The materialized baseline chain is #raw(chains.baseline.map(str).join("|")); the TIRust-first chain is #raw(chains.candidate.map(str).join("|")). Both run the same independent MadLoop stability policy.]
+}
+
+The recorded cold interval includes first-amplitude initialization and warming the complete saved point stream; it excludes process startup and parameter-card loading. Numerical objects and linked archives are bound to the retained compiler recipes and hashes. The benchmark runs on a shared host; host-load observations accompany timing pairs, and this study does not claim exclusive use of the machine.
+
+The common benchmark card sets #raw("MLStabThres=1e-6") for both revisions and all reducers, with independent stability checks enabled. This policy was frozen before acceptance measurements after a native stress audit exposed correlated errors below the original threshold. Production retains its #raw("1e-3") default. The tighter estimator does not replace the independent numerical truth gate or guarantee detection of every error.
 
 == Interface, poles and caches
 
@@ -144,12 +220,22 @@ MadLoop selects TIRust explicitly as #raw("MLReductionLib=9"). A Fortran adapter
 
 #let quals = d.at("qualification", default: ())
 #if quals.len() > 0 {
-  table-style(table(columns: (2fr, .7fr, 2fr), inset: 5pt, stroke: table-stroke, fill: table-fill,
+  table-style(table(columns: (1.3fr, .6fr, 3fr), inset: 5pt, stroke: table-stroke, fill: table-fill,
     table.header([Qualification], [Status], [Evidence]),
     ..quals.map(q => ([#q.name], [#cell-status(q.status)], [#q.evidence])).flatten()))
 } else {
   note(fill: warm)[Detailed interface, cache, QP, poles-only, and relocation qualification records have not yet been incorporated in this data release. Their absence is not a passing result.]
 }
+
+== Measured Fortran change
+
+The selected optimization computes ordered momentum prefixes once, retaining the original zero seed and addition order. For six propagators it reduces prefix additions from 60 to 20. At each of #raw("-O0") and #raw("-O3"), 481,536 comparisons passed bitwise output and IEEE-exception checks across DP, QP and four rounding modes. Isolated six-propagator kernel median paired ratios were 0.443/0.347 (DP/QP, #raw("-O0")) and 0.703/0.356 (#raw("-O3")). These are shared-host microbenchmarks, not physical-amplitude speedups. Full-wrapper measurements were smaller and less consistent. Raw observations and source are retained in #raw("experiments/fortran-prefix/").
+
+== Retained numerical limitations
+
+The bridge's 66 DP/QP stress evaluations include 14 explicit DP refusals and one served DP tensor coefficient above the diagnostic #raw("3e-6") criterion. All 33 QP evaluations pass. For the failing massive rank-five box, native MadLoop reversal checks at the default #raw("MLStabThres=1e-3") can accept correlated DP errors. At #raw("1e-6"), the actual production rescue block with real tensor callbacks switches to QP and resolves the discrepancy below #raw("1.2e-15"). The fixture, failing components, native check values and QP adjudication remain under #raw("qualification/tirust-bridge/stability-audit/"). This isolated control-flow test omits physical helicity/filter initialization and does not replace matrix-element comparisons.
+
+Pole-only tests prove that finite evaluators and finite tensor arithmetic are skipped. This does not imply every scalar topology is faster: illustrative warm scalar measurements include slower simple massless triangles and boxes, alongside faster massive and soft examples. A completely collapsed massless scalar box returns an explicit error. No unsupported request is counted as accelerated execution.
 
 == Reproduction and provenance
 

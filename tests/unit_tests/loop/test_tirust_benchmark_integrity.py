@@ -1,5 +1,6 @@
 """Fail closed on stale physics inputs and incomplete worker shutdown."""
 from contextlib import ExitStack
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools"))
 import tirust_benchmark as benchmark
 import tirust_benchmark_worker as protocol
+import tirust_benchmark_compiler as compiler
 
 
 class TestTIRustBenchmarkIntegrity(unittest.TestCase):
@@ -26,6 +28,14 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
                        "minimum_batch_seconds": 1., "relative_tolerance": 3e-6,
                        "performance_upper_ratio": 1.05, "backends": [1, 6, 7, 8, 9]}
         self.outputs, self.directories = {}, {}
+        self.dependencies = {"archives": {}, "metadata": {}}
+        self.flags = {"schema": compiler.SCHEMA, "environment": {}, "scopes": {
+            "process": {"recipes": {"loop.f": {"compiler": [{"sha256": "compiler", "version": "test"}],
+                                                    "flags": ["-O2"]}}}}}
+        template = ROOT / "tools/tirust_benchmark_worker.f"
+        render_parameters = {"prefix": "TEST_", "nexternal": 3, "nborn": 0}
+        driver_sha256 = hashlib.sha256(benchmark.render_worker(template.read_text(), render_parameters).encode()).hexdigest()
+        self.sources = {"SubProcesses/P0_example/check_sa.f": driver_sha256}
         for source in ("baseline", "candidate"):
             output = self.directory / source
             subprocess = output / "SubProcesses/P0_example"
@@ -40,8 +50,12 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
                 "source_identity": {"revision": benchmark.BASELINE_REVISION, "files_sha256": "source"},
                 "parameter_card_sha256": benchmark.digest(card)})
             benchmark.dump(output / "compilation.json", {
-                "executable_sha256": benchmark.digest(subprocess / "check"), "sources": {},
+                "executable_sha256": benchmark.digest(subprocess / "check"), "sources": self.sources,
                 "masses": [0., 0., 91.], "compiler": "GNU Fortran test compiler",
+                "link_inputs_before": self.dependencies, "link_inputs_after": self.dependencies,
+                "effective_compiler_flags": self.flags,
+                "numerical_build_from_sources": True, "worker_template_sha256": benchmark.digest(template),
+                "worker_render_parameters": render_parameters, "driver_sha256": driver_sha256,
                 "settings": {"Source/make_opts": "FC=gfortran\n"}})
         self.points = self.report / "points/example.dat"
         self.points.parent.mkdir(parents=True)
@@ -54,13 +68,20 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
                 ("REPORT", self.report),
                 ("output_dir", lambda source, case: self.outputs[source]),
                 ("subprocess_dir", lambda source, case: self.directories[source]),
-                ("generated_sources", lambda output: {}),
+                ("generated_sources", lambda output: self.sources),
                 ("configure", lambda source, case, chain, config: {"mlreductionlib": "|".join(map(str, chain))}),
-                ("runtime_identity", lambda directory: {"libraries": {"/lib/common.so": "same"}}),
+                ("dependency_inputs", lambda directory: self.dependencies),
+                ("runtime_identity", lambda directory: {"libraries": {"/lib/common.so": "same"}, **self.dependencies}),
                 ("machine_identity", lambda cpu: {"selected_cpu": cpu})):
             item = patch.object(benchmark, target, value)
             item.start()
             self.addCleanup(item.stop)
+        item = patch.object(compiler, "capture_effective_flags", lambda directory, env=None: self.flags)
+        item.start()
+        self.addCleanup(item.stop)
+        item = patch.object(benchmark.fcntl, "flock")
+        item.start()
+        self.addCleanup(item.stop)
 
     def launch(self):
         report = self.report / "test-start"
@@ -76,12 +97,45 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
         self.assertEqual(result["resolved_parameter_card"],
                          str(self.outputs["candidate"] / "Cards/param_card.dat"))
 
+    def test_fixed_precision_modes_do_not_enter_automatic_worker(self):
+        for settings in ({"ctmoderun": 4, "ctmodeinit": 1},
+                         {"ctmoderun": -1, "ctmodeinit": 4}):
+            with self.subTest(settings=settings), patch.object(benchmark, "configure", return_value=settings):
+                with patch.object(protocol, "Worker") as child:
+                    with self.assertRaisesRegex(ValueError, "requires CTMode"):
+                        self.launch()
+                    child.assert_not_called()
+        benchmark.validate_worker_modes({"ctmoderun": -1, "ctmodeinit": 1})
+
+    def test_initialization_failure_retains_raw_point_and_status(self):
+        raw = {"warmup.dat": "2 39 440 1.0 2.0 3.0 4.0\n"}
+        with patch.object(protocol, "Worker", side_effect=protocol.MeasurementError("warmup-status 39 440", raw)):
+            with ExitStack() as stack, self.assertRaises(protocol.MeasurementError):
+                benchmark.start_worker(stack, "candidate", self.case, [9], self.config, 0, self.report)
+        path = self.report / "candidate-initialization"
+        self.assertEqual((path / "warmup.dat").read_text(), raw["warmup.dat"])
+        self.assertEqual(json.loads((path / "failure.json").read_text())["error_class"], "MeasurementError")
+
     def test_local_parameter_card_shadow_is_rejected_before_worker(self):
         (self.directories["candidate"] / "param_card.dat").write_text("different physics\n")
         with patch.object(protocol, "Worker") as child:
             with self.assertRaisesRegex(RuntimeError, "Fortran resolves"):
                 self.launch()
             child.assert_not_called()
+
+    def test_changed_static_archive_cannot_describe_an_old_executable(self):
+        with patch.object(benchmark, "dependency_inputs", return_value={"archives": {"/lib/backend.a": "new"},
+                                                                      "metadata": {}}):
+            with self.assertRaisesRegex(RuntimeError, "link-time evidence"):
+                self.launch()
+
+    def test_missing_link_evidence_cannot_qualify(self):
+        path = self.outputs["candidate"] / "compilation.json"
+        record = json.loads(path.read_text())
+        del record["link_inputs_after"]
+        benchmark.dump(path, record)
+        with self.assertRaisesRegex(RuntimeError, "link-time evidence"):
+            self.launch()
 
     def test_modified_canonical_card_and_stale_mass_points_are_rejected(self):
         card = self.outputs["candidate"] / "Cards/param_card.dat"
@@ -113,7 +167,7 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
             checksum = "different" if library_mismatch and source == "candidate" else "same"
             benchmark.dump(report / (source + "-inputs.json"), {
                 "points_sha256": "different" if point_mismatch and source == "candidate" else "same",
-                "compilation": compilation, "runtime": {"libraries": {"/lib/common.so": checksum}}})
+                "compilation": compilation, "runtime": {"libraries": {"/lib/common.so": checksum}, **self.dependencies}})
             return child, {"mlreductionlib": chain, "ctmoderun": -1}
         return start
 
@@ -152,6 +206,44 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
                     benchmark.pair(self.case, [1], [1], self.config, 0, label)
                 start.assert_not_called()
 
+    def test_retry_selection_preserves_prior_raw_evidence(self):
+        base = self.report / "runs/example"
+        original = base / "tirust-first"
+        original.mkdir(parents=True)
+        raw = original / "retained-raw.txt"
+        raw.write_text("original ineligible timing evidence\n")
+        checksum = benchmark.digest(raw)
+        benchmark.dump(original / "summary.json", {"acceptance_eligible": False,
+            "minimum_batch_duration_met": False, "numerical_pass": True})
+        retry = base / "tirust-first-attempt-2"
+        benchmark.prepare_retry(base, "tirust-first", retry, "Repeat with full-duration calibration")
+        retry.mkdir()
+        benchmark.select_attempt(base, "tirust-first", retry, "Repeat with full-duration calibration")
+        self.assertEqual(benchmark.selected_run_directory(base, "tirust-first"), retry)
+        self.assertEqual(benchmark.digest(raw), checksum)
+        history = json.loads((base / "attempt-selection-history.jsonl").read_text())
+        self.assertEqual(history["previous_directory"], "tirust-first")
+        self.assertEqual(history["directory"], "tirust-first-attempt-2")
+
+    def test_qualified_runtime_failure_cannot_be_replaced_by_a_retry(self):
+        base = self.report / "runs/example"
+        benchmark.dump(base / "tirust-first/summary.json", {"acceptance_eligible": True,
+            "minimum_batch_duration_met": True, "numerical_pass": True, "passed": False})
+        with self.assertRaisesRegex(ValueError, "qualified result is authoritative"):
+            benchmark.prepare_retry(base, "tirust-first", base / "tirust-first-attempt-2", "Try again")
+
+    def test_retry_cannot_be_selected_without_a_prior_registered_reason(self):
+        base = self.report / "runs/example"
+        with self.assertRaisesRegex(ValueError, "registered before measurement"):
+            benchmark.select_attempt(base, "tirust-first", base / "tirust-first-attempt-2", "Try again")
+
+    def test_retry_selection_rejects_paths_outside_the_process(self):
+        base = self.report / "runs/example"
+        benchmark.dump(base / "selected-attempts.json", {
+            "tirust-first": {"directory": "../different-process/tirust-first"}})
+        with self.assertRaisesRegex(ValueError, "Invalid selected attempt"):
+            benchmark.selected_run_directory(base, "tirust-first")
+
     def test_point_or_runtime_mismatch_is_rejected_before_observation(self):
         for field in ("point_mismatch", "library_mismatch"):
             with self.subTest(field=field), \
@@ -165,7 +257,7 @@ class TestTIRustBenchmarkIntegrity(unittest.TestCase):
         # Exercise actual start_worker, observe, pair and retained-data parser
         # together; only the numerical executable is a deterministic fake.
         class FakeWorker:
-            def __init__(self, command, directory, log, env=None):
+            def __init__(self, command, directory, log, env=None, timeout=3600):
                 self.directory = directory
                 self.code = 219 if "candidate" in directory.parts else 211
 

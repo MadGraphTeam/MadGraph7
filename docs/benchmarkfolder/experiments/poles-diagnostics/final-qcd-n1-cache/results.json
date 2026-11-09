@@ -1,0 +1,3527 @@
+{
+  "fixture": {
+    "mass2": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ],
+    "mu2": 7,
+    "n": 3,
+    "name": "infrared-triangle-r2",
+    "rank": 2,
+    "shifts": [
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        5,
+        0,
+        0,
+        5
+      ],
+      [
+        10,
+        0,
+        0,
+        0
+      ]
+    ]
+  },
+  "passed": true,
+  "results": [
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 1,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 1,
+        "is_reference": true,
+        "mode": 0,
+        "name": "reference-ct1-mode0-finite1",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 1,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 2,
+        "is_reference": true,
+        "mode": 0,
+        "name": "reference-ct1-mode0-finite0",
+        "reference": 2
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 1,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 3,
+        "is_reference": true,
+        "mode": 1,
+        "name": "reference-ct1-mode1-finite1",
+        "reference": 3
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 1,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 4,
+        "is_reference": true,
+        "mode": 1,
+        "name": "reference-ct1-mode1-finite0",
+        "reference": 4
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 1,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 5,
+        "is_reference": true,
+        "mode": 2,
+        "name": "reference-ct1-mode2-finite1",
+        "reference": 5
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 1,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 6,
+        "is_reference": true,
+        "mode": 2,
+        "name": "reference-ct1-mode2-finite0",
+        "reference": 6
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 4,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 7,
+        "is_reference": true,
+        "mode": 0,
+        "name": "reference-ct4-mode0-finite1",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 4,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 8,
+        "is_reference": true,
+        "mode": 0,
+        "name": "reference-ct4-mode0-finite0",
+        "reference": 8
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 4,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 9,
+        "is_reference": true,
+        "mode": 1,
+        "name": "reference-ct4-mode1-finite1",
+        "reference": 9
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 4,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 10,
+        "is_reference": true,
+        "mode": 1,
+        "name": "reference-ct4-mode1-finite0",
+        "reference": 10
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 4,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 11,
+        "is_reference": true,
+        "mode": 2,
+        "name": "reference-ct4-mode2-finite1",
+        "reference": 11
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 4,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 12,
+        "is_reference": true,
+        "mode": 2,
+        "name": "reference-ct4-mode2-finite0",
+        "reference": 12
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 2,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 13,
+        "is_reference": true,
+        "mode": 0,
+        "name": "reference-ct2-finite1",
+        "reference": 13
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 2,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 14,
+        "is_reference": true,
+        "mode": 0,
+        "name": "reference-ct2-finite0",
+        "reference": 14
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 5,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 15,
+        "is_reference": true,
+        "mode": 0,
+        "name": "reference-ct5-finite1",
+        "reference": 15
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 1,
+        "ctmode": 5,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 16,
+        "is_reference": true,
+        "mode": 0,
+        "name": "reference-ct5-finite0",
+        "reference": 16
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 1,
+        "ctmode": 1,
+        "expectation": "dp_miss",
+        "finite": 1,
+        "id": 17,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-full-cold",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "dp_hit",
+        "finite": 1,
+        "id": 18,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-full-hit",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        10,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "dp_miss",
+        "finite": 0,
+        "id": 19,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-poles-cold",
+        "reference": 2
+      },
+      "aggregate_after": [
+        0,
+        0,
+        13,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        10,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "dp_hit",
+        "finite": 0,
+        "id": 20,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-poles-hit",
+        "reference": 2
+      },
+      "aggregate_after": [
+        0,
+        0,
+        20,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        13,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "values",
+        "finite": 0,
+        "id": 21,
+        "is_reference": false,
+        "mode": 1,
+        "name": "dp-poles-mode1",
+        "reference": 4
+      },
+      "aggregate_after": [
+        0,
+        0,
+        27,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        20,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "values",
+        "finite": 1,
+        "id": 22,
+        "is_reference": false,
+        "mode": 1,
+        "name": "dp-full-mode1",
+        "reference": 3
+      },
+      "aggregate_after": [
+        0,
+        0,
+        34,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        27,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "values",
+        "finite": 0,
+        "id": 23,
+        "is_reference": false,
+        "mode": 2,
+        "name": "dp-poles-mode2",
+        "reference": 6
+      },
+      "aggregate_after": [
+        0,
+        0,
+        41,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        34,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "values",
+        "finite": 1,
+        "id": 24,
+        "is_reference": false,
+        "mode": 2,
+        "name": "dp-full-mode2",
+        "reference": 5
+      },
+      "aggregate_after": [
+        0,
+        0,
+        48,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        41,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "dp_hit",
+        "finite": 1,
+        "id": 25,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-full-after-poles",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        48,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 2,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 26,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-check-pass-finite1",
+        "reference": 13
+      },
+      "aggregate_after": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 2,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 27,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-check-pass-finite0",
+        "reference": 14
+      },
+      "aggregate_after": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 28,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-cache-disabled",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 2,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 29,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-topology-excluded",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "dp_hit",
+        "finite": 1,
+        "id": 30,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-cache-survives-bypass",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        55,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_miss",
+        "finite": 1,
+        "id": 31,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-mode0-finite1-cold",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        0,
+        1,
+        9,
+        11184,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        0,
+        0,
+        8,
+        1440,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        1,
+        1,
+        9744,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_hit",
+        "finite": 1,
+        "id": 32,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-mode0-finite1-hit",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        1,
+        1,
+        9,
+        11184,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        0,
+        1,
+        9,
+        11184,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        1,
+        1,
+        1,
+        9744,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        1,
+        1,
+        9744,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_miss",
+        "finite": 1,
+        "id": 33,
+        "is_reference": false,
+        "mode": 1,
+        "name": "qp-mode1-finite1-cold",
+        "reference": 9
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        1,
+        2,
+        10,
+        20928,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        1,
+        1,
+        9,
+        11184,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        1,
+        2,
+        2,
+        19488,
+        0,
+        0
+      ],
+      "qp_before": [
+        1,
+        1,
+        1,
+        9744,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_hit",
+        "finite": 1,
+        "id": 34,
+        "is_reference": false,
+        "mode": 1,
+        "name": "qp-mode1-finite1-hit",
+        "reference": 9
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        2,
+        2,
+        10,
+        20928,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        1,
+        2,
+        10,
+        20928,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        2,
+        2,
+        2,
+        19488,
+        0,
+        0
+      ],
+      "qp_before": [
+        1,
+        2,
+        2,
+        19488,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_miss",
+        "finite": 1,
+        "id": 35,
+        "is_reference": false,
+        "mode": 2,
+        "name": "qp-mode2-finite1-cold",
+        "reference": 11
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        2,
+        3,
+        11,
+        30672,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        2,
+        2,
+        10,
+        20928,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        2,
+        3,
+        3,
+        29232,
+        0,
+        0
+      ],
+      "qp_before": [
+        2,
+        2,
+        2,
+        19488,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_hit",
+        "finite": 1,
+        "id": 36,
+        "is_reference": false,
+        "mode": 2,
+        "name": "qp-mode2-finite1-hit",
+        "reference": 11
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        3,
+        3,
+        11,
+        30672,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        2,
+        3,
+        11,
+        30672,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        3,
+        3,
+        3,
+        29232,
+        0,
+        0
+      ],
+      "qp_before": [
+        2,
+        3,
+        3,
+        29232,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_miss",
+        "finite": 0,
+        "id": 37,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-mode0-finite0-cold",
+        "reference": 8
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        3,
+        4,
+        12,
+        40416,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        3,
+        3,
+        11,
+        30672,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        3,
+        4,
+        4,
+        38976,
+        0,
+        0
+      ],
+      "qp_before": [
+        3,
+        3,
+        3,
+        29232,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_hit",
+        "finite": 0,
+        "id": 38,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-mode0-finite0-hit",
+        "reference": 8
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        4,
+        4,
+        12,
+        40416,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        3,
+        4,
+        12,
+        40416,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        4,
+        4,
+        4,
+        38976,
+        0,
+        0
+      ],
+      "qp_before": [
+        3,
+        4,
+        4,
+        38976,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_miss",
+        "finite": 0,
+        "id": 39,
+        "is_reference": false,
+        "mode": 1,
+        "name": "qp-mode1-finite0-cold",
+        "reference": 10
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        4,
+        5,
+        13,
+        50160,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        4,
+        4,
+        12,
+        40416,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        4,
+        5,
+        5,
+        48720,
+        0,
+        0
+      ],
+      "qp_before": [
+        4,
+        4,
+        4,
+        38976,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_hit",
+        "finite": 0,
+        "id": 40,
+        "is_reference": false,
+        "mode": 1,
+        "name": "qp-mode1-finite0-hit",
+        "reference": 10
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        5,
+        5,
+        13,
+        50160,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        4,
+        5,
+        13,
+        50160,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        5,
+        5,
+        5,
+        48720,
+        0,
+        0
+      ],
+      "qp_before": [
+        4,
+        5,
+        5,
+        48720,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_miss",
+        "finite": 0,
+        "id": 41,
+        "is_reference": false,
+        "mode": 2,
+        "name": "qp-mode2-finite0-cold",
+        "reference": 12
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        5,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        5,
+        5,
+        13,
+        50160,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        5,
+        6,
+        6,
+        58464,
+        0,
+        0
+      ],
+      "qp_before": [
+        5,
+        5,
+        5,
+        48720,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_hit",
+        "finite": 0,
+        "id": 42,
+        "is_reference": false,
+        "mode": 2,
+        "name": "qp-mode2-finite0-hit",
+        "reference": 12
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        6,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        5,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        6,
+        6,
+        6,
+        58464,
+        0,
+        0
+      ],
+      "qp_before": [
+        5,
+        6,
+        6,
+        58464,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_hit",
+        "finite": 1,
+        "id": 43,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-full-after-poles",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        62,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        6,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        0
+      ],
+      "qp_before": [
+        6,
+        6,
+        6,
+        58464,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "dp_hit",
+        "finite": 1,
+        "id": 44,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-cache-survives-qp",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        62,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        0
+      ],
+      "qp_before": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 5,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 45,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-check-pass-finite1",
+        "reference": 15
+      },
+      "aggregate_after": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        1
+      ],
+      "qp_before": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 5,
+        "expectation": "bypass",
+        "finite": 0,
+        "id": 46,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-check-pass-finite0",
+        "reference": 16
+      },
+      "aggregate_after": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        2
+      ],
+      "qp_before": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        1
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 0,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 47,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-cache-disabled",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        3
+      ],
+      "qp_before": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        2
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": 2,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "bypass",
+        "finite": 1,
+        "id": 48,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-topology-excluded",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        4
+      ],
+      "qp_before": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        3
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_hit",
+        "finite": 1,
+        "id": 49,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-cache-survives-bypass",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        69,
+        8,
+        8,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        69,
+        8,
+        7,
+        6,
+        14,
+        59904,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        8,
+        6,
+        6,
+        58464,
+        0,
+        4
+      ],
+      "qp_before": [
+        7,
+        6,
+        6,
+        58464,
+        0,
+        4
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 64,
+        "cache": -1,
+        "control": 3,
+        "ctmode": 4,
+        "expectation": "qp_refused",
+        "finite": 1,
+        "id": 50,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-budget64-refusal",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        1,
+        0,
+        0,
+        1,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 64,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_refused",
+        "finite": 1,
+        "id": 51,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-budget64-repeat-refusal",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        2
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        2,
+        0,
+        0,
+        2,
+        0
+      ],
+      "qp_before": [
+        0,
+        1,
+        0,
+        0,
+        1,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 0,
+        "cache": -1,
+        "control": 3,
+        "ctmode": 1,
+        "expectation": "dp_refused",
+        "finite": 1,
+        "id": 52,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-budget0-refusal",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        7,
+        0,
+        0,
+        0,
+        0,
+        7
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 0,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 1,
+        "expectation": "dp_refused",
+        "finite": 0,
+        "id": 53,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-poles-budget0-refusal",
+        "reference": 2
+      },
+      "aggregate_after": [
+        0,
+        0,
+        0,
+        14,
+        0,
+        0,
+        0,
+        0,
+        14
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        7,
+        0,
+        0,
+        0,
+        0,
+        7
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 3,
+        "ctmode": 1,
+        "expectation": "dp_miss",
+        "finite": 1,
+        "id": 54,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-budget-restored",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_miss",
+        "finite": 1,
+        "id": 55,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-budget-restored",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        1,
+        5,
+        10464,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        1,
+        1,
+        9744,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 1,
+        "ctmode": 1,
+        "expectation": "dp_miss",
+        "finite": 1,
+        "id": 56,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-cache-cleared",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_miss",
+        "finite": 1,
+        "id": 57,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-after-clear",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        1,
+        5,
+        10464,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "failures": [],
+      "generation_after": 1,
+      "generation_before": 1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        1,
+        1,
+        9744,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 2,
+        "ctmode": 1,
+        "expectation": "dp_miss",
+        "finite": 1,
+        "id": 58,
+        "is_reference": false,
+        "mode": 0,
+        "name": "dp-after-finalize",
+        "reference": 1
+      },
+      "aggregate_after": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "failures": [],
+      "generation_after": 2,
+      "generation_before": -1,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-10"
+    },
+    {
+      "action": {
+        "budget": 268435456,
+        "cache": -1,
+        "control": 0,
+        "ctmode": 4,
+        "expectation": "qp_miss",
+        "finite": 1,
+        "id": 59,
+        "is_reference": false,
+        "mode": 0,
+        "name": "qp-after-finalize",
+        "reference": 7
+      },
+      "aggregate_after": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        1,
+        5,
+        10464,
+        0
+      ],
+      "aggregate_before": [
+        0,
+        0,
+        3,
+        4,
+        0,
+        0,
+        4,
+        720,
+        0
+      ],
+      "failures": [],
+      "generation_after": 2,
+      "generation_before": 2,
+      "maximum_scaled_residual": "0",
+      "qp_after": [
+        0,
+        1,
+        1,
+        9744,
+        0,
+        0
+      ],
+      "qp_before": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "status": "passed",
+      "threshold": "1E-24"
+    }
+  ],
+  "scope": "correctness diagnostics only; no performance timing"
+}

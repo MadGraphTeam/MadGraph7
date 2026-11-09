@@ -120,6 +120,30 @@ class TestPairedStatistics(unittest.TestCase):
 
 
 class TestController(unittest.TestCase):
+    def test_constructor_protocol_failure_preserves_new_and_previous_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / "timing.dat").write_text("previous measurement\n")
+            script = directory / "fake.py"
+            script.write_text('''import pathlib, sys
+fifo = open(sys.argv[-1], 'w', buffering=1)
+pathlib.Path('warmup.dat').write_text('current startup evidence\\n')
+print('INVALID READY', file=fifo)
+sys.stdin.read()
+''')
+            with self.assertRaises(worker.ProtocolError) as caught:
+                worker.Worker([sys.executable, script], directory,
+                              directory / "worker.log", timeout=5.)
+            error = caught.exception
+            self.assertEqual(error.raw_outputs, {"warmup.dat": "current startup evidence\n"})
+            self.assertEqual((error.raw_directory / "warmup.dat").read_text(),
+                             "current startup evidence\n")
+            self.assertEqual((error.raw_directory.parent / "previous-outputs/timing.dat").read_text(),
+                             "previous measurement\n")
+            metadata = json.loads((error.raw_directory / "startup.json").read_text())
+            self.assertEqual(metadata["error"]["type"], "ProtocolError")
+            self.assertFalse((directory / "worker-protocol.fifo").exists())
+
     def test_protocol_failure_archives_evidence_and_reaps_worker(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -180,7 +204,8 @@ subroutine STUB_FORCE_STABILITY_CHECK(force)
 end subroutine
 subroutine STUB_SLOOPMATRIX_THRES(p,ans,threshold,acc,code)
  real*8 p(0:3,3),ans(0:3,0:2),threshold,acc(0:1)
- integer code,j
+ integer code,j,warm_status,warm_repeats
+ character*32 configured_status
  integer, save :: calls=0
  calls=calls+1
  if (threshold.ne.-1d0) stop 92
@@ -190,6 +215,12 @@ subroutine STUB_SLOOPMATRIX_THRES(p,ans,threshold,acc,code)
  acc=1d-10
  code=219
  if (p(3,1).lt.0d0) code=323
+ call get_environment_variable('BENCHMARK_STUB_WARM_STATUS',configured_status)
+ if (len_trim(configured_status).gt.0) then
+   read(configured_status,*) warm_status
+   warm_repeats=2
+   if(calls.gt.1.and.calls.le.1+warm_repeats) code=warm_status
+ endif
  if(calls.eq.1) code=109
 end subroutine
 subroutine STUB_EXIT_MADLOOP()
@@ -221,6 +252,46 @@ end subroutine
                         self.assertEqual(worker.raw_outputs(child.last_raw_directory),
                                          worker.raw_outputs(directory))
                 self.assertEqual(child.process.returncode, 0)
+            for status in (139, 239):
+                with self.subTest(initialization_status=status):
+                    env = dict(os.environ, BENCHMARK_STUB_WARM_STATUS=str(status))
+                    with worker.Worker([str(directory / "check"), points], directory,
+                                       directory / f"warm-{status}.log", env=env, timeout=5.) as child:
+                        trace = self.trace_rows(directory)
+                        self.assertEqual([int(row[3]) for row in trace[::3]],
+                                         [109, status, status, 219, 323])
+                        self.assertEqual([int(row[1]) for row in trace[::3]], [1, 1, 2, 1, 2])
+                        self.assertEqual(worker.raw_outputs(child.last_raw_directory),
+                                         worker.raw_outputs(directory))
+                        child.run(1)
+                        self.assertEqual(worker.parse_outputs(directory, 9, 2, 1)["status_counts"],
+                                         {"219": 1, "323": 1})
+            for status in (249, 230, 130, 410, 213, 109):
+                with self.subTest(failing_warmup_status=status):
+                    env = dict(os.environ, BENCHMARK_STUB_WARM_STATUS=str(status))
+                    with self.assertRaises(worker.MeasurementError) as caught:
+                        worker.Worker([str(directory / "check"), points], directory,
+                                      directory / f"warm-{status}.log", env=env, timeout=5.)
+                    error = caught.exception
+                    self.assertNotIsInstance(error, worker.ProtocolError)
+                    self.assertIn(f"point 1, status {status}", str(error))
+                    trace = self.trace_rows(directory)
+                    self.assertEqual(len(trace), 6)
+                    self.assertEqual([int(row[3]) for row in trace[::3]], [109, status])
+                    self.assertEqual([float(value) for value in trace[-3][4:]],
+                                     [11., 12., 13., 14., 1e-10])
+                    self.assertEqual([float(value) for value in trace[-1][4:]],
+                                     [31., 0., 0., 0., 1e-10])
+                    self.assertEqual((error.raw_directory / "warmup.dat").read_text(),
+                                     error.raw_outputs["warmup.dat"])
+                    metadata = json.loads((error.raw_directory / "startup.json").read_text())
+                    self.assertEqual(metadata["error"]["type"], "MeasurementError")
+                    self.assertFalse((directory / "worker-protocol.fifo").exists())
+
+    @staticmethod
+    def trace_rows(directory):
+        return [line.split() for line in (directory / "warmup.dat").read_text().splitlines()
+                if not line.startswith("#")]
 
 
 if __name__ == "__main__":

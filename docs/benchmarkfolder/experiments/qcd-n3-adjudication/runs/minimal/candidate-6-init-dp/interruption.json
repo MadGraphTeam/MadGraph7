@@ -1,0 +1,6 @@
+{
+  "classification": "Administrative interruption of incompatible fixed-QP worker protocol; not a numerical accuracy failure",
+  "reason": "FORCE_STABILITY_CHECK(TRUE) causes SLOOPMATRIX_THRES to relabel fixed-mode T2 as T4; persistent worker warming cannot reach T1/2.",
+  "utc": "2026-11-09T20:48:16.102621+00:00",
+  "shutdown": "Explicit AUDIT_ABORT through own isolated FIFO invokes Worker process-group cleanup."
+}

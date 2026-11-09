@@ -1,0 +1,20 @@
+{
+  "portable_evidence_sha256": {
+    "README.md": "59e08463932fded272367fbbeaac4a3bd7b89c22079c721fac820d3f011f3085",
+    "build-output.txt": "1eaf738320787dc96d32372e3e534b82c5066f951b0b94915177e6831a19c5bf",
+    "cache-values.dat": "80a5ce277ce954556b857adb6025448c0e159e492f560577adec2f0265cd6022",
+    "compilation.json": "613cb1d77f1f9ed274db26efeca486d345ff80021e7784928fe5d3fcec81acb7",
+    "fixtures.dat": "5f2e0d6083a1ddc98186b54bb99eb7c7ea2622c15cd69c5da744a735757a240a",
+    "protocol-sources/test_tirust_benchmark_cache.py": "f368754193b21b2ad64c755a3e662de0b337b9dbcae9c9b1d2b3362016f072c0",
+    "protocol-sources/tirust_benchmark.py": "6f67119e5b3be36406fe9065915fd3e68a090fdf3bcd375416ad3370b9ccdc2d",
+    "protocol-sources/tirust_benchmark_cache.f": "4c9853de7dd92f3d18097ad637c9abae71ab2dca27fd5b40553b37a969d9b75f",
+    "protocol-sources/tirust_benchmark_cache.py": "8fd42c42145db99eb0f7cde2a93c1f97fe6f9bb5a85df6e32e30c7b7c5aa2893",
+    "protocol-sources/tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "results.json": "792e48531b7d87aa5913ad9eac3e82f4328b5179bb735533158766412f44322a",
+    "run-output.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "specification.json": "ca10b1c0d369e419120e91ccd19aed11e93cd4732bd9c5554a318db2d00bee5b",
+    "unit-tests-command.txt": "840155921a76b835f9a04b16030d0e99ca39b01d01e9c7a4a0c2e57ffe22e087",
+    "unit-tests.txt": "74c03fc16fde9a2dfeff03db0ec8f472a5a8dfed04e9e982a912b4b7f64faee3"
+  },
+  "scope": "Generated Fortran adapter cache correctness diagnostic; no performance acceptance"
+}

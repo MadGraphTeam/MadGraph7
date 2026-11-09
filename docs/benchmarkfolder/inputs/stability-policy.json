@@ -1,0 +1,17 @@
+{
+  "parameter": "MLStabThres",
+  "validation_value": 1e-06,
+  "production_default": 0.001,
+  "applies_to": [
+    "baseline",
+    "candidate"
+  ],
+  "scope": "all explicit backends and TIRust-first/default rescue-chain acceptance runs",
+  "reason": "A common strict native stability threshold is frozen before acceptance, following independent tensor and native-estimator audits; independent numerical truth tests remain unchanged.",
+  "truth_tolerance": 3e-06,
+  "ordinary_target": 1e-08,
+  "previous_numerical_pilot": "experiments/numerical/final-release-qcd-n1/original-policy-cases.json",
+  "previous_pilot_performance_eligible": false,
+  "automatic_rescue_dispatch_qualification": "pending independent observation",
+  "resumability": "Acceptance runs bind the complete cases.json SHA-256; runs using another threshold cannot be accepted."
+}
