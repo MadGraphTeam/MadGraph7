@@ -16,7 +16,7 @@
 
 use super::dress::{Carrier, LaneData, cadd, cmul_into};
 use super::kernels::lane_vector_len;
-use super::plan::{Family, Step};
+use super::plan::{Family, KeyColumns, Step};
 use ninjars::fast::tensor_layout::{monomial_index, monomials, ncoeff};
 use symbolica::domains::float::Complex;
 
@@ -115,10 +115,21 @@ pub fn trace_into<T: Carrier, const L: usize>(
     }
 }
 
-/// The closure of one traced object row of a seeded plan into its
-/// observable column `o`: `acc[o][m] += τ[m]` ([`trace_into`]).
-#[inline]
-pub fn close_column<T: Carrier, const L: usize>(
+crate::loop_v2::kernels::dispatched_avx2! {
+    /// The closure of one traced object row of a seeded plan into its
+    /// observable column `o`: `acc[o][m] += τ[m]` ([`trace_into`]), in the
+    /// kernels' vector width up to AVX2 (lit-dress lever C1, `dispatched_avx2`;
+    /// the same additions in every width).
+    pub fn close_column<T: Carrier, const L: usize>(
+        trace: &[T],
+        accumulator: &mut [T],
+        o: usize,
+        rank: usize,
+    ) => close_column_body;
+}
+
+#[inline(always)]
+fn close_column_body<T: Carrier, const L: usize>(
     trace: &[T],
     accumulator: &mut [T],
     o: usize,
@@ -128,25 +139,27 @@ pub fn close_column<T: Carrier, const L: usize>(
     let n_family = ncoeff(rank);
     let target = &mut accumulator[o * n_family * v..][..n_family * v];
     for (t, c) in target.chunks_exact_mut(v).zip(trace.chunks_exact(v)) {
-        cadd::<T, L>(t, c);
+        for (x, y) in t.iter_mut().zip(c) {
+            *x += y;
+        }
     }
 }
 
 /// Close a trace step of a dressed-row plan (route R2, M-LIT LIT-R2) into
 /// an accumulator: per object row `r` (one object column) its trace
 /// `τ_r[m] = Σ_α out[r][α][α][m]`, then for each observable column `o` of
-/// its Born row `born[r]` (`columns[born[r]]`: `(o, w)`, `w` the column's
-/// seed-weight column) `acc[o][m] += u[w] τ_r[m]`, with `u` the amplitude
-/// vector of the step's seed key in the carrier (`(re, im)` per seed-weight
-/// column, the same for every lane). The step's rank is at most the family
-/// rank (checked when the plan loads).
+/// its Born row `born[r]` whose seed-weight column `w` has a non-zero
+/// weight in the amplitude vector `u` of the step's seed key (`columns`,
+/// [`KeyColumns`]) `acc[o][m] += u[w] τ_r[m]`, with `u` in the carrier
+/// (`(re, im)` per seed-weight column, the same for every lane). The step's
+/// rank is at most the family rank (checked when the plan loads).
 #[allow(clippy::too_many_arguments)]
 pub fn trace_rows_into<T: Carrier, const L: usize>(
     step: &Step,
     output: &[T],
     accumulator: &mut [T],
     born: &[u32],
-    columns: &[Vec<(usize, usize)>],
+    columns: &KeyColumns,
     vector: &[(T, T)],
     rank: usize,
     zero: &T,
@@ -162,7 +175,7 @@ pub fn trace_rows_into<T: Carrier, const L: usize>(
         close_row::<T, L>(
             &trace,
             accumulator,
-            &columns[h as usize],
+            columns.row(h as usize),
             vector,
             rank,
             &mut term,
@@ -170,14 +183,33 @@ pub fn trace_rows_into<T: Carrier, const L: usize>(
     }
 }
 
-/// The closure of one traced object row of a dressed-row plan into the
-/// observable columns `(o, w)` of its Born row: `acc[o][m] += u[w] τ[m]`
-/// ([`trace_rows_into`]); `term` is one lane vector of scratch.
-#[inline]
-pub fn close_row<T: Carrier, const L: usize>(
+crate::loop_v2::kernels::dispatched_avx2! {
+    /// The closure of one traced object row of a dressed-row plan into the
+    /// observable columns `(o, w)` of its Born row with a non-zero key
+    /// weight: `acc[o][m] += u[w] τ[m]` ([`trace_rows_into`]); `term` is one
+    /// lane vector of scratch. Runs in the kernels' vector width up to AVX2
+    /// (lit-dress lever C1, `dispatched_avx2`). The columns of an exactly-zero weight are skipped: on
+    /// finite traces their products are exact zeros, which change no
+    /// accumulator (one started at `+0` never holds `-0`), so the values
+    /// are bitwise those of the closure over every column; a non-finite
+    /// trace no longer reaches a column through a zero weight (`0 · ∞`), as
+    /// a column it does not belong to (a lane still fails on its non-finite
+    /// trace through the columns it is closed into).
+    pub fn close_row<T: Carrier, const L: usize>(
+        trace: &[T],
+        accumulator: &mut [T],
+        columns: &[(u32, u32)],
+        vector: &[(T, T)],
+        rank: usize,
+        term: &mut [T],
+    ) => close_row_body;
+}
+
+#[inline(always)]
+fn close_row_body<T: Carrier, const L: usize>(
     trace: &[T],
     accumulator: &mut [T],
-    columns: &[(usize, usize)],
+    columns: &[(u32, u32)],
     vector: &[(T, T)],
     rank: usize,
     term: &mut [T],
@@ -185,16 +217,18 @@ pub fn close_row<T: Carrier, const L: usize>(
     let v = lane_vector_len(L);
     let n_family = ncoeff(rank);
     for &(o, w) in columns {
-        let (re, im) = &vector[w];
-        let target = &mut accumulator[o * n_family * v..][..n_family * v];
+        let (re, im) = &vector[w as usize];
+        let target = &mut accumulator[o as usize * n_family * v..][..n_family * v];
         for (t, c) in target.chunks_exact_mut(v).zip(trace.chunks_exact(v)) {
             let (c_re, c_im) = c.split_at(L);
-            let (term_re, term_im) = term.split_at_mut(L);
+            let (term_re, term_im) = term[..2 * L].split_at_mut(L);
             for l in 0..L {
                 term_re[l] = re.clone() * &c_re[l] - im.clone() * &c_im[l];
                 term_im[l] = re.clone() * &c_im[l] + im.clone() * &c_re[l];
             }
-            cadd::<T, L>(t, term);
+            for (x, y) in t.iter_mut().zip(term.iter()) {
+                *x += y;
+            }
         }
     }
 }
@@ -276,7 +310,127 @@ pub fn substitute<T: Carrier, const L: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use symbolica::domains::float::DoubleFloat;
     use symbolica::domains::rational::Rational;
+
+    /// The closure of one traced row over every column of its Born row
+    /// (before lit-dress lever C1), and over the key's non-zero columns
+    /// ([`KeyColumns`], [`close_row`]), into the same accumulator.
+    fn closed_both_ways<T: Carrier, const L: usize>(
+        trace: &[Rational],
+        accumulator: &[Rational],
+        row_columns: &[Vec<(usize, usize)>],
+        key: &[[Rational; 2]],
+        rank: usize,
+        convert: impl Fn(&Rational) -> T,
+    ) -> [Vec<T>; 2] {
+        let v = lane_vector_len(L);
+        let n_family = ncoeff(rank);
+        let trace: Vec<T> = trace.iter().map(&convert).collect();
+        let vector: Vec<(T, T)> = key
+            .iter()
+            .map(|[re, im]| (convert(re), convert(im)))
+            .collect();
+        let zero = convert(&Rational::from(0));
+        let mut every: Vec<T> = accumulator.iter().map(&convert).collect();
+        let mut nonzero = every.clone();
+        let mut term = vec![zero.clone(); v];
+        for columns in row_columns {
+            for &(o, w) in columns {
+                let (re, im) = &vector[w];
+                let target = &mut every[o * n_family * v..][..n_family * v];
+                for (t, c) in target.chunks_exact_mut(v).zip(trace.chunks_exact(v)) {
+                    let (c_re, c_im) = c.split_at(L);
+                    let (term_re, term_im) = term.split_at_mut(L);
+                    for l in 0..L {
+                        term_re[l] = re.clone() * &c_re[l] - im.clone() * &c_im[l];
+                        term_im[l] = re.clone() * &c_im[l] + im.clone() * &c_re[l];
+                    }
+                    cadd::<T, L>(t, &term);
+                }
+            }
+        }
+        let keys = KeyColumns::new(key, row_columns);
+        for h in 0..row_columns.len() {
+            close_row::<T, L>(&trace, &mut nonzero, keys.row(h), &vector, rank, &mut term);
+        }
+        [every, nonzero]
+    }
+
+    #[test]
+    fn closures_skipping_zero_key_weights_are_bitwise() {
+        fn check<const L: usize>(seed: u64) {
+            let mut state = seed;
+            let mut next = || {
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                Rational::from((
+                    ((state >> 33) % 2001) as i64 - 1000,
+                    ((state >> 13) % 97 + 1) as i64,
+                ))
+            };
+            let (rank, rows, weights) = (2, 3, 4);
+            let v = lane_vector_len(L);
+            let trace: Vec<Rational> = (0..ncoeff(rank) * v).map(|_| next()).collect();
+            let columns = rows * weights;
+            // Accumulators that already hold sums (and exact zeros).
+            let accumulator: Vec<Rational> = (0..columns * ncoeff(rank) * v)
+                .map(|k| {
+                    if k % 5 == 0 {
+                        Rational::from(0)
+                    } else {
+                        next()
+                    }
+                })
+                .collect();
+            // Born row h closes into its weights' columns h * weights + w.
+            let row_columns: Vec<Vec<(usize, usize)>> = (0..rows)
+                .map(|h| (0..weights).map(|w| (h * weights + w, w)).collect())
+                .collect();
+            // A key with two non-zero weights (a summed key), one purely
+            // imaginary, and two exact zeros.
+            let key = [
+                [Rational::from(0), Rational::from(0)],
+                [next(), next()],
+                [Rational::from(0), Rational::from(0)],
+                [Rational::from(0), next()],
+            ];
+            let keys = KeyColumns::new(&key, &row_columns);
+            assert_eq!(keys.row(1), &[(5, 1), (7, 3)]);
+            let bits = |values: &[f64]| values.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+            let [a, b] =
+                closed_both_ways::<f64, L>(&trace, &accumulator, &row_columns, &key, rank, |r| {
+                    r.to_f64()
+                });
+            assert_eq!(bits(&a), bits(&b), "binary64");
+            let [a, b] = closed_both_ways::<DoubleFloat, L>(
+                &trace,
+                &accumulator,
+                &row_columns,
+                &key,
+                rank,
+                |r| DoubleFloat::from(r),
+            );
+            assert!(a == b, "double-double");
+            let [a, b] =
+                closed_both_ways::<_, L>(&trace, &accumulator, &row_columns, &key, rank, |r| {
+                    r.to_multi_prec_float(200)
+                });
+            assert!(a == b, "MPFR");
+            let [a, b] = closed_both_ways::<Rational, L>(
+                &trace,
+                &accumulator,
+                &row_columns,
+                &key,
+                rank,
+                Rational::clone,
+            );
+            assert!(a == b, "exact");
+        }
+        check::<2>(11);
+        check::<16>(12);
+    }
 
     /// Evaluate a lane-0 polynomial (real parts only) at `q`.
     fn evaluate(coefficients: &[Rational], rank: usize, q: [Rational; 4]) -> Rational {

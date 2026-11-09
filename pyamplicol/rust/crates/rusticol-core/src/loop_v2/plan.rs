@@ -951,9 +951,48 @@ pub struct LoopProgramV4 {
     /// seed-weight columns `(o, w)` (the route-R1 columns of the row); empty
     /// for other plans.
     pub row_columns: Vec<Vec<(usize, usize)>>,
+    /// Dressed-row plans: per seed key, per Born row, the `(o, w)` of
+    /// `row_columns` whose amplitude-vector weight `key_vectors[key][w]` is
+    /// not exactly zero (lit-dress lever C1: the closure skips the exact
+    /// zeros; derived at load from the key vectors, which may hold any
+    /// number of non-zero weights); empty for other plans.
+    pub key_columns: Vec<KeyColumns>,
     /// The output-stationary schedules of the fused dressing edges
     /// (derived at load, never stored: [`Gathers`]).
     pub gathers: Gathers,
+}
+
+/// One seed key's closure columns per Born row ([`LoopProgramV4::key_columns`]),
+/// row major: Born row `h` closes into `pairs[starts[h]..starts[h + 1]]`.
+#[derive(Clone, Debug, Default)]
+pub struct KeyColumns {
+    starts: Vec<u32>,
+    pairs: Vec<(u32, u32)>,
+}
+
+impl KeyColumns {
+    /// The `(o, w)` of `row_columns` with a non-zero weight in `vector`.
+    pub fn new(vector: &[[Rational; 2]], row_columns: &[Vec<(usize, usize)>]) -> Self {
+        let index = |value: usize| u32::try_from(value).expect("closure columns exceed u32");
+        let mut starts = Vec::with_capacity(row_columns.len() + 1);
+        let mut pairs = Vec::new();
+        starts.push(0);
+        for columns in row_columns {
+            for &(o, w) in columns {
+                if !(vector[w][0].is_zero() && vector[w][1].is_zero()) {
+                    pairs.push((index(o), index(w)));
+                }
+            }
+            starts.push(index(pairs.len()));
+        }
+        Self { starts, pairs }
+    }
+
+    /// The closure columns `(o, w)` of Born row `h`.
+    #[inline]
+    pub fn row(&self, h: usize) -> &[(u32, u32)] {
+        &self.pairs[self.starts[h] as usize..self.starts[h + 1] as usize]
+    }
 }
 
 impl LoopProgramV4 {
@@ -1966,6 +2005,7 @@ impl LoopProgramV4 {
             dressed,
             key_vectors,
             row_columns: Vec::new(),
+            key_columns: Vec::new(),
             gathers: Gathers::default(),
         };
         if dressed {
@@ -1977,6 +2017,11 @@ impl LoopProgramV4 {
                     }
                 }
             }
+            program.key_columns = program
+                .key_vectors
+                .iter()
+                .map(|vector| KeyColumns::new(vector, &row_columns))
+                .collect();
             program.row_columns = row_columns;
         }
         // Helicity-resolved and selected columns: the steps keep the rows

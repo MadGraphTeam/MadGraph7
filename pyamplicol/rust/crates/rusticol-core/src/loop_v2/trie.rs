@@ -188,7 +188,7 @@ pub fn run_family_on<T: Carrier, const L: usize>(
                     &out,
                     &mut numerator.accumulators[accumulator],
                     &row_trace.rows,
-                    &plan.row_columns,
+                    &plan.key_columns[row_trace.key as usize],
                     &vector,
                     family.rank,
                     zero,
@@ -346,7 +346,7 @@ fn close_diagonal<T: Carrier, const L: usize>(
             (Some(row_trace), Some(vector)) => close_row::<T, L>(
                 trace,
                 accumulator,
-                &plan.row_columns[row_trace.rows[r] as usize],
+                plan.key_columns[row_trace.key as usize].row(row_trace.rows[r] as usize),
                 vector,
                 rank,
                 &mut term,

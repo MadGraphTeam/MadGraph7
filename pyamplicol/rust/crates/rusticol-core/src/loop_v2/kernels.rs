@@ -164,6 +164,43 @@ macro_rules! dispatched {
 }
 pub(crate) use dispatched;
 
+/// [`dispatched!`] at most at the AVX2 width: the same body compiled for
+/// AVX2 (taken on AVX2 and AVX-512 CPUs alike) and the baseline. For loops
+/// whose regular outer stride LLVM's AVX-512 cost model vectorises with
+/// gathers and scatters instead of the contiguous lanes (the dressed-row
+/// closure, `closure::close_row`: about 7x slower than the baseline on Zen 4
+/// in lit-dress's micro-benchmark, while AVX2 is 0.8-0.9x of it); the same
+/// operations per lane in every width.
+macro_rules! dispatched_avx2 {
+    (
+        $(#[$meta:meta])*
+        $vis:vis fn $name:ident<T: $bound:path $(, const $c:ident: usize)?>(
+            $($arg:ident: $ty:ty),* $(,)?
+        ) => $body:ident;
+    ) => {
+        $(#[$meta])*
+        $vis fn $name<T: $bound + 'static $(, const $c: usize)?>($($arg: $ty),*) {
+            #[cfg(target_arch = "x86_64")]
+            {
+                #[allow(clippy::too_many_arguments)]
+                #[target_feature(enable = "avx2")]
+                fn avx2<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
+                    $body::<T $(, $c)?>($($arg),*)
+                }
+                use $crate::loop_v2::kernels::Simd;
+                match Simd::detect::<T>() {
+                    // SAFETY: `Simd::detect` returns AVX-512 or AVX2 only when
+                    // the running CPU reports AVX2 (AVX-512 implies it).
+                    Simd::Avx512 | Simd::Avx2 => return unsafe { avx2::<T $(, $c)?>($($arg),*) },
+                    Simd::Baseline => {}
+                }
+            }
+            $body::<T $(, $c)?>($($arg),*)
+        }
+    };
+}
+pub(crate) use dispatched_avx2;
+
 /// Every entry of a `loop_in x out` segment of degree `degree`, in
 /// `[monomial][loop_in][out]` order: the layout [`fused_edge_blocked`] reads.
 pub fn dense_layout(loop_in: usize, out: usize, degree: usize) -> SegmentLayout {
