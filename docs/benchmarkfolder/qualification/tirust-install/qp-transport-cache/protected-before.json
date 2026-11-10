@@ -1,0 +1,142 @@
+{
+  "isolated-configuration": {
+    "mtime_ns": 1794269783573418043,
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/input/mg7_configuration.txt",
+    "sha256": "1a2bdb8710e95df689c50beb7042fd634209f62685c14682657c888b311ebcb0",
+    "snapshot": "isolated-configuration-before.txt"
+  },
+  "main-configuration": {
+    "mtime_ns": 1794264022822411231,
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/input/mg7_configuration.txt",
+    "sha256": "568dd763e3410fff45ed10e0772193632d37f247b119aea233e47d548d3fb0fa",
+    "snapshot": "main-configuration-before.txt"
+  },
+  "main49af": {
+    "files": {
+      "Cargo.lock": {
+        "bytes": 35709,
+        "sha256": "8be809d137651ec217157388a909a2e9976e83470ffe4f08ce5f259a4d3f4517"
+      },
+      "Cargo.toml": {
+        "bytes": 1074,
+        "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+      },
+      "include/mtirust.f90": {
+        "bytes": 15812,
+        "sha256": "12295dca6b64a96dbd4f184cf67ed702f38c9fd82658e196fa4c5b7135fee10e"
+      },
+      "include/tirust.h": {
+        "bytes": 5742,
+        "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+      },
+      "install.log": {
+        "bytes": 850430,
+        "sha256": "fa6adf9b4c23c21f4830d50d8328cd5c8c07da1b7acb371d744b7e6cdd981e4c"
+      },
+      "lib/libmadloop_tirust.so": {
+        "bytes": 69085992,
+        "sha256": "49af12f0b88252a2d06420a2ea8768529eb5ab51de34e3db2257ee61cd71ca12"
+      },
+      "lib/libtirust.a": {
+        "bytes": 26038,
+        "sha256": "04c2b1ac3b8275dd2d0060416c4147bebd5e9bd62b71509e4cb29ce3d5c47d08"
+      },
+      "lib/mtirust.mod": {
+        "bytes": 3432,
+        "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5"
+      },
+      "lib/tirust-NOTICES.txt": {
+        "bytes": 717,
+        "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435"
+      },
+      "lib/tirust-config.json": {
+        "bytes": 5723,
+        "sha256": "000ac5255c1ba3fa268f17524b4d30bcd5a231c38f13a10b820d7b4a208711da"
+      },
+      "lib/tirust-dependency-notices.tar.gz": {
+        "bytes": 849305,
+        "sha256": "fd455e7c9ca05ba553f70961b03d3ac6a242a7cfa0639b112e274f2847f1702a"
+      },
+      "lib/tirust-dependency-provenance.json": {
+        "bytes": 538179,
+        "sha256": "394073803fdbedf11bae627709bb9060a8fd156fa3d35816af0cf070d79a7b9f"
+      },
+      "lib/tirust-link-before.txt": {
+        "bytes": 8,
+        "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+      },
+      "lib/tirust-native-libs.txt": {
+        "bytes": 17,
+        "sha256": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62"
+      }
+    },
+    "prefix": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust"
+  },
+  "previous095e": {
+    "files": {
+      "Cargo.lock": {
+        "bytes": 35857,
+        "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4"
+      },
+      "Cargo.toml": {
+        "bytes": 1074,
+        "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+      },
+      "include/mtirust.f90": {
+        "bytes": 15812,
+        "sha256": "12295dca6b64a96dbd4f184cf67ed702f38c9fd82658e196fa4c5b7135fee10e"
+      },
+      "include/tirust.h": {
+        "bytes": 5742,
+        "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+      },
+      "install.log": {
+        "bytes": 858343,
+        "sha256": "b20aedcdf47f5654ee6c06e20ceb7ca95d0791ed67dfb97d1e2db01ee0f03a2c"
+      },
+      "lib/libmadloop_tirust.so": {
+        "bytes": 69094464,
+        "sha256": "095e957990c2e7ed87ed9ea73fee71eb132f00b330e0d38fd423163c173e358c"
+      },
+      "lib/libtirust.a": {
+        "bytes": 26038,
+        "sha256": "04c2b1ac3b8275dd2d0060416c4147bebd5e9bd62b71509e4cb29ce3d5c47d08"
+      },
+      "lib/mtirust.mod": {
+        "bytes": 3432,
+        "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5"
+      },
+      "lib/tirust-NOTICES.txt": {
+        "bytes": 717,
+        "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435"
+      },
+      "lib/tirust-config.json": {
+        "bytes": 3050,
+        "sha256": "a11c93e0a0d347ef027493b34a0569fbc957d5a9a5dbadb107e3756e70c3b97c"
+      },
+      "lib/tirust-dependency-notices.tar.gz": {
+        "bytes": 849513,
+        "sha256": "f4351f173253918fac5bbfa43683818126d974b757a8ace4d45e3102eacd9a60"
+      },
+      "lib/tirust-dependency-provenance.json": {
+        "bytes": 539552,
+        "sha256": "ed9b1a93b60925540896445df49f90faca9bb282b9f3434e9255d3c69f79b4e6"
+      },
+      "lib/tirust-link-before.txt": {
+        "bytes": 8,
+        "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+      },
+      "lib/tirust-native-libs.txt": {
+        "bytes": 17,
+        "sha256": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62"
+      }
+    },
+    "prefix": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust"
+  },
+  "previous095e-configuration": {
+    "mtime_ns": 1794264426293727744,
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/input/mg7_configuration.txt",
+    "sha256": "b91be118cfd2bf9e58c24d778eed88030e5777654b4f8b7c5b6a0b521e0e595d",
+    "snapshot": "previous095e-configuration-before.txt"
+  }
+}

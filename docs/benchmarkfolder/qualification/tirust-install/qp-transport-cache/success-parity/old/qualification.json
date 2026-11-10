@@ -1,0 +1,653 @@
+{
+  "calls": 65,
+  "passed": true,
+  "pole_checks": [
+    {
+      "check": "pole selection",
+      "finite": 1,
+      "maximum_scaled_residual": "0",
+      "mode": 1,
+      "passed": true,
+      "precision": 64
+    },
+    {
+      "check": "pole selection",
+      "finite": 1,
+      "maximum_scaled_residual": "0",
+      "mode": 2,
+      "passed": true,
+      "precision": 64
+    },
+    {
+      "check": "pole selection",
+      "finite": 1,
+      "maximum_scaled_residual": "0",
+      "mode": 3,
+      "passed": true,
+      "precision": 64
+    },
+    {
+      "check": "pole selection",
+      "finite": 0,
+      "maximum_scaled_residual": "0",
+      "mode": 1,
+      "passed": true,
+      "precision": 64
+    },
+    {
+      "check": "pole selection",
+      "finite": 0,
+      "maximum_scaled_residual": "0",
+      "mode": 2,
+      "passed": true,
+      "precision": 64
+    },
+    {
+      "check": "full versus direct poles",
+      "maximum_scaled_residual": "3.469446951953614188823848963E-18",
+      "mode": 0,
+      "passed": true,
+      "precision": 64
+    },
+    {
+      "check": "full versus direct poles",
+      "maximum_scaled_residual": "0",
+      "mode": 1,
+      "passed": true,
+      "precision": 64
+    },
+    {
+      "check": "full versus direct poles",
+      "maximum_scaled_residual": "3.469446951953614188823848963E-18",
+      "mode": 2,
+      "passed": true,
+      "precision": 64
+    },
+    {
+      "check": "pole selection",
+      "finite": 1,
+      "maximum_scaled_residual": "0",
+      "mode": 1,
+      "passed": true,
+      "precision": 128
+    },
+    {
+      "check": "pole selection",
+      "finite": 1,
+      "maximum_scaled_residual": "0",
+      "mode": 2,
+      "passed": true,
+      "precision": 128
+    },
+    {
+      "check": "pole selection",
+      "finite": 1,
+      "maximum_scaled_residual": "0",
+      "mode": 3,
+      "passed": true,
+      "precision": 128
+    },
+    {
+      "check": "pole selection",
+      "finite": 0,
+      "maximum_scaled_residual": "0",
+      "mode": 1,
+      "passed": true,
+      "precision": 128
+    },
+    {
+      "check": "pole selection",
+      "finite": 0,
+      "maximum_scaled_residual": "0",
+      "mode": 2,
+      "passed": true,
+      "precision": 128
+    },
+    {
+      "check": "full versus direct poles",
+      "maximum_scaled_residual": "0",
+      "mode": 0,
+      "passed": true,
+      "precision": 128
+    },
+    {
+      "check": "full versus direct poles",
+      "maximum_scaled_residual": "0",
+      "mode": 1,
+      "passed": true,
+      "precision": 128
+    },
+    {
+      "check": "full versus direct poles",
+      "maximum_scaled_residual": "0",
+      "mode": 2,
+      "passed": true,
+      "precision": 128
+    }
+  ],
+  "results": [
+    {
+      "failures": [],
+      "id": 1,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-64-finite1-mode0",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 2,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-64-finite1-mode1",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 3,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-64-finite1-mode2",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 4,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-64-finite1-mode3",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 5,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-64-finite0-mode0",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 6,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-64-finite0-mode1",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 7,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-64-finite0-mode2",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 8,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-128-finite1-mode0",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 9,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-128-finite1-mode1",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 10,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-128-finite1-mode2",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 11,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-128-finite1-mode3",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 12,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-128-finite0-mode0",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 13,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-128-finite0-mode1",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 14,
+      "maximum_scaled_reference_residual": "0",
+      "name": "reference-128-finite0-mode2",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 15,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite1-cold",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 16,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite1-hit",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 17,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite0-cold",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 18,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite0-hit",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 19,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite1-check",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 20,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite0-check",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 21,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite1-disabled",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 22,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite0-disabled",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 23,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite1-hit-after-bypass",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 24,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite0-hit-after-bypass",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 25,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite1-zero-budget",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 26,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite0-zero-budget",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 27,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite1-budget-restored",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 28,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite0-budget-restored",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 29,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite1-after-clear",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 30,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite0-after-clear",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 31,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite1-after-finalize",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 32,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-finite0-after-finalize",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 33,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite1-cold",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 34,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite1-hit",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 35,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite0-cold",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 36,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite0-hit",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 37,
+      "maximum_scaled_reference_residual": "0",
+      "name": "dp-hit-with-qp-populated",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 38,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-hit-after-dp-interleave",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 39,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite1-check",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 40,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite0-check",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 41,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite1-disabled",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 42,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite0-disabled",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 43,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite1-hit-after-bypass",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 44,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite0-hit-after-bypass",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 45,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite1-zero-budget",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 46,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite0-zero-budget",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 47,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite1-budget-restored",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 48,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite0-budget-restored",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 49,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite1-after-clear",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 50,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite0-after-clear",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 51,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite1-after-finalize",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 52,
+      "maximum_scaled_reference_residual": "0",
+      "name": "qp-finite0-after-finalize",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 53,
+      "maximum_scaled_reference_residual": "0",
+      "name": "massive-bubble-r2-64-finite1",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 54,
+      "maximum_scaled_reference_residual": "0",
+      "name": "massive-bubble-r2-64-finite0",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 55,
+      "maximum_scaled_reference_residual": "0",
+      "name": "massive-bubble-r2-128-finite1",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 56,
+      "maximum_scaled_reference_residual": "0",
+      "name": "massive-bubble-r2-128-finite0",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 57,
+      "maximum_scaled_reference_residual": "0",
+      "name": "massive-triangle-r2-64-finite1",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 58,
+      "maximum_scaled_reference_residual": "0",
+      "name": "massive-triangle-r2-64-finite0",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 59,
+      "maximum_scaled_reference_residual": "0",
+      "name": "massive-triangle-r2-128-finite1",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 60,
+      "maximum_scaled_reference_residual": "0",
+      "name": "massive-triangle-r2-128-finite0",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 61,
+      "maximum_scaled_reference_residual": "0",
+      "name": "last-bit-cold",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 62,
+      "maximum_scaled_reference_residual": "0",
+      "name": "last-bit-hit",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 63,
+      "maximum_scaled_reference_residual": "0",
+      "name": "last-bit-check",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 64,
+      "maximum_scaled_reference_residual": "0",
+      "name": "last-bit-disabled",
+      "native_status": 0,
+      "result": "passed"
+    },
+    {
+      "failures": [],
+      "id": 65,
+      "maximum_scaled_reference_residual": "0",
+      "name": "last-bit-after-clear",
+      "native_status": 0,
+      "result": "passed"
+    }
+  ],
+  "status_counts": {
+    "passed": 65
+  }
+}

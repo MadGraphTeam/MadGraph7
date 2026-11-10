@@ -1,0 +1,101 @@
+{
+  "observed_utc": "2026-11-10T00:19:39.984386+00:00",
+  "processes": [
+    {
+      "pid": 3686007,
+      "argv": [
+        "make",
+        "install",
+        "PREFIX=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/.tirust-build-0fxkmk4r/install",
+        "FC=gfortran",
+        "CARGO_FEATURES=poles-only"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/.tirust-build-0fxkmk4r/bridge",
+      "affinity_cpus": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "pid": 3686421,
+      "argv": [
+        "/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin/cargo",
+        "rustc",
+        "--release",
+        "--locked",
+        "--lib",
+        "--features",
+        "poles-only",
+        "--",
+        "-C",
+        "link-arg=-Wl,-soname,libmadloop_tirust.so",
+        "-C",
+        "link-arg=-Wl,--exclude-libs,ALL"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/.tirust-build-0fxkmk4r/bridge",
+      "affinity_cpus": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "pid": 3777042,
+      "argv": [
+        "rustc",
+        "--crate-name",
+        "madloop_tirust",
+        "--edition=2024",
+        "src/lib.rs",
+        "--error-format=json",
+        "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+        "--crate-type",
+        "cdylib",
+        "--crate-type",
+        "rlib",
+        "--emit=dep-info,link",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "codegen-units=1",
+        "--cfg",
+        "feature=\"default\"",
+        "--cfg",
+        "feature=\"poles-only\"",
+        "--check-cfg",
+        "cfg(docsrs,test)",
+        "--check-cfg",
+        "cfg(feature, values(\"default\", \"poles-only\"))",
+        "-C",
+        "metadata=76198c497d224fc2",
+        "--out-dir",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps",
+        "-C",
+        "strip=debuginfo",
+        "-L",
+        "dependency=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps",
+        "--extern",
+        "iregi_rust=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libiregi_rust-25645255df087c8b.rlib",
+        "--extern",
+        "symbolica=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsymbolica-bfa2826cb07859dd.rlib",
+        "-C",
+        "link-arg=-Wl,-soname,libmadloop_tirust.so",
+        "-C",
+        "link-arg=-Wl,--exclude-libs,ALL",
+        "-L",
+        "native=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/gmp-mpfr-sys-e3a3f2f14732793a/out/lib"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/.tirust-build-0fxkmk4r/bridge",
+      "affinity_cpus": [
+        2,
+        3,
+        4,
+        5
+      ]
+    }
+  ],
+  "all_expected_affinity": true
+}

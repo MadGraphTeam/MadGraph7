@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "ldd",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/run-1/new/driver"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "elapsed_seconds": 0.017150811851024628,
+  "finished_utc": "2026-11-10T00:28:37.671611+00:00",
+  "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/new/ldd.log",
+  "log_sha256": "c68b3e2bea616af314f903d110dd0b081120d2aeae6207e348635207d4fd18fc",
+  "returncode": 0,
+  "started_utc": "2026-11-10T00:28:37.654482+00:00",
+  "timed_out": false,
+  "timeout_seconds": 30
+}

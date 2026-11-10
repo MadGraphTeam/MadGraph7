@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "--version"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "elapsed_seconds": 0.01687795203179121,
+  "finished_utc": "2026-11-10T00:28:36.583907+00:00",
+  "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/compiler-version.txt",
+  "log_sha256": "ce5c82b1d51b8e2d727a945fab540ae918b3a8b87659de2713be2fadad1442da",
+  "returncode": 0,
+  "started_utc": "2026-11-10T00:28:36.567037+00:00",
+  "timed_out": false,
+  "timeout_seconds": 30
+}

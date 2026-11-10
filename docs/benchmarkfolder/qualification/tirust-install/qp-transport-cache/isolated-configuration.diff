@@ -1,0 +1,18 @@
+--- isolated-before
++++ isolated-after
+@@ -243,7 +243,7 @@
+ 
+ #! TIRust tensor reduction (MLReductionLib=9), installed with 'install tirust'.
+ #! The library directory must include its Fortran archive, shared runtime and metadata.
+-# tirust = None
++tirust = /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib #  
+ 
+ 
+ #! Set the COLLIER directory containing COLLIER's library
+@@ -271,3 +271,6 @@
+ 
+ auto_update = 0
+ automatic_html_opening = False
++
++# MG5 MAIN DIRECTORY
++mg5_path = /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg

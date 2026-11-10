@@ -1,0 +1,89 @@
+{
+  "installations": {
+    "new": {
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/Cargo.lock": {
+        "bytes": 35857,
+        "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/Cargo.toml": {
+        "bytes": 1074,
+        "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/include/mtirust.f90": {
+        "bytes": 15997,
+        "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+        "bytes": 69094528,
+        "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libtirust.a": {
+        "bytes": 26118,
+        "sha256": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/mtirust.mod": {
+        "bytes": 3432,
+        "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-config.json": {
+        "bytes": 3055,
+        "sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-link-before.txt": {
+        "bytes": 8,
+        "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-native-libs.txt": {
+        "bytes": 17,
+        "sha256": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62"
+      }
+    },
+    "old": {
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/Cargo.lock": {
+        "bytes": 35857,
+        "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/Cargo.toml": {
+        "bytes": 1074,
+        "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/include/mtirust.f90": {
+        "bytes": 15812,
+        "sha256": "12295dca6b64a96dbd4f184cf67ed702f38c9fd82658e196fa4c5b7135fee10e"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+        "bytes": 69094464,
+        "sha256": "095e957990c2e7ed87ed9ea73fee71eb132f00b330e0d38fd423163c173e358c"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libtirust.a": {
+        "bytes": 26038,
+        "sha256": "04c2b1ac3b8275dd2d0060416c4147bebd5e9bd62b71509e4cb29ce3d5c47d08"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/mtirust.mod": {
+        "bytes": 3432,
+        "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/tirust-config.json": {
+        "bytes": 3050,
+        "sha256": "a11c93e0a0d347ef027493b34a0569fbc957d5a9a5dbadb107e3756e70c3b97c"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/tirust-link-before.txt": {
+        "bytes": 8,
+        "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+      },
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/tirust-native-libs.txt": {
+        "bytes": 17,
+        "sha256": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62"
+      }
+    }
+  },
+  "protocols": {
+    "README.md": "3d9f277931e900bad06cf2636006f9bb0b832de7284260191dd4d554ae0fda82",
+    "driver.f90": "0cb21f1e89a8ab14a400746ef7e487fc7290e4cef09a4167ff004d3e33aa13a6",
+    "fixtures.dat": "f69e89481941a938ac5a9f1f07234ef4518b0d4faaa69db58acea26a5af2c225",
+    "prepare.py": "28e832ef28ef396b0e943c621c61252f1675463dd274e5b9a168c52c2bbfa5db",
+    "run.py": "fdf55d645dd0e8d99be51575613e214f34e9b59774d3b517851684c7819f2e1a",
+    "specification.json": "772d91d1f3e07c5403ccf80f470f4f75cdec14e2cd9dbf78aff83b28462e2ed6",
+    "validate.py": "70487da05de7696d12271666ec3bdb61e43cbffe15054bbb2a6f91445bddfdfa"
+  }
+}

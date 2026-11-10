@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "state": "published-qualification-pending",
+  "checked_utc": "2026-11-10T00:26:06.364352+00:00",
+  "source_revision": "059bb9c979194bfda783cad83443223def8df280",
+  "source_file_count": 3163,
+  "prefix": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust",
+  "source_overrides": false,
+  "cache_policy": "Common Cargo caches reused; not a clean-cache claim",
+  "available": true,
+  "quad_precision": true,
+  "finite_terms": true,
+  "poles_only": true,
+  "serialized_installer_smoke_passed": true,
+  "smoke_module_identity_verified": true,
+  "transactional_private_configuration_saved": true,
+  "immutable_installation_hashes_unchanged": true,
+  "main_configuration_unchanged": true,
+  "old095e_configuration_unchanged": true,
+  "native_artifacts": {
+    "libtirust.a": {
+      "sha256": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+      "bytes": 26118
+    },
+    "mtirust.mod": {
+      "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5",
+      "bytes": 3432
+    },
+    "libmadloop_tirust.so": {
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+      "bytes": 69094528
+    }
+  },
+  "metadata_sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9",
+  "notice_files": {
+    "tirust-dependency-notices.tar.gz": {
+      "sha256": "edd742d13608a107e1a19fd1502b4553382def731de9f39727827345520428fa",
+      "bytes": 849506
+    },
+    "tirust-dependency-provenance.json": {
+      "sha256": "5a328ed1a6cab615b5afc9952e758e3417f705578186d7914258d885f6851f78",
+      "bytes": 539682
+    },
+    "tirust-NOTICES.txt": {
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+      "bytes": 717
+    }
+  },
+  "bridge_source_sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+  "fortran_source_sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+  "patch_sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5",
+  "build_provenance": {
+    "manifest_sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+    "lock_sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+    "git_dependencies": [
+      {
+        "name": "graphica",
+        "version": "3.0.1",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+      },
+      {
+        "name": "numerica",
+        "version": "3.0.2",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+      },
+      {
+        "name": "oneloop",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#bd703d09a78f7849a6b86a07096e6f222fc01193"
+      },
+      {
+        "name": "symbolica",
+        "version": "3.0.2",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+      }
+    ]
+  },
+  "commands": [
+    {
+      "argv": [
+        "nm",
+        "-D",
+        "--defined-only",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "returncode": 0,
+      "log": "native-exports.txt"
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "returncode": 0,
+      "log": "dynamic-section.txt"
+    }
+  ],
+  "scope": "Actual CLI publication and installed ABI correctness; no amplitude or performance acceptance claim."
+}

@@ -1,0 +1,23 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 5985,
+      "sha256": "95f2b2fd00966d90d6e746127574761d991d2b19e748d3e6428e7d12eb9aa77e"
+    },
+    "inventory.py": {
+      "bytes": 9396,
+      "sha256": "094dd31145a625b67195dbf93e58279399e74bf40661f098a40c43a96d0daab2"
+    },
+    "observed-installation.json": {
+      "bytes": 3957,
+      "sha256": "86152507a5f2db161efc66744ebf4d103d04ec1a94d0a9c970cb2facbb464cc2"
+    },
+    "readiness.json": {
+      "bytes": 352635,
+      "sha256": "2b16bc8d6522e95b51ecaaadbe85fc3855ec09c6b4399022b8dea9be3f56ba93"
+    }
+  },
+  "final_qualification_pending": true,
+  "registration_authorized": false,
+  "schema": "madloop-tirust-final-readiness-index-v1"
+}

@@ -1,0 +1,291 @@
+{
+  "byteorder": "little",
+  "compiler": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+  "compiler_sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+  "cpu_affinity": [
+    2,
+    3,
+    4,
+    5
+  ],
+  "environment": {
+    "LD_LIBRARY_PATH": null,
+    "LIBRARY_PATH": null,
+    "NIX_CFLAGS_COMPILE": null,
+    "NIX_LDFLAGS": null,
+    "PATH": "/home/external/.codex/packages/app-server-daemon/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/external/.codex/tmp/arg0-linux/codex-arg0lRMkvY:/home/external/.codex/tmp/arg0-linux/codex-arg0Q3My4g:/nix/store/qswjy75ymf911zf9pjhqi4w6kmwm3v73-codex-0.163.0/codex-path:/run/wrappers/bin:/home/external/.nix-profile/bin:/nix/profile/bin:/home/external/.local/state/nix/profile/bin:/etc/profiles/per-user/external/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin:/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin:/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin:/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin:/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin:/nix/store/0g4agjda4ihmd291pamwahhy7praa4sn-gnum4-1.4.21/bin:/nix/store/1m0z4ixir10fg7ba7g131js04bxgv265-cmake-4.1.2/bin:/nix/store/0v0raqk1qw5g2a21km4xa1hwhaq4s976-pkg-config-wrapper-0.29.2/bin:/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin:/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin:/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin:/nix/store/8hz0qnr9z5j1w7rjl9qmsb34v2cb4akr-wget-1.25.0/bin"
+  },
+  "finished_utc": "2026-11-10T00:28:38.864353+00:00",
+  "lock_acquired_utc": "2026-11-10T00:28:37.915319+00:00",
+  "lock_released_utc": "2026-11-10T00:28:38.418147+00:00",
+  "lock_wait_started_utc": "2026-11-10T00:28:37.915040+00:00",
+  "native_lock": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/numerical-tests.lock",
+  "passed": true,
+  "platform": "Linux-6.18.45-x86_64-with-glibc2.42",
+  "prefixes": {
+    "new": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust",
+    "old": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust"
+  },
+  "python": "3.13.12 (main, Feb  3 2026, 17:53:27) [GCC 15.2.0]",
+  "scope": "Raw public Fortran mtirust coefficient bytes, statuses and cache/lifecycle counters; no generated-amplitude, IEEE-environment or performance qualification",
+  "started_utc": "2026-11-10T00:28:36.562156+00:00",
+  "timeout_seconds": 300,
+  "workers": {
+    "new": {
+      "build": {
+        "argv": [
+          "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+          "-O2",
+          "-fno-fast-math",
+          "-frounding-math",
+          "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/driver.f90",
+          "-lgcc_s",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libtirust.a",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+          "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+          "-o",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/run-1/new/driver"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+        "elapsed_seconds": 0.3660876345820725,
+        "finished_utc": "2026-11-10T00:28:37.653757+00:00",
+        "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/new/build.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "returncode": 0,
+        "started_utc": "2026-11-10T00:28:37.287681+00:00",
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "executable_after_sha256": "d77f0f8d8830cbceb2e959d3982de579f2eb8e80d1dec2db561d295ebdaf80c4",
+      "executable_sha256": "d77f0f8d8830cbceb2e959d3982de579f2eb8e80d1dec2db561d295ebdaf80c4",
+      "frames_sha256": "7d37b7e40832c08c355be8b94e66c83c06fea2395ee766725a2b321b58f19f9c",
+      "linkage": {
+        "argv": [
+          "ldd",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/run-1/new/driver"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+        "elapsed_seconds": 0.017150811851024628,
+        "finished_utc": "2026-11-10T00:28:37.671611+00:00",
+        "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/new/ldd.log",
+        "log_sha256": "c68b3e2bea616af314f903d110dd0b081120d2aeae6207e348635207d4fd18fc",
+        "returncode": 0,
+        "started_utc": "2026-11-10T00:28:37.654482+00:00",
+        "timed_out": false,
+        "timeout_seconds": 30
+      },
+      "qualification_sha256": "9053681840286159a8030fce607712b4739a9f7b33ae164f021bfb5d1652a4aa",
+      "resolved_tirust_dso": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+      "resolved_tirust_dso_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+      "run": {
+        "argv": [
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/run-1/new/driver",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/fixtures.dat",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/new/frames.txt"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+        "elapsed_seconds": 0.06487638596445322,
+        "finished_utc": "2026-11-10T00:28:38.348825+00:00",
+        "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/new/run.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "returncode": 0,
+        "started_utc": "2026-11-10T00:28:38.283956+00:00",
+        "timed_out": false,
+        "timeout_seconds": 300
+      },
+      "runtime_after": {
+        "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/ld-linux-x86-64.so.2": {
+          "bytes": 263056,
+          "resolved": "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2",
+          "sha256": "e655ec5a68127ee03586457e67039ea9deef55abaeae519c1f53ad1cf18ee5b2"
+        },
+        "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5": {
+          "bytes": 3647568,
+          "resolved": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": {
+          "bytes": 2413048,
+          "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": {
+          "bytes": 1029504,
+          "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1": {
+          "bytes": 196968,
+          "resolved": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+          "bytes": 69094528,
+          "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+          "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        }
+      },
+      "runtime_before": {
+        "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/ld-linux-x86-64.so.2": {
+          "bytes": 263056,
+          "resolved": "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2",
+          "sha256": "e655ec5a68127ee03586457e67039ea9deef55abaeae519c1f53ad1cf18ee5b2"
+        },
+        "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5": {
+          "bytes": 3647568,
+          "resolved": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": {
+          "bytes": 2413048,
+          "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": {
+          "bytes": 1029504,
+          "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1": {
+          "bytes": 196968,
+          "resolved": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+          "bytes": 69094528,
+          "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+          "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        }
+      }
+    },
+    "old": {
+      "build": {
+        "argv": [
+          "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+          "-O2",
+          "-fno-fast-math",
+          "-frounding-math",
+          "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/driver.f90",
+          "-lgcc_s",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libtirust.a",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+          "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib",
+          "-o",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/run-1/old/driver"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+        "elapsed_seconds": 0.4194362619891763,
+        "finished_utc": "2026-11-10T00:28:37.004230+00:00",
+        "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/old/build.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "returncode": 0,
+        "started_utc": "2026-11-10T00:28:36.584820+00:00",
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "executable_after_sha256": "40ec4d805ac8db3e6defd85003ecc049e15a696eac33298c7a8af864ca2080f3",
+      "executable_sha256": "40ec4d805ac8db3e6defd85003ecc049e15a696eac33298c7a8af864ca2080f3",
+      "frames_sha256": "7d37b7e40832c08c355be8b94e66c83c06fea2395ee766725a2b321b58f19f9c",
+      "linkage": {
+        "argv": [
+          "ldd",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/run-1/old/driver"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+        "elapsed_seconds": 0.017290662974119186,
+        "finished_utc": "2026-11-10T00:28:37.022251+00:00",
+        "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/old/ldd.log",
+        "log_sha256": "dcd8d4bfec9dcd6ec5274206b2c50105f926ae686011c0ae53d7397350dadee8",
+        "returncode": 0,
+        "started_utc": "2026-11-10T00:28:37.004981+00:00",
+        "timed_out": false,
+        "timeout_seconds": 30
+      },
+      "qualification_sha256": "9053681840286159a8030fce607712b4739a9f7b33ae164f021bfb5d1652a4aa",
+      "resolved_tirust_dso": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+      "resolved_tirust_dso_sha256": "095e957990c2e7ed87ed9ea73fee71eb132f00b330e0d38fd423163c173e358c",
+      "run": {
+        "argv": [
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/run-1/old/driver",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/success-parity/fixtures.dat",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/old/frames.txt"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+        "elapsed_seconds": 0.06601597974076867,
+        "finished_utc": "2026-11-10T00:28:38.093219+00:00",
+        "log": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/success-parity/old/run.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "returncode": 0,
+        "started_utc": "2026-11-10T00:28:38.027214+00:00",
+        "timed_out": false,
+        "timeout_seconds": 300
+      },
+      "runtime_after": {
+        "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/ld-linux-x86-64.so.2": {
+          "bytes": 263056,
+          "resolved": "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2",
+          "sha256": "e655ec5a68127ee03586457e67039ea9deef55abaeae519c1f53ad1cf18ee5b2"
+        },
+        "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5": {
+          "bytes": 3647568,
+          "resolved": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": {
+          "bytes": 2413048,
+          "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": {
+          "bytes": 1029504,
+          "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1": {
+          "bytes": 196968,
+          "resolved": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+          "bytes": 69094464,
+          "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+          "sha256": "095e957990c2e7ed87ed9ea73fee71eb132f00b330e0d38fd423163c173e358c"
+        }
+      },
+      "runtime_before": {
+        "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/ld-linux-x86-64.so.2": {
+          "bytes": 263056,
+          "resolved": "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2",
+          "sha256": "e655ec5a68127ee03586457e67039ea9deef55abaeae519c1f53ad1cf18ee5b2"
+        },
+        "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5": {
+          "bytes": 3647568,
+          "resolved": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": {
+          "bytes": 2413048,
+          "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": {
+          "bytes": 1029504,
+          "resolved": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1": {
+          "bytes": 196968,
+          "resolved": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+          "bytes": 69094464,
+          "resolved": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+          "sha256": "095e957990c2e7ed87ed9ea73fee71eb132f00b330e0d38fd423163c173e358c"
+        }
+      }
+    }
+  }
+}

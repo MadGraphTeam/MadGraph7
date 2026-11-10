@@ -1,0 +1,108 @@
+{
+  "available": true,
+  "bridge_source_sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+  "build_provenance": {
+    "git_dependencies": [
+      {
+        "name": "graphica",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+        "version": "3.0.1"
+      },
+      {
+        "name": "numerica",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+        "version": "3.0.2"
+      },
+      {
+        "name": "oneloop",
+        "source": "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#bd703d09a78f7849a6b86a07096e6f222fc01193",
+        "version": "0.1.0"
+      },
+      {
+        "name": "symbolica",
+        "source": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+        "version": "3.0.2"
+      }
+    ],
+    "lock_sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+    "manifest_sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+  },
+  "cache_policy": "Common Cargo caches reused; not a clean-cache claim",
+  "checked_utc": "2026-11-10T00:26:06.364352+00:00",
+  "commands": [
+    {
+      "argv": [
+        "nm",
+        "-D",
+        "--defined-only",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "log": "native-exports.txt",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "log": "dynamic-section.txt",
+      "returncode": 0
+    }
+  ],
+  "final_checks_utc": "2026-11-10T00:31:24.232352+00:00",
+  "finite_terms": true,
+  "fortran_source_sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+  "full_protected_state_rechecked_after_qualification": true,
+  "immutable_installation_hashes_unchanged": true,
+  "installed_archive_tests": "archive-tests/results.json",
+  "main_configuration_unchanged": true,
+  "metadata_sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9",
+  "native_artifacts": {
+    "libmadloop_tirust.so": {
+      "bytes": 69094528,
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+    },
+    "libtirust.a": {
+      "bytes": 26118,
+      "sha256": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a"
+    },
+    "mtirust.mod": {
+      "bytes": 3432,
+      "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5"
+    }
+  },
+  "notice_files": {
+    "tirust-NOTICES.txt": {
+      "bytes": 717,
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435"
+    },
+    "tirust-dependency-notices.tar.gz": {
+      "bytes": 849506,
+      "sha256": "edd742d13608a107e1a19fd1502b4553382def731de9f39727827345520428fa"
+    },
+    "tirust-dependency-provenance.json": {
+      "bytes": 539682,
+      "sha256": "5a328ed1a6cab615b5afc9952e758e3417f705578186d7914258d885f6851f78"
+    }
+  },
+  "old095e_configuration_unchanged": true,
+  "patch_sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5",
+  "poles_only": true,
+  "prefix": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust",
+  "public_fortran_success_parity": "success-parity/results.json",
+  "quad_precision": true,
+  "raw_dp_calls_per_library": 90,
+  "raw_dp_event_records_identical": 110,
+  "raw_dp_expected_failures_per_library": 10,
+  "raw_dp_successes_per_library": 80,
+  "schema_version": 1,
+  "scope": "Actual CLI publication and installed ABI correctness; no amplitude or performance acceptance claim.",
+  "serialized_installer_smoke_passed": true,
+  "smoke_module_identity_verified": true,
+  "source_file_count": 3163,
+  "source_overrides": false,
+  "source_revision": "059bb9c979194bfda783cad83443223def8df280",
+  "state": "passed",
+  "transactional_private_configuration_saved": true
+}

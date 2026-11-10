@@ -1,0 +1,200 @@
+{
+  "calls_per_execution": 3,
+  "clear_resets_counters_limit": "Zero counters after clear do not by themselves count re-evaluations; the separate independent mock-provider test proves retry misses/re-evaluation.",
+  "execution_count_per_archive": 1,
+  "fixed_cache_empty_after_both_rejections": true,
+  "frames": {
+    "new059b": [
+      {
+        "CACHE_STATUS": 0,
+        "CLASSIFICATION": "public-success",
+        "ERROR_MESSAGE": "",
+        "IEEE_INVALID_DIVZERO_OVERFLOW_UNDERFLOW_INEXACT": [
+          "F",
+          "F",
+          "F",
+          "F",
+          "T"
+        ],
+        "MASS_SQUARED": "4.000000000000000000000000000000000000000E+0000",
+        "MU_SQUARED": "4.000000000000000000000000000000000000000E+0000",
+        "OUTPUTS_ALL_ZERO": "F",
+        "PUBLIC_STATUS": 0,
+        "QP_CACHE_HITS_MISSES_ENTRIES_BYTES_REFUSED_BYPASSED": [
+          0,
+          1,
+          1,
+          1296,
+          0,
+          0
+        ],
+        "case": "ordinary-seed"
+      },
+      {
+        "CACHE_STATUS": 0,
+        "CLASSIFICATION": "public-transport-rejection",
+        "ERROR_MESSAGE": "TIRust returned an invalid or nonfinite binary128 output record.",
+        "IEEE_INVALID_DIVZERO_OVERFLOW_UNDERFLOW_INEXACT": [
+          "F",
+          "F",
+          "T",
+          "F",
+          "T"
+        ],
+        "MASS_SQUARED": "1.000000000000000000000000000000000009770E+4932",
+        "MU_SQUARED": "1.000000000000000000000000000000000000000E+0000",
+        "OUTPUTS_ALL_ZERO": "T",
+        "PUBLIC_STATUS": 2,
+        "QP_CACHE_HITS_MISSES_ENTRIES_BYTES_REFUSED_BYPASSED": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "case": "large-mass"
+      },
+      {
+        "CACHE_STATUS": 0,
+        "CLASSIFICATION": "public-transport-rejection",
+        "ERROR_MESSAGE": "TIRust returned an invalid or nonfinite binary128 output record.",
+        "IEEE_INVALID_DIVZERO_OVERFLOW_UNDERFLOW_INEXACT": [
+          "F",
+          "F",
+          "T",
+          "F",
+          "T"
+        ],
+        "MASS_SQUARED": "1.000000000000000000000000000000000009770E+4932",
+        "MU_SQUARED": "1.000000000000000000000000000000000000000E+0000",
+        "OUTPUTS_ALL_ZERO": "T",
+        "PUBLIC_STATUS": 2,
+        "QP_CACHE_HITS_MISSES_ENTRIES_BYTES_REFUSED_BYPASSED": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "case": "large-mass"
+      }
+    ],
+    "old095e": [
+      {
+        "CACHE_STATUS": 0,
+        "CLASSIFICATION": "public-success",
+        "ERROR_MESSAGE": "",
+        "IEEE_INVALID_DIVZERO_OVERFLOW_UNDERFLOW_INEXACT": [
+          "F",
+          "F",
+          "F",
+          "F",
+          "T"
+        ],
+        "MASS_SQUARED": "4.000000000000000000000000000000000000000E+0000",
+        "MU_SQUARED": "4.000000000000000000000000000000000000000E+0000",
+        "OUTPUTS_ALL_ZERO": "F",
+        "PUBLIC_STATUS": 0,
+        "QP_CACHE_HITS_MISSES_ENTRIES_BYTES_REFUSED_BYPASSED": [
+          0,
+          1,
+          1,
+          1296,
+          0,
+          0
+        ],
+        "case": "ordinary-seed"
+      },
+      {
+        "CACHE_STATUS": 0,
+        "CLASSIFICATION": "public-transport-rejection",
+        "ERROR_MESSAGE": "TIRust returned an invalid or nonfinite binary128 output record.",
+        "IEEE_INVALID_DIVZERO_OVERFLOW_UNDERFLOW_INEXACT": [
+          "F",
+          "F",
+          "T",
+          "F",
+          "T"
+        ],
+        "MASS_SQUARED": "1.000000000000000000000000000000000009770E+4932",
+        "MU_SQUARED": "1.000000000000000000000000000000000000000E+0000",
+        "OUTPUTS_ALL_ZERO": "T",
+        "PUBLIC_STATUS": 2,
+        "QP_CACHE_HITS_MISSES_ENTRIES_BYTES_REFUSED_BYPASSED": [
+          0,
+          2,
+          2,
+          2592,
+          0,
+          0
+        ],
+        "case": "large-mass"
+      },
+      {
+        "CACHE_STATUS": 0,
+        "CLASSIFICATION": "public-transport-rejection",
+        "ERROR_MESSAGE": "TIRust returned an invalid or nonfinite binary128 output record.",
+        "IEEE_INVALID_DIVZERO_OVERFLOW_UNDERFLOW_INEXACT": [
+          "F",
+          "F",
+          "T",
+          "F",
+          "T"
+        ],
+        "MASS_SQUARED": "1.000000000000000000000000000000000009770E+4932",
+        "MU_SQUARED": "1.000000000000000000000000000000000000000E+0000",
+        "OUTPUTS_ALL_ZERO": "T",
+        "PUBLIC_STATUS": 2,
+        "QP_CACHE_HITS_MISSES_ENTRIES_BYTES_REFUSED_BYPASSED": [
+          1,
+          2,
+          2,
+          2592,
+          0,
+          0
+        ],
+        "case": "large-mass"
+      }
+    ]
+  },
+  "identities": {
+    "new059b": {
+      "artifacts": {
+        "include/mtirust.f90": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+        "lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+        "lib/libtirust.a": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+        "lib/mtirust.mod": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5",
+        "lib/tirust-config.json": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9"
+      },
+      "prefix": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust"
+    },
+    "old095e": {
+      "artifacts": {
+        "include/mtirust.f90": "12295dca6b64a96dbd4f184cf67ed702f38c9fd82658e196fa4c5b7135fee10e",
+        "lib/libmadloop_tirust.so": "095e957990c2e7ed87ed9ea73fee71eb132f00b330e0d38fd423163c173e358c",
+        "lib/libtirust.a": "04c2b1ac3b8275dd2d0060416c4147bebd5e9bd62b71509e4cb29ce3d5c47d08",
+        "lib/mtirust.mod": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5",
+        "lib/tirust-config.json": "a11c93e0a0d347ef027493b34a0569fbc957d5a9a5dbadb107e3756e70c3b97c"
+      },
+      "prefix": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust"
+    }
+  },
+  "input_artifacts": {
+    "new059b-real-provider.log": "1fc19e036233877100bdf761c636646d56d983c8244744bb7b6d241b3ce69914",
+    "old095e-real-provider.log": "2390844a955138a1e3892ee206adf9c0660870d3a7e3688cc0163b1a365901e4",
+    "real-provider.f90": "97c2157b2baea32afaece6e93b448c21a0796d2124f259e75b17f34120489feb",
+    "results.json": "3337295ff3456842e7b201e147f8305b913792b98cc86958d9fb6916fd9a8fb1"
+  },
+  "inputs_public_status_zero_outputs_and_ieee_flags_identical": true,
+  "native_boundary_reached": true,
+  "old_retained_entry_repeat_hit_observed": true,
+  "passed": true,
+  "performance_eligible": false,
+  "schema_version": 1,
+  "source_sha256": "6a368744aa37be6fce03dffdce2bfee7be2a53f6db03410ed53389be6c889cf1",
+  "state": "complete",
+  "timeout_seconds_per_execution": 180,
+  "trap_policy": "Only this diagnostic disables traps and restores original IEEE settings on exit."
+}

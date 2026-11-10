@@ -1,0 +1,189 @@
+{
+  "allowed_refusal_branch_exercised": false,
+  "analysis": "Offline analysis only; no native calls or protocol changes",
+  "analysis_source_sha256": "f46ee8261314156f9555b46b9cb131b98b11f5dd247c9dc598d72f995ee64dc5",
+  "frozen_parser_sha256": "70487da05de7696d12271666ec3bdb61e43cbffe15054bbb2a6f91445bddfdfa",
+  "interpretation": "The raw public Fortran API succeeded on both massive-triangle DP calls. Historical generated-adapter refusals are not results of this run.",
+  "passed": true,
+  "per_installation": {
+    "new": {
+      "calls": 65,
+      "frames_sha256": "7d37b7e40832c08c355be8b94e66c83c06fea2395ee766725a2b321b58f19f9c",
+      "refused_calls": 0,
+      "retained_qualification_reproduced": true,
+      "rows": [
+        {
+          "aggregate_and_qp_after": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "aggregate_and_qp_before": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "all_15_counters_zero_before_and_after": true,
+          "id": 57,
+          "name": "massive-triangle-r2-64-finite1",
+          "native_status": 0
+        },
+        {
+          "aggregate_and_qp_after": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "aggregate_and_qp_before": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "all_15_counters_zero_before_and_after": true,
+          "id": 58,
+          "name": "massive-triangle-r2-64-finite0",
+          "native_status": 0
+        }
+      ],
+      "successful_calls": 65
+    },
+    "old": {
+      "calls": 65,
+      "frames_sha256": "7d37b7e40832c08c355be8b94e66c83c06fea2395ee766725a2b321b58f19f9c",
+      "refused_calls": 0,
+      "retained_qualification_reproduced": true,
+      "rows": [
+        {
+          "aggregate_and_qp_after": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "aggregate_and_qp_before": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "all_15_counters_zero_before_and_after": true,
+          "id": 57,
+          "name": "massive-triangle-r2-64-finite1",
+          "native_status": 0
+        },
+        {
+          "aggregate_and_qp_after": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "aggregate_and_qp_before": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "all_15_counters_zero_before_and_after": true,
+          "id": 58,
+          "name": "massive-triangle-r2-64-finite0",
+          "native_status": 0
+        }
+      ],
+      "successful_calls": 65
+    }
+  },
+  "state": "complete"
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "state": "complete",
+  "passed": true,
+  "performance_eligible": false,
+  "execution_count_per_archive": 1,
+  "calls_per_execution": 3,
+  "timeout_seconds_per_execution": 180,
+  "native_boundary_reached": true,
+  "old_retained_entry_repeat_hit_observed": true,
+  "fixed_cache_empty_after_both_rejections": true,
+  "inputs_public_status_zero_outputs_and_ieee_flags_identical": true,
+  "clear_resets_counters_limit": "Zero counters after clear do not by themselves count re-evaluations; the separate independent mock-provider test proves retry misses/re-evaluation.",
+  "trap_policy": "Only this diagnostic disables traps and restores original IEEE settings on exit.",
+  "source_sha256": "6a368744aa37be6fce03dffdce2bfee7be2a53f6db03410ed53389be6c889cf1",
+  "input_artifacts": {
+    "results.json": "3337295ff3456842e7b201e147f8305b913792b98cc86958d9fb6916fd9a8fb1",
+    "real-provider.f90": "97c2157b2baea32afaece6e93b448c21a0796d2124f259e75b17f34120489feb",
+    "old095e-real-provider.log": "2390844a955138a1e3892ee206adf9c0660870d3a7e3688cc0163b1a365901e4",
+    "new059b-real-provider.log": "1fc19e036233877100bdf761c636646d56d983c8244744bb7b6d241b3ce69914"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "state": "complete",
+  "started_utc": "2026-11-10T00:27:14.381958+00:00",
+  "command": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/validate_release.py",
+    "--original-library",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+    "--split-library",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+    "--output",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/release-validation.json",
+    "--timeout",
+    "900"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "source_sha256": "796f794dc288dc774b81b6315ae5bdd29a7d43640dc1b54b8fa7a2bb8268db05",
+  "runner_sha256": "f8d068e919642570701dad7db58e7619f22fddbcd632b83127d9fcea172ed223",
+  "old_library_sha256": "095e957990c2e7ed87ed9ea73fee71eb132f00b330e0d38fd423163c173e358c",
+  "new_library_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+  "shared_lock": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/numerical-tests.lock",
+  "scope": "90-call raw DP ABI parity; separate Fortran archive tests cover changed boundary",
+  "finished_utc": "2026-11-10T00:27:15.514759+00:00",
+  "returncode": 0
+}
