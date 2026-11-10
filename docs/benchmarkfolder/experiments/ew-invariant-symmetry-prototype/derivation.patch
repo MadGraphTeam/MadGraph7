@@ -1,0 +1,40 @@
+--- frozen/TIRUST_interface.f
++++ private/TIRUST_interface.f
+@@ -82,6 +82,18 @@
+      $     ,KIND=KI_TIR)
+         ENDDO
+       ENDDO
++C     Private proposal: the ABI consumes the upper triangle (I<J).
++C     Keep all original reconstruction arithmetic and the diagonal.
++C     Do not hide any nonfinite lower-triangle input from validation.
++      IF(ALL(IEEE_IS_FINITE(INVARIANTS))) THEN
++        DO J=2,NLOOPLINE
++          DO I=1,J-1
++            IF(INVARIANTS(J,I).NE.INVARIANTS(I,J)) THEN
++              INVARIANTS(J,I)=INVARIANTS(I,J)
++            ENDIF
++          ENDDO
++        ENDDO
++      ENDIF
+       SCALE=MU_R**2
+       NC=NCOEF_R(RANK)
+       CACHE_ENABLED=TIRUSTGLOBALCACHE.EQ.
+@@ -194,6 +206,18 @@
+      $     ,KIND=KI_QTIR)
+         ENDDO
+       ENDDO
++C     Private proposal: the ABI consumes the upper triangle (I<J).
++C     Keep all original reconstruction arithmetic and the diagonal.
++C     Do not hide any nonfinite lower-triangle input from validation.
++      IF(ALL(IEEE_IS_FINITE(INVARIANTS))) THEN
++        DO J=2,NLOOPLINE
++          DO I=1,J-1
++            IF(INVARIANTS(J,I).NE.INVARIANTS(I,J)) THEN
++              INVARIANTS(J,I)=INVARIANTS(I,J)
++            ENDIF
++          ENDDO
++        ENDDO
++      ENDIF
+       SCALE=REAL(MU_R,KIND=KI_QTIR)**2
+       NC=NCOEF_R(RANK)
+       CACHE_ENABLED=TIRUSTGLOBALCACHE.EQ.
