@@ -1,0 +1,10 @@
+{
+  "baseline/li_gg_hh": {
+    "generation_sha256": "0be10926fe5037e5851431f319a0749ac4b25e02369d8cdbf076898832e2c471",
+    "param_card_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+  },
+  "candidate/li_gg_hh": {
+    "generation_sha256": "dc1f30b90c5f84e81c127d7f5ae0fa13e9faeefecc0f2cdda18f252c64694ef7",
+    "param_card_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+  }
+}

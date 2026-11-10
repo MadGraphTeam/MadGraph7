@@ -1,0 +1,714 @@
+{
+  "campaign": "entry-latch-cache-guard-1",
+  "case": {
+    "id": "li_gg_hh",
+    "model": "loop_sm",
+    "nfinal": 2,
+    "process": "g g > h h [noborn=QCD]",
+    "role": "control"
+  },
+  "cases": [
+    {
+      "case": "li_gg_hh",
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "error": null,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "matched_saved_points": 100,
+          "numerical_agreement_passed": true,
+          "ordinary_target_passed": true,
+          "performance_acceptance_eligible": false,
+          "source": "baseline",
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "error": null,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "matched_saved_points": 100,
+          "numerical_agreement_passed": true,
+          "ordinary_target_passed": true,
+          "performance_acceptance_eligible": false,
+          "source": "candidate",
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "error": null,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "matched_saved_points": 100,
+          "numerical_agreement_passed": true,
+          "ordinary_target_passed": true,
+          "performance_acceptance_eligible": false,
+          "source": "candidate",
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "error": null,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "matched_saved_points": 100,
+          "numerical_agreement_passed": true,
+          "ordinary_target_passed": true,
+          "performance_acceptance_eligible": false,
+          "source": "candidate",
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "error": null,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "matched_saved_points": 100,
+          "numerical_agreement_passed": true,
+          "ordinary_target_passed": true,
+          "performance_acceptance_eligible": false,
+          "source": "candidate",
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 100
+          },
+          "backend": 9,
+          "error": null,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "matched_saved_points": 100,
+          "numerical_agreement_passed": true,
+          "ordinary_target_passed": true,
+          "performance_acceptance_eligible": false,
+          "source": "candidate",
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          }
+        }
+      ],
+      "raw_replay_passed": true,
+      "results_path": "experiments/numerical/full100-warmup-li_gg_hh-1/results.json",
+      "results_sha256": "19e524e61213739b71e06284c9b7eee557c8f0752fb994ade39bdd23e3c44805",
+      "returncode": 0,
+      "status": "passed"
+    }
+  ],
+  "file_count": 114,
+  "files": {
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/cases.json": {
+      "bytes": 2687,
+      "sha256": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/baseline-initialization/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/baseline-initialization/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "75ce016f53873702e3edde0c048e0c1a0f5c40abcac68293c0769a000ef0b248"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/baseline-inputs.json": {
+      "bytes": 107598,
+      "sha256": "81cc1a90ea34779685714a9855c0ebafd3467b775f0b74cf5867508aa65b9724"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/baseline-output.txt": {
+      "bytes": 6189,
+      "sha256": "88e759cac0ee1477abaee47d3d679dc1ad9e4579eb2a32d4e1e15a88210ae44e"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/inputs-after.json": {
+      "bytes": 7527,
+      "sha256": "7f1ea384fa3e7ad51f0e9f7a0e4ae33713a7eca254e9f9021c249ff27e44cea0"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/raw/observation.json": {
+      "bytes": 102512,
+      "sha256": "a257cf34b59916d0a71841c39dae41ef0368e2bcf11f49c574cd5d933111c811"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/raw/ready.json": {
+      "bytes": 90,
+      "sha256": "2d46ce38ca811b501ff2f83112c5dec5dfc2246b82a872d0665d4fb158e83dee"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "75ce016f53873702e3edde0c048e0c1a0f5c40abcac68293c0769a000ef0b248"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/baseline-1/result.json": {
+      "bytes": 345045,
+      "sha256": "a99bfbb306d39e0c3741137f9717dc8f6ce098dab1cd96c18df56283b1cfb30f"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/campaign-manifest.json": {
+      "bytes": 398114,
+      "sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/candidate-initialization/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/candidate-initialization/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "75ce016f53873702e3edde0c048e0c1a0f5c40abcac68293c0769a000ef0b248"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/candidate-inputs.json": {
+      "bytes": 417498,
+      "sha256": "4214456379952b882c052f8fd64fc59c56a5d24a9a056ac7615d174311f798e7"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/candidate-output.txt": {
+      "bytes": 6359,
+      "sha256": "6d5d17640c6526331cb176691dbe1fa1c20ddc704d33f5caca0cd8b1d7c7b872"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/inputs-after.json": {
+      "bytes": 9401,
+      "sha256": "b934ba3f4744ae0c59524896204383a3b23b7e9e4e51c0d841c66158fb3b61ee"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/raw/observation.json": {
+      "bytes": 102512,
+      "sha256": "81155d4d5f85674a75733283e211d7ff33dbe9db2d8444d4ecbbd53a1c9858b5"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/raw/ready.json": {
+      "bytes": 90,
+      "sha256": "980b41635cc40a6da26169d096993553874e4c84c3f0aceeb7cd84dd6ea18ef6"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "75ce016f53873702e3edde0c048e0c1a0f5c40abcac68293c0769a000ef0b248"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-1/result.json": {
+      "bytes": 345046,
+      "sha256": "dcd9e701b5a33f4230c6e081ea234228d82ff54d70863834b87c6fff88cb443d"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/candidate-initialization/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/candidate-initialization/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "6ef70b3918baf935bc3dfae4a9ed8e26becbbce68cbbeba3acba07f28953faf7"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/candidate-inputs.json": {
+      "bytes": 417498,
+      "sha256": "069076a8f4b5485cf075afd7c4154b08f72e8a9684b1c6513d3991f9e6000ece"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/candidate-output.txt": {
+      "bytes": 8914,
+      "sha256": "d304996d758c7623065552ee5fb859415084219d0d63c6fd6a6ea74cf15cf23f"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/inputs-after.json": {
+      "bytes": 9401,
+      "sha256": "bdb5b4c40acdd60c98b3504f5778e700e582265a76186d0f78488a24fa38fb06"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/raw/observation.json": {
+      "bytes": 102482,
+      "sha256": "861449533d1510c9ead4fc22cfb85967a51a4bd18fef481dd993844935cb3011"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/raw/ready.json": {
+      "bytes": 90,
+      "sha256": "675a5db1872dda6dcbbfbfe1e5dd59dfc7c95cee9a90ab16b741afb80fd0a730"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "6ef70b3918baf935bc3dfae4a9ed8e26becbbce68cbbeba3acba07f28953faf7"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-6/result.json": {
+      "bytes": 364241,
+      "sha256": "ec38a5f74bb5b285c274062365db461ddc2983eeea838f2027ff0ba101ac673b"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/candidate-initialization/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/candidate-initialization/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "7236a45f1edfc7ca049f167d0ff2c49b297934abfc532372d3b7c28d90dbca73"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/candidate-inputs.json": {
+      "bytes": 417498,
+      "sha256": "b2d3aa4b2c291be5641b504c228ed1344c4c7892b31eac99dc04a32dd58f5562"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/candidate-output.txt": {
+      "bytes": 7152,
+      "sha256": "cc313734e8adb4322b2610fccd4a175cc860ad28f406d4566461a86aa98f6e31"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/inputs-after.json": {
+      "bytes": 9401,
+      "sha256": "3d2e4229bed462e6e40883603acf8cc523d3ed8342934cc70c21165eb23462b9"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/raw/observation.json": {
+      "bytes": 102444,
+      "sha256": "53dbdff17b0a9cb5dd60bf2dde9eb3a5358c2b59a5b2a627d9c0b9be18903b0f"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/raw/ready.json": {
+      "bytes": 90,
+      "sha256": "0590d5a6c327d689e496272201b85c2e35dfe2594c12197db416edd78f945be5"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "7236a45f1edfc7ca049f167d0ff2c49b297934abfc532372d3b7c28d90dbca73"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-7/result.json": {
+      "bytes": 364177,
+      "sha256": "7319696365832a05ff45036016dd084fff8cad1a33fe00d0683d431d304b9d36"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/candidate-initialization/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/candidate-initialization/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "29794f7baaf5020f37b8627e55e375d5a614a472ac6f63f016c6cdefd6363857"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/candidate-inputs.json": {
+      "bytes": 417498,
+      "sha256": "fa867d3d9d585789a89653c04637bf54a930532da332d4cd7c6823b6b212ebcf"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/candidate-output.txt": {
+      "bytes": 4527,
+      "sha256": "91e76b3466f9bb9586faba19ac349b83160b7c335603248b60e81edbcf5e2c69"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/inputs-after.json": {
+      "bytes": 9401,
+      "sha256": "98cdca9756df2c7f28835aa26e0e0f927bf9edbdae1bb39a9da9b128edf5ff03"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/raw/observation.json": {
+      "bytes": 102488,
+      "sha256": "529c329dca2daa81f10e147840c65d81376b62844ec11eb8c2d3672b1757367a"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/raw/ready.json": {
+      "bytes": 90,
+      "sha256": "46ca64d419aba26a99fc4e446f06423a8bfc85a0389133827e7fd709fa15608e"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "29794f7baaf5020f37b8627e55e375d5a614a472ac6f63f016c6cdefd6363857"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-8/result.json": {
+      "bytes": 364305,
+      "sha256": "8d388054992584369029601aedd549364d68f0f0cae103b10d3a2ee8c59bffee"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/candidate-initialization/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/candidate-initialization/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "bfcc8fd8b6b79afe5eda043fdcc412cddabc5a660e8d9798fadf47111f382a1d"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/candidate-inputs.json": {
+      "bytes": 417498,
+      "sha256": "a3e1f57ae59374ca8d9a6494b41b1f368f701cf54819c56cff11bce4d39c916d"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/candidate-output.txt": {
+      "bytes": 4527,
+      "sha256": "32111ee60a312bfb628980baecb107aa45ebafd80ee87ba4f1a259eb4a2bea1f"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/inputs-after.json": {
+      "bytes": 9401,
+      "sha256": "09b1875d3efe6fd3ebeaefcb33d05713083c54464aba8b5c8a58a29969910fa3"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/raw/observation.json": {
+      "bytes": 102545,
+      "sha256": "5e9dc81b6986f2d3ed7c62a1d98c518e7a63edba7f543d9c64f98d6277e34620"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/raw/ready.json": {
+      "bytes": 89,
+      "sha256": "cc6e2a339deabee6d4a1ec48f0a6db8ed97d877b11cae5bebd2f0a7cb18f558f"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "bfcc8fd8b6b79afe5eda043fdcc412cddabc5a660e8d9798fadf47111f382a1d"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/candidate-9/result.json": {
+      "bytes": 364340,
+      "sha256": "104ba50cadf444b2f4314be4ad8c5b9ee6ea97aa4a924afdc7644570b5cab000"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/cases.json": {
+      "bytes": 2687,
+      "sha256": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/results.json": {
+      "bytes": 2436510,
+      "sha256": "19e524e61213739b71e06284c9b7eee557c8f0752fb994ade39bdd23e3c44805"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/specification.json": {
+      "bytes": 52970,
+      "sha256": "eeca83b6d90ad8d4bc8870cedb8b63484261bbcf9ad583e4ae19089d00aab3ba"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/tirust_benchmark.py": {
+      "bytes": 96661,
+      "sha256": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/tirust_benchmark_campaign.py": {
+      "bytes": 41779,
+      "sha256": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/tirust_benchmark_compiler.py": {
+      "bytes": 8272,
+      "sha256": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/tirust_benchmark_numerical.py": {
+      "bytes": 6906,
+      "sha256": "1d4ca057aecef040457a46dc06c23185ba31cd53bf67df1c5fa6805c99c0128f"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/tirust_benchmark_warmup.py": {
+      "bytes": 7041,
+      "sha256": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/tirust_benchmark_worker.f": {
+      "bytes": 7825,
+      "sha256": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/tirust_benchmark_worker.py": {
+      "bytes": 18869,
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/baseline/li_gg_hh/build-history/20261110T180156225422Z/compilation.json": {
+      "bytes": 72879,
+      "sha256": "bbb1917d2fde611e7661d38561d6037a07d2c09ef682cc67dfea2a8656bc7ef7"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/baseline/li_gg_hh/compilation-process.log": {
+      "bytes": 2092,
+      "sha256": "40cca7fe7a565b8aa1814c2a574e240ae2bfd72213edaaed40cd3fd2cb66172d"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/baseline/li_gg_hh/compilation.json": {
+      "bytes": 72904,
+      "sha256": "e23155f7e7b61cfab6c96c618b05e209c3aae2bc94fa3adae9bbbd09c85eb8ea"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/baseline/li_gg_hh/generation.json": {
+      "bytes": 22829,
+      "sha256": "0be10926fe5037e5851431f319a0749ac4b25e02369d8cdbf076898832e2c471"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/baseline/li_gg_hh/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/baseline/li_gg_hh/object-relink-make.log": {
+      "bytes": 1341,
+      "sha256": "8f1457f517b403bd0dcafa11f2ce4654b4e4f6a8d4e644f065b3c9fe02d31dd1"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/baseline/li_gg_hh/object-relink-proof.json": {
+      "bytes": 7313,
+      "sha256": "d3a44f9cb33460194c4ff6b82c830f2b06c92aee452731512d29a71943023afb"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/baseline/li_gg_hh/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/baseline/li_gg_hh/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/candidate/li_gg_hh/compilation-DHELAS.log": {
+      "bytes": 2812,
+      "sha256": "ef5f1566e7b92de56f8f94d9d982b984781555cac22c812af3bcb4d93eb2be28"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/candidate/li_gg_hh/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "57b320a4e4d29ef074d87db71ae3bc0a1cc9ca5deee851282ec7c7e80e367955"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/candidate/li_gg_hh/compilation-process.log": {
+      "bytes": 12803,
+      "sha256": "d0295ea204250319f9cbfae168e3ec25be04cf72a4950cdb535d24880076d4cb"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/candidate/li_gg_hh/compilation.json": {
+      "bytes": 80244,
+      "sha256": "3ca30cea6e02787d85a84072ca701151795dfb230e0c0a6951c5ff54aeaf5d7b"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/candidate/li_gg_hh/generation.json": {
+      "bytes": 318664,
+      "sha256": "dc1f30b90c5f84e81c127d7f5ae0fa13e9faeefecc0f2cdda18f252c64694ef7"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/inputs/candidate/li_gg_hh/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/manifest.json": {
+      "bytes": 398114,
+      "sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/points/li_gg_hh.dat": {
+      "bytes": 38804,
+      "sha256": "448c163dd6d421c520c3d861b5675666f77e831ab757660df6205522ba5b7aa8"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/points/li_gg_hh.json": {
+      "bytes": 68138,
+      "sha256": "48b0407acd5806983b52c3a314c383cbc88e5d1e629370844fde3d9432529d11"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/build-both/cards-after.json": {
+      "bytes": 434,
+      "sha256": "cb18c6701b15a4f691768e8431d62cdd018706fc56ec3296139296d0b55fbb85"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/build-both/cards-before.json": {
+      "bytes": 434,
+      "sha256": "cb18c6701b15a4f691768e8431d62cdd018706fc56ec3296139296d0b55fbb85"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/build-both/configuration-after.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/build-both/configuration-before.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/build-both/console.log": {
+      "bytes": 51,
+      "sha256": "4c6ed8395bdea8130a3a8b3751b07b1d1c9513f108a7950b6bf72016d6b4f182"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/build-both/verified-builds.json": {
+      "bytes": 13861,
+      "sha256": "626c6fb1fc3129f982e2223e4f5c4f2d772f128fae12c5ed54a20c705bc1bf3c"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/generate-candidate/cards-after.json": {
+      "bytes": 434,
+      "sha256": "cb18c6701b15a4f691768e8431d62cdd018706fc56ec3296139296d0b55fbb85"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/generate-candidate/configuration-after.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/generate-candidate/configuration-before.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/generate-candidate/console.log": {
+      "bytes": 29,
+      "sha256": "31fd9dc733091606fa9054901e1c59d45c920c5019df735e47bb0481237dc20f"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/numerical-li_gg_hh/cards-after.json": {
+      "bytes": 434,
+      "sha256": "cb18c6701b15a4f691768e8431d62cdd018706fc56ec3296139296d0b55fbb85"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/numerical-li_gg_hh/cards-before.json": {
+      "bytes": 434,
+      "sha256": "cb18c6701b15a4f691768e8431d62cdd018706fc56ec3296139296d0b55fbb85"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/numerical-li_gg_hh/compiled-inputs.json": {
+      "bytes": 13861,
+      "sha256": "626c6fb1fc3129f982e2223e4f5c4f2d772f128fae12c5ed54a20c705bc1bf3c"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/numerical-li_gg_hh/configuration-after.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/numerical-li_gg_hh/configuration-before.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/numerical-li_gg_hh/console.log": {
+      "bytes": 359,
+      "sha256": "e05b86f949482866f04181e3447db397b8e95602cb529d54e9dc53e2fcc0873f"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/numerical-li_gg_hh/numerical-result.json": {
+      "bytes": 3053,
+      "sha256": "0d1608693821bbd50db8cd3c1bb010c08002382e3de22c7a5a7d0b5cad723d09"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/numerical-li_gg_hh/verified-builds.json": {
+      "bytes": 13861,
+      "sha256": "626c6fb1fc3129f982e2223e4f5c4f2d772f128fae12c5ed54a20c705bc1bf3c"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/reuse-baseline/configuration-after.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/reuse-baseline/configuration-before.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/reuse-baseline/console.log": {
+      "bytes": 25,
+      "sha256": "cdc22cb5dbc2cf589859eabd6c18a227869f0f25b6c353b725c231154c86b438"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/status.json": {
+      "bytes": 27163,
+      "sha256": "6dded24d4b0f0c4424f2976077cab3654774e11599cc1e3e3a1fbc7c95bdedb8"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/source-index.json": {
+      "bytes": 9845,
+      "sha256": "84d5aa3e611d38809eafb633eccfdca5ae78c0f4e597a3cbb05e063c88787c48"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/specification.json": {
+      "bytes": 392803,
+      "sha256": "18b2b5e0f0b6b05464994ff1b924b1ec91b7059342bb4800beefedd80640893d"
+    }
+  },
+  "full_matrix_complete": false,
+  "manifest_sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076",
+  "native_calls_after_case": 0,
+  "numerical_result": {
+    "case": "li_gg_hh",
+    "lanes": [
+      {
+        "accepted_backend_precision_counts": {
+          "1:DP": 100
+        },
+        "backend": 1,
+        "error": null,
+        "fpe_flags": null,
+        "internal_retry_counts": null,
+        "matched_saved_points": 100,
+        "numerical_agreement_passed": true,
+        "ordinary_target_passed": true,
+        "performance_acceptance_eligible": false,
+        "source": "baseline",
+        "status": "complete",
+        "status_counts": {
+          "211": 100
+        }
+      },
+      {
+        "accepted_backend_precision_counts": {
+          "1:DP": 100
+        },
+        "backend": 1,
+        "error": null,
+        "fpe_flags": null,
+        "internal_retry_counts": null,
+        "matched_saved_points": 100,
+        "numerical_agreement_passed": true,
+        "ordinary_target_passed": true,
+        "performance_acceptance_eligible": false,
+        "source": "candidate",
+        "status": "complete",
+        "status_counts": {
+          "211": 100
+        }
+      },
+      {
+        "accepted_backend_precision_counts": {
+          "6:DP": 100
+        },
+        "backend": 6,
+        "error": null,
+        "fpe_flags": null,
+        "internal_retry_counts": null,
+        "matched_saved_points": 100,
+        "numerical_agreement_passed": true,
+        "ordinary_target_passed": true,
+        "performance_acceptance_eligible": false,
+        "source": "candidate",
+        "status": "complete",
+        "status_counts": {
+          "216": 100
+        }
+      },
+      {
+        "accepted_backend_precision_counts": {
+          "7:DP": 100
+        },
+        "backend": 7,
+        "error": null,
+        "fpe_flags": null,
+        "internal_retry_counts": null,
+        "matched_saved_points": 100,
+        "numerical_agreement_passed": true,
+        "ordinary_target_passed": true,
+        "performance_acceptance_eligible": false,
+        "source": "candidate",
+        "status": "complete",
+        "status_counts": {
+          "217": 100
+        }
+      },
+      {
+        "accepted_backend_precision_counts": {
+          "8:DP": 100
+        },
+        "backend": 8,
+        "error": null,
+        "fpe_flags": null,
+        "internal_retry_counts": null,
+        "matched_saved_points": 100,
+        "numerical_agreement_passed": true,
+        "ordinary_target_passed": true,
+        "performance_acceptance_eligible": false,
+        "source": "candidate",
+        "status": "complete",
+        "status_counts": {
+          "218": 100
+        }
+      },
+      {
+        "accepted_backend_precision_counts": {
+          "9:DP": 100
+        },
+        "backend": 9,
+        "error": null,
+        "fpe_flags": null,
+        "internal_retry_counts": null,
+        "matched_saved_points": 100,
+        "numerical_agreement_passed": true,
+        "ordinary_target_passed": true,
+        "performance_acceptance_eligible": false,
+        "source": "candidate",
+        "status": "complete",
+        "status_counts": {
+          "219": 100
+        }
+      }
+    ],
+    "raw_replay_passed": true,
+    "results_path": "experiments/numerical/full100-warmup-li_gg_hh-1/results.json",
+    "results_sha256": "19e524e61213739b71e06284c9b7eee557c8f0752fb994ade39bdd23e3c44805",
+    "returncode": 0,
+    "status": "passed"
+  },
+  "performance_acceptance_eligible": false,
+  "schema": "madloop-tirust-one-case-closure-v1",
+  "source_index_sha256": "84d5aa3e611d38809eafb633eccfdca5ae78c0f4e597a3cbb05e063c88787c48",
+  "total_bytes": 10509434
+}
