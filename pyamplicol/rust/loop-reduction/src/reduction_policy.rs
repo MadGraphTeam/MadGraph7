@@ -26,9 +26,11 @@
 //!   the fallback serves is GUARDED (m-lit lit-fallback-guard, DECISIONS
 //!   2026-11-09 05:56 (1) and 11:53, [`fallback_guarded`]): NinjaRS can
 //!   return finite, badly wrong values as success at near-planar 2 -> 3
-//!   points of rank-n pentagon families, so its value runs the
-//!   reduction-direction re-reduction ([`FALLBACK_CHECK`], cached masters)
-//!   at the call's carrier, its relative estimate is recorded per point,
+//!   points of rank-n pentagon families and still loses digits ~1/Gram at a
+//!   nearly degenerate 2 -> 2 (sub-)box in the extended carriers, so its
+//!   value runs a rotation re-test ([`FALLBACK_CHECK`], the rotation
+//!   [`FALLBACK_ROTATION`] of the evaluated point) at the call's carrier,
+//!   its relative estimate is recorded per point,
 //!   and a point whose estimate exceeds the guard's limit (the call's
 //!   target, never below [`FALLBACK_FLOOR`]: [`fallback_limit`],
 //!   [`fallback_accepted`]) fails with the one reason
@@ -184,21 +186,35 @@ pub fn fallback_failed(fallback: &str, reason: &str) -> String {
     format!("{} fallback: {reason}", name_of(fallback))
 }
 
-/// The check the per-point fallback's GUARD runs on every point the
-/// fallback served in a guarded carrier ([`fallback_guarded`]; m-lit
-/// lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and 11:53): the
-/// reduction-direction re-reduction (every loop numerator reduced a second
-/// time in the reversed frame, its coefficients and the cached master
-/// integrals reused; the Python API's `VirtualStabilityChecks(
-/// reduction_direction=True)` without `rescaled`, the SDKs' re-test frame
-/// `reversed`), at the call's own carrier (never escalated, USER 2026-11-08
-/// ~20:55 'Same precision as call'). Its estimate, in the `"relative"`
-/// metric (each squared-order sector against its largest Laurent
-/// coefficient, the metric of [`DEFAULT_TARGET`]), is recorded per point;
-/// a point whose estimate exceeds the guard's limit ([`fallback_limit`]) or
-/// is not a number fails typed ([`fallback_rejected`]), a point within it
-/// keeps the fallback's value bitwise.
-pub const FALLBACK_CHECK: &str = "reduction-direction";
+/// The check of the per-point fallback's GUARD (m-lit lit-fallback-guard,
+/// DECISIONS 2026-11-09 05:56 (1); since DECISIONS 2026-11-10 19:20 (c) a
+/// ROTATION RE-TEST): the point the fallback evaluated (the caller's exact
+/// inputs, improved in the call's carrier) is rotated exactly by
+/// [`FALLBACK_ROTATION`] and evaluated again on the fallback, and each
+/// returned output's deviation is its error (the Python API's
+/// `VirtualStabilityChecks(rotations=1)` budget `rotation-0`, the SDKs'
+/// [`crate::v2_stability::rotation_name`] 0), at the call's own carrier
+/// (never escalated, USER 2026-11-08 ~20:55 'Same precision as call').
+/// Measured (m-lit lit-ninja-fwd, `tmp/lit-ninja-fwd/c/`): it sees the
+/// double-double near-forward misses of the cached reduction-direction
+/// re-reduction it replaces (g g > z z at theta 1e-4: suppressed rows 5.5e4
+/// off, cached estimate 5.6e-6, rotation 2.6e-3 of the row) with no false
+/// rejection on the regular double-double sets (the li streams). Its
+/// estimate, in the `"relative"` metric (each squared-order sector against
+/// its largest Laurent coefficient, the metric of [`DEFAULT_TARGET`]), is
+/// recorded per point; a point whose estimate exceeds the guard's limit
+/// ([`fallback_limit`]) or is not a number fails typed
+/// ([`fallback_rejected`]), a point within it keeps the fallback's value
+/// bitwise. Like every rotation it keeps the masters' invariants: an
+/// input's own shell or conservation defect it rotates along (the default
+/// kinematics chain makes the point exact, `rusticol_core::
+/// kinematics_improvement`).
+pub const FALLBACK_CHECK: &str = "rotation";
+
+/// The guard's rotation: the index of `v2_stability::default_rotation` (the
+/// recommended checks' rotation, `default_rotation(0)` of the Python API's
+/// `stability`).
+pub const FALLBACK_ROTATION: u64 = 0;
 
 /// The guard's floor: its limit is never stricter than this relative
 /// accuracy, whatever the call's target (USER 2026-11-09 ~11:53, 'it's fine
@@ -232,7 +248,7 @@ pub fn fallback_accepted(estimate: f64, target: f64) -> bool {
 }
 
 /// One squared-order sector of one output a fallback-served point returns,
-/// as the guard reads that output's reduction-direction estimate
+/// as the guard reads that output's rotation re-test estimate
 /// ([`fallback_estimate`]): the sector's magnitude (its largest |Laurent
 /// coefficient|, the `"relative"` metric's scale of the sector), its largest
 /// absolute estimate E and its largest term scale S (the scale of the
@@ -252,7 +268,7 @@ pub struct GuardSector {
 /// nothing more'): `outputs[o][s]` is sector s of output o (the summed
 /// value: one output; a resolved, correlated or selected call: each of its
 /// outputs, every one with the record's sectors in order), each from the
-/// reduction-direction re-test of that output alone ([`FALLBACK_CHECK`]),
+/// rotation re-test of that output alone ([`FALLBACK_CHECK`]),
 /// and `roundoff` the carrier's unit roundoff. Each output is judged
 /// relative to its own magnitude (per sector, the `"relative"` metric: its
 /// error over its magnitude); an output that VANISHES is judged relative to
@@ -303,7 +319,7 @@ pub fn fallback_estimate(outputs: &[Vec<GuardSector>], roundoff: f64) -> f64 {
 /// rejected ([`FALLBACK_CHECK`]): `primary` (the call's effective backend)
 /// refused or failed it (`failure`, its reasons), `fallback` evaluated it
 /// again at the call's carrier `carrier`, and the fallback's value failed
-/// its reduction-direction check with the relative estimate `estimate`
+/// its rotation re-test with the relative estimate `estimate`
 /// above the guard's limit at the call's target `target`
 /// ([`fallback_limit`]). Python (`loops.v2.reduction.text`) and the native
 /// SDKs read it from here.
@@ -432,7 +448,8 @@ pub fn route(key: &str) -> Option<Route> {
 
 /// The policy as JSON (what the Python API reads, `reduction.DEFAULTS`, its
 /// routes, the default target and the unchecked setting): `{"backends",
-/// "carriers", "defaults": {kind: backend}, "fallback", "target":
+/// "carriers", "defaults": {kind: backend}, "fallback", "fallback_check",
+/// "fallback_rotation", "target":
 /// {"default", "refusal"}, "unchecked": {"default", "refusal", "record"},
 /// "routes": {key: {"serves", "backends", "auto"}}}`.
 pub fn policy_json() -> serde_json::Value {
@@ -440,6 +457,8 @@ pub fn policy_json() -> serde_json::Value {
         "backends": BACKENDS,
         "carriers": CARRIERS,
         "fallback": FALLBACK,
+        "fallback_check": FALLBACK_CHECK,
+        "fallback_rotation": FALLBACK_ROTATION,
         "target": {"default": DEFAULT_TARGET, "refusal": TARGET_REFUSAL},
         "unchecked": {
             "default": DEFAULT_UNCHECKED,
@@ -811,7 +830,8 @@ mod tests {
         assert!(!fallback_accepted(1.0000001e-5, 1e-8));
         assert!(!fallback_accepted(f64::NAN, 1e-5));
         assert!(!fallback_accepted(f64::INFINITY, 1e-5));
-        assert_eq!(FALLBACK_CHECK, "reduction-direction");
+        assert_eq!(FALLBACK_CHECK, "rotation");
+        assert_eq!(FALLBACK_ROTATION, 0);
         // The per-output decision (DECISIONS 2026-11-09 14:30, Q7): each
         // returned output against its own magnitude; a vanishing one (within
         // the estimate's rounding floor 16 u S) against the largest returned

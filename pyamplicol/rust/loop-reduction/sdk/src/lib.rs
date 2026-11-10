@@ -1950,9 +1950,9 @@ impl Evaluation {
                     reduction,
                     momenta.len(),
                     arithmetic,
-                    // The fallback's points run with the guard's cached
-                    // check in the call's carrier (one evaluation per
-                    // served point, as the Python API's).
+                    // The fallback's points run with the guard's rotation
+                    // re-test in the call's carrier (the point and its
+                    // rotation, as the Python API's).
                     |native, indices| match indices {
                         None => Ok(native
                             .evaluate_extended(&momenta, &scales, poles.v2(), arithmetic.v2())?

@@ -152,9 +152,10 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
  * NinjaRS from its original exact inputs, at the call's own arithmetic, after
  * the TIRust call; a point NinjaRS fails too fails with both reasons. In
  * double-double and arbitrary precision every point the fallback serves is
- * guarded (m-lit lit-fallback-guard): its NinjaRS value runs the
- * reduction-direction check (reversed re-test frame, cached masters) in the
- * call's arithmetic, and a point whose relative estimate of the outputs the
+ * guarded (m-lit lit-fallback-guard): its NinjaRS value runs a rotation
+ * re-test (the point rotated exactly by the recommended checks' rotation and
+ * evaluated again) in the call's arithmetic, and a point whose relative
+ * estimate of the outputs the
  * call returns exceeds the guard's limit (the reduction target, never below
  * 1e-5) is RUSTICOL_VIRTUAL_FAILED with one reason naming the fallback, the
  * arithmetic, the estimate and the limit; a point within it keeps the

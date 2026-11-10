@@ -1057,8 +1057,8 @@ impl V2Runtime {
     /// the per-point fallback's guard reads (m-lit lit-fallback-guard,
     /// DECISIONS 2026-11-09 14:30 Q7: the guard decides on the outputs the
     /// call returns, from this run of those outputs' rows alone): the same
-    /// executor run with the reduction-direction re-test and the term scale
-    /// collected (`Monitoring`), and per successful point a [`GuardPoint`]
+    /// executor run with the term scale collected (`Monitoring`), and per
+    /// successful point a [`GuardPoint`]
     /// (`guard.points`, by batch index) beside each output's form
     /// (`guard.forms`). The values are those of the run without `guard`.
     #[allow(clippy::too_many_arguments)]
@@ -1112,8 +1112,11 @@ impl V2Runtime {
             let mut collected = Vec::new();
             let guarded = guard.is_some();
             let monitoring = if guarded {
+                // The guard reads the run's vectors and term scale (its
+                // check is a rotation re-test, `reduction_policy::
+                // FALLBACK_CHECK`: no re-reduction).
                 Monitoring {
-                    check: Some(ReductionCheck::REVERSED),
+                    check: None,
                     term_scale: true,
                     collected: Some(&mut collected),
                 }
