@@ -1,0 +1,14 @@
+set automatic_html_opening False --no_save
+set auto_update 0 --no_save
+set nb_core 4 --no_save
+set loop_optimized_output True --no_save
+set output_dependencies external --no_save
+set complex_mass_scheme False --no_save
+set ninja /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib --no_save
+set collier /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier --no_save
+set ninjars /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib --no_save
+set tirust /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib --no_save
+import model /shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/split-dp-terminal-1/models/loop_qcd_qed_sm_Gmu
+generate e+ e- > mu+ mu- a a [virt=QED]
+output standalone /shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa
+quit

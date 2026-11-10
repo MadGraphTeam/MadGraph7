@@ -1,0 +1,20 @@
+{
+  "authorization": "Coordinator scheduling clarification before execution",
+  "changes": [
+    "Permit reviewed isolated diagnostics on separate CPUs during untimed numerical qualification",
+    "Require common numerical lock for every campaign and diagnostic backend8/9 worker",
+    "Require completion of every owned native/compilation job before formal timing"
+  ],
+  "executed": false,
+  "predecessor": "numerical-qualification-1/draft-index.json",
+  "predecessor_sha256": "69b4cb9ec7057a05ec0bf42f1faa6aa6661f319e68f3018cb38e675836ae4ee7",
+  "schema": "madloop-tirust-numerical-scheduling-amendment-v1",
+  "unchanged": [
+    "all numerical commands",
+    "eleven cases and saved100-point streams",
+    "thresholds",
+    "registered3600/14400 deadlines",
+    "worker",
+    "cleanup implementation"
+  ]
+}

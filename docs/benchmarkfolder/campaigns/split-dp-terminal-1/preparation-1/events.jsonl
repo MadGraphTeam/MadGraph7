@@ -1,0 +1,7 @@
+{"child_pid": 73, "event": "stage-start", "stage": "reuse-baseline", "utc": "2026-11-10T00:41:32.690121+00:00"}
+{"event": "stage-pass", "returncode": 0, "stage": "reuse-baseline", "utc": "2026-11-10T00:43:57.296872+00:00"}
+{"child_pid": 959, "event": "stage-start", "stage": "build-baseline", "utc": "2026-11-10T00:43:58.042084+00:00"}
+{"event": "stage-pass", "returncode": 0, "stage": "build-baseline", "utc": "2026-11-10T00:46:38.787006+00:00"}
+{"child_pid": 2516, "event": "stage-start", "stage": "build-candidate", "utc": "2026-11-10T00:46:39.520724+00:00"}
+{"event": "stage-pass", "returncode": 0, "stage": "build-candidate", "utc": "2026-11-10T01:03:22.919476+00:00"}
+{"event": "preparation-pass", "utc": "2026-11-10T01:03:22.920181+00:00"}

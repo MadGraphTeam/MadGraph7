@@ -1,0 +1,32 @@
+{
+  "fake_controller_tests": {
+    "cleanup_code_unchanged": true,
+    "inherited_passed": 4,
+    "real_reducer_calls": 0
+  },
+  "files": {
+    "README.md": {
+      "bytes": 3433,
+      "sha256": "b81b995695c43ded4af61ed31b4121e1d6391e5d54f320419ae03fc9938b6a3c"
+    },
+    "process_cleanup.py": {
+      "bytes": 5554,
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "run.py": {
+      "bytes": 13530,
+      "sha256": "6622bf7637b8935b176e459064f5b6b24c477e3efc595c16014986b6b3cc8124"
+    },
+    "scheduling-amendment.json": {
+      "bytes": 810,
+      "sha256": "eecf69741c70e76038b029b8c58deb7d98a79e581cf19d02e700d72279bdc278"
+    },
+    "test_process_cleanup.py": {
+      "bytes": 4973,
+      "sha256": "4a103f4200f84f82121ce102e89de3a3fc20823fd3aa0d19f9065dc7fc912a82"
+    }
+  },
+  "schema": "madloop-tirust-numerical-supervisor-draft-v1",
+  "scope": "Unexecuted scheduling-only revision; numerical launch remains unauthorized pending preparation review",
+  "source_review": "pending admission-only diff review"
+}

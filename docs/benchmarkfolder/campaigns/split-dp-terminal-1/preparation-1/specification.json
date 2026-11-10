@@ -1,0 +1,104 @@
+{
+  "campaign": "split-dp-terminal-1",
+  "case_ids": [
+    "qcd_n1_uux_z",
+    "qcd_n2_gg_ttx",
+    "qcd_n3_uux_zgg",
+    "qcd_n4_uux_zzgg",
+    "ew_n1_udx_wp",
+    "ew_n2_epem_mupmum",
+    "ew_n3_epem_ttxa",
+    "ew_n4_epem_mupmumaa",
+    "mixed_uux_ga",
+    "li_gg_h",
+    "li_gg_hh"
+  ],
+  "configuration_hashes": {
+    ".benchmark-work/tirust/baseline/input/.mg7_configuration_default.txt": "3baa785e75ff7956f6f5118887cd1a2f68f870f039d4bc58c960de37d5501a92",
+    ".benchmark-work/tirust/baseline/input/mg7_configuration.txt": "f25ebf5afdda936ca81effb2976bc0aaca442c553a4a8537edb4f2d64beb7e56",
+    "input/.mg7_configuration_default.txt": "b5f084ce213523b6664fa23c60713428bd0abaf02db86ef035ed2ded03f18693",
+    "input/mg7_configuration.txt": "568dd763e3410fff45ed10e0772193632d37f247b119aea233e47d548d3fb0fa"
+  },
+  "cpus": [
+    12,
+    13,
+    14,
+    15
+  ],
+  "created_utc": "2026-11-10T00:41:31.886470+00:00",
+  "environment": {
+    "MKL_NUM_THREADS": null,
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONHASHSEED": "0",
+    "RAYON_NUM_THREADS": null
+  },
+  "jobs": 4,
+  "manifest_sha256": "1237c563b16a13e2c98327b494a4e5d0b8dec8eb6c7020d632b9b86839143a31",
+  "native_numerical_evaluations_authorized": false,
+  "performance_acceptance_eligible": false,
+  "schema": "madloop-tirust-serial-source-preparation-v1",
+  "scope": "Private baseline proof/worker relink plus fresh candidate CLI/source builds; mandatory --masses SETPARA only, zero amplitude/reducer evaluations",
+  "stages": [
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "12-15",
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "tools/tirust_benchmark.py",
+        "reuse-baseline",
+        "--campaign",
+        "split-dp-terminal-1",
+        "--cpu",
+        "12",
+        "--jobs",
+        "4"
+      ],
+      "id": "reuse-baseline"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "12-15",
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "tools/tirust_benchmark.py",
+        "build",
+        "--source",
+        "baseline",
+        "--campaign",
+        "split-dp-terminal-1",
+        "--cpu",
+        "12",
+        "--jobs",
+        "4"
+      ],
+      "id": "build-baseline"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "12-15",
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "tools/tirust_benchmark.py",
+        "build",
+        "--source",
+        "candidate",
+        "--campaign",
+        "split-dp-terminal-1",
+        "--cpu",
+        "12",
+        "--jobs",
+        "4"
+      ],
+      "id": "build-candidate"
+    }
+  ],
+  "supervisor_pid": 2,
+  "supervisor_sha256": "77bbe349f570ba3d37ef5371f8e47f734f7a55f2aefdb9d8057029127db7bcbc"
+}

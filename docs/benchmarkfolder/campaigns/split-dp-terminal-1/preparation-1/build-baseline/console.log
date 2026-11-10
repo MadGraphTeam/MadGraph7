@@ -1,0 +1,11 @@
+build: baseline qcd_n1_uux_z
+build: baseline qcd_n2_gg_ttx
+build: baseline qcd_n3_uux_zgg
+build: baseline qcd_n4_uux_zzgg
+build: baseline ew_n1_udx_wp
+build: baseline ew_n2_epem_mupmum
+build: baseline ew_n3_epem_ttxa
+build: baseline ew_n4_epem_mupmumaa
+build: baseline mixed_uux_ga
+build: baseline li_gg_h
+build: baseline li_gg_hh
