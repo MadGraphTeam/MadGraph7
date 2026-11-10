@@ -1316,8 +1316,8 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
 
         (found,) = (
             value
-            for (_kind, column), value in observables._selections.items()
-            if column.key == key
+            for (kind, column), value in observables._selections.items()
+            if kind == lc.SELECTION and column.key == key
         )
         return found
 
