@@ -239,6 +239,8 @@ EXACT = [
 ]
 
 CALL = {"mu_r2": "8315.06", "poles": "none", "on_failure": "return"}
+
+
 def _recommended():
     """``RECOMMENDED_CHECKS``: one rotation, the rescaled reduction-direction
     check."""
@@ -447,7 +449,10 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
     # the point improved in that level's carrier (DECISIONS 2026-11-10 18:54
     # (b)): the level's estimate is that of its pre-improved point with the
     # level's checks, the improvement off.
-    for level, digits in ((policy.levels[1], {}), (policy.levels[2], {"precision": 40})):
+    for level, digits in (
+        (policy.levels[1], {}),
+        (policy.levels[2], {"precision": 40}),
+    ):
         (attempt,) = [a for a in attempts if a.arithmetic == level.arithmetic]
         at, _ = backend.improved_points(
             [point], arithmetic=level.arithmetic, **digits, mu_r2=CALL["mu_r2"]

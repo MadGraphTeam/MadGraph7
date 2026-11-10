@@ -353,7 +353,7 @@ def test_the_calls_guard_rotation_is_reused_and_another_check_is_not(loop_native
 
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
     from pyamplicol.loops.v2.reduction import guard_rotation, with_fallback
-    from pyamplicol.loops.v2.stability import RESCALED, ROTATION, RESCUE_ROTATION
+    from pyamplicol.loops.v2.stability import RESCALED, RESCUE_ROTATION, ROTATION
 
     # Reused: the guard's rotation first (+ the rescaled reduction check).
     recommended = VirtualStabilityChecks(1, True, rescaled=True, cross_backend=True)
@@ -482,9 +482,7 @@ class _Outputs:
                 results.append(None)
                 failures[local] = ["TIRust refused point 1"]
                 continue
-            checked = (
-                checks is not None and checks.rotations[:1] == (guard_rotation(),)
-            )
+            checked = checks is not None and checks.rotations[:1] == (guard_rotation(),)
             results.append(
                 {
                     key: _Point(
@@ -925,9 +923,7 @@ def test_the_default_rescue_stack_escalates_the_guarded_fallback(zzz, loop_nativ
         if reduction.guard_estimate is not None:
             # The fallback served the point: the guard's typed failure.
             assert not reduction.guard_estimate <= _limit(TARGET), reduction
-            assert "fallback's value failed its rotation check" in (
-                attempt.failure
-            )
+            assert "fallback's value failed its rotation check" in (attempt.failure)
             assert attempt.failure.endswith("(double-double)"), attempt.failure
 
 
@@ -1647,9 +1643,13 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     guard's estimate of the call's outputs is the same (bitwise on record,
     ``ULPS`` allowed) and so is the decision. Double-double: the accepted
     outputs are the explicit NinjaRS call's bitwise (Python ``repr``, the C
-    ABI's decimal record); the resolved call rejects point 2 on its
-    suppressed +- rows' own estimates, and ``on_failure="raise"`` raises
-    ``EvaluationError`` with the guard's reason. (Accuracy is not this
+    ABI's decimal record), and the guard's rotation re-test (DECISIONS
+    2026-11-10 19:20 (c)) accepts every served point on every route (point
+    2's suppressed +- rows of the resolved call, 1.3e-21 of its ++ rows, at
+    4.2e-6 .. 4.8e-6 on their own magnitudes; the cached reduction-direction
+    check it replaced rejected them at 2.9e-5: with the improvement off these
+    texts keep their shell and conservation defect, which no rotation sees,
+    docs/user/python-api.md). (Accuracy is not this
     test's claim: on these binary64 texts NinjaRS's +- rows move 1.1e-4 ..
     9.3e11 from the exact point's in response to the texts' shell and
     momentum-conservation defect, while TIRust's at 80 digits stay within
@@ -1657,9 +1657,10 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     with TIRust at 80 digits; the cause is under investigation (F-GH),
     ``tmp/lit-fallback-guard/fix5/probe15.json``, report §0.) 16
     digits at the target 1e-6 (the limit stays 1e-5): point 1 is accepted
-    and point 2 rejected typed on every route
-    (estimates 1.6e-6..3.7e-6 and 3.8e-3..1.8e-2 at NinjaRS 5b6a8f57 and 71eddb15,
-    ``tmp/lit-fallback-guard/fix3/probe9.json``). These decisions were
+    and point 2 rejected typed on every route (rotation estimates
+    1.6e-6 .. 2.3e-6 and 3.8e-3 .. 1.2e-2, ``tmp/lit-ninja-fwd/g/routes.json``),
+    and ``on_failure="raise"`` raises ``EvaluationError`` with the guard's
+    reason. These decisions were
     derived on the texts as given: both APIs run with the kinematics
     improvement off (m-lit lit-psimprove (G8), DECISIONS 2026-11-10 01:30
     (F); the improved points are
@@ -1743,13 +1744,11 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
             route, sdk_found[route], lanes_of(result), "double-double", TARGET
         )
         assert served, (route, lanes_of(result))
-        if route == "resolved":
-            # Point 2's suppressed +- rows (1.3e-21 of its ++ rows) have
-            # estimates 2.9e-5 / 2.9e-5 on their own magnitudes at the
-            # folded artifact (fix5/probe15.json; 3.2e-5 / 3.1e-5 before
-            # lit-fold, fix3/probe9.json; the summed estimate is 2.7e-11):
-            # rejected.
-            assert rejected == [2], lanes_of(result)
+        # The rotation re-test accepts every served point (the resolved
+        # call's point 2: its suppressed +- rows at 4.2e-6 .. 4.8e-6 on their
+        # own magnitudes, where the cached reduction-direction check said
+        # 2.9e-5; tmp/lit-ninja-fwd/g/routes.json).
+        assert rejected == [], (route, lanes_of(result))
         theirs = by_key(explicit[route])
         for key, evaluation in by_key(result).items():
             for p in served:
@@ -1762,9 +1761,6 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
         plain = _decimal_per_point(sdk_explicit[route])
         for p in served:
             assert mine[p] is not None and mine[p] == plain[p], (route, p)
-
-    with pytest.raises(EvaluationError, match=ESTIMATE):
-        runtime.evaluate_resolved(same, **{**options, "on_failure": "raise"})
 
     # 16 digits at the target 1e-6: one point accepted, one rejected typed.
     options = {
@@ -1782,3 +1778,5 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
             route, sdk_found[route], lanes_of(result), "arbitrary", 1e-6
         )
         assert decided == ([1], [2]), (route, lanes_of(result))
+    with pytest.raises(EvaluationError, match=ESTIMATE):
+        runtime.evaluate_resolved(same, **{**options, "on_failure": "raise"})
