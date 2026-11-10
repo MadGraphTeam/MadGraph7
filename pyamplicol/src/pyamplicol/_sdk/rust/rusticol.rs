@@ -69,8 +69,9 @@ pub mod virtual_amplitudes {
     /// (`rusticol_virtual_selection`): global helicity IDs (`h<i>` or
     /// `h:<helicities in leg order>`), per-point zero-based helicity rows
     /// (one per point; exclusive with the IDs), colour flows (refused for a
-    /// loop-induced process: full colour only) and a resolved evaluation's
-    /// colour resolution (`"contracted"`, the default, or
+    /// loop-induced process: full colour only; for a Born-interfered one
+    /// served by the Python API's `color_flows=`) and a loop-induced resolved
+    /// evaluation's colour resolution (`"contracted"`, the default, or
     /// `"amplitude-basis"`). Empty vectors omit a selector.
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     pub struct Selection {
@@ -366,9 +367,11 @@ pub mod virtual_amplitudes {
             result.copy()
         }
         /// `rusticol_virtual_evaluate_selected`: the selected helicity rows
-        /// of a loop-induced process (`resolved` false: their sum per point,
-        /// RULED Q39; true: per selected row its colour components in the
-        /// selection's colour resolution); refusals are errors.
+        /// of a loop-induced process or, at every colour accuracy, of a
+        /// Born-interfered one (lit-fc-hel) (`resolved` false: their sum per
+        /// point, RULED Q39; true: per selected row its colour components in
+        /// the selection's colour resolution, or the accuracy's resolved
+        /// layout); refusals are errors.
         #[allow(clippy::too_many_arguments)]
         pub fn evaluate_selected(
             &mut self,
