@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "ancestor_retention": "current-cms-replay-retention-1",
+  "ancestor_index_sha256": "7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed",
+  "ancestor_verifier_sha256": "af78d87e1c1ba85c9c4a64e8b0e4f872d4c3daff7825d1d8464b4d71e822352c",
+  "source1_index_sha256": "edf6d8cacfe1ad72cdb94584cb6d9a49e022e976c52d0668d670b702c28c84d6",
+  "proposal1_index_sha256": "9c1703b96ec3933b9f8644a4850db2d9742579a109d4fdb7e72d3d776f0eba2e",
+  "audit_path": "current-cms-replay-inheritance-proposal-2/link-closure-audit.json",
+  "audit_sha256": "db5663ece3fa81217a11119f556a2cffa57d9fa09da7540685632cd1b768463e",
+  "inheritance_proposal_index_sha256": "59370d67a1ef278fd9de76b660beeac065bea6ebbe05b7cc8619627a98b60068",
+  "native_job_sha256": "cfc1b5fe54461a4fba320f2c82c904d20bb38e84ee939fc37cc1a28fbf6adaf5",
+  "inherited_controller_sha256": "90299a509a12b1216af129e90b09fca7d5e40986fab49c964dcf3376acd0c871",
+  "prerequisites_sha256": "11fac77b292668ce32c0304c082bc59eb2128edbd669fd097e0d435c04b58b79",
+  "prerequisites_manifest_sha256": "301f6ddf143e15de184a236b27aad971d7adaeabed795b551e8342189d0e3e24"
+}

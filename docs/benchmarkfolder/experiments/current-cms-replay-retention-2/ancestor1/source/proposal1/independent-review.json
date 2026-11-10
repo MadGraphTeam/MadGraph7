@@ -1,0 +1,34 @@
+{
+  "execution_unperformed": true,
+  "final_conclusion": "All four fixes present and consistent; no remaining actionable inconsistency in source-only review",
+  "historical_bindings": "Exact21 DAT/JSON, physical card, historical numerical card and complete resolved policies match originals; all43 external input hashes match",
+  "initial_findings": [
+    {
+      "finding": "Blanket alias rejection conflicts with valid QP H/U encodings",
+      "resolution": "Freeze existing nine-entry validate_status mapping; reject unknown or mismatched aliases only"
+    },
+    {
+      "finding": "Environment isolation promised but absent from JSON; missing state/history isolation",
+      "resolution": "Bind tools/tirust_env.sh and pinnedPython; private XDGconfig/cache/state/data and MPL paths; thread/PWD/MAKEFLAGS contract; remove loader overrides/PYTHONPATH; retain possible -O descendant ownership"
+    },
+    {
+      "finding": "Self-consistent CMS mass squares alone do not establish exact frozen parameters",
+      "resolution": "Require MW80.419/WW2.09291/MZ91.188/WZ2.49877 equal frozen card plus CMSParam1 and1e-13 complex-square reconstruction"
+    },
+    {
+      "finding": "Output dimensions and repeated warmup identities should be explicit",
+      "resolution": "allocated1/loop1/born1;42 ordered rows including totalorder0;21 histogram evaluations;warmup call/point/order identity"
+    }
+  ],
+  "reviewed_files": {
+    "README.md": "741413f1e95e179b54c6d98f7f96229cad50f5c84e3bd5835350155d8a40dd9a",
+    "cards/candidate-9-MadLoopParams.dat": "0130897072e2303882fb4e0c18affdf2d03e89357a6f6fbe9240d3cd162a7e69",
+    "cli-entrypoints.json": "08eb26ceb8107f23cec23858a9444ab2dd6be6acddcbe57dc534119abcdd1da0",
+    "input-bindings.json": "a60bcc7a6c46f592ee2ce829c4b4be307165e6482046ee2e977e8ed95770a5e0",
+    "policy-reference.json": "9c74bf96911cd3c8829d1670732ad330c64cf595eb2622ccc76fb6887b17c989",
+    "proposal.json": "f7d0a1677be46408d34485ca4c39f19685019c4c8c659aa725849f7ed06c296e",
+    "source-validation.json": "b232248bdfc037da39212b6d18fc40fac609ca512bea0ae544a3a29da00c049e"
+  },
+  "reviewer": "/root/current_cms_replay/cms_policy_audit",
+  "scope": "Independent read-only source review; no builds/native physics execution/edits by reviewer"
+}

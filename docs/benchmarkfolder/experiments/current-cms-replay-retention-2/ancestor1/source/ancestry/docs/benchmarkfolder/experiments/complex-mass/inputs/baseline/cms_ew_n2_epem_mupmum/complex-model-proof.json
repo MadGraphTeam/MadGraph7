@@ -1,0 +1,27 @@
+{
+  "CMSParam": 1.0,
+  "compiler": "GNU Fortran (GCC) 15.2.0",
+  "masses": {
+    "W": {
+      "mass": 80.419,
+      "relative_reconstruction_error": 0.0,
+      "squared_mass": [
+        6467.215560999999,
+        -168.30972928999998
+      ],
+      "width": 2.09291
+    },
+    "Z": {
+      "mass": 91.188,
+      "relative_reconstruction_error": 0.0,
+      "squared_mass": [
+        8315.251344,
+        -227.85783876
+      ],
+      "width": 2.49877
+    }
+  },
+  "model_library_sha256": "1153d488faabde69a02c340144ba132403a04e3b3e09edbd28435d2f5b8a7496",
+  "parameter_card_sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec",
+  "probe_sha256": "29252543f5fab9a228a253b1f66957d774d42c7fca01bb0c58c0bcbef77c0312"
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "kind": "additive-generator-summary-binding",
+  "preserved_predecessor": "current-cms-replay-retention-1-before-generator-binding-1",
+  "index_sha256": "3fc31b25e2e3a9a6c11f5d0c15054cb78f32536655f63ba188763120b1d5bfc7",
+  "summary_sha256": "0b9a39d5f3cfd02d01abbc5777c1a6ef3cb0734fbd55cc4cb2625efe5e38d171",
+  "verifier_sha256": "520c9b075a0b54530bd681510a1e0849c76a81091860b413fcf68c65a100e7e8",
+  "scope": "Explicit generator inventory summary binding and lineage; original closed evidence and scientific policy unchanged"
+}

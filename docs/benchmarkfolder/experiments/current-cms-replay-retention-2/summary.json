@@ -1,0 +1,4470 @@
+{
+  "W03_count": 5,
+  "amplitude_evaluations": null,
+  "amplitude_launch_count": 6,
+  "binary_identities_recorded_only": true,
+  "binding": {
+    "MLStabThres": 0.001,
+    "OSThres": 1e-08,
+    "ancestor_failed1_index_sha256": "7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed",
+    "baseline_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+    "campaign_manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+    "complex_squared_mass": "M*M - i*M*Gamma",
+    "current_native_dso_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+    "current_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+    "generator_inventory_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+    "geometry_modified": false,
+    "geometry_source": "ancestor1/source/proposal1/points/cms_ew_n2_epem_mupmum.dat",
+    "inherited_checkpoint_sha256": "b3e38892b2cc86b679c9ed6c05bbad0b125a65ba6a67cb41eca6824dabb09949",
+    "link_closure_audit_sha256": "db5663ece3fa81217a11119f556a2cffa57d9fa09da7540685632cd1b768463e",
+    "ordinary_target": 1e-08,
+    "physical_card_sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec",
+    "point_count": 21,
+    "points_sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60",
+    "proposal_index_sha256": "59370d67a1ef278fd9de76b660beeac065bea6ebbe05b7cc8619627a98b60068",
+    "regression_tolerance": 3e-06,
+    "scientific_proposal_index_sha256": "9c1703b96ec3933b9f8644a4850db2d9742579a109d4fdb7e72d3d776f0eba2e",
+    "supervisor_index_sha256": "50112efc92cfab1c90a3147bc2acf0ff6729a9dd7ceec0206973369fc921a934",
+    "width_sign": "positive widths; negative imaginary squared masses"
+  },
+  "bootstrap_rows": 12,
+  "closed": true,
+  "comparisons": [],
+  "complete_checked_streams": 0,
+  "completed_requests": 6,
+  "failure_kind": "warmup_incomplete_or_rejected",
+  "five_current_reducers_complete": false,
+  "full_final_streams": 0,
+  "gates": {
+    "independent_finite_term_oracle": false,
+    "native_run_passed": true,
+    "numerically_qualified": false,
+    "preflight_passed": true,
+    "preparation_passed": true
+  },
+  "independent_finite_term_oracle": false,
+  "numerically_qualified": false,
+  "overall_status": "incomplete",
+  "performance_eligible": false,
+  "phase_counts": {
+    "final": {
+      "accepted": 0,
+      "rejected": 0,
+      "unchecked": 0,
+      "unexecuted": 252
+    },
+    "warmup": {
+      "accepted": 234,
+      "rejected": 8,
+      "unchecked": 0,
+      "unexecuted": 10
+    }
+  },
+  "physics_loader_launch_count": 6,
+  "preflight": {
+    "baseline": {
+      "binary_identities_recorded_only": true,
+      "complex_model": {
+        "CMSParam": 1.0,
+        "masses": {
+          "W": {
+            "mass": 80.419,
+            "relative_reconstruction_error": 0.0,
+            "squared_mass": [
+              6467.215560999999,
+              -168.30972928999998
+            ],
+            "width": 2.09291
+          },
+          "Z": {
+            "mass": 91.188,
+            "relative_reconstruction_error": 0.0,
+            "squared_mass": [
+              8315.251344,
+              -227.85783876
+            ],
+            "width": 2.49877
+          }
+        }
+      },
+      "executed_generator_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+      "external_masses": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "recorded_executable_sha256": "e510e6799e14a90b30f97fd2b0d7fa37fd09af7e9b85d0adb53c3031daeece9a",
+      "recorded_model_archive_sha256": "1153d488faabde69a02c340144ba132403a04e3b3e09edbd28435d2f5b8a7496",
+      "recorded_probe_sha256": "86894d83451951019d69b6fb23eda859c42e0585390bbb384bb7572621f2413e",
+      "registered_source_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"
+    },
+    "candidate": {
+      "binary_identities_recorded_only": true,
+      "complex_model": {
+        "CMSParam": 1.0,
+        "masses": {
+          "W": {
+            "mass": 80.419,
+            "relative_reconstruction_error": 0.0,
+            "squared_mass": [
+              6467.215560999999,
+              -168.30972928999998
+            ],
+            "width": 2.09291
+          },
+          "Z": {
+            "mass": 91.188,
+            "relative_reconstruction_error": 0.0,
+            "squared_mass": [
+              8315.251344,
+              -227.85783876
+            ],
+            "width": 2.49877
+          }
+        }
+      },
+      "executed_generator_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+      "external_masses": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "recorded_executable_sha256": "d51dd8a6772eef8909ebd3de4d0a4af95ff082ea41cd045d59d244ef8508b3b7",
+      "recorded_model_archive_sha256": "1153d488faabde69a02c340144ba132403a04e3b3e09edbd28435d2f5b8a7496",
+      "recorded_probe_sha256": "3f7dd49e177d861072b285a603396e5d582996a11b600dd245848e9d9feb3300",
+      "registered_source_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e"
+    }
+  },
+  "preflight_counts": {
+    "CMS_model_probes": 2,
+    "loader_listings": 4,
+    "mass_probes": 2
+  },
+  "preflight_origin": "inherited",
+  "preparation_origin": "verified failed1 ancestor; no new preparation execution",
+  "primary_policy_agreement": null,
+  "requested_requests": 6,
+  "requests": [
+    {
+      "W03_count": 0,
+      "amplitude_observed": true,
+      "backend": 1,
+      "bootstrap_rows": 2,
+      "controller_setup_started": true,
+      "execution_started": true,
+      "failure": {
+        "class": "ProtocolError",
+        "message": "Worker protocol timeout; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-qualification-2/runs/cms_ew_n2_epem_mupmum/baseline-1-auto/stdout.txt"
+      },
+      "failure_phase": "startup",
+      "id": "baseline-1-auto",
+      "native_cleanup_returncode": -15,
+      "numerically_qualified": false,
+      "orchestration_complete": true,
+      "phase_counts": {
+        "final": {
+          "accepted": 0,
+          "rejected": 0,
+          "unchecked": 0,
+          "unexecuted": 42
+        },
+        "warmup": {
+          "accepted": 40,
+          "rejected": 0,
+          "unchecked": 0,
+          "unexecuted": 2
+        }
+      },
+      "phase_outcomes": {
+        "final": [
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ],
+        "warmup": [
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 0,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 1,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 0,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 1,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 0,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 1,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 0,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 1,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 0,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 1,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 0,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 1,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 0,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 1,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 0,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 1,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 0,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 1,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 0,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 1,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 0,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 1,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 0,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 1,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 0,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 1,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 0,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 1,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 0,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 1,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 0,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 1,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 0,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 1,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 0,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 1,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 0,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 1,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 0,
+            "point": 20,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 1,
+            "point": 20,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ]
+      },
+      "source": "baseline",
+      "state": "startup_timeout",
+      "warmup_observed_rows": 40,
+      "worker_closed": true
+    },
+    {
+      "W03_count": 0,
+      "amplitude_observed": true,
+      "backend": 1,
+      "bootstrap_rows": 2,
+      "controller_setup_started": true,
+      "execution_started": true,
+      "failure": {
+        "class": "ProtocolError",
+        "message": "Worker protocol timeout; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-qualification-2/runs/cms_ew_n2_epem_mupmum/candidate-1-auto/stdout.txt"
+      },
+      "failure_phase": "startup",
+      "id": "candidate-1-auto",
+      "native_cleanup_returncode": -15,
+      "numerically_qualified": false,
+      "orchestration_complete": true,
+      "phase_counts": {
+        "final": {
+          "accepted": 0,
+          "rejected": 0,
+          "unchecked": 0,
+          "unexecuted": 42
+        },
+        "warmup": {
+          "accepted": 40,
+          "rejected": 0,
+          "unchecked": 0,
+          "unexecuted": 2
+        }
+      },
+      "phase_outcomes": {
+        "final": [
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ],
+        "warmup": [
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 0,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 1,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 0,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 1,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 0,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 1,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 0,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 1,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 0,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 1,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 0,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 1,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 0,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 1,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 0,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 1,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 0,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 1,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 0,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 1,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 0,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 1,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 0,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 1,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 0,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 1,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 0,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 1,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 0,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 1,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 0,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 1,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 0,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 1,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 0,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 1,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 0,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 1,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 0,
+            "point": 20,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 1,
+            "point": 20,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ]
+      },
+      "source": "candidate",
+      "state": "startup_timeout",
+      "warmup_observed_rows": 40,
+      "worker_closed": true
+    },
+    {
+      "W03_count": 1,
+      "amplitude_observed": true,
+      "backend": 6,
+      "bootstrap_rows": 2,
+      "controller_setup_started": true,
+      "execution_started": true,
+      "failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 20, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-qualification-2/runs/cms_ew_n2_epem_mupmum/candidate-6-auto/stdout.txt"
+      },
+      "failure_phase": "startup",
+      "id": "candidate-6-auto",
+      "native_cleanup_returncode": 3,
+      "numerically_qualified": false,
+      "orchestration_complete": true,
+      "phase_counts": {
+        "final": {
+          "accepted": 0,
+          "rejected": 0,
+          "unchecked": 0,
+          "unexecuted": 42
+        },
+        "warmup": {
+          "accepted": 38,
+          "rejected": 2,
+          "unchecked": 0,
+          "unexecuted": 2
+        }
+      },
+      "phase_outcomes": {
+        "final": [
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ],
+        "warmup": [
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 0,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 1,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 0,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 1,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 0,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 1,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 0,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 1,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 0,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 1,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 0,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 1,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 0,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 1,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 0,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 1,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 0,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 1,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 0,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 1,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 0,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 1,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 0,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 1,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 0,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 1,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 0,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 1,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 0,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 1,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 0,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 1,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 0,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 1,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 0,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 1,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 0,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 1,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 0,
+            "point": 20,
+            "reason": "Unexpected status 420 for backends [6]; initialization, failure, or another backend was used; Nonfinite coefficient or accuracy",
+            "state": "rejected"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 1,
+            "point": 20,
+            "reason": "Unexpected status 420 for backends [6]; initialization, failure, or another backend was used; Nonfinite coefficient or accuracy",
+            "state": "rejected"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ]
+      },
+      "source": "candidate",
+      "state": "warmup_rejected",
+      "warmup_observed_rows": 40,
+      "worker_closed": true
+    },
+    {
+      "W03_count": 2,
+      "amplitude_observed": true,
+      "backend": 7,
+      "bootstrap_rows": 2,
+      "controller_setup_started": true,
+      "execution_started": true,
+      "failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 21, status 410; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-qualification-2/runs/cms_ew_n2_epem_mupmum/candidate-7-auto/stdout.txt"
+      },
+      "failure_phase": "startup",
+      "id": "candidate-7-auto",
+      "native_cleanup_returncode": 3,
+      "numerically_qualified": false,
+      "orchestration_complete": true,
+      "phase_counts": {
+        "final": {
+          "accepted": 0,
+          "rejected": 0,
+          "unchecked": 0,
+          "unexecuted": 42
+        },
+        "warmup": {
+          "accepted": 40,
+          "rejected": 2,
+          "unchecked": 0,
+          "unexecuted": 0
+        }
+      },
+      "phase_outcomes": {
+        "final": [
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ],
+        "warmup": [
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 0,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 1,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 0,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 1,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 0,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 1,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 0,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 1,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 0,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 1,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 0,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 1,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 0,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 1,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 0,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 1,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 0,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 1,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 0,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 1,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 0,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 1,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 0,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 1,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 0,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 1,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 0,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 1,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 0,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 1,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 0,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 1,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 0,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 1,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 0,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 1,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 0,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 1,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 0,
+            "point": 20,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 1,
+            "point": 20,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 21,
+            "observations": 1,
+            "order": 0,
+            "point": 21,
+            "reason": "Unexpected status 410 for backends [7]; initialization, failure, or another backend was used; Accuracy outside [0, 1e-3]",
+            "state": "rejected"
+          },
+          {
+            "last_call_index": 21,
+            "observations": 1,
+            "order": 1,
+            "point": 21,
+            "reason": "Unexpected status 410 for backends [7]; initialization, failure, or another backend was used; Accuracy outside [0, 1e-3]",
+            "state": "rejected"
+          }
+        ]
+      },
+      "source": "candidate",
+      "state": "warmup_rejected",
+      "warmup_observed_rows": 42,
+      "worker_closed": true
+    },
+    {
+      "W03_count": 1,
+      "amplitude_observed": true,
+      "backend": 8,
+      "bootstrap_rows": 2,
+      "controller_setup_started": true,
+      "execution_started": true,
+      "failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 20, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-qualification-2/runs/cms_ew_n2_epem_mupmum/candidate-8-auto/stdout.txt"
+      },
+      "failure_phase": "startup",
+      "id": "candidate-8-auto",
+      "native_cleanup_returncode": 3,
+      "numerically_qualified": false,
+      "orchestration_complete": true,
+      "phase_counts": {
+        "final": {
+          "accepted": 0,
+          "rejected": 0,
+          "unchecked": 0,
+          "unexecuted": 42
+        },
+        "warmup": {
+          "accepted": 38,
+          "rejected": 2,
+          "unchecked": 0,
+          "unexecuted": 2
+        }
+      },
+      "phase_outcomes": {
+        "final": [
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ],
+        "warmup": [
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 0,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 1,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 0,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 1,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 0,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 1,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 0,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 1,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 0,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 1,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 0,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 1,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 0,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 1,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 0,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 1,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 0,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 1,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 0,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 1,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 0,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 1,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 0,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 1,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 0,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 1,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 0,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 1,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 0,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 1,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 0,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 1,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 0,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 1,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 0,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 1,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 0,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 1,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 0,
+            "point": 20,
+            "reason": "Unexpected status 420 for backends [8]; initialization, failure, or another backend was used; Accuracy outside [0, 1e-3]",
+            "state": "rejected"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 1,
+            "point": 20,
+            "reason": "Unexpected status 420 for backends [8]; initialization, failure, or another backend was used; Accuracy outside [0, 1e-3]",
+            "state": "rejected"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ]
+      },
+      "source": "candidate",
+      "state": "warmup_rejected",
+      "warmup_observed_rows": 40,
+      "worker_closed": true
+    },
+    {
+      "W03_count": 1,
+      "amplitude_observed": true,
+      "backend": 9,
+      "bootstrap_rows": 2,
+      "controller_setup_started": true,
+      "execution_started": true,
+      "failure": {
+        "class": "MeasurementError",
+        "message": "Numerical warmup failure (warmup-status) at point 20, status 420; see /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-qualification-2/runs/cms_ew_n2_epem_mupmum/candidate-9-auto/stdout.txt"
+      },
+      "failure_phase": "startup",
+      "id": "candidate-9-auto",
+      "native_cleanup_returncode": 3,
+      "numerically_qualified": false,
+      "orchestration_complete": true,
+      "phase_counts": {
+        "final": {
+          "accepted": 0,
+          "rejected": 0,
+          "unchecked": 0,
+          "unexecuted": 42
+        },
+        "warmup": {
+          "accepted": 38,
+          "rejected": 2,
+          "unchecked": 0,
+          "unexecuted": 2
+        }
+      },
+      "phase_outcomes": {
+        "final": [
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 1,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 2,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 3,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 4,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 5,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 6,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 7,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 8,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 9,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 10,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 11,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 12,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 13,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 14,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 15,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 16,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 17,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 18,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 19,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 20,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ],
+        "warmup": [
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 0,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 1,
+            "observations": 1,
+            "order": 1,
+            "point": 1,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 0,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 2,
+            "observations": 1,
+            "order": 1,
+            "point": 2,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 0,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 3,
+            "observations": 1,
+            "order": 1,
+            "point": 3,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 0,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 4,
+            "observations": 1,
+            "order": 1,
+            "point": 4,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 0,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 5,
+            "observations": 1,
+            "order": 1,
+            "point": 5,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 0,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 6,
+            "observations": 1,
+            "order": 1,
+            "point": 6,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 0,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 7,
+            "observations": 1,
+            "order": 1,
+            "point": 7,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 0,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 8,
+            "observations": 1,
+            "order": 1,
+            "point": 8,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 0,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 9,
+            "observations": 1,
+            "order": 1,
+            "point": 9,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 0,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 10,
+            "observations": 1,
+            "order": 1,
+            "point": 10,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 0,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 11,
+            "observations": 1,
+            "order": 1,
+            "point": 11,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 0,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 12,
+            "observations": 1,
+            "order": 1,
+            "point": 12,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 0,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 13,
+            "observations": 1,
+            "order": 1,
+            "point": 13,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 0,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 14,
+            "observations": 1,
+            "order": 1,
+            "point": 14,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 0,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 15,
+            "observations": 1,
+            "order": 1,
+            "point": 15,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 0,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 16,
+            "observations": 1,
+            "order": 1,
+            "point": 16,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 0,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 17,
+            "observations": 1,
+            "order": 1,
+            "point": 17,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 0,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 18,
+            "observations": 1,
+            "order": 1,
+            "point": 18,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 0,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 19,
+            "observations": 1,
+            "order": 1,
+            "point": 19,
+            "reason": null,
+            "state": "accepted"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 0,
+            "point": 20,
+            "reason": "Unexpected status 420 for backends [9]; initialization, failure, or another backend was used; Accuracy outside [0, 1e-3]",
+            "state": "rejected"
+          },
+          {
+            "last_call_index": 20,
+            "observations": 1,
+            "order": 1,
+            "point": 20,
+            "reason": "Unexpected status 420 for backends [9]; initialization, failure, or another backend was used; Accuracy outside [0, 1e-3]",
+            "state": "rejected"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 0,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          },
+          {
+            "last_call_index": null,
+            "observations": 0,
+            "order": 1,
+            "point": 21,
+            "reason": "No row produced in this phase",
+            "state": "unexecuted"
+          }
+        ]
+      },
+      "source": "candidate",
+      "state": "warmup_rejected",
+      "warmup_observed_rows": 40,
+      "worker_closed": true
+    }
+  ],
+  "role": "current-cms-replay",
+  "schema_version": 1,
+  "setup_provenance": {
+    "ancestor_index_sha256": "7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed",
+    "inherited_checkpoint_sha256": "b3e38892b2cc86b679c9ed6c05bbad0b125a65ba6a67cb41eca6824dabb09949",
+    "inherited_stages": {
+      "preflight": {
+        "exit_code": 0,
+        "session_id": 11912,
+        "source": "attempt1"
+      },
+      "prepare": {
+        "exit_code": 0,
+        "session_id": 85858,
+        "source": "attempt1"
+      }
+    },
+    "kind": "inherited",
+    "read_only_inherit_session": {
+      "exit_code": 0,
+      "session_id": 52331
+    },
+    "successor_CMS_model_probe_launch_count": 0,
+    "successor_mass_probe_launch_count": 0,
+    "successor_setup_subprocess_launch_count": 0
+  },
+  "stage": "native_terminal",
+  "stages": {
+    "inherit": {
+      "exit_code": 0,
+      "status": "passed"
+    },
+    "run": {
+      "exit_code": 0,
+      "status": "passed"
+    }
+  },
+  "status": "incomplete",
+  "terminal_exit_code": 0,
+  "warmup_observed_rows": 242,
+  "worker_launch_count": 6
+}

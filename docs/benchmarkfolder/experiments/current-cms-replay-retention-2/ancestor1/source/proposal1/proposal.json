@@ -1,0 +1,1075 @@
+{
+  "adaptive_bridge_admitted": false,
+  "baseline_control_requests": 1,
+  "baseline_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+  "campaign": "invariant-symmetry-1",
+  "candidate_generator_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+  "candidate_native_files": {
+    "Cargo.lock": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+    "Cargo.toml": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+    "include/mtirust.f90": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+    "include/tirust.h": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad",
+    "lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+    "lib/libtirust.a": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+    "lib/tirust-config.json": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9",
+    "lib/tirust-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/tirust-native-libs.txt": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62"
+  },
+  "candidate_native_prefix": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust",
+  "candidate_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+  "caps": {
+    "all_three_stage_bounds_seconds_including_maximum_lock_wait": 15120,
+    "binding_setup_reserve_seconds": 10,
+    "cleanup_reserve_seconds": 10,
+    "freeze_and_materialize_seconds": 600,
+    "inclusive_worker_seconds": 620,
+    "individual_mass_or_CMS_probe_seconds": 30,
+    "lock_wait_charged_to_execution": false,
+    "lock_wait_seconds": 3600,
+    "native_stage_total_seconds_excluding_lock_wait": 3720,
+    "per_CLI_generation_seconds": 600,
+    "per_preflight_binary_seconds": 60,
+    "per_source_full_build_seconds": 600,
+    "preflight_total_seconds": 600,
+    "preparation_total_seconds": 3600,
+    "run_total_maximum_lock_wait_seconds": 7200,
+    "run_total_wall_bound_seconds_including_maximum_lock_wait": 10920,
+    "startup_seconds": 300,
+    "traversal_seconds": 300
+  },
+  "case": {
+    "complex_mass_scheme": true,
+    "id": "cms_ew_n2_epem_mupmum",
+    "model": "loop_qcd_qed_sm_Gmu",
+    "nfinal": 2,
+    "process": "e+ e- > mu+ mu- [virt=QED]"
+  },
+  "current_requests": 5,
+  "environment": {
+    "CLI_reexec": "bin/madgraph may self-reexec pinned sys.executable with -O through shell when create_release.py is absent. Retain source behavior, own all descendants, record actual command tree, preserve bytecode prohibition via PYTHONDONTWRITEBYTECODE1 and inherited affinity/env. No alternate CLI or fallback alias.",
+    "HOME": "inherited unchanged; XDG_STATE_HOME prevents shared history access",
+    "MAKEFLAGS": {
+      "preflight": "-j1 SHELL=<resolved pinned bash path>",
+      "prepare": "-j4 SHELL=<resolved pinned bash path>",
+      "run": "-j1 SHELL=<resolved pinned bash path>"
+    },
+    "PWD": "exact actual cwd for every child; never inherited from shell cwd",
+    "base": "copy sourced pinned toolchain environment; preserve credentials without logging their values; record relevant nonsecret compiler/toolchain environment and exact executable hashes",
+    "remove": [
+      "LD_LIBRARY_PATH",
+      "LD_PRELOAD",
+      "LD_AUDIT",
+      "PYTHONPATH"
+    ],
+    "set": {
+      "MKL_NUM_THREADS": "1",
+      "MPLCONFIGDIR": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/matplotlib",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONHASHSEED": "0",
+      "RAYON_NUM_THREADS": "1",
+      "XDG_CACHE_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/xdg/cache",
+      "XDG_CONFIG_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/xdg/config",
+      "XDG_DATA_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/xdg/data",
+      "XDG_STATE_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/xdg/state"
+    },
+    "shell_setup": {
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "python": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tools/tirust_env.sh",
+      "source_sha256": "4311818b26bf38090655003a2aa14431267b727a65d167671b948a65fc54de00"
+    }
+  },
+  "execution_implementation_present": false,
+  "expected_CMS_model": {
+    "CMSParam": 1.0,
+    "W": {
+      "mass": 80.419,
+      "width": 2.09291
+    },
+    "Z": {
+      "mass": 91.188,
+      "width": 2.49877
+    },
+    "complex_squared_mass": "M*M - i*M*Gamma",
+    "external_masses": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "mass_width_gate": "exact equality to floats read from frozen card and listed expected values",
+    "relative_reconstruction_limit": 1e-13
+  },
+  "expected_observation": {
+    "answer_dimensions": {
+      "allocated": 1,
+      "born_orders": 1,
+      "loop_orders": 1
+    },
+    "bootstrap": "call0 recorded separately; never an accepted final observation",
+    "checked_backend_H_U_mapping": [
+      {
+        "backend": 1,
+        "hundreds": 2,
+        "precision": "DP",
+        "units": 1
+      },
+      {
+        "backend": 6,
+        "hundreds": 2,
+        "precision": "DP",
+        "units": 6
+      },
+      {
+        "backend": 7,
+        "hundreds": 2,
+        "precision": "DP",
+        "units": 7
+      },
+      {
+        "backend": 8,
+        "hundreds": 2,
+        "precision": "DP",
+        "units": 8
+      },
+      {
+        "backend": 9,
+        "hundreds": 2,
+        "precision": "DP",
+        "units": 9
+      },
+      {
+        "backend": 8,
+        "hundreds": 3,
+        "precision": "QP",
+        "units": 2
+      },
+      {
+        "backend": 9,
+        "hundreds": 3,
+        "precision": "QP",
+        "units": 3
+      },
+      {
+        "backend": 6,
+        "hundreds": 3,
+        "precision": "QP",
+        "units": 8
+      },
+      {
+        "backend": 1,
+        "hundreds": 3,
+        "precision": "QP",
+        "units": 9
+      }
+    ],
+    "ordered_row_keys": [
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        2,
+        1
+      ],
+      [
+        3,
+        0
+      ],
+      [
+        3,
+        1
+      ],
+      [
+        4,
+        0
+      ],
+      [
+        4,
+        1
+      ],
+      [
+        5,
+        0
+      ],
+      [
+        5,
+        1
+      ],
+      [
+        6,
+        0
+      ],
+      [
+        6,
+        1
+      ],
+      [
+        7,
+        0
+      ],
+      [
+        7,
+        1
+      ],
+      [
+        8,
+        0
+      ],
+      [
+        8,
+        1
+      ],
+      [
+        9,
+        0
+      ],
+      [
+        9,
+        1
+      ],
+      [
+        10,
+        0
+      ],
+      [
+        10,
+        1
+      ],
+      [
+        11,
+        0
+      ],
+      [
+        11,
+        1
+      ],
+      [
+        12,
+        0
+      ],
+      [
+        12,
+        1
+      ],
+      [
+        13,
+        0
+      ],
+      [
+        13,
+        1
+      ],
+      [
+        14,
+        0
+      ],
+      [
+        14,
+        1
+      ],
+      [
+        15,
+        0
+      ],
+      [
+        15,
+        1
+      ],
+      [
+        16,
+        0
+      ],
+      [
+        16,
+        1
+      ],
+      [
+        17,
+        0
+      ],
+      [
+        17,
+        1
+      ],
+      [
+        18,
+        0
+      ],
+      [
+        18,
+        1
+      ],
+      [
+        19,
+        0
+      ],
+      [
+        19,
+        1
+      ],
+      [
+        20,
+        0
+      ],
+      [
+        20,
+        1
+      ],
+      [
+        21,
+        0
+      ],
+      [
+        21,
+        1
+      ]
+    ],
+    "per_point_phase_accounting": [
+      "warmup",
+      "traversal",
+      "unexecuted"
+    ],
+    "rows": 42,
+    "steady_tens": [
+      1,
+      2
+    ],
+    "timed_histogram_evaluations": 21,
+    "total_order_zero_included": true,
+    "unchecked_status120_allowed": false,
+    "unknown_or_mismatched_backend_aliases_allowed": false,
+    "warmup_row_identity": [
+      "call_index",
+      "point",
+      "order"
+    ],
+    "warnings": "all stdout/stderr preserved, W03line offsets plus contextual text, unlocated warning denies entire stream"
+  },
+  "fixed_QP_admitted": false,
+  "fresh_exports": [
+    {
+      "CLI": {
+        "argv": [
+          "taskset",
+          "-c",
+          "12-15",
+          "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python",
+          "-B",
+          "./bin/madgraph",
+          "--plain",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/commands/baseline-cms_ew_n2_epem_mupmum.mg5"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/mg-baseline",
+        "entrypoint_sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0"
+      },
+      "command_file": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/commands/baseline-cms_ew_n2_epem_mupmum.mg5",
+      "export": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum",
+      "full_build_commands": [
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "--always-make",
+            "-j4"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/Source/MODEL"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "--always-make",
+            "-j4"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/Source/DHELAS"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "-s",
+            "--no-print-directory",
+            "-f",
+            "stress.mk",
+            "stress-info"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "-s",
+            "--no-print-directory",
+            "-f",
+            "stress.mk",
+            "stress-list"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "--always-make",
+            "-j4",
+            "-f",
+            "stress.mk",
+            "stress-objects"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "-j4",
+            "check",
+            "LDFLAGS=<unchanged-expanded-LDFLAGS> -Wl,-Map,stress.map"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "expansion": "LDFLAGS from recorded stress-info; expand exact argv before launch"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "gfortran",
+            "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/Source/MODEL",
+            "-c",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/cms_probe.f",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/cms_probe.o"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "gfortran",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/cms_probe",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/cms_probe.o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/lib/libmodel.a",
+            "-Wl,-Map,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/cms-probe.map"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust"
+        }
+      ],
+      "materialization": {
+        "argv": [
+          "git",
+          "archive",
+          "--output=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/baseline.tar",
+          "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+        "extraction": "Python tarfile data filter into fresh mg-baseline",
+        "record": "Archive SHA256 and complete tracked source inventory checked before/after; dependency copies private and hash-bound"
+      },
+      "preflight": [
+        {
+          "argv": [
+            "<actual-PT_INTERP>",
+            "--list",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum/check"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "expansion": "Read PT_INTERP from bound ELF and record actual expanded argv before launch",
+          "max_seconds": 30
+        },
+        {
+          "argv": [
+            "<actual-PT_INTERP>",
+            "--list",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/cms_probe"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "expansion": "Read PT_INTERP from bound ELF and record actual expanded argv before launch",
+          "max_seconds": 30
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12",
+            "./check",
+            "--masses"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "max_seconds": 30
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/cms_probe"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "max_seconds": 30
+        }
+      ],
+      "revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+      "source": "baseline",
+      "subprocess": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/baseline/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+      "worker_render_parameters": {
+        "nborn": 1,
+        "nexternal": 4,
+        "prefix": "ML5_0_"
+      }
+    },
+    {
+      "CLI": {
+        "argv": [
+          "taskset",
+          "-c",
+          "12-15",
+          "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python",
+          "-B",
+          "./bin/madgraph",
+          "--plain",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/commands/candidate-cms_ew_n2_epem_mupmum.mg5"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/mg-candidate",
+        "entrypoint_sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0"
+      },
+      "command_file": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/commands/candidate-cms_ew_n2_epem_mupmum.mg5",
+      "export": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum",
+      "full_build_commands": [
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "--always-make",
+            "-j4"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/Source/MODEL"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "--always-make",
+            "-j4"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/Source/DHELAS"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "-s",
+            "--no-print-directory",
+            "-f",
+            "stress.mk",
+            "stress-info"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "-s",
+            "--no-print-directory",
+            "-f",
+            "stress.mk",
+            "stress-list"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "--always-make",
+            "-j4",
+            "-f",
+            "stress.mk",
+            "stress-objects"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "make",
+            "-j4",
+            "check",
+            "LDFLAGS=<unchanged-expanded-LDFLAGS> -Wl,-Map,stress.map"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "expansion": "LDFLAGS from recorded stress-info; expand exact argv before launch"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "gfortran",
+            "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/Source/MODEL",
+            "-c",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/cms_probe.f",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/cms_probe.o"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust"
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12-15",
+            "gfortran",
+            "-o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/cms_probe",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/cms_probe.o",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/lib/libmodel.a",
+            "-Wl,-Map,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/cms-probe.map"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust"
+        }
+      ],
+      "materialization": {
+        "argv": [
+          "git",
+          "archive",
+          "--output=/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/candidate.tar",
+          "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e"
+        ],
+        "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+        "extraction": "Python tarfile data filter into fresh mg-candidate",
+        "record": "Archive SHA256 and complete tracked source inventory checked before/after; dependency copies private and hash-bound"
+      },
+      "preflight": [
+        {
+          "argv": [
+            "<actual-PT_INTERP>",
+            "--list",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum/check"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "expansion": "Read PT_INTERP from bound ELF and record actual expanded argv before launch",
+          "max_seconds": 30
+        },
+        {
+          "argv": [
+            "<actual-PT_INTERP>",
+            "--list",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/cms_probe"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "expansion": "Read PT_INTERP from bound ELF and record actual expanded argv before launch",
+          "max_seconds": 30
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12",
+            "./check",
+            "--masses"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "max_seconds": 30
+        },
+        {
+          "argv": [
+            "taskset",
+            "-c",
+            "12",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/cms_probe"
+          ],
+          "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+          "max_seconds": 30
+        }
+      ],
+      "revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+      "source": "candidate",
+      "subprocess": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/exports/candidate/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+      "worker_render_parameters": {
+        "nborn": 1,
+        "nexternal": 4,
+        "prefix": "ML5_0_"
+      }
+    }
+  ],
+  "future_implementation_scope": "Adapt copied sealed physical-stress ownership helpers to CMS-only roots, six requests, count21, phase300s, host accuracy1e-3, fresh runtime CMS proof and warmup outcome extraction. Leave original fourcase24lane packet unchanged; add no audit framework.",
+  "historical_candidate_revision": "c91cb85f3aa942c90299b3518bb1f195f55334a5",
+  "known_gaps": [
+    "No executing CMS supervisor/adapter has been implemented. Root review must authorize implementation and each prepare/preflight/run stage.",
+    "No current-source CMS CLI export, object build, runtime CMSParam proof or amplitude result exists here.",
+    "Current strict warmup may refuse point20/21 before READY. Later points remain unexecuted; retain warmup.dat/stdout and do not bypass or substitute subsets.",
+    "Historical final-candidate generation is c91cb85, not current2c132. Historical numerical results cannot be inherited.",
+    "Old proof and private cutoff/repair diagnostics are historical context; no current finite-term oracle is supplied.",
+    "W03 denies qualification even with apparently stable status or displayed accuracy0.",
+    "Baseline template lacks four TIRust-only fields; record as not applicable and preserve every common setting.",
+    "Precise timing and optimization measurements remain for Hua-Sheng locally; caps are operational bounds.",
+    "The first physical-stress supervisor proposal referenced absent bin/mg5_aMC. CMS binds each archive-tracked bin/madgraph entrypoint and uses --plain; no fallback alias or shared checkout CLI is admitted."
+  ],
+  "main_campaign_stability_threshold_for_context": 1e-06,
+  "manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "native_executed": false,
+  "ordinary_target": 1e-08,
+  "physical_card_sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec",
+  "point_count": 21,
+  "points_sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60",
+  "preparation_executed": false,
+  "private_mass_or_geometry_changes_admitted": false,
+  "production_changes_admitted": false,
+  "proposal": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1",
+  "protected_paths": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/baseline",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/complex-mass",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-supervisor-1",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/madgraph"
+  ],
+  "regression_tolerance": 3e-06,
+  "report": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-qualification-1",
+  "request_count": 6,
+  "requests": [
+    {
+      "argv_without_fifo": [
+        "taskset",
+        "-c",
+        "12",
+        "./check",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/points/cms_ew_n2_epem_mupmum.dat"
+      ],
+      "backend": 1,
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/baseline-1-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+      "fifo_argument_appended_by_worker": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/baseline-1-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum/worker-protocol.fifo",
+      "id": "baseline-1-auto",
+      "inclusive_seconds": 620,
+      "lock_required": false,
+      "numerical_card": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/cards/baseline-1-MadLoopParams.dat",
+      "point_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "precision_request": "auto",
+      "protocol_phase_timeout_seconds": 300,
+      "source": "baseline",
+      "stdin": [
+        "RUN 1 1\n",
+        "STOP 0 0\n"
+      ]
+    },
+    {
+      "argv_without_fifo": [
+        "taskset",
+        "-c",
+        "12",
+        "./check",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/points/cms_ew_n2_epem_mupmum.dat"
+      ],
+      "backend": 1,
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-1-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+      "fifo_argument_appended_by_worker": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-1-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum/worker-protocol.fifo",
+      "id": "candidate-1-auto",
+      "inclusive_seconds": 620,
+      "lock_required": false,
+      "numerical_card": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/cards/candidate-1-MadLoopParams.dat",
+      "point_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "precision_request": "auto",
+      "protocol_phase_timeout_seconds": 300,
+      "source": "candidate",
+      "stdin": [
+        "RUN 1 1\n",
+        "STOP 0 0\n"
+      ]
+    },
+    {
+      "argv_without_fifo": [
+        "taskset",
+        "-c",
+        "12",
+        "./check",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/points/cms_ew_n2_epem_mupmum.dat"
+      ],
+      "backend": 6,
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-6-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+      "fifo_argument_appended_by_worker": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-6-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum/worker-protocol.fifo",
+      "id": "candidate-6-auto",
+      "inclusive_seconds": 620,
+      "lock_required": false,
+      "numerical_card": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/cards/candidate-6-MadLoopParams.dat",
+      "point_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "precision_request": "auto",
+      "protocol_phase_timeout_seconds": 300,
+      "source": "candidate",
+      "stdin": [
+        "RUN 1 1\n",
+        "STOP 0 0\n"
+      ]
+    },
+    {
+      "argv_without_fifo": [
+        "taskset",
+        "-c",
+        "12",
+        "./check",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/points/cms_ew_n2_epem_mupmum.dat"
+      ],
+      "backend": 7,
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-7-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+      "fifo_argument_appended_by_worker": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-7-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum/worker-protocol.fifo",
+      "id": "candidate-7-auto",
+      "inclusive_seconds": 620,
+      "lock_required": false,
+      "numerical_card": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/cards/candidate-7-MadLoopParams.dat",
+      "point_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "precision_request": "auto",
+      "protocol_phase_timeout_seconds": 300,
+      "source": "candidate",
+      "stdin": [
+        "RUN 1 1\n",
+        "STOP 0 0\n"
+      ]
+    },
+    {
+      "argv_without_fifo": [
+        "taskset",
+        "-c",
+        "12",
+        "./check",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/points/cms_ew_n2_epem_mupmum.dat"
+      ],
+      "backend": 8,
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-8-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+      "fifo_argument_appended_by_worker": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-8-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum/worker-protocol.fifo",
+      "id": "candidate-8-auto",
+      "inclusive_seconds": 620,
+      "lock_required": true,
+      "numerical_card": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/cards/candidate-8-MadLoopParams.dat",
+      "point_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "precision_request": "auto",
+      "protocol_phase_timeout_seconds": 300,
+      "source": "candidate",
+      "stdin": [
+        "RUN 1 1\n",
+        "STOP 0 0\n"
+      ]
+    },
+    {
+      "argv_without_fifo": [
+        "taskset",
+        "-c",
+        "12",
+        "./check",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/points/cms_ew_n2_epem_mupmum.dat"
+      ],
+      "backend": 9,
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-9-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum",
+      "fifo_argument_appended_by_worker": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1/workers/candidate-9-auto/cms_ew_n2_epem_mupmum/SubProcesses/P0_epem_mupmum/worker-protocol.fifo",
+      "id": "candidate-9-auto",
+      "inclusive_seconds": 620,
+      "lock_required": true,
+      "numerical_card": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-proposal-1/cards/candidate-9-MadLoopParams.dat",
+      "point_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "precision_request": "auto",
+      "protocol_phase_timeout_seconds": 300,
+      "source": "candidate",
+      "stdin": [
+        "RUN 1 1\n",
+        "STOP 0 0\n"
+      ]
+    }
+  ],
+  "resources": {
+    "all_thread_counts": 1,
+    "build_cpus": [
+      12,
+      13,
+      14,
+      15
+    ],
+    "build_jobs": 4,
+    "exclusive_cpu": false,
+    "native_cpu": 12,
+    "native_lock": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/numerical-tests.lock",
+    "native_serial": true
+  },
+  "schema_version": 1,
+  "scope": "Source-only proposal; fresh CMS numerical evidence; performance ineligible",
+  "settings_origin": "policy-reference.json",
+  "strict_host_accuracy_limit": 0.001,
+  "subset_retries_admitted": false,
+  "threshold_changes_admitted": false,
+  "work": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-cms-replay-1",
+  "worker_policy": "current strict warmup/status driver, stdout suppression removed; historical driver is ancestry only"
+}
