@@ -1,0 +1,28 @@
+{
+  "controller_only_run3_to_run4_namespace_and_label_changes": true,
+  "native_driver_observers_supervisor_exec_wrapper_unchanged": true,
+  "new_helper": "widen_binary64",
+  "schema": "source4-parser-delta-guard-v1",
+  "unchanged_adjacent_observed_gate_source_sha256": "b247fd1ff1bc6771ba0c249be7f1ef0010c9e03a8c6857572452fcce152969c7",
+  "unchanged_analyzer_functions": [
+    "require",
+    "digest",
+    "ints",
+    "floats",
+    "binary",
+    "rounded113",
+    "ascii113",
+    "parse_trace",
+    "payload",
+    "model",
+    "ieee",
+    "one",
+    "paired",
+    "native_calls",
+    "routing",
+    "parse_worker",
+    "delta",
+    "adjudicate"
+  ],
+  "unchanged_common_input_digest_and_all_coefficient_adjudication": true
+}

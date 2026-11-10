@@ -1,0 +1,14 @@
+{
+  "files": {
+    "diagnose.py": {
+      "bytes": 17587,
+      "sha256": "c809dc508e85e24a4d7cfcf25b3fea98153896683f1f72eeea432a63a787f017"
+    },
+    "diagnosis.json": {
+      "bytes": 245049,
+      "sha256": "8ec35ea7e1989a02985797a2b75ee98566c3730d42b40d166ac2f263e853dd59"
+    }
+  },
+  "schema": "qcd-n3-run4-static-transport-index-1",
+  "scope": "Exact closed-byte and pinned production formatter diagnosis; no gate changes or native calls."
+}

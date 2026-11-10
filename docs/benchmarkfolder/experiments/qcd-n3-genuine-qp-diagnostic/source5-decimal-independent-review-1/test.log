@@ -1,0 +1,15 @@
+test_canonical_output_zero_and_negative_zero (independent_decimal_output_tests.DecimalOutputTests.test_canonical_output_zero_and_negative_zero) ... ok
+test_fixed_record_width_remains_mandatory (independent_decimal_output_tests.DecimalOutputTests.test_fixed_record_width_remains_mandatory) ... ok
+test_input_grammar_still_requires_exponent (independent_decimal_output_tests.DecimalOutputTests.test_input_grammar_still_requires_exponent) ... ok
+test_lexical_zero_signs_preserved_for_scientific_inputs (independent_decimal_output_tests.DecimalOutputTests.test_lexical_zero_signs_preserved_for_scientific_inputs) ... ok
+test_nonzero_output_grammar_still_requires_exponent (independent_decimal_output_tests.DecimalOutputTests.test_nonzero_output_grammar_still_requires_exponent) ... ok
+test_normal_only_qualification_explicitly_rejects_subnormals_and_underflow (independent_decimal_output_tests.DecimalOutputTests.test_normal_only_qualification_explicitly_rejects_subnormals_and_underflow) ... ok
+test_overflow_and_rounded_overflow_are_explicit_failures (independent_decimal_output_tests.DecimalOutputTests.test_overflow_and_rounded_overflow_are_explicit_failures) ... ok
+test_successful_ninjars_zero_output_decodes_but_failed_output_is_not_read (independent_decimal_output_tests.DecimalOutputTests.test_successful_ninjars_zero_output_decodes_but_failed_output_is_not_read) ... ok
+test_tirust_identical_formatter_contract_is_output_only (independent_decimal_output_tests.DecimalOutputTests.test_tirust_identical_formatter_contract_is_output_only) ... ok
+test_values_below_dp_resolution_still_exactly_reconstructed (independent_decimal_output_tests.DecimalOutputTests.test_values_below_dp_resolution_still_exactly_reconstructed) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.162s
+
+OK
