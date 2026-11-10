@@ -1,0 +1,24 @@
+5bced81fc000-5bced81ff000 r--p 00000000 00:21 3798583                    /nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset
+5bced81ff000-5bced820a000 r-xp 00003000 00:21 3798583                    /nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset
+5bced820a000-5bced820d000 r--p 0000e000 00:21 3798583                    /nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset
+5bced820d000-5bced820e000 r--p 00011000 00:21 3798583                    /nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset
+5bced820e000-5bced820f000 rw-p 00012000 00:21 3798583                    /nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset
+5bcf120ec000-5bcf1210d000 rw-p 00000000 00:00 0                          [heap]
+7161a05a4000-7161a05a7000 rw-p 00000000 00:00 0 
+7161a05a7000-7161a05cf000 r--p 00000000 00:21 2927746                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/libc.so.6
+7161a05cf000-7161a074e000 r-xp 00028000 00:21 2927746                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/libc.so.6
+7161a074e000-7161a079d000 r--p 001a7000 00:21 2927746                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/libc.so.6
+7161a079d000-7161a07a1000 r--p 001f5000 00:21 2927746                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/libc.so.6
+7161a07a1000-7161a07a3000 rw-p 001f9000 00:21 2927746                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/libc.so.6
+7161a07a3000-7161a07b2000 rw-p 00000000 00:00 0 
+7161a07b2000-7161a07b6000 r--p 00000000 00:00 0                          [vvar]
+7161a07b6000-7161a07b8000 r--p 00000000 00:00 0                          [vvar_vclock]
+7161a07b8000-7161a07ba000 r-xp 00000000 00:00 0                          [vdso]
+7161a07ba000-7161a07bb000 r--p 00000000 00:21 2926843                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2
+7161a07bb000-7161a07e6000 r-xp 00001000 00:21 2926843                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2
+7161a07e6000-7161a07f1000 r--p 0002c000 00:21 2926843                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2
+7161a07f1000-7161a07f3000 r--p 00037000 00:21 2926843                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2
+7161a07f3000-7161a07f4000 rw-p 00039000 00:21 2926843                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2
+7161a07f4000-7161a07f5000 rw-p 00000000 00:00 0 
+7ffead31a000-7ffead33d000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

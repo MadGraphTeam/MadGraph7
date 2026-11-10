@@ -1,0 +1,41 @@
+{
+  "copied_capsule_only": true,
+  "denied_attempts": [],
+  "distinct_local_read_paths": 88,
+  "original_recorded_paths_never_opened": true,
+  "schema": "madloop-closed3-portable-verification-v1",
+  "scope": "replay of closed setup/sampling receipts; no numerical amplitudes or performance qualification",
+  "subprocess_or_dynamic_load_calls": 0,
+  "verification": {
+    "failed_run_native_starts": 0,
+    "failed_run_unexecuted_primary_calls": 6000,
+    "point_streams": {
+      "ew_n2_epem_mupmum": {
+        "count": 100,
+        "min_delta_R": 3.1419186646870854,
+        "min_pt_GeV": 88.57422133310331
+      },
+      "qcd_n2_gg_ttx": {
+        "count": 100,
+        "min_delta_R": 3.1415988007361264,
+        "min_pt_GeV": 79.17499910362439
+      },
+      "qcd_n3_uux_zgg": {
+        "count": 100,
+        "min_delta_R": 0.5430760925880233,
+        "min_pt_GeV": 50.38182339699844
+      },
+      "qcd_n4_uux_zzgg": {
+        "count": 100,
+        "min_delta_R": 0.5836145318838057,
+        "min_pt_GeV": 52.17916788663332
+      }
+    },
+    "preparation_amplitudes": 0,
+    "preparation_driver_builds": 4,
+    "preparation_loader_queries": 4,
+    "runtime_maps_retained": 12,
+    "verified": true
+  },
+  "verified": true
+}
