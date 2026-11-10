@@ -272,14 +272,16 @@ jobs:
       # --hel_recycling: the recycled madmatrix build gives the |M|^2 of the
       # plain one, event by event, summed over the helicities and with one
       # helicity per event (check_sa --hel-index), at the scalar and a SIMD backend;
-      # in the unitary gauge (g g > t t~ g) and in FD (t t~ > w+ w- z); and
+      # in the unitary gauge (g g > t t~ g) and in FD (t t~ > w+ w- z);
       # several recycled subprocess libraries in one process give the |M|^2
-      # each gives alone (they share the per-thread scratch area)
+      # each gives alone (they share the per-thread scratch area); and at
+      # every flavour index of a merged-flavour process through umami
+      # (MSSM_SLHA2 p p > go go j: check_sa only evaluates flavour 0)
       - name: "acceptancetest_mg7_hel_recycling: madmatrix --hel_recycling vs plain"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madmatrix_hel_recycling_vs_plain test_madmatrix_fd_hel_recycling_vs_plain test_madmatrix_hel_recycling_several_libraries -pA -t0 -l INFO
+            ./tests/test_manager.py test_madmatrix_hel_recycling_vs_plain test_madmatrix_fd_hel_recycling_vs_plain test_madmatrix_hel_recycling_several_libraries test_madmatrix_hel_recycling_every_flavour -pA -t0 -l INFO
 
       # ---- acceptancetest_mg7_madspin_mixed_flavor ----
       # mg7 + MadSpin density-summary check driven through the madevent-style

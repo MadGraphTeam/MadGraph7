@@ -357,6 +357,45 @@ class TestCppAmplitudeSplit(unittest.TestCase):
                       ' aloha_obj[1], COUPs[0], 1.0, _p1n );', out)
         self.assertNotIn('flv_index', out)
 
+    def test_a_flavour_table_with_two_partners_is_not_split(self):
+        """A P1N current with a fermion output gives its output ONE flavour,
+        resolved from its input through the coupling's table in either
+        orientation (the call can put the table's first fermion second). A
+        table in which a flavour has two partners over both orientations, or,
+        for a vertex with several couplings, is not symmetric, cannot be
+        followed: the group is evaluated whole instead."""
+
+        line = self.LINE.replace('FFV1_0', 'FFS2M_0').replace(
+            'CD_ACCESS', 'CDPF_ACCESS').replace('COUPs[0]', 'flvCOUPs_dep[4]')
+        amps = [self.FakeAmp(row + 1, [slot, 'aloha_obj[1]', 'aloha_obj[2]',
+                                       'flvCOUPs_dep[4]', '1.0', '&amp_fp[0]'])
+                for row, slot in enumerate('aloha_obj[%d]' % i
+                                           for i in (10, 11, 12, 13))]
+        safe = hel_recycle.CppDialect.p1n_flavour_safe
+        # the gluino-squark-quark vertex of MSSM_SLHA2: merged quark flavour 2
+        # first, gluino (flavour 0) second -- one partner each way
+        self.assertTrue(safe([(2, 0)]))
+        self.assertTrue(safe([(0, 0)], several=True))
+        self.assertTrue(safe([(0, 1), (1, 0)], several=True))
+        # flavour 0 is the partner of 0 and of 2
+        self.assertFalse(safe([(0, 0), (2, 0)]))
+        # 1 -> 2 one way, 1 -> 0 the other
+        self.assertFalse(safe([(0, 1), (1, 2)]))
+        # not symmetric: fine alone, not with several couplings
+        self.assertFalse(safe([(2, 0)], several=True))
+
+        self.dialect.p1n_flavour_tables = {'flvCOUPs_dep[4]': [(2, 0)]}
+        self.assertIn('FFS2MP1N_1<W_ACCESS, CDPF_ACCESS>', self.render(amps, line=line))
+        for table in ([(0, 0), (2, 0)], None):
+            self.dialect.p1n_flavour_tables = {'flvCOUPs_dep[4]': table}
+            self.assertNotIn('P1N', self.render(amps, line=line))
+        # a boson output takes both flavours from its inputs: still split
+        boson = [self.FakeAmp(row + 1, ['aloha_obj[0]', 'aloha_obj[1]', slot,
+                                        'flvCOUPs_dep[4]', '1.0', '&amp_fp[0]'])
+                 for row, slot in enumerate('aloha_obj[%d]' % i
+                                            for i in (10, 11, 12, 13))]
+        self.assertIn('FFS2MP1N_3<', self.render(boson, line=line))
+
     def test_each_amplitude_still_gets_its_own_row_fold(self):
         out = self.render(self.amplitudes(['aloha_obj[%d]' % i
                                            for i in (10, 11, 12, 13)]))

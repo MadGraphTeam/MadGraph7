@@ -28,6 +28,7 @@ from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custo
 from madgraph.mg7.observables import CutItem, HistItem, build_observable, clean_pids, observable_pids
 from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
+from madgraph.mg7.model_widths import _proc_characteristic
 from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess, amplicol_subproc_args, is_amplicol
 from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
@@ -711,6 +712,10 @@ class MadgraphProcess:
             self.mlm_clustering = True
             self.scale_kwargs = {}
             if not self.is_decay:
+                # the clustering's jets have to be the massless quarks of the
+                # model: no free choice of max_jet_flavor with MLM
+                self.run_card.check_mlm_max_jet_flavor(
+                    _proc_characteristic().get("max_jet_flavor", 0))
                 # where the shower of the particles that are not light partons
                 # starts: the hardest scale of the event (max of the
                 # core-process scale the clustering gives them, mu_F and the
