@@ -665,7 +665,7 @@ def ward_applicability(target: Any) -> str | None:
         return None
     return (
         f"EW corrections ({', '.join(others)}) with an on-shell zero-width "
-        f"external massive quark (leg {', '.join(map(str, quarks))}): the "
+        f"external massive quark ({_legs(quarks)}): the "
         "gluon / photon Ward identity of the asymmetric check is not "
         "guaranteed there (USER 2026-11-10); not evaluated, every "
         "squared-order sector alike"
@@ -682,8 +682,12 @@ def _not_applicable_ward(legs: Sequence[int], reason: str) -> CheckRow:
         None,
         None,
         NOT_APPLICABLE,
-        reason=f"legs {', '.join(map(str, legs))} not checked: {reason}",
+        reason=f"{_legs(legs)} not checked: {reason}",
     )
+
+
+def _legs(labels: Sequence[int]) -> str:
+    return ("leg " if len(labels) == 1 else "legs ") + ", ".join(map(str, labels))
 
 
 def born_interfered_rows(

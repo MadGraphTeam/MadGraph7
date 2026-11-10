@@ -413,7 +413,14 @@ The walkthrough steps, in order:
    corrections and the Ward identity of every external gluon and photon; the
    loop-induced finiteness and Ward probes; the Goldstone-equivalence probe
    where it applies (otherwise its row reads "not applicable" with the
-   reason). See [the command-line guide](../docs/user/command-line-interface.md#check).
+   reason). A row double-double cannot decide (its residual above the
+   criterion while within ten times its own estimate) is re-run alone in
+   arbitrary precision at the digits derived from the shortfall
+   (`--arbitrary-digits` sets them); one still undecided there reads
+   "undecided" and fails the check (exit 1). The Ward rows of a request with
+   electroweak corrections and an on-shell zero-width external massive quark
+   read "not applicable" (its Ward identity is not guaranteed there; Ward
+   rows are not split by squared-order sector). See [the command-line guide](../docs/user/command-line-interface.md#check).
 2. **Generation** through the typed API (`Generator`, in a child process so
    that the generation's memory is returned before the evaluation steps),
    with the example's colour- and spin-correlator declaration (`data/<example>_correlators.json`;

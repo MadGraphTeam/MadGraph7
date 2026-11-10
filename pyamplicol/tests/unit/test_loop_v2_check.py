@@ -379,10 +379,10 @@ def test_ward_rows_of_ew_corrections_with_a_zero_width_massive_quark_are_not_app
     zero = {"WT": "0", "WM": "0"}
     both = ("QCD", "QED")
     reason = checks.ward_applicability(_toy_target([21, 21, 6, -6], both, zero))
-    assert reason and "QED" in reason and "leg 3, 4" in reason
+    assert reason and "QED" in reason and "(legs 3, 4)" in reason
     # An antiquark as the only external massive quark.
     reason = checks.ward_applicability(_toy_target([21, 2, 2, -6], both, zero))
-    assert reason and "leg 4" in reason
+    assert reason and "(leg 4)" in reason
     # QED corrections alone (no strong one) with an external top.
     assert checks.ward_applicability(_toy_target([22, 6, -6], ("QED",), zero))
     # Outside the class: QCD-only corrections with external tops; EW
@@ -438,7 +438,7 @@ def test_a_process_in_the_class_reports_one_not_applicable_ward_row(monkeypatch)
     (row,) = [row for row in rows if row.check == "ward"]
     assert row.verdict == checks.NOT_APPLICABLE and row.point is None
     assert row.reason.startswith("legs 1, 2 not checked: EW corrections (QED)")
-    assert "leg 3, 4" in row.reason
+    assert "(legs 3, 4)" in row.reason
     poles = [row for row in rows if row.check == "poles"]
     assert len(poles) == 2 and {row.verdict for row in poles} == {checks.PASS}
     process = checks.ProcessCheck(
