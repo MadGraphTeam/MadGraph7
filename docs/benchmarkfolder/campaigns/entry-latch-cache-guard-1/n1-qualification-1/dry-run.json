@@ -1,0 +1,146 @@
+{
+  "status": "dry-run-no-execution",
+  "campaign": "entry-latch-cache-guard-1",
+  "manifest_sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076",
+  "stages": [
+    {
+      "id": "reuse-baseline",
+      "cap_seconds": 600.0,
+      "command": [
+        "taskset",
+        "-c",
+        "12-15",
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "tools/tirust_benchmark.py",
+        "reuse-baseline",
+        "--campaign",
+        "entry-latch-cache-guard-1",
+        "--cases",
+        "qcd_n1_uux_z",
+        "ew_n1_udx_wp",
+        "--cpu",
+        "12",
+        "--jobs",
+        "4"
+      ]
+    },
+    {
+      "id": "generate-candidate",
+      "cap_seconds": 900.0,
+      "command": [
+        "taskset",
+        "-c",
+        "12-15",
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "tools/tirust_benchmark.py",
+        "generate",
+        "--source",
+        "candidate",
+        "--campaign",
+        "entry-latch-cache-guard-1",
+        "--cases",
+        "qcd_n1_uux_z",
+        "ew_n1_udx_wp",
+        "--cpu",
+        "12",
+        "--jobs",
+        "4"
+      ]
+    },
+    {
+      "id": "build-both",
+      "cap_seconds": 1200.0,
+      "command": [
+        "taskset",
+        "-c",
+        "12-15",
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "tools/tirust_benchmark.py",
+        "build",
+        "--source",
+        "both",
+        "--campaign",
+        "entry-latch-cache-guard-1",
+        "--cases",
+        "qcd_n1_uux_z",
+        "ew_n1_udx_wp",
+        "--cpu",
+        "12",
+        "--jobs",
+        "4"
+      ]
+    },
+    {
+      "id": "numerical-qcd_n1_uux_z",
+      "case": "qcd_n1_uux_z",
+      "label": "full100-warmup-qcd_n1_uux_z-1",
+      "cap_seconds": 1800.0,
+      "command": [
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "tools/tirust_benchmark_numerical.py",
+        "--campaign",
+        "entry-latch-cache-guard-1",
+        "--case",
+        "qcd_n1_uux_z",
+        "--label",
+        "full100-warmup-qcd_n1_uux_z-1",
+        "--warmup-only",
+        "--backends",
+        "1",
+        "6",
+        "7",
+        "8",
+        "9",
+        "--cpu",
+        "12"
+      ]
+    },
+    {
+      "id": "numerical-ew_n1_udx_wp",
+      "case": "ew_n1_udx_wp",
+      "label": "full100-warmup-ew_n1_udx_wp-1",
+      "cap_seconds": 1800.0,
+      "command": [
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "-B",
+        "tools/tirust_benchmark_numerical.py",
+        "--campaign",
+        "entry-latch-cache-guard-1",
+        "--case",
+        "ew_n1_udx_wp",
+        "--label",
+        "full100-warmup-ew_n1_udx_wp-1",
+        "--warmup-only",
+        "--backends",
+        "1",
+        "6",
+        "7",
+        "8",
+        "9",
+        "--cpu",
+        "12"
+      ]
+    }
+  ],
+  "preflight": null,
+  "cases": [
+    "qcd_n1_uux_z",
+    "ew_n1_udx_wp"
+  ],
+  "points_per_lane": 100,
+  "lanes_per_case": 6,
+  "worker_deadline_seconds": 3600.0,
+  "cleanup_reserve_seconds": 60.0,
+  "nonexclusive_build_cpus": [
+    12,
+    13,
+    14,
+    15
+  ],
+  "numerical_cpu": 12,
+  "performance_acceptance_eligible": false
+}

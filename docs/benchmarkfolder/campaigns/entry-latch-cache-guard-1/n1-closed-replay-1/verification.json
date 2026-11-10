@@ -1,0 +1,27 @@
+{
+  "closure_sha256": "3888b1ca29d3e368c748c141462ea4286a8c88fd14ecc00a80928c24e8555dfa",
+  "compiled_or_reducer_executions": 0,
+  "copied_files": 219,
+  "elapsed_seconds": 0.5797633267939091,
+  "native_runtime_required": false,
+  "original_and_relocated_results_equal": true,
+  "runtime_evidence_scope": "Retained resolved ldd identities and file hashes; no observed worker process maps",
+  "schema": "n1-closed-replay-relocation-v1",
+  "verification": {
+    "accepted_point_calls": 1200,
+    "all_selected_backend_dp": true,
+    "cases": [
+      "qcd_n1_uux_z",
+      "ew_n1_udx_wp"
+    ],
+    "coefficient_comparisons": 9600,
+    "full_matrix_complete": false,
+    "index_sha256": "3888b1ca29d3e368c748c141462ea4286a8c88fd14ecc00a80928c24e8555dfa",
+    "lanes_replayed": 12,
+    "native_executions": 0,
+    "payloads_verified": 218,
+    "performance_acceptance": false,
+    "regression_and_target_passed": true
+  },
+  "verifier_sha256": "b9af59b075ee134280cac7e24ddbe68c098fe77dc01476412a4fb81163fb6cda"
+}

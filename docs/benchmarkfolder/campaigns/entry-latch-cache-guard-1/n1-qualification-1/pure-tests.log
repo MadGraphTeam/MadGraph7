@@ -1,0 +1,10 @@
+START numerical-qcd_n1_uux_z child_pid=12345
+START generate-candidate child_pid=12345
+START generate-candidate child_pid=12345
+START numerical-qcd_n1_uux_z child_pid=12345
+START generate-candidate child_pid=12345
+START generate-candidate child_pid=12345
+----------------------------------------------------------------------
+Ran 11 tests in 0.030s
+
+OK

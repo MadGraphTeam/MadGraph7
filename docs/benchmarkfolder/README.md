@@ -135,6 +135,10 @@ The runnable [successor local handoff](campaigns/entry-latch-cache-guard-1/timin
 provides fresh installation, all eleven six-lane numerical qualifications,
 precise timing and a separate local PDF. Its 66 fresh local numerical lanes and
 precise timing acceptance remain pending; shared-host observations are separate.
+The [fresh shared-host QCD/EW 2-to-1 checks](campaigns/entry-latch-cache-guard-1/n1-closed-replay-1/README.md)
+pass at both `3e-6` and `1e-8`: twelve lanes, 100 saved points each, all accepted
+results in the selected backend's DP mode. Nine further successor processes and
+precise timing remain pending.
 The published 31-page PDF covers the preceding `invariant-symmetry-1`
 registration, at revision `2c13246ffa63`, with numerical
 identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
