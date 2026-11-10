@@ -1,0 +1,25 @@
+{
+  "controller_sha256": "7cccff659bdb180c070a62f9637fc4865892eaa739f681927c538bfae58e41c3",
+  "files": {
+    "README.md": {
+      "bytes": 4498,
+      "sha256": "de7fa36de027ce7db160d2742f71cb7a5d4df54903c3bff5f347b5c94c413822"
+    },
+    "retain.py": {
+      "bytes": 22943,
+      "sha256": "250d4f1020cc2b5b58c24e2098cbe3f446f446c2fb28efa99b088a81d14d0fa8"
+    },
+    "test_retain.py": {
+      "bytes": 14450,
+      "sha256": "135bb5d4121faca59cc0813d8478d00fadc0a45b11ae864c4063c729977d9cfe"
+    }
+  },
+  "schema": 1,
+  "seal_scope": "Only explicit closed report tree plus exactly eleven hash-bound baseline generation metadata JSON files; no binaries/libraries; all66 scheduled outcomes retained",
+  "stage": "source-only; active attempt not read; terminal authorization pending",
+  "tests": {
+    "command": "python3 -B -m unittest discover -s docs/benchmarkfolder/campaigns/split-dp-terminal-1/provisional-retention-1 -p test_retain.py -v",
+    "native_or_compiler_execution": false,
+    "passed": 12
+  }
+}
