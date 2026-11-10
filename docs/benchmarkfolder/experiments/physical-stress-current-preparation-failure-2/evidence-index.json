@@ -1,0 +1,90 @@
+{
+  "files": {
+    "README.md": {
+      "kind": "file",
+      "sha256": "f6d698712cfb0a30ecea6c33e6b187a39b3ecf17dcd0ebf8ec510ef828026f5d",
+      "size": 1253
+    },
+    "closed/builds/baseline-qcd_n2_gg_ttx/cli-admission.json": {
+      "kind": "file",
+      "sha256": "d7b363670894443246566d4da35299cca619dd16040935c6734167e33469353d",
+      "size": 517
+    },
+    "closed/execution/archive-baseline.json": {
+      "kind": "file",
+      "sha256": "8a61c7eeca957abd51c07d98d830b214814666945236c018516346566ae058ea",
+      "size": 3480
+    },
+    "closed/execution/archive-baseline.txt": {
+      "kind": "file",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    "closed/execution/archive-candidate.json": {
+      "kind": "file",
+      "sha256": "f1b30f2f69bb6c9f94074d28754528aeb58361c06baaa43ca1e9866c8a0bd4e7",
+      "size": 3480
+    },
+    "closed/execution/archive-candidate.txt": {
+      "kind": "file",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    "closed/execution/generate-baseline-qcd_n2_gg_ttx.json": {
+      "kind": "file",
+      "sha256": "43e46307e50850ecbec38290123c201b80365ab85109d03f3d93047815331493",
+      "size": 3669
+    },
+    "closed/execution/generate-baseline-qcd_n2_gg_ttx.txt": {
+      "kind": "file",
+      "sha256": "abfb77ffc001f8c83fd6193d75f0454ccde3dbe32f0853a66a49ee3b6ffe7d9f",
+      "size": 10905
+    },
+    "closed/materialized-baseline.json.gz": {
+      "kind": "file",
+      "sha256": "e1f94858210bc2cc97cda5bd56a55a5a39d983b0b12c5d3f2a59a8323eabe022",
+      "size": 264753
+    },
+    "closed/materialized-candidate.json.gz": {
+      "kind": "file",
+      "sha256": "2f07e6f9b755ed2517e9425d043a1f58ff684e2aa90ab118bdf2a79ced3c7234",
+      "size": 761594
+    },
+    "closed/source-freeze.json": {
+      "kind": "file",
+      "sha256": "215da00270544fad2719bfbf0e87bae18518ce8c40e5d436856152a182410707",
+      "size": 7065
+    },
+    "closed/stage-prepare.json": {
+      "kind": "file",
+      "sha256": "73a5ade6b155c2b0b30800dae9d925702333b090c97e0eb9dbf6ece5a6771a2e",
+      "size": 466
+    },
+    "diagnostic-source/MG5_debug": {
+      "kind": "file",
+      "sha256": "fcd707abad786fb2e0902e50f833c89acd66a38b7b1f5c5040049364a34b1cda",
+      "size": 10770
+    },
+    "diagnostic-source/madgraph/iolibs/export_v4.py": {
+      "kind": "file",
+      "sha256": "f3faa39f215f20f084392f72119e8da19b6db066a90776eac1937b2b8dcee4ef",
+      "size": 659980
+    },
+    "diagnostic-source/models/loop_sm/loop_sm_debug.log": {
+      "kind": "file",
+      "sha256": "44f62cce603fda929db9b68887b267669dd58ecbbc134442d8f21a1afbf08b23",
+      "size": 7108
+    },
+    "retention.json": {
+      "kind": "file",
+      "sha256": "1c59693ab04014d5eda97a3a07803b66e40f36fde85b8ca1bbf15a95e279726d",
+      "size": 3589
+    },
+    "verify.py": {
+      "kind": "file",
+      "sha256": "fb43b6275c5ffecc19138564c6c70e85c513fd41d23b9733935bc03d1f6aeef7",
+      "size": 1055
+    }
+  },
+  "schema_version": 1
+}

@@ -1,0 +1,11 @@
+{
+  "campaign_manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "cap_seconds_excluding_lock_wait": 3600,
+  "elapsed_seconds_including_wait": 24.205207789316773,
+  "exception": "RuntimeError('Command returned 2')",
+  "native_execution": false,
+  "performance_eligible": false,
+  "source_index_sha256": "dbfa3ca37a05f7f7e7f2f91872902adf249106968314192a273ab804a24ff1bf",
+  "stage": "prepare",
+  "status": "failed"
+}

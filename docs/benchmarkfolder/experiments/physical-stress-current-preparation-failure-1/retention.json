@@ -1,0 +1,82 @@
+{
+  "closed_files": {
+    "execution/archive-baseline.json": {
+      "gzip": false,
+      "sha256": "f414e72f81e3f66a1f46c54543a2f6b832e505301c9f1b9cf87644dbcb9fffbd",
+      "size": 3347,
+      "stored": "closed/execution/archive-baseline.json"
+    },
+    "execution/archive-baseline.txt": {
+      "gzip": false,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "stored": "closed/execution/archive-baseline.txt"
+    },
+    "execution/archive-candidate.json": {
+      "gzip": false,
+      "sha256": "55392ee74de23855c68a5591dfca84af5128745390d9e461777f17d28f518b63",
+      "size": 3349,
+      "stored": "closed/execution/archive-candidate.json"
+    },
+    "execution/archive-candidate.txt": {
+      "gzip": false,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "stored": "closed/execution/archive-candidate.txt"
+    },
+    "execution/generate-baseline-qcd_n2_gg_ttx.json": {
+      "gzip": false,
+      "sha256": "814386862bbff5eadcde3720d00fa51a2159119763011747005632f112a6b0d0",
+      "size": 3574,
+      "stored": "closed/execution/generate-baseline-qcd_n2_gg_ttx.json"
+    },
+    "execution/generate-baseline-qcd_n2_gg_ttx.txt": {
+      "gzip": false,
+      "sha256": "cda428608762228fbdaa0a2bcaf2b256fc08a1d2ee0612a434dce84b5f75492c",
+      "size": 255,
+      "stored": "closed/execution/generate-baseline-qcd_n2_gg_ttx.txt"
+    },
+    "materialized-baseline.json": {
+      "gzip": true,
+      "sha256": "07bf878dfd21b6004e8bc3e82437ba87d8b557d30d670dbf88a61ef2248340c6",
+      "size": 1327015,
+      "stored": "closed/materialized-baseline.json.gz"
+    },
+    "materialized-candidate.json": {
+      "gzip": true,
+      "sha256": "d3b498c4a4de291276144f5efce617d2cfcca002a522a39a3b8a93d3638970ea",
+      "size": 4827454,
+      "stored": "closed/materialized-candidate.json.gz"
+    },
+    "source-freeze.json": {
+      "gzip": false,
+      "sha256": "3e0b061d68bcd9e6ae5b8ac8e69a93789fd35c7db996614d27108c335a716d3d",
+      "size": 7065,
+      "stored": "closed/source-freeze.json"
+    },
+    "stage-prepare.json": {
+      "gzip": false,
+      "sha256": "5862655fe7298f7c76ae7cf898eba09faf13ad8e3b3bd97da5944f1e63bacf67",
+      "size": 452,
+      "stored": "closed/stage-prepare.json"
+    }
+  },
+  "closed_root": "docs/benchmarkfolder/experiments/physical-stress-current-qualification-1",
+  "entrypoints": {
+    "baseline": {
+      "entrypoint": "bin/madgraph",
+      "incorrect_entrypoint_not_in_archived_inventory": true,
+      "revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+      "sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0",
+      "stored": "baseline-madgraph.py"
+    },
+    "candidate": {
+      "entrypoint": "bin/madgraph",
+      "incorrect_entrypoint_not_in_archived_inventory": true,
+      "revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+      "sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0",
+      "stored": "candidate-madgraph.py"
+    }
+  },
+  "original_unchanged": true
+}

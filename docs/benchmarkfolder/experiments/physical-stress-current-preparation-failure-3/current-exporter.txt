@@ -1,0 +1,195 @@
+SOURCE /shared/external/madloop_tirust/madgraph7_madloop_tirust/madgraph/loop/loop_exporters.py
+SHA256 7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74
+
+1980:        context = LoopProcessExporterFortranSA.get_context(self, matrix_element, 
+1981:                                                                         **opts)
+1982:
+1983:        # For now assume Ninja always supports quadruple precision
+1984:        try:
+1985:            context['ninja_supports_quad_prec'] = \
+1986:                     misc.get_ninja_quad_prec_support(getattr(self,'ninja_dir'))
+1987:        except AttributeError:
+1988:            context['ninja_supports_quad_prec'] = False
+1989:
+1990:        context['ninjars_supports_quad_prec'] = (
+1991:            self.tir_available_dict.get('ninjars', False) and
+1992:            ninjars_install.supports_quad_precision(getattr(self, 'ninjars_dir', '')))
+1993:
+1994:        context['tirust_supports_quad_prec'] = (
+1995:            self.tir_available_dict.get('tirust', False) and
+1996:            tirust_install.supports_quad_precision(getattr(self, 'tirust_dir', '')))
+1997:
+1998:        for tir in self.all_tir:
+1999:            context['%s_available'%tir]=self.tir_available_dict[tir]
+2000:            # safety check
+2001:            if tir not in ['golem','pjfry','iregi','samurai','ninja','collier','ninjars','tirust']:
+2002:                raise MadGraph5Error("%s was not a TIR currently interfaced."%tir_name)
+2003:
+2004:        return context
+2005:
+2006:    def loop_optimized_additional_template_setup(self):
+2007:        """ Perform additional actions specific for this class when setting
+
+2010:        # We must link the TIR to the Library folder of the active Template
+2011:        link_tir_libs=[]
+2012:        tir_libs=[]
+2013:        tir_include=[]
+2014:        
+2015:        for tir in self.all_tir:
+2016:            tir_dir="%s_dir"%tir
+2017:            libpath=getattr(self,tir_dir)
+2018:            libname="lib%s.a"%tir
+2019:            tir_name=tir
+2020:            libpath = self.link_TIR(os.path.join(self.dir_path, 'lib'),
+2021:                                              libpath,libname,tir_name=tir_name)
+2022:            if tir in ('ninjars', 'tirust'):
+2023:                setattr(self, tir + '_dir', libpath)
+2024:            if libpath != "":
+2025:                if tir in ['ninja','pjfry','golem','samurai','collier','ninjars','tirust']:
+2026:                    # It is cleaner to use the original location of the libraries
+2027:                    copied_ninjars = tir in ('ninjars', 'tirust') and self.dependencies == 'internal'
+2028:                    if tir == 'ninjars':
+2029:                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+2030:                    if tir == 'tirust':
+2031:                        link_tir_libs.extend(tirust_install.pre_link_flags(libpath))
+2032:                    if copied_ninjars:
+2033:                        link_tir_libs.append('-L$(LIBDIR) -l' + tir)
+2034:                        tir_libs.append('$(LIBDIR)lib' + tir + '.a')
+2035:                    else:
+2036:                        link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
+2037:                        tir_libs.append('%s/lib%s.%s' % (
+2038:                            libpath, tir, 'a' if tir in ('ninjars', 'tirust') else '$(libext)'))
+2039:                    if tir == 'ninjars':
+2040:                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
+2041:                    if tir == 'tirust':
+2042:                        link_tir_libs.extend(tirust_install.native_link_flags(libpath))
+2043:                        if copied_ninjars:
+2044:                            # Executables live in SubProcesses or its process
+2045:                            # directories; shared process libraries live in lib.
+2046:                            link_tir_libs.append("-Wl,-rpath,'$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../lib:$$ORIGIN/../../../lib'")
+2047:                        else:
+2048:                            link_tir_libs.append('-Wl,-rpath,%s' % libpath)
+2049:                    # For Ninja, we must also link against OneLoop.
+2050:                    if tir in ['ninja']:
+2051:                        if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
+2052:                                              for ext in ['a','dylib','so']):
+2053:                            raise MadGraph5Error(
+2054:"The OneLOop library 'libavh_olo.(a|dylib|so)' could no be found in path '%s'. Please place a symlink to it there."%libpath)
+2055:                        link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
+2056:                        tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
+2057:                    if tir in ['ninja','golem', 'samurai','collier','ninjars','tirust']:
+2058:                        trgt_path = pjoin(os.path.dirname(libpath),'include')
+2059:                        if os.path.isdir(trgt_path):
+2060:                            to_include = misc.find_includes_path(trgt_path,
+2061:                                                        self.include_names[tir])
+2062:                        else:
+2063:                            to_include = None
+2064:                        if to_include is None and tir in ('ninjars', 'tirust'):
+2065:                            to_include = misc.find_includes_path(
+2066:                                libpath, self.include_names[tir])
+2067:                        # Special possible location for collier
+2068:                        if to_include is None and tir=='collier':
+2069:                            to_include = misc.find_includes_path(
+2070:                               pjoin(libpath,'modules'),self.include_names[tir])
+2071:                        if to_include is None:
+2072:                            logger.error(
+2073:'Could not find the include directory for %s, looking in %s.\n' % (tir, str(trgt_path))+
+2074:'Generation carries on but you will need to edit the include path by hand in the makefiles.')
+2075:                            to_include = '<Not_found_define_it_yourself>'                
+2076:                        tir_include.append('-I %s' % (
+2077:                            '$(LIBDIR)' if copied_ninjars else str(to_include)))
+2078:                        # To be able to easily compile a MadLoop library using
+2079:                        # makefiles built outside of the MadGraph7 framework
+2080:                        # (such as what is done with the Sherpa interface), we
+2081:                        # place here an easy handle on the golem includes
+2082:                        name_map = {'golem':'golem95','samurai':'samurai',
+2083:                                    'ninja':'ninja','collier':'collier','ninjars':'ninjars','tirust':'tirust'}
+2084:                        if not copied_ninjars:
+2085:                            ln(to_include, starting_dir=pjoin(self.dir_path,'lib'),
+2086:                                       name='%s_include'%name_map[tir],abspath=True)
+2087:                            ln(libpath, starting_dir=pjoin(self.dir_path,'lib'),
+2088:                                           name='%s_lib'%name_map[tir],abspath=True)
+2089:                else :
+2090:                    link_tir_libs.append('-l%s'%tir)
+2091:                    tir_libs.append('$(LIBDIR)lib%s.$(libext)'%tir)
+2092:
+2093:        MadLoop_makefile_definitions = pjoin(self.dir_path,'SubProcesses',
+2094:                                                 'MadLoop_makefile_definitions')
+2095:        if os.path.isfile(MadLoop_makefile_definitions):
+2096:            os.remove(MadLoop_makefile_definitions)
+2097:
+2098:        calls = self.write_loop_makefile_definitions(
+2099:                        writers.MakefileWriter(MadLoop_makefile_definitions),
+2100:                                link_tir_libs,tir_libs, tir_include=tir_include)
+
+2126:    def link_TIR(self, targetPath,libpath,libname,tir_name='TIR'):
+2127:        """Link the TIR source directory inside the target path given
+2128:        in argument"""
+2129:        
+2130:        if tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars','tirust']:
+2131:            # not self-contained libraries
+2132:            if (not isinstance(libpath,str)) or (not os.path.exists(libpath)) \
+2133:            or (not os.path.isfile(pjoin(libpath,libname))):
+2134:                if isinstance(libpath,str) and libpath != '' and \
+2135:                (not os.path.isfile(pjoin(libpath,libname))):
+2136:                    # WARNING ONLY appears when the libpath is a wrong specific path.
+2137:                    logger.warning("The %s reduction library could not be found"%tir_name\
+2138:                                   +" with PATH:%s specified in mg7_configuration.txt."%libpath\
+2139:                                   +" It will not be available.")
+2140:                self.tir_available_dict[tir_name]=False
+2141:                return ""
+2142:            if tir_name == 'ninjars':
+2143:                if not ninjars_install.is_available(libpath):
+2144:                    logger.warning("NinjaRS installation at %s is unusable; "
+2145:                                   "run 'install ninjars --update'. It will not be available.", libpath)
+2146:                    self.tir_available_dict[tir_name] = False
+2147:                    return ""
+2148:            if tir_name == 'tirust' and not tirust_install.is_available(libpath):
+2149:                logger.warning("TIRust installation at %s is unusable; run "
+2150:                               "'install tirust --update'. It will not be available.", libpath)
+2151:                self.tir_available_dict[tir_name] = False
+2152:                return ""
+2153:            # Check the version of the tool, if the library was found
+2154:            if tir_name in ['ninja','samurai'] and self.tir_available_dict[tir_name]:
+2155:                # Make sure the librry was indeed installed in the source directory
+2156:                # of the tool, of course this check doesn't make sense.
+2157:                if os.path.isfile(pjoin(libpath,os.pardir,'AUTHORS')):
+2158:                    try:
+2159:                        version = open(pjoin(libpath,os.pardir,'VERSION'),'r').read()
+2160:                    except IOError:
+
+2221:            if not os.path.exists(pjoin(libpath,libname)) and tir_name=='iregi':
+2222:                        # special mode
+2223:                if 'heptools_install_dir' in self.opt and os.path.exists(pjoin(self.opt['heptools_install_dir'], 'IREGI')):
+2224:                    misc.sprint('Going to use pre-compiled version of IREGI') 
+2225:                    # Create the links to the lib folder
+2226:                    ln(os.path.join(self.opt['heptools_install_dir'],'IREGI','src','libiregi.a'),
+2227:                                    os.path.join(targetPath),abspath=True)
+2228:                    return os.path.join(targetPath, 'libiregi.a')
+2229:                
+2230:                
+2231:                
+2232:                logger.info('Compiling IREGI. This has to be done only once and'+\
+2233:                             ' can take a couple of minutes.','$MG:BOLD')
+2234:                
+2235:                current = misc.detect_current_compiler(os.path.join(\
+2236:                                                    libpath,'makefile_ML5_lib'))
+2237:                new = 'gfortran' if self.fortran_compiler is None else \
+2238:                                                        self.fortran_compiler
+2239:                if current != new:
+2240:                    misc.mod_compilator(libpath, new,current)
+2241:                    misc.mod_compilator(pjoin(libpath,'oneloop'), new, current)
+2242:
+2243:                misc.compile(cwd=libpath, job_specs = False)
+2244:
+2245:                if not os.path.exists(pjoin(libpath,libname)):            
+2246:                    logger.warning("IREGI could not be compiled. Check"+\
+2247:                      "the compilation errors at %s. The related "%libpath+\
+2248:                                              "functionalities are turned off.")
+2249:                    self.tir_available_dict[tir_name]=False
+2250:                    return ""
+2251:            # We link the tools below directly to the lib directory of the output 
+2252:            if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars','tirust']:
+2253:                ln(os.path.join(libpath,libname),targetPath,abspath=True)
+2254:
+2255:        elif self.dependencies=='environment_paths':

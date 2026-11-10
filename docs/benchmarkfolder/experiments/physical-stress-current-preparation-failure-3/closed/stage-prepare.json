@@ -1,0 +1,11 @@
+{
+  "campaign_manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "cap_seconds_excluding_lock_wait": 3600,
+  "elapsed_seconds_including_wait": 30.83526034001261,
+  "exception": "RuntimeError(\"CLI fatal diagnostic markers: ['Error detected']\")",
+  "native_execution": false,
+  "performance_eligible": false,
+  "source_index_sha256": "e092e2f7f2bd821496dc1c2e85f2ea0997a2f60c2deeecde2eb0cc4d6696770f",
+  "stage": "prepare",
+  "status": "failed"
+}

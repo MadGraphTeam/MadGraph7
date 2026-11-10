@@ -1,0 +1,1 @@
+/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3: can't open file '/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/mg-baseline/./bin/mg5_aMC': [Errno 2] No such file or directory

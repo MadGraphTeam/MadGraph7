@@ -1,0 +1,89 @@
+{
+  "additional_closed_diagnostics": {
+    "MG5_debug": {
+      "original": ".tirust-build/physical-stress-current-2/mg-baseline/MG5_debug",
+      "sha256": "fcd707abad786fb2e0902e50f833c89acd66a38b7b1f5c5040049364a34b1cda",
+      "stored": "diagnostic-source/MG5_debug"
+    },
+    "madgraph/iolibs/export_v4.py": {
+      "original": ".tirust-build/physical-stress-current-2/mg-baseline/madgraph/iolibs/export_v4.py",
+      "sha256": "f3faa39f215f20f084392f72119e8da19b6db066a90776eac1937b2b8dcee4ef",
+      "stored": "diagnostic-source/madgraph/iolibs/export_v4.py"
+    },
+    "models/loop_sm/loop_sm_debug.log": {
+      "original": ".tirust-build/physical-stress-current-2/mg-baseline/models/loop_sm/loop_sm_debug.log",
+      "sha256": "44f62cce603fda929db9b68887b267669dd58ecbbc134442d8f21a1afbf08b23",
+      "stored": "diagnostic-source/models/loop_sm/loop_sm_debug.log"
+    }
+  },
+  "closed_files": {
+    "builds/baseline-qcd_n2_gg_ttx/cli-admission.json": {
+      "gzip": false,
+      "sha256": "d7b363670894443246566d4da35299cca619dd16040935c6734167e33469353d",
+      "size": 517,
+      "stored": "closed/builds/baseline-qcd_n2_gg_ttx/cli-admission.json"
+    },
+    "execution/archive-baseline.json": {
+      "gzip": false,
+      "sha256": "8a61c7eeca957abd51c07d98d830b214814666945236c018516346566ae058ea",
+      "size": 3480,
+      "stored": "closed/execution/archive-baseline.json"
+    },
+    "execution/archive-baseline.txt": {
+      "gzip": false,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "stored": "closed/execution/archive-baseline.txt"
+    },
+    "execution/archive-candidate.json": {
+      "gzip": false,
+      "sha256": "f1b30f2f69bb6c9f94074d28754528aeb58361c06baaa43ca1e9866c8a0bd4e7",
+      "size": 3480,
+      "stored": "closed/execution/archive-candidate.json"
+    },
+    "execution/archive-candidate.txt": {
+      "gzip": false,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "stored": "closed/execution/archive-candidate.txt"
+    },
+    "execution/generate-baseline-qcd_n2_gg_ttx.json": {
+      "gzip": false,
+      "sha256": "43e46307e50850ecbec38290123c201b80365ab85109d03f3d93047815331493",
+      "size": 3669,
+      "stored": "closed/execution/generate-baseline-qcd_n2_gg_ttx.json"
+    },
+    "execution/generate-baseline-qcd_n2_gg_ttx.txt": {
+      "gzip": false,
+      "sha256": "abfb77ffc001f8c83fd6193d75f0454ccde3dbe32f0853a66a49ee3b6ffe7d9f",
+      "size": 10905,
+      "stored": "closed/execution/generate-baseline-qcd_n2_gg_ttx.txt"
+    },
+    "materialized-baseline.json": {
+      "gzip": true,
+      "sha256": "07bf878dfd21b6004e8bc3e82437ba87d8b557d30d670dbf88a61ef2248340c6",
+      "size": 1327015,
+      "stored": "closed/materialized-baseline.json.gz"
+    },
+    "materialized-candidate.json": {
+      "gzip": true,
+      "sha256": "d3b498c4a4de291276144f5efce617d2cfcca002a522a39a3b8a93d3638970ea",
+      "size": 4827454,
+      "stored": "closed/materialized-candidate.json.gz"
+    },
+    "source-freeze.json": {
+      "gzip": false,
+      "sha256": "215da00270544fad2719bfbf0e87bae18518ce8c40e5d436856152a182410707",
+      "size": 7065,
+      "stored": "closed/source-freeze.json"
+    },
+    "stage-prepare.json": {
+      "gzip": false,
+      "sha256": "73a5ade6b155c2b0b30800dae9d925702333b090c97e0eb9dbf6ece5a6771a2e",
+      "size": 466,
+      "stored": "closed/stage-prepare.json"
+    }
+  },
+  "closed_root": "docs/benchmarkfolder/experiments/physical-stress-current-qualification-2",
+  "original_unchanged": true
+}

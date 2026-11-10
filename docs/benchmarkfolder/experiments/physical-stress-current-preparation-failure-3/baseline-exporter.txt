@@ -1,0 +1,143 @@
+SOURCE .tirust-build/physical-stress-current-3/mg-baseline/madgraph/loop/loop_exporters.py
+SHA256 fc097f27491dc8706688a54b3580dfe1fced0850d8dba162941b3f6bcb8e4fc1
+
+123:    def link_CutTools(self, targetPath):
+124:        """Link the CutTools source directory inside the target path given
+125:        in argument"""
+126:        
+127:        # special mode
+128:        if 'heptools_install_dir' in self.opt and self.dependencies =='external':
+129:            if os.path.exists(pjoin(self.opt['heptools_install_dir'], 'CutTools','lib')) and\
+130:            not os.path.exists(pjoin(self.cuttools_dir,'includects', 'libcts.a')):
+131:                misc.sprint('Going to use pre-compiled version of CutTools') 
+132:                # Create the links to the lib folder
+133:                linkfiles = ['libcts.a', 'mpmodule.mod']
+134:                for file in linkfiles:
+135:                    ln(os.path.join(self.opt['heptools_install_dir'],'CutTools','lib',file),
+136:                                    os.path.join(targetPath,'lib'),abspath=True)
+137:                return
+138:            
+139:        if self.dependencies=='internal':
+140:            new_CT_path = pjoin(targetPath,'Source','CutTools')
+141:            misc.copytree(self.cuttools_dir, new_CT_path, symlinks=True)
+142:            
+143:            current = misc.detect_current_compiler(os.path.join(new_CT_path,
+144:                                                                    'makefile'))
+145:            new = 'gfortran' if self.fortran_compiler is None else \
+146:                                                          self.fortran_compiler
+147:            if current != new:
+148:                misc.mod_compilator(new_CT_path, new, current)
+149:            
+150:            # Create the links to the lib folder
+151:            linkfiles = ['libcts.a', 'mpmodule.mod']
+152:            for file in linkfiles:
+153:                ln(pjoin(targetPath,'Source','CutTools','includects',file), 
+154:                                                        pjoin(targetPath,'lib'))
+155:            # Make sure it is recompiled at least once. Because for centralized
+156:            # MadGraph7 installations, it might be that compiler differs.
+157:            # Not necessary anymore because I check the compiler version from
+158:            # the log compiler_version.log generated during CT compilation
+159:            # misc.compile(['cleanCT'], cwd = pjoin(targetPath,'Source'))
+160: 
+161:        elif self.dependencies=='external':
+162:            if not os.path.exists(os.path.join(self.cuttools_dir,'includects','libcts.a')):
+163:                logger.info('Compiling CutTools. This has to be done only once and'+\
+164:                                  ' can take a couple of minutes.','$MG:BOLD')
+165:                current = misc.detect_current_compiler(os.path.join(\
+166:                                                  self.cuttools_dir,'makefile'))
+167:                new = 'gfortran' if self.fortran_compiler is None else \
+168:                                                          self.fortran_compiler
+169:                if current != new:
+170:                    misc.mod_compilator(self.cuttools_dir, new, current)
+171:                misc.compile(cwd=self.cuttools_dir, job_specs = False)
+172:                
+173:                if not os.path.exists(os.path.join(self.cuttools_dir,
+174:                                                      'includects','libcts.a')):            
+175:                    raise MadGraph5Error("CutTools could not be correctly compiled.")
+176:    
+177:            # Create the links to the lib folder
+178:            linkfiles = ['libcts.a', 'mpmodule.mod']
+179:            for file in linkfiles:
+180:                ln(os.path.join(self.cuttools_dir,'includects',file),
+181:                                    os.path.join(targetPath,'lib'),abspath=True)
+182:
+183:        elif self.dependencies=='environment_paths':
+184:            # Here the user chose to define the dependencies path in one of 
+185:            # his environmental paths
+186:            CTlib = misc.which_lib('libcts.a')
+187:            CTmod = misc.which_lib('mpmodule.mod')
+188:            if CTlib is None:
+189:                raise InvalidCmd("Could not find the location of the file"+\
+190:                    " libcts.a in your environment paths.")
+191:            elif CTmod is None:
+192:                raise InvalidCmd("Could not find the location of the file"+\
+193:                    " mpmodule.mod in your environment paths.")
+194:            else:
+
+674:        if not os.path.exists(os.path.realpath(pjoin(libdir, 'libcts.a'))) or \
+675:            not os.path.exists(os.path.realpath(pjoin(libdir, 'mpmodule.mod'))):
+676:            raise MadGraph5Error('CutTools compilation failed.')
+677:        
+678:        # Verify compatibility between current compiler and the one which was
+679:        # used when last compiling CutTools (if specified).
+680:        compiler_log_path = pjoin(os.path.dirname((os.path.realpath(pjoin(
+681:                                  libdir, 'libcts.a')))),'compiler_version.log')
+682:        if os.path.exists(compiler_log_path):
+683:            compiler_version_used = open(compiler_log_path,'r').read()
+684:            if not str(misc.get_gfortran_version(misc.detect_current_compiler(\
+685:                       pjoin(sourcedir,'make_opts')))) in compiler_version_used:
+686:                if os.path.exists(pjoin(sourcedir,'CutTools')):
+687:                    logger.info('CutTools was compiled with a different fortran'+\
+688:                                            ' compiler. Re-compiling it now...')
+689:                    misc.compile(['cleanCT'], cwd = sourcedir)
+690:                    misc.compile(['CutTools','-j1'], cwd = sourcedir, nb_core=1)
+691:                    logger.info('          ...done.')
+692:                else:
+693:                    raise MadGraph5Error("CutTools installation in %s"\
+694:                                 %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
+695:                 " seems to have been compiled with a different compiler than"+\
+696:                    " the one specified in MadGraph7. Please recompile it by typing"+\
+697:                    " 'install cuttools_iregi' in the MadGraph7 interface.")
+698:    
+
+2208:                                            "%s not implemented yet."%tir_name)
+2209:            return libpath
+2210: 
+2211:        elif self.dependencies=='external':
+2212:            if not os.path.exists(pjoin(libpath,libname)) and tir_name=='iregi':
+2213:                        # special mode
+2214:                if 'heptools_install_dir' in self.opt and os.path.exists(pjoin(self.opt['heptools_install_dir'], 'IREGI')):
+2215:                    misc.sprint('Going to use pre-compiled version of IREGI') 
+2216:                    # Create the links to the lib folder
+2217:                    ln(os.path.join(self.opt['heptools_install_dir'],'IREGI','src','libiregi.a'),
+2218:                                    os.path.join(targetPath),abspath=True)
+2219:                    return os.path.join(targetPath, 'libiregi.a')
+2220:                
+2221:                
+2222:                
+2223:                logger.info('Compiling IREGI. This has to be done only once and'+\
+2224:                             ' can take a couple of minutes.','$MG:BOLD')
+2225:                
+2226:                current = misc.detect_current_compiler(os.path.join(\
+2227:                                                    libpath,'makefile_ML5_lib'))
+2228:                new = 'gfortran' if self.fortran_compiler is None else \
+2229:                                                        self.fortran_compiler
+2230:                if current != new:
+2231:                    misc.mod_compilator(libpath, new,current)
+2232:                    misc.mod_compilator(pjoin(libpath,'oneloop'), new, current)
+2233:
+2234:                misc.compile(cwd=libpath, job_specs = False)
+2235:
+2236:                if not os.path.exists(pjoin(libpath,libname)):            
+2237:                    logger.warning("IREGI could not be compiled. Check"+\
+2238:                      "the compilation errors at %s. The related "%libpath+\
+2239:                                              "functionalities are turned off.")
+2240:                    self.tir_available_dict[tir_name]=False
+2241:                    return ""
+2242:            # We link the tools below directly to the lib directory of the output 
+2243:            if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars']:
+2244:                ln(os.path.join(libpath,libname),targetPath,abspath=True)
+2245:
+2246:        elif self.dependencies=='environment_paths':
+2247:            # Here the user chose to define the dependencies path in one of 
+2248:            # his environmental paths

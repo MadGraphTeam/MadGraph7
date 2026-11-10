@@ -1,0 +1,137 @@
+[1;31mNote that this is a development version.
+This version is intended for development/beta testing and NOT for production.
+This version has not been fully tested (if at all) and might have limited user support (if at all)[0m
+Running MG7 in debug mode
+('WARNING: loading of madgraph too slow!!!', 1.966327428817749)
+********************************************************************************
+*                                                                              *
+*                               W E L C O M E to                               *
+*                              M A D G R A P H [1;34m7[0m                               *
+*                                                                              *
+*                                                                              *
+*                                  ..........                                  *
+*                                @          ....                               *
+*                              @               ...                             *
+*                            @    M         M    .                             *
+*                           @     MM       MM    ..                            *
+*                           .     M  M   M  M  ..                              *
+*                           ..    M   M M   M ..                               *
+*                            .    M    M    M.                                 *
+*                            ...               [1;34m7777777[0m                         *
+*                              ....                 [1;34m7[0m                          *
+*                                 ................ [1;34m7[0m                           *
+*                                                 [1;34m7[0m                            *
+*                                                [1;34m7[0m                             *
+*                                                                              *
+*                   VERSION 0.2.1                 2026-09-24                   *
+[1;31m*                                                                              *[1;0m
+[1;31m*                    WARNING: UNKNOWN DEVELOPMENT VERSION.                     *[1;0m
+[1;31m*                      WARNING: DO NOT USE FOR PRODUCTION                      *[1;0m
+[1;31m*                                                                              *[1;0m
+*                                                                              *
+*                 The MadGraph7 Development Team - Find us at                  *
+*                        http://madgraph.phys.ucl.ac.be/                       *
+*                                      and                                     *
+*                      http://amcatnlo.web.cern.ch/amcatnlo/                   *
+*                                                                              *
+*                         Type 'help' for in-line help.                        *
+*                 Type 'tutorial' to learn how MadGraph7 works                 *
+*                                                                              *
+********************************************************************************
+load MG7 configuration from input/mg7_configuration.txt 
+fastjet-config does not seem to correspond to a valid fastjet-config executable (v3+). We will use fjcore instead.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/fastjet-config (including fastjet-config).
+ MadGraph7> set fastjet /PATH/TO/fastjet-config
+
+eMELA-config does not seem to correspond to a valid eMELA-config executable.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).
+ MadGraph7> set eMELA /PATH/TO/eMELA-config
+
+No valid eps viewer found. Please set in ./input/mg7_configuration.txt
+No valid web browser found. Please set in ./input/mg7_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg7_configuration.txt
+import /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-supervisor-2/commands/baseline-qcd_n2_gg_ttx.mg5
+The import format was not given, so we guess it as command
+set automatic_html_opening False --no_save
+set auto_update 0 --no_save
+set nb_core 4 --no_save
+set loop_optimized_output True --no_save
+set loop optimized output to True
+set output_dependencies external --no_save
+set complex_mass_scheme False --no_save
+Complex mass already deactivated.
+set ninja /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib --no_save
+set ninja to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib
+set collier /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier --no_save
+set collier to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier
+set ninjars /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib --no_save
+set ninjars to /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib
+import model loop_sm
+INFO: Details of the model import are written in /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/models/loop_sm/loop_sm_debug.log 
+[1;60mINFO: This model [version 1.2] is provided by V. Hirschi (email: valentin.hirschi@gmail.com). Please cite n/a [0m
+INFO: load particles 
+INFO: load vertices 
+INFO: Restrict model loop_sm with file models/loop_sm/restrict_default.dat . 
+INFO: Use 'explain_restriction' to see what that card removes from the model. 
+INFO: Change particles name to pass to MG7 convention 
+Defined multiparticle p = g u c d s u~ c~ d~ s~
+Defined multiparticle j = g u c d s u~ c~ d~ s~
+Defined multiparticle l+ = e+ mu+
+Defined multiparticle l- = e- mu-
+Defined multiparticle vl = ve vm vt
+Defined multiparticle vl~ = ve~ vm~ vt~
+Defined multiparticle all = g gh gh~ d u s c d~ u~ s~ c~ a ve vm vt e- mu- ve~ vm~ vt~ e+ mu+ b t b~ t~ z w+ h w- ta- ta+
+generate g g > t t~ [virt=QCD]
+[1;32mDEBUG: Generating process: g g > t t~ [ virt = QCD ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=*,QED=0) 
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (4,0,W4) [0m
+[1;32mDEBUG:  > loop : (6,0,W6) [0m
+[1;32mDEBUG: A total of 9 loop diagrams were identified with equivalent ones. [0m
+INFO: Contributing diagrams generated: 3 Born, 36(+9) loops, 21 R2, 94 UV 
+Process generated in 0.738 s
+output standalone /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/exports/baseline/qcd_n2_gg_ttx
+INFO: initialize a new standalone directory: qcd_n2_gg_ttx 
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/interface/extended_cmd.py", line 1768, in onecmd
+    return self.onecmd_orig(line, **opt)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/interface/extended_cmd.py", line 1693, in onecmd_orig
+    return func(arg, **opt)
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/interface/master_interface.py", line 302, in do_import
+    self.cmd.do_import(self, *args, **opts)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/interface/madgraph_interface.py", line 7682, in do_import
+    self.import_command_file(args[1])
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/interface/extended_cmd.py", line 1953, in import_command_file
+    self.exec_cmd(line, precmd=True)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/interface/extended_cmd.py", line 1811, in exec_cmd
+    stop = Cmd.onecmd_orig(current_interface, line, **opt)
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/interface/extended_cmd.py", line 1693, in onecmd_orig
+    return func(arg, **opt)
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/interface/master_interface.py", line 320, in do_output
+    self.cmd.do_output(self, line, *args, **opts)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/interface/loop_interface.py", line 526, in do_output
+    self._curr_exporter.copy_template(self._curr_model)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/loop/loop_exporters.py", line 1970, in copy_template
+    super(LoopProcessOptimizedExporterFortranSA, self).copy_template(model)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/loop/loop_exporters.py", line 263, in copy_template
+    super(LoopProcessExporterFortranSA, self).copy_template(model)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/mg-baseline/madgraph/iolibs/export_v4.py", line 5218, in copy_template
+    os.mkdir(self.dir_path)
+    ~~~~~~~~^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/exports/baseline/qcd_n2_gg_ttx'
+[1;31mCommand "import /shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-supervisor-2/commands/baseline-qcd_n2_gg_ttx.mg5" interrupted in sub-command:
+"output standalone /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/exports/baseline/qcd_n2_gg_ttx" with error:
+FileNotFoundError : [Errno 2] No such file or directory: '/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-2/exports/baseline/qcd_n2_gg_ttx'
+Please report this bug on https://bugs.launchpad.net/mg5amcnlo
+More information is found in 'MG5_debug'.
+Please attach this file to your report.[0m
+[1;34mcommand not executed: quit[0m
+quit

@@ -1,0 +1,15 @@
+{
+  "failed_preparation_index_sha256": "a62dca850eeb2b150d8e34324048127e8aa8e9b4037c874a66db46c1a964f6e6",
+  "make_fixture_index_sha256": "8c32deec3c28b70c0b69170148be22b459b8070f0aebd09741493b79bc67bd0f",
+  "predecessor_index_sha256": "dbfa3ca37a05f7f7e7f2f91872902adf249106968314192a273ab804a24ff1bf",
+  "proposal_index_sha256": "5478869fa719db000df7df825202f3ae827080d1f00b43f38bad1506f5ab54ac",
+  "unchanged_payloads": {
+    "native_job.py": "f28965de44a34ab76a94291b3d0b2f2da2909cead876025aeaf0cff97190e991",
+    "ownership/analyze.py": "0014bbf833cce64344ffcf38e2cb8c9a92605eeeb697fcf260553a13e5d1d40b",
+    "ownership/legacy_qualify.py": "a408dc73d880a9471defaf6cf4fa9b426e616780b4861c595d608826b6b0f89a",
+    "ownership/linker_bind.py": "b54528ebf6b9847f134a7d8ad927c7394607e927397e45169cb644479c8452c6",
+    "ownership/process_cleanup.py": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "ownership/run.py": "be6212d7e93f698b551eee35ec577132c0ebb6db73d07cc203262be6319ce861",
+    "ownership/smoke.py": "a651c23461f27acb51e15b8b5fd5c46ab06199b2e76e8fef5aab5dbe047c56de"
+  }
+}

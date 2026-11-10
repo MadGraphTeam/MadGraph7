@@ -1,0 +1,13 @@
+{
+  "AST_parse_passed": true,
+  "passed": true,
+  "reviewed_sources": {
+    "native_job.py": "f28965de44a34ab76a94291b3d0b2f2da2909cead876025aeaf0cff97190e991",
+    "ownership/run.py": "be6212d7e93f698b551eee35ec577132c0ebb6db73d07cc203262be6319ce861",
+    "run.py": "7ac6fb5d29ec46cd9dc83ce2817e0cfcea9a23fbb945344f0fc9689b7785b3cb",
+    "test_supervisor.py": "a8be94ca65a1ba067c1038329ef73f96726a754baa88a6bab6271fe94d8150ae"
+  },
+  "reviewer": "/root/complex_stress/ct_qp_source_audit",
+  "reviewer_native_build_CLI_executions": 0,
+  "scope": "Narrow source-only entrypoint/revision/hash admission, exact8namespace-only CLI deltas, private XDG_STATE_HOME with HOME unchanged, actual receipt field; unchanged native/ownership helpers"
+}
