@@ -450,6 +450,31 @@ near-forward g g > h h points (`workspace/tmp/lit-fallback-guard/fix5/probe15.js
   the limit 1e-5 (and rejects a point whose rows are 4.5e2 to 7.4e2 off,
   estimate 0.61).
 
+**Near-forward NinjaRS hazard (M-LIT lit-ninja-fwd).** Near a nearly
+degenerate 2 -> 2 box or sub-box (near-forward, near-backward or
+near-threshold points: the box Gram determinant ~ 2 pT^2/s) NinjaRS's box
+and triangle contributions cancel by up to 1e17 of a lane: binary64 served
+g g > z z at sqrt(s) = 500 GeV and theta = 1e-3 / 1e-4 with the summed
+|A|^2 off by 2.6e6 / 2.0e18, g g > W+ W- at 1 TeV with pT(W) = 1.6 GeV by
+20 (S records), and the binary64 inputs' own shell and momentum-conservation
+defect (~1e-16) moved double-double values (g g > z z theta 1e-4: 0.90; the
+g g > h h near-forward +- rows above). NinjaRS now screens every lane on its
+box Gram determinants and the S-matrix's consistency with the shifts,
+evaluates a flagged family again at a higher internal precision on a
+consistent point, and refuses a lane typed (`Unstable` in binary64,
+`IllConditioned` above) when its own value deviates from that measurement by
+more than 2^-17 of its family's scale, in every arithmetic and also with
+`reduction_unchecked`; served values are the call's own. Above binary64 the
+input-consistency estimate also enters the reduction-direction estimate of
+every output (the fallback guard's included). A refused point fails typed
+(`on_failure` decides), or takes the next level of a rescue stack. What
+remains: the input improvement (MadLoop's default chain above binary64,
+off by default in binary64) restores consistent inputs in the beam frames;
+in other frames under that chain the refusal is the defence; the measured
+decision works per family, so a point whose refused family is negligible in
+its sum is refused as well (7-leg u u~ > 5g at leading colour: 8 of 128
+stream points refused whose summed binary64 value was within 1e-5).
+
 `"tirust"` is served in every arithmetic (binary64, double-double and
 arbitrary precision, also on every level of a rescue stack). An explicit
 backend that cannot serve the call is refused before any point is evaluated
