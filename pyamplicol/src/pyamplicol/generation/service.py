@@ -3432,12 +3432,14 @@ class GenerationBackend:
         precision=None,
         stored=None,
         sqrt_s=None,
+        arbitrary_digits=None,
     ):
         """``pyamplicol check`` of a one-loop request (``loop_service.
         check_loop_requests``; ``stored``: an artifact input's manifest, the
         model and processes the regeneration must match; ``sqrt_s``: the
-        points' energy, None the validation convention): one
-        ``checks.ProcessCheck`` per process."""
+        points' energy, None the validation convention; ``arbitrary_digits``:
+        the digits of the auto ladder's arbitrary-precision rung, None
+        derived): one ``checks.ProcessCheck`` per process."""
 
         if not self._loop_execution_enabled:
             raise GenerationError(
@@ -3455,6 +3457,7 @@ class GenerationBackend:
             precision=precision,
             stored=stored,
             sqrt_s=sqrt_s,
+            arbitrary_digits=arbitrary_digits,
         )
 
     def generate(

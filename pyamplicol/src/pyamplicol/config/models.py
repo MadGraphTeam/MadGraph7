@@ -54,9 +54,10 @@ class Action(StrEnum):
 
 
 class CheckPrecision(StrEnum):
-    """The carriers of ``pyamplicol check``: binary64 first and double-double
-    where binary64 fails, is refused or is out of scope (``auto``), or one
-    carrier alone."""
+    """The carriers of ``pyamplicol check``: binary64 first, double-double
+    where binary64 fails, is refused or is out of scope, and arbitrary
+    precision for a row double-double leaves undecided (``auto``;
+    ``CheckConfig.arbitrary_digits``), or one carrier alone."""
 
     AUTO = "auto"
     DOUBLE = "double"
@@ -1624,7 +1625,10 @@ class CheckConfig:
     ``config/effective.toml`` records; resolved as ``model.source``) and the
     centre-of-mass energy of a scattering's points (``sqrt_s``, in the
     model's mass unit: None keeps the generation's validation convention,
-    ``generation.validation._build_particles``)."""
+    ``generation.validation._build_particles``) and the digit count of the
+    auto ladder's arbitrary-precision rung (``arbitrary_digits``: None
+    derives it per row from the double-double shortfall, ``loops.v2.checks.
+    rung_digits``; it needs ``precision`` auto)."""
 
     points: int = field(default=3, metadata=_setting("int"))
     seed: int | None = field(default=None, metadata=_setting("int", nullable=True))
@@ -1636,9 +1640,19 @@ class CheckConfig:
     sqrt_s: float | None = field(
         default=None, metadata=_setting("float", nullable=True)
     )
+    arbitrary_digits: int | None = field(
+        default=None, metadata=_setting("int", nullable=True)
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "points", _integer(self.points, "check.points"))
+        object.__setattr__(
+            self,
+            "arbitrary_digits",
+            _optional_integer(
+                self.arbitrary_digits, "check.arbitrary_digits", minimum=1
+            ),
+        )
         if self.sqrt_s is not None:
             object.__setattr__(
                 self,
@@ -1653,6 +1667,13 @@ class CheckConfig:
             "precision",
             _enum(self.precision, CheckPrecision, "check.precision"),
         )
+        if self.arbitrary_digits is not None and self.precision is not (
+            CheckPrecision.AUTO
+        ):
+            raise ConfigurationError(
+                "check.arbitrary_digits sets the arbitrary-precision rung of the "
+                "auto ladder; check.precision must be auto"
+            )
         if self.model is not None and (
             not isinstance(self.model, str) or not self.model
         ):

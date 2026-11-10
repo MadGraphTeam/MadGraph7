@@ -44,6 +44,21 @@ from pyamplicol.config import (
 )
 
 
+def test_check_arbitrary_digits_is_a_positive_count_of_the_auto_ladder() -> None:
+    """m-lit lit-check (DECISIONS 2026-11-10 00:08): null derives the
+    arbitrary-precision rung's digits per row; an explicit precision has no
+    rung."""
+
+    assert CheckConfig().arbitrary_digits is None
+    assert CheckConfig(arbitrary_digits=50).arbitrary_digits == 50
+    for invalid in (0, -3, 1.5, "50", True):
+        with pytest.raises(ConfigurationError, match=r"check\.arbitrary_digits"):
+            CheckConfig(arbitrary_digits=invalid)
+    for precision in ("double", "double-double"):
+        with pytest.raises(ConfigurationError, match=r"check\.precision must be auto"):
+            CheckConfig(precision=precision, arbitrary_digits=50)
+
+
 def test_check_energy_must_be_a_positive_finite_number() -> None:
     assert CheckConfig().sqrt_s is None
     assert CheckConfig(sqrt_s=2500).sqrt_s == 2500.0
@@ -53,11 +68,12 @@ def test_check_energy_must_be_a_positive_finite_number() -> None:
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    # 141: lit-ewprep's model.loop_preparation_cache, M-LIT lit-fold's
-    # generation.loop_induced_folding (USER ~22:39), lit-examples' check section,
-    # lit-ew-blocks' check.sqrt_s and lit-psimprove's
-    # evaluation.kinematics_improvement / evaluation.kinematics_improvement_binary64.
-    assert len(FIELD_REGISTRY) == 141
+    # 142: lit-ewprep's model.loop_preparation_cache, M-LIT lit-fold's
+    # generation.loop_induced_folding (USER ~22:39), lit-examples' check
+    # section, lit-ew-blocks' check.sqrt_s, lit-check's check.arbitrary_digits
+    # and lit-psimprove's evaluation.kinematics_improvement /
+    # evaluation.kinematics_improvement_binary64.
+    assert len(FIELD_REGISTRY) == 142
     # m-lit lit-examples: `pyamplicol check` (the check action's section).
     assert FIELD_REGISTRY["check.points"].default == 3
     assert FIELD_REGISTRY["check.seed"].nullable
@@ -75,6 +91,10 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["check.sqrt_s"].nullable
     assert FIELD_REGISTRY["check.sqrt_s"].default is None
     assert FIELD_REGISTRY["check.sqrt_s"].kind == "float"
+    # m-lit lit-check: the arbitrary-precision rung's digits (None: derived).
+    assert FIELD_REGISTRY["check.arbitrary_digits"].nullable
+    assert FIELD_REGISTRY["check.arbitrary_digits"].default is None
+    assert FIELD_REGISTRY["check.arbitrary_digits"].kind == "int"
     # m-lit lit-unchecked: the unchecked reduction setting, a runtime option
     # (off by default).
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False

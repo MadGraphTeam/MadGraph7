@@ -370,22 +370,32 @@ def ward_check(
     factors: Sequence[Any] = WARD_FACTORS,
     parameters: Any = None,
     checks: bool | None = None,
+    precision: Any = None,
 ) -> dict[str, Any]:
     """The Ward check of one point in one batch of ``executor`` (a
     ``plan_export.NativeExecutor`` of a ``ward_slice``, either input path):
     the physical evaluation and, per leg (default: ``gauge_legs``) and
     factor, the evaluation with ``gauge_ward``, judged by ``ward_row``.
-    ``carrier`` is "double" or "double-double"; ``checks`` (default: in
-    binary64 only) runs ``WARD_CHECKS``, which the binary64 criterion
-    reads. Returns ``physical`` (the ``PointResult``), ``results`` (one per
-    row), ``rows`` (``ward_row`` plus ``leg`` and ``factor``) and
-    ``passed`` (every row; None if a row has no criterion)."""
+    ``carrier`` is "double" or "double-double" (the criterion);
+    ``precision`` the evaluation's ``assemble.Precision`` (default: that
+    carrier's; an arbitrary-precision one takes the double-double criterion,
+    ``pyamplicol check``'s rung); ``checks`` (default: in binary64 only)
+    runs ``WARD_CHECKS``, which the binary64 criterion reads. Returns
+    ``physical`` (the ``PointResult``), ``results`` (one per row), ``rows``
+    (``ward_row`` plus ``leg`` and ``factor``) and ``passed`` (every row;
+    None if a row has no criterion)."""
 
     from .assemble import Precision
 
     precisions = {"double": Precision.double, "double-double": Precision.double_double}
     if carrier not in precisions:
         raise ValueError(f"no Ward criterion for the carrier {carrier!r}")
+    if precision is None:
+        precision = precisions[carrier]()
+    elif (precision.arithmetic == "double") != (carrier == "double"):
+        raise ValueError(
+            f"a {precision.arithmetic} evaluation has no {carrier} Ward criterion"
+        )
     legs = tuple(legs if legs is not None else gauge_legs(executor.slice))
     checked = carrier == "double" if checks is None else checks
     labels = [(leg, factor) for leg in legs for factor in factors]
@@ -393,7 +403,7 @@ def ward_check(
         [point] * (len(labels) + 1),
         [scale] * (len(labels) + 1),
         parameters=parameters,
-        precision=precisions[carrier](),
+        precision=precision,
         ward=[None, *(gauge_ward(leg, factor, point) for leg, factor in labels)],
         stability=WARD_CHECKS if checked else None,
     )

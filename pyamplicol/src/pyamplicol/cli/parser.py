@@ -1144,7 +1144,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=argparse.SUPPRESS,
         help=(
             "auto (default): binary64 first, double-double only where binary64 "
-            "fails, is refused or is out of scope; or one carrier alone"
+            "fails, is refused or is out of scope, arbitrary precision only "
+            "for a row double-double leaves undecided; or one carrier alone"
+        ),
+    )
+    check.add_argument(
+        "--arbitrary-digits",
+        dest="check.arbitrary_digits",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="DIGITS",
+        help=(
+            "digits of the auto ladder's arbitrary-precision rung (default: "
+            "derived per row from the double-double shortfall)"
         ),
     )
     check.add_argument(

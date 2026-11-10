@@ -511,6 +511,13 @@ model = "loop_sm"
 # max(1000, final threshold + 100); massive beams: twice the larger threshold).
 # Default null.
 sqrt_s = 1000.0
+# check.arbitrary_digits: Optional digit count of the auto ladder's
+# arbitrary-precision rung, which re-runs only a row double-double leaves
+# undecided (its residual above the criterion while within ten times its own
+# estimate); null derives it per row from the double-double shortfall (the
+# carrier's digits plus the decimal digits by which ten times the estimate
+# exceeds the row's bound). Needs precision = "auto". Default null.
+arbitrary_digits = 50
 
 [output]
 # output.format: typed API/config provenance default. The CLI uses --json.
