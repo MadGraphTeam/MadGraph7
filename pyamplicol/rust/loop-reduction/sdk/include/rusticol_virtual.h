@@ -150,7 +150,15 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
  * refuses or fails (also in the enabled binary64 monitoring's own
  * evaluations, rusticol_virtual_set_stability_checks) is evaluated again on
  * NinjaRS from its original exact inputs, at the call's own arithmetic, after
- * the TIRust call; a point NinjaRS fails too fails with both reasons. An
+ * the TIRust call; a point NinjaRS fails too fails with both reasons. In
+ * double-double and arbitrary precision every point the fallback serves is
+ * guarded (m-lit lit-fallback-guard): its NinjaRS value runs the
+ * reduction-direction check (reversed re-test frame, cached masters) in the
+ * call's arithmetic, and a point whose relative estimate of the outputs the
+ * call returns exceeds the guard's limit (the reduction target, never below
+ * 1e-5) is RUSTICOL_VIRTUAL_FAILED with one reason naming the fallback, the
+ * arithmetic, the estimate and the limit; a point within it keeps the
+ * fallback's value. In binary64 the fallback's value is served unguarded. An
  * explicit "ninjars" or "tirust" has no fallback (its refusals and failures
  * stay failed points). An explicit backend this library is built without
  * (TIRust needs the cargo feature tir; there "auto" takes NinjaRS) is refused
@@ -159,8 +167,10 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
  * Python API's ReductionUnavailable), never a silent switch. Every result's
  * diagnostics record "reduction": {"requested","effective","reason",
  * "fallback" (null: none),"fallback_points"} and "fallbacks": {point id:
- * {"effective" (null: failed on both),"reason"}} per point the fallback
- * evaluated again (every other point is the effective backend's); the
+ * {"effective" (null: failed on both, or the guard rejected it),"reason",
+ * "guard_estimate" (the guard's estimate; null where the guard did not run:
+ * binary64, a point NinjaRS failed too)}} per point the fallback evaluated
+ * again (every other point is the effective backend's); the
  * handle's capabilities list what this library serves ("reduction":
  * "native").
  */
@@ -171,6 +181,9 @@ int rusticol_virtual_set_reduction(rusticol_virtual_handle *handle,
  * (every squared-order sector against its own size), 1e-5 by default.
  * TIRust's method-choice acceptance follows it
  * (calibrated against consistent truths); NinjaRS has no setting it drives.
+ * In double-double and arbitrary precision it is also the threshold of the
+ * "auto" per-point fallback's guard, never below 1e-5
+ * (rusticol_virtual_set_reduction).
  * A value that is not a finite positive number is
  * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
 int rusticol_virtual_set_reduction_target(rusticol_virtual_handle *handle,

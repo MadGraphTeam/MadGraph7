@@ -272,7 +272,10 @@ def _moved(expected, choice) -> dict:
     """The C ABI's per-point fallback record (diagnostics "fallbacks") of the
     Python API's lanes: every point another backend than the call's served
     or failed on, by point index, with the backend that served it (None: it
-    failed there too) and the reason."""
+    failed there too, or the fallback's guard rejected it), the reason and
+    the guard's estimate (m-lit lit-fallback-guard: the summed |A|^2's
+    cached reduction-direction estimate in the extended carriers, None in
+    binary64, where the guard does not run)."""
 
     return {
         str(index): {
@@ -280,6 +283,7 @@ def _moved(expected, choice) -> dict:
             if expected.values[index] is not None
             else None,
             "reason": lane.reduction.reason,
+            "guard_estimate": lane.reduction.guard_estimate,
         }
         for index, lane in enumerate(expected.diagnostics)
         if lane.reduction is not None and lane.reduction.effective != choice.effective

@@ -451,11 +451,19 @@ records that default): `auto` takes TIRust for a loop-induced and NinjaRS for
 a Born-interfered process, falling back to NinjaRS with the reason recorded
 where TIRust cannot serve the call; on TIRust a point it refuses or fails is
 evaluated again on NinjaRS (the per-point fallback, recorded in that point's
-lane diagnostic); `ninjars` and `tirust` request one backend without a
-fallback (`tirust` serves every arithmetic); an explicit backend that cannot
-serve the call is refused. `--reduction-target X` sets TIRust's target
-accuracy (the relative accuracy of each point's result, default 1e-5; it
-sets the calibrated acceptance of TIRust's checked method choice).
+lane diagnostic), and in double-double and arbitrary precision each point it
+serves is guarded by its reduction-direction check in the evaluation's
+arithmetic: a point whose estimate exceeds the target (never below 1e-5)
+fails with the reason (the estimate is in the lane's `reduction` record,
+`guard_estimate`; [Python API](python-api.md), "Near-planar NinjaRS
+hazard"); a binary64 fallback point is served unguarded; `ninjars` and `tirust` request one backend
+without a fallback or guard (`tirust` serves every arithmetic; `ninjars`
+without stability checks was exposed to that hazard until NinjaRS's
+conditioning bound, 71eddb15); an explicit backend that cannot serve the call is refused.
+`--reduction-target X` sets TIRust's target accuracy (the relative accuracy
+of each point's result, default 1e-5; it sets the calibrated acceptance of
+TIRust's checked method choice and, never below 1e-5, is the fallback
+guard's threshold).
 `--reduction-unchecked` (default off) reduces without the backends' own
 acceptance and refusal checks: TIRust's gates and method choice select the
 method without re-checking its values, plain Passarino-Veltman at gate 0
