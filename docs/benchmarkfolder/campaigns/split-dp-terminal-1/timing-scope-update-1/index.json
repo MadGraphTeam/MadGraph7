@@ -1,0 +1,17 @@
+{
+  "files": {
+    "LOCAL_TIMING_TODO.md": {
+      "bytes": 6508,
+      "sha256": "2bf306c440545cc4481008349bec0cb2b7b2efe3dfc7c67c6cd647e24c6785ad"
+    },
+    "PROPOSAL.md": {
+      "bytes": 5188,
+      "sha256": "1ab0886d9ae70a5cca20375d23cd8b6c3c134c28f95f61bf87f1bf50831e14de"
+    },
+    "decision.json": {
+      "bytes": 1204,
+      "sha256": "ce49ca07ee236cecea29ed12b81593511be3c0d5b9751dcf63c9dc1aad83d10e"
+    }
+  },
+  "schema": "madloop-tirust-timing-scope-update-inventory-v1"
+}

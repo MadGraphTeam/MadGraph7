@@ -1,0 +1,142 @@
+      SUBROUTINE AUDIT_DP_ORIGINAL(NLOOPLINE,P_S_MAT,
+     $ MASSES,INVARIANTS)
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      IMPLICIT NONE
+      INTEGER,PARAMETER :: KI_TIR=8,KI_QTIR=16
+      INTEGER NLOOPLINE,I,J
+      REAL*8 P_S_MAT(NLOOPLINE,0:3)
+      REAL*8 INVARIANTS(NLOOPLINE,NLOOPLINE)
+      COMPLEX*16 MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
+      CALL ML5_0_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES,S_MAT)
+      DO J=1,NLOOPLINE
+        DO I=1,NLOOPLINE
+          INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J)
+     $     ,KIND=KI_TIR)
+        ENDDO
+      ENDDO
+      END
+
+      SUBROUTINE AUDIT_DP_CANDIDATE(NLOOPLINE,P_S_MAT,
+     $ MASSES,INVARIANTS)
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      IMPLICIT NONE
+      INTEGER,PARAMETER :: KI_TIR=8,KI_QTIR=16
+      INTEGER NLOOPLINE,I,J
+      REAL*8 P_S_MAT(NLOOPLINE,0:3)
+      REAL*8 INVARIANTS(NLOOPLINE,NLOOPLINE)
+      COMPLEX*16 MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
+      CALL ML5_0_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES,S_MAT)
+      DO J=1,NLOOPLINE
+        DO I=1,NLOOPLINE
+          INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J)
+     $     ,KIND=KI_TIR)
+        ENDDO
+      ENDDO
+C     Private proposal: the ABI consumes the upper triangle (I<J).
+C     Keep all original reconstruction arithmetic and the diagonal.
+C     Do not hide any nonfinite lower-triangle input from validation.
+      IF(ALL(IEEE_IS_FINITE(INVARIANTS))) THEN
+        DO J=2,NLOOPLINE
+          DO I=1,J-1
+            IF(INVARIANTS(J,I).NE.INVARIANTS(I,J)) THEN
+              INVARIANTS(J,I)=INVARIANTS(I,J)
+            ENDIF
+          ENDDO
+        ENDDO
+      ENDIF
+      END
+
+      SUBROUTINE AUDIT_DP_CANONICAL(NLOOPLINE,INVARIANTS)
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      IMPLICIT NONE
+      INTEGER NLOOPLINE,I,J
+      REAL*8 INVARIANTS(NLOOPLINE,NLOOPLINE)
+C     Private proposal: the ABI consumes the upper triangle (I<J).
+C     Keep all original reconstruction arithmetic and the diagonal.
+C     Do not hide any nonfinite lower-triangle input from validation.
+      IF(ALL(IEEE_IS_FINITE(INVARIANTS))) THEN
+        DO J=2,NLOOPLINE
+          DO I=1,J-1
+            IF(INVARIANTS(J,I).NE.INVARIANTS(I,J)) THEN
+              INVARIANTS(J,I)=INVARIANTS(I,J)
+            ENDIF
+          ENDDO
+        ENDDO
+      ENDIF
+      END
+
+      SUBROUTINE AUDIT_QP_ORIGINAL(NLOOPLINE,P_S_MAT,
+     $ MASSES,INVARIANTS)
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      IMPLICIT NONE
+      INTEGER,PARAMETER :: KI_TIR=8,KI_QTIR=16
+      INTEGER NLOOPLINE,I,J
+      REAL*16 P_S_MAT(NLOOPLINE,0:3)
+      REAL*16 INVARIANTS(NLOOPLINE,NLOOPLINE)
+      COMPLEX*32 MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
+      CALL ML5_0_MP_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES
+     $ ,S_MAT)
+      DO J=1,NLOOPLINE
+        DO I=1,NLOOPLINE
+          INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J)
+     $     ,KIND=KI_QTIR)
+        ENDDO
+      ENDDO
+      END
+
+      SUBROUTINE AUDIT_QP_CANDIDATE(NLOOPLINE,P_S_MAT,
+     $ MASSES,INVARIANTS)
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      IMPLICIT NONE
+      INTEGER,PARAMETER :: KI_TIR=8,KI_QTIR=16
+      INTEGER NLOOPLINE,I,J
+      REAL*16 P_S_MAT(NLOOPLINE,0:3)
+      REAL*16 INVARIANTS(NLOOPLINE,NLOOPLINE)
+      COMPLEX*32 MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
+      CALL ML5_0_MP_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES
+     $ ,S_MAT)
+      DO J=1,NLOOPLINE
+        DO I=1,NLOOPLINE
+          INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J)
+     $     ,KIND=KI_QTIR)
+        ENDDO
+      ENDDO
+C     Private proposal: the ABI consumes the upper triangle (I<J).
+C     Keep all original reconstruction arithmetic and the diagonal.
+C     Do not hide any nonfinite lower-triangle input from validation.
+      IF(ALL(IEEE_IS_FINITE(INVARIANTS))) THEN
+        DO J=2,NLOOPLINE
+          DO I=1,J-1
+            IF(INVARIANTS(J,I).NE.INVARIANTS(I,J)) THEN
+              INVARIANTS(J,I)=INVARIANTS(I,J)
+            ENDIF
+          ENDDO
+        ENDDO
+      ENDIF
+      END
+
+      SUBROUTINE AUDIT_QP_CANONICAL(NLOOPLINE,INVARIANTS)
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      IMPLICIT NONE
+      INTEGER NLOOPLINE,I,J
+      REAL*16 INVARIANTS(NLOOPLINE,NLOOPLINE)
+C     Private proposal: the ABI consumes the upper triangle (I<J).
+C     Keep all original reconstruction arithmetic and the diagonal.
+C     Do not hide any nonfinite lower-triangle input from validation.
+      IF(ALL(IEEE_IS_FINITE(INVARIANTS))) THEN
+        DO J=2,NLOOPLINE
+          DO I=1,J-1
+            IF(INVARIANTS(J,I).NE.INVARIANTS(I,J)) THEN
+              INVARIANTS(J,I)=INVARIANTS(I,J)
+            ENDIF
+          ENDDO
+        ENDDO
+      ENDIF
+      END
+
+      SUBROUTINE AUDIT_SET_OSTHRES(VALUE)
+      IMPLICIT NONE
+      REAL*8 VALUE
+      INCLUDE 'MadLoopParams.inc'
+      OSTHRES=VALUE
+      END

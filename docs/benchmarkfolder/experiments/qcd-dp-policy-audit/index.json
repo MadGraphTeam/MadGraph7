@@ -1,0 +1,25 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 7288,
+      "sha256": "78e73a2063c4c0687e3867a6eaa83e581a88a5af0b10b3e7b452185636740a87"
+    },
+    "classification.json": {
+      "bytes": 654172,
+      "sha256": "3fb3ed8c76b5be45c5fdfcb44b61b2b34e4a93013db3aac4eaa13e45fb9d77e2"
+    },
+    "classify.py": {
+      "bytes": 5516,
+      "sha256": "5d4b2191d84a0f332e0b323e05bb877226ea5329b8847e01bcc3b9c4523b9ea9"
+    },
+    "source-bindings.json": {
+      "bytes": 9068,
+      "sha256": "39edb67b4dc4d6b5ed1a7bd798668ff147daccc3b6270fb4eb3a79f29a0c0e9c"
+    },
+    "verify.py": {
+      "bytes": 2015,
+      "sha256": "3588c547a491b82de44b5a2cd031e2be0e1d9b577d71e520487b2a027e274a0c"
+    }
+  },
+  "schema": 1
+}

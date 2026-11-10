@@ -1,0 +1,81 @@
+{
+  "claims": [
+    {
+      "claim": "Public Born is computed from user momenta, before loop repair.",
+      "matching_lines": [
+        808
+      ],
+      "name": "public_born",
+      "needle": "CALL ML5_0_SMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))",
+      "sha256": "a07804ebcb4088c8b82da923b630f845c3d4339d4bacbccdca976308ecdc437a",
+      "source": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_matrix.f"
+    },
+    {
+      "claim": "Forced QP invokes original Fortran repair from user momenta.",
+      "matching_lines": [
+        979
+      ],
+      "name": "canonical_C",
+      "needle": "CALL ML5_0_SET_MP_PS(P_USER)",
+      "sha256": "a07804ebcb4088c8b82da923b630f845c3d4339d4bacbccdca976308ecdc437a",
+      "source": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_matrix.f"
+    },
+    {
+      "claim": "Both Z masses are read from current MP model state during repair.",
+      "matching_lines": [
+        247,
+        621,
+        799,
+        986
+      ],
+      "name": "repair_mass",
+      "needle": "MASSES(3)=MP__MDL_MZ",
+      "sha256": "acc1a786f419b8a7379f5d269e34a190a12558edb731bfba7523391703482620",
+      "source": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/improve_ps.f"
+    },
+    {
+      "claim": "Original QP numerator updates MP model state after canonical repair.",
+      "matching_lines": [
+        185
+      ],
+      "name": "numerator_mass_update",
+      "needle": "CALL MP_UPDATE_AS_PARAM()",
+      "sha256": "bf5c60872fea031989dcb59060d72b968cea4167a422e683785d2ac7ab60f104",
+      "source": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/mp_compute_loop_coefs.f"
+    },
+    {
+      "claim": "Actual QP Born amplitudes live in this COMMON after helicity construction.",
+      "matching_lines": [
+        63
+      ],
+      "name": "qp_born",
+      "needle": "COMMON/ML5_0_MP_AMPS/AMP",
+      "sha256": "d168149b7b98489c6c89fed40a3fa76e3205a3311e69cbd294e9ac958306b5f2",
+      "source": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/mp_helas_calls_ampb_1.f"
+    },
+    {
+      "claim": "Independent automatic stability sequence is conditional on automatic CT mode.",
+      "matching_lines": [
+        1412
+      ],
+      "name": "forced_QP_checks",
+      "needle": "CTMODERUN.EQ.-1",
+      "sha256": "a07804ebcb4088c8b82da923b630f845c3d4339d4bacbccdca976308ecdc437a",
+      "source": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_matrix.f"
+    },
+    {
+      "claim": "NinjaRS QP interface promotes supplied complex DP squared masses.",
+      "matching_lines": [
+        1062
+      ],
+      "name": "dp_squared_masses_nrs",
+      "needle": "MASSES=CMPLX(M2L,KIND=KI_QNRS)",
+      "sha256": "046d23bc913bdbec4adee0608d479ad79e798141f5fbb2ddaff17a04912c832e",
+      "source": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/CT_interface.f"
+    }
+  ],
+  "observed_native_values": false,
+  "schema": 1,
+  "source_only": true,
+  "wrapping_caveat": "Undefined external relocation and runtime traversal still require proof; source names alone do not establish GNU --wrap interception."
+}

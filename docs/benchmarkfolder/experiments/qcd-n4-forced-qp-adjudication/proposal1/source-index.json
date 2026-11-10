@@ -1,0 +1,42 @@
+{
+  "files": {
+    "MadLoopParams.original.dat": {
+      "bytes": 14623,
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "README.md": {
+      "bytes": 8910,
+      "sha256": "c0a0ebb21445b83ae90a4c728ec25c57a9156c5d27161f49aa440c88fa494518"
+    },
+    "dependencies.json": {
+      "bytes": 56110,
+      "sha256": "318bfbf73e4bf9cf87c41a87404ce57b72ffc1b62d6d23476e9c633b8875027e"
+    },
+    "param_card.original.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "points.dat": {
+      "bytes": 2338,
+      "sha256": "7cc0a24044048c00d03390bd29b027ac6ea9582277067c6bc209c895a2e63194"
+    },
+    "prepare.py": {
+      "bytes": 4577,
+      "sha256": "fcdd6077bf5a0603ff963bc40b7625a4e811a03cdc387a1a87e59f86b362b537"
+    },
+    "selected-evidence.json": {
+      "bytes": 39689,
+      "sha256": "ea849f83df2750613b19dd06d53413f70e9a53e78b5efd22cfba05ef2c4db81b"
+    },
+    "source-audit.json": {
+      "bytes": 3502,
+      "sha256": "763327a81663c032cafb4fa61a482adc4f64ac93abd486bfbb74bb02c989f836"
+    },
+    "source-check.json": {
+      "bytes": 655,
+      "sha256": "2189623fe6813fa7dd29026805e2681eb0a673a69ed138c91d592a87e80e9e44"
+    }
+  },
+  "schema": 1,
+  "scope": "Source-only three-point forced-QP investigation proposal; not build or native qualification"
+}
