@@ -21,6 +21,7 @@ REPORT = module("campaign_report")
 PAIRS = module("campaign_report_pairs")
 COHORTS = module("campaign_report_cohorts")
 LIFECYCLE = module("campaign_report_lifecycle")
+QUALIFICATION = module("campaign_report_qualification")
 
 
 def write(root, name, value):
@@ -144,17 +145,30 @@ def test_main_runtime_pass_alone_cannot_complete_delivery(tmp_path, monkeypatch)
         def collect_cohorts(*args): return {"status": "passed"}
         @staticmethod
         def collect_lifecycle(*args): return LIFECYCLE.collect_lifecycle(*args)
+        @staticmethod
+        def collect_statistics(*args): return QUALIFICATION.collect_statistics(*args)
     monkeypatch.setattr(REPORT, "document_module", lambda name: AllMeasured)
     monkeypatch.setattr(REPORT, "implementation", lambda *args: {"status": "passed"})
-    monkeypatch.setattr(REPORT, "stress_limitations", lambda *args: [{"status": "open"}])
+    stress = [{"title": title, "status": "passed", "required_for_stress_acceptance": True}
+              for title in ("EW threshold mass transport", "QCD soft/collinear prototype",
+                            "Default stability estimator", "Complex-mass extremes")]
+    stress[0]["status"] = "open"
+    stress.extend([
+        {"title": "QCD n3 ordinary target", "status": "open", "required_for_stress_acceptance": False},
+        {"title": "QCD higher precision", "status": "pending", "required_for_stress_acceptance": False}])
+    monkeypatch.setattr(REPORT, "stress_limitations", lambda *args: stress)
     observed = REPORT.collect(REPORT.Evidence(tmp_path), "test")
     assert observed["criteria"]["eight_main_runtime_gates"] == "passed"
     assert observed["delivery_complete"] is False
     assert observed["criteria"]["installed_abi_and_fortran_checks"] == "passed"
     assert observed["criteria"]["subprocess_event_cache_lifecycle"] == "pending"
     assert observed["subprocess_event_cache_lifecycle"]["evidence"] is None
-    monkeypatch.setattr(REPORT, "stress_limitations", lambda *args: [{"status": "passed"}])
-    assert REPORT.collect(REPORT.Evidence(tmp_path), "test")["delivery_complete"] is False
+    assert observed["criteria"]["statistics_roundtrip"] == "pending"
+    assert observed["criteria"]["stress_accuracy"] == "open"
+    stress[0]["status"] = "passed"
+    observed = REPORT.collect(REPORT.Evidence(tmp_path), "test")
+    assert observed["criteria"]["stress_accuracy"] == "passed"
+    assert observed["delivery_complete"] is False
 
 
 def test_fortran_proof_requires_same_registered_production_bytes():

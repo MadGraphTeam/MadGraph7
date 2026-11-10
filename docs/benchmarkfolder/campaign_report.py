@@ -140,23 +140,26 @@ def implementation(evidence, manifest):
                      prefix + "archive-tests/real-boundary-analysis.json", terminal + "README.md", terminal + "validation-summary.json"]}
 
 
-def stress_limitations(evidence):
-    records = [
-        ("EW threshold", "experiments/ew-threshold-adjudication/CURRENT-STATUS.md",
-         "Original checked threshold remains unqualified; forced-QP incomplete tensor sums are not successful amplitudes."),
-        ("Complex-mass extremes", "experiments/complex-mass/README.md",
-         "Nineteen moderate points agree; original extreme automatic-policy points remain unqualified. Private corrections are unchecked diagnostics."),
-        ("Soft/collinear Born and virtual result", "experiments/qcd-born-fallback-prototype/STATUS.md",
-         "Private Born repair does not qualify the rejected full loop amplitude."),
-        ("Default stability estimator", "qualification/tirust-bridge/stability-audit/README.md",
-         "The default threshold misses the retained synthetic correlated error; the common stricter policy is not an independent truth proof."),
-    ]
-    result = []
-    for title, name, text in records:
-        evidence.tree(str(Path(name).parent))
-        result.append({"title": title, "status": "open", "scope": "Retained historical unresolved qualification",
-                       "text": text, "evidence": name})
-    return result
+def statistics_qualification(evidence, manifest):
+    return document_module("campaign_report_qualification").collect_statistics(evidence, manifest)
+
+
+def stress_limitations(evidence, manifest):
+    return document_module("campaign_report_qualification").collect_stress(evidence, manifest)
+
+
+def stress_acceptance(rows):
+    """Only the established physical stress requirements control this gate."""
+    required_cases = {"EW threshold mass transport", "QCD soft/collinear prototype",
+                      "Default stability estimator", "Complex-mass extremes"}
+    if any(type(row.get("required_for_stress_acceptance")) is not bool for row in rows):
+        return "open"
+    if any(row["required_for_stress_acceptance"] != (row.get("title") in required_cases) for row in rows):
+        return "open"
+    required = [row for row in rows if row["required_for_stress_acceptance"]]
+    if len(required) != len(required_cases) or {row["title"] for row in required} != required_cases:
+        return "open"
+    return "passed" if all(row["status"] == "passed" for row in required) else "open"
 
 
 def collect(evidence, campaign_id):
@@ -176,7 +179,8 @@ def collect(evidence, campaign_id):
     paired = document_module("campaign_report_pairs").collect_pairs(evidence, directory, manifest, config)
     cohorts = document_module("campaign_report_cohorts").collect_cohorts(evidence, directory, manifest, config)
     qualified = implementation(evidence, manifest)
-    stress = stress_limitations(evidence)
+    statistics = statistics_qualification(evidence, manifest)
+    stress = stress_limitations(evidence, manifest)
     lifecycle = document_module("campaign_report_lifecycle").collect_lifecycle(evidence, manifest)
     criteria = {
         "all_eleven_five_backend_numerical": numerical["status"],
@@ -186,7 +190,8 @@ def collect(evidence, campaign_id):
         "native_dp_and_rescued_cohorts": cohorts["status"],
         "installed_abi_and_fortran_checks": qualified["status"],
         "subprocess_event_cache_lifecycle": lifecycle["status"],
-        "stress_accuracy": "passed" if all(row["status"] == "passed" for row in stress) else "open",
+        "statistics_roundtrip": statistics["status"],
+        "stress_accuracy": stress_acceptance(stress),
     }
     return {"schema": SCHEMA, "campaign_binding": binding,
         "registered_exporter_revision": manifest["candidate"]["exporter_identity"]["revision"],
@@ -194,6 +199,7 @@ def collect(evidence, campaign_id):
         "numerical_identity_sha256": manifest["candidate"]["numerical_identity_sha256"],
         "numerical": numerical, "paired": paired, "cohorts": cohorts,
         "implementation": qualified, "subprocess_event_cache_lifecycle": lifecycle,
+        "statistics": statistics,
         "stress": stress, "criteria": criteria,
         "delivery_complete": all(value == "passed" for value in criteria.values()),
         "new_numerical_execution": False}
@@ -214,7 +220,7 @@ def validate(inputs, path, manifest, summary):
     if actual["campaign_binding"] != summary.get("campaign_binding"):
         raise ValueError("Report dossier and selected summary belong to different campaigns")
     for name in ("campaign_report.py", "campaign_report_numerical.py", "campaign_report_pairs.py",
-                 "campaign_report_cohorts.py", "campaign_report_lifecycle.py"):
+                 "campaign_report_cohorts.py", "campaign_report_lifecycle.py", "campaign_report_qualification.py"):
         inputs.add(name)
     return dossier
 

@@ -1,0 +1,147 @@
+{
+  "abi_inventory": {
+    "ml_tirust_observer_begin_point": "void(int64_t,int)",
+    "ml_tirust_observer_close": "int(void)",
+    "ml_tirust_observer_event": "void(int,const int64_t*,size_t)",
+    "ml_tirust_observer_flush": "int(void)",
+    "ml_tirust_observer_health": "uint64_t(void)",
+    "ml_tirust_observer_open": "int(const uint8_t*,size_t,int)",
+    "ml_tirust_private_observer_fp_read": "internal C helper: int(uint64_t[4])"
+  },
+  "accepted_initial_policy": "Existing default finite-DP embedded options only",
+  "bridge": {
+    "bytes": 46218,
+    "path": "vendor/tirust/src/lib.rs",
+    "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+  },
+  "compiled": false,
+  "current_installed_artifacts_rehashed": {
+    ".tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+      "bytes": 69094528,
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+    },
+    ".tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libtirust.a": {
+      "bytes": 26118,
+      "sha256": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a"
+    },
+    ".tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/mtirust.mod": {
+      "bytes": 3432,
+      "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5"
+    },
+    ".tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-config.json": {
+      "bytes": 3055,
+      "sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9"
+    }
+  },
+  "installed_qualification": {
+    "bytes": 4336,
+    "path": "docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/check-installation.json",
+    "sha256": "2145c1c7d3dbf747efe671ae415181590ce662ffc6acbc9268eb7441e0ff5b75"
+  },
+  "native_files": {
+    "README.md": {
+      "bytes": 6979,
+      "sha256": "bf83ded814426488c9b17cdbf3e5d400fadc1fe2560ef3c8f755fea5a1357454"
+    },
+    "observed-lib.rs.patch": {
+      "bytes": 2665,
+      "sha256": "5d4ea85cc80f2953bdd3561cdfabe97b2a7d6b810bfa347207b6bdde03273954"
+    },
+    "observer.h": {
+      "bytes": 682,
+      "sha256": "56580b941527fb44fb477767895142f9ca1df533ac254c93167e87d3ec65fb62"
+    },
+    "observer.rs": {
+      "bytes": 13779,
+      "sha256": "acf09e33fe3d0e57d01a64d6bcaca44e98abd1277d1ed52aa8204ec04fe708fe"
+    },
+    "observer_flags.c": {
+      "bytes": 739,
+      "sha256": "faeb01f00fb859843ebffe899968299c05166d8eaad2bcce88dd045f18386cee"
+    },
+    "transform.py": {
+      "bytes": 4479,
+      "sha256": "e430459b897b3391d980366b6bbe24318b07ff48f84305fc9149b1d9408cbca6"
+    }
+  },
+  "partial_work_observable": false,
+  "production_bindings": {
+    "vendor/tirust/Cargo.lock": {
+      "bytes": 36006,
+      "sha256": "1d16ded1641f906d8bd1576b03c141e49abc9c020257f08702227d8ce867daa8"
+    },
+    "vendor/tirust/Cargo.toml": {
+      "bytes": 1074,
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+    },
+    "vendor/tirust/mtirust.f90": {
+      "bytes": 15997,
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "vendor/tirust/patches/0001-direct-poles-only.patch": {
+      "bytes": 64682,
+      "sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5"
+    },
+    "vendor/tirust/patches/manifest.json": {
+      "bytes": 1050,
+      "sha256": "f9344679b2d7081d03b34aefc112a64837e868d58527fd944951f5345ef27167"
+    },
+    "vendor/tirust/tirust.h": {
+      "bytes": 5742,
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+    }
+  },
+  "production_or_upstream_edited": false,
+  "qualified_native_execution": false,
+  "rendered_bridge": {
+    "bytes": 46736,
+    "count_scope": "Exact contiguous textual occurrences, not a count of all call sites; mp_poles has a split-line call. No-extra-evaluation claim comes from the retained diff and exact observation-erasure identity.",
+    "counted_literal_pattern": "workspace.reduce_batch(&batch)",
+    "observation_erasure_exact_original": true,
+    "original_exact_pattern_occurrences": 3,
+    "rendered_exact_pattern_occurrences": 3,
+    "sha256": "e1c46768ac06d8055754710f78bef9d0e33063ffc9938a3f27bc866b770946e8"
+  },
+  "required_future_link_check": "C flag reader must bind the same numerical MPFR instance; adding a host libmpfr is forbidden",
+  "schema_version": 1,
+  "scope": "Private observer source preparation only; no compilation, tests, native execution, or numerical qualification",
+  "tests_executed": false,
+  "upstream_files": {
+    "../references/TIRust/crates/iregi-masters/src/lib.rs": {
+      "bytes": 48910,
+      "equals_pinned_git_blob": true,
+      "sha256": "ffff9a7a90497430648ea23b025df8d8087df8c8b71b8a3ea50c8d83e0a039b9"
+    },
+    "../references/TIRust/crates/iregi-rust/src/direct/exec.rs": {
+      "bytes": 188370,
+      "equals_pinned_git_blob": true,
+      "sha256": "4053f5d3a24002829328f75bac5aae3d26f04764f841a8edbaaa0ef938836c81"
+    },
+    "../references/TIRust/crates/iregi-rust/src/direct/shared.rs": {
+      "bytes": 29245,
+      "equals_pinned_git_blob": true,
+      "sha256": "0aeb06b0e8e0788d24653d1d6bdb856c81a3f1740cbf2d7def79c57ac33f8923"
+    },
+    "../references/TIRust/crates/iregi-rust/src/dispatch.rs": {
+      "bytes": 95423,
+      "equals_pinned_git_blob": true,
+      "sha256": "f88c1b3fbe6b7d654b18105789cb7f3a000a3000e79c6382a90d67d455744ea0"
+    },
+    "../references/TIRust/crates/iregi-rust/src/dispatch/direct_hybrid.rs": {
+      "bytes": 81962,
+      "equals_pinned_git_blob": true,
+      "sha256": "230cf32dab679c6f64f44056859bbc43ff8ff764a78f6d6ad9165c0082166b28"
+    },
+    "../references/TIRust/crates/iregi-rust/src/dispatch/embedded.rs": {
+      "bytes": 17538,
+      "equals_pinned_git_blob": true,
+      "sha256": "c4e392171b243c408c4a2802f30e3a90938c2c6cfc70c85d994ff426cce201c4"
+    },
+    "../references/TIRust/crates/iregi-rust/src/store.rs": {
+      "bytes": 15687,
+      "equals_pinned_git_blob": true,
+      "sha256": "973b437f154fdd332d54371bafcfee1c01f3de4a03d67ccebd5314c1fe3c321f"
+    }
+  },
+  "upstream_revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4"
+}

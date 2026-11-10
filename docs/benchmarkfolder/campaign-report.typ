@@ -117,7 +117,8 @@
   pagebreak()
   heading(level: 1)[Registered implementation and delivery status]
   let criterion-labels = (installed_abi_and_fortran_checks: "Installed ABI and Fortran checks",
-    subprocess_event_cache_lifecycle: "Subprocess/event cache lifecycle")
+    subprocess_event_cache_lifecycle: "Subprocess/event cache lifecycle",
+    statistics_roundtrip: "Current statistics round trip")
   table-style(table(columns: (2fr, 1fr), inset: 6pt, stroke: table-stroke, fill: table-fill,
     table.header([Required criterion], [Observed status]),
     ..data.criteria.pairs().map(p => ([#criterion-labels.at(p.at(0), default: p.at(0).replace("_", " "))], [#status(p.at(1))])).flatten()))
@@ -145,17 +146,31 @@
       text(6.3pt, fill: ink2)[#raw(data.subprocess_event_cache_lifecycle.summary_evidence)]
     }]
   v(6pt)
+  note(fill: if data.statistics.status == "passed" { pale } else { warm })[
+    *Current statistics: #status(data.statistics.status).* #data.statistics.scope
+    #if data.statistics.evidence != none {
+      v(3pt)
+      text(6.3pt, fill: ink2)[#raw(data.statistics.evidence)]
+    }]
+  v(6pt)
   [Higher-rank terminal Fortran qualification is bound to the completed source,
   IEEE/trap and fixed-input coefficient checks in
   #raw("experiments/dp-higher-rank-production/validation-summary.json"). Its
   compiled checks and CutTools parity do not substitute for the registered
   five-backend campaign or establish runtime admission frequency.]
-  v(8pt)
-  heading(level: 2)[Retained unresolved accuracy cases]
+  pagebreak()
+  heading(level: 1)[Retained accuracy limitations and diagnostics]
+  text(8pt, fill: ink2)[The report binds the completed portable inventories and
+    their recorded scope; it does not rerun scientific adjudication. Historical
+    library results and private prototypes do not qualify the current installed
+    library. Ordinary numerical and paired runtime gates remain separate.
+    The QCD n3 optional target and higher-precision workstream are diagnostic
+    disclosures; neither adds a stress acceptance requirement.]
+  v(7pt)
   table-style(table(columns: (1.1fr, .5fr, 3fr), inset: 5pt, stroke: table-stroke, fill: table-fill,
     table.header([Case], [Status], [Qualification limit]),
     ..data.stress.map(row => ([#row.title], [#status(row.status)],
-      [#row.text#v(3pt)#text(6.3pt, fill: ink2)[#raw(row.evidence)]])).flatten()))
+      [#row.text#if row.evidence != none { v(3pt); text(6.3pt, fill: ink2)[#raw(row.evidence)] }])).flatten()))
   v(6pt)
   text(8pt, fill: ink2)[The historical c91 qualified runtime failure remains an
     ancestor result with its original source and interval. New source candidates

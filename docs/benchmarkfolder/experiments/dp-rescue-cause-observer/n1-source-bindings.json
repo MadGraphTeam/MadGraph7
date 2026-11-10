@@ -1,0 +1,82 @@
+{
+  "files": {
+    ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/TIRUST_interface.f": {
+      "bytes": 10866,
+      "sha256": "2f348e7e2fb39d9fd8f701c7de0f45e1b66b883a0502762d4cedb18a16c349ec"
+    },
+    ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/TIR_interface.f": {
+      "bytes": 17028,
+      "sha256": "b5d5487df140ea69aed722086dc853e5fa26cdacdd5af7785efa3590ef3c2d5f"
+    },
+    ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/coef_construction_1.f": {
+      "bytes": 3625,
+      "sha256": "5543520b9ad9d999e3b488ea0c90817efa553bfbc1aa954c059b01900db6dd82"
+    },
+    ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/loop_matrix.f": {
+      "bytes": 93317,
+      "sha256": "82f44e79fe23b1fd7a892e67e3682d666f47fa6d5d13ebf7e4e87d77323707db"
+    },
+    ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/polynomial.f": {
+      "bytes": 33391,
+      "sha256": "e78fecdc8327a024888715e1b4cbca554655172c4e922c4de90f406efa3f18df"
+    },
+    "docs/benchmarkfolder/experiments/dp-terminal/README.md": {
+      "bytes": 7081,
+      "sha256": "1399f0f5666490aa2dd330e2baf108b2a386a5bf3d72f837c3831398386a2ab8"
+    },
+    "docs/benchmarkfolder/experiments/dp-terminal/analysis-summary.json": {
+      "bytes": 13001,
+      "sha256": "98d67e14701b9361cd2571462c3e5631f2f8c8a92292800f44175eb91989f4cb"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/bridge/README.md": {
+      "bytes": 13072,
+      "sha256": "4b524cb3cd71d3c5ac3149130d020dc4761f0670106d695d4889660451a16af7"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/bridge/analysis.json": {
+      "bytes": 17143,
+      "sha256": "c47e1da91df1604bbe7f9d6a11de003dcd4f0a3cd927878b6ff0ce7524f1f924"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/bridge/followup-candidates.md": {
+      "bytes": 3124,
+      "sha256": "165826e921a5c94acccdfec7dd70d7ce8784cc7105a62138274e8216bf4ef7fb"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-common-allocation/README.md": {
+      "bytes": 6593,
+      "sha256": "20f082d9b271fc844bebead0589b66b0f420704c3b1134df8166bb61363cea6e"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-dp-finite/README.md": {
+      "bytes": 4225,
+      "sha256": "c7a6bedbd150c6ad9a04356b17b6d299b0fe93e095a3dbbb0c2e07b3da45efd3"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-scratch/timing-summary.json": {
+      "bytes": 4733,
+      "sha256": "5c1d3a3af2d4cd1652630468aad499af8f2ce96a8b949e055a4d5b16d9631682"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-sequence/timing-summary.json": {
+      "bytes": 4728,
+      "sha256": "de72ded569b9362530f35711db7cc08d787e05c98f1a35fa3e767e3f43cb8189"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran/README.md": {
+      "bytes": 6219,
+      "sha256": "07a7b362ca443d4b2b95207e87d2de8048b9fd54913c4c5c9fb224c45112f4e7"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran/summary.json": {
+      "bytes": 22454,
+      "sha256": "68877091f13d39f78e761d08bae1cf6495be167c915bdf374cb829df543c4edf"
+    },
+    "madgraph/loop/loop_exporters.py": {
+      "bytes": 218323,
+      "sha256": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74"
+    },
+    "vendor/tirust/mtirust.f90": {
+      "bytes": 15997,
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "vendor/tirust/src/lib.rs": {
+      "bytes": 46218,
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    }
+  },
+  "schema": 1,
+  "scope": "historical attribution and current source inspection only; no current speed estimate"
+}
