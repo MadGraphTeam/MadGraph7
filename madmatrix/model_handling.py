@@ -1972,10 +1972,18 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     p_makefile = 'madmatrix.mk'
 
     # AV - overload export_cpp.OneProcessExporterCPP constructor (rename gCPPProcess to CPPProcess)
-    def __init__(self, *args, **kwargs):
+    def __init__(self, matrix_element, *args, **kwargs):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.__init__')
         ###for kwarg in kwargs: misc.sprint( 'kwargs[%s] = %s' %( kwarg, kwargs[kwarg] ) )
-        super().__init__(*args, **kwargs)
+        # The diagrams, color flows and helicity tables all describe one ME.
+        # A mirror process reuses it, but a second ME needs its own directory.
+        # Check before the parent constructor renumbers wavefunctions (#168).
+        if not isinstance(matrix_element, helas_objects.HelasMatrixElement):
+            raise MadGraph5Error(
+                'MadMatrix requires exactly one HelasMatrixElement per '
+                'subprocess directory; export multiple matrix elements in '
+                'separate directories.')
+        super().__init__(matrix_element, *args, **kwargs)
         self.process_class = 'CPPProcess'
         ###if self.in_madevent_mode: proc_id = kwargs['prefix']+1 # madevent+cudacpp (NB: HERE SELF.IN_MADEVENT_MODE DOES NOT WORK!)
         if 'prefix' in kwargs: proc_id = kwargs['prefix']+1 # madevent+cudacpp (ime+1 from ProcessExporterFortranMEGroup.generate_subprocess_directory)
@@ -2560,7 +2568,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                                     )
             finally:
                 self.helas_call_writer.hr_probe = False
-            assert len(self.matrix_elements) == 1 or len(self.matrix_elements) == 2 # how to handle if this is not true?
             self.couplings2order = self.helas_call_writer.couplings2order
             self.couporderflv = self.helas_call_writer.couporderflv
             self.couporderflv_dep = self.helas_call_writer.couporderflv_dep
@@ -2639,10 +2646,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nampso'] = so['nampso'] if so else 1
         replace_dict['nsqampso'] = so['nsqampso'] if so else 1
         replace_dict['nwf'] = me.get_number_of_wavefunctions()
-        replace_dict['nproc'] = sum(2 if m.get('has_mirror_process') else 1 for m in self.matrix_elements)
+        replace_dict['nproc'] = 2 if me.get('has_mirror_process') else 1
         replace_dict['proc_id'] = self.proc_id if self.proc_id > 0 else 1
-        den_factors = [str(m.get_denominator_factor()) for m in self.matrix_elements]
-        replace_dict['den_factors'] = ",".join(den_factors)
+        replace_dict['den_factor'] = me.get_denominator_factor()
         # cached by get_process_function_definitions(), which runs earlier in
         # super().generate_process_files()
         replace_dict['nipd'] = self._nipd

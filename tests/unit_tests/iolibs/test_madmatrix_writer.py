@@ -10,13 +10,69 @@
 # distribution.
 #
 ################################################################################
-"""Unit tests for the madmatrix ALOHA writer (madmatrix/model_handling.py)."""
+"""Unit tests for madmatrix writers and process metadata."""
 
 from __future__ import absolute_import
 
 import re
+import os
+import tempfile
 
 import tests.unit_tests as unittest
+
+
+class TestMadMatrixProcessData(unittest.TestCase):
+    """Each P* directory has one ME, possibly shared by a mirror process."""
+
+    def test_rejects_multiple_matrix_elements(self):
+        """Reject grouped MEs before parent initialization or file generation."""
+        from madgraph import MadGraph5Error
+        from madgraph.core import helas_objects
+        from madmatrix import model_handling
+
+        elements = helas_objects.HelasMatrixElementList([
+            helas_objects.HelasMatrixElement(),
+            helas_objects.HelasMatrixElement()])
+        multi = helas_objects.HelasMultiProcess({'matrix_elements': elements})
+        for exporter in (model_handling.OneProcessExporterMadMatrix,
+                         model_handling.OneProcessExporterMadMatrixStandalone):
+            for grouped in (elements, multi):
+                with self.subTest(exporter=exporter.__name__,
+                                  grouped=type(grouped).__name__):
+                    with self.assertRaisesRegex(
+                            MadGraph5Error,
+                            'exactly one HelasMatrixElement.*separate directories'):
+                        exporter(grouped, None)
+
+    def test_processdata_single_denominator(self):
+        """Mirroring doubles nproc, but both processes use the same denominator."""
+        from madgraph.core import base_objects, diagram_generation, helas_objects
+        from madgraph.models import import_ufo
+        from madmatrix import model_handling
+
+        model = import_ufo.import_model('sm')
+        for exporter in (model_handling.OneProcessExporterMadMatrix,
+                         model_handling.OneProcessExporterMadMatrixStandalone):
+            for mirror in (False, True):
+                with self.subTest(exporter=exporter.__name__, mirror=mirror):
+                    # q g > q g also exercises merged flavors within one ME.
+                    legs = base_objects.LegList([
+                        base_objects.Leg({'id': pdg, 'state': i > 1})
+                        for i, pdg in enumerate([81, 21, 81, 21])])
+                    amplitude = diagram_generation.Amplitude(
+                        base_objects.Process({'legs': legs, 'model': model}))
+                    me = helas_objects.HelasMatrixElement(amplitude)
+                    me.set('has_mirror_process', mirror)
+                    process = exporter(me,
+                        model_handling.MadMatrixUFOHelasCallWriter(model))
+                    with tempfile.TemporaryDirectory(prefix='madmatrix-process-') as tmp:
+                        process.path = tmp
+                        process.generate_process_files()
+                        with open(os.path.join(tmp, 'ProcessData.h')) as stream:
+                            data = stream.read()
+                    self.assertIn('constexpr int nproc = %d;' % (2 if mirror else 1), data)
+                    self.assertIn('constexpr int helcolDenominators[1] = { %d };'
+                                  % me.get_denominator_factor(), data)
 
 
 class TestMomentaInDenomPrecision(unittest.TestCase):
