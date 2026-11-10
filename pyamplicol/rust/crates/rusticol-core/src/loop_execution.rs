@@ -221,6 +221,20 @@ pub mod v2 {
         fn take_statistics(&mut self) -> BackendStatistics {
             BackendStatistics::default()
         }
+        /// [`Self::reduce`] of the term scale's unit-numerator lanes
+        /// ([`V2Options::term_scale`]): magnitudes for an estimate's rounding
+        /// floor, never a served value, so a backend may leave out its
+        /// value-level decisions there (NinjaRS's measured decision of the
+        /// lanes its conditioning screen flags, which would fail a point on an
+        /// auxiliary monomial integral). The default is [`Self::reduce`]
+        /// without a check.
+        fn reduce_term_scale(
+            &mut self,
+            groups: &[FamilyLanes<T>],
+            poles: Poles,
+        ) -> RusticolResult<Reduced<T>> {
+            self.reduce(groups, poles, None)
+        }
     }
 
     /// Modelled kernel work of the chosen forms of `steps` (complex
@@ -1342,7 +1356,9 @@ pub mod v2 {
                 TERM_SCALE_LANES,
                 units.iter().map(|g| g.keys.len() as u64).sum(),
             );
-            let (moments, _) = self.backend.reduce(&units, self.options.poles, None)?;
+            let (moments, _) = self
+                .backend
+                .reduce_term_scale(&units, self.options.poles)?;
             let width = self.options.poles.width();
             let slots = self.plan.order_count * self.plan.columns;
             let sink = &mut *self.sink;

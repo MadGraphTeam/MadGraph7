@@ -133,9 +133,35 @@ impl<R: LiftToFloat + Send> LaneReference<Complex<R>> for KeyedReference {
         bits: u32,
         out: &mut [Option<[f64; 2]>],
     ) -> Result<()> {
+        if !LANE_MEASUREMENT.get() {
+            // Unmeasured (`without_lane_measurement`): every lane served.
+            out.fill(None);
+            return Ok(());
+        }
         let _unlock = pyamplicol::unlock();
         self.0.finite_parts(request, bits, out)
     }
+}
+
+thread_local! {
+    /// Whether [`KeyedReference`] measures on this thread
+    /// ([`without_lane_measurement`]).
+    static LANE_MEASUREMENT: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
+/// Runs `f` with NinjaRS's measured decision off on this thread: a flagged
+/// lane is unmeasured and served. For reductions whose values are never
+/// served (the term scale's unit-numerator lanes, magnitudes for an
+/// estimate's rounding floor: `V2Backend::reduce_term_scale`).
+pub fn without_lane_measurement<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            LANE_MEASUREMENT.set(self.0);
+        }
+    }
+    let _restore = Restore(LANE_MEASUREMENT.replace(false));
+    f()
 }
 
 /// The measured decision every NinjaRS engine of pyAmpliCol attaches
