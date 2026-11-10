@@ -176,7 +176,11 @@ fn binary64_madloop_variants_and_the_default_chain() {
             code: 0,
         });
         assert_eq!(out.record.produced, Some(FINISH));
-        assert!(out.record.exactness.as_ref().unwrap().exact, "{:?}", out.record);
+        assert!(
+            out.record.exactness.as_ref().unwrap().exact,
+            "{:?}",
+            out.record
+        );
     }
     assert_eq!(out.record.attempts, expected);
     // Forced ORIG there: refused, evaluated as given.
@@ -750,7 +754,10 @@ mod exact_points {
                 },
                 "{name}"
             );
-            assert!(record.exactness.as_ref().unwrap().exact, "{name}: {record:?}");
+            assert!(
+                record.exactness.as_ref().unwrap().exact,
+                "{name}: {record:?}"
+            );
         }
     }
 

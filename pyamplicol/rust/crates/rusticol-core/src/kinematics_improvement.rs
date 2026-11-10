@@ -759,7 +759,9 @@ pub fn improve<T: PsReal>(
             .as_ref()
             .is_none_or(|(point, _)| !ctx.exactness(point, masses2, n_initial).exact);
         if inexact {
-            let start = produced.as_ref().map_or(legs, |(point, _)| point.as_slice());
+            let start = produced
+                .as_ref()
+                .map_or(legs, |(point, _)| point.as_slice());
             let (outcome, iterations) = ctx.projection(start, masses2, n_initial);
             record.iterations = Some(iterations);
             // IS_CLOSE against the caller's input (the projection tests its
