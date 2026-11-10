@@ -8,6 +8,7 @@ from typing import Any
 _VERDICT_COLOURS = {
     "pass": "GREEN",
     "fail": "RED",
+    "undecided": "RED",
     "not applicable": "YELLOW",
     "no prediction": "YELLOW",
     "not run": "YELLOW",
@@ -57,7 +58,9 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
                 f"checks; double-double {checks.CATANI_DD_FLOOR:g} relative); "
                 "loop-induced finiteness, Ward and Goldstone probes within "
                 f"{ESTIMATE_FACTOR}x their own estimate; Born-interfered Ward: "
-                "ward.ward_row. ratio <= 1 passes",
+                "ward.ward_row; arbitrary precision (the rung, digits derived "
+                "from the double-double shortfall) by the double-double "
+                "criterion. ratio <= 1 passes",
             ),
             ("seconds", f"{report.seconds:.3g}"),
         )
@@ -105,7 +108,9 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
                     row.check,
                     row.subject,
                     "" if row.point is None else row.point,
-                    row.carrier or "",
+                    f"{row.carrier} ({row.digits} digits)"
+                    if row.digits
+                    else row.carrier or "",
                     _number(row.ratio),
                     _number(row.deviation),
                     _number(row.estimate),

@@ -1868,6 +1868,7 @@ def check_loop_requests(
     precision=None,
     stored=None,
     sqrt_s=None,
+    arbitrary_digits=None,
 ):
     """``pyamplicol check`` (``loops.v2.checks``): every process the request
     serves, regenerated IN MEMORY through this service's own preparation
@@ -1879,7 +1880,9 @@ def check_loop_requests(
     rest, scatterings in the centre-of-mass frame; ``sqrt_s`` replaces a
     scattering's energy, ``check.sqrt_s``) in the
     carriers of ``induced.probe_carriers(precision)`` (None: binary64, then
-    double-double where binary64 fails, is refused or is out of scope).
+    double-double where binary64 fails, is refused or is out of scope, then
+    the arbitrary-precision rung for a row double-double leaves undecided,
+    at ``arbitrary_digits`` digits, None: derived per row, ``checks.Rung``).
     ``stored`` (an artifact's manifest, ``artifacts.manifest.
     ArtifactManifest``) guards an artifact input: the prepared model must be
     the stored one (its manifest record: name, source kind, content hash,
@@ -1931,6 +1934,8 @@ def check_loop_requests(
                     momenta,
                     carriers,
                     memo=memo,
+                    arbitrary=precision is None,
+                    digits=arbitrary_digits,
                 )
             )
     return checked

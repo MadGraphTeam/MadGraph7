@@ -841,6 +841,15 @@ def test_check_takes_a_card_or_an_artifact_and_its_options(tmp_path: Path) -> No
     assert direct.check.sqrt_s is None
     energetic = parse_cli(("check", str(card), "--sqrt-s", "2500")).resolve()
     assert energetic.effective.check.sqrt_s == 2500.0
+    # --arbitrary-digits: the auto ladder's arbitrary-precision rung (default
+    # None: derived per row); an explicit precision runs no rung.
+    assert direct.check.arbitrary_digits is None
+    digits = parse_cli(("check", str(artifact), "--arbitrary-digits", "48")).resolve()
+    assert digits.effective.check.arbitrary_digits == 48
+    with pytest.raises(ConfigurationError, match="must be auto"):
+        parse_cli(
+            ("check", str(artifact), "--precision", "double", "--arbitrary-digits", "48")
+        ).resolve()
 
 
 def test_profile_takes_the_loop_settings() -> None:
