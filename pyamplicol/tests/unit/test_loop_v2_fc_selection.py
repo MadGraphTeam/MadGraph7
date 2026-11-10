@@ -245,6 +245,20 @@ def test_single_helicities_are_their_resolved_entries_and_partition_the_virtual(
                 _bits(x) for x in _resolved_entry(resolved, point, k)
             ], (h, point)
         singles.append(one)
+    # Against the resolved call's total (a pure summation of the same
+    # entries) the singles' exact sum is within gamma_n S alone (n the rows,
+    # S the entries' absolute sum); against the unselected call (its own
+    # numerators reduced) ``rounding_bound`` adds the reduction estimates.
+    combined = resolved.total()
+    n = len(hel)
+    gamma = n * UNIT / (1 - n * UNIT)
+    for point in range(len(pts)):
+        entries = [_entry(one, point) for one in singles]
+        for k, expected in enumerate(_entry(combined, point)):
+            terms = [Decimal(e[k]) for e in entries]
+            exact = sum(terms, Decimal(0))
+            scale = float(sum(abs(t) for t in terms))
+            assert abs(float(exact) - expected) <= gamma * scale + abs(expected) * UNIT
     _assert_partition(total, singles, len(pts), UNIT, len(hel))
     half = len(hel) // 2
     halves = [
