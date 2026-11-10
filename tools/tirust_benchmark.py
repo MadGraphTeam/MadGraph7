@@ -134,7 +134,9 @@ def load_config():
 
 
 def environment():
+    from tirust_benchmark_campaign import EXPORT_ENVIRONMENT
     env = dict(os.environ)
+    env.update(EXPORT_ENVIRONMENT)
     env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1",
                RAYON_NUM_THREADS="1", XDG_CONFIG_HOME=str(WORK / "config"))
     libraries = [ROOT / "HEPTools/ninja/lib", ROOT / "HEPTools/collier",
@@ -335,6 +337,8 @@ def reuse_baseline(case):
     if any(original.rglob("worker-protocol.fifo")):
         raise RuntimeError("Predecessor baseline worker is active; wait before copying its artifacts")
     generation = json.loads((original / "generation.json").read_text())
+    from tirust_benchmark_campaign import export_environment_binding, validate_generation_environment
+    validate_generation_environment(generation)
     compilation = json.loads((original / "compilation.json").read_text())
     directories = sorted(original.glob("SubProcesses/P*_*"))
     if len(directories) != 1:
@@ -375,6 +379,10 @@ def reuse_baseline(case):
     generation = {**generation, **campaign_fields(), "reused_from": {
         "directory": str(original), "generation_sha256": digest(original / "generation.json"),
         "compilation_sha256": digest(original / "compilation.json"), "numerical_objects": objects,
+        "source_generation_repeated": False,
+        "source_export_environment_recorded": "export_environment" in generation,
+        "source_export_environment": generation.get("export_environment"),
+        "reuse_environment_binding": export_environment_binding(),
         "runtime": native_runtime, "object_relink_proof": proof, "worker_only_relink_required": True}}
     dump(stage / "generation.json", generation)
     stage.rename(target)
@@ -416,12 +424,14 @@ def cli_lines(tree, source, case, output):
 
 def generate(source, case):
     campaign_guard("generate")
+    from tirust_benchmark_campaign import export_environment_binding, validate_generation_environment
     tree = BASELINE if source == "baseline" else ROOT
     output = output_dir(source, case)
     if (output / "generation.json").exists():
         record = json.loads((output / "generation.json").read_text())
         if record.get("campaign_binding") != campaign_binding():
             raise RuntimeError("Generation belongs to another campaign")
+        validate_generation_environment(record, required=CAMPAIGN_ID is not None)
         return record
     if output.exists():
         raise RuntimeError(f"Incomplete generation exists; retain and move aside before retry: {output}")
@@ -447,6 +457,7 @@ def generate(source, case):
     from madgraph.various.banner import MadLoopParam
     default_chain = MadLoopParam(str(output / "Cards/MadLoopParams.dat"))["MLReductionLib"]
     record = {**campaign_fields(), "case": case, "source": source, "seconds": seconds, "source_identity": identity,
+              **export_environment_binding(),
               "created_utc": utc_now(), "command_sha256": digest(command_file),
               "default_chain": str(default_chain), "parameter_card_sha256": digest(param_path)}
     dump(output / "generation.json", record)
@@ -497,6 +508,8 @@ def build(source, case, jobs=4):
     output = output_dir(source, case)
     directory = subprocess_dir(source, case)
     generation = json.loads((output / "generation.json").read_text())
+    from tirust_benchmark_campaign import validate_generation_environment
+    validate_generation_environment(generation, required=CAMPAIGN_ID is not None)
     reused = generation.get("reused_from")
     compilation_path = output / "compilation.json"
     template_path = ROOT / "tools/tirust_benchmark_worker.f"
@@ -877,6 +890,8 @@ def start_worker(stack, source, case, chain, config, cpu, report, timeout=3600.,
                                 compilation.get("effective_compiler_flags")):
         raise RuntimeError("Compiler flags no longer match compilation")
     generation = json.loads((output_dir(source, case) / "generation.json").read_text())
+    from tirust_benchmark_campaign import validate_generation_environment
+    validate_generation_environment(generation, required=CAMPAIGN_ID is not None)
     if generation.get("campaign_binding") != campaign_binding():
         raise RuntimeError("Generation belongs to another campaign")
     if generation["case"] != case:
@@ -1159,6 +1174,7 @@ def validate_retained_result(directory, label, case, config):
     """Recompute acceptance from immutable raw files and bind every campaign input."""
     from tirust_benchmark_worker import parse_outputs, paired_statistics
     from tirust_benchmark_compiler import validate_compiler_equality
+    from tirust_benchmark_campaign import validate_generation_environment
     if (directory / "failure.json").exists():
         raise ValueError("Run has a retained failure, including possible worker shutdown failure")
     result = json.loads((directory / "summary.json").read_text())
@@ -1203,6 +1219,7 @@ def validate_retained_result(directory, label, case, config):
             raise ValueError("Run input belongs to another campaign manifest")
         campaign_guard("validate-retained", inputs=value)
         generation = value["generation"]
+        validate_generation_environment(generation)
         if generation["case"] != case or generation["source"] != source:
             raise ValueError("Generation record belongs to a different source/process")
         if value["points_sha256"] != digest(point_path):

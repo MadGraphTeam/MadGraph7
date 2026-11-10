@@ -1,6 +1,8 @@
 """Keep benchmark configuration local and defer costly unqualified campaigns."""
 from pathlib import Path
 import copy
+import json
+import os
 import sys
 import tempfile
 import unittest
@@ -10,6 +12,81 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools"))
 import tirust_benchmark as benchmark
 import tirust_benchmark_numerical as numerical
+import tirust_benchmark_campaign as campaign
+
+
+class TestExportEnvironment(unittest.TestCase):
+    def test_child_environment_overrides_inherited_hash_randomization(self):
+        for inherited in ("random", "123456"):
+            with self.subTest(inherited=inherited), patch.dict(os.environ, {"PYTHONHASHSEED": inherited}):
+                self.assertEqual(benchmark.environment()["PYTHONHASHSEED"], "0")
+                self.assertEqual(os.environ["PYTHONHASHSEED"], inherited)
+
+    def test_fresh_generation_requires_complete_exact_binding(self):
+        good = {"source": "candidate", **campaign.export_environment_binding()}
+        campaign.validate_generation_environment(good, required=True)
+        for field in campaign.export_environment_binding():
+            changed = dict(good)
+            changed.pop(field)
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                campaign.validate_generation_environment(changed, required=True)
+        for bad in (None, {}, {"PYTHONHASHSEED": 0}, {"PYTHONHASHSEED": "random"}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                campaign.validate_generation_environment(dict(good, export_environment=bad), required=True)
+        campaign.validate_generation_environment({"source": "baseline"})
+        with self.assertRaises(ValueError):
+            campaign.validate_generation_environment({"source": "candidate"}, required=True)
+
+    def test_cached_new_campaign_generation_rejects_missing_or_changed_binding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            binding = {"id": "new", "manifest_sha256": "frozen"}
+            record = {"source": "candidate", "campaign_binding": binding,
+                      **campaign.export_environment_binding()}
+            with patch.object(benchmark, "output_dir", return_value=output), \
+                 patch.object(benchmark, "campaign_guard"), \
+                 patch.object(benchmark, "campaign_binding", return_value=binding), \
+                 patch.object(benchmark, "CAMPAIGN_ID", "new"):
+                (output / "generation.json").write_text(json.dumps(record))
+                self.assertEqual(benchmark.generate("candidate", {"id": "example"}), record)
+                for bad in (None, {"PYTHONHASHSEED": "1"}):
+                    changed = dict(record)
+                    if bad is None:
+                        for key in campaign.export_environment_binding():
+                            changed.pop(key)
+                    else:
+                        changed["export_environment"] = bad
+                    (output / "generation.json").write_text(json.dumps(changed))
+                    with self.subTest(bad=bad), self.assertRaises(ValueError):
+                        benchmark.generate("candidate", {"id": "example"})
+
+    def test_inherited_baseline_keeps_unrecorded_export_seed_separate_from_relink(self):
+        reused = {"source": "baseline", "reused_from": {
+            "source_generation_repeated": False,
+            "source_export_environment_recorded": False,
+            "source_export_environment": None,
+            "reuse_environment_binding": campaign.export_environment_binding()}}
+        campaign.validate_generation_environment(reused, required=True)
+        self.assertNotIn("export_environment", reused)
+        changes = [dict(reused, source="candidate"),
+                   dict(reused, **campaign.export_environment_binding())]
+        for field, value in (("source_generation_repeated", True),
+                             ("source_export_environment_recorded", True),
+                             ("source_export_environment", {"PYTHONHASHSEED": "0"}),
+                             ("reuse_environment_binding", None)):
+            changed = copy.deepcopy(reused)
+            changed["reused_from"][field] = value
+            changes.append(changed)
+        for changed in changes:
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                campaign.validate_generation_environment(changed, required=True)
+
+    def test_recorded_legacy_binding_cannot_change_even_in_read_only_validation(self):
+        historical = {"source": "candidate", **campaign.export_environment_binding()}
+        campaign.validate_generation_environment(historical)
+        historical["export_environment"] = {"PYTHONHASHSEED": "23"}
+        with self.assertRaises(ValueError):
+            campaign.validate_generation_environment(historical)
 
 
 class TestWorkerTimeoutBinding(unittest.TestCase):

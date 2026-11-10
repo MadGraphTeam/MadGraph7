@@ -23,6 +23,44 @@ HISTORICAL_STAGES = {"activate", "summarize", "validate-retained", "summary", "h
 QUALIFIED_LABELS = {"tirust-first", "backend-1", "backend-6", "backend-7", "backend-8"}
 TIMEOUT_FIELD = "administrative_worker_timeout_seconds"
 DEFAULT_WORKER_TIMEOUT = 3600.0
+EXPORT_ENVIRONMENT_VERSION = 1
+EXPORT_ENVIRONMENT = {"PYTHONHASHSEED": "0"}
+
+
+def export_environment_binding():
+    """Deterministic CLI child environment; not a new numerical identity."""
+    return {"export_environment_binding_version": EXPORT_ENVIRONMENT_VERSION,
+            "export_environment": dict(EXPORT_ENVIRONMENT)}
+
+
+def validate_export_environment(record, required=False):
+    if not isinstance(record, dict):
+        raise ValueError("Missing or changed deterministic export environment binding")
+    present = any(key in record for key in ("export_environment_binding_version", "export_environment"))
+    if not required and not present:
+        return
+    version = record.get("export_environment_binding_version")
+    if (type(version) is not int or version != EXPORT_ENVIRONMENT_VERSION
+            or record.get("export_environment") != EXPORT_ENVIRONMENT):
+        raise ValueError("Missing or changed deterministic export environment binding")
+
+
+def validate_generation_environment(generation, required=False):
+    """Preserve an inherited baseline's actual, possibly unrecorded seed."""
+    reused = generation.get("reused_from")
+    if reused is not None:
+        if generation.get("source") != "baseline" or not isinstance(reused, dict):
+            raise ValueError("Only a frozen baseline can inherit export environment provenance")
+        if required or "reuse_environment_binding" in reused:
+            validate_export_environment(reused.get("reuse_environment_binding", {}), required=True)
+            recorded = "export_environment" in generation
+            if (reused.get("source_generation_repeated") is not False
+                    or reused.get("source_export_environment_recorded") is not recorded
+                    or reused.get("source_export_environment") != generation.get("export_environment")):
+                raise ValueError("Inherited baseline export environment provenance changed")
+        validate_export_environment(generation)
+    else:
+        validate_export_environment(generation, required=required)
 
 
 def _hash(data):
@@ -459,6 +497,7 @@ def _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason, w
     if record["revision"] != bench.BASELINE_REVISION:
         raise ValueError("Unexpected shared baseline revision")
     manifest = {"schema": SCHEMA, "id": campaign_id, "created_utc": bench.utc_now(), "reason": reason,
+        **export_environment_binding(),
         TIMEOUT_FIELD: timeouts,
         "predecessor": previous,
         "baseline": {"revision": bench.BASELINE_REVISION, "record_sha256": bench.digest(baseline_record)},
@@ -514,6 +553,9 @@ def activate_campaign(bench, campaign_id):
     manifest = _read(manifest_path)
     if manifest.get("schema") != SCHEMA or manifest.get("id") != campaign_id:
         raise ValueError("Campaign manifest identity/schema mismatch")
+    # Activation also selects historical evidence for read-only reporting.
+    # Live stages below require the new binding before any work can resume.
+    validate_export_environment(manifest)
     _registered_worker_timeouts(manifest, _read(report / "cases.json"))
     bench.REPORT, bench.WORK, bench.MODEL_ROOT = report, work, work / "models"
     bench.TIRUST_PREFIX = Path(manifest["candidate"]["native"]["prefix"])
@@ -539,7 +581,10 @@ def campaign_summary_fields(bench):
     previous = manifest["predecessor"]
     failures = _registered_failures(previous)
     failures += [record for path, record in _read_discoveries(bench, Path(bench.REPORT))]
+    export_fields = {key: manifest[key] for key in ("export_environment_binding_version", "export_environment")
+                     if key in manifest}
     return {"campaign_binding": binding,
+            **export_fields,
             TIMEOUT_FIELD: dict(manifest[TIMEOUT_FIELD]),
             "campaign_numerical_identity_sha256": manifest["candidate"]["numerical_identity_sha256"],
             "campaign_predecessor": {"id": previous["id"], "manifest_sha256": previous["manifest_sha256"],
@@ -562,6 +607,7 @@ def verify_campaign(bench, stage="run", inputs=None):
             or _read(report / "manifest.json") != manifest):
         raise ValueError("Campaign manifest or selected namespace changed")
     _registered_worker_timeouts(manifest, _read(report / "cases.json"))
+    validate_export_environment(manifest, required=stage not in HISTORICAL_STAGES)
     if Path(bench.BASELINE).resolve() != (Path(bench.LEGACY_WORK) / "baseline").resolve():
         raise ValueError("Campaign must use the one frozen baseline source")
     if bench.digest(bench.BASELINE_RECORD) != manifest["baseline"]["record_sha256"]:
@@ -599,6 +645,8 @@ def verify_campaign(bench, stage="run", inputs=None):
     if inputs is not None:
         record = inputs
         generation = record.get("generation", record)
+        validate_generation_environment(generation,
+            required=stage not in HISTORICAL_STAGES or "export_environment" in manifest)
         binding = record.get("campaign_binding", generation.get("campaign_binding"))
         if binding != campaign_binding(bench):
             raise ValueError("Recorded inputs belong to a different campaign")

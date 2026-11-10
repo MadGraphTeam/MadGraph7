@@ -120,6 +120,24 @@ Generated MG command files apply `--no_save` to every configuration-changing
 directory even when `XDG_CONFIG_HOME` is private. Historical command files and
 their effects are retained; this protection applies to future exports.
 
+## Deterministic export ordering
+
+Every new MG CLI child uses `PYTHONHASHSEED=0`, overriding an inherited random
+or different seed. New campaign manifests and fresh generation records bind
+this environment and its protocol version. Live generation, build, worker
+startup and resumed validation reject missing or changed required bindings.
+Seed metadata alone does not create a new numerical identity or reset a
+qualified failure.
+
+Reusing baseline objects does not repeat their original source generation.
+The reuse record distinguishes the current deterministic relink environment
+from the original export environment; an unrecorded historical seed remains
+explicitly unrecorded. Exact generated-source, object, dependency and executable
+proofs remain required. Historical unnamed records and older named manifests
+without seed fields remain readable for reporting, but an older named manifest
+cannot resume live execution without the required preregistration. Existing
+recorded fields must be internally valid even during read-only validation.
+
 ## Administrative worker deadlines
 
 Each new campaign manifest binds a positive deadline for every case, inherited

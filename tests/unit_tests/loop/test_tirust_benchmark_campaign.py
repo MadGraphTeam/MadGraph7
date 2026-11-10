@@ -94,6 +94,8 @@ class TestCampaign(unittest.TestCase):
         baseline = self.bench.BASELINE
         manifest = self.register()
         self.assertEqual(manifest[campaign.TIMEOUT_FIELD], {"example": 3600.0})
+        self.assertEqual(manifest["export_environment"], {"PYTHONHASHSEED": "0"})
+        self.assertEqual(manifest["export_environment_binding_version"], 1)
         self.assertEqual(manifest["predecessor"]["id"], "legacy")
         self.assertEqual(len(manifest["predecessor"]["qualified_failures"]), 1)
         context = campaign.activate_campaign(self.bench, "optimized")
@@ -120,6 +122,38 @@ class TestCampaign(unittest.TestCase):
         (directory / "alias").symlink_to(self.bench.ROOT)
         with self.assertRaisesRegex(ValueError, "symlink|escapes"):
             self.register("alias")
+
+    def test_prebinding_named_history_reads_without_inventing_seed_but_cannot_resume(self):
+        manifest = self.register()
+        for name in campaign.export_environment_binding():
+            manifest.pop(name)
+        write(self.bench.LEGACY_REPORT / "campaigns/optimized/manifest.json", manifest)
+        campaign.activate_campaign(self.bench, "optimized")
+        summary = campaign.verify_campaign(self.bench, stage="summarize")
+        self.assertNotIn("export_environment", summary)
+        self.assertNotIn("export_environment_binding_version", summary)
+        old_input = {"campaign_binding": campaign.campaign_binding(self.bench),
+                     "generation": {"source": "baseline"}}
+        campaign.verify_campaign(self.bench, stage="validate-retained", inputs=old_input)
+        with self.assertRaisesRegex(ValueError, "export environment"):
+            campaign.verify_campaign(self.bench, stage="generate")
+
+    def test_partial_or_changed_manifest_export_binding_is_not_historical(self):
+        manifest = self.register()
+        path = self.bench.LEGACY_REPORT / "campaigns/optimized/manifest.json"
+        for field, bad in (("export_environment", None),
+                           ("export_environment", {"PYTHONHASHSEED": "random"}),
+                           ("export_environment_binding_version", True)):
+            changed = dict(manifest, **{field: bad})
+            write(path, changed)
+            with self.subTest(field=field, bad=bad), self.assertRaisesRegex(ValueError, "export environment"):
+                campaign.activate_campaign(self.bench, "optimized")
+
+    def test_seed_metadata_alone_cannot_register_duplicate_numerical_identity(self):
+        self.register()
+        with patch.object(campaign, "EXPORT_ENVIRONMENT", {"PYTHONHASHSEED": "17"}):
+            with self.assertRaisesRegex(ValueError, "already registered"):
+                self.register("seed-metadata-only")
 
     def test_metadata_only_changes_do_not_reset_a_qualified_failure(self):
         self._install("original DSO\n")
@@ -201,7 +235,8 @@ class TestCampaign(unittest.TestCase):
         manifest = self.register()
         campaign.activate_campaign(self.bench, "optimized")
         files = manifest["candidate"]["native"]["files"]
-        inputs = {"generation": {"source": "candidate", "source_identity": manifest["candidate"]["exporter_identity"]},
+        inputs = {"generation": {"source": "candidate", "source_identity": manifest["candidate"]["exporter_identity"],
+                                 **campaign.export_environment_binding()},
                   "campaign_binding": campaign.campaign_binding(self.bench),
                   "runtime": {"libraries": {"/private/libmadloop_tirust.so": files[campaign.NATIVE_NAMES[0]],
                                             "/v1/libc.so": "one", "/v2/libc.so": "two"},
