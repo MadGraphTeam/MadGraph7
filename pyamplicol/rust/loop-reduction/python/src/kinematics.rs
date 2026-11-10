@@ -25,7 +25,11 @@ pub fn kinematics_policy() -> String {
 /// (`kinematics_improvement::applies`, the one key: the carrier kind), or
 /// None; a `ValueError` with the setting's refusal text for another value.
 #[pyfunction]
-pub fn kinematics_applies(setting: &str, binary64: bool, carrier: &str) -> PyResult<Option<&'static str>> {
+pub fn kinematics_applies(
+    setting: &str,
+    binary64: bool,
+    carrier: &str,
+) -> PyResult<Option<&'static str>> {
     let setting = ki::setting(setting).map_err(error)?;
     Ok(ki::applies(setting, binary64, carrier == "double").map(ki::Variant::name))
 }
@@ -47,12 +51,18 @@ pub fn arithmetic_of(arithmetic: &str, digits: Option<u32>) -> PyResult<Arithmet
 }
 
 /// MadLoop's input-sanity and move bounds, its defaults unless overridden.
-pub fn tolerances(fourmom: Option<f64>, onshell: Option<f64>, close: Option<f64>) -> PyResult<Tolerances> {
+pub fn tolerances(
+    fourmom: Option<f64>,
+    onshell: Option<f64>,
+    close: Option<f64>,
+) -> PyResult<Tolerances> {
     let defaults = Tolerances::default();
     let check = |value: Option<f64>, default: f64, name: &str| match value {
         None => Ok(default),
         Some(v) if v.is_finite() && v > 0.0 => Ok(v),
-        Some(_) => Err(error(format!("the kinematics improvement's {name} tolerance is a finite positive number"))),
+        Some(_) => Err(error(format!(
+            "the kinematics improvement's {name} tolerance is a finite positive number"
+        ))),
     };
     Ok(Tolerances {
         fourmom: check(fourmom, defaults.fourmom, "fourmom")?,
@@ -125,7 +135,17 @@ pub fn improve_kinematics(
     let out = py.detach(|| {
         parsed
             .iter()
-            .map(|legs| ki::improve_exact(legs, n_initial, &masses, arithmetic, variant, fallback, &tolerances))
+            .map(|legs| {
+                ki::improve_exact(
+                    legs,
+                    n_initial,
+                    &masses,
+                    arithmetic,
+                    variant,
+                    fallback,
+                    &tolerances,
+                )
+            })
             .collect::<Vec<_>>()
     });
     Ok(out

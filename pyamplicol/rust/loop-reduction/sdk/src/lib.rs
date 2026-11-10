@@ -18,13 +18,13 @@ use rusticol_loop_reduction::runtime::{Batch, Data};
 use rusticol_loop_reduction::v2_runtime::induced_outputs::{
     AMPLITUDE_BASIS, CONTRACTED, InducedCall, Resolution, anchor_id,
 };
+use rusticol_loop_reduction::v2_runtime::kinematics_improvement;
 use rusticol_loop_reduction::v2_runtime::{
     C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
     is_v2_artifact, named_parameters,
 };
 use rusticol_loop_reduction::v2_runtime::{Monitored, cross_reduction};
 use rusticol_loop_reduction::v2_stability::CROSS;
-use rusticol_loop_reduction::v2_runtime::kinematics_improvement;
 pub use rusticol_loop_reduction::v2_stability::{
     Estimate, Rotation, StabilityChecks, default_rotation,
 };
@@ -655,8 +655,10 @@ impl Runtime {
     }
     /// The kinematics improvement setting of later evaluations.
     pub fn kinematics_improvement(&self) -> &'static str {
-        self.kinematics
-            .map_or(kinematics_improvement::OFF, kinematics_improvement::Variant::name)
+        self.kinematics.map_or(
+            kinematics_improvement::OFF,
+            kinematics_improvement::Variant::name,
+        )
     }
     /// Whether binary64 evaluations are improved too (the Python API's
     /// `kinematics_improvement_binary64=`; off by default: a binary64
@@ -684,7 +686,8 @@ impl Runtime {
         let Some(variant) =
             kinematics_improvement::applies(self.kinematics, self.kinematics_binary64, double)
         else {
-            let off = vec![kinematics_off_record(self.kinematics_improvement()); inputs.point_ids.len()];
+            let off =
+                vec![kinematics_off_record(self.kinematics_improvement()); inputs.point_ids.len()];
             return Ok((inputs, Some(off)));
         };
         let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
@@ -696,7 +699,10 @@ impl Runtime {
             .iter()
             .flat_map(|point| point.iter().map(ToString::to_string))
             .collect();
-        Ok((inputs, Some(records.iter().map(|record| record.to_json()).collect())))
+        Ok((
+            inputs,
+            Some(records.iter().map(|record| record.to_json()).collect()),
+        ))
     }
     /// The process type: "virtual" (Born-interfered) or "loop-induced".
     pub fn contribution(&self) -> &str {
@@ -2336,8 +2342,7 @@ pub(crate) fn with_kinematics(
     let Some(records) = records else {
         return Ok(());
     };
-    let mut record: serde_json::Value =
-        serde_json::from_str(diagnostics).map_err(serialization)?;
+    let mut record: serde_json::Value = serde_json::from_str(diagnostics).map_err(serialization)?;
     record["kinematics"] = serde_json::Value::Array(records);
     *diagnostics = serde_json::to_string(&record).map_err(serialization)?;
     Ok(())

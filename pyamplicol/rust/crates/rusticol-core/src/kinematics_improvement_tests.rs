@@ -23,7 +23,12 @@ fn binary64_point(pairs: usize, masses: &[f64], frame: u32) -> (Vec<[f64; 4]>, V
         let (c, phi) = (-0.2 + 0.31 * k as f64, 0.4 + 2.1 * k as f64);
         let q = 60.0 + 23.0 * k as f64;
         let s = (1.0 - c * c).sqrt();
-        let p = [(m * m + q * q).sqrt(), q * s * phi.cos(), q * s * phi.sin(), q * c];
+        let p = [
+            (m * m + q * q).sqrt(),
+            q * s * phi.cos(),
+            q * s * phi.sin(),
+            q * c,
+        ];
         for mu in 1..4 {
             total[mu] += p[mu];
         }
@@ -37,7 +42,10 @@ fn binary64_point(pairs: usize, masses: &[f64], frame: u32) -> (Vec<[f64; 4]>, V
         finals.push([(2500.0 + q2).sqrt(), -total[1], -total[2], -total[3]]);
     }
     let energy: f64 = finals.iter().map(|p| p[0]).sum();
-    let mut legs = vec![[energy / 2.0, 0.0, 0.0, energy / 2.0], [energy / 2.0, 0.0, 0.0, -energy / 2.0]];
+    let mut legs = vec![
+        [energy / 2.0, 0.0, 0.0, energy / 2.0],
+        [energy / 2.0, 0.0, 0.0, -energy / 2.0],
+    ];
     legs.extend(finals);
     let mut m2 = vec![0.0, 0.0];
     m2.extend(std::iter::repeat_n(0.0, 2 * pairs));
@@ -46,7 +54,10 @@ fn binary64_point(pairs: usize, masses: &[f64], frame: u32) -> (Vec<[f64; 4]>, V
         m2.push(2500.0);
     }
     if frame > 0 {
-        legs = legs.iter().map(|p| boost(&rotate(p, 0.7, 1.1), [0.2, -0.15, 0.25])).collect();
+        legs = legs
+            .iter()
+            .map(|p| boost(&rotate(p, 0.7, 1.1), [0.2, -0.15, 0.25]))
+            .collect();
     }
     (legs, m2)
 }
@@ -93,10 +104,23 @@ fn the_default_and_the_carrier_key() {
 
 #[test]
 fn binary64_projection_is_exact_in_every_frame() {
-    for (pairs, masses) in [(1, vec![]), (2, vec![]), (1, vec![173.0, 125.0]), (3, vec![]), (2, vec![91.0, 80.0])] {
+    for (pairs, masses) in [
+        (1, vec![]),
+        (2, vec![]),
+        (1, vec![173.0, 125.0]),
+        (3, vec![]),
+        (2, vec![91.0, 80.0]),
+    ] {
         for frame in [0, 1] {
             let (legs, m2) = binary64_point(pairs, &masses, frame);
-            let out = improve(&legs, 2, &m2, Variant::Projection, true, &Tolerances::default());
+            let out = improve(
+                &legs,
+                2,
+                &m2,
+                Variant::Projection,
+                true,
+                &Tolerances::default(),
+            );
             let record = &out.record;
             assert_eq!(record.status, Status::Improved, "{record:?}");
             assert_eq!(record.produced, Some(Variant::Projection));
@@ -114,21 +138,47 @@ fn binary64_madloop_variants_and_the_default_chain() {
     // Beams along z: ORIG produces the point.
     let (legs, m2) = binary64_point(2, &[173.0], 0);
     let out = improve(&legs, 2, &m2, Variant::ZShift, true, &tolerances);
-    assert_eq!(out.record.produced, Some(Variant::ZShift), "{:?}", out.record);
-    assert_eq!(out.record.attempts, vec![Attempt { step: "z-shift", code: 0 }]);
+    assert_eq!(
+        out.record.produced,
+        Some(Variant::ZShift),
+        "{:?}",
+        out.record
+    );
+    assert_eq!(
+        out.record.attempts,
+        vec![Attempt {
+            step: "z-shift",
+            code: 0
+        }]
+    );
     // A generic frame: ORIG refuses (200), MadLoop's fallback PSMC produces
     // the point.
     let (legs, m2) = binary64_point(2, &[173.0], 1);
     let out = improve(&legs, 2, &m2, Variant::ZShift, true, &tolerances);
     assert_eq!(
         out.record.attempts,
-        vec![Attempt { step: "z-shift", code: 200 }, Attempt { step: "rescaling", code: 0 }]
+        vec![
+            Attempt {
+                step: "z-shift",
+                code: 200
+            },
+            Attempt {
+                step: "rescaling",
+                code: 0
+            }
+        ]
     );
     assert_eq!(out.record.produced, Some(Variant::Rescaling));
     // Forced ORIG there: refused, evaluated as given.
     let out = improve(&legs, 2, &m2, Variant::ZShift, false, &tolerances);
     assert_eq!(out.record.status, Status::NotImproved);
-    assert_eq!(out.record.attempts, vec![Attempt { step: "z-shift", code: 200 }]);
+    assert_eq!(
+        out.record.attempts,
+        vec![Attempt {
+            step: "z-shift",
+            code: 200
+        }]
+    );
     assert_eq!(out.legs, legs);
     assert_eq!(out.record.warning_kind(), Some(WARNING_NOT_IMPROVED));
 }
@@ -143,7 +193,7 @@ fn the_newton_cap_follows_the_carrier_digits() {
 #[cfg(feature = "symbolica-runtime")]
 mod exact_points {
     use super::super::*;
-    use symbolica::domains::float::{DoubleFloat, Float, RealLike, SingleFloat};
+    use symbolica::domains::float::{DoubleFloat, Float, Real, SingleFloat};
     use symbolica::domains::rational::Rational;
 
     fn q(n: i64, d: i64) -> Rational {
@@ -157,7 +207,8 @@ mod exact_points {
     type Leg = [Rational; 4];
 
     fn mass2(leg: &Leg) -> Rational {
-        &(&(&(&leg[0] * &leg[0]) - &(&leg[1] * &leg[1])) - &(&leg[2] * &leg[2])) - &(&leg[3] * &leg[3])
+        &(&(&(&leg[0] * &leg[0]) - &(&leg[1] * &leg[1])) - &(&leg[2] * &leg[2]))
+            - &(&leg[3] * &leg[3])
     }
 
     /// Massless Pythagorean directions (|p| integer).
@@ -182,7 +233,12 @@ mod exact_points {
             let s = q(20 + 7 * k as i64, 3);
             let leg = [&r(e) * &s, &r(x) * &s, &r(y) * &s, &r(z) * &s];
             finals.push(leg.clone());
-            finals.push([leg[0].clone(), -leg[1].clone(), -leg[2].clone(), -leg[3].clone()]);
+            finals.push([
+                leg[0].clone(),
+                -leg[1].clone(),
+                -leg[2].clone(),
+                -leg[3].clone(),
+            ]);
         }
         let mut px = r(0);
         let mut py = r(0);
@@ -193,7 +249,12 @@ mod exact_points {
                 // momentum.
                 [r(0), -px.clone(), -py.clone(), q(-13 - 5 * k as i64, 3)]
             } else {
-                [r(0), q(17 + 3 * k as i64, 2), q(-11 + 4 * k as i64, 3), q(29 - 9 * k as i64, 4)]
+                [
+                    r(0),
+                    q(17 + 3 * k as i64, 2),
+                    q(-11 + 4 * k as i64, 3),
+                    q(29 - 9 * k as i64, 4),
+                ]
             };
             px = &px + &leg[1];
             py = &py + &leg[2];
@@ -244,7 +305,14 @@ mod exact_points {
     fn zboost(legs: &[Leg]) -> Vec<Leg> {
         let (g, bg) = (q(5, 4), q(3, 4));
         legs.iter()
-            .map(|p| [&(&g * &p[0]) + &(&bg * &p[3]), p[1].clone(), p[2].clone(), &(&bg * &p[0]) + &(&g * &p[3])])
+            .map(|p| {
+                [
+                    &(&g * &p[0]) + &(&bg * &p[3]),
+                    p[1].clone(),
+                    p[2].clone(),
+                    &(&bg * &p[0]) + &(&g * &p[3]),
+                ]
+            })
             .collect()
     }
 
@@ -257,9 +325,7 @@ mod exact_points {
         legs.iter()
             .map(|p| {
                 let s: Vec<Rational> = (0..3)
-                    .map(|i| {
-                        (0..3).fold(r(0), |acc, j| &acc + &(&q(rot[i][j], 30) * &p[j + 1]))
-                    })
+                    .map(|i| (0..3).fold(r(0), |acc, j| &acc + &(&q(rot[i][j], 30) * &p[j + 1])))
                     .collect();
                 let np = (0..3).fold(r(0), |acc, i| &acc + &(&n[i] * &s[i]));
                 let e = &(&g * &p[0]) + &(&bg * &np);
@@ -276,7 +342,10 @@ mod exact_points {
 
     fn binary64(legs: &[Leg]) -> Vec<Leg> {
         legs.iter()
-            .map(|leg| leg.each_ref().map(|x| Rational::try_from(x.to_f64()).unwrap()))
+            .map(|leg| {
+                leg.each_ref()
+                    .map(|x| Rational::try_from(x.to_f64()).unwrap())
+            })
             .collect()
     }
 
@@ -294,7 +363,11 @@ mod exact_points {
         for mu in 0..4 {
             let mut sum = r(0);
             for (k, leg) in legs.iter().enumerate() {
-                sum = if k < n_initial { &sum + &leg[mu] } else { &sum - &leg[mu] };
+                sum = if k < n_initial {
+                    &sum + &leg[mu]
+                } else {
+                    &sum - &leg[mu]
+                };
             }
             conservation = conservation.max((&sum.abs() / &scale).to_f64());
         }
@@ -317,14 +390,26 @@ mod exact_points {
     }
 
     /// The exact defects within the record's bounds.
-    fn assert_exact(out: &[Leg], n_initial: usize, m2: &[Rational], arithmetic: Arithmetic, record: &Record) {
+    fn assert_exact(
+        out: &[Leg],
+        n_initial: usize,
+        m2: &[Rational],
+        arithmetic: Arithmetic,
+        record: &Record,
+    ) {
         let e = record.exactness.as_ref().expect("an improved point");
         assert!(e.exact, "{arithmetic:?}: {record:?}");
         let (shell, conservation) = exact_defects(out, n_initial, m2);
         let n = out.len() as f64;
         let u = unit_roundoff(arithmetic);
-        assert!(shell <= (2.0 * n + 5.0) * u, "{arithmetic:?}: shell {shell:e} {record:?}");
-        assert!(conservation <= 2.0 * n * u, "{arithmetic:?}: conservation {conservation:e} {record:?}");
+        assert!(
+            shell <= (2.0 * n + 5.0) * u,
+            "{arithmetic:?}: shell {shell:e} {record:?}"
+        );
+        assert!(
+            conservation <= 2.0 * n * u,
+            "{arithmetic:?}: conservation {conservation:e} {record:?}"
+        );
     }
 
     fn sets() -> Vec<(&'static str, Vec<Leg>, Vec<Rational>, usize, bool)> {
@@ -355,7 +440,10 @@ mod exact_points {
             let masses: Vec<Option<Rational>> = m2.iter().cloned().map(Some).collect();
             assert!(exactly_physical(&legs, n_initial, &masses), "{name}");
             // Their binary64 roundings are not.
-            assert!(!exactly_physical(&binary64(&legs), n_initial, &masses), "{name}");
+            assert!(
+                !exactly_physical(&binary64(&legs), n_initial, &masses),
+                "{name}"
+            );
         }
     }
 
@@ -364,7 +452,15 @@ mod exact_points {
         let (legs, m2) = scattering(2, 0, 0);
         let masses: Vec<Option<Rational>> = m2.into_iter().map(Some).collect();
         for arithmetic in CARRIERS {
-            let (out, record) = improve_exact(&legs, 2, &masses, arithmetic, Variant::ZShift, true, &Tolerances::default());
+            let (out, record) = improve_exact(
+                &legs,
+                2,
+                &masses,
+                arithmetic,
+                Variant::ZShift,
+                true,
+                &Tolerances::default(),
+            );
             assert_eq!(out, legs);
             assert_eq!(record.status, Status::Exact);
             assert!(record.warning().is_none());
@@ -377,17 +473,36 @@ mod exact_points {
             let input = binary64(&legs);
             let masses: Vec<Option<Rational>> = m2.iter().cloned().map(Some).collect();
             for arithmetic in CARRIERS {
-                let (out, record) = improve_exact(&input, n_initial, &masses, arithmetic, Variant::Projection, true, &Tolerances::default());
-                assert_eq!(record.produced, Some(Variant::Projection), "{name} {arithmetic:?}");
+                let (out, record) = improve_exact(
+                    &input,
+                    n_initial,
+                    &masses,
+                    arithmetic,
+                    Variant::Projection,
+                    true,
+                    &Tolerances::default(),
+                );
+                assert_eq!(
+                    record.produced,
+                    Some(Variant::Projection),
+                    "{name} {arithmetic:?}"
+                );
                 assert_exact(&out, n_initial, &m2, arithmetic, &record);
                 // Quadratic convergence from the binary64 input: 1 to 3 steps
                 // above binary64; in binary64 the rounded input may already
                 // lie within the carrier's own bound (0 steps).
                 let steps = record.iterations.unwrap();
                 let fewest = u32::from(arithmetic != Arithmetic::Binary64);
-                assert!((fewest..=4).contains(&steps), "{name} {arithmetic:?}: {steps} steps");
+                assert!(
+                    (fewest..=4).contains(&steps),
+                    "{name} {arithmetic:?}: {steps} steps"
+                );
                 // The move is of the input's own defect.
-                assert!(record.moved < 1e-14, "{name} {arithmetic:?}: moved {}", record.moved);
+                assert!(
+                    record.moved < 1e-14,
+                    "{name} {arithmetic:?}: moved {}",
+                    record.moved
+                );
             }
         }
     }
@@ -399,9 +514,21 @@ mod exact_points {
             let masses: Vec<Option<Rational>> = m2.iter().cloned().map(Some).collect();
             let massless_beams = n_initial == 2 && m2[0].is_zero() && m2[1].is_zero();
             for arithmetic in CARRIERS {
-                let (out, record) = improve_exact(&input, n_initial, &masses, arithmetic, Variant::ZShift, false, &Tolerances::default());
+                let (out, record) = improve_exact(
+                    &input,
+                    n_initial,
+                    &masses,
+                    arithmetic,
+                    Variant::ZShift,
+                    false,
+                    &Tolerances::default(),
+                );
                 if beams_along_z && massless_beams {
-                    assert_eq!(record.produced, Some(Variant::ZShift), "{name} {arithmetic:?}");
+                    assert_eq!(
+                        record.produced,
+                        Some(Variant::ZShift),
+                        "{name} {arithmetic:?}"
+                    );
                     assert_exact(&out, n_initial, &m2, arithmetic, &record);
                 } else {
                     assert_eq!(record.status, Status::NotImproved, "{name} {arithmetic:?}");
@@ -413,19 +540,37 @@ mod exact_points {
                 // PSMC: exact shells everywhere; its conservation exact only
                 // where x = 1 (the decay at rest), else its residual
                 // (x² - x) p₁ is flagged by the exactness record.
-                let (out, record) = improve_exact(&input, n_initial, &masses, arithmetic, Variant::Rescaling, false, &Tolerances::default());
-                assert_eq!(record.produced, Some(Variant::Rescaling), "{name} {arithmetic:?}: {record:?}");
+                let (out, record) = improve_exact(
+                    &input,
+                    n_initial,
+                    &masses,
+                    arithmetic,
+                    Variant::Rescaling,
+                    false,
+                    &Tolerances::default(),
+                );
+                assert_eq!(
+                    record.produced,
+                    Some(Variant::Rescaling),
+                    "{name} {arithmetic:?}: {record:?}"
+                );
                 let (shell, conservation) = exact_defects(&out, n_initial, &m2);
                 let n = out.len() as f64;
                 let u = unit_roundoff(arithmetic);
                 assert!(shell <= (2.0 * n + 5.0) * u, "{name} {arithmetic:?}");
                 let e = record.exactness.as_ref().unwrap();
                 if name == "1->3 at rest" {
-                    assert!(e.exact && conservation <= 2.0 * n * u, "{name} {arithmetic:?}: {record:?}");
+                    assert!(
+                        e.exact && conservation <= 2.0 * n * u,
+                        "{name} {arithmetic:?}: {record:?}"
+                    );
                 } else if arithmetic != Arithmetic::Binary64 {
                     // (x² - x) p₁ ~ the input's own defect, far above the
                     // extended carriers' rounding.
-                    assert!(!e.exact && conservation > 2.0 * n * u, "{name} {arithmetic:?}: {record:?}");
+                    assert!(
+                        !e.exact && conservation > 2.0 * n * u,
+                        "{name} {arithmetic:?}: {record:?}"
+                    );
                     assert_eq!(record.warning_kind(), Some(WARNING_INEXACT));
                     assert!(record.warning().unwrap().contains("rescaling"));
                 }
@@ -440,21 +585,56 @@ mod exact_points {
             let input = binary64(&legs);
             let masses: Vec<Option<Rational>> = m2.iter().cloned().map(Some).collect();
             let massless_beams = n_initial == 2 && m2[0].is_zero() && m2[1].is_zero();
-            let (out, record) =
-                improve_exact(&input, n_initial, &masses, Arithmetic::DoubleDouble, DEFAULT_VARIANT, true, &Tolerances::default());
+            let (out, record) = improve_exact(
+                &input,
+                n_initial,
+                &masses,
+                Arithmetic::DoubleDouble,
+                DEFAULT_VARIANT,
+                true,
+                &Tolerances::default(),
+            );
             if beams_along_z && massless_beams {
-                assert_eq!(record.attempts, vec![Attempt { step: "z-shift", code: 0 }], "{name}");
+                assert_eq!(
+                    record.attempts,
+                    vec![Attempt {
+                        step: "z-shift",
+                        code: 0
+                    }],
+                    "{name}"
+                );
                 assert_exact(&out, n_initial, &m2, Arithmetic::DoubleDouble, &record);
             } else {
                 assert_eq!(record.attempts.len(), 2, "{name}: {record:?}");
                 assert_ne!(record.attempts[0].code, 0);
-                assert_eq!(record.attempts[1], Attempt { step: "rescaling", code: 0 }, "{name}");
+                assert_eq!(
+                    record.attempts[1],
+                    Attempt {
+                        step: "rescaling",
+                        code: 0
+                    },
+                    "{name}"
+                );
                 assert_eq!(record.produced, Some(Variant::Rescaling));
             }
             // 'rescaling': PSMC first.
-            let (_, record) =
-                improve_exact(&input, n_initial, &masses, Arithmetic::DoubleDouble, Variant::Rescaling, true, &Tolerances::default());
-            assert_eq!(record.attempts, vec![Attempt { step: "rescaling", code: 0 }], "{name}");
+            let (_, record) = improve_exact(
+                &input,
+                n_initial,
+                &masses,
+                Arithmetic::DoubleDouble,
+                Variant::Rescaling,
+                true,
+                &Tolerances::default(),
+            );
+            assert_eq!(
+                record.attempts,
+                vec![Attempt {
+                    step: "rescaling",
+                    code: 0
+                }],
+                "{name}"
+            );
         }
     }
 
@@ -471,25 +651,76 @@ mod exact_points {
         let masses = masses_of(&m2);
         for arithmetic in CARRIERS {
             for variant in [Variant::ZShift, Variant::Rescaling] {
-                let (out, record) = improve_exact(&input, 2, &masses, arithmetic, variant, true, &Tolerances::default());
+                let (out, record) = improve_exact(
+                    &input,
+                    2,
+                    &masses,
+                    arithmetic,
+                    variant,
+                    true,
+                    &Tolerances::default(),
+                );
                 assert_eq!(record.status, Status::NotImproved);
-                assert_eq!(record.attempts, vec![Attempt { step: "is_physical", code: CODE_NOT_PHYSICAL }]);
+                assert_eq!(
+                    record.attempts,
+                    vec![Attempt {
+                        step: "is_physical",
+                        code: CODE_NOT_PHYSICAL
+                    }]
+                );
                 assert_eq!(out, input);
                 assert!(record.warning().unwrap().contains("is_physical 1"));
             }
             // The projection: no IS_PHYSICAL test, bounded by IS_CLOSE.
-            let (out, record) = improve_exact(&input, 2, &masses, arithmetic, Variant::Projection, true, &Tolerances::default());
+            let (out, record) = improve_exact(
+                &input,
+                2,
+                &masses,
+                arithmetic,
+                Variant::Projection,
+                true,
+                &Tolerances::default(),
+            );
             assert_eq!(record.produced, Some(Variant::Projection), "{arithmetic:?}");
             assert_exact(&out, 2, &m2, arithmetic, &record);
             // A move above IS_CLOSE: refused (999), evaluated as given.
-            let tight = Tolerances { close: 1e-6, ..Tolerances::default() };
-            let (out, record) = improve_exact(&input, 2, &masses, arithmetic, Variant::Projection, true, &tight);
+            let tight = Tolerances {
+                close: 1e-6,
+                ..Tolerances::default()
+            };
+            let (out, record) = improve_exact(
+                &input,
+                2,
+                &masses,
+                arithmetic,
+                Variant::Projection,
+                true,
+                &tight,
+            );
             assert_eq!(record.status, Status::NotImproved);
-            assert_eq!(record.attempts, vec![Attempt { step: "projection", code: CODE_NOT_CLOSE }]);
+            assert_eq!(
+                record.attempts,
+                vec![Attempt {
+                    step: "projection",
+                    code: CODE_NOT_CLOSE
+                }]
+            );
             assert_eq!(out, input);
             // Overridden IS_PHYSICAL tolerances admit it to MadLoop's chain.
-            let loose = Tolerances { onshell: 0.5, fourmom: 1e-2, ..Tolerances::default() };
-            let (_, record) = improve_exact(&input, 2, &masses, arithmetic, Variant::ZShift, true, &loose);
+            let loose = Tolerances {
+                onshell: 0.5,
+                fourmom: 1e-2,
+                ..Tolerances::default()
+            };
+            let (_, record) = improve_exact(
+                &input,
+                2,
+                &masses,
+                arithmetic,
+                Variant::ZShift,
+                true,
+                &loose,
+            );
             assert_eq!(record.status, Status::Improved, "{arithmetic:?}");
         }
     }
@@ -500,20 +731,48 @@ mod exact_points {
         let dd = Arithmetic::DoubleDouble;
         // 300: massive initial states (1 -> n: 300 overwrites 100 / 200).
         let (legs, m2) = decay();
-        let (_, record) = improve_exact(&binary64(&legs), 1, &masses_of(&m2), dd, Variant::ZShift, false, &tolerances);
+        let (_, record) = improve_exact(
+            &binary64(&legs),
+            1,
+            &masses_of(&m2),
+            dd,
+            Variant::ZShift,
+            false,
+            &tolerances,
+        );
         assert_eq!(record.attempts[0].code, 300);
         // 100 alone: a 1 -> n point with a massless "initial" state is not
         // physical; use NINITIAL != 2 on a 2 -> 2 point read as 1 -> 3
         // with loose IS_PHYSICAL tolerances: 100, overwritten by 200 (leg
         // 2's transverse momentum) — the order of MadLoop's tests.
         let (legs, m2) = scattering(1, 0, 0);
-        let loose = Tolerances { fourmom: 10.0, onshell: 10.0, close: 10.0 };
-        let (_, record) = improve_exact(&binary64(&legs), 1, &masses_of(&m2), dd, Variant::ZShift, false, &loose);
+        let loose = Tolerances {
+            fourmom: 10.0,
+            onshell: 10.0,
+            close: 10.0,
+        };
+        let (_, record) = improve_exact(
+            &binary64(&legs),
+            1,
+            &masses_of(&m2),
+            dd,
+            Variant::ZShift,
+            false,
+            &loose,
+        );
         assert_eq!(record.attempts[0].code, 100);
         // 400 + I: a negative energy (leg 3).
         let mut negative = binary64(&legs);
         negative[2] = negative[2].each_ref().map(|x| -x.clone());
-        let (_, record) = improve_exact(&negative, 2, &masses_of(&m2), dd, Variant::ZShift, false, &loose);
+        let (_, record) = improve_exact(
+            &negative,
+            2,
+            &masses_of(&m2),
+            dd,
+            Variant::ZShift,
+            false,
+            &loose,
+        );
         assert_eq!(record.attempts[0].code, 403);
         // 500: neither initial state with pz > 0.
         let beams = vec![
@@ -522,29 +781,78 @@ mod exact_points {
             [q(151, 10), r(0), r(0), r(-15)],
         ];
         let m2b = vec![r(0), r(0), mass2(&beams[2])];
-        let (_, record) = improve_exact(&binary64(&beams), 2, &masses_of(&m2b), dd, Variant::ZShift, false, &loose);
+        let (_, record) = improve_exact(
+            &binary64(&beams),
+            2,
+            &masses_of(&m2b),
+            dd,
+            Variant::ZShift,
+            false,
+            &loose,
+        );
         assert_eq!(record.attempts[0].code, 500);
         // 999: IS_CLOSE (an overridden THRS_CLOSE below the move).
         let (legs, m2) = scattering(1, 2, 0);
         let input = binary64(&legs);
-        let tight = Tolerances { close: 1e-30, ..Tolerances::default() };
-        let (_, record) = improve_exact(&input, 2, &masses_of(&m2), dd, Variant::ZShift, false, &tight);
+        let tight = Tolerances {
+            close: 1e-30,
+            ..Tolerances::default()
+        };
+        let (_, record) = improve_exact(
+            &input,
+            2,
+            &masses_of(&m2),
+            dd,
+            Variant::ZShift,
+            false,
+            &tight,
+        );
         assert_eq!(record.attempts[0].code, CODE_NOT_CLOSE);
-        let (_, record) = improve_exact(&input, 2, &masses_of(&m2), dd, Variant::Rescaling, false, &tight);
+        let (_, record) = improve_exact(
+            &input,
+            2,
+            &masses_of(&m2),
+            dd,
+            Variant::Rescaling,
+            false,
+            &tight,
+        );
         assert_eq!(record.attempts[0].code, CODE_NOT_CLOSE);
         // PSMC's Newton finds no x (the final masses exceed the energy):
         // 9 + 90 + 900 + 1000.
         let mut heavy = m2.clone();
         heavy[4] = &heavy[4] * &r(100);
         heavy[5] = &heavy[5] * &r(100);
-        let (_, record) = improve_exact(&input, 2, &masses_of(&heavy), dd, Variant::Rescaling, false, &loose);
+        let (_, record) = improve_exact(
+            &input,
+            2,
+            &masses_of(&heavy),
+            dd,
+            Variant::Rescaling,
+            false,
+            &loose,
+        );
         assert!(record.attempts[0].code > 1000, "{record:?}");
         // Both refusing: evaluated as given, typed, both codes.
         let generic_point = generic(&legs);
-        let (out, record) = improve_exact(&binary64(&generic_point), 2, &masses_of(&heavy), dd, Variant::ZShift, true, &loose);
+        let (out, record) = improve_exact(
+            &binary64(&generic_point),
+            2,
+            &masses_of(&heavy),
+            dd,
+            Variant::ZShift,
+            true,
+            &loose,
+        );
         assert_eq!(record.status, Status::NotImproved);
         assert_eq!(record.attempts.len(), 2);
-        assert_eq!(record.attempts[0], Attempt { step: "z-shift", code: 200 });
+        assert_eq!(
+            record.attempts[0],
+            Attempt {
+                step: "z-shift",
+                code: 200
+            }
+        );
         assert!(record.attempts[1].code > 1000, "{record:?}");
         assert_eq!(out, binary64(&generic_point));
     }
@@ -558,7 +866,19 @@ mod exact_points {
             input[3][1] = &input[3][1] * &factor;
             let outcomes: Vec<Status> = CARRIERS
                 .iter()
-                .map(|&a| improve_exact(&input, 2, &masses, a, Variant::ZShift, false, &Tolerances::default()).1.status)
+                .map(|&a| {
+                    improve_exact(
+                        &input,
+                        2,
+                        &masses,
+                        a,
+                        Variant::ZShift,
+                        false,
+                        &Tolerances::default(),
+                    )
+                    .1
+                    .status
+                })
                 .collect();
             assert!(outcomes.iter().all(|s| *s == outcomes[0]), "{outcomes:?}");
         }
@@ -569,10 +889,30 @@ mod exact_points {
         for (name, legs, m2, n_initial, _) in sets() {
             let masses = masses_of(&m2);
             for arithmetic in [Arithmetic::DoubleDouble, Arithmetic::Arbitrary(170)] {
-                let (once, _) = improve_exact(&binary64(&legs), n_initial, &masses, arithmetic, Variant::Projection, true, &Tolerances::default());
-                let (twice, record) = improve_exact(&once, n_initial, &masses, arithmetic, Variant::Projection, true, &Tolerances::default());
+                let (once, _) = improve_exact(
+                    &binary64(&legs),
+                    n_initial,
+                    &masses,
+                    arithmetic,
+                    Variant::Projection,
+                    true,
+                    &Tolerances::default(),
+                );
+                let (twice, record) = improve_exact(
+                    &once,
+                    n_initial,
+                    &masses,
+                    arithmetic,
+                    Variant::Projection,
+                    true,
+                    &Tolerances::default(),
+                );
                 // Again: within the carrier's rounding (already exact there).
-                assert!(record.moved <= 4.0 * unit_roundoff(arithmetic), "{name} {arithmetic:?}: {}", record.moved);
+                assert!(
+                    record.moved <= 4.0 * unit_roundoff(arithmetic),
+                    "{name} {arithmetic:?}: {}",
+                    record.moved
+                );
                 assert_eq!(record.iterations, Some(0));
                 // Every invariant a single leg fixes (a single-leg subset or
                 // its complement) equals that leg's bound mass to the
@@ -587,12 +927,19 @@ mod exact_points {
                         if complement & (1 << j) != 0 {
                             for mu in 0..4 {
                                 // All-incoming momenta.
-                                p[mu] = if j < n_initial { &p[mu] + &leg[mu] } else { &p[mu] - &leg[mu] };
+                                p[mu] = if j < n_initial {
+                                    &p[mu] + &leg[mu]
+                                } else {
+                                    &p[mu] - &leg[mu]
+                                };
                             }
                         }
                     }
                     let defect = (&(&mass2(&p) - &m2[k]).abs() / &(&scale * &scale)).to_f64();
-                    assert!(defect <= 8.0 * n as f64 * unit_roundoff(arithmetic), "{name} {arithmetic:?} leg {k}: {defect:e}");
+                    assert!(
+                        defect <= 8.0 * n as f64 * unit_roundoff(arithmetic),
+                        "{name} {arithmetic:?} leg {k}: {defect:e}"
+                    );
                     let _ = twice.len();
                 }
             }
@@ -605,7 +952,15 @@ mod exact_points {
         let input = binary64(&legs);
         let mut masses = masses_of(&m2);
         masses[3] = None;
-        let (out, record) = improve_exact(&input, 2, &masses, Arithmetic::DoubleDouble, Variant::Projection, true, &Tolerances::default());
+        let (out, record) = improve_exact(
+            &input,
+            2,
+            &masses,
+            Arithmetic::DoubleDouble,
+            Variant::Projection,
+            true,
+            &Tolerances::default(),
+        );
         assert_eq!(record.produced, Some(Variant::Projection));
         // Its target: its own input p² (cast once).
         let mut targets = m2.clone();
@@ -622,8 +977,22 @@ mod exact_points {
         let mut masses = masses_of(&m2);
         masses.push(Some(r(0)));
         input[0][0] = &input[0][0] + &q(1, 1 << 40);
-        let (out, record) = improve_exact(&input, 2, &masses, Arithmetic::DoubleDouble, Variant::Projection, true, &Tolerances::default());
-        assert_eq!(record.attempts, vec![Attempt { step: "projection", code: CODE_PROJECTION_SINGULAR }]);
+        let (out, record) = improve_exact(
+            &input,
+            2,
+            &masses,
+            Arithmetic::DoubleDouble,
+            Variant::Projection,
+            true,
+            &Tolerances::default(),
+        );
+        assert_eq!(
+            record.attempts,
+            vec![Attempt {
+                step: "projection",
+                code: CODE_PROJECTION_SINGULAR
+            }]
+        );
         assert_eq!(out, input);
     }
 
@@ -631,8 +1000,59 @@ mod exact_points {
     fn the_carriers_round_trip_their_values() {
         let x = Rational::new(1, 3);
         let dd: DoubleFloat = (&x).into();
-        let f = Float::new(200).from_rational(&x);
+        let f = Mpfr(Float::new(200).from_rational(&x));
         assert!((PsReal::to_f64(&dd) - 1.0 / 3.0).abs() < 1e-16);
         assert!((PsReal::to_f64(&f) - 1.0 / 3.0).abs() < 1e-16);
+    }
+
+    /// The MPFR carrier keeps its full precision through a cancelling sum
+    /// (Symbolica's `Float` lowers it), so MadLoop 2's z-shift of a slow
+    /// final state is exact to the carrier's rounding (a slow Higgs whose
+    /// `E² - p_T² - m²` cancels about 37 bits).
+    #[test]
+    fn the_mpfr_carrier_keeps_its_precision_through_cancellation() {
+        let a = Mpfr(Float::new(200).from_rational(&q(125_000_001, 1_000_000)));
+        let b = Mpfr(Float::new(200).from_rational(&r(125)));
+        let d = a.clone() * a - b.clone() * b;
+        assert_eq!(PsReal::bits(&d), 200);
+        // A slow Higgs (pz = 2.5e-4 GeV, pT = 0.25 GeV) in a z-boosted
+        // massless-beam point, rounded to binary64.
+        let pt = q(1, 4);
+        let pz = q(1, 4000);
+        let m2 = r(125 * 125);
+        let e3 = (&(&(&m2 + &(&pt * &pt)) + &(&pz * &pz)))
+            .to_multi_prec_float(400)
+            .sqrt()
+            .to_rational();
+        let p4 = [r(900), -pt.clone(), r(0), r(850)];
+        let e4 = (&(&(&p4[1] * &p4[1]) + &(&p4[3] * &p4[3])) + &m2)
+            .to_multi_prec_float(400)
+            .sqrt()
+            .to_rational();
+        let total = &e3 + &e4;
+        let pzt = &pz + &p4[3];
+        let e1 = &(&total + &pzt) / &r(2);
+        let e2 = &(&total - &pzt) / &r(2);
+        let legs = binary64(&[
+            [e1.clone(), r(0), r(0), e1],
+            [e2.clone(), r(0), r(0), -e2],
+            [e3, pt, r(0), pz],
+            [e4, p4[1].clone(), r(0), p4[3].clone()],
+        ]);
+        let m2s = vec![r(0), r(0), m2.clone(), m2];
+        let masses = masses_of(&m2s);
+        for arithmetic in [Arithmetic::Arbitrary(173), Arithmetic::Arbitrary(340)] {
+            let (out, record) = improve_exact(
+                &legs,
+                2,
+                &masses,
+                arithmetic,
+                Variant::ZShift,
+                false,
+                &Tolerances::default(),
+            );
+            assert_eq!(record.produced, Some(Variant::ZShift), "{record:?}");
+            assert_exact(&out, 2, &m2s, arithmetic, &record);
+        }
     }
 }

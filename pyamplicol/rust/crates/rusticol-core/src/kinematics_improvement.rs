@@ -164,7 +164,11 @@ pub fn binary64_switch(value: i64) -> Result<bool, String> {
 /// variant setting and the binary64 switch. A binary64 carrier follows the
 /// switch (off by default); double-double and every arbitrary-precision
 /// carrier, at any requested digit count, follow the variant setting.
-pub fn applies(setting: Option<Variant>, binary64: bool, carrier_is_binary64: bool) -> Option<Variant> {
+pub fn applies(
+    setting: Option<Variant>,
+    binary64: bool,
+    carrier_is_binary64: bool,
+) -> Option<Variant> {
     if carrier_is_binary64 && !binary64 {
         return None;
     }
@@ -264,10 +268,108 @@ impl PsReal for f64 {
 }
 
 #[cfg(feature = "symbolica-runtime")]
+pub use symbolica_carriers::Mpfr;
+
+#[cfg(feature = "symbolica-runtime")]
 mod symbolica_carriers {
     use super::PsReal;
-    use symbolica::domains::float::{DoubleFloat, Float, FloatLike, Real, RealLike, SingleFloat};
+    use std::ops::{Add, Div, Mul, Neg, Sub};
+    use symbolica::domains::float::{
+        DoubleFloat, Float, FloatLike, Real, RealLike, RoundingDirection, SingleFloat,
+    };
     use symbolica::domains::rational::Rational;
+
+    /// An MPFR value of a fixed precision: every operation rounds to `bits`
+    /// binary digits (nearest). Symbolica's `Float` arithmetic tracks
+    /// significance and lowers a result's precision after a cancelling
+    /// sum, which would round the later steps of a variant (e.g. MadLoop 2's
+    /// z-shift of a slow particle, whose `E² - p_T² - m²` cancels) to fewer
+    /// digits than the carrier keeps; the improvement needs the carrier's
+    /// full precision in every step.
+    #[derive(Clone, Debug, PartialEq, PartialOrd)]
+    pub struct Mpfr(pub Float);
+
+    impl Mpfr {
+        fn bits(&self) -> u32 {
+            self.0.prec()
+        }
+    }
+
+    impl Add for Mpfr {
+        type Output = Self;
+        fn add(self, rhs: Self) -> Self {
+            let bits = self.bits().max(rhs.bits());
+            Mpfr(self.0.add_round(&rhs.0, bits, RoundingDirection::Nearest))
+        }
+    }
+
+    impl Sub for Mpfr {
+        type Output = Self;
+        fn sub(self, rhs: Self) -> Self {
+            let bits = self.bits().max(rhs.bits());
+            Mpfr(self.0.sub_round(&rhs.0, bits, RoundingDirection::Nearest))
+        }
+    }
+
+    impl Mul for Mpfr {
+        type Output = Self;
+        fn mul(self, rhs: Self) -> Self {
+            let bits = self.bits().max(rhs.bits());
+            Mpfr(self.0.mul_round(&rhs.0, bits, RoundingDirection::Nearest))
+        }
+    }
+
+    impl Div for Mpfr {
+        type Output = Self;
+        fn div(self, rhs: Self) -> Self {
+            let bits = self.bits().max(rhs.bits());
+            Mpfr(self.0.div_round(&rhs.0, bits, RoundingDirection::Nearest))
+        }
+    }
+
+    impl Neg for Mpfr {
+        type Output = Self;
+        fn neg(self) -> Self {
+            Mpfr(-self.0)
+        }
+    }
+
+    impl PsReal for Mpfr {
+        fn int(&self, value: i64) -> Self {
+            Mpfr(Float::with_val(self.bits(), value))
+        }
+        fn binary64(&self, value: f64) -> Self {
+            let exact = Rational::try_from(value).expect("a finite binary64 value");
+            Mpfr(Float::from_rational_round(
+                &exact,
+                self.bits(),
+                RoundingDirection::Nearest,
+            ))
+        }
+        fn sqrt(&self) -> Self {
+            let bits = self.bits();
+            let mut root = Real::sqrt(&self.0);
+            root.set_prec(bits);
+            Mpfr(root)
+        }
+        fn unit_roundoff(&self) -> Self {
+            // 2^-p, exactly.
+            Mpfr(
+                Float::with_val(self.bits(), 2)
+                    .pow(u64::from(self.bits()))
+                    .inv(),
+            )
+        }
+        fn bits(&self) -> u32 {
+            self.0.prec()
+        }
+        fn to_f64(&self) -> f64 {
+            RealLike::to_f64(&self.0)
+        }
+        fn finite(&self) -> bool {
+            SingleFloat::is_finite(&self.0)
+        }
+    }
 
     impl PsReal for DoubleFloat {
         fn int(&self, value: i64) -> Self {
@@ -286,34 +388,6 @@ mod symbolica_carriers {
         }
         fn bits(&self) -> u32 {
             FloatLike::get_precision(self)
-        }
-        fn to_f64(&self) -> f64 {
-            RealLike::to_f64(self)
-        }
-        fn finite(&self) -> bool {
-            SingleFloat::is_finite(self)
-        }
-    }
-
-    impl PsReal for Float {
-        fn int(&self, value: i64) -> Self {
-            FloatLike::from_i64(self, value)
-        }
-        fn binary64(&self, value: f64) -> Self {
-            let exact = Rational::try_from(value).expect("a finite binary64 value");
-            SingleFloat::from_rational(self, &exact)
-        }
-        fn sqrt(&self) -> Self {
-            Real::sqrt(self)
-        }
-        fn unit_roundoff(&self) -> Self {
-            // 2^-p, exactly.
-            FloatLike::from_i64(self, 2)
-                .pow(u64::from(self.prec()))
-                .inv()
-        }
-        fn bits(&self) -> u32 {
-            self.prec()
         }
         fn to_f64(&self) -> f64 {
             RealLike::to_f64(self)
@@ -443,7 +517,10 @@ impl Record {
                 codes()
             )),
             _ => {
-                let e = self.exactness.as_ref().expect("an inexact record has its exactness");
+                let e = self
+                    .exactness
+                    .as_ref()
+                    .expect("an inexact record has its exactness");
                 Some(format!(
                     "{WARNING_INEXACT}: the point produced by the {} variant misses exactness: \
                      shell defect {:.3e} (bound {:.3e}), conservation defect {:.3e} (bound \
@@ -527,7 +604,10 @@ pub fn improve<T: PsReal>(
     tolerances: &Tolerances,
 ) -> Improved<T> {
     assert_eq!(legs.len(), masses2.len(), "one squared mass per leg");
-    assert!(n_initial >= 1 && n_initial < legs.len(), "initial and final states");
+    assert!(
+        n_initial >= 1 && n_initial < legs.len(),
+        "initial and final states"
+    );
     let ctx = Ctx::new(&legs[0][0], legs.len(), tolerances);
     let mut record = Record {
         requested: variant,
@@ -668,7 +748,8 @@ impl<T: PsReal> Ctx<T> {
 
     /// `Σ_j |E_j|`.
     fn energy_scale(&self, legs: &[[T; 4]]) -> T {
-        legs.iter().fold(self.zero.clone(), |acc, leg| acc + leg[0].abs())
+        legs.iter()
+            .fold(self.zero.clone(), |acc, leg| acc + leg[0].abs())
     }
 
     /// improve_ps.inc IS_PHYSICAL, with the conservation defect's magnitude.
@@ -747,7 +828,8 @@ impl<T: PsReal> Ctx<T> {
         if n_initial != 2 {
             code = 100;
         }
-        let beam = |leg: usize, mu: usize| (p[leg][mu].clone() / reference.clone()).abs() > self.thrs_test;
+        let beam =
+            |leg: usize, mu: usize| (p[leg][mu].clone() / reference.clone()).abs() > self.thrs_test;
         if beam(0, 1) || beam(0, 2) || beam(1, 1) || beam(1, 2) {
             code = 200;
         }
@@ -767,7 +849,9 @@ impl<T: PsReal> Ctx<T> {
         for i in n_initial..n {
             for j in 0..4 {
                 if j == 3 {
-                    let value = (self.sq(&p[i][0]) - self.sq(&p[i][1]) - self.sq(&p[i][2])
+                    let value = (self.sq(&p[i][0])
+                        - self.sq(&p[i][1])
+                        - self.sq(&p[i][2])
                         - masses2[i].clone())
                     .abs()
                     .sqrt();
@@ -794,7 +878,10 @@ impl<T: PsReal> Ctx<T> {
         let e1 = p[p1][0].clone();
         let e2 = p[p2][0].clone();
         let shift_e1 = (t0.clone()
-            * (-two.clone() * e1.clone() * t0.clone() + self.sq(&t0) + self.sq(&t1) + self.sq(&t2))
+            * (-two.clone() * e1.clone() * t0.clone()
+                + self.sq(&t0)
+                + self.sq(&t1)
+                + self.sq(&t2))
             + (two.clone() * e1.clone() - t0.clone()) * self.sq(&t3)
             + t3.clone() * discr.clone())
             / (two.clone() * (t0.clone() - t3.clone()) * (t0.clone() + t3.clone()));
@@ -835,10 +922,21 @@ impl<T: PsReal> Ctx<T> {
 
     /// improve_ps.inc FUNCT: the energy balance (or its derivative as
     /// MadLoop codes it, particle 1's `2 x |p|² / E`) at `x`.
-    fn funct(&self, pvecsq: &[T], x: &T, derivative: bool, masses2: &[T], n_initial: usize) -> Result<T, i32> {
+    fn funct(
+        &self,
+        pvecsq: &[T],
+        x: &T,
+        derivative: bool,
+        masses2: &[T],
+        n_initial: usize,
+    ) -> Result<T, i32> {
         let mut res = self.zero.clone();
         for (i, (pv, m2)) in pvecsq.iter().zip(masses2).enumerate() {
-            let factor = if i < n_initial { self.int(-1) } else { self.int(1) };
+            let factor = if i < n_initial {
+                self.int(-1)
+            } else {
+                self.int(1)
+            };
             let x2 = x.clone() * x.clone();
             let buff = if i == 0 {
                 m2.clone() + pv.clone() * (x2.clone() * x2)
@@ -872,7 +970,9 @@ impl<T: PsReal> Ctx<T> {
         let energies = pvecsq
             .iter()
             .zip(masses2)
-            .fold(self.zero.clone(), |acc, (pv, m2)| acc + (m2.clone() + pv.clone()).abs().sqrt());
+            .fold(self.zero.clone(), |acc, (pv, m2)| {
+                acc + (m2.clone() + pv.clone()).abs().sqrt()
+            });
         // The rounding of the Newton step: f's bound (n + 3) u Σ E over |f'|.
         let rounding = self.int(2) * self.int(self.n as i64 + 3) * self.u.clone() * energies;
         let mut xn = seed;
@@ -881,7 +981,8 @@ impl<T: PsReal> Ctx<T> {
             let d = self.funct(&pvecsq, &xn, true, masses2, n_initial)?;
             let xnp1 = xn.clone() - f / d.clone();
             let converged = rounding.clone() / (d.abs() * xn.abs());
-            let step = ((xnp1.clone() - xn.clone()) * self.int(2) / (xnp1.clone() + xn.clone())).abs();
+            let step =
+                ((xnp1.clone() - xn.clone()) * self.int(2) / (xnp1.clone() + xn.clone())).abs();
             if step < converged {
                 // One last Newton step, for good measure (as MadLoop).
                 let f = self.funct(&pvecsq, &xnp1, false, masses2, n_initial)?;
@@ -895,7 +996,12 @@ impl<T: PsReal> Ctx<T> {
 
     /// improve_ps.inc PSMC_IMPROVE_PS_POINT_PRECISION (MadLoop 1): the
     /// improved point or the refusal code, and the scale factor x found.
-    fn psmc(&self, p: &[[T; 4]], masses2: &[T], n_initial: usize) -> (Result<Vec<[T; 4]>, i32>, Option<T>) {
+    fn psmc(
+        &self,
+        p: &[[T; 4]],
+        masses2: &[T],
+        n_initial: usize,
+    ) -> (Result<Vec<[T; 4]>, i32>, Option<T>) {
         let n = p.len();
         let zero = &self.zero;
         let mut new = p.to_vec();
@@ -913,7 +1019,11 @@ impl<T: PsReal> Ctx<T> {
         for j in 1..4 {
             new[n - 1][j] = buff[j].clone();
         }
-        let seeds = [self.int(1), self.int(11) / self.int(10), self.int(9) / self.int(10)];
+        let seeds = [
+            self.int(1),
+            self.int(11) / self.int(10),
+            self.int(9) / self.int(10),
+        ];
         let mut code = 0;
         let mut scale = None;
         for (i, seed) in seeds.into_iter().enumerate() {
@@ -973,7 +1083,11 @@ impl<T: PsReal> Ctx<T> {
             .iter()
             .zip(masses2)
             .map(|(leg, m2)| {
-                self.sq(&leg[0]) - self.sq(&leg[1]) - self.sq(&leg[2]) - self.sq(&leg[3]) - m2.clone()
+                self.sq(&leg[0])
+                    - self.sq(&leg[1])
+                    - self.sq(&leg[2])
+                    - self.sq(&leg[3])
+                    - m2.clone()
             })
             .collect();
         let mut conservation = [
@@ -1076,7 +1190,12 @@ impl<T: PsReal> Ctx<T> {
     /// step does not strictly decrease it (its rounding floor; the better
     /// point is kept and its exactness record states the residual). The
     /// strict decrease over the carrier's finitely many values terminates.
-    fn projection(&self, p: &[[T; 4]], masses2: &[T], n_initial: usize) -> (Result<Vec<[T; 4]>, i32>, u32) {
+    fn projection(
+        &self,
+        p: &[[T; 4]],
+        masses2: &[T],
+        n_initial: usize,
+    ) -> (Result<Vec<[T; 4]>, i32>, u32) {
         let n = p.len();
         let rows = n + 4;
         let mut x = p.to_vec();
@@ -1089,7 +1208,13 @@ impl<T: PsReal> Ctx<T> {
             // J (rows x 4n) by its nonzero structure: a shell row k has
             // 2 g_μμ x_k^μ on leg k; a conservation row μ has ±1 on every
             // leg's component μ (+ initial, - final).
-            let sign = |k: usize| if k < n_initial { one.clone() } else { -one.clone() };
+            let sign = |k: usize| {
+                if k < n_initial {
+                    one.clone()
+                } else {
+                    -one.clone()
+                }
+            };
             let metric = |mu: usize| if mu == 0 { one.clone() } else { -one.clone() };
             let shell_row = |k: usize, mu: usize| self.int(2) * metric(mu) * x[k][mu].clone();
             // A = J Jᵀ.
@@ -1115,7 +1240,8 @@ impl<T: PsReal> Ctx<T> {
             let mut y = x.clone();
             for k in 0..n {
                 for mu in 0..4 {
-                    let dx = shell_row(k, mu) * lambda[k].clone() + sign(k) * lambda[n + mu].clone();
+                    let dx =
+                        shell_row(k, mu) * lambda[k].clone() + sign(k) * lambda[n + mu].clone();
                     y[k][mu] = x[k][mu].clone() - dx;
                 }
             }
@@ -1146,7 +1272,11 @@ impl<T: PsReal> Ctx<T> {
             return None;
         }
         let s: Vec<Vec<T>> = (0..m)
-            .map(|i| (0..m).map(|j| a[i][j].clone() / (d[i].clone() * d[j].clone())).collect())
+            .map(|i| {
+                (0..m)
+                    .map(|j| a[i][j].clone() / (d[i].clone() * d[j].clone()))
+                    .collect()
+            })
             .collect();
         let rhs: Vec<T> = (0..m).map(|i| b[i].clone() / d[i].clone()).collect();
         let floor = self.int(m as i64) * self.u.clone();
@@ -1195,7 +1325,7 @@ pub use exact::{Arithmetic, exactly_physical, improve_exact};
 #[cfg(feature = "symbolica-runtime")]
 mod exact {
     use super::*;
-    use symbolica::domains::float::{DoubleFloat, Float, SingleFloat};
+    use symbolica::domains::float::{DoubleFloat, Float, RealLike, RoundingDirection};
     use symbolica::domains::integer::Integer;
     use symbolica::domains::rational::Rational;
 
@@ -1215,12 +1345,17 @@ mod exact {
     }
 
     fn square(leg: &[Rational; 4]) -> Rational {
-        &(&(&(&leg[0] * &leg[0]) - &(&leg[1] * &leg[1])) - &(&leg[2] * &leg[2])) - &(&leg[3] * &leg[3])
+        &(&(&(&leg[0] * &leg[0]) - &(&leg[1] * &leg[1])) - &(&leg[2] * &leg[2]))
+            - &(&leg[3] * &leg[3])
     }
 
     /// Whether a point is exactly on its shells (`masses2`; a leg without a
     /// bound mass is on its own) and exactly conserving.
-    pub fn exactly_physical(legs: &[[Rational; 4]], n_initial: usize, masses2: &[Option<Rational>]) -> bool {
+    pub fn exactly_physical(
+        legs: &[[Rational; 4]],
+        n_initial: usize,
+        masses2: &[Option<Rational>],
+    ) -> bool {
         let shells = legs.iter().zip(masses2).all(|(leg, m2)| match m2 {
             Some(m2) => square(leg) == *m2,
             None => true,
@@ -1229,7 +1364,11 @@ mod exact {
             && (0..4).all(|mu| {
                 let mut sum = Rational::from(0);
                 for (k, leg) in legs.iter().enumerate() {
-                    sum = if k < n_initial { &sum + &leg[mu] } else { &sum - &leg[mu] };
+                    sum = if k < n_initial {
+                        &sum + &leg[mu]
+                    } else {
+                        &sum - &leg[mu]
+                    };
                 }
                 sum.is_zero()
             })
@@ -1243,7 +1382,7 @@ mod exact {
             (Integer::Single(n), Integer::Single(d)) if n.abs() <= EXACT && *d <= EXACT => {
                 *n as f64 / *d as f64
             }
-            _ => value.to_multi_prec_float(f64::MANTISSA_DIGITS).to_f64(),
+            _ => RealLike::to_f64(&value.to_multi_prec_float(f64::MANTISSA_DIGITS)),
         }
     }
 
@@ -1261,7 +1400,11 @@ mod exact {
         let masses: Vec<T> = targets.iter().map(&cast).collect();
         let improved = improve(&carried, n_initial, &masses, variant, fallback, tolerances);
         if improved.record.status == Status::Improved {
-            let out = improved.legs.iter().map(|leg| leg.each_ref().map(&back)).collect();
+            let out = improved
+                .legs
+                .iter()
+                .map(|leg| leg.each_ref().map(&back))
+                .collect();
             (out, improved.record)
         } else {
             // Evaluated as given: the exact input itself (bitwise the
@@ -1320,19 +1463,22 @@ mod exact {
                         + &Rational::try_from(parts.lo()).expect("finite")
                 },
             ),
-            Arithmetic::Arbitrary(bits) => {
-                let zero = Float::new(bits);
-                run(
-                    legs,
-                    n_initial,
-                    &targets,
-                    variant,
-                    fallback,
-                    tolerances,
-                    |r: &Rational| zero.from_rational(r),
-                    |x: &Float| x.to_rational(),
-                )
-            }
+            Arithmetic::Arbitrary(bits) => run(
+                legs,
+                n_initial,
+                &targets,
+                variant,
+                fallback,
+                tolerances,
+                |r: &Rational| {
+                    Mpfr(Float::from_rational_round(
+                        r,
+                        bits,
+                        RoundingDirection::Nearest,
+                    ))
+                },
+                |x: &Mpfr| x.0.to_rational(),
+            ),
         }
     }
 }

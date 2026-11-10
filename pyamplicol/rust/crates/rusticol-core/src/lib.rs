@@ -20,8 +20,8 @@ mod eager_plan_v3_pacbin;
 mod eager_runtime;
 mod eager_tables;
 mod engine;
-pub mod kinematics_improvement;
 mod error;
+pub mod kinematics_improvement;
 #[cfg(feature = "symbolica-runtime")]
 mod licence;
 #[cfg(feature = "symbolica-runtime")]

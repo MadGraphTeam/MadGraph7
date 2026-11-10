@@ -1664,7 +1664,10 @@ impl V2Runtime {
             .iter()
             .take_while(|&&(_, initial, _)| initial)
             .count();
-        if self.record.legs[initial..].iter().any(|&(_, initial, _)| initial) {
+        if self.record.legs[initial..]
+            .iter()
+            .any(|&(_, initial, _)| initial)
+        {
             return Err(invalid(
                 "the kinematics improvement needs the initial states first",
             ));
@@ -1673,16 +1676,17 @@ impl V2Runtime {
         // bind` checks the masses equal at every point): one binding.
         let values = self.parameter_values()?;
         let masses = match precision {
-            V2Precision::Double => self.process.leg_masses(precision, &values, &scales[0], &0.0)?,
-            V2Precision::DoubleDouble => self.process.leg_masses(
-                precision,
-                &values,
-                &scales[0],
-                &DoubleFloat::from(0.0),
-            )?,
+            V2Precision::Double => self
+                .process
+                .leg_masses(precision, &values, &scales[0], &0.0)?,
+            V2Precision::DoubleDouble => {
+                self.process
+                    .leg_masses(precision, &values, &scales[0], &DoubleFloat::from(0.0))?
+            }
             V2Precision::Arbitrary(_) => {
                 let zero = Float::with_val(precision.bits()?, 0);
-                self.process.leg_masses(precision, &values, &scales[0], &zero)?
+                self.process
+                    .leg_masses(precision, &values, &scales[0], &zero)?
             }
         };
         let carrier = match precision {
@@ -1698,8 +1702,15 @@ impl V2Runtime {
                 .chunks_exact(4)
                 .map(|p| [p[0].clone(), p[1].clone(), p[2].clone(), p[3].clone()])
                 .collect();
-            let (out, record) =
-                improve_exact(&legs, initial, &masses, carrier, variant, fallback, &tolerances);
+            let (out, record) = improve_exact(
+                &legs,
+                initial,
+                &masses,
+                carrier,
+                variant,
+                fallback,
+                &tolerances,
+            );
             points.push(out.into_iter().flatten().collect());
             records.push(record);
         }

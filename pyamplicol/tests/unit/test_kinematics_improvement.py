@@ -314,12 +314,20 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
 def tree(tmp_path_factory):
     """u u~ > t t~ (built-in SM, recurrence) through the public Generator."""
 
-    from pyamplicol import Generator, ModelSource
+    from pyamplicol import ColorCorrelator, Generator, ModelSource
+    from pyamplicol.config import CorrelatorConfig
 
     from tests.integration.test_builtin_sm_normalization import _config
 
     artifact = tmp_path_factory.mktemp("ki-tree") / "artifact"
-    Generator(_config()).generate("u u~ > t t~", artifact, model=ModelSource.built_in_sm())
+    Generator(_config()).generate(
+        "u u~ > t t~",
+        artifact,
+        model=ModelSource.built_in_sm(),
+        correlators=CorrelatorConfig(
+            color_correlations=(ColorCorrelator.dipole("T13", 1, 3),)
+        ),
+    )
     return artifact
 
 

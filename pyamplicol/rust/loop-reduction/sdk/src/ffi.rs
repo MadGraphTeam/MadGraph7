@@ -406,7 +406,9 @@ pub unsafe extern "C" fn rusticol_virtual_set_kinematics_improvement_binary64(
 ) -> c_int {
     guard(|| unsafe {
         let binary64 = kinematics_improvement::binary64_switch(i64::from(binary64)).map_err(bad)?;
-        mutable(handle)?.0.set_kinematics_improvement_binary64(binary64);
+        mutable(handle)?
+            .0
+            .set_kinematics_improvement_binary64(binary64);
         Ok(())
     })
 }
