@@ -1356,9 +1356,7 @@ pub mod v2 {
                 TERM_SCALE_LANES,
                 units.iter().map(|g| g.keys.len() as u64).sum(),
             );
-            let (moments, _) = self
-                .backend
-                .reduce_term_scale(&units, self.options.poles)?;
+            let (moments, _) = self.backend.reduce_term_scale(&units, self.options.poles)?;
             let width = self.options.poles.width();
             let slots = self.plan.order_count * self.plan.columns;
             let sink = &mut *self.sink;
