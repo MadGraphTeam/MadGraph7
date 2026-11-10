@@ -39,6 +39,7 @@ from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
 from .loop_v2_stage_rows import stage_rows
 
 QCD = {"QCD": 99, "QED": 0}
+NIGHTLY = pytest.mark.loop_nightly
 POINT_SEEDS = (7, 23)
 # FeynKit evaluates its tensors and the model couplings in binary64.
 TOLERANCE = 1e-12
@@ -46,23 +47,92 @@ TOLERANCE = 1e-12
 # components 2,3 / 0,1 of the parity-mirrored kinematics; FeynKit therefore
 # evaluates the mirrored process (mirrored momenta and vectors).
 MIRROR = np.array([1.0, -1.0, -1.0, -1.0])
+# FeynKit's structural model has width-free propagators.
+WIDTH_FREE = {"WZ": 0, "WW": 0, "WT": 0, "WH": 0}
+
+
+def _dirac_to_feynkit(components):
+    """A tree-engine Dirac spinor (a massive fermion's source or current)
+    in Spenso's components of the mirrored kinematics: the tree engine lists
+    the chirality +1 block first, Spenso's mirrored frame holds it at 2, 3
+    (the Weyl map of ``MIRROR``'s comment): the two halves swap (an
+    involution, so the same map reads a FeynKit current back)."""
+
+    return np.concatenate([components[..., 2:4], components[..., 0:2]], axis=-1)
+
+
+def _width_free_propagator(model, particle_id, row, momentum, chirality):
+    """``model.propagator_component_expression`` with a zero width (FeynKit's
+    structural model has width-free propagators; the massive Dirac
+    propagator reads the model's width, which the tree values drop through
+    ``WIDTH_FREE``)."""
+
+    from pyamplicol.models.expressions import (
+        _expr_antifermion_propagator_dirac,
+        _expr_fermion_propagator_dirac,
+    )
+
+    metadata = model._propagator_ir(particle_id, chirality)
+    if (
+        metadata.applies_propagator
+        and metadata.kind == "dirac-fermion"
+        and metadata.mass_class != "massless"
+    ):
+        build = (
+            _expr_antifermion_propagator_dirac
+            if metadata.identity.orientation == "antiparticle"
+            else _expr_fermion_propagator_dirac
+        )
+        return build(tuple(row), tuple(momentum), float(model.mass(particle_id)), 0.0)
+    return model.propagator_component_expression(
+        particle_id, row, momentum, chirality=chirality
+    )
+
+
+def _goldstone_fields(model):
+    """The Goldstone fields' particle ids (both orientations), keyed by
+    their conjugate pair."""
+
+    pairs = {}
+    for name in model._goldstone_partner_records:
+        pdg = int(model._particle_records_by_name[name].pdg_code)
+        anti = int(model.particles[pdg].anti_pdg)
+        pairs[pdg] = pairs[anti] = frozenset((pdg, anti))
+    return pairs
+
+
+def _prepared_models(loop_sm_compiled_model, qed, gauge=None):
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model, with_model_gauge
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    if gauge is not None:
+        compiled = with_model_gauge(compiled, gauge)
+    structure = prepare_loop_request_model(
+        compiled,
+        born_order_bounds={"QCD": 5, "QED": qed},
+        loop_order_bounds={"QCD": 7, "QED": qed},
+    ).structure
+    return compiled, CompiledUFOModel(compiled), structure
+
+
+@pytest.fixture(scope="module")
+def ew_models(loop_sm_compiled_model):
+    """``models`` with electroweak bounds 4, in 't Hooft-Feynman gauge as an
+    electroweak request runs (``ew_policy.feynman_gauge_model``): e^3 and e^4
+    blocks of two quark lines whose bosons meet at a colour-singlet vertex.
+    Off-shell currents through a triple-gauge vertex depend on the gauge of
+    their massive vector propagators, so the oracle needs the same gauge."""
+
+    return _prepared_models(loop_sm_compiled_model, 4, "feynman")
 
 
 @pytest.fixture(scope="module")
 def models(loop_sm_compiled_model):
     """(compiled loop_sm, tree-engine model, prepared native loop structure)."""
 
-    from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.models.external import CompiledUFOModel
-    from pyamplicol.models.loading import load_compiled_model
-
-    compiled = load_compiled_model(loop_sm_compiled_model)
-    structure = prepare_loop_request_model(
-        compiled,
-        born_order_bounds={"QCD": 5, "QED": 2},
-        loop_order_bounds={"QCD": 7, "QED": 2},
-    ).structure
-    return compiled, CompiledUFOModel(compiled), structure
+    return _prepared_models(loop_sm_compiled_model, 2)
 
 
 def _process(compiled, text, accuracy="full"):
@@ -327,7 +397,12 @@ def _colour_tensor(word, x_representation, axes, representations, generators):
         operands.append(generators)
         subscripts.append(axis_letter["X"] + open_in + open_out)
     output = "".join(axis_letter[axis] for axis in axes)
-    tensor = np.einsum(",".join(subscripts) + "->" + output, *operands)
+    # A colourless word (a lepton current) has no colour factor.
+    tensor = (
+        np.einsum(",".join(subscripts) + "->" + output, *operands)
+        if operands
+        else np.ones(())
+    )
     adjoint_count = sum(1 for label in word if representations[label] == 8)
     return tensor * math.sqrt(2) ** (adjoint_count + (x_representation == 8))
 
@@ -358,7 +433,9 @@ def _feynkit_ordering_sign(pdgs, model):
     return -1 if inversions % 2 else 1
 
 
-def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
+def _assert_blocks_equal_feynkit(
+    models, text, seeds, orders, min_legs=2, max_legs=None
+):
     compiled, model, structure = models
     native = structure.native
     process = _process(compiled, text)
@@ -375,9 +452,18 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
     }
     pdgs = {label: int(leg.outgoing_pdg) for label, leg in legs.items()}
     oracle = _FeynKitTrees(native, model)
+    # A tree with one open Goldstone leg holds an odd number of Goldstone
+    # ends, so the field redefinition G -> -G (the phase of the Goldstone
+    # field, which no physical amplitude reads) flips it as a whole:
+    # FeynKit's structural model and the tree engine may differ by it. Each
+    # Goldstone pair is compared up to one sign, the same for every group.
+    goldstones = _goldstone_fields(model)
+    phases = {}
     groups = {}
     for block in blocks.blocks:
         if len(block.key.word) < min_legs or block.key.auxiliary_kind is not None:
+            continue
+        if max_legs is not None and len(block.key.word) > max_legs:
             continue
         group = (
             block.key.external_mask,
@@ -390,7 +476,7 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
     for seed in seeds:
         point = _point(dag, model, seed)
         # FeynKit's structural model has width-free propagators.
-        values = _current_values(dag, model, point, parameters={"WZ": 0, "WW": 0})
+        values = _current_values(dag, model, point, parameters=WIDTH_FREE)
         momenta = {
             label: np.array(
                 [-float(x) if legs[label].is_initial else float(x) for x in vector]
@@ -411,12 +497,13 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
             names = [native.particle_by_pdg(pdgs[label]).name for label in labels] + [
                 native.particle_by_pdg(x_bar).name
             ]
-            # Spinor chains are read from the outgoing quarks, including the
-            # open end of an antiquark current.
+            # Spinor chains are read from the outgoing fermions (quarks and
+            # colour-singlet fermions alike), including the open end of an
+            # antifermion current.
             starts = [
                 index
                 for index, pdg in enumerate([*(pdgs[label] for label in labels), x_bar])
-                if model.is_fermion(pdg) and model.color_rep(pdg) == 3
+                if model.is_fermion(pdg) and model.source_orientation(pdg) == "particle"
             ]
             total = sum(momenta[label] for label in labels)
             # FeynKit signs every diagram by its external fermion ordering;
@@ -425,13 +512,26 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
             feynkit_sign = _feynkit_ordering_sign(
                 [*(pdgs[label] for label in labels), x_bar], model
             )
-            assert {block.pairing_sign for block in members} == {feynkit_sign}
+            leg_pdgs = [pdgs[label] for label in labels]
+            # The exterior sign of a colour-singlet fermion leg (a lepton) is
+            # the colour-flow convention's, applied where the loop joins the
+            # blocks (``Leg.sign_rank``, ``conventions.LeafWeights``), not by
+            # the block: a group with one is compared up to one sign, the
+            # same for every helicity and colour component.
+            singlet_fermion = any(
+                model.is_fermion(pdg) and model.color_rep(pdg) == 1
+                for pdg in [*leg_pdgs, x_bar]
+            )
+            if singlet_fermion:
+                assert len({block.pairing_sign for block in members}) == 1
+            else:
+                assert {block.pairing_sign for block in members} == {feynkit_sign}
             comparisons = []
             for helicities in sorted(
                 {row.helicities for block in members for row in block.rows}
             ):
                 states = []
-                for leg_helicity in helicities:
+                for leg_helicity, leg_pdg in zip(helicities, leg_pdgs, strict=True):
                     source_chirality, wave = sources[leg_helicity]
                     if len(wave) == 2:
                         wave = (
@@ -439,6 +539,8 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                             if source_chirality == 1
                             else np.concatenate([wave, [0, 0]])
                         )
+                    elif len(wave) == 4 and model.is_fermion(leg_pdg):
+                        wave = _dirac_to_feynkit(wave)
                     elif len(wave) == 4:
                         wave = wave * MIRROR
                     states.append(wave)
@@ -457,10 +559,17 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                     for leg, kind in keys
                 ]
                 colour_axes = [axis for axis in axes if axis != "spin"]
-                fk = np.transpose(
-                    fk,
-                    [axes.index(axis) for axis in colour_axes] + [axes.index("spin")],
-                )
+                if "spin" in axes:
+                    fk = np.transpose(
+                        fk,
+                        [axes.index(axis) for axis in colour_axes]
+                        + [axes.index("spin")],
+                    )
+                else:
+                    # A scalar current (H or a Goldstone): one component.
+                    fk = np.transpose(fk, [axes.index(axis) for axis in colour_axes])[
+                        ..., None
+                    ]
                 rows = [
                     (block, row)
                     for block in members
@@ -479,9 +588,15 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                     # A Weyl current's vertex output is the opposite chirality
                     # block of the Dirac spinor.
                     fk = fk[..., 0:2] if chirality == 1 else fk[..., 2:4]
+                elif fk.shape[-1] == 4 and model.is_fermion(particle_id):
+                    fk = _dirac_to_feynkit(fk)
                 elif fk.shape[-1] == 4:
                     fk = fk * MIRROR
-                if variant == "propagated" and not model.is_fermion(particle_id):
+                if variant == "propagated" and fk.shape[-1] == 1:
+                    # Width-free scalar propagator.
+                    mass = float(model.mass(particle_id))
+                    fk = 1j * fk / (total[0] ** 2 - total[1:] @ total[1:] - mass**2)
+                elif variant == "propagated" and not model.is_fermion(particle_id):
                     # Width-free vector propagator; the P^mu P^nu / M^2 term
                     # of the unitary gauge drops on the conserved current.
                     mass = float(model.mass(particle_id))
@@ -492,11 +607,12 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                         [
                             [
                                 complex(value)
-                                for value in model.propagator_component_expression(
+                                for value in _width_free_propagator(
+                                    model,
                                     particle_id,
                                     list(map(complex, row)),
                                     list(map(float, total)),
-                                    chirality=chirality,
+                                    chirality,
                                 )
                             ]
                             for row in flat
@@ -519,7 +635,14 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                 comparisons.append((fk, predicted))
             scale = max(np.abs(fk).max() for fk, _predicted in comparisons)
             assert scale > 0, (labels, particle_id, orders)
-            error = max(np.abs(fk - mine).max() for fk, mine in comparisons)
+            phase = 1
+            if particle_id in goldstones or singlet_fermion:
+                flipped = max(np.abs(fk + mine).max() for fk, mine in comparisons)
+                same = max(np.abs(fk - mine).max() for fk, mine in comparisons)
+                phase = -1 if flipped < same else 1
+            if particle_id in goldstones and not singlet_fermion:
+                phase = phases.setdefault(goldstones[particle_id], phase)
+            error = max(np.abs(fk - phase * mine).max() for fk, mine in comparisons)
             assert error <= TOLERANCE * scale, (labels, particle_id, orders, error)
             checked += len(comparisons)
     return checked
@@ -637,6 +760,56 @@ def test_three_line_block_currents_equal_feynkit_tree_sums(models):
     orders = {"QCD": 4, "QED": 0}
     text = "u u~ > d d~ s s~"
     assert _assert_blocks_equal_feynkit(models, text, POINT_SEEDS[:1], orders, 5)
+
+
+# Blocks of two quark lines whose electroweak bosons meet at a colour-singlet
+# vertex (WWA, WWZ, HZZ): both input orders of such a merge gave two block
+# words of one colour factor, so the vertex's trees entered the block current
+# twice (``ColorEngine._loop_block_trace_orientation_allowed``). Both DAG
+# lanes: the tree engine's loop-request mode (the oracle) and the native
+# builder. Every id fails at the FINAL BASE without the rule (a photon or Z
+# group of the two lines, (1, 2, 3, 4)) and passes with it. The e^4 cases
+# compare their blocks of up to four legs (e^3: the two lines joined by WWA,
+# WWZ or HZZ, and in u u~ > d d~ a a the W groups through the WWAA contact):
+# FeynKit's contraction of a five-leg e^4 group needs more than 64 GB. The
+# contact merges the rule decides (two coloured inputs) need such a group;
+# they are counted once per pairing by
+# ``test_loop_v2_native_dag.py::test_contact_vertices_enter_each_block_current_once``.
+DAG_LANES = [pytest.param(False, id="oracle"), pytest.param(True, id="native")]
+ELECTROWEAK_SINGLET_MERGES = [
+    pytest.param(
+        "u u~ > d d~ a", {"QCD": 0, "QED": 3}, None, id="uux_ddxa", marks=NIGHTLY
+    ),
+    # The W-only pairing (no neutral boson joins u and c~).
+    pytest.param("u c~ > d s~ a", {"QCD": 0, "QED": 3}, None, id="ucx_dsxa"),
+    # Leptons (FeynKit's chains through the colour-singlet fermions).
+    pytest.param(
+        "u c~ > d s~ e+ e-", {"QCD": 0, "QED": 4}, 4, id="ucx_dsxepem", marks=NIGHTLY
+    ),
+    # A massive quark line (Dirac spinors; HZZ from the top line).
+    pytest.param(
+        "u u~ > s s~ t t~", {"QCD": 0, "QED": 4}, 4, id="uux_ssxttx", marks=NIGHTLY
+    ),
+    # The four-point contacts (WWAA in the W groups).
+    pytest.param(
+        "u u~ > d d~ a a", {"QCD": 0, "QED": 4}, 4, id="uux_ddxaa", marks=NIGHTLY
+    ),
+]
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("native", DAG_LANES)
+@pytest.mark.parametrize(("text", "orders", "max_legs"), ELECTROWEAK_SINGLET_MERGES)
+def test_electroweak_singlet_merge_blocks_equal_feynkit_tree_sums(
+    ew_models, native, text, orders, max_legs
+):
+    from pyamplicol.loops.v2 import dag_input
+
+    with dag_input.native_flags(dag=native):
+        checked = _assert_blocks_equal_feynkit(
+            ew_models, text, POINT_SEEDS[:1], orders, 4, max_legs
+        )
+    assert checked > 0
 
 
 @pytest.mark.loop_physics

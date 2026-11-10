@@ -15,6 +15,10 @@ and Ward checks of a one-loop request regenerated in memory
   R2 vertex of its external particles (``loop_r2_dropped``) fails the Ward
   check in binary64 far beyond ten times its estimate and again after the
   double-double fallback; the CLI exits 1.
+* **Complex-mass scheme, untagged photons** (u u~ > a a with QED
+  corrections, WT != 0): the QED pole prediction's gamma_gamma counts the
+  massless charged fermions; the top's complex pole mass is a massive
+  internal species, not the cms-external-width refusal of an unstable leg.
 * **Exit codes and statuses** of the report (pure records), and a process
   with nothing to check (an exact colour zero, h > g a) exits 3.
 * **Rows without a criterion** (pure records): a binary64 pole or Ward row
@@ -189,10 +193,18 @@ def test_rows_without_a_criterion_are_not_run_and_no_sector_is_omitted():
     )
     assert {row.verdict for row in rows.values()} == {checks.NOT_RUN}
     assert all("binary64 scope" in row.reason for row in rows.values())
-    # A sector with neither a pole row nor a listed reason: "no prediction".
+    # A sector the operators predict but without a pole row at this point:
+    # an applicable check that did not run, "not run" (exit 3), not a neutral
+    # "no prediction" (DECISIONS 2026-11-09 14:25, lit-examples re-audit
+    # issue 8); a sector they do not predict keeps "no prediction".
     slice_ = NS(unpredicted_sectors=lambda: {})
     (row,) = checks._unpredicted_rows(slice_, [first, second], True, 0, {first})
-    assert row.verdict == checks.NO_PREDICTION and row.subject == "QCD^2 QED^2"
+    assert row.verdict == checks.NOT_RUN and row.subject == "QCD^2 QED^2"
+    assert row.reason.startswith("an applicable check did not run")
+    slice_ = NS(unpredicted_sectors=lambda: {second: "uncorrected exchange"})
+    (row,) = checks._unpredicted_rows(slice_, [first, second], True, 0, {first})
+    assert row.verdict == checks.NO_PREDICTION
+    assert row.reason.startswith("uncorrected exchange")
     # A Ward row whose virtual part is out of the binary64 scope: not run
     # (its Born part passed), a failure when its Born part fails.
     ward = {
@@ -210,6 +222,73 @@ def test_rows_without_a_criterion_are_not_run_and_no_sector_is_omitted():
     assert checks._ward_row(ward, "double", 0).verdict == checks.NOT_RUN
     failed = checks._ward_row({**ward, "born": 1.0, "born_passed": False}, "double", 0)
     assert failed.verdict == checks.FAIL
+
+
+@pytest.mark.loop_fast
+def test_a_refused_double_double_run_is_named_on_the_binary64_rows(monkeypatch):
+    """When binary64 evaluated a point and double-double is refused, the rows
+    binary64 left undecided keep its verdict (never a pass) and say that
+    double-double was refused, pole and Ward rows alike (lit-examples
+    re-audit issue 3)."""
+
+    from types import SimpleNamespace as NS
+
+    from pyamplicol.loops.v2 import checks, induced, plan_export, ward
+
+    sector = (("QCD", 4),)
+    carriers = (NS(arithmetic="double"), NS(arithmetic="double-double"))
+
+    def laurent(*values):
+        return NS(coefficients=list(values))
+
+    out_of_scope = NS(
+        relative=1e-3,
+        absolute={sector: laurent(0.0, 1e-12, 1e-12)},
+        scale={sector: laurent(1.0, 1.0, 1.0)},
+    )
+
+    def evaluate(_executor, _point, _scale, carrier, _checks):
+        if carrier.arithmetic == "double-double":
+            raise plan_export.FailedPoints([None], {0: ["ill-conditioned"]})
+        return NS(
+            stability=out_of_scope,
+            components={"virtual": {sector: laurent(0.0, 2.0, -3.0)}},
+            ir_poles={sector: (2.0, -3.0)},
+        )
+
+    def ward_check(_executor, _point, _scale, name, *, legs, factors):
+        if name == "double-double":
+            raise plan_export.FailedPoints([None], {0: ["ill-conditioned"]})
+        row = {
+            "born": 0.0,
+            "born_passed": True,
+            "parts": {"virtual": [1e-3]},
+            "estimate": [1e-6],
+            "estimate_over": [1.0],
+            "o1_over": [0.5],
+            "in_scope": False,
+            "passed": False,
+        }
+        return {
+            "rows": [
+                {**row, "leg": leg, "factor": factor}
+                for leg in legs
+                for factor in factors
+            ]
+        }
+
+    monkeypatch.setattr(plan_export, "NativeExecutor", lambda *a, **k: None)
+    monkeypatch.setattr(checks, "_evaluate", evaluate)
+    monkeypatch.setattr(ward, "gauge_legs", lambda _target: [3])
+    monkeypatch.setattr(ward, "ward_check", ward_check)
+    monkeypatch.setattr(induced, "goldstone_applicability", lambda _t: "n/a")
+    target = NS(unpredicted_sectors=lambda: {})
+    rows = checks.born_interfered_rows(target, [(None, 1)], carriers)
+    decided = [row for row in rows if row.check in ("poles", "ward")]
+    assert {row.check for row in decided} == {"poles", "ward"}
+    for row in decided:
+        assert row.verdict == checks.NOT_RUN and row.carrier == "double"
+        assert "double-double refused" in row.reason, row
 
 
 # --------------------------------------------------------------- physics
@@ -392,3 +471,44 @@ def test_nothing_to_check_exits_with_its_own_code(tmp_path):
     (entry,) = payload["processes"]
     assert entry["status"] == "nothing checked"
     assert {row["verdict"] for row in entry["rows"]} == {"not applicable"}
+
+
+@pytest.mark.loop_physics
+def test_an_untagged_photon_under_the_complex_mass_scheme_with_a_top_width(tmp_path):
+    """u u~ > a a with QED corrections, complex-mass scheme, WT != 0, the
+    photons untagged: the QED pole prediction's gamma_gamma counts the
+    massless charged fermions only; the top's complex pole mass makes it a
+    massive internal species (it raised the untyped cms-external-width
+    ValueError before, DECISIONS 2026-11-09 22:40 side item (b)). Both poles
+    pass at both points, so the top is not counted."""
+
+    from pyamplicol.api.services import check
+    from pyamplicol.loops.v2 import checks
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    card = tmp_path / "card.toml"
+    card.write_text(
+        """action = "check"
+[model]
+source = "loop_qcd_qed_sm_Gmu"
+restriction = "default"
+[process]
+entries = [{expression = "u u~ > a a", name = "p"}]
+loop_coupling_orders = ["QED"]
+coupling_order_policy = "explicit"
+max_coupling_orders = { QCD = 0, QED = 2 }
+[loop]
+external_photons = "none"
+[loop.preparation]
+fixed_parameters = { MB = "0", MTA = "0", WT = "1.37758", WZ = "2.49877", \
+WW = "2.09291", WH = "0.00407468" }
+[loop.model.scheme]
+mass_scheme = "complex-mass"
+[check]
+points = 2
+"""
+    )
+    report = check(card)
+    assert report.exit_code == checks.EXIT_PASSED
+    poles = _rows(report, "poles")
+    assert len(poles) == 2 * 2 and all(row.verdict == checks.PASS for row in poles)

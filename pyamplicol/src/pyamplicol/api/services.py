@@ -1842,6 +1842,7 @@ def check(
     model: ModelSource | os.PathLike[str] | str | None = None,
     source: str | None = None,
     progress: ProgressSink | None = None,
+    sqrt_s: float | None = None,
 ) -> CheckReport:
     """The pole and Ward checks of a one-loop request (``pyamplicol check``):
     ``target`` is a run card (its generation request), a resolved run
@@ -1863,7 +1864,10 @@ def check(
     ``model.source`` takes it, with the configuration's restriction; None
     takes the configuration's ``check.model``, if set): e.g. an artifact
     generated from a UFO directory, whose ``effective.toml`` keeps only the
-    directory's name.
+    directory's name. ``sqrt_s`` sets the centre-of-mass energy of a
+    scattering's points (None takes ``check.sqrt_s``; both None: the
+    generation's validation convention, sqrt(s) = max(1000, final threshold
+    + 100) for massless beams).
     ``source`` is the run card a configuration ``target`` was read from
     (the report names it). Returns a ``CheckReport`` whose ``exit_code`` is 0 iff every
     process passed."""
@@ -1935,6 +1939,7 @@ def check(
         if carrier is CheckPrecision.DOUBLE
         else Precision.double_double()
     )
+    energy = run.check.sqrt_s if sqrt_s is None else float(sqrt_s)
     if model is None:
         model = run.check.model
     if model is None:
@@ -1971,6 +1976,7 @@ def check(
         seed=first,
         precision=explicit,
         stored=stored,
+        sqrt_s=energy,
     )
     return CheckReport(
         label,

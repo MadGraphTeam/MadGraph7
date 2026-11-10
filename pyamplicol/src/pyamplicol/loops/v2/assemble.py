@@ -5093,7 +5093,19 @@ class _PointEvaluation:
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
         zero = numbers.real(0)
-        gamma_photon = self._photon_gamma(abelian, mass_of) if untagged else None
+        gamma_photon = (
+            self._photon_gamma(
+                abelian,
+                _model_masses(
+                    compiled,
+                    self.parameters,
+                    numbers.precision.working_digits,
+                    pole_masses=True,
+                ),
+            )
+            if untagged
+            else None
+        )
         out = {}
         for sector, _pairs in slice_.sectors:
             prediction = qed_catani_poles(
@@ -5121,7 +5133,12 @@ class _PointEvaluation:
         (``poles.photon_gamma``): -2/3 sum_f N_c^f Q_f^2 over the fermion
         species perturbative in the electromagnetic correction, not vetoed,
         that are massless at this point (a compile-time zero, a value bound
-        to 0, or a runtime value 0), each species once."""
+        to 0, or a runtime value 0), each species once. ``mass_of`` reads
+        pole masses (``_model_masses(..., pole_masses=True)``): the species
+        are internal here, never external states or emitters, so a
+        complex-mass scheme's pole mass (an unstable top with WT != 0) is a
+        massive species, not the ``cms-external-width`` refusal of an
+        unstable external state."""
 
         slice_ = self.slice
         compiled = slice_.compiled
@@ -5149,7 +5166,7 @@ class _PointEvaluation:
             if not (
                 name == ZERO
                 or ew_policy.is_zero(name, parameters, slice_.request.fixed_parameters)
-                or mass_of(name) == 0
+                or _massless_value(mass_of(name))
             ):
                 continue
             light[pdg] = (charge, abs(int(record.color)))
@@ -5864,14 +5881,23 @@ def _model_masses(
             )
         value = found[name]
         if isinstance(value, rx.Complex) and not pole_masses:
-            raise ValueError(
+            from pyamplicol.loops.model_cms import ComplexMassSchemeUnsupported
+
+            raise ComplexMassSchemeUnsupported(
+                "cms-external-width",
                 f"the mass {name!r} is a complex pole mass ({value!r}): an "
-                "external state or a Catani emitter of that mass is unstable "
-                "(cms-external-width)"
+                "external state or a Catani emitter of that mass is unstable",
             )
         return value
 
     return mass
+
+
+def _massless_value(value: Any) -> bool:
+    """Whether a ``_model_masses`` value is zero: a complex pole mass has a
+    positive real part (``_model_masses``), so it is never massless."""
+
+    return not isinstance(value, rx.Complex) and value == 0
 
 
 def _squared(value: Any) -> Any:

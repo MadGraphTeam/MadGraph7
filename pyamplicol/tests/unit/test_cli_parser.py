@@ -836,6 +836,11 @@ def test_check_takes_a_card_or_an_artifact_and_its_options(tmp_path: Path) -> No
     assert named.effective.check.model == str(ufo.resolve())
     with pytest.raises(SystemExit):
         build_parser().parse_args(("check", str(card), "--precision", "quad"))
+    # --sqrt-s: the scattering points' energy (default None: the generation's
+    # validation convention).
+    assert direct.check.sqrt_s is None
+    energetic = parse_cli(("check", str(card), "--sqrt-s", "2500")).resolve()
+    assert energetic.effective.check.sqrt_s == 2500.0
 
 
 def test_profile_takes_the_loop_settings() -> None:
