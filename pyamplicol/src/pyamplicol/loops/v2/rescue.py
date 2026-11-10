@@ -208,6 +208,7 @@ def _attempt(
             None,
             diagnostic.detail or diagnostic.status,
             diagnostic.reduction,
+            diagnostic.kinematics,
         )
     estimate = None if evaluation.stability is None else evaluation.stability[lane]
     value = None if estimate is None else float(getattr(estimate, level.metric))
@@ -216,6 +217,7 @@ def _attempt(
         diagnostic.precision_bits,
         value,
         reduction=diagnostic.reduction,
+        kinematics=diagnostic.kinematics,
     )
 
 

@@ -1620,6 +1620,8 @@ class V2VirtualRuntime:
         reduction: str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
         from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
@@ -1785,6 +1787,21 @@ class V2VirtualRuntime:
             if reduction_unchecked is None
             else reduction_unchecked_value(reduction_unchecked)
         )
+        # The kinematics improvement of a call that sets none (m-lit
+        # lit-psimprove; None: the native policy's defaults, MadLoop's
+        # variant above binary64 and off in binary64).
+        from pyamplicol import kinematics as _kinematics
+
+        self._kinematics_setting = (
+            None
+            if kinematics_improvement is None
+            else _kinematics.setting_value(kinematics_improvement)
+        )
+        self._kinematics_binary64 = (
+            None
+            if kinematics_improvement_binary64 is None
+            else _kinematics.binary64_value(kinematics_improvement_binary64)
+        )
         self._born_orders = tuple(
             canonical_order(tuple((n, p) for n, p in order))
             for order in self._metadata["born_orders"]
@@ -1801,6 +1818,50 @@ class V2VirtualRuntime:
                 ),
             )
             for item in self._metadata["sectors"]
+        )
+
+    def _kinematics(self, setting: str | None, binary64: bool | None) -> Any:
+        """A call's kinematics improvement settings (``pyamplicol.
+        kinematics``): its own, else the runtime's, else the defaults."""
+
+        from pyamplicol.kinematics import resolve
+
+        return resolve(
+            setting,
+            binary64,
+            default_setting_=self._kinematics_setting,
+            default_binary64_=self._kinematics_binary64,
+        )
+
+    def _kinematics_masses(
+        self, precision: Any, point: Any, scale: Any, count: int
+    ) -> list[Any]:
+        """The squared masses the evaluation binds for each leg of a
+        caller-order ``point`` (``NativeExecutor.leg_masses`` of the
+        representative's executor, on the caller's legs): the improvement's
+        targets."""
+
+        member = self._member
+        representative = point if member is None else member.point(point)
+        with self._lock:
+            parameters = dict(self._parameters)
+            masses = self._executor.leg_masses(
+                representative, scale, parameters, precision, count
+            )
+        if member is None:
+            return masses
+        return [masses[leg] for leg in member.legs]
+
+    def _improver(self, settings: Any) -> Any:
+        """A call's level-by-level improvement (``kinematics.LevelImprover``)
+        of its caller-order points."""
+
+        from pyamplicol.kinematics import LevelImprover, initial_count
+
+        return LevelImprover(
+            settings,
+            initial_count(self._executor.slice.blocks.process.legs),
+            self._kinematics_masses,
         )
 
     def _executor_for(self, poles: PoleSelection) -> Any:
@@ -1869,6 +1930,9 @@ class V2VirtualRuntime:
                     precision=self.default_precision,
                 )
                 runtime.set_model_parameters(self._parameters)
+                # The kinematics improvement's targets: the masses this
+                # runtime's executor binds (m-lit lit-psimprove).
+                runtime.kinematics_masses = self._kinematics_masses
                 self._observables = runtime
             return self._observables
 
@@ -2119,6 +2183,8 @@ class V2VirtualRuntime:
         reduction: str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> VirtualEvaluation:
         """The virtual of every point in one carrier, or under a rescue
         policy (``stability``, else the load-time default; ``loops.v2.
@@ -2130,11 +2196,22 @@ class V2VirtualRuntime:
         unchecked setting (every level's and the per-point fallback's
         reductions; m-lit lit-unchecked). With the default policy
         (``VirtualRescuePolicy()``) a loop-induced call requesting ``"auto"``
-        runs the loop-induced default stack (``rescue.default_stack``)."""
+        runs the loop-induced default stack (``rescue.default_stack``).
+        ``kinematics_improvement`` and ``kinematics_improvement_binary64``
+        (default: the runtime's, else MadLoop's variant above binary64, off
+        in binary64; ``pyamplicol.kinematics``) improve each carrier's
+        points from the caller's exact inputs before anything is evaluated
+        in that carrier, in the caller's leg order; each lane diagnostic
+        records it (``VirtualLaneDiagnostic.kinematics``)."""
 
+        from pyamplicol.kinematics import with_kinematics
         from pyamplicol.runtime.virtual import _inputs, v2_options
 
         from .rescue import default_stack, rescue, rescue_policy
+
+        kinematics = self._kinematics(
+            kinematics_improvement, kinematics_improvement_binary64
+        )
 
         policy = rescue_policy(
             stability,
@@ -2188,6 +2265,8 @@ class V2VirtualRuntime:
                     stability_checks=stability_checks,
                     on_failure=on_failure,
                     reductions=choices,
+                    kinematics_improvement=kinematics.setting,
+                    kinematics_improvement_binary64=kinematics.binary64,
                     **carrier_options,
                 ),
             )
@@ -2210,38 +2289,58 @@ class V2VirtualRuntime:
         carrier, setting = (
             self._carrier(arithmetic, precision) if policy is None else (None, None)
         )
-        points, scales = _inputs(momenta, mu_r2, self.external_count)
-        if self._member is not None:
-            points = [self._member.point(point) for point in points]
+        # The caller's exact inputs, in the caller's leg order: each carrier
+        # improves them (m-lit lit-psimprove) before the member's map to the
+        # representative's legs.
+        caller, scales = _inputs(momenta, mu_r2, self.external_count)
+        improver = self._improver(kinematics)
+
+        def mapped(points: list[Any]) -> list[Any]:
+            if self._member is None:
+                return points
+            return [self._member.point(point) for point in points]
+
         with self._lock:
             parameters = dict(self._parameters)
             if policy is None:
-                return self._evaluate_level(
-                    points,
-                    scales,
-                    parameters,
-                    cast(str, carrier),
-                    setting,
-                    r2,
-                    selection,
-                    checks,
-                    on_failure,
-                    choices[cast(str, carrier)],
+                points, records = improver.level(caller, scales, setting)
+                return with_kinematics(
+                    self._evaluate_level(
+                        mapped(points),
+                        scales,
+                        parameters,
+                        cast(str, carrier),
+                        setting,
+                        r2,
+                        selection,
+                        checks,
+                        on_failure,
+                        choices[cast(str, carrier)],
+                    ),
+                    records,
                 )
 
             def level(indices: tuple[int, ...], rung: Any) -> VirtualEvaluation:
                 carrier, setting = self._carrier(rung.arithmetic, rung.precision)
-                return self._evaluate_level(
-                    [points[i] for i in indices],
-                    [scales[i] for i in indices],
-                    parameters,
-                    carrier,
-                    setting,
-                    r2,
-                    selection,
-                    rung.checks,
-                    "return",
-                    choices[rung],
+                # Every level from the original exact inputs (never an
+                # improved point of another level).
+                points, records = improver.level(
+                    [caller[i] for i in indices], [scales[i] for i in indices], setting
+                )
+                return with_kinematics(
+                    self._evaluate_level(
+                        mapped(points),
+                        [scales[i] for i in indices],
+                        parameters,
+                        carrier,
+                        setting,
+                        r2,
+                        selection,
+                        rung.checks,
+                        "return",
+                        choices[rung],
+                    ),
+                    records,
                 )
 
             return rescue(policy, len(points), level, on_failure=on_failure)
@@ -2786,6 +2885,12 @@ class V2VirtualRuntime:
 
         target = options.pop("reduction_target", None)
         unchecked = options.pop("reduction_unchecked", None)
+        kinematics = self._kinematics(
+            options.pop("kinematics_improvement", None),
+            options.pop("kinematics_improvement_binary64", None),
+        )
+        options["kinematics_improvement"] = kinematics.setting
+        options["kinematics_improvement_binary64"] = kinematics.binary64
         choices = self._reduction_choices(
             reduction,
             arithmetic,

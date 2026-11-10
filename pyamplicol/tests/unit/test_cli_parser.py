@@ -857,3 +857,25 @@ def test_profile_takes_the_loop_settings() -> None:
     assert effective.evaluation.reduction == "tirust"
     assert effective.evaluation.reduction_unchecked is True
     assert effective.evaluation.mu_r2 == "1e4"
+
+
+def test_evaluate_takes_the_kinematics_improvement() -> None:
+    """m-lit lit-psimprove: the two runtime settings on the CLI."""
+
+    effective = (
+        parse_cli(
+            (
+                "evaluate",
+                "--kinematics-improvement",
+                "projection",
+                "--kinematics-improvement-binary64",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert effective.evaluation.kinematics_improvement == "projection"
+    assert effective.evaluation.kinematics_improvement_binary64 is True
+    default = parse_cli(("evaluate",)).resolve().effective
+    assert default.evaluation.kinematics_improvement is None
+    assert default.evaluation.kinematics_improvement_binary64 is None

@@ -153,6 +153,23 @@ def _generation_resource_resolution(
     )
 
 
+def _kinematics_options(setting: str | None, binary64: bool | None) -> dict[str, object]:
+    """The kinematics improvement options of a load or a call, validated
+    (``pyamplicol.kinematics``: the native policy's values and refusals),
+    forwarded only when set."""
+
+    from pyamplicol import kinematics
+
+    options: dict[str, object] = {}
+    if setting is not None:
+        options["kinematics_improvement"] = kinematics.setting_value(setting)
+    if binary64 is not None:
+        options["kinematics_improvement_binary64"] = kinematics.binary64_value(
+            binary64
+        )
+    return options
+
+
 def _get_runtime_loader() -> RuntimeLoader:
     if _runtime_loader is not None:
         return _runtime_loader
@@ -425,6 +442,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> Runtime:
         """Load one process by stable ID, alias ID, or exact expression.
 
@@ -476,6 +495,9 @@ class Runtime:
             options["reduction_unchecked"] = reduction_unchecked_value(
                 reduction_unchecked
             )
+        options.update(
+            _kinematics_options(kinematics_improvement, kinematics_improvement_binary64)
+        )
         loader = _get_runtime_loader()
         if options and not _accepts_keyword_arguments(loader, *options):
             raise CompatibilityError(
@@ -650,6 +672,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
 
@@ -744,6 +768,11 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
             )
         )
         self._require_evaluation_options(self._backend.evaluate, options)
@@ -866,6 +895,15 @@ class Runtime:
         return options
 
     @staticmethod
+    def _kinematics_options(
+        setting: str | None, binary64: bool | None
+    ) -> dict[str, object]:
+        """The kinematics improvement options (``pyamplicol.kinematics``),
+        forwarded only when set (tree and virtual runtimes)."""
+
+        return _kinematics_options(setting, binary64)
+
+    @staticmethod
     def _require_evaluation_options(
         operation: object, options: Mapping[str, object]
     ) -> None:
@@ -964,6 +1002,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
@@ -980,6 +1020,8 @@ class Runtime:
             reduction=reduction,
             reduction_target=reduction_target,
             reduction_unchecked=reduction_unchecked,
+            kinematics_improvement=kinematics_improvement,
+            kinematics_improvement_binary64=kinematics_improvement_binary64,
         )
 
     def evaluate_resolved(
@@ -999,6 +1041,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
@@ -1037,6 +1081,11 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
             )
         )
         if color_resolution is not None:
@@ -1087,6 +1136,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
@@ -1104,6 +1155,8 @@ class Runtime:
             reduction=reduction,
             reduction_target=reduction_target,
             reduction_unchecked=reduction_unchecked,
+            kinematics_improvement=kinematics_improvement,
+            kinematics_improvement_binary64=kinematics_improvement_binary64,
             color_resolution=color_resolution,
         )
 
@@ -1366,6 +1419,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -1395,6 +1450,11 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
             )
         )
         if self._virtual:
@@ -1471,6 +1531,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
         | dict[str, VirtualEvaluation]
@@ -1502,6 +1564,11 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
             )
         )
         if self._virtual:

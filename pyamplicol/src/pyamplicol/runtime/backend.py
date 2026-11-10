@@ -1953,6 +1953,8 @@ def load_runtime_backend(
     reduction: str | None = None,
     reduction_target: float | None = None,
     reduction_unchecked: bool | None = None,
+    kinematics_improvement: str | None = None,
+    kinematics_improvement_binary64: bool | None = None,
 ) -> RuntimeBackend:
     """Load a schema-v3 artifact without importing the extension during discovery.
 
@@ -1981,6 +1983,13 @@ def load_runtime_backend(
         options["reduction_target"] = reduction_target
     if reduction_unchecked is not None:
         options["reduction_unchecked"] = reduction_unchecked
+    # The kinematics improvement's load-time defaults (m-lit lit-psimprove):
+    # tree and virtual runtimes.
+    kinematics: dict[str, object] = {}
+    if kinematics_improvement is not None:
+        kinematics["kinematics_improvement"] = kinematics_improvement
+    if kinematics_improvement_binary64 is not None:
+        kinematics["kinematics_improvement_binary64"] = kinematics_improvement_binary64
     manifest_root = (
         path.parent if path.name == MANIFEST_NAME and path.is_file() else path
     )
@@ -2010,6 +2019,7 @@ def load_runtime_backend(
             model_parameters=parameters,
             mute_warnings=mute_warnings,
             **options,
+            **kinematics,
         )
     if options:
         raise CompatibilityError(
@@ -2017,6 +2027,12 @@ def load_runtime_backend(
             + ", ".join(options)
             + " options are supported only for virtual artifacts; "
             "select precision when evaluating a tree artifact"
+        )
+    if kinematics:
+        raise CompatibilityError(
+            "load-time "
+            + ", ".join(kinematics)
+            + " options are not yet supported for tree artifacts"
         )
     module = _load_native_module()
     runtime = _invoke(

@@ -850,6 +850,7 @@ def _add_evaluation_options(
             "default off"
         ),
     )
+    _add_kinematics_options(parser)
     parser.add_argument(
         "--resolved",
         dest="evaluation.resolved",
@@ -888,6 +889,36 @@ def _add_evaluation_options(
         dest="evaluation.momenta",
         type=Path,
         default=argparse.SUPPRESS,
+    )
+
+
+def _add_kinematics_options(parser: argparse.ArgumentParser) -> None:
+    """The kinematics improvement options (m-lit lit-psimprove;
+    ``pyamplicol.kinematics``)."""
+
+    parser.add_argument(
+        "--kinematics-improvement",
+        dest="evaluation.kinematics_improvement",
+        choices=("z-shift", "rescaling", "projection", "off"),
+        default=argparse.SUPPRESS,
+        help=(
+            "improve the input points to exact energy-momentum conservation "
+            "and exact on-shell externals in each carrier above binary64: "
+            "'z-shift' (MadLoop's ImprovePSPoint 2 with its fallback to 1; "
+            "the default), 'rescaling' (MadLoop's ImprovePSPoint 1), "
+            "'projection' (the frame-independent minimal-norm projection) or "
+            "'off'"
+        ),
+    )
+    parser.add_argument(
+        "--kinematics-improvement-binary64",
+        dest="evaluation.kinematics_improvement_binary64",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "also improve the points of binary64 (double-precision) "
+            "evaluations; default off"
+        ),
     )
 
 

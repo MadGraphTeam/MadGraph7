@@ -423,6 +423,21 @@ poles = "all"
 # without a finite value fail. pyAmpliCol's stability checks stay their own
 # settings. Default false.
 reduction_unchecked = false
+# evaluation.kinematics_improvement: the improvement of the input points to
+# exact energy-momentum conservation and exact on-shell externals, in each
+# carrier above binary64 (double-double, arbitrary precision) before anything
+# is evaluated there: "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own
+# fallback to ImprovePSPoint 1; beams along z are improved exactly, other
+# frames by the fallback, whose residual the record's typed warning names),
+# "rescaling" (MadLoop's ImprovePSPoint 1, with the fallback to 2),
+# "projection" (the frame-independent minimal-norm projection, exact in every
+# frame) or "off". Every result records the variant that produced its point.
+# Default absent: "z-shift" (MadLoop's default).
+# kinematics_improvement = "z-shift"
+# evaluation.kinematics_improvement_binary64: true also improves the points of
+# binary64 (double-precision) evaluations with the selected variant. Default
+# absent: false.
+# kinematics_improvement_binary64 = false
 
 [evaluation.stability]
 # The precision-rescue policy was removed with the legacy loop engine: only
