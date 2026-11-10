@@ -26,6 +26,15 @@ and Ward checks of a one-loop request regenerated in memory
   process; a model that is not the stored one (content hash) or a source
   that does not resolve is refused (``ArtifactError``), and ``--model`` /
   ``model=`` names the stored model's source.
+* **Ward rows not applicable** (USER 2026-11-10 ~00:17; records on a toy
+  model): a request whose corrections include one other than the model's
+  strong correction AND with an on-shell zero-width external massive quark
+  (an antiquark alone included) has one "not applicable" Ward row with the
+  reason; its Ward evaluation is never called and its passing poles pass
+  the process. QCD-only corrections with external tops, EW corrections with
+  massless quarks only, a massive colour-singlet fermion or a quark with a
+  non-zero width are checked as before. Ward rows are not split by
+  squared-order sector: there is no per-sector Ward row to keep checked.
 
 The Goldstone-equivalence path itself (an external massive vector in
 't Hooft-Feynman gauge) is lit-probe's (``test_loop_v2_induced_probes``,
@@ -278,6 +287,8 @@ def test_a_refused_double_double_run_is_named_on_the_binary64_rows(monkeypatch):
     monkeypatch.setattr(ward, "gauge_legs", lambda _target: [3])
     monkeypatch.setattr(ward, "ward_check", ward_check)
     monkeypatch.setattr(induced, "goldstone_applicability", lambda _t: "n/a")
+    # A stand-in target without request data: its Ward rows apply.
+    monkeypatch.setattr(checks, "ward_applicability", lambda _t: None)
     target = NS(unpredicted_sectors=lambda: {})
     rows = checks.born_interfered_rows(target, [(None, 1)], carriers)
     decided = [row for row in rows if row.check in ("poles", "ward")]
@@ -285,6 +296,162 @@ def test_a_refused_double_double_run_is_named_on_the_binary64_rows(monkeypatch):
     for row in decided:
         assert row.verdict == checks.NOT_RUN and row.carrier == "double"
         assert "double-double refused" in row.reason, row
+
+
+def _toy_target(legs, corrections, fixed):
+    """A probe-slice stand-in on a toy model (records): a gluon, a photon,
+    a massive top (MT, width WT), a massless up quark, a massive muon (MM,
+    width WM) whose orders are QCD (the gluon's vertices) and QED."""
+
+    from types import SimpleNamespace as NS
+
+    def particle(name, anti, pdg, spin, colour, charge=0.0, mass="ZERO", width="ZERO"):
+        return NS(
+            name=name,
+            antiname=anti,
+            pdg_code=pdg,
+            spin=spin,
+            color=colour,
+            charge=charge,
+            mass=mass,
+            width=width,
+            ghost_number=0,
+            goldstoneboson=False,
+            auxiliary_kind=None,
+        )
+
+    particles = [
+        particle("g", "g", 21, 3, 8),
+        particle("a", "a", 22, 3, 1),
+        particle("t", "t~", 6, 2, 3, 2 / 3, "MT", "WT"),
+        particle("t~", "t", -6, 2, -3, -2 / 3, "MT", "WT"),
+        particle("u", "u~", 2, 2, 3, 2 / 3),
+        particle("u~", "u", -2, 2, -3, -2 / 3),
+        particle("mu-", "mu+", 13, 2, 1, -1.0, "MM", "WM"),
+        particle("mu+", "mu-", -13, 2, 1, 1.0, "MM", "WM"),
+    ]
+
+    def vertex(names, order):
+        return NS(particles=names, coupling_orders=((order, 1),))
+
+    vertices = [
+        vertex(("g", "g", "g"), "QCD"),
+        vertex(("t~", "t", "g"), "QCD"),
+        vertex(("u~", "u", "g"), "QCD"),
+        vertex(("t~", "t", "a"), "QED"),
+        vertex(("u~", "u", "a"), "QED"),
+        vertex(("mu+", "mu-", "a"), "QED"),
+    ]
+    compiled = NS(ir=NS(particles=particles, parameters=[], vertex_terms=vertices))
+    return NS(
+        compiled=compiled,
+        request=NS(corrections=corrections, fixed_parameters=fixed),
+        blocks=NS(
+            process=NS(
+                legs=[NS(label=i + 1, pdg=pdg) for i, pdg in enumerate(legs)]
+            )
+        ),
+        unpredicted_sectors=lambda: {},
+    )
+
+
+@pytest.mark.loop_fast
+def test_ward_rows_of_ew_corrections_with_a_zero_width_massive_quark_are_not_applicable():
+    """The class of the USER ruling 2026-11-10 ~00:17 from the request's own
+    data: corrections other than the strong one (identified by the gluon's
+    vertices) and an external massive quark with zero width (an antiquark's
+    record carries colour -3). No sector split exists: the class takes the
+    process's whole (leg, factor) Ward rows."""
+
+    from pyamplicol.loops.v2 import checks
+
+    zero = {"WT": "0", "WM": "0"}
+    both = ("QCD", "QED")
+    reason = checks.ward_applicability(_toy_target([21, 21, 6, -6], both, zero))
+    assert reason and "QED" in reason and "leg 3, 4" in reason
+    # An antiquark as the only external massive quark.
+    reason = checks.ward_applicability(_toy_target([21, 2, 2, -6], both, zero))
+    assert reason and "leg 4" in reason
+    # QED corrections alone (no strong one) with an external top.
+    assert checks.ward_applicability(_toy_target([22, 6, -6], ("QED",), zero))
+    # Outside the class: QCD-only corrections with external tops; EW
+    # corrections with massless quarks only, or a massive colour-singlet
+    # fermion; a massive quark whose width is not zero.
+    for legs, corrections, fixed in (
+        ([21, 21, 6, -6], ("QCD",), zero),
+        ([2, -2, 21, 22], both, zero),
+        ([22, 22, 13, -13], both, zero),
+        ([21, 21, 6, -6], both, {"WM": "0"}),
+    ):
+        target = _toy_target(legs, corrections, fixed)
+        assert checks.ward_applicability(target) is None, (legs, corrections)
+
+
+@pytest.mark.loop_fast
+def test_a_process_in_the_class_reports_one_not_applicable_ward_row(monkeypatch):
+    """The Born-interfered rows of an in-class request: its passing poles,
+    one "not applicable" Ward row naming the legs and the reason, the Ward
+    evaluation never called; the process passes (the row is neutral). The
+    loop-induced rows probe finiteness only, with the same Ward row."""
+
+    from types import SimpleNamespace as NS
+
+    from pyamplicol.loops.v2 import checks, induced, plan_export, stability, ward
+
+    sector = (("QCD", 4),)
+    estimate = NS(
+        relative=1e-12,
+        absolute={sector: NS(coefficients=[0.0, 1e-12, 1e-12])},
+        scale={sector: NS(coefficients=[1.0, 1.0, 1.0])},
+    )
+
+    def evaluate(_executor, _point, _scale, carrier, checks_):
+        assert carrier.arithmetic == "double" and checks_ is stability.RECOMMENDED_CHECKS
+        return NS(
+            stability=estimate,
+            components={"virtual": {sector: NS(coefficients=[0.0, 2.0, -3.0])}},
+            ir_poles={sector: (2.0, -3.0)},
+        )
+
+    def never(*_args, **_options):
+        raise AssertionError("the Ward evaluation runs for a not-applicable class")
+
+    monkeypatch.setattr(plan_export, "NativeExecutor", lambda *a, **k: None)
+    monkeypatch.setattr(checks, "_evaluate", evaluate)
+    monkeypatch.setattr(ward, "ward_check", never)
+    monkeypatch.setattr(ward, "gauge_legs", lambda _target: (1, 2))
+    monkeypatch.setattr(induced, "goldstone_applicability", lambda _t: "n/a")
+    target = _toy_target([21, 21, 6, -6], ("QCD", "QED"), {"WT": "0"})
+    carriers = (NS(arithmetic="double"), NS(arithmetic="double-double"))
+    rows = checks.born_interfered_rows(target, [(None, 1)], carriers)
+    (row,) = [row for row in rows if row.check == "ward"]
+    assert row.verdict == checks.NOT_APPLICABLE and row.point is None
+    assert row.reason.startswith("legs 1, 2 not checked: EW corrections (QED)")
+    assert "leg 3, 4" in row.reason
+    poles = [row for row in rows if row.check == "poles"]
+    assert len(poles) == 2 and {row.verdict for row in poles} == {checks.PASS}
+    process = checks.ProcessCheck(
+        "p", "g g > t t~", "virtual", "zero", (), "ninjars", tuple(rows), 0.0
+    )
+    assert process.status == checks.PASSED
+    # Loop-induced: the Ward probes are not evaluated (no legs probed).
+    probed = []
+
+    def point_probes(_executor, _point, _scale, legs, _carriers, _floors):
+        probed.append(list(legs))
+        return [{"probe": "finiteness", "carrier": "double"}], [
+            induced.ProbeResult("finiteness", {"k": 0.1})
+        ]
+
+    monkeypatch.setattr(induced, "probe_legs", lambda _target: [1, 2])
+    monkeypatch.setattr(induced, "probe_floors", lambda *a: ({}, {}))
+    monkeypatch.setattr(induced, "point_probes", point_probes)
+    target.amplitude = NS(colour_zero=False)
+    rows = checks.induced_rows(target, None, None, None, [(None, 1)], carriers)
+    assert probed == [[]]
+    assert [row.check for row in rows] == ["poles", "ward", "goldstone"]
+    assert rows[1].verdict == checks.NOT_APPLICABLE
+    assert rows[1].reason.startswith("legs 1, 2 not checked: EW corrections")
 
 
 # --------------------------------------------------------------- physics

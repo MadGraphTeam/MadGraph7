@@ -362,6 +362,69 @@ def _unpredicted_rows(
     return rows
 
 
+def ward_applicability(target: Any) -> str | None:
+    """None where the Ward rows of a probe slice are checked, else why they
+    are not applicable (USER 2026-11-10 ~00:17: with EW corrections and an
+    on-shell zero-width external top "it may break some EW gauge relations
+    ... ignore ward check there"). One rule on the request's own data,
+    decided before any Ward evaluation: its corrections include one other
+    than the model's strong correction (``ew_policy.correction_orders``,
+    identified by the gluon's vertices, never by an order's name) AND an
+    external leg is a massive quark with zero width at the check's
+    parameters: a fermion (``ew_policy.FERMION_SPIN``) of colour triplet or
+    anti-triplet (|colour| = 3; an antiquark's record carries -3) whose mass
+    parameter is not zero and whose width parameter is (``ew_policy.
+    is_zero`` on the probe request's fixed parameters: outside the
+    complex-mass scheme the probe zeroes every width, ``ew_policy.
+    probe_widths``). Every external leg is on shell at a check point
+    (``induced.probe_point``). Ward rows are not split by squared-order
+    sector, so a pure-QCD-loop sector of such a request is not checked
+    either."""
+
+    from .ew_policy import FERMION_SPIN, correction_orders, is_zero, request_corrections
+
+    compiled, request = target.compiled, target.request
+    fixed = request.fixed_parameters
+    strong = correction_orders(compiled, fixed).strong
+    others = sorted(set(request_corrections(compiled, request)) - {strong})
+    if not others:
+        return None
+    particles = {int(record.pdg_code): record for record in compiled.ir.particles}
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    quarks = [
+        int(leg.label)
+        for leg in sorted(target.blocks.process.legs, key=lambda x: x.label)
+        if (record := particles.get(int(leg.pdg))) is not None
+        and int(record.spin) == FERMION_SPIN
+        and abs(int(record.color)) == 3
+        and not is_zero(str(record.mass), parameters, fixed)
+        and is_zero(str(record.width), parameters, fixed)
+    ]
+    if not quarks:
+        return None
+    return (
+        f"EW corrections ({', '.join(others)}) with an on-shell zero-width "
+        f"external massive quark (leg {', '.join(map(str, quarks))}): the "
+        "gluon / photon Ward identity of the asymmetric check is not "
+        "guaranteed there (USER 2026-11-10); not evaluated, every "
+        "squared-order sector alike"
+    )
+
+
+def _not_applicable_ward(legs: Sequence[int], reason: str) -> CheckRow:
+    """The one Ward row of a process whose Ward rows are not applicable
+    (``ward_applicability``), naming the legs not checked."""
+
+    return CheckRow(
+        "ward",
+        "external gluons and photons",
+        None,
+        None,
+        NOT_APPLICABLE,
+        reason=f"legs {', '.join(map(str, legs))} not checked: {reason}",
+    )
+
+
 def born_interfered_rows(
     target: Any,
     points: Sequence[tuple[Any, Any]],
@@ -376,6 +439,7 @@ def born_interfered_rows(
     executor = NativeExecutor(target, inputs="native", forward=False, catani=True)
     target_accuracy = float(stability.RESCUE_TARGET)
     legs = ward.gauge_legs(target)
+    excluded = ward_applicability(target) if legs else None
     rows: list[CheckRow] = []
     for index, (point, scale) in enumerate(points):
         # Poles against Catani's operator.
@@ -438,8 +502,10 @@ def born_interfered_rows(
             )
         )
         # Ward identities on every gluon and photon leg.
-        if legs:
+        if legs and excluded is None:
             rows.extend(_born_ward_rows(executor, point, scale, legs, carriers, index))
+    if excluded is not None:
+        rows.append(_not_applicable_ward(legs, excluded))
     if not legs:
         rows.append(
             CheckRow(
@@ -628,8 +694,13 @@ def induced_rows(
             for check in ("poles", "ward", "goldstone")
         ]
     legs = induced.probe_legs(target)
+    excluded = ward_applicability(target) if legs else None
+    probed = legs if excluded is None else []
     executor = NativeExecutor(
-        target, forward=False, inputs="native", lanes=induced.probe_lanes(1 + len(legs))
+        target,
+        forward=False,
+        inputs="native",
+        lanes=induced.probe_lanes(1 + len(probed)),
     )
     applicability = induced.goldstone_applicability(target)
     sides: Mapping[int, Any] = {}
@@ -656,7 +727,7 @@ def induced_rows(
             )
             continue
         entries, decided = induced.point_probes(
-            executor, point, scale, legs, carriers, floors
+            executor, point, scale, probed, carriers, floors
         )
         for entry, result in zip(entries, decided, strict=True):
             rows.append(_probe_row(entry, result, index))
@@ -677,6 +748,8 @@ def induced_rows(
                 reason="the process has no external gluon or photon",
             )
         )
+    if excluded is not None:
+        rows.append(_not_applicable_ward(legs, excluded))
     if applicability is not None:
         rows.append(
             CheckRow(
