@@ -1,0 +1,27 @@
+{
+  "started_utc": "2026-11-10T08:35:09.184533+00:00",
+  "argv": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/quadrature.py",
+    "run",
+    "--engine",
+    "decimal",
+    "--orders",
+    "8",
+    "--output",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/rank6-fp-runtime-1/decimal8-result.json",
+    "--admit-physics"
+  ],
+  "cpu": 10,
+  "cpu_reservation": false,
+  "source_index_sha256": "03ffcd9f8b88855b59d78387cde255460a36d35cca251fce093741a9c0065db3",
+  "native_reducer_calls": 0,
+  "performance_qualified": false,
+  "exit_code": 0,
+  "elapsed_seconds": 6.332938056904823,
+  "files": {
+    "decimal8-result.json": "4e864a95d9afc0ec6ecef5db9217622dabf94f289d61dab765c8569ab803fe7e",
+    "decimal8-stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

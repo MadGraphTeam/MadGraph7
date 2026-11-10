@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "scope": "offline parser only; no integration, native reducer, build or model initialization",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2676,
+      "sha256": "2fdb07163a4737f9c47b84095f7f216be287be8f7377fa51496da5fdecf30271"
+    },
+    {
+      "path": "code-audit-2.json",
+      "bytes": 4678,
+      "sha256": "6f4da23cc3647d65e63e1158edc963ae0c3a7e8bf49b755b99dff4577678f1d2"
+    },
+    {
+      "path": "code-audit.json",
+      "bytes": 6280,
+      "sha256": "b8da07b6fa5b1eee572cbdaa6cf6a818b116befa2d0269af114aa9f1d2db78eb"
+    },
+    {
+      "path": "compare.py",
+      "bytes": 14687,
+      "sha256": "4bd4b5886bc67d9a9615f02246cb8c2ec1b7e8f421f781e6ef3d5967063af554"
+    },
+    {
+      "path": "synthetic-tests.txt",
+      "bytes": 1511,
+      "sha256": "caacba339ed538bc5a27f472d2733bfe38a767d90ebfa45f4d73e78fa5793606"
+    },
+    {
+      "path": "test_compare.py",
+      "bytes": 6383,
+      "sha256": "dc515cb5e97e3d32deaa2539430b054d107d5d280c14440c256e3ebcbc4455a1"
+    },
+    {
+      "path": "verify.py",
+      "bytes": 1432,
+      "sha256": "5aa5688659a00aa2b3755e5acab2c25ea3a6438e939a369802228de6ee68ae14"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/source-index.json",
+      "bytes": 4282,
+      "sha256": "03ffcd9f8b88855b59d78387cde255460a36d35cca251fce093741a9c0065db3"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/derivation.json",
+      "bytes": 24004,
+      "sha256": "cb5867c226948809ef335f64a50855f01d76d70b8cda07dd0f2e20b2e70a70af"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/proposal.json",
+      "bytes": 8642,
+      "sha256": "682e02eb2e5dab6e734bb5b24052795a1c189b5972a6e7a04e1ce01795393827"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/rows.json.gz",
+      "bytes": 131918,
+      "sha256": "729abf58745f554684eae4e2020c52280bcb3658becf80f2cec85f3540a3f74a"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/index.json",
+      "bytes": 955,
+      "sha256": "5c669260ad17e9d1ef2b7991bf90720a7b22190607ea1b82df035da2f6afd3f1"
+    }
+  ],
+  "synthetic_tests": {
+    "count": 12,
+    "elapsed_seconds": 0.042,
+    "exit_code": 0,
+    "receipt": "synthetic-tests.txt"
+  },
+  "physics_quadrature_calls": 0,
+  "native_reducer_calls": 0,
+  "actual_total_floating_error_certification": false
+}

@@ -1,0 +1,79 @@
+{
+  "additional_synthetic_check": {
+    "actually_executed": true,
+    "error_grid": [
+      "0",
+      "0.125",
+      "1"
+    ],
+    "exact_rational_sample_points": 675,
+    "method": "Independent exact Fraction residuals at t=x+k*e/4 for k=-4..4; compare against displayed interval endpoints.",
+    "new_result_files_read": 0,
+    "parameter_fixture_evaluations": 0,
+    "quadrature_calls": 0,
+    "result": "PASS; all sampled exact residuals lie inside the emitted outward-rounded intervals",
+    "scope": "Synthetic algebra check supports the interval implementation; the triangle-inequality derivation supplies the all-point mathematical justification.",
+    "source_sha256": "4bd4b5886bc67d9a9615f02246cb8c2ec1b7e8f421f781e6ef3d5967063af554",
+    "source_unchanged_before_after": true,
+    "synthetic_intervals": 75,
+    "x_and_y_grid": [
+      "-2",
+      "-0.5",
+      "0",
+      "0.5",
+      "2"
+    ]
+  },
+  "mathematical_review": {
+    "complex_to_component": "A bound on complex absolute integration error also bounds each real or imaginary component individually.",
+    "exact_inputs": "Decimal x,y,e convert to exact Fractions before numerator/denominator arithmetic.",
+    "hypothesis": "For this conditional analytic-tail comparison only, an exact-quadrature component t is taken to satisfy |t-x|<=e about the supplied estimate x; finite-precision node/weight/arithmetic uncertainty is excluded, not assumed certified.",
+    "lower_bound": "max(0,|x-y|-e)/(|x+y|+e), with the all-zero and zero-denominator conventions handled explicitly.",
+    "outward_rounding": "Frozen rational analytic error is rounded upward before use; lower residual displays use180digit ROUND_FLOOR and upper displays use180digit ROUND_CEILING. Enlarging e preserves conservativeness.",
+    "threshold_flags": "Agreement/disagreement flags use only the conditional analytic-tail enclosure and explicitly retain the finite-precision exclusion.",
+    "upper_bound": "(|x-y|+e)/(|x+y|-e) when |x+y|>e, otherwise Infinity; the exact all-zero case returns0.",
+    "zero_and_opposite_sign": "Reviewed the 0/0 convention and the infinite residual for nonzero opposite-sign components; the enclosure remains conservative when a positive error budget crosses a zero denominator."
+  },
+  "minor_validation_fix": {
+    "finding": "NaN compared with zero before the finite check raised Decimal InvalidOperation.",
+    "resolution": "Current source checks error.is_finite() before error<0 and raises ValueError for nonfinite or negative budgets."
+  },
+  "new_block": "analytic_interval and the upward-rounded analytic-error conversion in analyze",
+  "no_backend_value_inference_in_this_audit": true,
+  "preserved_prior_audit": {
+    "bytes": 6280,
+    "path": "code-audit.json",
+    "sha256": "b8da07b6fa5b1eee572cbdaa6cf6a818b116befa2d0269af114aa9f1d2db78eb"
+  },
+  "readme_review": "The new README accurately limits practical inference to sampled components, separates analytic tail from floating arithmetic, retains backend flags, and does not claim full rank-six or physical-amplitude qualification.",
+  "reference_repositories_modified": false,
+  "remaining_limits": [
+    "No new or active quadrature result was read by this reviewer.",
+    "No conclusion about actual n18 comparisons is made here.",
+    "Observed agreement between binary64 and80digit Decimal at one order is an arithmetic cross-check, not a global roundoff certificate for every order.",
+    "A practical inference from all closed evidence may be reported as an inference scoped to sampled components; conditional analytic-only flags must not become unconditional total-error acceptance.",
+    "Physical amplitudes, the full tensor array, stability rescues, poles and performance remain outside this audit."
+  ],
+  "reviewed_sources": [
+    {
+      "bytes": 14687,
+      "path": "compare.py",
+      "sha256": "4bd4b5886bc67d9a9615f02246cb8c2ec1b7e8f421f781e6ef3d5967063af554"
+    },
+    {
+      "bytes": 6383,
+      "path": "test_compare.py",
+      "sha256": "dc515cb5e97e3d32deaa2539430b054d107d5d280c14440c256e3ebcbc4455a1"
+    },
+    {
+      "bytes": 2676,
+      "path": "README.md",
+      "sha256": "2fdb07163a4737f9c47b84095f7f216be287be8f7377fa51496da5fdecf30271"
+    }
+  ],
+  "reviewer_owned_file": "code-audit-2.json",
+  "reviewer_task": "/root/rank6_discrepancy_followup/simplex_discriminator",
+  "schema": 1,
+  "status": "additive source audit of analytic-error-only residual intervals complete; no actual quadrature or new quadrature-result read",
+  "test_execution_attribution": "The owner is refreshing its12test log after the one-line finite-check reorder. This reviewer did not rerun or overwrite that log."
+}

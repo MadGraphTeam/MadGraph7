@@ -1,0 +1,23 @@
+test_actual_evaluation_requires_explicit_admission (test_quadrature.BoundsAndAdmission.test_actual_evaluation_requires_explicit_admission) ... usage: python3 -m unittest [-h] {proposal,run} ...
+python3 -m unittest: error: actual fixture evaluation requires root-reviewed --admit-physics
+ok
+test_deadline_covers_root_preparation_and_cache_hits (test_quadrature.BoundsAndAdmission.test_deadline_covers_root_preparation_and_cache_hits) ... ok
+test_fixture_is_mutually_consistent_exact_4d (test_quadrature.BoundsAndAdmission.test_fixture_is_mutually_consistent_exact_4d) ... ok
+test_fixture_rejects_changed_bytes_even_for_consistent_geometry (test_quadrature.BoundsAndAdmission.test_fixture_rejects_changed_bytes_even_for_consistent_geometry) ... ok
+test_owned_derivation_matches_formulas_and_bounds (test_quadrature.BoundsAndAdmission.test_owned_derivation_matches_formulas_and_bounds) ... ok
+test_proposal_does_not_generate_gaussian_rules_or_integrate (test_quadrature.BoundsAndAdmission.test_proposal_does_not_generate_gaussian_rules_or_integrate) ... ok
+test_rational_majorant_and_analytic_bounds (test_quadrature.BoundsAndAdmission.test_rational_majorant_and_analytic_bounds) ... ok
+test_known_shifted_jacobi_polynomials (test_quadrature.ExactRules.test_known_shifted_jacobi_polynomials) ... ok
+test_positive_gaussian_weights_exact_moments (test_quadrature.ExactRules.test_positive_gaussian_weights_exact_moments) ... ok
+test_root_brackets_are_exact_and_complete (test_quadrature.ExactRules.test_root_brackets_are_exact_and_complete) ... ok
+test_control_formulas (test_quadrature.TensorFormula.test_control_formulas) ... ok
+test_decimal_point_analytic_control (test_quadrature.TensorFormula.test_decimal_point_analytic_control) ... ok
+test_disputed_formulas (test_quadrature.TensorFormula.test_disputed_formulas) ... ok
+test_point_integrand_equal_mass_zero_shift_analytic_control (test_quadrature.TensorFormula.test_point_integrand_equal_mass_zero_shift_analytic_control) ... ok
+test_stick_breaking_constant_measure (test_quadrature.TensorFormula.test_stick_breaking_constant_measure) ... ok
+test_tensor_domain_is_explicit (test_quadrature.TensorFormula.test_tensor_domain_is_explicit) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.709s
+
+OK

@@ -1,0 +1,193 @@
+{
+  "active_n18_result_read": false,
+  "findings_resolved_in_reviewed_source": [
+    {
+      "finding": "The initial length-only hexadecimal check admitted leading-plus nonhex lexical forms.",
+      "resolution": "Every word must match [0-9a-fA-F]{16} exactly."
+    },
+    {
+      "finding": "The initial fixed180digit conversion rounded very small finite binary128 values, including subnormals. All28selected historical finite parts were already exact.",
+      "resolution": "Final decoder builds an exact integer significand times a power of2 using an integer shift or integer power of5 plus Decimal.scaleb in20000digit context; this exceeds all finite binary128 significand lengths and preserves signed zero. Nonfinite encodings still fail explicitly."
+    },
+    {
+      "finding": "An order absent from the frozen analytic-bound table initially raised StopIteration.",
+      "resolution": "Such an order now raises explicit ValueError; no bound or result is inferred."
+    }
+  ],
+  "independent_historical_decode_check": {
+    "actually_executed": true,
+    "finite_parts_checked": 28,
+    "initial_decoder_sha256_not_recorded_at_execution": true,
+    "limit": "This verifies the retained finite coefficient selection and decoding. It does not evaluate a parameter integral or designate either backend true.",
+    "maximum_exact_difference": "0",
+    "method": "Independent integer significand and binary exponent converted to Fraction, then Decimal at18000digits; compared with initial parser decoding for all7targets x2backends x2parts"
+  },
+  "interpretation_review": [
+    "Both retained backends are compared separately against each estimate.",
+    "Four low-rank real/imaginary convention checks remain explicit for each backend.",
+    "The original symmetric residual definition is preserved, including zero and opposite-sign cases.",
+    "Analytic quadrature bounds are joined to the frozen exact rational table; node/weight/arithmetic error is explicitly excluded.",
+    "Successive-order differences and tolerance agreement are labelled descriptive estimates, not truth or an accepted total-error certificate.",
+    "COLLIER accuracy flag\u22121 and IEEE states remain in output.",
+    "Result reading occurs only after the explicit closed-result admission gate; this gate relies on root process-termination confirmation."
+  ],
+  "mapping_findings": {
+    "collier_row": {
+      "action": 3013,
+      "backend": 7,
+      "cache": 0,
+      "ct": 1,
+      "finite": 1,
+      "fixture": 108,
+      "mode": 0,
+      "n": 6,
+      "rank": 6,
+      "state": [
+        32,
+        0,
+        37,
+        0,
+        1,
+        0,
+        -1
+      ]
+    },
+    "finite_slot": "values[index][0] is the original Fortran Laurent slot1/finite component",
+    "selected_indices": {
+      "index111": [
+        111,
+        [
+          1,
+          1,
+          1,
+          2
+        ]
+      ],
+      "index161": [
+        161,
+        [
+          3,
+          1,
+          1,
+          1
+        ]
+      ],
+      "index55": [
+        55,
+        [
+          1,
+          1,
+          1,
+          1
+        ]
+      ],
+      "odd_time": [
+        1,
+        [
+          1,
+          0,
+          0,
+          0
+        ]
+      ],
+      "scalar": [
+        0,
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "space_space": [
+        7,
+        [
+          0,
+          2,
+          0,
+          0
+        ]
+      ],
+      "time_time": [
+        5,
+        [
+          2,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    "tirust_row": {
+      "action": 3007,
+      "backend": 9,
+      "cache": 0,
+      "ct": 4,
+      "finite": 1,
+      "fixture": 108,
+      "mode": 0,
+      "n": 6,
+      "rank": 6,
+      "state": [
+        32,
+        0,
+        32,
+        0,
+        1,
+        0,
+        0
+      ]
+    },
+    "word_order": "four little-endian 64-bit words per complex binary128: real low/high at offsets0/1, imaginary low/high at offsets2/3"
+  },
+  "native_reducer_calls": 0,
+  "new_parameter_result_files_read": 0,
+  "pure_parser_tests": {
+    "final_hardened_suite": "Owner running11tests in session84922; reviewer did not rerun or overwrite owner logs. Consult owner execution receipt for final status and source identity.",
+    "initial_suite_actually_run_by_reviewer": {
+      "seconds": 0.028,
+      "status": "PASS",
+      "tests": 9
+    }
+  },
+  "quadrature_calls": 0,
+  "reference_repositories_modified": false,
+  "remaining_limits": [
+    "Total parameter-estimate floating-point error remains unqualified.",
+    "No finite truth, implementation blame, physical-amplitude, stability, poles or performance acceptance follows from this parser.",
+    "Final hardened tests are attributed to their owner, not independently rerun by this reviewer."
+  ],
+  "retained_inputs": [
+    {
+      "bytes": 131918,
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/rows.json.gz",
+      "sha256": "729abf58745f554684eae4e2020c52280bcb3658becf80f2cec85f3540a3f74a"
+    },
+    {
+      "bytes": 4282,
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/source-index.json",
+      "sha256": "03ffcd9f8b88855b59d78387cde255460a36d35cca251fce093741a9c0065db3"
+    },
+    {
+      "bytes": 24004,
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/derivation.json",
+      "sha256": "cb5867c226948809ef335f64a50855f01d76d70b8cda07dd0f2e20b2e70a70af"
+    }
+  ],
+  "reviewed_sources": [
+    {
+      "bytes": 12986,
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/compare.py",
+      "sha256": "52934a3f241a98e7e3274b5afa4f053707bf6fad95b6ca78b35613de712e1510"
+    },
+    {
+      "bytes": 5654,
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/test_compare.py",
+      "sha256": "b2072ae8c52077f13925c9ab2f1b4c2df83fa85a28f6b9b922d13bb433604c4c"
+    }
+  ],
+  "reviewer_owned_file": "code-audit.json",
+  "reviewer_task": "/root/rank6_discrepancy_followup/simplex_discriminator",
+  "schema": 1,
+  "status": "independent additive-parser source review complete; no new parameter result read or quadrature performed"
+}

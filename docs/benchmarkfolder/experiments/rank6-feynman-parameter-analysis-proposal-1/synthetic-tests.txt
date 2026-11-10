@@ -1,0 +1,17 @@
+test_analytic_interval_keeps_roundoff_exclusion (test_compare.CompareTests.test_analytic_interval_keeps_roundoff_exclusion) ... ok
+test_arithmetic_join_uses_only_common_orders (test_compare.CompareTests.test_arithmetic_join_uses_only_common_orders) ... ok
+test_binary128_exact_and_signed_zero (test_compare.CompareTests.test_binary128_exact_and_signed_zero) ... ok
+test_binary128_subnormal_and_hex_contract (test_compare.CompareTests.test_binary128_subnormal_and_hex_contract) ... ok
+test_closed_gate_precedes_any_result_read (test_compare.CompareTests.test_closed_gate_precedes_any_result_read) ... ok
+test_duplicate_order_rejected (test_compare.CompareTests.test_duplicate_order_rejected) ... ok
+test_exact_retained_values_are_not_relabelled_truth (test_compare.CompareTests.test_exact_retained_values_are_not_relabelled_truth) ... ok
+test_json_float_roundtrip_preserves_binary64 (test_compare.CompareTests.test_json_float_roundtrip_preserves_binary64) ... ok
+test_running_result_rejected (test_compare.CompareTests.test_running_result_rejected) ... ok
+test_symmetric_zero_and_opposite_sign_limits (test_compare.CompareTests.test_symmetric_zero_and_opposite_sign_limits) ... ok
+test_tampered_component_or_bound_rejected (test_compare.CompareTests.test_tampered_component_or_bound_rejected) ... ok
+test_unreviewed_order_fails_explicitly (test_compare.CompareTests.test_unreviewed_order_fails_explicitly) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.042s
+
+OK

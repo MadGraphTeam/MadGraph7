@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "scope": "source-only; no actual fixture quadrature, reducer execution, build or timing",
+  "status": "ready for root source review; floating total error not qualified",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 9654,
+      "sha256": "512cc0f7d1464363d67296899e0e5162e7299d6845d5a1dfea271f41bc5f94e6"
+    },
+    {
+      "path": "code-audit.json",
+      "bytes": 6866,
+      "sha256": "8e6920cd621f5794754462835ad7a92ad2cdc88bb51bda5630f91f8e0f474842"
+    },
+    {
+      "path": "derivation.json",
+      "bytes": 24004,
+      "sha256": "cb5867c226948809ef335f64a50855f01d76d70b8cda07dd0f2e20b2e70a70af"
+    },
+    {
+      "path": "proposal.json",
+      "bytes": 8642,
+      "sha256": "682e02eb2e5dab6e734bb5b24052795a1c189b5972a6e7a04e1ce01795393827"
+    },
+    {
+      "path": "quadrature.py",
+      "bytes": 19323,
+      "sha256": "d45f89ef665e82c1b71839414c52b2c8cf73f2c4427689c0e073f8d37c5439f7"
+    },
+    {
+      "path": "source-evidence.json",
+      "bytes": 6508,
+      "sha256": "2286c03c7d521994cec62dc7d8fbd1d25d6867f0a8015c4254af9403915ed401"
+    },
+    {
+      "path": "synthetic-tests.txt",
+      "bytes": 2293,
+      "sha256": "9c2470105aeef777b5d3fb2a87914db68ae1ed39fed679382417152697041b43"
+    },
+    {
+      "path": "test_quadrature.py",
+      "bytes": 8583,
+      "sha256": "3d80de6f442c59d790325dc5f5af493d4fde65fcc1ec962c28c135c8d95be876"
+    },
+    {
+      "path": "verify.py",
+      "bytes": 2065,
+      "sha256": "fb5da19e7e83c239f9752569bf7949078eb2cf25c05907fbbf2e168147b1b0bb"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/fixtures.json",
+      "bytes": 8585,
+      "sha256": "180cb642d3886dab8055a70a7f4fef6586e2b2c635e998aab0066e95886f53f4"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/index.json",
+      "bytes": 955,
+      "sha256": "5c669260ad17e9d1ef2b7991bf90720a7b22190607ea1b82df035da2f6afd3f1"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/analysis.json",
+      "bytes": 147713,
+      "sha256": "92b5a3844de7d0a9ffa667aff23039d4d96d48e6ec2adc253cf751b4d143c8b1"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/rows.json.gz",
+      "bytes": 131918,
+      "sha256": "729abf58745f554684eae4e2020c52280bcb3658becf80f2cec85f3540a3f74a"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/index.json",
+      "bytes": 11780,
+      "sha256": "b25130768bc8a5f8daabbcfe820160755b41b4dd2e558cd0b1a87aa49e1f6ec7"
+    },
+    {
+      "path": "vendor/tirust/src/lib.rs",
+      "bytes": 46218,
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/qcd/cap_collier.f",
+      "bytes": 31641,
+      "sha256": "26c5a83505d0a564e2ba459a62b4fadf358bc5019e7a512d76e3bd7d628ea756"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/verify_fixture.py",
+      "bytes": 3976,
+      "sha256": "01500d39a6123713bdbd4fa03579d322f28ca28a5c0e91c49b1a1a51318da653"
+    }
+  ],
+  "optional_live_inputs": [
+    {
+      "path": "../references/TIRust/crates/iregi-rust/src/types.rs",
+      "bytes": 35767,
+      "sha256": "a29dc5f68edae92c5f35acc49ac8b2c64dbc8a38dd078df98d13769a801103e0"
+    },
+    {
+      "path": "../references/TIRust/crates/iregi-rust/src/convention.rs",
+      "bytes": 10911,
+      "sha256": "2346b0ba2e8b8000d99a626849d8d466f1b3492518499cecb8dfa398a56f43ad"
+    }
+  ],
+  "synthetic_tests": {
+    "command": "python3 -B -m unittest discover -s docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1 -p 'test_*.py' -v",
+    "exit_code": 0,
+    "count": 16,
+    "elapsed_seconds": 0.709,
+    "receipt": "synthetic-tests.txt"
+  },
+  "actual_fixture_quadrature_executed": false,
+  "native_reducer_calls": 0,
+  "reference_sources_modified": false
+}
