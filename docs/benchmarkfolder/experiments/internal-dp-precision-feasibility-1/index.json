@@ -1,0 +1,18 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 10806,
+      "sha256": "eddf8ecb170945afc4b20ee1e2955668201a72ae961e9191f5c8e6bc1b44b01f"
+    },
+    "source-bindings.json": {
+      "bytes": 102684,
+      "sha256": "7c034edfb40a359c614862d60ae42971b3c541394b03490b6f9bac50318434ed"
+    },
+    "verify.py": {
+      "bytes": 2123,
+      "sha256": "00eb48f5e298c2a284814888b4eac456cd5e1a3084de58311ea8c4cd100f94b5"
+    }
+  },
+  "schema": "internal-dp-precision-feasibility-index-v1",
+  "scope": "source-only, not implemented, unmeasured"
+}
