@@ -879,3 +879,24 @@ def test_evaluate_takes_the_kinematics_improvement() -> None:
     default = parse_cli(("evaluate",)).resolve().effective
     assert default.evaluation.kinematics_improvement is None
     assert default.evaluation.kinematics_improvement_binary64 is None
+
+
+def test_profile_and_check_take_the_kinematics_improvement() -> None:
+    """m-lit lit-psimprove: ``profile`` and ``check`` (its rungs, (G5)) take
+    the same two evaluation keys."""
+
+    for command in ("profile", "check"):
+        effective = (
+            parse_cli(
+                (
+                    command,
+                    "--kinematics-improvement",
+                    "off",
+                    "--no-kinematics-improvement-binary64",
+                )
+            )
+            .resolve()
+            .effective
+        )
+        assert effective.evaluation.kinematics_improvement == "off", command
+        assert effective.evaluation.kinematics_improvement_binary64 is False, command

@@ -152,6 +152,10 @@ class CheckRow:
     estimate: float | None = None
     fallback: str | None = None
     reason: str | None = None
+    # The deciding rung's kinematics improvement of the lifted point (m-lit
+    # lit-psimprove (G5)): the variant that produced it, "exact" or
+    # "not-improved"; None where none ran (binary64 without the switch).
+    kinematics: str | None = None
 
 
 @dataclass(frozen=True)
@@ -239,6 +243,34 @@ def _evaluate(executor: Any, point: Any, scale: Any, carrier: Any, checks: Any) 
 
     (result,) = executor.evaluate([point], [scale], precision=carrier, stability=checks)
     return result
+
+
+def _improved(
+    executor: Any, point: Any, scale: Any, carrier: Any, settings: Any
+) -> tuple[Any, str | None]:
+    """The lifted point a rung in ``carrier`` evaluates (m-lit lit-psimprove
+    (G5)): improved in that carrier under the user's ``settings``
+    (``kinematics.KinematicsSettings``; None: the policy's defaults) as
+    ``Runtime.evaluate`` improves a user's point, toward the masses the
+    executor binds; the lifted point is exact to twice the last carrier's
+    digits, so this moves it by the rung's rounding at most. Also the
+    record's short form (the variant that produced the point, "exact",
+    "not-improved"; None: no improvement in this carrier)."""
+
+    from pyamplicol import kinematics
+
+    settings = settings if settings is not None else kinematics.resolve(None, None)
+    name = _carrier_name(carrier)
+    variant = settings.variant(name)
+    if variant is None:
+        return point, None
+    masses = executor.leg_masses(point, scale, None, carrier, 1)
+    initial = kinematics.initial_count(executor.slice.blocks.process.legs)
+    digits = carrier.working_digits if name == "arbitrary" else None
+    (improved,), (record,) = kinematics.improve(
+        [point], initial, masses, name, digits, variant
+    )
+    return improved, record["produced"] or record["status"]
 
 
 def _pole_rows_binary64(result: Any, index: int, target: float) -> dict[Any, CheckRow]:
@@ -357,6 +389,7 @@ def born_rows(
     target: Any,
     points: Sequence[tuple[Any, Any]],
     carriers: Sequence[Any],
+    kinematics: Any = None,
 ) -> list[CheckRow]:
     """The pole and Ward rows of a Born-interfered probe slice (module
     docstring) at the lifted ``points`` ((point, mu_R^2) pairs)."""
@@ -379,10 +412,11 @@ def born_rows(
             if evaluated and not pending:
                 break
             double = _carrier_name(carrier) == "double"
+            rung, improved = _improved(executor, point, scale, carrier, kinematics)
             try:
                 result = _evaluate(
                     executor,
-                    point,
+                    rung,
                     scale,
                     carrier,
                     stability.RECOMMENDED_CHECKS if double else None,
@@ -397,6 +431,10 @@ def born_rows(
                 if double
                 else _pole_rows_dd(result, index)
             )
+            if improved is not None:
+                found = {
+                    key: _with(row, kinematics=improved) for key, row in found.items()
+                }
             if not evaluated:
                 decided = {
                     key: _with(row, fallback=refusal) if refusal else row
@@ -425,7 +463,11 @@ def born_rows(
         )
         # Ward identities on every gluon and photon leg.
         if legs:
-            rows.extend(_born_ward_rows(executor, point, scale, legs, carriers, index))
+            rows.extend(
+                _born_ward_rows(
+                    executor, point, scale, legs, carriers, index, kinematics
+                )
+            )
     if not legs:
         rows.append(
             CheckRow(
@@ -512,14 +554,17 @@ def _born_ward_rows(
     legs: Sequence[int],
     carriers: Sequence[Any],
     index: int,
+    kinematics: Any = None,
 ) -> list[CheckRow]:
     from . import ward
     from .plan_export import FailedPoints
 
     decided: dict[Any, CheckRow] = {}
     fallback: str | None = None
+    lifted = point
     for carrier in carriers:
         name = _carrier_name(carrier)
+        point, improved = _improved(executor, lifted, scale, carrier, kinematics)
         pending = [
             key
             for key in ((leg, factor) for leg in legs for factor in ward.WARD_FACTORS)
@@ -543,8 +588,8 @@ def _born_ward_rows(
                     executor, point, scale, name, legs=batch_legs, factors=factors
                 )
                 for row in check["rows"]:
-                    found[(row["leg"], tuple(row["factor"]))] = _ward_row(
-                        row, name, index
+                    found[(row["leg"], tuple(row["factor"]))] = _with(
+                        _ward_row(row, name, index), kinematics=improved
                     )
         except FailedPoints as error:
             fallback = f"{name} refused: {error}"
@@ -583,6 +628,7 @@ def induced_rows(
     carriers: Sequence[Any],
     *,
     memo: Any = None,
+    kinematics: Any = None,
 ) -> list[CheckRow]:
     """The finiteness, Ward and Goldstone rows of a loop-induced probe slice
     (``induced.point_probes``, ``induced.goldstone_point``) at the lifted
@@ -632,7 +678,15 @@ def induced_rows(
             )
             continue
         entries, decided = induced.point_probes(
-            executor, point, scale, legs, carriers, floors
+            executor,
+            point,
+            scale,
+            legs,
+            carriers,
+            floors,
+            improve=lambda point, scale, carrier: _improved(
+                executor, point, scale, carrier, kinematics
+            ),
         )
         for entry, result in zip(entries, decided, strict=True):
             rows.append(_probe_row(entry, result, index))
@@ -693,6 +747,7 @@ def _probe_row(entry: Mapping[str, Any], result: Any, index: int) -> CheckRow:
             if fallback["reason"] == "refused"
             else f"{fallback['carrier']} ratio {fallback['worst']} times its estimate"
         )
+    improved = entry.get("kinematics", {}).get(entry["carrier"])
     if isinstance(result, str):
         return CheckRow(
             check,
@@ -702,6 +757,7 @@ def _probe_row(entry: Mapping[str, Any], result: Any, index: int) -> CheckRow:
             FAIL,
             fallback=fallback_text,
             reason=result,
+            kinematics=improved,
         )
     deviation = estimate = None
     relative = getattr(result, "relative", None) or {}
@@ -719,6 +775,7 @@ def _probe_row(entry: Mapping[str, Any], result: Any, index: int) -> CheckRow:
         _short(deviation),
         _short(estimate),
         fallback=fallback_text,
+        kinematics=improved,
     )
 
 
@@ -732,6 +789,7 @@ def check_request(
     carriers: Sequence[Any],
     *,
     memo: Any = None,
+    kinematics: Any = None,
 ) -> ProcessCheck:
     """The checks of one generation request (``SliceRequest``) at the
     binary64 phase-space points ``momenta`` (module docstring): its probe
@@ -762,10 +820,17 @@ def check_request(
             points.append((point, _point_scale(point, initial)))
         if request.contribution == "loop-induced":
             rows = induced_rows(
-                target, compiled, probe, native, points, carriers, memo=memo
+                target,
+                compiled,
+                probe,
+                native,
+                points,
+                carriers,
+                memo=memo,
+                kinematics=kinematics,
             )
         else:
-            rows = born_rows(target, points, carriers)
+            rows = born_rows(target, points, carriers, kinematics)
     return ProcessCheck(
         process,
         expression,

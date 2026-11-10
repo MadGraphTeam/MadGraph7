@@ -943,6 +943,7 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
             "certificate); default off"
         ),
     )
+    _add_kinematics_options(parser)
     parser.add_argument(
         "--mu-r2",
         dest="evaluation.mu_r2",
@@ -1119,6 +1120,9 @@ def build_parser() -> argparse.ArgumentParser:
             "model or processes differ from the stored ones)"
         ),
     )
+    # The rungs' kinematics improvement (m-lit lit-psimprove (G5)): the
+    # evaluation keys, as Runtime.evaluate's.
+    _add_kinematics_options(check)
     check.add_argument(
         "--points",
         dest="check.points",

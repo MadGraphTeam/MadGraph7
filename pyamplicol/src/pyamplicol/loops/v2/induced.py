@@ -1967,6 +1967,7 @@ def point_probes(
     carriers: Sequence[Any],
     floors: Mapping,
     seconds: dict[str, Any] | None = None,
+    improve: Callable[[Any, Any, Any], tuple[Any, str | None]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[Any]]:
     """The finiteness probe and the Ward probe of every leg of ``legs``
     (``probe_legs``) at one lifted point (``probe_point``) of a probe
@@ -1978,23 +1979,30 @@ def point_probes(
     point's physical row floors (``probe_floors``); ``seconds`` gets each
     carrier's pass time. Returns the per-probe record entries (``_decided``)
     and each probe's deciding result (a ``ProbeResult`` or a refusal text),
-    finiteness first."""
+    finiteness first. ``improve`` (``pyamplicol check``'s rungs only, m-lit
+    lit-psimprove (G5); None at generation, whose records are unchanged):
+    the point a carrier evaluates and its record's short form, per carrier
+    from the lifted point (each entry's ``"kinematics"``, by carrier)."""
 
     from .ward import gauge_ward
 
-    wards = [None, *(gauge_ward(leg, (1, 0), point) for leg in legs)]
     entries: list[dict[str, Any]] = [{"probe": "finiteness"}] + [
         {"probe": "ward", "leg": leg} for leg in legs
     ]
-    outcomes: list[list[Any]] = [[] for _ in wards]
-    pending = list(range(len(wards)))
+    outcomes: list[list[Any]] = [[] for _ in entries]
+    pending = list(range(len(entries)))
     for carrier in carriers:
         if not pending:
             break
+        rung, improved = (point, None) if improve is None else improve(point, scale, carrier)
+        wards = [None, *(gauge_ward(leg, (1, 0), rung) for leg in legs)]
+        if improved is not None:
+            for i in pending:
+                entries[i].setdefault("kinematics", {})[carrier.arithmetic] = improved
         clock = time.perf_counter()
         found = probe_results(
             executor,
-            point,
+            rung,
             scale,
             [wards[i] for i in pending],
             precision=carrier,
