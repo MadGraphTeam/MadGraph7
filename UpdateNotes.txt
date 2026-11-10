@@ -62,6 +62,14 @@ ANNOUNCEMENT:
          input of MadSpin's spin correlations): a bound state is one leg with its J_z
          open, outgoing or incoming, S and P waves; the python (f2py) library of an onia
          output takes the PDG code of the bound state and reads the onia card.
+       - MadSpin decays bound states with spin correlations (spinmode madspin, full,
+         onshell, PA; and none): "decay Jpsi > mu+ mu-" (the hadron) or "decay
+         Jpsi(1|3S11) > mu+ mu-" decays the colour-singlet Fock state, at the onium_mass
+         of the events (no Breit-Wigner), contracting the production and decay density
+         matrices over its J_z. The onia card travels in the event banner (<MGOniaCard>);
+         the total width is a DECAY block for the PDG code of the bound state in the
+         param_card, whose BR lines, if any, give the branching ratio (else the LO partial
+         width does). Density matrices from the Fortran output, decays from madevent.
        - Bug fix: a leptonium process without a photon vertex (e.g. "tata(1|3S1) > vt vt~")
          did not compile: the Coulomb LDME took alpha from the photon coupling GC_3, which
          is declared only when an amplitude uses it. It now uses GAL(1), the QED coupling

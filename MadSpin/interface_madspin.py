@@ -52,6 +52,7 @@ import madgraph.various.lhe_parser as lhe_parser
 import madgraph.models.import_ufo as import_ufo
 import madgraph.models.check_param_card as check_param_card
 import MadSpin.decay as madspin
+import MadSpin.onia_madspin as onia_madspin
 import madmatrix.density as madmatrix_density
 
 logger = logging.getLogger('decay.stdout') # -> stdout
@@ -1423,6 +1424,19 @@ class MadSpinInterface(extended_cmd.Cmd):
                 logger.warning("polarization option used with spinmode=%s. This combination is not validated and is by construction using sub-optimal method which can likely lead to bias in some situation. Use at your own risk." % self.options['spinmode'])
         if "=" in decaybranch and self.options['spinmode'] in ['full', 'madspin_v1']:
             logger.warning("Note that coupling order restriction are not associated to specific Branching Ratio. The total cross-section might therefore use the wrong branching ratio.")
+        if getattr(self, 'onia', None):
+            # a bound state: 'decay Jpsi > mu+ mu-' or 'decay Jpsi(1|3S11) >
+            # mu+ mu-' is the decay of the colour-singlet Fock state of the
+            # hadron, under its alias (no parentheses for the decay-chain parser)
+            rewritten = self.onia.rewrite_decay_line(decaybranch)
+            if rewritten:
+                if self.options['spinmode'] in ['madspin_v1', 'onshell_v1']:
+                    raise self.InvalidCmd(
+                        "MadSpin: spinmode=%s writes production and decay as one process "
+                        "with the decay-chain syntax, which bound states do not support. "
+                        "Use spinmode=madspin (spin correlations from density matrices) or "
+                        "spinmode=none." % self.options['spinmode'])
+                decaybranch = rewritten
         decay_process, init_part = self.decay.reorder_branch(decaybranch)
         if init_part not in self.list_branches:
             self.list_branches[init_part] = []
@@ -1893,7 +1907,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             pdgs = self.mg5cmd._multiparticles[name]
             return pdgs[0] if len(pdgs) == 1 else None
         try:
-            return self.mg5cmd._curr_model.get('name2pdg')[name]
+            return self._bookkeeping_model().get('name2pdg')[name]
         except KeyError:
             return None
 
@@ -2307,6 +2321,8 @@ class MadSpinInterface(extended_cmd.Cmd):
             self.options['spinmode'] = spinmode
 
         logger.info("Running MadSpin in spinmode %s" % spinmode)
+        if getattr(self, 'onia', None):
+            self.onia.check_launch(self)
         self._check_fixed_order_spinmode(spinmode)
         # Both of these are refused outside the density modes, so they are
         # checked before the branch rather than inside it. pure_interference
@@ -2387,12 +2403,12 @@ class MadSpinInterface(extended_cmd.Cmd):
                     break
             else:
                 try:
-                    pid = self.mg5cmd._curr_model.get('name2pdg')[part]
+                    pid = self._bookkeeping_model().get('name2pdg')[part]
                 except KeyError:
-                    pid = self.mg5cmd._curr_model.get('name2pdg')[part.lower()]
+                    pid = self._bookkeeping_model().get('name2pdg')[part.lower()]
                     self.list_branches[part.lower()] = self.list_branches[part]
                     del self.list_branches[part]
-                    particle = self.mg5cmd._curr_model.get_particle(pid)
+                    particle = self._bookkeeping_model().get_particle(pid)
                     if particle.get('antiname').upper() in self.list_branches:
                         self.list_branches[particle.get('antiname').lower()] = \
                             self.list_branches[particle.get('antiname').upper()]
@@ -2590,7 +2606,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 for pdg in self.mg5cmd._multiparticles[part]:
                     asked_to_decay.add(pdg)
             else:
-                asked_to_decay.add(self.mg5cmd._curr_model.get('name2pdg')[part])
+                asked_to_decay.add(self._bookkeeping_model().get('name2pdg')[part])
 
         #0. Define the path where to write the file
         self.path_me = os.path.realpath(self.options['curr_dir']) 
@@ -2941,6 +2957,13 @@ class MadSpinInterface(extended_cmd.Cmd):
             misc.gzip(self.gunzipped_input)
                     
     
+    def _bookkeeping_model(self):
+        """The model of MadSpin's names and pdg codes: the generator's, or with
+        bound states the copy that also knows their pseudo-particles."""
+        if getattr(self, 'onia', None):
+            return self.model
+        return self.mg5cmd._curr_model
+
     def load_model(self, name, use_mg_default, complex_mass=False):
         """load the model"""
         
@@ -2956,16 +2979,34 @@ class MadSpinInterface(extended_cmd.Cmd):
         model_path = name
         #base_model = import_ufo.import_model(model_path)
 
+        # Bound states (an onia card in the banner): the generator writes their
+        # matrix elements without flavour grouping, so MadSpin's model has none
+        onia = self.banner is not None and 'mgoniacard' in self.banner
+        options = {}
+        if onia:
+            options['apply_flavor_grouping'] = False
+            self.mg5cmd.options['apply_flavor_grouping'] = False
+
         # Import model
         base_model = import_ufo.import_model(name, decay=True,
-                                               complex_mass_scheme=complex_mass)
+                                               complex_mass_scheme=complex_mass,
+                                               options=options)
 
         if use_mg_default:
             base_model.pass_particles_name_in_mg_default()
-        
+
         self.model = base_model
         self.mg5cmd._curr_model = self.model
         self.mg5cmd.process_model()
+        self.onia = None
+        if onia:
+            # the Fock states of the generator, their aliases as bound-state
+            # labels, and MadSpin's bookkeeping model (the generator keeps its
+            # own, without the pseudo-particles of the bound states)
+            self.onia = onia_madspin.OniaRegistry(self.mg5cmd)
+            self.onia.register_aliases(self.mg5cmd)
+            self.model = self.onia.bookkeeping_model(base_model)
+            self.onia.add_masses_to_banner(self.banner)
 
     # Whether the mg7 backend can run here at all. Memoised on the class: it
     # answers a question about the installation, which does not change during a
@@ -3048,6 +3089,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         run_card.write(run_card_path)
         with open(pjoin(decay_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
             fsock.write(self.banner['slha'])
+        onia_madspin.OniaRegistry.write_onia_card(self.banner, pjoin(decay_dir, 'Cards'))
 
         events_dir = pjoin(decay_dir, 'Events')
         before = set(misc.glob('*', events_dir)) if os.path.isdir(events_dir) else set()
@@ -3910,7 +3952,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 for pdg in self.mg5cmd._multiparticles[part]:
                     asked_to_decay.add(pdg)
             else:
-                asked_to_decay.add(self.mg5cmd._curr_model.get('name2pdg')[part])
+                asked_to_decay.add(self._bookkeeping_model().get('name2pdg')[part])
 
         # 0. Define the path where to write the file
         self.path_me = os.path.realpath(self.options['curr_dir']) 
@@ -4188,7 +4230,17 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                   .get_name()]))
                     continue
                 pwidth = self._clamped_partial_width(pwidth, totwidth, pdg)
-                if job['kind'] == 'simple':
+                onia = getattr(self, 'onia', None)
+                card_br = onia.card_branching_ratio(self, pdg) if (
+                    onia and job['kind'] == 'simple') else None
+                if card_br is not None:
+                    # a bound state with BR lines in its DECAY block
+                    logger.info('MadSpin: branching ratio of %s from the param_card: %s '
+                                '(the LO partial width would give %s)',
+                                self.model.get_particle(pdg).get_name(), card_br,
+                                pwidth / totwidth)
+                    br *= card_br
+                elif job['kind'] == 'simple':
                     br *= pwidth / totwidth
                 elif job['kind'] == 'mult_cumul':
                     br *= (pwidth / totwidth)**job['nb_mult']
@@ -8987,7 +9039,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         nchanging = len(init_part)
 
         # Allowed helicities per spin
-        hel_dict = {1: [0], 2: [1, -1], 3: [-1, 0, 1]}
+        # 5: a spin-2 state (a J = 2 bound state: its J_z)
+        hel_dict = {1: [0], 2: [1, -1], 3: [-1, 0, 1], 5: [-2, -1, 0, 1, 2]}
 
         decaying_pdg = [int(part.pid) for part in init_part]
         decaying_spins = [self.model.get_particle(i).get('spin') for i in decaying_pdg]
@@ -9995,7 +10048,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         pdgs -- for one slot layout, without a production event. Goes through
         exactly the same ``_apply_production_polarization`` the real basis does,
         so the declared ids cannot drift away from the emitted ones."""
-        hel_dict = {1: [0], 2: [1, -1], 3: [-1, 0, 1]}
+        # 5: a spin-2 state (a J = 2 bound state: its J_z)
+        hel_dict = {1: [0], 2: [1, -1], 3: [-1, 0, 1], 5: [-2, -1, 0, 1, 2]}
         spins = [self.model.get_particle(int(pdg)).get('spin')
                  for pdg in slot_pdgs]
         helicities = [list(hel_dict[spin]) for spin in spins]
@@ -10228,6 +10282,22 @@ class MadSpinInterface(extended_cmd.Cmd):
             return None
         return (parent.E, parent.px, parent.py, parent.pz)
 
+    def _parent_boost(self, parent, decay):
+        """The boost (lhe_parser.Event.boost convention) that takes a decay
+        event at rest to its parent of the production. For a bound state its
+        energy is that of the parent's three-momentum at the decay mother's own
+        mass: the mass of a fast light onium rebuilt from the momenta of the
+        event record (E^2 - p^2, 11 digits each) is off by up to 1e-4 at
+        E/m ~ 1e3, so the parent's four-momentum would boost the mother past
+        the production by more than the 1e-5 add_decays allows."""
+        boost = -1 * lhe_parser.FourMomentum(parent)
+        boost.E *= -1
+        onia = getattr(self, 'onia', None)
+        if onia and onia.is_onium(int(parent.pid)):
+            mass = decay[0].mass
+            boost.E = math.sqrt(parent.px**2 + parent.py**2 + parent.pz**2 + mass*mass)
+        return boost
+
     def _slot_density(self, decay, parent, hel, frame_boost=None):
         """The decay density matrix of one slot, in the lab frame of its parent
         (and then in the ``frame_id`` frame, when there is one -- see
@@ -10241,9 +10311,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         rest_leg = None
         if frame_boost is not None:
             rest_leg = self._decay_frame_rest_leg(parent, frame_boost)
-        boost = -1 * lhe_parser.FourMomentum(parent)
-        boost.E *= -1
-        decay.boost(boost)
+        decay.boost(self._parent_boost(parent, decay))
         return self.get_density(decay, position=[1], allow_hel=hel,
                                 ncomb=len(hel), dimension=len(hel),
                                 frame_boost=frame_boost, frame_rest_leg=rest_leg)
@@ -10308,6 +10376,11 @@ class MadSpinInterface(extended_cmd.Cmd):
             pole = self.banner.get('param', 'mass', key).value
             width = self.banner.get('param', 'decay', key).value
             cache[key] = (pole, width)
+        onia = getattr(self, 'onia', None)
+        if onia and (onia.is_onium(key) or onia.is_onium(-key)):
+            # a bound state has no Breit-Wigner (NRQCD/NRQED): it decays at
+            # its onium_mass, the mass it was produced with
+            return pole, width, pole, pole, 1.0
         bw_cut = self._resolved_bw_cut()
         min_mass = pole - bw_cut * width
         max_mass = min(pole + bw_cut * width, budget)
@@ -12425,9 +12498,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 else:
                     # boost to lab frame using corresponding production particle momentum
                     part = init_part[decaying_idx + i_decay_event]
-                    boost = -1 * lhe_parser.FourMomentum(part)
-                    boost.E *= -1
-                    current_decay_event.boost(boost)
+                    current_decay_event.boost(self._parent_boost(part, current_decay_event))
 
                     density_dec_tmp = self.get_density(
                         current_decay_event,

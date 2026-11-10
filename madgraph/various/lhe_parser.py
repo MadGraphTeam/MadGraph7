@@ -5146,6 +5146,9 @@ class Event(list):
 
         # R = arctan((q^2-m^2)/mGamma)
         # q^2 = m^2 + m Gamma tan(R)
+        if width <= 0 or max_mass <= min_mass:
+            # no window: the pole (a stable particle, or a bound state)
+            return pole
         min_R = math.atan((min_mass**2-pole**2)/pole/width)
         max_R = math.atan((max_mass**2-pole**2)/pole/width) 
         R = min_R + (max_R-min_R)*random.random()

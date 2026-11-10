@@ -72,6 +72,7 @@ import math
 from madgraph import MG5DIR, MadGraph5Error
 import madgraph.various.misc as misc
 import madmatrix.density as madmatrix_density
+import MadSpin.onia_madspin as onia_madspin
 #import time
 
 MAX_COMPAT_FLAVS = 500
@@ -1853,6 +1854,7 @@ class width_estimate(object):
         ff = open(pjoin(path_me, 'width_calculator', 'Cards', 'param_card.dat'),'w')
         ff.write(self.banner['slha'])
         ff.close()
+        onia_madspin.OniaRegistry.write_onia_card(self.banner, pjoin(path_me, 'width_calculator', 'Cards'))
         
         lhapdf = False
         if 'lhapdf' in os.environ:
@@ -3392,13 +3394,19 @@ class decay_all_events(object):
         # collapses get_external_flavors() to a single trivial entry and breaks
         # merged-particle handling in MadSpin.  Re-enable it before reloading
         # the model so the production MEs share the LO multi-flavor treatment.
-        mgcmd.exec_cmd('set apply_flavor_grouping True')
+        # Bound states are written without flavour grouping (onia_madspin).
+        onia = getattr(self.mscmd, 'onia', None)
+        mgcmd.exec_cmd('set apply_flavor_grouping %s' % (not onia))
 
         commandline="import model %s" % modelpath
         if not self.model.mg5_name:
             commandline += ' --modelname'
 
         mgcmd.exec_cmd(commandline)
+        if onia:
+            # the import reloads the Fock states and resets the bound-state
+            # labels: the aliases of MadSpin are labels again
+            onia.register_aliases(mgcmd)
         # Handle the multiparticle of the banner        
         #for name, definition in self.mscmd.multiparticles:
         if hasattr(self.mscmd, 'multiparticles_ms'):
@@ -5551,13 +5559,25 @@ class decay_all_events_onshell(decay_all_events):
             # store information about matrix element
             if prod_or_decay not in ["production", "decay"]:
                 raise ValueError("The input prod_or_decay of fill_all_me only accepts values in 'production' or 'decay'.")
+            def physical_legs(proc):
+                """(pdg, state) of every leg as in the event record: the two
+                constituents of a bound state are one leg, the bound state"""
+                legs, open_onium = [], False
+                for l in proc.get_legs_with_decays():
+                    if l.get('onium'):
+                        open_onium = not open_onium
+                        if open_onium:
+                            legs.append((l.get('onium').get('id'), l.get('state')))
+                    else:
+                        legs.append((l.get('id'), l.get('state')))
+                return legs
+
             for matrix_element in mgcmd._curr_matrix_elements.get_matrix_elements():
                 me_string = matrix_element.get('processes')[0].shell_string()
                 for me in matrix_element.get('processes'):
                     # get the original order:
-                    initial = []
-                    final = [l.get('id') for l in me.get_legs_with_decays()\
-                                if l.get('state') or initial.append(l.get('id'))]
+                    initial = [pdg for pdg, state in physical_legs(me) if not state]
+                    final = [pdg for pdg, state in physical_legs(me) if state]
                     order = (tuple(initial), tuple(final))
                     initial.sort(), final.sort()
                     tag = (tuple(initial), tuple(final))
@@ -5695,13 +5715,19 @@ class decay_all_events_onshell(decay_all_events):
         # collapses get_external_flavors() to a single trivial entry and breaks
         # merged-particle handling in MadSpin.  Re-enable it before reloading
         # the model so the production MEs share the LO multi-flavor treatment.
-        mgcmd.exec_cmd('set apply_flavor_grouping True')
+        # Bound states are written without flavour grouping (onia_madspin).
+        onia = getattr(self.mscmd, 'onia', None)
+        mgcmd.exec_cmd('set apply_flavor_grouping %s' % (not onia))
 
         commandline="import model %s" % modelpath
         if not self.model.mg5_name:
             commandline += ' --modelname'
 
         mgcmd.exec_cmd(commandline)
+        if onia:
+            # the import reloads the Fock states and resets the bound-state
+            # labels: the aliases of MadSpin are labels again
+            onia.register_aliases(mgcmd)
         # Handle the multiparticle of the banner        
         #for name, definition in self.mscmd.multiparticles:
         if hasattr(self.mscmd, 'multiparticles_ms'):
@@ -5858,6 +5884,7 @@ class decay_all_events_onshell(decay_all_events):
             if not os.path.isdir(cards):
                 continue
             shutil.copyfile(source, pjoin(cards, 'param_card.dat'))
+            onia_madspin.OniaRegistry.write_onia_card(self.banner, cards)
 
     def compile(self):
         logger.info('Compiling code')
@@ -6016,6 +6043,11 @@ class decay_all_events_density(decay_all_events_onshell):
                 continue
             init, final = oneline.split('>',maxsplit=1)
             end = len(init)
+            onia = getattr(getattr(self, 'mscmd', None), 'onia', None)
+            if onia and init.split()[-1] in onia.by_alias:
+                # a bound state decays on shell, at its onium_mass
+                out.append("%s > %s;" % (init.strip(), final))
+                continue
             out.append("%s* > %s;" % (init.strip(), final))
 
         return ' '.join(out)
