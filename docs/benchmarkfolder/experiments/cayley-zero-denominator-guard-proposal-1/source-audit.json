@@ -1,0 +1,50 @@
+{
+  "schema": "cayley-zero-denominator-source-audit-v1",
+  "upstream_revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
+  "oneloopmaster_revision": "bd703d09a78f7849a6b86a07096e6f222fc01193",
+  "dependencies": [
+    {
+      "path": "../references/TIRust/crates/iregi-rust/src/direct/exec/gram.rs",
+      "sha256": "4af6ca30e8cd0a077b9b1217d2b256b3430c86c2a75c91a9cd5afbfd3e42e9a7",
+      "bytes": 112025
+    },
+    {
+      "path": "../references/TIRust/crates/iregi-rust/src/direct/numeric.rs",
+      "sha256": "fd19a4fb94276388bad58bbdb967e4db410513c74fea306acf5f22874c66d111",
+      "bytes": 14452
+    },
+    {
+      "path": "../references/TIRust/crates/iregi-masters/src/lib.rs",
+      "sha256": "ffff9a7a90497430648ea23b025df8d8087df8c8b71b8a3ea50c8d83e0a039b9",
+      "bytes": 48910
+    },
+    {
+      "path": "../references/oneloopmaster/src/native/primitives.rs",
+      "sha256": "f6818b32dbc2ff74a683fbc702dd8b4dabb167874133aa4570d39c750b68cd58",
+      "bytes": 19260
+    }
+  ],
+  "source_findings": {
+    "generic_function": "cayley_cancellation<T: NativeFloat> returns Option<f64>",
+    "size": "cnorm2(x).to_f64().sqrt() returns binary64, including for MPFR/DD T",
+    "terms": "binary64 before the quotient",
+    "guard": "The bit mask recognizes exactly binary64 positive or negative zero after existing conversion and sqrt.",
+    "single_evaluation": "The original divisor expression is evaluated exactly once in the same relative position; all determinant/term/norm/conversion/sqrt arithmetic is unchanged.",
+    "zero_return_equivalence": "With masked exceptions, every numerator divided by either signed zero produces a nonfinite quotient and was rejected by is_finite(); early None preserves this value decision.",
+    "nonzero_return_equivalence": "Same original division and finite filter, including finite divided by +/-infinity yielding Some(signed zero).",
+    "fp_state": "No flag clearing or exception-environment calls are introduced. Omitting division intentionally avoids selected zero-divisor invalid/divide-by-zero flags and traps; earlier exceptions and preexisting flags remain."
+  },
+  "independent_read_only_audit": {
+    "agent": "/root/adaptive_physical_replay_design/cayley_zero_guard/independent_guard_audit",
+    "source_review": "approved minimal zero-only bit guard, single evaluation, preserving nonzero divide/filter; rejected blanket nonfinite guard and pre-conversion generic-T zero check",
+    "execution": "none by auditor"
+  },
+  "actual_compiler_caveat": "rustc 1.97.1 opt-level=3 canonicalized the source integer bit mask into UCOMISD zero plus JNE/JP, then the original DIVSD. Thus no claim of integer-only machine-code testing is made. Nonzero signaling-NaN denominator may trap at that comparison before the old division; retained tests agree in final flags/masked results and SIGFPE outcome, not faulting instruction identity.",
+  "qualified_scope": "Only the extracted precomputed-binary64 quotient/filter is compiled and executed. No full Rust reducer build, library, installed source, amplitude, original reference, vendor or invariant-symmetry campaign was changed.",
+  "open": [
+    "Full generic-function compilation against actual TIRust dependencies",
+    "Production DP/QP reducer and checked/trapped physical amplitude replay",
+    "All earlier Gram/norm/conversion/sqrt operations and other zero divisions",
+    "Any timing, precision, stability, finite/pole, cache or overall-goal acceptance"
+  ]
+}

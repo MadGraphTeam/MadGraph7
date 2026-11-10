@@ -1,0 +1,14 @@
+{
+  "correction": "Record resolved dependency target for hash-only identities; never create or retain a symlink payload",
+  "error": "AssertionError on dependency symlink; native dependency identities may have symbolic paths although only hash records are retained",
+  "native_or_loader_executed": false,
+  "original_build_run_or_source_modified": false,
+  "partial_content_addressed_payloads_preserved": true,
+  "stage": "pure terminal evidence capture",
+  "symlink_dependencies": [
+    {
+      "path": "/run/current-system/sw/bin/taskset",
+      "resolved": "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset"
+    }
+  ]
+}

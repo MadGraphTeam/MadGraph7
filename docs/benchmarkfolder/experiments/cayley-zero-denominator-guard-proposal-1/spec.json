@@ -1,0 +1,132 @@
+{
+  "schema": "cayley-zero-guard-tiny-fixture-v1",
+  "upstream_revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
+  "upstream_gram_sha256": "4af6ca30e8cd0a077b9b1217d2b256b3430c86c2a75c91a9cd5afbfd3e42e9a7",
+  "numerator_and_denominator_bit_patterns": [
+    "0000000000000000",
+    "8000000000000000",
+    "0000000000000001",
+    "8000000000000001",
+    "0010000000000000",
+    "8010000000000000",
+    "3ff0000000000000",
+    "bff0000000000000",
+    "3fd5555555555555",
+    "bfd5555555555555",
+    "7fefffffffffffff",
+    "ffefffffffffffff",
+    "7ff0000000000000",
+    "fff0000000000000",
+    "7ff8000000000123",
+    "fff8000000000123",
+    "7ff0000000000123",
+    "fff0000000000123",
+    "3cb0000000000000",
+    "43b0000000000000"
+  ],
+  "rounding_modes": {
+    "nearest": 0,
+    "downward": 1024,
+    "upward": 2048,
+    "toward_zero": 3072
+  },
+  "initial_flag_seeds": [
+    0,
+    48
+  ],
+  "exception_bits": {
+    "invalid": 1,
+    "divide_by_zero": 4,
+    "overflow": 8,
+    "underflow": 16,
+    "inexact": 32
+  },
+  "trap_mask": 13,
+  "trap_cases": [
+    {
+      "id": "zero_zero",
+      "numerator": "0000000000000000",
+      "denominator": "0000000000000000"
+    },
+    {
+      "id": "negativezero_zero",
+      "numerator": "8000000000000000",
+      "denominator": "0000000000000000"
+    },
+    {
+      "id": "one_zero",
+      "numerator": "3ff0000000000000",
+      "denominator": "0000000000000000"
+    },
+    {
+      "id": "one_negativezero",
+      "numerator": "3ff0000000000000",
+      "denominator": "8000000000000000"
+    },
+    {
+      "id": "negativeone_zero",
+      "numerator": "bff0000000000000",
+      "denominator": "0000000000000000"
+    },
+    {
+      "id": "infinity_zero",
+      "numerator": "7ff0000000000000",
+      "denominator": "0000000000000000"
+    },
+    {
+      "id": "qnan_zero",
+      "numerator": "7ff8000000000123",
+      "denominator": "0000000000000000"
+    },
+    {
+      "id": "snan_zero",
+      "numerator": "7ff0000000000123",
+      "denominator": "0000000000000000"
+    },
+    {
+      "id": "one_infinity",
+      "numerator": "3ff0000000000000",
+      "denominator": "7ff0000000000000"
+    },
+    {
+      "id": "one_negativeinfinity",
+      "numerator": "3ff0000000000000",
+      "denominator": "fff0000000000000"
+    },
+    {
+      "id": "infinity_infinity",
+      "numerator": "7ff0000000000000",
+      "denominator": "7ff0000000000000"
+    },
+    {
+      "id": "one_qnan",
+      "numerator": "3ff0000000000000",
+      "denominator": "7ff8000000000123"
+    },
+    {
+      "id": "one_snan",
+      "numerator": "3ff0000000000000",
+      "denominator": "7ff0000000000123"
+    },
+    {
+      "id": "overflow_control",
+      "numerator": "7fefffffffffffff",
+      "denominator": "0010000000000000"
+    },
+    {
+      "id": "finite_control",
+      "numerator": "3ff0000000000000",
+      "denominator": "3fd5555555555555"
+    },
+    {
+      "id": "underflow_nonhalting",
+      "numerator": "0000000000000001",
+      "denominator": "7fefffffffffffff"
+    }
+  ],
+  "optimization_levels": [
+    0,
+    3
+  ],
+  "qualification": "Extracted binary64 quotient/filter only; no norm/conversion/sqrt/generic-T arithmetic, full Rust build, reducer or amplitude execution."
+}

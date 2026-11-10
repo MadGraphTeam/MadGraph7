@@ -1,0 +1,117 @@
+{
+  "schema": "private-cayley-zero-denominator-guard-proposal-v1",
+  "scope": "Source patch and extracted binary64 quotient/filter only. No full Rust build, reducer, amplitude, installed changes, production source or active campaign modification.",
+  "files": {
+    "README.md": {
+      "sha256": "65a4c412945ddc80208874cd65fa089afc212fb2df77c985813c5723165fd7e3",
+      "bytes": 5924
+    },
+    "analyze.py": {
+      "sha256": "a74e03558eb52724ffeef682e5be2a2489269df6615b516ba7e02300ba33684f",
+      "bytes": 5849
+    },
+    "evidence/parser-tests.json": {
+      "sha256": "3a1a19845ad58f2a28d5b6172557aac27c45865c86f46273fbe75507254d2b4a",
+      "bytes": 586
+    },
+    "evidence/tiny-1/execution.json": {
+      "sha256": "5b566d51f53e3b9b814cc8d823471d70cf48dd039cb6c489cee2a1c1e021dec8",
+      "bytes": 25163
+    },
+    "evidence/tiny-1/optimized-quotient.s": {
+      "sha256": "64d629bce7852db18e04171d0b8aa51f3345a43ac980b755aa3b4d8d6216b5f0",
+      "bytes": 870
+    },
+    "evidence/tiny-1/raw/opt0-assembly.s.gz": {
+      "sha256": "d326cb7847076b9469002330956fa61061a30c951a69c1cfe6cae7f02356edf7",
+      "bytes": 30981
+    },
+    "evidence/tiny-1/raw/opt0-build.txt": {
+      "sha256": "7ebd0827d0286054d2208a1a2e21ca7982daa14cd4d7d95f6caaa68e8894e272",
+      "bytes": 157
+    },
+    "evidence/tiny-1/raw/opt0-masked.txt.gz": {
+      "sha256": "5652e662cf7d929c2c69f7f0f30977f5b0750a8a3d5b94e2fba694eb198992bd",
+      "bytes": 34114
+    },
+    "evidence/tiny-1/raw/opt0-traps.jsonl": {
+      "sha256": "eb297574235af61f31bdd8986143bacfd4722f21ab84763e8960e4fb101a8028",
+      "bytes": 7304
+    },
+    "evidence/tiny-1/raw/opt3-assembly.s.gz": {
+      "sha256": "75cec5f20a709bf4db2704046d01c8234090e5cda6a59e88c81ae306eb0475b8",
+      "bytes": 8890
+    },
+    "evidence/tiny-1/raw/opt3-build.txt": {
+      "sha256": "7ebd0827d0286054d2208a1a2e21ca7982daa14cd4d7d95f6caaa68e8894e272",
+      "bytes": 157
+    },
+    "evidence/tiny-1/raw/opt3-masked.txt.gz": {
+      "sha256": "8dc43d71cda20ba41192326138658552caac71ecc8a144d81fd502309e588158",
+      "bytes": 34114
+    },
+    "evidence/tiny-1/raw/opt3-traps.jsonl": {
+      "sha256": "eb297574235af61f31bdd8986143bacfd4722f21ab84763e8960e4fb101a8028",
+      "bytes": 7304
+    },
+    "evidence/tiny-1/raw/rustc-version.txt": {
+      "sha256": "0e2743a063def1c1dc7455ea122c8478833bcc976a68fa0c0f8deb4181daffaa",
+      "bytes": 226
+    },
+    "evidence/tiny-1/results.json": {
+      "sha256": "8c96823bd33bb04550aef356ba4ca1defc33549cdaa7f0111d5544c3004d5955",
+      "bytes": 1030
+    },
+    "run_tiny_fixture.py": {
+      "sha256": "02e8e4306de561e90ed35ec10443a10e753708e71d391373f52d83456f65a75c",
+      "bytes": 6043
+    },
+    "source/0001-guard-zero-cayley-diagnostic-denominator.patch": {
+      "sha256": "41803af300a83683479df8df20c1769733e63cae2981bbc2cf4497a046ade96d",
+      "bytes": 426
+    },
+    "source/UPSTREAM-LICENSE": {
+      "sha256": "14d279556c98445dc55568cd5d156b082a889d3d9b78ea0d1e7a161a3d3a7958",
+      "bytes": 3842
+    },
+    "source/fixture.rs": {
+      "sha256": "82a51b871aca394d97deb4c34a5b3b98ad9c5eb32d7a358bb038be94e9f8be08",
+      "bytes": 2621
+    },
+    "source/gram.rs.baseline": {
+      "sha256": "4af6ca30e8cd0a077b9b1217d2b256b3430c86c2a75c91a9cd5afbfd3e42e9a7",
+      "bytes": 112025
+    },
+    "source/gram.rs.candidate": {
+      "sha256": "b2aa9a9a902705737bda8a646f1a8cb592d1ea1265b63945fab81e7ac7ae498b",
+      "bytes": 112147
+    },
+    "source/quotient.rs": {
+      "sha256": "d64a4d3ae71cf840ed54a7d072d8f9e104d3ee6cfa37f5416f5d850043f26b04",
+      "bytes": 651
+    },
+    "source-audit.json": {
+      "sha256": "58a12b12a31bd6d775af3b0960c047cf0456bf2ce6d0c0e5574e859572e3c184",
+      "bytes": 3469
+    },
+    "spec.json": {
+      "sha256": "ecb55b47ee7e34c441ce1fa081c40599ae279d3b36fb7488c0b9b9865ab20687",
+      "bytes": 3211
+    },
+    "test_analyze.py": {
+      "sha256": "38ccda59c8d50784d671e85f87446d93e73fe5fccc30e7a1bb3a52a7d2eff416",
+      "bytes": 3633
+    },
+    "verify.py": {
+      "sha256": "6d90038fb14a34646b3c0dbd67f931265eb5e8336be24608db75af66621d076e",
+      "bytes": 3687
+    }
+  },
+  "payload_count": 26,
+  "payload_bytes": 414424,
+  "full_reducer_build": false,
+  "native_reducer_execution": false,
+  "native_amplitude_execution": false,
+  "tiny_extracted_fixture_execution": true,
+  "production_promotion": false
+}

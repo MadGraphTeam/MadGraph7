@@ -1,0 +1,614 @@
+{
+  "arms": {
+    "adaptive": {
+      "frames": [
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x1203815"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "iregi_rust::direct::exec::gram::cayley_cancellation::<f64>\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "f20f5ec166480f7ec048b9ffffffffff",
+          "elf_virtual_address": 18888725,
+          "file_offset": 18888725,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 3,
+          "objdump_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/objdump",
+            "-d",
+            "--start-address=0x1203805",
+            "--stop-address=0x120382d",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so"
+          ],
+          "objdump_stderr": "",
+          "objdump_stdout": "\n/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so:     file format elf64-x86-64\n\n\nDisassembly of section .text:\n\n0000000001203805 <_RINvNtNtNtCs7SjHY6fw1EN_10iregi_rust6direct4exec4gram19cayley_cancellationdECs2UJVdAonT80_31madloop_tirust_adaptive_private+0x5e5>:\n 1203805:\t66 0f 28 ca          \tmovapd %xmm2,%xmm1\n 1203809:\t66 0f 15 ca          \tunpckhpd %xmm2,%xmm1\n 120380d:\tf2 0f 58 ca          \taddsd  %xmm2,%xmm1\n 1203811:\tf2 0f 51 c9          \tsqrtsd %xmm1,%xmm1\n 1203815:\tf2 0f 5e c1          \tdivsd  %xmm1,%xmm0\n 1203819:\t66 48 0f 7e c0       \tmovq   %xmm0,%rax\n 120381e:\t48 b9 ff ff ff ff ff \tmovabs $0x7fffffffffffffff,%rcx\n 1203825:\tff ff 7f \n 1203828:\t48 21 c1             \tand    %rax,%rcx\n 120382b:\t48                   \trex.W\n 120382c:\tba                   \t.byte 0xba\n",
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b599815"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x1339dbc"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::expand_top_with::{closure#28}\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "ffa8017515f20f100587544d02f20f11",
+          "elf_virtual_address": 20159932,
+          "file_offset": 20159932,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 4,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b6cfdbc"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x1549d37"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::expand_top_with\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "ff4883bc24c0030000ff0f84ed010000",
+          "elf_virtual_address": 22322487,
+          "file_offset": 22322487,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 5,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b8dfd37"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x1540cc3"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::expand_top\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "00498d9fc0150000488d442440488b48",
+          "elf_virtual_address": 22285507,
+          "file_offset": 22285507,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 6,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b8d6cc3"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x1433e3d"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::reduce_batch\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "004c8ba424e00000004983fcff0f8425",
+          "elf_virtual_address": 21184061,
+          "file_offset": 21184061,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 7,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b7c9e3d"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x15427bc"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::inject_gram\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "ff488b9c24800600004883fbff4c8ba4",
+          "elf_virtual_address": 22292412,
+          "file_offset": 22292412,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 8,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b8d87bc"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x1433c66"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::reduce_batch\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "004c8ba424e00000004983fcff0f848c",
+          "elf_virtual_address": 21183590,
+          "file_offset": 21183590,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 9,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b7c9c66"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x148546e"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::dispatch::TensorWorkspace<f64>>::reduce_batch_unregulated\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "ff4c8bb42420070000488b9c24280700",
+          "elf_virtual_address": 21517422,
+          "file_offset": 21517422,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 10,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b81b46e"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x147d922"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::dispatch::TensorWorkspace<f64>>::reduce_batch\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "004c8b7424680f104424700f29442410",
+          "elf_virtual_address": 21485858,
+          "file_offset": 21485858,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 11,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b813922"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x1349ba8"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<madloop_tirust_adaptive_private::State>::dp_checked\nmadloop_tirust_adaptive_private.21f46edb8f9f18d6-cgu.0:?\n",
+          "bytes_at_pc": "00488b9c24f01e0000488d8424f81e00",
+          "elf_virtual_address": 20224936,
+          "file_offset": 20224936,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 12,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b6dfba8"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+            "0x162105c"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "ml_tirust_evaluate_dp\n??:?\n",
+          "bytes_at_pc": "ff448b642468837c2460017522448b7c",
+          "elf_virtual_address": 23203932,
+          "file_offset": 23203932,
+          "mapping_line": "7c319a3f8000-7c319dba3000 r-xp 00062000 00:2c 213337741 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "number": 13,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-adaptive/libmadloop_tirust.so",
+          "object_sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7",
+          "pc": "0x7c319b9b705c"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+            "0x459d78e"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "__mtirust_MOD_tensor_dp\n??:?\n",
+          "bytes_at_pc": "fb4883c4504189c5488b85e8feffff44",
+          "elf_virtual_address": 72996750,
+          "file_offset": 72996750,
+          "mapping_line": "650e74cb1000-650e79183000 r-xp 000cd000 00:2c 213327325 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "number": 14,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "object_sha256": "0181fba617011c58b36cc8d59bbc92d807f670f19f3d74ea64dc8539b11c8e28",
+          "pc": "0x650e7918178e"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+            "0x2870bf"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "ml5_0_tirust_tensor_diagnostic_\n??:?\n",
+          "bytes_at_pc": "044883c4308b85f4f5ffff85c0740abb",
+          "elf_virtual_address": 2650303,
+          "file_offset": 2650303,
+          "mapping_line": "650e74cb1000-650e79183000 r-xp 000cd000 00:2c 213327325 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "number": 15,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "object_sha256": "0181fba617011c58b36cc8d59bbc92d807f670f19f3d74ea64dc8539b11c8e28",
+          "pc": "0x650e74e6b0bf"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+            "0x287896"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "ml5_0_tirustloop_\n??:?\n",
+          "bytes_at_pc": "ff4883c41090c9c3554889e541545348",
+          "elf_virtual_address": 2652310,
+          "file_offset": 2652310,
+          "mapping_line": "650e74cb1000-650e79183000 r-xp 000cd000 00:2c 213327325 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "number": 16,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "object_sha256": "0181fba617011c58b36cc8d59bbc92d807f670f19f3d74ea64dc8539b11c8e28",
+          "pc": "0x650e74e6b896"
+        }
+      ],
+      "maps_sha256": "5c1af92fa122b79e4122d58ae328a14c440db17913b2f8f98c91a52c865316ac",
+      "stdout_sha256": "f236f8f0c56b5af9c19d85e6fc7f476f1676d7c11a0acff442b5fc907dfb9897"
+    },
+    "original": {
+      "frames": [
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x12029f5"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "iregi_rust::direct::exec::gram::cayley_cancellation::<f64>\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "f20f5ec166480f7ec048b9ffffffffff",
+          "elf_virtual_address": 18885109,
+          "file_offset": 18885109,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 3,
+          "objdump_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/objdump",
+            "-d",
+            "--start-address=0x12029e5",
+            "--stop-address=0x1202a0d",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so"
+          ],
+          "objdump_stderr": "",
+          "objdump_stdout": "\n/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so:     file format elf64-x86-64\n\n\nDisassembly of section .text:\n\n00000000012029e5 <_RINvNtNtNtCs4ZcyzNMzIOg_10iregi_rust6direct4exec4gram19cayley_cancellationdECs1NOzCkwfg3z_14madloop_tirust+0x5e5>:\n 12029e5:\t66 0f 28 ca          \tmovapd %xmm2,%xmm1\n 12029e9:\t66 0f 15 ca          \tunpckhpd %xmm2,%xmm1\n 12029ed:\tf2 0f 58 ca          \taddsd  %xmm2,%xmm1\n 12029f1:\tf2 0f 51 c9          \tsqrtsd %xmm1,%xmm1\n 12029f5:\tf2 0f 5e c1          \tdivsd  %xmm1,%xmm0\n 12029f9:\t66 48 0f 7e c0       \tmovq   %xmm0,%rax\n 12029fe:\t48 b9 ff ff ff ff ff \tmovabs $0x7fffffffffffffff,%rcx\n 1202a05:\tff ff 7f \n 1202a08:\t48 21 c1             \tand    %rax,%rcx\n 1202a0b:\t48                   \trex.W\n 1202a0c:\tba                   \t.byte 0xba\n",
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a6069f5"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x133961c"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::expand_top_with::{closure#28}\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "ffa8017515f20f1005971a4d02f20f11",
+          "elf_virtual_address": 20157980,
+          "file_offset": 20157980,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 4,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a73d61c"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x154a117"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::expand_top_with\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "ff4883bc24c0030000ff0f84ed010000",
+          "elf_virtual_address": 22323479,
+          "file_offset": 22323479,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 5,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a94e117"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x15410a3"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::expand_top\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "00498d9fc0150000488d442440488b48",
+          "elf_virtual_address": 22286499,
+          "file_offset": 22286499,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 6,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a9450a3"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x1434c5d"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::reduce_batch\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "004c8ba424e00000004983fcff0f8425",
+          "elf_virtual_address": 21187677,
+          "file_offset": 21187677,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 7,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a838c5d"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x1542b9c"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::inject_gram\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "ff488b9c24800600004883fbff4c8ba4",
+          "elf_virtual_address": 22293404,
+          "file_offset": 22293404,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 8,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a946b9c"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x1434a86"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::direct::exec::DirectExecutor<f64>>::reduce_batch\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "004c8ba424e00000004983fcff0f848c",
+          "elf_virtual_address": 21187206,
+          "file_offset": 21187206,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 9,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a838a86"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x148584e"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::dispatch::TensorWorkspace<f64>>::reduce_batch_unregulated\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "ff4c8bb42420070000488b9c24280700",
+          "elf_virtual_address": 21518414,
+          "file_offset": 21518414,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 10,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a88984e"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x147dd02"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<iregi_rust::dispatch::TensorWorkspace<f64>>::reduce_batch\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "004c8b7424680f104424700f29442410",
+          "elf_virtual_address": 21486850,
+          "file_offset": 21486850,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 11,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a881d02"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x1348fc8"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "<madloop_tirust::State>::dp_checked\nmadloop_tirust.150198e1de0f4927-cgu.0:?\n",
+          "bytes_at_pc": "00488b9c24f01e0000488d8424f81e00",
+          "elf_virtual_address": 20221896,
+          "file_offset": 20221896,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 12,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3a74cfc8"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+            "0x161e97c"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "ml_tirust_evaluate_dp\n??:?\n",
+          "bytes_at_pc": "ff448b642468837c2460017522448b7c",
+          "elf_virtual_address": 23193980,
+          "file_offset": 23193980,
+          "mapping_line": "702d39466000-702d3cc0f000 r-xp 00062000 00:2c 213327355 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "number": 13,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/run1/runtime-original/libmadloop_tirust.so",
+          "object_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+          "pc": "0x702d3aa2297c"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+            "0x459d78e"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "__mtirust_MOD_tensor_dp\n??:?\n",
+          "bytes_at_pc": "fb4883c4504189c5488b85e8feffff44",
+          "elf_virtual_address": 72996750,
+          "file_offset": 72996750,
+          "mapping_line": "5bb4ed677000-5bb4f1b49000 r-xp 000cd000 00:2c 213327325 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "number": 14,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "object_sha256": "0181fba617011c58b36cc8d59bbc92d807f670f19f3d74ea64dc8539b11c8e28",
+          "pc": "0x5bb4f1b4778e"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+            "0x2870bf"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "ml5_0_tirust_tensor_diagnostic_\n??:?\n",
+          "bytes_at_pc": "044883c4308b85f4f5ffff85c0740abb",
+          "elf_virtual_address": 2650303,
+          "file_offset": 2650303,
+          "mapping_line": "5bb4ed677000-5bb4f1b49000 r-xp 000cd000 00:2c 213327325 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "number": 15,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "object_sha256": "0181fba617011c58b36cc8d59bbc92d807f670f19f3d74ea64dc8539b11c8e28",
+          "pc": "0x5bb4ed8310bf"
+        },
+        {
+          "addr2line_argv": [
+            "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+            "-f",
+            "-C",
+            "-e",
+            "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+            "0x287896"
+          ],
+          "addr2line_stderr": "",
+          "addr2line_stdout": "ml5_0_tirustloop_\n??:?\n",
+          "bytes_at_pc": "ff4883c41090c9c3554889e541545348",
+          "elf_virtual_address": 2652310,
+          "file_offset": 2652310,
+          "mapping_line": "5bb4ed677000-5bb4f1b49000 r-xp 000cd000 00:2c 213327325 /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "number": 16,
+          "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+          "object_sha256": "0181fba617011c58b36cc8d59bbc92d807f670f19f3d74ea64dc8539b11c8e28",
+          "pc": "0x5bb4ed831896"
+        }
+      ],
+      "maps_sha256": "0f2209965de2768de618e09ec487790c666eb7775b69c715161293b79aaaad6a",
+      "stdout_sha256": "b0e21c17c427393b1397334ec4f9a40fb6a6ab3db9d894ed69143c50a6165b4e"
+    }
+  },
+  "exact_hardware_exception_identified": false,
+  "instruction_at_both_fault_PCs": "DIVSD %xmm1,%xmm0; bytesf20f5ec1",
+  "limitation": "No siginfo/register values were captured. Divide instruction is proven; division-by-zero is supported by masked named flags but is an inference.",
+  "localized_path": "Shared TIRust DP f64 Cayley-conditioning heuristic, before observed adaptive QP",
+  "reference_source": {
+    "origin": "/shared/external/madloop_tirust/references/TIRust/crates/iregi-rust/src/direct/exec/gram.rs",
+    "scope": "Pinned reference source witness; no vendor/reference edits",
+    "sha256": "4af6ca30e8cd0a077b9b1217d2b256b3430c86c2a75c91a9cd5afbfd3e42e9a7"
+  },
+  "scope": "Read-only offline artifact symbolization; no artifact loading, rerun or debugger attachment",
+  "tools": {
+    "addr2line": {
+      "path": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/addr2line",
+      "sha256": "630946987d38ceddd7954c5b5c5f7189d555dc29a52c8725f505a63c25e8c05c"
+    },
+    "objdump": {
+      "path": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/objdump",
+      "sha256": "8861bf73150d5a50ae1ace718b5fbbaf4f9f44e3c13bcfd3208ffca6ea823e50"
+    }
+  }
+}

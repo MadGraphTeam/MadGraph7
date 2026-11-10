@@ -1,0 +1,11 @@
+{
+  "artifact_executed_by_capture": false,
+  "native_identity_records": 152,
+  "original_build_sha256": "5da0dfacd2a0ca90dcb6c807b9936e6d9686f8cf62c32c0266514bca1c4aef6e",
+  "original_run_sha256": "1bc2a17a164b44548026d8f4658b9d77756904f0b3a97604b6f6442c0daa6d8e",
+  "original_source_index_sha256": "32909d9a7b4b2102f35eeddc547d2f45c7560f903253b0571bf77b5628220a29",
+  "originals_modified": false,
+  "scope": "One root-confirmed closed build88244 and runtime39482; no native rerun",
+  "text_records": 147,
+  "unique_payloads": 64
+}
