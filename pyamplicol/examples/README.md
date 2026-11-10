@@ -478,7 +478,9 @@ s at two points (every pole and Ward row passes in binary64). Per point, one
 pinned core, a batch of 8: NinjaRS (`auto`) 22-23 ms checked and unchecked;
 TIRust 26 ms with all 8 points refused (an ill-conditioned Gram matrix, a
 typed refusal: the explicit backend has no fallback) and 47-49 ms unchecked;
-at leading colour one helicity 4.9 ms against 7.6 ms summed (0.65). The
+one helicity (h42, the largest at the first point) 13.3 ms against 22.2 ms summed
+(0.60; the reduction, 5.9 ms, is the summed call's: the selected row's seeds
+reduce the same lanes), at leading colour 5.1 ms against 8.4 ms (0.60). The
 whole walkthrough at two points (fresh workspace, both generations included):
 67 s, peak 0.77 GiB; at one point (the CI smoke test): 73 s.
 
