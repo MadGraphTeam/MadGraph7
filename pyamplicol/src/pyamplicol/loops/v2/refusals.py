@@ -877,6 +877,17 @@ LOOP_INTERNAL_REFUSALS = (
         "engine or model fix per case",
     ),
     LoopAdmissionRefusal(
+        "block-colour-flow",
+        "two blocks of one block current and one word whose colour flows "
+        "differ (colour.BlockColourFlowError; pure-electroweak u u~ > d d~ "
+        "s s~ with QCD loops)",
+        "a block word names one colour content of its block current, which "
+        "the loop seeds read by it",
+        "report the request; bound its coupling orders or its corrections",
+        "v2 engine",
+        "engine fix per case",
+    ),
+    LoopAdmissionRefusal(
         "counterterm-completeness",
         "a divergent witness covered neither by a counterterm rule nor by a "
         "certified zero (ct_sites.CountertermCompletenessError)",

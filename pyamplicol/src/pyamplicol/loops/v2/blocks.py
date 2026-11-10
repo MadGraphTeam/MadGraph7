@@ -30,6 +30,12 @@ Conventions a consumer relies on:
   ``(tau^{a_k} ... tau^{a_1})_{e s}`` and an adjoint field closes
   ``out -> in`` with ``tau^X_{in, out}``.
   U(1)-subtraction auxiliaries are separate colour-singlet blocks.
+  Every tree enters one word of its current: a colour-singlet current made
+  of the bosons of several quark lines (a WWA, WWZ or HZZ vertex, a
+  four-point contact) has the same colour in every concatenation of their
+  strings, and the engine keeps one input order of such a merge
+  (``ColorEngine._loop_block_trace_orientation_allowed``), so the words of
+  one current partition its trees.
   A counterterm block may also carry closed components (the multi-trace
   state of design §6.1; their labels are not in the word): closed traces of
   adjoint legs (``BlockColourFlow.traces``), each ``tr(tau^a_1 ... tau^a_k)``,

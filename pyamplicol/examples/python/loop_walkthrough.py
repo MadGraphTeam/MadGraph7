@@ -262,30 +262,50 @@ def _deviation(label: str, evaluation: Any, reference: Any) -> None:
 def _orders(runtime: Any, points: Any, scales: Any, color: bool) -> None:
     """The partial weights per squared coupling order of one evaluation, and
     their explicit sum against another public path at the same settings that
-    does not read the partials: the correlated route's "born" history summed
-    over the orders (a separate call; where it reads the same contraction as
-    the plain evaluation it agrees bitwise, otherwise to rounding). The
-    deviation is printed in units of the binary64 unit roundoff u of the
-    pre-cancellation scale S (the estimate's ``magnitude``) and must stay
-    within the evaluation's own estimate E (ten times, the project's
-    agreement rule). The resolved evaluation summed over helicities and
-    colour components, a different contraction altogether, is the test
-    suite's check (it costs far more memory at full colour)."""
+    does not read the partials. A loop-induced artifact sums one call per
+    helicity (``helicities=[h]``: each forms only that helicity's rows, a
+    different contraction of the same amplitudes). A Born-interfered one has
+    no helicity selection at full colour; it takes the correlated route's
+    "born" history summed over the orders (a separate call; for u u~ > d d~
+    e+ e- it reads the same contraction as the plain evaluation and agrees
+    bitwise, so there it checks the bookkeeping of the split only: the
+    resolved evaluation, a different contraction, is the test suite's check,
+    as it costs about 9 GiB at one point of that example). The deviation is
+    printed in units of the binary64 unit roundoff u of the pre-cancellation
+    scale S (the estimate's ``magnitude``) and must stay within the
+    evaluation's own estimate E (ten times, the project's agreement rule)."""
 
     options = {"mu_r2": scales, "stability_checks": RECOMMENDED}
     view = runtime.evaluate_orders(points, **options)
     print(render_summary(view, color=color))
     if len(view.orders) == 1:
         print("one squared-order sector: its partial is the value")
-    total = runtime.evaluate_correlated_many(
-        points, {"total": CorrelatedRequest("born")}, **options
-    )["total"]
+    if runtime.contribution_kind == "loop-induced":
+        oracle = "the per-helicity calls summed"
+        calls = [
+            runtime.evaluate(points, mu_r2=scales, helicities=[h])
+            for h in runtime.physics.helicity_ids
+        ]
+
+        def independent(point: int, k: int) -> float:
+            return math.fsum(
+                complex(s[k]).real for call in calls for s in call.values[point]
+            )
+
+    else:
+        oracle = "the correlated born total"
+        total = runtime.evaluate_correlated_many(
+            points, {"total": CorrelatedRequest("born")}, **options
+        )["total"]
+
+        def independent(point: int, k: int) -> float:
+            return math.fsum(complex(s[k]).real for s in total.values[point])
+
     worst = ulps = 0.0
     for point, summed in enumerate(view.sum_orders()):
         estimate = view.evaluation.stability[point]
         for k in range(3):
-            independent = math.fsum(complex(s[k]).real for s in total.values[point])
-            deviation = abs(float(summed[k]) - independent)
+            deviation = abs(float(summed[k]) - independent(point, k))
             bound = 10 * math.fsum(float(e[k]) for e in estimate.absolute)
             worst = max(worst, deviation / bound if bound else 0.0)
             scale = math.fsum(float(m[k]) for m in estimate.magnitude)
@@ -296,7 +316,7 @@ def _orders(runtime: Any, points: Any, scales: Any, color: bool) -> None:
         if ulps == 0
         else f"largest deviation {ulps:.3g} u S ({worst:.3g} x 10 E)"
     )
-    print(f"sum over orders vs the correlated born total: {verdict}, {agreement}")
+    print(f"sum over orders vs {oracle}: {verdict}, {agreement}")
     if worst > 1:
         raise SystemExit("the partial weights do not sum to the total")
 
