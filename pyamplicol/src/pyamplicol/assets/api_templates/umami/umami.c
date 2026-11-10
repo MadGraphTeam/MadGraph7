@@ -447,8 +447,26 @@ static UmamiStatus evaluate_runs(Instance *instance, UmamiContribution const *co
                                  size_t const *events, size_t count,
                                  uint32_t const *helicities, double const *alpha_s,
                                  bool resolved, double *values) {
-    size_t width =
-        resolved ? umami_provider.processes[entries[0]->process_index].helicity_count : 1;
+    UmamiProcess const *description = &umami_provider.processes[entries[0]->process_index];
+    size_t width = resolved ? description->helicity_count : 1;
+    if (alpha_s != NULL && description->alpha_s_power >= 0) {
+        /* ME(alpha_s) = (alpha_s / alpha_s_0)^power ME(alpha_s_0), proven at generation */
+        double reference = 0.0, imaginary = 0.0;
+        UmamiStatus status = native_error(rusticol_runtime_get_model_parameter(
+            instance->runtimes[entries[0]->process_index], description->alpha_s_name,
+            &reference, &imaginary));
+        if (status != UMAMI_SUCCESS) return status;
+        if (reference > 0.0 && imaginary == 0.0) {
+            status = evaluate_points(instance, entries, momenta, stride, events, count,
+                                     helicities, NULL, resolved, values);
+            if (status != UMAMI_SUCCESS) return status;
+            for (size_t i = 0; i < count; ++i) {
+                double scale = pow(alpha_s[events[i]] / reference, description->alpha_s_power);
+                for (size_t h = 0; h < width; ++h) values[i * width + h] *= scale;
+            }
+            return UMAMI_SUCCESS;
+        }
+    }
     for (size_t start = 0, end; start < count; start = end) {
         end = count;
         if (alpha_s != NULL)

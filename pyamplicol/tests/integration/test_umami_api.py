@@ -8,6 +8,7 @@ import importlib.util
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -894,6 +895,63 @@ def test_batched_calls_match_single_events(providers):
                 assert -123 not in batched[3]
             if supports_alpha_s:
                 assert _parameter(provider, handle, name).real == reference
+
+
+def test_event_alpha_s_without_proven_power_sets_the_parameter(providers, tmp_path):
+    for provider in providers:
+        if not provider.data["provider"]["supports_alpha_s"]:
+            continue
+        # The same provider, rebuilt as if its alpha_s power were not proven.
+        sdk = tmp_path / "sdk"
+        shutil.copytree(provider.artifact / "API/umami", sdk)
+        for header in sdk.glob("provider_*.h"):
+            text = header.read_text()
+            unproven = re.sub(r'("aS"), [0-9]+, ', r"\1, -1, ", text)
+            assert unproven != text
+            header.write_text(unproven)
+        build = tmp_path / "build"
+        completed = subprocess.run(
+            [
+                "make",
+                "-C",
+                str(sdk),
+                f"BUILD_DIR={build}",
+                f"RUSTICOL_CONFIG={_config_executable()}",
+            ],
+            env=dict(
+                os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src")
+            ),
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        fallback = Provider(
+            provider.artifact,
+            build,
+            provider.data,
+            _library(build / provider.data["provider"]["library"]),
+            [],
+        )
+        name = provider.data["provider"]["alpha_s_parameter"]
+        events = [
+            (channel, flavour, point, 0.5)
+            for channel, description in enumerate(provider.data["channels"])
+            for flavour in range(len(description["processes"]))
+            for point in _distinct_points(
+                provider, _entry(provider, channel, flavour), 8
+            )
+        ]
+        with provider.handle() as proven, fallback.handle() as unproven:
+            reference = _parameter(provider, proven, name).real
+            alpha_s = [reference * (0.8 + 0.05 * (i % 7)) for i in range(len(events))]
+            status, expected = _call(provider, proven, events, alpha_s=alpha_s)
+            assert status == 0
+            status, values = _call(fallback, unproven, events, alpha_s=alpha_s)
+            assert status == 0
+            assert values[0] == pytest.approx(expected[0], rel=1e-12)
+            assert _parameter(fallback, unproven, name).real == reference
 
 
 def _assert_relative_make_run(provider, *, makefile=None):
