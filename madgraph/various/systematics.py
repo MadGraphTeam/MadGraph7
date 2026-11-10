@@ -180,9 +180,10 @@ class Systematics(object):
                 raise SystematicsError('EVA only works with e/mu beams, not lpp* = %s' % self.b2)
             #self.b1 = beam1//2212
             isEVAxDIS=True
-        # none, chff, edff
-        if(self.banner.run_card['pdlabel'] in ['none','chff','edff']):
-            raise SystematicsError('Systematics not supported for pdlabel=%s' % self.banner.run_card['pdlabel'])
+        # none, and gamma-UPC (edff, chff, ... with neutron tagging)
+        pdlabel = self.banner.run_card['pdlabel']
+        if pdlabel == 'none' or banner_mod.is_upc_label(pdlabel):
+            raise SystematicsError('Systematics not supported for pdlabel=%s (none and gamma-UPC labels)' % pdlabel)
 
         self.orig_ion_pdf = False
         self.ion_scaling = ion_scaling

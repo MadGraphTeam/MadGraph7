@@ -12,6 +12,33 @@ ANNOUNCEMENT:
        with weights that stay within a few per cent of one. lc_flavors = two_lines keeps
        neglecting them, lc_flavors = all samples every flavour at leading colour; the
        proof-of-concept initial_sum is removed. Needs a regenerated [amplicol] output.
+   OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
+       light jets starts from now also includes the core-process scale of the clustering
+       (madevent's central factorisation scale for scalefact = 1), so it no longer drops
+       below the hard process when mu_F does: mg7 clustering_mean without the pdf ladder
+       (beam.pdf_reweighting = false puts mu_F at the softest clustering scale, about
+       40 GeV for t tbar + 1 jet instead of 210 GeV), madevent scalefact < 1. Samples with
+       the default settings are unchanged (mu_F is the core-process scale there).
+   OM: MLM (mg7 and madevent): the shower of the particles that are not light jets
+       (leptons, photons, top and other heavy quarks) now starts from the hardest scale of
+       the event, the larger of mu_F and the light jets' pt_clust, and no longer from the
+       collider energy: that scale is their pt_clust in the LHE (hidden mg7
+       beam.mlm_shower_start / madevent run_card mlm_shower_start = "hardest_scale", the
+       default; "collider_energy" is the previous behaviour). This moves the merged cross
+       section (W + jets +4-9 %, t tbar + jets +12-27 %) and makes it far less dependent on
+       qcut. With Beams:setProductionScalesFromLHEF Pythia8 starts the initial-state
+       shower from the largest pt_clust, and the MLM Pythia8 card now sets
+       SpaceShower:pTmaxMatch = 1 so that this also holds for a sample with no light parton
+       in the final state. Light partons of the core process keep the collider energy,
+       Pythia8's do-not-match flag.
+   OM: mg7: the event scale (SCALUP) of the LHE output is now the factorisation scale, the
+       larger of the two beams', as madevent writes it; it was the renormalisation scale.
+       mu_R stays in the <scales> tag (mur) and in AQCDUP. The two differ for MLM samples in
+       the default clustering_mean mode (mu_R, the mean of the clustering scales, is about
+       half of mu_F for the jet samples) and for unequal fixed scales. Pythia8 MLM showers
+       do not change: with Beams:setProductionScalesFromLHEF (set for MLM) Pythia8 replaces
+       SCALUP by the largest pt_clust_i. Reweighting and MadSpin, which pass mu_R to the
+       running model parameters, read it from the <scales> tag.
    OM: bin/madgraph, bin/madevent, bin/aMCatNLO and bin/generate_events (madevent, aMC@NLO
        and mg7 outputs) no longer read their commands, or the answers to the questions of
        a command given on the command line, from a pipe or a redirected file (e.g.
@@ -242,6 +269,21 @@ ANNOUNCEMENT:
        list for good, and a later import of e.g. loop_sm then grouped mdl_MW under
        ('aEWM1','Gf') instead of ('aEWM1',), reordering mp_intparam_definition.inc.
        Each instance now works on its own copy.
+   NC+DdE+LM+HS+LS: gamma-UPC 1.8 with forward neutron tagging in ultraperipheral
+       collisions, at LO and NLO.
+       - new pdlabel edf<y>n<z>n / chf<y>n<z>n: EDFF / ChFF with the neutron tags <y>, <z>
+         of beam 1 and beam 2 among i (0n+Xn), x (Xn), 0, 1, 2, 3, 4. Pb208, Au197 and O16
+         (up to 2n) are supported. The tag of a proton beam is ignored.
+       - edp/edm (chp/chm) in place of edf (chf) give the upper/lower neutron-emission
+         cross sections, for the uncertainty estimate.
+       - new photoabsorption and 1n-4n emission cross sections for Pb208, Au197, O16 (and U238,
+         not enabled yet), and a new interpolation of the photon-photon luminosity grid.
+   HS+OM: Bug fix (gamma-UPC): at LO, a run with a regular pdlabel followed by a run with a
+       gamma-UPC pdlabel in the same output kept the dummy library and stopped. libgammaUPC is
+       now built by Source/makefile only, which follows the pdlabel; under 'make -j' it was
+       also compiled twice at once ("Cannot rename module file").
+   HS+OM: Bug fix (gamma-UPC): an error inside gamma-UPC now stops with a non-zero exit status
+       (it used to report success).
 
 
 3.8.2 (XX/XX/XX):

@@ -4101,13 +4101,14 @@ RESTART = %(mint_mode)s
 
         # check that if FxFx is activated the correct shower plugin is present
         if shower == 'PYTHIA8' and self.run_card['ickkw'] == 3:
-            misc.sprint(self.options['pythia8_path'])
             f1 = open(pjoin(self.me_dir, "MCatNLO","Scripts", "JetMatching.h"), "r").read()
             py8_plugin = pjoin(self.options['pythia8_path'], "include","Pythia8Plugins","JetMatching.h")
             if not os.path.exists(py8_plugin):
                 raise Exception("FxFx requires a dedicated plugin to be installed in Pythia8. See http://cern.ch/amcatnlo/FxFx_merging.htm")
             f2 = open(py8_plugin).read()
-            if f1 != f2:
+            # the two copies may differ in comments only (spelling, the
+            # MadGraph7 name), which does not change the plugin
+            if not misc.same_cpp_code(f1, f2):
                 raise Exception("FxFx requires a dedicated plugin to be installed in Pythia8. Incorrect plugin detected. See http://cern.ch/amcatnlo/FxFx_merging.htm")
 
         if shower == 'PYTHIA8' and not os.path.exists(pjoin(self.options['pythia8_path'], 'xmldoc')):
@@ -5610,10 +5611,12 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             if self.run_card['lpp1'] == 1 == self.run_card['lpp2']:
                 logger.info('Using built-in libraries for PDFs')
 
-            elif self.run_card['lpp1'] == 2 == self.run_card['lpp2']:
-                if self.run_card['pdlabel'] in ['edff', 'chff']:
+            elif abs(self.run_card['lpp1']) == 2 == abs(self.run_card['lpp2']):
+                if banner_mod.is_upc_label(self.run_card['pdlabel']):
                     logger.info('Using '+self.run_card['pdlabel'].upper()+' in gamma-UPC')
                     self.make_opts_var['pdlabel'] = self.run_card['pdlabel']
+                    # also in RunCard.check_validity (only a warning on some read paths): stop before compiling
+                    banner_mod.check_upc_neutron_tagging(self.run_card, self.run_card['pdlabel'])
 
             self.make_opts_var['lhapdf'] = ""
 
