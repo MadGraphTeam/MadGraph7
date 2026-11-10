@@ -165,6 +165,34 @@ class TestAutomaticGauge(unittest.TestCase):
     # ------------------------------------------------------------------
     # the user's word
     # ------------------------------------------------------------------
+    def test_multiparticles_survive_the_switch(self):
+        """the 'define' lines of the user, the 'z|a' ones included, survive
+        the reload of the model behind the automatic choice"""
+
+        self.do('define V z|a')
+        self.do('define VQ = z u')
+        self.do('define p = p b b~')
+        self.do('generate e+ e- > V > e+ e-')
+        self.assertGauge('FD', True)
+        self.assertEqual(self.cmd._multiparticles['v'], [[23], [22]])
+        self.do('generate p p > t t~')
+        self.assertGauge('unitary', False)
+        self.assertEqual(self.cmd._multiparticles['v'], [[23], [22]])
+        self.assertEqual(sorted(self.cmd._multiparticles['vq']), [2, 23])
+        self.assertIn(5, self.cmd._multiparticles['p'])
+        self.do('define V2 = w+ V')
+        self.assertEqual(self.cmd._multiparticles['v2'], [[24, 23], [24, 22]])
+
+    def test_spin_two_keeps_unitary_gauge(self):
+        """a spin-2 particle in the diagrams: the FD gauge is not validated
+        for it (p p > w+ y in loop_smgrav is wrong by orders of magnitude)"""
+
+        self.do('import model %s' % pjoin(MG5DIR, 'tests', 'input_files',
+                                            'loop_smgrav'))
+        self.do('generate u d~ > w+ y')
+        self.assertGauge('unitary', False)
+        self.assertFalse(mg_interface.fd_gauge_criterion(self.cmd._curr_amps)[0])
+
     def test_explicit_gauge_wins(self):
         """'set gauge unitary' keeps the unitary gauge, 'set gauge FD' the FD
         one whatever the process, 'set gauge default' hands the choice back"""
@@ -321,6 +349,75 @@ class TestAutomaticGaugeOutput(unittest.TestCase):
         self.assertNotIn('set gauge unitary', lines)
         with open(pjoin(out, 'citations.log')) as fsock:
             self.assertIn('Hagiwara:2024xdh', fsock.read())
+
+    def test_postponed_output_fixes_the_gauge(self):
+        """an 'output --postpone_model' waits for its model: the processes
+        written in it fix the gauge of the session until it is written"""
+
+        # 'output --postpone_model' is not usable with the flavour
+        # grouping (finalize cannot merge its FLV_Coupling objects)
+        self.do('set apply_flavor_grouping False')
+        self.do('import model sm')
+        out = pjoin(self.path, 'MIX')
+        self.do('generate p p > t t~')
+        self.do('output standalone %s --postpone_model' % out)
+        self.assertTrue(self.cmd.postponed_export_pending())
+        # a purely electroweak process keeps the unitary gauge of that output
+        self.do('generate p p > w+ w-')
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertFalse(self.cmd._auto_gauge_active)
+        self.do('output standalone %s -f' % out)
+        self.assertFalse(self.cmd.postponed_export_pending())
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        # the model is written: the choice is free again
+        self.do('generate p p > w+ w-')
+        self.assertEqual(self.cmd.options['gauge'], 'FD')
+        self.assertTrue(self.cmd._auto_gauge_active)
+
+    def test_postponed_output_keeps_automatic_fd_gauge(self):
+        """the FD gauge chosen for the first output is kept for a QCD
+        process added to it, and stays recorded in the proc_card"""
+
+        # 'output --postpone_model' is not usable with the flavour
+        # grouping (finalize cannot merge its FLV_Coupling objects)
+        self.do('set apply_flavor_grouping False')
+        self.do('import model sm')
+        out = pjoin(self.path, 'MIX')
+        self.do('generate p p > w+ w-')
+        self.assertEqual(self.cmd.options['gauge'], 'FD')
+        self.do('output standalone %s --postpone_model' % out)
+        self.do('generate p p > t t~')
+        self.assertEqual(self.cmd.options['gauge'], 'FD')
+        self.assertTrue(self.cmd._auto_gauge_active)
+        self.do('output standalone %s -f' % out)
+        self.assertFalse(self.cmd.postponed_export_pending())
+        # the history is what the proc_card of the output is written from
+        lines = [l.strip() for l in self.cmd.history]
+        self.assertIn('set gauge FD', lines)
+        self.assertLess(lines.index('set gauge FD'),
+                        lines.index('generate p p > t t~'))
+
+    def test_loop_process_after_postponed_fd_output(self):
+        """a loop process cannot follow an FD-gauge output waiting for its
+        model: refused, as is 'set auto_gauge False'; an explicit 'set gauge'
+        drops that output"""
+
+        # 'output --postpone_model' is not usable with the flavour
+        # grouping (finalize cannot merge its FLV_Coupling objects)
+        self.do('set apply_flavor_grouping False')
+        self.do('import model sm')
+        out = pjoin(self.path, 'MIX')
+        self.do('generate p p > w+ w-')
+        self.do('output standalone %s --postpone_model' % out)
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'generate u u~ > u u~ [virt=QCD]')
+        self.assertEqual(self.cmd.options['gauge'], 'FD')
+        self.assertTrue(self.cmd.postponed_export_pending())
+        self.assertRaises(madgraph.InvalidCmd, self.do, 'set auto_gauge False')
+        self.assertTrue(self.cmd.options['auto_gauge'])
+        self.do('set gauge unitary')
+        self.assertFalse(self.cmd.postponed_export_pending())
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
 
     def test_axial_gauge_output_reverts(self):
         """--axial_gauge=True has no room in the FD gauge: an automatic FD

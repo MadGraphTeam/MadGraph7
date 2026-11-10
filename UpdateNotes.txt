@@ -18,7 +18,16 @@ ANNOUNCEMENT:
        convention cannot be checked, and an output with --axial_gauge=True goes back to the
        unitary gauge. The proc_card records the choice as 'set gauge FD', the FD-gauge citation
        is triggered, and the mg7 output now records the gauge in its proc_characteristics.
-       MadSpin and the reweighting keep their own gauge handling.
+       MadSpin and the reweighting keep their own gauge handling. Not chosen either when a
+       particle of spin above one takes part (p p > w+ y with a spin-2 y is wrong by orders of
+       magnitude in the FD gauge). While an 'output --postpone_model' waits for its model the
+       gauge is fixed by the processes written in it: the automatic choice keeps it, a loop
+       process, --axial_gauge=True or 'set auto_gauge False' are refused, and an explicit
+       'set gauge' drops the pending output with a warning. The multiparticles of the user
+       ('define V z|a' ones included) now survive the reload of the model behind 'set gauge'.
+       With the default fixed-width treatment the gauges differ at the width level (1e-4 to
+       1e-3 at 1 TeV for processes with W/Z bosons, exactly zero with zero widths): the FD
+       gauge keeps those width artefacts from growing with the energy.
    OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
        light jets starts from now also includes the core-process scale of the clustering
        (madevent's central factorisation scale for scalefact = 1), so it no longer drops

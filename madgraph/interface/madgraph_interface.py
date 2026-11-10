@@ -218,7 +218,9 @@ def fd_gauge_criterion(amplitudes):
 
       electroweak_only: no vertex of any diagram carries a QCD coupling order
           (a VBF/VBS process at QCD=0, p p > w+ w-, Drell-Yan, e+ e- > ...;
-          not p p > t t~, nor p p > w+ j);
+          not p p > t t~, nor p p > w+ j), and no particle of spin above one
+          takes part (the FD gauge is validated for the SM-like spin content:
+          p p > w+ y with a spin-2 y is wrong by orders of magnitude in it);
       massive_vector: a massive spin-one particle is an external leg or an
           internal propagator of at least one diagram.  Only meaningful when
           electroweak_only holds (the scan stops at the first QCD vertex).
@@ -254,7 +256,14 @@ def fd_gauge_criterion(amplitudes):
             return bool(particle) and particle.get('spin') == 3 and \
                    particle.get('mass').lower() != 'zero'
 
-        if any(is_massive_vector(leg.get('id')) for leg in process.get('legs')):
+        def beyond_spin_one(pdg):
+            particle = model.get_particle(pdg)
+            return bool(particle) and particle.get('spin') > 3
+
+        legs = process.get('legs')
+        if any(beyond_spin_one(leg.get('id')) for leg in legs):
+            return False, massive_vector
+        if any(is_massive_vector(leg.get('id')) for leg in legs):
             massive_vector = True
         for diagram in amp.get('diagrams'):
             for vertex in diagram.get('vertices'):
@@ -262,6 +271,9 @@ def fd_gauge_criterion(amplitudes):
                 if interaction is None:
                     continue
                 if interaction.get('orders').get('QCD', 0):
+                    return False, massive_vector
+                if any(beyond_spin_one(leg.get('id'))
+                       for leg in vertex.get('legs')):
                     return False, massive_vector
                 if not massive_vector and any(is_massive_vector(leg.get('id'))
                                               for leg in vertex.get('legs')):
@@ -4202,6 +4214,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # models the FD gauge was given up on (import_ufo could not check
         # their goldstone content): not tried again
         self._fd_unverified_models = set()
+        self._auto_gauge_freeze_logged = False
         self._model_v4_path = None
         self._export_dir = None
         self._export_format = 'madevent'
@@ -4572,6 +4585,16 @@ This implies that with decay chains:
         wanted = 'FD' if self.processes_prefer_fd_gauge() else 'unitary'
         if wanted == current:
             return
+        if self.postponed_export_pending():
+            # an 'output --postpone_model' is waiting for its model: the
+            # processes written in it fix the gauge until the model is written
+            if not self._auto_gauge_freeze_logged:
+                logger.info('An output is waiting for its model (--postpone_model): '
+                            'the %s gauge of the processes written in it is kept, '
+                            'the %s gauge would have been chosen otherwise.',
+                            current, wanted)
+                self._auto_gauge_freeze_logged = True
+            return
         if wanted == 'FD':
             model = self._curr_model
             if 1 not in model.get('gauge') or \
@@ -4595,6 +4618,29 @@ This implies that with decay chains:
         (a later 'import model' may have left the FD gauge on its own)."""
 
         return self._auto_gauge_active and self.options['gauge'] == 'FD'
+
+    def postponed_export_pending(self):
+        """Whether an 'output --postpone_model' is waiting for its model
+        (finalize keeps what that needs in previous_lorentz).  The processes
+        written in that directory are in the gauge of the session, and the
+        model written at the end has to match them: the gauge is fixed until
+        then (apply_automatic_gauge, refuse_automatic_gauge_change)."""
+
+        return hasattr(self, 'previous_lorentz')
+
+    def refuse_automatic_gauge_change(self, why):
+        """The FD gauge chosen automatically has to step aside (`why` says
+        for what): refused while an 'output --postpone_model' holds processes
+        written in it, since the model written at the end would not match
+        them."""
+
+        if self.automatic_fd_gauge_in_use() and self.postponed_export_pending():
+            raise self.InvalidCmd(
+                'The output waiting for its model (--postpone_model) was '
+                'written in the FD gauge, chosen automatically for a purely '
+                'electroweak process, and %s needs the unitary gauge: start '
+                'again with "set gauge unitary" before the first "generate".'
+                % why)
 
     def processes_prefer_fd_gauge(self):
         """True when every generated process is tree level, purely electroweak
@@ -6533,6 +6579,7 @@ This implies that with decay chains:
         self._generate_info = ""
         # the process lines to replay on an automatic change of gauge
         self._process_lines = []
+        self._auto_gauge_freeze_logged = False
         # Reset the diagrams kept for an 'auto' merge_quartic_vertices, they
         # describe the amplitudes just dropped
         self._quartic_order = None
@@ -6697,6 +6744,7 @@ This implies that with decay chains:
         if LoopOption != 'tree' and self.options['gauge'] in ['FD','axial']:
             if self.options['gauge'] == 'FD' and self.automatic_fd_gauge_in_use():
                 # ours, for a previous tree-level process: step aside
+                self.refuse_automatic_gauge_change('a loop process')
                 logger.info('Loop process: back to the unitary gauge (the FD '
                             'gauge, chosen automatically for a previous process, '
                             'is only supported for tree-level amplitudes).')
@@ -11661,6 +11709,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         args = ['auto_gauge'] + args
         self.check_set(args)
+        if not args[1] and self.automatic_fd_gauge_in_use():
+            self.refuse_automatic_gauge_change('"set auto_gauge False"')
         self.options['auto_gauge'] = args[1]
         if not args[1] and self.automatic_fd_gauge_in_use():
             # the FD gauge in use was ours: back to the default
@@ -11745,6 +11795,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             return
         
         
+        if log and self.postponed_export_pending():
+            # the processes written in that output are in the gauge left now:
+            # the model written at the end could not serve them
+            logger.warning('The output waiting for its model (--postpone_model) '
+                           'was written in the %s gauge: generate and output its '
+                           'processes again in the %s gauge.'
+                           % (self.options['gauge'], args[1]))
+            del self.previous_lorentz
+            del self.previous_couplings
         self.options[args[0]] = args[1]
 
         if able_to_mod and log and args[0] == 'gauge' and \
@@ -11756,6 +11815,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
 
 
+        # the multiparticles of the user survive the reload of the model (the
+        # particles are the same in every gauge): add_default_multiparticles
+        # drops the ones of 'define V z|a', whose entries are lists, and edits
+        # the lists of p and j in place for the flavour scheme of the model
+        multiparticles = copy.deepcopy(self._multiparticles)
         #re-init all variable
         model_name = self._curr_model.get('modelpath+restriction')
         self._curr_model = None
@@ -11777,6 +11841,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             else:
                 opts=''
             MadGraphCmd.do_import(self,'model %s %s' % (model_name, opts), force=True)
+            self._multiparticles.update(multiparticles)
         elif log:
             logger.info('Note that you have to reload the model')
 
@@ -12989,6 +13054,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if self.automatic_fd_gauge_in_use() and \
                 str(line_options.get('axial_gauge', False)).strip().lower() \
                                           in ('true', 't', '1', 'yes', 'on'):
+            self.refuse_automatic_gauge_change('--axial_gauge=True')
             logger.info('--axial_gauge=True: back to the unitary gauge (the FD '
                         'gauge had been chosen automatically), the processes '
                         'are generated again.')

@@ -147,3 +147,87 @@ electroweak and a QCD process can simply be generated in the FD gauge
 (`set gauge FD`) at the cost of the madevent single-colour strategy for the
 QCD part. The current rule, "FD when every process of the output
 qualifies", is the per-output projection of the same criterion.
+
+## Outputs waiting for their model (`--postpone_model`)
+
+`output X --postpone_model` writes the processes but defers the model (the
+ALOHA routines and the parameters) to a later `output` into the same
+directory, which is how several process definitions end up in one output.
+The processes already written are in the gauge of the session at that time,
+and the model written at the end has to match them, so while such an output
+is pending (`postponed_export_pending`, i.e. `finalize` left
+`previous_lorentz` on the interface) the gauge is fixed:
+
+- `apply_automatic_gauge` keeps the current gauge, whatever the processes of
+  the next `generate` would have preferred, with one info line per
+  `generate`;
+- the cases where an automatic FD gauge has to step aside (a loop process,
+  `--axial_gauge=True`, `set auto_gauge False`) are refused with an
+  `InvalidCmd` that says to start again with `set gauge unitary`
+  (`refuse_automatic_gauge_change`);
+- an explicit `set gauge` that changes the gauge drops the pending output with
+  a warning, since its model can no longer be written: its processes have to
+  be generated and output again.
+
+Without this, `generate w+ w- > w+ w-` (FD), `output matchbox X
+--postpone_model`, `generate u u~ > u u~ [virt=QCD]` (back to unitary),
+`output matchbox X -f` asked the unitary `loop_sm` for the FD-only Lorentz
+routines of the first process and crashed in the model conversion.
+
+## Spin above one
+
+`p p > w+ y` in `tests/input_files/loop_smgrav` (a spin-2 `y`) picked the
+FD gauge (the model has goldstone bosons, with a convention that could be
+checked) and its matrix element came out at 5148 instead of 16.95 at the
+`check_sa` point: the merged vector/goldstone vertices are only right for
+the spin content of the SM. `fd_gauge_criterion` therefore says no as soon
+as a particle of spin above one (spin 3/2 or 2) is an external leg or takes
+part in a vertex of a diagram.
+
+## The multiparticles of the user across the reload
+
+`set gauge X` reloads the model, and `add_default_multiparticles` then drops
+the `define V z|a` definitions (their entries are lists, which it cannot look
+up) and edits the lists of `p` and `j` in place for the flavour scheme of the
+model, so `define p = p b b~` was lost too. With the automatic choice this
+happened behind the user's back (`test_generate` of the acceptance tests
+lost its `V`). `set2_gauge` now keeps a deep copy of the dictionary across
+the reload and puts the user's definitions back, for the explicit `set gauge`
+as well.
+
+## What changes in the numbers: the widths
+
+At the `check_sa` phase-space point (1 TeV), `output standalone_fortran` of
+the `sm` in the unitary and in the FD gauge give:
+
+| process                   | unitary                 | FD                      | relative |
+|---------------------------|-------------------------|-------------------------|----------|
+| `e+ e- > z h`             | 2.0988604744576469e-3   | 2.0988604744576469e-3   | 0        |
+| `e+ e- > z z`             | 3.6882423618613985e-3   | 3.6882423618613976e-3   | 2e-16    |
+| `u u > h u u QCD=0`       | 9.2275820633168406e-10  | 9.2275820633168571e-10  | 2e-16    |
+| `u u~ > w+ w-`            | 5.1099582274945965e-3   | 5.1093405664217962e-3   | 1.2e-4   |
+| `u d~ > w+ z`             | 3.3989086546951687e-3   | 3.3982047233175557e-3   | 2.1e-4   |
+| `e+ e- > w+ w- z`         | 6.0729806614484482e-7   | 6.0674525348460480e-7   | 9.1e-4   |
+| `u d > z u d QCD=0`       | 1.4704291881825141e-6   | 1.4711011009947315e-6   | 4.6e-4   |
+
+With every width set to zero in the param_card the two gauges agree to
+machine precision (`u u~ > w+ w-`: 5.1093404049749446e-3 against
+5.1093404049750504e-3; `u d > z u d QCD=0`: 1.4718113670817815e-6 in
+both), and the Feynman gauge reproduces the unitary one bit for bit with the
+widths in. The differences are the known gauge dependence of the fixed-width
+treatment, which the unitary gauge amplifies with the energy (its
+`q^mu q^nu / m^2` terms): switching the default gauge moves the numbers of a
+process with W bosons by this much. Two things follow from it:
+
+- the acceptance tests that compare against stored unitary-gauge values
+  (`test_standalone_merged_flavor_uq_zuq`, `test_decay_chain_symmetry_factor`,
+  which also has the off-resonance gauge dependence of a decay-chain diagram
+  subset: 0.9% for `e+ e- > z z h, z > u u~, z > e+ e-, h > b b~`) pin the
+  unitary gauge;
+- in the complex-mass scheme the gauges should agree exactly, and they do
+  not here (`u u~ > w+ w-`: 5.1085553001036475e-3 unitary against
+  5.1080495446772884e-3 FD, `u d > z u d QCD=0`: 1.4697541998128762e-6
+  against 1.4704511965777327e-6). The FD gauge with `complex_mass_scheme`
+  is not consistent at the 1e-4 level, a pre-existing issue worth its own
+  investigation (real masses in the external polarisation vectors or in the
+  goldstone sector are the usual suspects).
