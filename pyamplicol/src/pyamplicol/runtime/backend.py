@@ -717,6 +717,15 @@ class RusticolRuntimeBackend:
         warnings channel (``take_warnings``): one line per call and every
         typed warning."""
 
+        carrier = arithmetic or ("double" if precision == 16 else "arbitrary")
+        if not momenta:
+            return momenta
+        if carrier == "double" and binary64 is None and self._kinematics_binary64 is None:
+            # The binary64 default is off (the native policy's
+            # ``DEFAULT_BINARY64``, USER ~01:56): the native f64 path runs as
+            # before, one branch per call, without consulting the loop
+            # extension.
+            return momenta
         from pyamplicol import kinematics
 
         settings = kinematics.resolve(
@@ -725,9 +734,8 @@ class RusticolRuntimeBackend:
             default_setting_=self._kinematics_setting,
             default_binary64_=self._kinematics_binary64,
         )
-        carrier = arithmetic or ("double" if precision == 16 else "arbitrary")
         variant = settings.variant(carrier)
-        if variant is None or not momenta:
+        if variant is None:
             return momenta
         from .symbolica_exact import _decimal, _working_precision
 
