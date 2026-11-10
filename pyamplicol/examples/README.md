@@ -478,9 +478,9 @@ s at two points (every pole and Ward row passes in binary64). Per point, one
 pinned core, a batch of 8: NinjaRS (`auto`) 22-23 ms checked and unchecked;
 TIRust 26 ms with all 8 points refused (an ill-conditioned Gram matrix, a
 typed refusal: the explicit backend has no fallback) and 47-49 ms unchecked;
-one helicity (h42, the largest at the first point) 13.3 ms against 22.2 ms summed
-(0.60; the reduction, 5.9 ms, is the summed call's: the selected row's seeds
-reduce the same lanes), at leading colour 5.1 ms against 8.4 ms (0.60). The
+one helicity (h42, the largest at the first point) 12.7 ms against 22.0 ms summed
+(0.58; the reduction, 5.8 ms, is the summed call's: the selected row's seeds
+reduce the same lanes), at leading colour 4.9 ms against 7.5 ms (0.66). The
 whole walkthrough at two points (fresh workspace, both generations included):
 67 s, peak 0.77 GiB; at one point (the CI smoke test): 73 s.
 
@@ -498,8 +498,10 @@ The process has no external gluon, photon or massive vector: its Ward and
 Goldstone rows read "not applicable" and `check` decides on the pole check
 alone. Colour correlations only (no vector leg); the helicity selection at
 full colour (an electroweak model runs at full colour, where a selection keeps
-some helicity rows with every colour component). Generation threshold of this
-example: at most 10 minutes and 8 GiB.
+some helicity rows with every colour component): one helicity (h22, the
+largest at the first point) 64.0 ms against 108.2 ms summed per point, one
+pinned core, a batch of 8 (0.59; the reduction, 23 ms, is the summed call's).
+Generation threshold of this example: at most 10 minutes and 8 GiB.
 
 Measured (2026-11-09, after the loop-block colour fix lit-ew-blocks, on a
 shared host at load ~160-210): generation 223-232 s, peak 7.65-8.37 GiB
