@@ -14,7 +14,7 @@
 ################################################################################
 """Tests of IXXXXXR / OXXXXXR (aloha/template_files/aloha_functions.f), the
 spinors of a massive fermion whose spin is quantised along the axis fixed by a
-reference momentum, and of what output --axial_gauge=True uses them for."""
+reference momentum (output --axial_gauge=True)."""
 from __future__ import absolute_import
 import os
 import shutil
@@ -36,11 +36,11 @@ DRIVER = """
       implicit none
       type(aloha) fi(-1:1,-1:1), fo(-1:1,-1:1), gi(-1:1,-1:1)
       type(aloha) go(-1:1,-1:1), hi, ho, vc
-      double precision p(0:3), r(0:3), k(0:3), m, pp, rr, x(9), dmax(12)
-      double precision zero(0:3), small, large
-      double complex ps(4,4), es(4,4), s, c1, ci, tmp(4), cur(4)
+      double precision p(0:3), r(0:3), k(0:3), m, pp, rr, x(9), dmax(9)
+      double precision zero(0:3)
+      double complex ps(4,4), s, c1, ci, tmp(4)
       parameter (ci=(0d0,1d0))
-      integer i, j, h, nsf, it, h2, hg, nzero, nseed
+      integer i, j, h, nsf, it, h2, nseed
       integer, allocatable :: seed(:)
 c     the same momenta at every run
       call random_seed(size=nseed)
@@ -177,50 +177,6 @@ c       r = (|p|,-p): the helicity states of ixxxxx, up to a phase
             endif
           enddo
         enddo
-c       What --axial_gauge=True relies on. A massless vector of momentum k
-c       in the gauge of the (massive) momentum p, and the fermion of
-c       momentum p quantised along k: the vector decouples from one spin
-c       state of the fermion, a different one for each of its helicities.
-        k(1) = rr*sqrt(1-(2*x(7)-1)**2)*cos(6.2831853d0*x(8))
-        k(2) = rr*sqrt(1-(2*x(7)-1)**2)*sin(6.2831853d0*x(8))
-        k(3) = rr*(2*x(7)-1)
-        k(0) = sqrt(k(1)**2+k(2)**2+k(3)**2)
-        do nsf = -1, 1, 2
-          do hg = -1, 1, 2
-            call vxxxxxr(k, 0d0, hg, nsf, p, vc)
-            call eslash(vc, es)
-            nzero = 0
-            small = 0d0
-            large = 0d0
-            do h = -1, 1, 2
-              call oxxxxxr(p, m, h, 1, 7, k, ho)
-              call ixxxxxr(p, m, h, -1, 7, k, hi)
-              s = 0d0
-              c1 = 0d0
-              do i = 1, 4
-                cur(i) = 0d0
-                tmp(i) = 0d0
-                do j = 1, 4
-                  cur(i) = cur(i) + ho%W(j)*es(j,i)
-                  tmp(i) = tmp(i) + es(i,j)*hi%W(j)
-                enddo
-                s = s + abs(cur(i))
-                c1 = c1 + abs(tmp(i))
-              enddo
-              s = s/sqrt(p(0))
-              c1 = c1/sqrt(p(0))
-              if (dble(s).lt.1d-10.and.dble(c1).lt.1d-10) then
-                nzero = nzero + 1
-                small = max(small, dble(s), dble(c1))
-              else
-                large = max(dble(s), dble(c1))
-              endif
-            enddo
-            dmax(10) = max(dmax(10), 1d0*abs(nzero-1))
-            dmax(11) = max(dmax(11), small)
-            if (large.lt.1d-3) dmax(12) = 1d0
-          enddo
-        enddo
       enddo
       write(*,'(a,es12.4)') 'DIRAC ', dmax(1)
       write(*,'(a,es12.4)') 'NORM ', dmax(2)
@@ -231,9 +187,6 @@ c       state of the fermion, a different one for each of its helicities.
       write(*,'(a,es12.4)') 'HELICITY ', dmax(7)
       write(*,'(a,es12.4)') 'FALLBACK ', dmax(8)
       write(*,'(a,es12.4)') 'MOMENTUM ', dmax(9)
-      write(*,'(a,es12.4)') 'DECOUPLED_COUNT ', dmax(10)
-      write(*,'(a,es12.4)') 'DECOUPLED ', dmax(11)
-      write(*,'(a,es12.4)') 'COUPLED_VANISHES ', dmax(12)
       end
 
 c     pslash in the representation of the HELAS spinors
@@ -251,24 +204,6 @@ c     pslash in the representation of the HELAS spinors
       ps(3,2) = p(1)-ci*p(2)
       ps(4,1) = p(1)+ci*p(2)
       ps(4,2) = p(0)-p(3)
-      end
-
-c     the same for a (complex) polarisation vector
-      subroutine eslash(vc, es)
-      use aloha_object
-      implicit none
-      type(aloha) vc
-      double complex es(4,4), ci
-      parameter (ci=(0d0,1d0))
-      es(:,:) = 0d0
-      es(1,3) = vc%W(1)-vc%W(4)
-      es(1,4) = -(vc%W(2)-ci*vc%W(3))
-      es(2,3) = -(vc%W(2)+ci*vc%W(3))
-      es(2,4) = vc%W(1)+vc%W(4)
-      es(3,1) = vc%W(1)+vc%W(4)
-      es(3,2) = vc%W(2)-ci*vc%W(3)
-      es(4,1) = vc%W(2)+ci*vc%W(3)
-      es(4,2) = vc%W(1)-vc%W(4)
       end
 """
 
@@ -333,17 +268,6 @@ class TestReferenceSpinors(unittest.TestCase):
         the momentum and the flavor of the wavefunction never change"""
         self.assertEqual(self.results['FALLBACK'], 0.)
         self.assertEqual(self.results['MOMENTUM'], 0.)
-
-    def test_vector_decouples_from_one_spin_state(self):
-        """A massless vector in the gauge of the momentum of a massive
-        fermion (VXXXXXR takes a massive reference) does not couple to one
-        of the two spin states of that fermion quantised along the momentum
-        of the vector, for each helicity of the vector: this is what removes
-        the diagrams where the reference gluon of g g > t t~ + gluons is
-        attached to the external top quark line"""
-        self.assertEqual(self.results['DECOUPLED_COUNT'], 0.)
-        self.assertLess(self.results['DECOUPLED'], 1e-12)
-        self.assertEqual(self.results['COUPLED_VANISHES'], 0.)
 
 
 if __name__ == '__main__':

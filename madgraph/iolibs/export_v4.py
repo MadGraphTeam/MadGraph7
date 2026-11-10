@@ -1171,23 +1171,13 @@ C
         """
         pass
 
-    def get_axial_gauge_refs(self, matrix_element):
-        """The reference legs of the external wavefunctions of this matrix
-        element (helas_call_writers.get_axial_gauge_refs): none unless the
-        output was asked for --axial_gauge=True."""
-
-        if not helas_call_writers.axial_gauge_requested(self.opt):
-            return {}
-        return helas_call_writers.get_axial_gauge_refs(matrix_element,
-            massive_fermions=helas_call_writers.fermion_reference_requested(
-                                                           self.cmd_options))
-
     def get_unknown_helicity_lines(self, matrix_element, indent='   '):
         """Fortran lines for get_helicities: the helicity reported for a
         massive fermion whose spin is quantised along a reference (IXXXXXR /
         OXXXXXR) is 9, unknown, since its state is not a helicity state."""
 
-        refs = self.get_axial_gauge_refs(matrix_element)
+        refs = helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                                         self.cmd_options)
         return ['%snhel(%d) = 9' % (indent, leg) for leg in
                 helas_call_writers.get_spin_reference_legs(matrix_element, refs)]
 
@@ -6195,7 +6185,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
                                                                    self.opt)
         fortran_model.axial_gauge_refs = \
-                                    self.get_axial_gauge_refs(matrix_element)
+            helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                                           self.cmd_options)
         # the propagators of the --zerowidth_decay particles of this matrix
         # element, if any, are written with a zero width. Not with
         # misc.TMP_variable: the writer is a dict, which it addresses by key.
@@ -8297,7 +8288,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
                                                                    self.opt)
         fortran_model.axial_gauge_refs = \
-                                    self.get_axial_gauge_refs(matrix_element)
+            helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                                           self.cmd_options)
         try:
             helas_calls = fortran_model.get_matrix_element_calls(matrix_element)
         finally:

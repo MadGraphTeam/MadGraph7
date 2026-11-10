@@ -6,17 +6,22 @@ ANNOUNCEMENT:
 
 0.3.0 (XX/XX/XX):
    OM: output --axial_gauge=True (madevent, standalone_fortran, standalone, mg7) now also
-       chooses the spin axis of the massive final-state fermions: their spin is quantised
-       along the momentum of a massless leg (the reference shared by the gluons they couple
-       to) instead of along their own momentum (new HELAS routines IXXXXXR/OXXXXXR). More
-       helicity configurations and amplitudes then vanish and are removed by the helicity
-       filtering and the helicity recycling: g g > t t~ g g has 60 helicity configurations
-       instead of 64 and 7868 non vanishing (helicity, amplitude) pairs instead of 8784
-       (9376 without the option). The matrix element summed over the
+       chooses the spin axis of the massive final-state fermions coupled to at least two
+       massless vectors: their spin is quantised along the momentum of a massless leg (the
+       reference most of these vectors share) instead of along their own momentum (new HELAS
+       routines IXXXXXR/OXXXXXR). More helicity configurations and amplitudes then vanish and
+       are removed by the helicity filtering and the helicity recycling: g g > t t~ g g has 60
+       helicity configurations instead of 64 and 7868 non vanishing (helicity, amplitude)
+       pairs instead of 8784 (9376 without the option). The matrix element summed over the
        helicities is unchanged, but the two spin states of such a fermion are not helicity
-       states: its helicity is written as 9 (unknown) in the event file. Nothing changes
-       for a polarised process, for an initial-state fermion, with --density, or with the
-       new --fermion_reference=False, which keeps the references of the vectors only.
+       states: its helicity is written as 9 (unknown) in the event file, and the madmatrix
+       density binding refuses a density matrix for it. Nothing changes for g g > t t~, for
+       a process with a single massless vector or none, for a polarised process, for an
+       initial-state fermion, with --density, or with the new --fermion_reference=False,
+       which keeps the references of the vectors only.
+       The gluons of a process with an initial-state quark now all share the momentum of
+       that quark rather than of the initial gluon (u g > u g g: 132 non vanishing pairs
+       instead of 168).
    OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
        light jets starts from now also includes the core-process scale of the clustering
        (madevent's central factorisation scale for scalefact = 1), so it no longer drops

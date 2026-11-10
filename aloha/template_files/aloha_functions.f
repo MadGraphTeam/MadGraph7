@@ -803,13 +803,6 @@ c eps_i.eps_j vanish for same-chirality pairs -- so that whole HELAS
 c currents and amplitudes become identically zero.  See
 c arXiv:2312.07447.
 c
-c r need not be lightlike: a massive r gives the gauge of the lightlike
-c r - r^2/(2 r.p) p, since the two differ by a vector along p. With r
-c the momentum of a massive external fermion whose spin is quantised
-c along p (see ixxxxxr), this is the massless part of that momentum, and
-c the coupling of the vector to that fermion vanishes for one of its
-c spin states; r.p then has no collinear zero.
-c
 c r is ignored for a massive vector, where p^2 /= 0 spoils the
 c normalisation, and whenever r.p vanishes (in particular when r is p
 c itself, which is how a leg with no useful reference is written out).

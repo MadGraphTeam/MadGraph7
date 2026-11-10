@@ -1875,7 +1875,7 @@ class TestCmdShell2(unittest.TestCase,
         matrix element summed over the helicities is the one of the default
         gauge and of the helicity basis, in the standalone_fortran and in the
         standalone (madmatrix) output, for Dirac (g g > t t~ g) and for
-        Majorana (u u~ > go go, no vector at all) fermions.
+        Majorana (g g > go go g) fermions.
 
         The widths are set to zero: a fixed width breaks gauge invariance, and
         with it the independence of the references of the gluons.
@@ -1924,9 +1924,8 @@ class TestCmdShell2(unittest.TestCase,
         fermions = ['IXXXXX', 'OXXXXX']
         cases = (('sm', 'g g > t t~ g', fermions + ['VXXXXX'],
                   fermions + ['VXXXXXR'], ['VXXXXXR', 'IXXXXXR', 'OXXXXXR']),
-                 # the massless quarks keep IXXXXX / OXXXXX
-                 ('MSSM_SLHA2-full', 'u u~ > go go QED=2', fermions, fermions,
-                  fermions + ['IXXXXXR', 'OXXXXXR']))
+                 ('MSSM_SLHA2-full', 'g g > go go g', fermions + ['VXXXXX'],
+                  fermions + ['VXXXXXR'], ['VXXXXXR', 'IXXXXXR', 'OXXXXXR']))
         for model, process, plain, gauged, quantised in cases:
             self.do('import model %s' % model)
             self.do('generate %s' % process)

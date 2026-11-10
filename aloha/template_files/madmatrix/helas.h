@@ -662,8 +662,6 @@
   // With r the (lightlike) momentum of another external particle, eps.r = 0 and,
   // for legs sharing r, eps_i.eps_j = 0 for same-helicity pairs: whole currents
   // and amplitudes vanish for given helicities (arXiv:2312.07447).
-  // r need not be lightlike: for a massive one this is the gauge of the lightlike
-  // r - r^2/(2 r.p) p, and r.p has no collinear zero (see get_axial_gauge_refs).
   // r is ignored for a massive vector and wherever r.p = 0, in particular when
   // iref is ipar itself (see vxxxxxr in aloha_functions.f)
   template<class M_ACCESS, class W_ACCESS>
@@ -794,9 +792,22 @@
     const fptype_amp_sv p1 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar ) );
     const fptype_amp_sv p2 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar ) );
     const fptype_amp_sv p3 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar ) );
-    const fptype_amp_sv r1 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 1, iref ) );
-    const fptype_amp_sv r2 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 2, iref ) );
-    const fptype_amp_sv r3 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 3, iref ) );
+    const fptype_amp_sv q1 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 1, iref ) );
+    const fptype_amp_sv q2 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 2, iref ) );
+    const fptype_amp_sv q3 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 3, iref ) );
+    // A reference with no direction (a lane without a valid momentum, say) gives the helicity basis,
+    // r = ( |p|, -p ), as ixxxxxr in aloha_functions.f does (there exactly ixxxxx, here up to a phase)
+#ifdef MGONGPU_CPPSIMD
+    const auto nodir = ( q1 == 0 and q2 == 0 and q3 == 0 );
+    const fptype_amp_v r1 = fpternary( nodir, -p1, q1 );
+    const fptype_amp_v r2 = fpternary( nodir, -p2, q2 );
+    const fptype_amp_v r3 = fpternary( nodir, -p3, q3 );
+#else
+    const bool nodir = ( q1 == 0 and q2 == 0 and q3 == 0 );
+    const fptype_amp_sv r1 = nodir ? -p1 : q1;
+    const fptype_amp_sv r2 = nodir ? -p2 : q2;
+    const fptype_amp_sv r3 = nodir ? -p3 : q3;
+#endif
     const fptype_amp_sv nh = nhel * static_cast<fptype_amp>( nsf );
     // BRANCHLESS HELICITY: as in ixxxxx, the spin state enters as the truth values tp (nh == +1) and tm (nh == -1)
     const fptype_amp_sv tp = ( 1 + nh ) * (fptype_amp)0.5;
@@ -860,7 +871,8 @@
   // the momenta entering the polarisation vectors of the massless vectors (vxxxxxr), fermion-vector
   // couplings, and whole currents and amplitudes, vanish for given h (arXiv:2011.10075, arXiv:2312.07447).
   // Only the direction of r matters, so that r need not be exactly lightlike.
-  // r is ignored (ixxxxx) for a massless fermion and when iref is ipar itself (see ixxxxxr in aloha_functions.f)
+  // r is ignored (ixxxxx) for a massless fermion and when iref is ipar itself, and a reference with no
+  // direction gives the helicity states (see ixxxxxr in aloha_functions.f)
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   ixxxxxr( const fptype_momenta momenta[], // input: momenta

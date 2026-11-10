@@ -547,7 +547,12 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
             sorted(wf.get('number_external')
                    for wf in matrix_element.get_external_wavefunctions()
                    if wf.get('offshell')),
-            self.scale_dependence(matrix_element)))
+            self.scale_dependence(matrix_element),
+            # the massive fermions whose spin is quantised along a reference
+            # (--axial_gauge): their states are not helicity states
+            helas_call_writers.get_spin_reference_legs(matrix_element,
+                helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                             self.opt.get('output_options')))))
         return out
 
     @staticmethod
@@ -600,13 +605,15 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         """SubProcesses/madmatrix_processes.json: per subprocess, its library
         (with the make variables LIBTAG, BACKEND and FPTYPE left as '{libtag}',
         '{backend}' and '{fptype}', as for the common library, common_library),
-        its legs, the processes it evaluates, its off-shell legs
-        and, per flavor index, every pdg combination (in the leg order of the
-        process) that this index stands for, and what of it depends on the
-        renormalisation scale beyond alpha_s (scale_dependence)."""
+        its legs, the processes it evaluates, its off-shell legs, the legs
+        whose two states are not helicity states (spin_reference, output
+        --axial_gauge=True) and, per flavor index, every pdg combination (in
+        the leg order of the process) that this index stands for, and what of
+        it depends on the renormalisation scale beyond alpha_s
+        (scale_dependence)."""
         import json
         subprocesses = []
-        for info, (processes, offshell, scale) in zip(self.process_info,
+        for info, (processes, offshell, scale, spin_reference) in zip(self.process_info,
                                                       getattr(self, 'processes_of_subprocess', [])):
             path = os.path.basename(info['path'])
             flavors = []
@@ -622,6 +629,7 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 'legs': list(info['incoming']) + list(info['outgoing']),
                 'processes': processes,
                 'offshell': offshell,
+                'spin_reference': spin_reference,
                 # what depends on MU_R besides alpha_s (scale_dependence)
                 'scale_dependence': scale,
                 'flavors': flavors})

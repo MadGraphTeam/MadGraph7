@@ -106,44 +106,38 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
     initial-state leg is preferred as the safest numerically: vxxxxxr divides
     by r.p, which for r on the beam is E * pT * exp(-y) of the gauged leg and
     so is kept away from zero by the usual pT and rapidity cuts (a final-state
-    r relies on the separation cuts instead).
+    r relies on the separation cuts instead). A massless fermion comes before
+    a vector: no vector then has to take another reference than the others,
+    and a fermion line carrying r cancels the same-helicity couplings as well
+    (u g > u g g: 132 non vanishing (helicity, amplitude) pairs with every
+    gluon on the u quark, 168 with the gluons on the incoming gluon).
 
     A massive fermion has no helicity-independent momentum to offer as a
     reference (its spinor has both chiralities), but the axis along which its
     spin is quantised is free in an unpolarised matrix element: with a
     lightlike r, IXXXXXR/OXXXXXR build the two spin states from the
     massless spinors of pflat = p - m^2/(2 p.r) r and of r, one per
-    chirality (arXiv:2011.10075). Taking for r the reference R shared by
-    the vectors the fermion couples to, one state of the fermion has the
-    massless spinor of R in the chirality a vector of a given helicity
-    contracts with R: a chain of same-helicity vectors then vanishes between
-    two such fermions, as it does on a massless fermion line carrying R, and
-    whole helicity configurations drop out (g g > t t~ g g: 4 of 64, the
-    zeros of the SUSY Ward identities for massive quarks). Measured on
+    chirality (arXiv:2011.10075). Taking for r the reference R that most of
+    the vectors it couples to share (the gluons first), one state of the
+    fermion has the massless spinor of R in the chirality a vector of a given
+    helicity contracts with R: a chain of same-helicity vectors then vanishes
+    between two such fermions, as it does on a massless fermion line carrying
+    R, and whole helicity configurations drop out (g g > t t~ g g: 4 of 64,
+    the zeros of the SUSY Ward identities for massive quarks). Measured on
     g g > t t~ g g: 9376 non vanishing (helicity, amplitude) pairs in the
     helicity basis, 8784 with the references of the vectors only, 7868 with
-    those of the top quarks. Without any external vector the fermions take a
-    massless leg they share a charge with (u u~ > t t~: 6 helicities instead
-    of 8).
+    those of the top quarks; 1024 and 922 for u g > t t~ u g.
 
-    A vector that is the only massless leg of its gauge group (the gluon of
-    e+ e- > t t~ g) has no lightlike reference it couples to, and takes the
-    momentum p of a massive fermion quantised along its own momentum k.
-    vxxxxxr does not need a lightlike r: for a massive one it is the gauge of
-    the lightlike p - m^2/(2 p.k) k, which is precisely pflat of that
-    fermion, so that the vector does not couple to one spin state of that
-    fermion per helicity (e+ e- > t t~ g: 48 non vanishing pairs instead of
-    64). The same choice for the vector R of g g > t t~ + gluons, instead of
-    the next massless leg, would remove 2 to 3 % more pairs (7710 for
-    g g > t t~ g g) but is not made: unlike the spin axis, which leaves the
-    helicity sum exactly unchanged, it is another gauge, and with a fixed
-    top-quark width (not gauge invariant) it moved the madevent cross
-    section of g g > t t~ g g by +0.4 to +0.7 %, against less than 0.1 % for
-    the references of the gluons among themselves.
-
-    g g > t t~ itself keeps the helicity basis: 4 of its 16 helicity
-    configurations vanish there, another spin axis has 4 others and no more
-    vanishing amplitudes, for external wavefunctions that cost more.
+    The new wavefunctions cost about twice IXXXXX/OXXXXX, and the spin axis
+    pays only with at least two massless vectors coupled to the fermion in a
+    process of five legs or more: g g > t t~ (4 of its 16 helicity
+    configurations already vanish in the helicity basis, another axis has 4
+    others), u u~ > t t~ g (1.19 against 1.20 us, measured) and the processes
+    without any vector keep the helicity basis. The references of the vectors
+    never depend on the fermions: a vector in the gauge of a massive momentum
+    is another gauge, which with a fixed top-quark width (not gauge
+    invariant) moved the madevent cross section of g g > t t~ g g by +0.4 to
+    +0.7 %, while the spin axis leaves the helicity sum exactly unchanged.
 
     The two states of such a fermion are not helicity states, and their sum
     is all that is physical. Hence, with massive_fermions=False (the density
@@ -164,24 +158,8 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
     massless = [i for i in sorted(externals)
                 if externals[i].get('mass').lower() == 'zero']
     vectors = [i for i in massless if externals[i].get('spin') == 3]
-    heavy = []
-    if massive_fermions and \
-               not any(wf.get('polarization') for wf in externals.values()):
-        heavy = [i for i in sorted(externals) if i not in massless
-                 and externals[i].get('spin') == 2
-                 and externals[i].get('leg_state')
-                 and not externals[i].get('offshell')
-                 and not externals[i].get('onium')
-                 and not externals[i].get('is_loop')]
-    if len(externals) == 4 and len(vectors) == 2 and len(heavy) == 2:
-        # two massless vectors to two massive fermions (g g > t t~): the
-        # helicity basis has exact zeros of its own there (two vectors of
-        # the same helicity only give two fermions of the same helicity),
-        # which any other spin axis trades for as many others
-        heavy = []
     # A single massless leg cannot serve as the reference of itself.
-    if not massless or not (vectors or heavy) or \
-                                       (not heavy and len(massless) < 2):
+    if not vectors or len(massless) < 2:
         return {}
 
     def colored(i):
@@ -197,49 +175,38 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
             return charged
         return lambda i: True
 
-    def initial_first(legs):
-        order = [i for i in legs if externals[i].get('state') == 'initial']
-        return order + [i for i in legs if i not in order]
+    def preference(i):
+        # the initial state first (leg_state is False for an initial leg,
+        # whatever the direction of its fermion flow), then a fermion
+        return (bool(externals[i].get('leg_state')),
+                externals[i].get('spin') == 3, i)
 
     refs = {}
-    # the reference shared by the vectors of the gauge group of each vector
-    shared = {}
     for vector in vectors:
         candidates = [i for i in massless if couples_to(vector)(i)]
-        fermions = [i for i in heavy if couples_to(vector)(i)]
         if len(candidates) < 2:
-            if not fermions:
-                candidates = massless
-            elif not candidates:
-                # a photon with massive charged fermions and nothing else:
-                # the photons play the role the gluons play for themselves
-                candidates = [i for i in vectors if not colored(i)]
-        order = initial_first(candidates)
-        shared[vector] = order[0]
-        if vector != order[0]:
-            refs[vector] = order[0]
-        elif len(order) > 1:
-            refs[vector] = order[1]
-        elif fermions:
-            # the only massless leg of its gauge group: the momentum of a
-            # massive fermion quantised along it (see the docstring)
-            refs[vector] = fermions[0]
+            candidates = massless
+        order = sorted(candidates, key=preference)
+        refs[vector] = order[1] if vector == order[0] else order[0]
 
-    for fermion in heavy:
-        # the reference shared by the vectors it couples to, the gluons first
-        coupled = [v for v in vectors if couples_to(v)(fermion)]
-        coupled.sort(key=lambda v: not colored(v))
-        if coupled:
-            refs[fermion] = shared[coupled[0]]
+    if not massive_fermions or len(externals) < 5 or \
+            any(wf.get('polarization') for wf in externals.values()):
+        return refs
+    for fermion in sorted(externals):
+        wf = externals[fermion]
+        if fermion in massless or wf.get('spin') != 2 or \
+                not wf.get('leg_state') or wf.get('offshell') or \
+                wf.get('onium') or wf.get('is_loop'):
             continue
-        # no such vector: a massless leg it shares a charge with
-        candidates = []
-        if colored(fermion):
-            candidates = [i for i in massless if colored(i)]
-        if not candidates and charged(fermion):
-            candidates = [i for i in massless if charged(i)]
-        if candidates:
-            refs[fermion] = initial_first(candidates)[0]
+        coupled = [v for v in vectors if couples_to(v)(fermion)]
+        gluons = [v for v in coupled if colored(v)]
+        if len(coupled) < 2:
+            continue
+        # the reference most of its vectors share, the gluons first; a tie
+        # goes to the preferred leg
+        shared = [refs[v] for v in (gluons or coupled)]
+        refs[fermion] = min(set(shared), key=lambda r: (-shared.count(r),
+                                                        preference(r)))
     return refs
 
 
@@ -1096,12 +1063,6 @@ class FortranHelasCallWriter(HelasCallWriter):
             # A massive fermion with a reference is IXXXXXR/OXXXXXR in the
             # same way: the reference fixes the axis its spin is quantised
             # along.
-            axial = self.axial_gauge and argument.get('spin') in (2, 3)
-            if axial and argument.get('spin') == 3:
-                axial_call = call + 'R(P(0,%d),%s,NHEL(%d),%+d,P(0,%d),W(%d))'
-            elif axial:
-                axial_call = call + \
-                       'R(P(0,%d),%s,NHEL(%d),%+d, FLAVOR(%d),P(0,%d),W(%d))'
             call = call + "(P(0,%d),"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
@@ -1111,60 +1072,36 @@ class FortranHelasCallWriter(HelasCallWriter):
             else:
                 call = call + "%+d,W(%d))"
             if argument.get('spin') == 1:
-                call_function = lambda wf: call % \
-                                (wf.get('number_external'),
+                arguments = lambda wf: (wf.get('number_external'),
                                  # For boson, need initial/final here
                                  (-1) ** (wf.get('state') == 'initial'),
-                                 wf.get('me_id'))
-            elif axial and argument.get('spin') == 3:
-                call_function = lambda wf: axial_call % \
-                                (wf.get('number_external'),
-                                 wf.get('mass'),
-                                 wf.get('number_external'),
-                                 # For boson, need initial/final here
-                                 (-1) ** (wf.get('state') == 'initial'),
-                                 self.get_axial_gauge_ref(wf),
-                                 wf.get('me_id')) \
-                                if self.has_axial_gauge_ref(wf) else call % \
-                                (wf.get('number_external'),
-                                 wf.get('mass'),
-                                 wf.get('number_external'),
-                                 (-1) ** (wf.get('state') == 'initial'),
-                                 wf.get('me_id'))
-            elif axial:
-                call_function = lambda wf: axial_call % \
-                                (wf.get('number_external'),
-                                 wf.get('mass'),
-                                 wf.get('number_external'),
-                                 # For fermions, need particle/antiparticle
-                                 - (-1) ** wf.get_with_flow('is_part'),
-                                 wf.get('number_external'),
-                                 self.get_axial_gauge_ref(wf),
-                                 wf.get('me_id')) \
-                                if self.has_axial_gauge_ref(wf) else call % \
-                                (wf.get('number_external'),
-                                 wf.get('mass'),
-                                 wf.get('number_external'),
-                                 - (-1) ** wf.get_with_flow('is_part'),
-                                 wf.get('number_external'),
                                  wf.get('me_id'))
             elif argument.is_boson():
-                call_function = lambda wf: call % \
-                                (wf.get('number_external'),
+                arguments = lambda wf: (wf.get('number_external'),
                                  wf.get('mass'),
                                  wf.get('number_external'),
                                  # For boson, need initial/final here
                                  (-1) ** (wf.get('state') == 'initial'),
                                  wf.get('me_id'))
             else:
-                call_function = lambda wf: call % \
-                                (wf.get('number_external'),
+                arguments = lambda wf: (wf.get('number_external'),
                                  wf.get('mass'),
                                  wf.get('number_external'),
                                  # For fermions, need particle/antiparticle
                                  - (-1) ** wf.get_with_flow('is_part'),
                                  wf.get('number_external'),
                                  wf.get('me_id'))
+            if self.axial_gauge and argument.get('spin') in (2, 3):
+                # the same call with R appended to the routine name and the
+                # momentum of the reference leg before the output
+                axial_call = call.replace('(', 'R(', 1).replace(
+                                               ',W(%d))', ',P(0,%d),W(%d))')
+                call_function = lambda wf: axial_call % (arguments(wf)[:-1] +
+                                (self.get_axial_gauge_ref(wf), wf.get('me_id'))) \
+                                if self.has_axial_gauge_ref(wf) else \
+                                call % arguments(wf)
+            else:
+                call_function = lambda wf: call % arguments(wf)
         else:
             # String is FOVXXX, FIVXXX, JIOXXX etc.
             if isinstance(argument, helas_objects.HelasWavefunction):
