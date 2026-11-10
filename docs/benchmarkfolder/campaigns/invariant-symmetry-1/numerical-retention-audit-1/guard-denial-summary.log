@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 199, in <module>
+    if __name__=='__main__': main()
+                             ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 184, in main
+    local,summary,replay=pass_once(PACKAGE,scratch,'selected_package_only')
+                         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 145, in pass_once
+    assert not any(not x['intentional_negative'] for x in STATE['blocked'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

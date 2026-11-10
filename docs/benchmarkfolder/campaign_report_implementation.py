@@ -193,7 +193,7 @@ def installer_promotion(package):
             "actual_qualified_prefix_available", "actual_qualified_prefix_supports_QP", "observation", "scope")}
 
 
-def collect(evidence, selected):
+def _collect_legacy(evidence, selected):
     require(isinstance(selected, dict) and selected and set(selected) <= ROLES,
             "Unknown or empty implementation proof selection")
     packages = {role: Package(evidence, pin) for role, pin in selected.items()}
@@ -264,7 +264,8 @@ def collect(evidence, selected):
         note("symmetry_ew100", "Symmetric invariants: separate EW stream",
              f"The v2 candidate accepts {p['new_DP']} DP / {p['new_QP']} QP points on one frozen {p['physical_points']}-point EW stream, "
              f"versus {p['old_DP']} DP / {p['old_QP']} QP for its old-source comparator. All {p['references']} retained references pass 3e-6 and 1e-8; "
-             f"W03 warnings and IEEE state differences are both zero. These observations belong to the separate v2 candidate. "
+             f"The retained console has zero W03 lines, and this instrumented diagnostic records zero IEEE state differences. "
+             "Muted ordinary final-traversal diagnostics are not inferred from those console counts. These observations belong to the separate v2 candidate. "
              "They do not replace any of the older campaign's 66 numerical lanes or its provisional timing identity, and supply no runtime acceptance.")
     if "cms_diagnostic" in primitives:
         p = primitives["cms_diagnostic"]
@@ -320,6 +321,73 @@ def collect(evidence, selected):
             "symmetry_fortran_promotion": "applied; recording tests passed" if "symmetry_promotion" in primitives else "pending separate receipt",
             "main_campaign_modified": False,
             "performance_acceptance_eligible": False}
+
+
+
+def closed_diagnostics():
+    source = Path(__file__).with_name("campaign_report_diagnostics.py")
+    spec = importlib.util.spec_from_file_location("campaign_report_diagnostics", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def guarded_diagnostic_modules():
+    modules = []
+    for name in ("campaign_report_guarded_build", "campaign_report_guarded_physical"):
+        source = Path(__file__).with_name(name + ".py")
+        spec = importlib.util.spec_from_file_location(name, source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        modules.append(module)
+    return modules
+
+
+def current_diagnostics():
+    source = Path(__file__).with_name("campaign_report_current_diagnostics.py")
+    spec = importlib.util.spec_from_file_location("campaign_report_current_diagnostics", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def collect(evidence, selected, *, current=False):
+    # Route explicit private roles before constructing old Package objects or
+    # entering the generic adaptive standalone-Fortran parser.
+    diagnostics = closed_diagnostics()
+    guarded_modules = guarded_diagnostic_modules()
+    guarded_roles = set().union(*(module.ROLES for module in guarded_modules))
+    current_roles = {"current_physical_stress", "current_cms"}
+    require(isinstance(selected, dict) and selected and set(selected) <= ROLES | diagnostics.ROLES | guarded_roles | current_roles,
+            "Unknown or empty implementation proof selection")
+    require(current or not (set(selected) & current_roles),
+            "Current diagnostic roles require the current campaign supplement")
+    legacy_selected = {role: pin for role, pin in selected.items() if role in ROLES}
+    private_selected = {role: pin for role, pin in selected.items() if role in diagnostics.ROLES}
+    result = (_collect_legacy(evidence, legacy_selected) if legacy_selected else {
+        "schema": "madloop-tirust-selected-implementation-supplement-v1",
+        "packages": {}, "primitives": {}, "notes": [],
+        "production_promotion": "pending separate receipt", "strict_installer_promotion": "pending separate receipt",
+        "symmetry_fortran_promotion": "pending separate receipt", "main_campaign_modified": False,
+        "performance_acceptance_eligible": False})
+    if private_selected:
+        private = diagnostics.collect(evidence, private_selected)
+        result["packages"].update(private["packages"])
+        result["primitives"].update(private["primitives"])
+        result["notes"].extend(private["notes"])
+    for module in guarded_modules:
+        guarded_selected = {role: pin for role, pin in selected.items() if role in module.ROLES}
+        if guarded_selected:
+            guarded = module.collect(evidence, guarded_selected)
+            result["packages"].update(guarded["packages"])
+            result["primitives"].update(guarded["primitives"])
+            result["notes"].extend(guarded["notes"])
+    if current:
+        proof = current_diagnostics().collect(evidence, {role: pin for role, pin in selected.items() if role in current_roles})
+        result["packages"].update(proof["packages"])
+        result["current_campaign_diagnostics"] = proof["current_campaign_diagnostics"]
+        result["notes"].extend(proof["notes"])
+    return result
 
 
 def apply(refreshed, supplement):

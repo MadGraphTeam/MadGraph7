@@ -5,32 +5,44 @@
 #let ids = (1, 6, 7, 8, 9)
 #let usec(value) = if value == none { [—] } else { [#fixed(value * 1000000, 2)] }
 
+#let comparison-status(value) = if value == none { "uncompared" } else if value { "pass" } else { "fail" }
+#let target-status(value) = if value == none { "uncompared" } else if value { "pass" } else { "miss" }
+
 #let show-campaign-numerical(data, cases, process-label) = {
   note(fill: warm)[This table reparses the final complete steady warmup traversal:
     100 saved points, baseline CutTools and five candidate reducers. It is untimed
     numerical evidence. It supplies neither paired runtime acceptance nor native-DP
-    cohort timings. Failure flags and internal retry counters are *unobserved*.]
+    cohort timings. Internal retry counters and hardware FPE flags are *unobserved*.
+    This warmup-only numerical traversal finishes before unit 6 is redirected,
+    so its console diagnostics are retained. The numerical parser does not
+    attribute or gate every console warning per call. Subsequent post-READY
+    timed RUN batches suppress unit 6 output.]
   v(7pt)
   table-style(table(columns: (1.4fr, .8fr, .8fr, .8fr, .8fr, .8fr),
     inset: (x: 4pt, y: 7pt), stroke: table-stroke, fill: table-fill,
     table.header([Process · saved points], ..ids.map(id => [#names.at(str(id))])),
-    ..data.numerical.cases.map(c => (
+    ..data.numerical.cases.map(c => {
+      let baseline = c.lanes.find(q => q.source == "baseline" and q.backend == 1)
+      (
       [#text(8.5pt, font: "Libertinus Serif")[#process-label(c)]#linebreak()
-       #text(6.5pt, fill: ink2)[#c.role · 100 expected]],
+       #text(6.5pt, fill: ink2)[#c.role · 100 expected]#linebreak()
+       #text(6.4pt, fill: ink2)[Baseline CT: #status(if baseline == none { "missing" } else { baseline.status })]],
       ..ids.map(id => {
         let lane = c.lanes.find(q => q.source == "candidate" and q.backend == id)
-        [#status(if lane.status == "complete" { if lane.regression_pass { "pass" } else { "fail" } } else { lane.status })
+        [#status(if lane.status == "complete" { comparison-status(lane.regression_pass) } else { lane.status })
          #if lane.status == "complete" {
            linebreak()
            text(6.4pt)[DP #lane.accepted_dp_count / QP #lane.accepted_qp_count]
            linebreak()
-           text(6.4pt, fill: ink2)[1e-8: #if lane.ordinary_target_pass { [pass] } else { [miss] }]
+           text(6.4pt, fill: ink2)[1e-8: #target-status(lane.ordinary_target_pass)]
          }]
       }),
-    )).flatten()))
+      )
+    }).flatten()))
   v(5pt)
-  text(8pt, fill: ink2)[Every lane is compared with the baseline CutTools rows on
-    exactly matching point and split-order indices. The separate 1e-8 target is
+  text(8pt, fill: ink2)[Every available comparison uses baseline CutTools rows on
+    exactly matching point and split-order indices. A failed baseline leaves
+    complete candidate lanes uncompared; their DP/QP counts remain observed. The separate 1e-8 target is
     not substituted for the 3e-6 regression criterion. Failed, incomplete and
     corrupt observations retain their diagnostics and never become successful rows.]
 }
@@ -73,6 +85,12 @@
         zero observations are not a numerical failure. This registration supplies
         none of the older candidate’s displayed measurements.]
       ]
+    }
+    if data.refresh.at("precision_stream_todo_path", default: none) != none {
+      v(5pt)
+      text(7.3pt, fill: ink2)[Additional local accepted-precision diagnostics:
+        #link("https://github.com/MadGraphTeam/MadGraph7/blob/madloop_tirust/docs/benchmarkfolder/" + data.refresh.precision_stream_todo_path)[full-stream precision TODO].
+        This separate diagnostic cannot satisfy the formal 1.05 runtime gate.]
     }
     v(7pt)
   }
@@ -222,7 +240,7 @@
     their recorded scope; it does not rerun scientific adjudication. Historical
     library results and private prototypes do not qualify the current installed
     library. Ordinary numerical and paired runtime gates remain separate.
-    The QCD n3 optional target and higher-precision workstream are diagnostic
+    The historical split-dp-terminal-1 QCD n3 optional target and higher-precision workstream are diagnostic
     disclosures; neither adds a stress acceptance requirement.]
   v(7pt)
   table-style(table(columns: (1.1fr, .5fr, 3fr), inset: 5pt, stroke: table-stroke, fill: table-fill,

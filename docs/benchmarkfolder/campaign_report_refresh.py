@@ -23,6 +23,8 @@ def bind_index(evidence, name, checksum, root=None):
 
 def selection(evidence, path, manifest, config):
     value = evidence.json(path)
+    if value.get("schema") == "madloop-tirust-closed-report-selection-v2":
+        return current_selection(evidence, value, manifest, config)
     require(value.get("schema") == "madloop-tirust-closed-report-selection-v1"
             and value.get("campaign") == manifest["id"], "Unknown report selection")
     root = "campaigns/" + manifest["id"]
@@ -164,4 +166,127 @@ def supplement(evidence, selected, report):
         refreshed["provisional"] = module.collect(evidence, selected["closed_provisional"], report)
     if selected.get("next_campaign") is not None:
         refreshed["next_campaign"] = next_campaign(evidence, selected["next_campaign"], report)
+    return refreshed
+
+
+CURRENT_SCHEMA = "madloop-tirust-closed-report-selection-v2"
+ARCHIVE = "history/report-before-invariant-symmetry-qualification/archive-manifest.json"
+ARCHIVE_SHA = "3ac7e02340a1148f9c22d9d7cec2e0b81493c429d9b3ac264e616ff2bb5d9dec"
+N3_ANALYSIS = "experiments/invariant-symmetry-qcd-n3-target-analysis/portable-analysis2/index.json"
+N3_ANALYSIS_SHA = "79f57a8d83ea74249af83d12908de299372714cd7587d59d4ae31cfa9f63e457"
+N3_ANALYSIS_JSON_SHA = "e0dcc8460091021db3089f56b181d4b184b4f11df1302fd14b4a383bd1568778"
+CURRENT_SUPPORT_PACKAGES = {
+    "experiments/default-stability-current-1/evidence-index.json": "e5d3f09114c96f491e27c8f7ddd65469072a55512da9dc23b947492d81ba2bb3",
+    "experiments/qcd-topology-rescue-higher-precision-native2/evidence-index.json": "d665b517532be1e87f3e7002edbe8ec6131c814fa26df3d7b002adf0eb409dcf",
+}
+
+
+def sibling(name):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def archive(evidence, pin):
+    require(pin == {"index": ARCHIVE, "sha256": ARCHIVE_SHA}, "Historical report archive pin differs")
+    value = evidence.json(ARCHIVE, ARCHIVE_SHA)
+    require(value["selected_campaign"] == "split-dp-terminal-1"
+            and value["every_ledger_input_verified_against_git"] is True
+            and value["complete_ledger_input_count"] == 4294,
+            "Historical report closure differs")
+    prefix = str(PurePosixPath(ARCHIVE).parent)
+    for name in ("benchmark.pdf", "report-build.json", "style.typ"):
+        identity = value["files"][name]
+        raw = evidence.add(prefix + "/" + name, identity["sha256"])
+        require(len(raw) == identity["bytes"], "Historical archive bytes differ")
+    return {"campaign": value["selected_campaign"], "pdf_path": prefix + "/benchmark.pdf",
+            "pdf_sha256": value["pdf_sha256"], "report_commit": value["report_commit"],
+            "pages": 19, "current_performance_eligible": False}
+
+
+def current_selection(evidence, value, manifest, config):
+    required = {"schema", "campaign", "numerical_checkpoint", "closed_cases", "documents", "packages",
+                "implementation_packages", "historical_archive", "local_handoff_path", "snapshot_date",
+                "performance_status", "final_performance_accepted", "current_lifecycle"}
+    require(set(value) == required and value["campaign"] == manifest["id"],
+            "Current selection requires explicit closed inputs and no old timing or next-campaign join")
+    require(value["performance_status"] == "deferred to Hua-Sheng"
+            and value["final_performance_accepted"] is False,
+            "Shared-host diagnostics cannot establish local performance acceptance")
+    checkpoint = sibling("campaign_report_checkpoint").collect(evidence, value["numerical_checkpoint"], manifest, config)
+    require(value["closed_cases"] == checkpoint["summary"]["case_ids"],
+            "Selection differs from portable checkpoint cases")
+    if value["current_lifecycle"] is not None:
+        sibling("campaign_report_current_lifecycle").collect(evidence, manifest, value["current_lifecycle"])
+    archive(evidence, value["historical_archive"])
+    for name, checksum in value["documents"].items():
+        evidence.add(name, checksum)
+    require(value["local_handoff_path"] == "campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md"
+            and value["local_handoff_path"] in value["documents"]
+            and "PRECISION_STREAM_TODO.md" in value["documents"], "Current handoff4/precision TODO is unbound")
+    require(value["packages"] == CURRENT_SUPPORT_PACKAGES,
+            "Current report must retain the closed stability and higher-precision disclosures")
+    for name, checksum in value["packages"].items():
+        bind_index(evidence, name, checksum)
+    return value
+
+
+def preserve_historical_disclosures(evidence, report):
+    """Keep the completed additive disclosures from the archived report."""
+    stability = evidence.json("experiments/default-stability-current-1/evidence/execution-1/adjudication.json")
+    require(stability["cases"] == 8 and stability["default_dp_failures_retained"] == 4
+            and stability["tighter_policy_qp_rescues"] == 4, "Retained stability limitation was lost")
+    runtime = evidence.json("experiments/qcd-topology-rescue-higher-precision-native2/audit-result.json")
+    require(runtime["verification"] == "pass" and runtime["group_calls"] == 232
+            and runtime["runtime_capture_complete"] is True and runtime["ordinary_parity_exact"] is True
+            and runtime["physics_campaign_accepted"] is False and runtime["production_promoted"] is False,
+            "Retained all-512 diagnostic scope differs")
+    for row in report["stress"]:
+        if row["title"] == "Default stability estimator":
+            row.update(text="Historical split-dp-terminal-1 disclosure, same installed eb3d bridge: its completed replay confirms four inaccurate DP acceptances at the production 1e-3 default (maximum finite symmetric error 7.03e-4) and four QP rescues at 1e-6 (maximum symmetric error 5.97e-16). This synthetic host-helper fixture does not qualify physical amplitudes; the registered policy remains 1e-6.",
+                       evidence="experiments/default-stability-current-1/README.md",
+                       native_library_sha256=report["implementation"]["library_sha256"],
+                       detail={"current_native_replay": "completed", "physical_amplitude_qualified": False})
+        elif row["title"] == "QCD higher precision":
+            row.update(status="diagnostic", text="Historical split-dp-terminal-1 disclosure: a separate private all-512-bit replay completed 232 tensor calls with actual runtime mapping and exact ordinary-point parity. Forty-six contracted tensor slots retain discrepancies despite close final projections. The changed precision and admission gate do not qualify the adaptive 256-to-512 library, general physical accuracy or runtime acceptance.",
+                       evidence="experiments/qcd-topology-rescue-higher-precision-native2/README.md")
+
+
+def current_supplement(evidence, selected, report):
+    require(selected.get("schema") == CURRENT_SCHEMA, "Not a current-source selection")
+    rows = report["numerical"]["cases"]
+    # All rows, failed and incomplete lanes included, come from the closed payload.
+    complete = [row for row in rows if row["all_six_complete"]]
+    passed = [row for row in complete if row["regression_pass"] is True]
+    target_misses = [row["id"] for row in complete if row["ordinary_target_pass"] is False]
+    refreshed = {"closed_cases": len(selected["closed_cases"]), "expected_cases": 11,
+        "closed_lanes": 6 * len(selected["closed_cases"]), "complete_cases": len(complete),
+        "regression_passed_cases": len(passed), "current_target_miss_cases": target_misses,
+        "numerical_status": report["numerical"]["status"], "excluded_active_cases": [],
+        "performance_status": selected["performance_status"], "final_performance_accepted": False,
+        "amendment_path": "PLAN-AMENDMENT-2026-11-10.md", "local_handoff_path": selected["local_handoff_path"],
+        "precision_stream_todo_path": "PRECISION_STREAM_TODO.md",
+        "historical_report": archive(evidence, selected["historical_archive"]),
+        "branch": "madloop_tirust", "future_pr_target": "madloop_ninjars",
+        "private_diagnostics": [
+          {"title": "Historical split-dp-terminal-1 QCD n4 target misses",
+           "text": "The archived split-dp-terminal-1 report retains 45 distinct target-miss points and its old DP/QP counts. Those observations belong to that historical source. Current 1e-8 target outcomes are derived only from this report's closed current checkpoint.",
+           "evidence": ARCHIVE},
+        ]}
+    preserve_historical_disclosures(evidence, report)
+    module = sibling("campaign_report_implementation")
+    module.apply(refreshed, module.collect(evidence, selected["implementation_packages"], current=True))
+    # Concise fixed closed-investigation note, not another numerical collector.
+    # This exact index binds its analysis and all seven retained inputs. Never
+    # reopen the input-map's historical or campaign-global path spellings.
+    n3 = bind_index(evidence, N3_ANALYSIS, N3_ANALYSIS_SHA)
+    require(n3.get("schema_version") == 1 and n3.get("new_native_evaluations") == 0
+            and n3["files"]["analysis.json"]["sha256"] == N3_ANALYSIS_JSON_SHA,
+            "Closed QCD n3 investigation scope differs")
+    refreshed["private_diagnostics"].append({"title": "Closed current QCD n3 target investigation",
+        "text": "The bounded offline investigation retains the same 1,200 rows and 4,800 coefficient values as the prior closed result, including the same 28 finite-only 1e-8 target-miss points. All Born and pole comparisons pass 1e-8. The largest CutTools/TIRust symmetric finite residual is approximately 2.806420647e-6 at point 93; the largest non-CutTools pair residual is approximately 8.595156396e-8 at point 39. Cross-reducer consistency supplies no independent truth claim. This seven-input investigation runs no new native or QP evaluation and cannot replace the main full11 checkpoint or change any qualification or performance gate.",
+        "evidence": N3_ANALYSIS})
     return refreshed

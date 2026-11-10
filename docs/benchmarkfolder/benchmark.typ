@@ -70,7 +70,14 @@
   v(4pt)
   note(fill: warm)[*Complete delivery qualification:
     #cell-status(if current-dossier != none and current-dossier.delivery_complete { "pass" } else { "incomplete" }).*
-    #if refresh != none { [#refresh.closed_cases of #refresh.expected_cases physical cases are closed: #refresh.closed_lanes lanes × 100 saved points pass 3e-6. #if refresh.closed_cases < refresh.expected_cases { [Unclosed cases remain pending in this frozen snapshot.] } else { [The ordinary five-backend numerical matrix is complete.] }] }
+    #if refresh != none {
+      if refresh.at("historical_report", default: none) != none {
+        [#refresh.closed_cases of #refresh.expected_cases physical cases have closed: #refresh.closed_lanes lane slots × 100 saved points.
+        #refresh.complete_cases complete cases; #refresh.regression_passed_cases pass 3e-6.
+        Current numerical status: #cell-status(refresh.numerical_status).
+        The 1e-8 target is missed by #refresh.current_target_miss_cases.len() complete cases; all lane outcomes remain visible.]
+      } else { [#refresh.closed_cases of #refresh.expected_cases physical cases are closed: #refresh.closed_lanes lanes × 100 saved points pass 3e-6. #if refresh.closed_cases < refresh.expected_cases { [Unclosed cases remain pending in this frozen snapshot.] } else { [The ordinary five-backend numerical matrix is complete.] }] }
+    }
     The eleven-process numerical matrix,
     controls, existing-backend regressions, precision cohorts, implementation checks and
     unresolved stress cases retain separate statuses.]
@@ -86,6 +93,13 @@ note(fill: warm)[*Precise performance acceptance: deferred to Hua-Sheng.*
     [The explicitly bound shared-host observations below are descriptive;
     unavailable comparisons remain visible.]
   }]
+if refresh.at("historical_report", default: none) != none {
+  v(5pt)
+  note[*Current-source numerical checkpoint.* This report selects #raw(campaign.id).
+    Earlier shared-host timings remain in the #link("https://github.com/MadGraphTeam/MadGraph7/blob/madloop_tirust/docs/benchmarkfolder/" + refresh.historical_report.pdf_path)[archived 19-page split-dp-terminal-1 report],
+    bound to commit #raw(refresh.historical_report.report_commit.slice(0, 12)).
+    Those timings retain their historical source identity. Current performance gates remain deferred.]
+}
 if refresh.at("next_campaign", default: none) != none {
   v(5pt)
   note[*Current source registration: #raw(refresh.next_campaign.id).*
@@ -121,7 +135,7 @@ if refresh.at("next_campaign", default: none) != none {
          #text(7pt, fill: ink2)[#if c.id.starts-with("qcd") { [QCD] } else { [EW] } · 2→#c.nfinal · #if c.points == none { [unmeasured] } else { [#c.points points] }]],
         [#cell-status(if refresh == none { checks-status(c.correctness) } else {
           let q = current-dossier.numerical.cases.find(q => q.id == c.id)
-          if q.regression_pass == true { "pass" } else { q.status }
+          if q.regression_pass == true { "pass" } else if q.regression_pass == false { "fail" } else { q.status }
         })],
         [#text(11pt, weight: "bold")[#time-us(p.at("baseline_median_seconds_per_point", default: none))]],
         [#text(11pt, weight: "bold")[#time-us(p.at("candidate_median_seconds_per_point", default: none))]],
@@ -225,7 +239,7 @@ These eight separately retained checks each evaluate 100 saved physical points w
 )), caption: [Historical physical pilots, independent of the runtime gate. Residuals exclude poles accepted by the documented small-pole exception. All four existing reducers finally accepted 100 DP results in each row.])
 
 #note[
-  *QCD 2→3 adjudication.* The original comparison against CutTools DP misses the #raw("1e-8") target at 28 points. CutTools, Ninja and TIRust QP agree within #raw("9.89e-11") on four diagnostic points. Across all 28 target misses, the saved TIRust and COLLIER results meet the target against CutTools QP; CutTools DP misses all 28, while Ninja and NinjaRS miss only point 39. Every comparison still passes the regression criterion. These fixed-QP diagnostics are explicitly unchecked and do not establish automatic rescue stability.
+  *Historical split-dp-terminal-1 QCD 2→3 adjudication.* The original comparison against CutTools DP misses the #raw("1e-8") target at 28 points. CutTools, Ninja and TIRust QP agree within #raw("9.89e-11") on four diagnostic points. Across all 28 target misses, the saved TIRust and COLLIER results meet the target against CutTools QP; CutTools DP misses all 28, while Ninja and NinjaRS miss only point 39. Every comparison still passes the regression criterion. These fixed-QP diagnostics are explicitly unchecked and do not establish automatic rescue stability.
 ]
 
 The index #raw("experiments/numerical/completed-pilots-index.json") binds 491 retained files and preserves the original comparisons. The detailed QP adjudication is in #raw("experiments/qcd-n3-adjudication/"). Final accepted precision does not enumerate every internal reduction attempt. The remaining three large-process pilots are outside this frozen eight-case index.

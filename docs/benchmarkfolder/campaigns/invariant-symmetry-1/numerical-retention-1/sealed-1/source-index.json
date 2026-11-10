@@ -1,0 +1,110 @@
+{
+  "active_case_reads": false,
+  "actual_seal_performed": false,
+  "campaign_binding": {
+    "id": "invariant-symmetry-1",
+    "manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0"
+  },
+  "execution_scope": "source-only proposal and synthetic tests; no live numerical payload ingestion",
+  "files": {
+    "README.md": {
+      "bytes": 5632,
+      "sha256": "c5dc9fce015eb77e39329da4d4148ab5e7da2b671b19f3cef64b516f531e38a1"
+    },
+    "campaign_report_numerical.py": {
+      "bytes": 30466,
+      "sha256": "63ae9db2ef98db7269d7290b68feb5a02ae0c454e88086b0644253ebef8c4192"
+    },
+    "fixture-cases.json": {
+      "bytes": 2687,
+      "sha256": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef"
+    },
+    "numerical-supervisor-source-index.json": {
+      "bytes": 2913,
+      "sha256": "fde535243092336b3988a902a88aaff8223d6d3dfb37cdfe68e7fc4cd152e243"
+    },
+    "numerical_supervisor.py": {
+      "bytes": 29983,
+      "sha256": "36622d7aa41cd6fe19cb01a992a6ec527fb9899579f57ddd6c5f7725b2fd58b0"
+    },
+    "protocol-tirust_benchmark.py": {
+      "bytes": 96661,
+      "sha256": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370"
+    },
+    "protocol-tirust_benchmark_campaign.py": {
+      "bytes": 41779,
+      "sha256": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710"
+    },
+    "protocol-tirust_benchmark_compiler.py": {
+      "bytes": 8272,
+      "sha256": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46"
+    },
+    "protocol-tirust_benchmark_numerical.py": {
+      "bytes": 6906,
+      "sha256": "1d4ca057aecef040457a46dc06c23185ba31cd53bf67df1c5fa6805c99c0128f"
+    },
+    "protocol-tirust_benchmark_warmup.py": {
+      "bytes": 7041,
+      "sha256": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d"
+    },
+    "protocol-tirust_benchmark_worker.f": {
+      "bytes": 7825,
+      "sha256": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9"
+    },
+    "protocol-tirust_benchmark_worker.py": {
+      "bytes": 18869,
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+    },
+    "retain.py": {
+      "bytes": 31687,
+      "sha256": "6e81a0050284696a057343ddbba60676aad90dabc9d5fdcde391fb95b22382d0"
+    },
+    "synthetic_fixture.py": {
+      "bytes": 12586,
+      "sha256": "da50a66a1f9cfd6c9c02c526148fdc206ab25405c73945e019f6b6264d8a0408"
+    },
+    "test_retain.py": {
+      "bytes": 22806,
+      "sha256": "a70808aaec7a8f0498d22ffd3e6ccdd6a8d722c565ba7ae3e288a89686dabfd8"
+    }
+  },
+  "limitations": [
+    "Ordinary numerical evidence only; no performance, stress, FPE flag, internal retry-count or overall-goal qualification.",
+    "Actual capture requires unchanged closed-case entries and explicit observed terminal confirmation for all11."
+  ],
+  "native_calls": 0,
+  "schema": "madloop-tirust-source-only-numerical-retention-proposal-v1",
+  "supervisor_session_id": 63790,
+  "supervisor_source_index_sha256": "fde535243092336b3988a902a88aaff8223d6d3dfb37cdfe68e7fc4cd152e243",
+  "validation": {
+    "default_command": {
+      "command": "source tools/tirust_env.sh && python3 -B docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-1/retain.py",
+      "status": "source-only-no-ingestion"
+    },
+    "focused_tests": {
+      "command": "source tools/tirust_env.sh && python3 -B docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-1/test_retain.py",
+      "passed": true,
+      "synthetic_only": true,
+      "tests": 14
+    },
+    "includes": [
+      "relocation after removing original synthetic workspace",
+      "failed baseline inherited generation/compilation/CLI closure",
+      "failed and partial lanes retained without promotion",
+      "all11 passed entries with terminal exit1 not qualified",
+      "unselected active trees and mutable status excluded",
+      "deterministic gzip and append-once destination",
+      "malformed raw rows and symlink/native member rejection"
+    ]
+  },
+  "validation_files": {
+    "dry-run.json": {
+      "bytes": 569,
+      "sha256": "ccf1ab5cf485d36dc43e57a0215ddda723820893b63abb359fbb93237b13fe39"
+    },
+    "tests.log": {
+      "bytes": 114,
+      "sha256": "1fc00abd69d604bc379607ed6157693af379f642969235f8f561a6d17043021b"
+    }
+  }
+}

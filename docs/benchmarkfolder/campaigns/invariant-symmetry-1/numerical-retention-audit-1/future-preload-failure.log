@@ -1,0 +1,35 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 198, in <module>
+    if __name__=='__main__': main()
+                             ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 183, in main
+    local,summary,replay=pass_once(PACKAGE,scratch,'selected_package_only')
+                         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 137, in pass_once
+    replay=ret.replay_completed(package,EXPECTED)
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-1/sealed-1/retain.py", line 508, in replay_completed
+    summary = validate(store, confirmation, package)
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-1/sealed-1/retain.py", line 402, in validate
+    manifest, spec = capture_static(store, confirmation, package)
+                     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-1/sealed-1/retain.py", line 343, in capture_static
+    collector = load_collector(package)
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-1/sealed-1/retain.py", line 121, in load_collector
+    spec.loader.exec_module(module)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 1023, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-1/sealed-1/campaign_report_numerical.py", line 8, in <module>
+    from __future__ import annotations
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 1019, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1156, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1214, in get_data
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 50, in audit_event
+    if event=='open': pathcheck(STATE['pending_open'] or args[0],'open')
+                      ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 45, in pathcheck
+    raise PermissionError('Replay access denied: '+operation+' '+path)
+PermissionError: Replay access denied: open /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/lib/python3.13/__future__.py

@@ -148,6 +148,23 @@ def stress_limitations(evidence, manifest):
     return document_module("campaign_report_qualification").collect_stress(evidence, manifest)
 
 
+HISTORICAL_STRESS_MANIFEST = "campaigns/split-dp-terminal-1/manifest.json"
+HISTORICAL_STRESS_MANIFEST_SHA = "1237c563b16a13e2c98327b494a4e5d0b8dec8eb6c7020d632b9b86839143a31"
+
+
+def historical_stress_limitations(evidence):
+    """Keep old diagnostic guards and validate them against their old manifest."""
+    manifest = evidence.json(HISTORICAL_STRESS_MANIFEST, HISTORICAL_STRESS_MANIFEST_SHA)
+    if manifest.get("id") != "split-dp-terminal-1":
+        raise ValueError("Historical stress manifest belongs to another campaign")
+    rows = stress_limitations(evidence, manifest)
+    for row in rows:
+        row["historical_report_campaign"] = manifest["id"]
+        row["current_campaign_stress_qualified"] = False
+        row["text"] = "Historical diagnostic retained by split-dp-terminal-1: " + row["text"]
+    return rows
+
+
 def stress_acceptance(rows):
     """Only the established physical stress requirements control this gate."""
     required_cases = {"EW threshold mass transport", "QCD soft/collinear prototype",
@@ -178,14 +195,21 @@ def collect(evidence, campaign_id, selection_path=None):
     selection = None
     if selection_path is not None:
         selection = document_module("campaign_report_refresh").selection(evidence, selection_path, manifest, config)
-    numerical_args = () if selection is None else (set(selection["closed_cases"]),)
-    numerical = document_module("campaign_report_numerical").collect_numerical(evidence, directory, manifest, config, *numerical_args)
+    current = selection is not None and selection.get("schema") == "madloop-tirust-closed-report-selection-v2"
+    if current:
+        numerical = document_module("campaign_report_checkpoint").collect(
+            evidence, selection["numerical_checkpoint"], manifest, config)["numerical"]
+    else:
+        numerical_args = () if selection is None else (set(selection["closed_cases"]),)
+        numerical = document_module("campaign_report_numerical").collect_numerical(evidence, directory, manifest, config, *numerical_args)
     paired = document_module("campaign_report_pairs").collect_pairs(evidence, directory, manifest, config)
     cohorts = document_module("campaign_report_cohorts").collect_cohorts(evidence, directory, manifest, config)
     qualified = implementation(evidence, manifest)
     statistics = statistics_qualification(evidence, manifest)
-    stress = stress_limitations(evidence, manifest)
-    lifecycle = document_module("campaign_report_lifecycle").collect_lifecycle(evidence, manifest)
+    stress = historical_stress_limitations(evidence) if current else stress_limitations(evidence, manifest)
+    lifecycle_module = document_module("campaign_report_lifecycle")
+    lifecycle = (document_module("campaign_report_current_lifecycle").collect(evidence, manifest, selection["current_lifecycle"])
+                 if current else lifecycle_module.collect_lifecycle(evidence, manifest))
     criteria = {
         "all_eleven_five_backend_numerical": numerical["status"],
         "eight_main_runtime_gates": paired["main_status"],
@@ -195,7 +219,7 @@ def collect(evidence, campaign_id, selection_path=None):
         "installed_abi_and_fortran_checks": qualified["status"],
         "subprocess_event_cache_lifecycle": lifecycle["status"],
         "statistics_roundtrip": statistics["status"],
-        "stress_accuracy": stress_acceptance(stress),
+        "stress_accuracy": "open" if current else stress_acceptance(stress),
     }
     result = {"schema": SCHEMA, "campaign_binding": binding,
         "registered_exporter_revision": manifest["candidate"]["exporter_identity"]["revision"],
@@ -209,7 +233,8 @@ def collect(evidence, campaign_id, selection_path=None):
         "new_numerical_execution": False}
     if selection is not None:
         result["selection_path"] = selection_path
-        result["refresh"] = document_module("campaign_report_refresh").supplement(evidence, selection, result)
+        refresh_module = document_module("campaign_report_refresh")
+        result["refresh"] = (refresh_module.current_supplement if current else refresh_module.supplement)(evidence, selection, result)
         for key in ("eight_main_runtime_gates", "existing_backend_regressions", "paired_campaign_overall"):
             result["criteria"][key] = "deferred to Hua-Sheng"
         installer = result["refresh"].get("implementation_supplement", {}).get("strict_installer_promotion")
@@ -237,22 +262,31 @@ def validate(inputs, path, manifest, summary):
         inputs.add(name)
     if dossier.get("selection_path") is not None:
         inputs.add("campaign_report_refresh.py")
+        if dossier.get("refresh", {}).get("historical_report") is not None:
+            inputs.add("campaign_report_checkpoint.py")
+            inputs.add("campaign_report_current_lifecycle.py")
     if dossier.get("refresh", {}).get("provisional") is not None:
         inputs.add("campaign_report_provisional.py")
         inputs.add("campaign-provisional.typ")
     if dossier.get("refresh", {}).get("implementation_supplement") is not None:
         inputs.add("campaign_report_implementation.py")
         inputs.add("campaign_report_implementation_runtime.py")
+        if dossier.get("refresh", {}).get("historical_report") is not None:
+            inputs.add("campaign_report_diagnostics.py")
+            inputs.add("campaign_report_guarded_build.py")
+            inputs.add("campaign_report_guarded_physical.py")
+            inputs.add("campaign_report_current_diagnostics.py")
     return dossier
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=ROOT, help="Explicit retained docs root (private staging/review)")
     parser.add_argument("--campaign", required=True)
     parser.add_argument("--output", required=True, help="New docsroot-relative immutable dossier path")
     parser.add_argument("--selection", help="Explicit closed-checkpoint selection; active numerical cases are not opened")
     args = parser.parse_args()
-    evidence = Evidence(ROOT)
+    evidence = Evidence(args.root)
     result = collect(evidence, args.campaign, args.selection)
     result["files"] = dict(sorted(evidence.files.items()))
     output = evidence.path(args.output)

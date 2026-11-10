@@ -1,0 +1,12 @@
+{"unexpected_denials": [{"intentional_negative": false, "operation": "lstat", "path": "/portable-checkpoint", "phase": "selected_package_only"}, {"intentional_negative": false, "operation": "lstat", "path": "/portable-checkpoint/docs", "phase": "selected_package_only"}, {"intentional_negative": false, "operation": "lstat", "path": "/portable-checkpoint/docs/benchmarkfolder", "phase": "selected_package_only"}]}
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 201, in <module>
+    if __name__=='__main__': main()
+                             ~~~~^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 186, in main
+    local,summary,replay=pass_once(PACKAGE,scratch,'selected_package_only')
+                         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-audit-1/audit.py", line 147, in pass_once
+    assert not unexpected
+           ^^^^^^^^^^^^^^
+AssertionError

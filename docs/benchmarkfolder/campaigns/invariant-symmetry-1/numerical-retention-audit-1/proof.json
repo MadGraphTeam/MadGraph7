@@ -1,0 +1,179 @@
+{
+  "expected_package_index_sha256": "8f5f7110cc101dc79e8fe75d5dd1ef342e1e72797986a5a5026680e28d4496be",
+  "native_or_process_execution": false,
+  "original_generated_work_reads": false,
+  "overall_goal_qualified": false,
+  "package_path": "docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-retention-1/sealed-1",
+  "passed": true,
+  "passes": [
+    {
+      "allowed_operation_counts": {
+        "lstat": 12,
+        "open": 2729,
+        "os.open": 403,
+        "os.scandir": 6,
+        "stat": 1307
+      },
+      "blocked_operations": [
+        {
+          "intentional_negative": true,
+          "operation": "open",
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tools/tirust_benchmark.py",
+          "phase": "selected_package_only"
+        },
+        {
+          "intentional_negative": true,
+          "operation": "open",
+          "path": "/proc/self/maps",
+          "phase": "selected_package_only"
+        },
+        {
+          "intentional_negative": true,
+          "operation": "subprocess.Popen",
+          "phase": "selected_package_only"
+        },
+        {
+          "intentional_negative": true,
+          "operation": "ctypes.dlopen",
+          "phase": "selected_package_only"
+        },
+        {
+          "intentional_negative": true,
+          "operation": "stat",
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/forbidden",
+          "phase": "selected_package_only"
+        },
+        {
+          "intentional_negative": false,
+          "operation": "lstat",
+          "path": "/portable-checkpoint",
+          "phase": "selected_package_only"
+        },
+        {
+          "intentional_negative": false,
+          "operation": "lstat",
+          "path": "/portable-checkpoint/docs",
+          "phase": "selected_package_only"
+        },
+        {
+          "intentional_negative": false,
+          "operation": "lstat",
+          "path": "/portable-checkpoint/docs/benchmarkfolder",
+          "phase": "selected_package_only"
+        }
+      ],
+      "blocked_virtual_sentinel_metadata_probes": 3,
+      "case_count": 11,
+      "elapsed_seconds": 6.085921509191394,
+      "index_sha256": "8f5f7110cc101dc79e8fe75d5dd1ef342e1e72797986a5a5026680e28d4496be",
+      "lane_count": 66,
+      "negative_controls": [
+        "workspace_file",
+        "process_file",
+        "subprocess",
+        "dynamic_library",
+        "workspace_metadata"
+      ],
+      "package_outer_files_including_index": 21,
+      "passed": true,
+      "phase": "selected_package_only",
+      "replay_sha256": "d515f63a6f20307980141bb48f15f2787dcc2d820b5e63c555f292ead27fa62f",
+      "retained_bytes": 157210978,
+      "retained_inventory_sha256": "5c10553d1e0ccfa67b703fb0982d3e85e8db3b3bf3e199bde9a2c75db1acc91f",
+      "retained_members": 1221,
+      "runtime_console_scan_sha256": "5dffc45a3845ccfc31c89b0f9381fee4dba006cf5a2636e1c9f3ad03b77f41dc",
+      "saved_point_lane_observations": 6600,
+      "summary_sha256": "af9b8c8a4b304f36d45ef1380baeee2eba5bf4f71996687628118a21825ee518",
+      "unexpected_denied_operations": 0
+    },
+    {
+      "allowed_operation_counts": {
+        "lstat": 5,
+        "open": 2729,
+        "os.open": 403,
+        "os.scandir": 6,
+        "stat": 1307
+      },
+      "blocked_operations": [
+        {
+          "intentional_negative": true,
+          "operation": "open",
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tools/tirust_benchmark.py",
+          "phase": "relocated_no_workspace"
+        },
+        {
+          "intentional_negative": true,
+          "operation": "open",
+          "path": "/proc/self/maps",
+          "phase": "relocated_no_workspace"
+        },
+        {
+          "intentional_negative": true,
+          "operation": "subprocess.Popen",
+          "phase": "relocated_no_workspace"
+        },
+        {
+          "intentional_negative": true,
+          "operation": "ctypes.dlopen",
+          "phase": "relocated_no_workspace"
+        },
+        {
+          "intentional_negative": true,
+          "operation": "stat",
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/forbidden",
+          "phase": "relocated_no_workspace"
+        },
+        {
+          "intentional_negative": false,
+          "operation": "lstat",
+          "path": "/portable-checkpoint",
+          "phase": "relocated_no_workspace"
+        },
+        {
+          "intentional_negative": false,
+          "operation": "lstat",
+          "path": "/portable-checkpoint/docs",
+          "phase": "relocated_no_workspace"
+        },
+        {
+          "intentional_negative": false,
+          "operation": "lstat",
+          "path": "/portable-checkpoint/docs/benchmarkfolder",
+          "phase": "relocated_no_workspace"
+        }
+      ],
+      "blocked_virtual_sentinel_metadata_probes": 3,
+      "case_count": 11,
+      "elapsed_seconds": 5.936610418371856,
+      "index_sha256": "8f5f7110cc101dc79e8fe75d5dd1ef342e1e72797986a5a5026680e28d4496be",
+      "lane_count": 66,
+      "negative_controls": [
+        "workspace_file",
+        "process_file",
+        "subprocess",
+        "dynamic_library",
+        "workspace_metadata"
+      ],
+      "package_outer_files_including_index": 21,
+      "passed": true,
+      "phase": "relocated_no_workspace",
+      "replay_sha256": "d515f63a6f20307980141bb48f15f2787dcc2d820b5e63c555f292ead27fa62f",
+      "retained_bytes": 157210978,
+      "retained_inventory_sha256": "5c10553d1e0ccfa67b703fb0982d3e85e8db3b3bf3e199bde9a2c75db1acc91f",
+      "retained_members": 1221,
+      "runtime_console_scan_sha256": "5dffc45a3845ccfc31c89b0f9381fee4dba006cf5a2636e1c9f3ad03b77f41dc",
+      "saved_point_lane_observations": 6600,
+      "summary_sha256": "af9b8c8a4b304f36d45ef1380baeee2eba5bf4f71996687628118a21825ee518",
+      "unexpected_denied_operations": 0
+    }
+  ],
+  "performance_acceptance_eligible": false,
+  "relocated_replay_exactly_equal": true,
+  "sealed_package_unchanged": true,
+  "source_hashes": {
+    "campaign_report_numerical.py": "63ae9db2ef98db7269d7290b68feb5a02ae0c454e88086b0644253ebef8c4192",
+    "numerical_supervisor.py": "36622d7aa41cd6fe19cb01a992a6ec527fb9899579f57ddd6c5f7725b2fd58b0",
+    "retain.py": "6e81a0050284696a057343ddbba60676aad90dabc9d5fdcde391fb95b22382d0",
+    "source-index.json": "da149a5cdca4872061b081db9378f9185949f76db102c49f25b621cfa3b77fb1"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "affinity_exclusive": false,
+  "ancestry": {
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/numerical-qualification-2/process_cleanup.py": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/numerical-qualification-2/run.py": "6622bf7637b8935b176e459064f5b6b24c477e3efc595c16014986b6b3cc8124"
+  },
+  "cpu_default": 9,
+  "files": {
+    "README.md": "6a49b1b23ee77c3e07eabca7cdf0de6c59a2b4d65fd7a63075514d684d8ac43d",
+    "process_cleanup.py": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "run.py": "36622d7aa41cd6fe19cb01a992a6ec527fb9899579f57ddd6c5f7725b2fd58b0",
+    "test_supervisor.py": "e7729d94eaa35000a0e6ce856140a66e523623331cfb3abb97d204bec926de7f"
+  },
+  "inputs": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/cases.json": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef",
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/manifest.json": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/source-index.json": "0757f9f829fbc4d472823cee226bb54a0a62efcbf70fbab59c137beeb030aa87",
+    "tools/tirust_benchmark.py": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370",
+    "tools/tirust_benchmark_campaign.py": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710",
+    "tools/tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "tools/tirust_benchmark_numerical.py": "1d4ca057aecef040457a46dc06c23185ba31cd53bf67df1c5fa6805c99c0128f",
+    "tools/tirust_benchmark_warmup.py": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d",
+    "tools/tirust_benchmark_worker.f": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9",
+    "tools/tirust_benchmark_worker.py": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+  },
+  "manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "performance_acceptance_eligible": false,
+  "schema": "tirust-numerical-supervisor-source-seal-v1",
+  "scope": "Source-only serial full100 numerical supervisor; no native invocation or compiler build performed by preparation of this package",
+  "validation": {
+    "compiler_jobs": 0,
+    "dry_run_command": "python3 -B docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-qualification-1/run.py",
+    "dry_run_status": "dry-run-no-execution",
+    "native_jobs": 0,
+    "test_command": "python3 -B docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-qualification-1/test_supervisor.py",
+    "tests_passed": 16
+  },
+  "validation_files": {
+    "dry-run.json": "c41594f13f8299d99ac60199d320126b738ad2fe0b70ae9b55a5702b518c3def",
+    "tests.log": "80a5f14078de7f3c1a0456f61029eac2ae51eeed44511cb7e070114b3ebbd5e5"
+  }
+}
