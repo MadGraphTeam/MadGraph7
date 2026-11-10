@@ -39,6 +39,7 @@ from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
 from .loop_v2_stage_rows import stage_rows
 
 QCD = {"QCD": 99, "QED": 0}
+NIGHTLY = pytest.mark.loop_nightly
 POINT_SEEDS = (7, 23)
 # FeynKit evaluates its tensors and the model couplings in binary64.
 TOLERANCE = 1e-12
@@ -432,7 +433,9 @@ def _feynkit_ordering_sign(pdgs, model):
     return -1 if inversions % 2 else 1
 
 
-def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
+def _assert_blocks_equal_feynkit(
+    models, text, seeds, orders, min_legs=2, max_legs=None
+):
     compiled, model, structure = models
     native = structure.native
     process = _process(compiled, text)
@@ -459,6 +462,8 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
     groups = {}
     for block in blocks.blocks:
         if len(block.key.word) < min_legs or block.key.auxiliary_kind is not None:
+            continue
+        if max_legs is not None and len(block.key.word) > max_legs:
             continue
         group = (
             block.key.external_mask,
@@ -758,37 +763,51 @@ def test_three_line_block_currents_equal_feynkit_tree_sums(models):
 
 
 # Blocks of two quark lines whose electroweak bosons meet at a colour-singlet
-# vertex (WWA, WWZ, HZZ, the WWAA contact): both input orders of such a merge
-# gave two block words of one colour factor, so the vertex's trees entered the
-# block current twice (``ColorEngine._loop_block_trace_orientation_allowed``).
-# Both DAG lanes: the tree engine's loop-request mode (the oracle) and the
-# native builder.
+# vertex (WWA, WWZ, HZZ): both input orders of such a merge gave two block
+# words of one colour factor, so the vertex's trees entered the block current
+# twice (``ColorEngine._loop_block_trace_orientation_allowed``). Both DAG
+# lanes: the tree engine's loop-request mode (the oracle) and the native
+# builder. Every id fails at the FINAL BASE without the rule (a photon or Z
+# group of the two lines, (1, 2, 3, 4)) and passes with it. The e^4 cases
+# compare their blocks of up to four legs (e^3: the two lines joined by WWA,
+# WWZ or HZZ, and in u u~ > d d~ a a the W groups through the WWAA contact):
+# FeynKit's contraction of a five-leg e^4 group needs more than 64 GB. The
+# contact merges the rule decides (two coloured inputs) need such a group;
+# they are counted once per pairing by
+# ``test_loop_v2_native_dag.py::test_contact_vertices_enter_each_block_current_once``.
 DAG_LANES = [pytest.param(False, id="oracle"), pytest.param(True, id="native")]
 ELECTROWEAK_SINGLET_MERGES = [
-    pytest.param("u u~ > d d~ a", {"QCD": 0, "QED": 3}, id="uux_ddxa"),
-    # The W-only pairing (no neutral boson joins u and c~). External leptons
-    # stay out: ``_feynkit_ordering_sign`` counts every fermion of the
-    # group, the block pairing sign the coloured endpoints only.
-    pytest.param("u c~ > d s~ a", {"QCD": 0, "QED": 3}, id="ucx_dsxa"),
+    pytest.param(
+        "u u~ > d d~ a", {"QCD": 0, "QED": 3}, None, id="uux_ddxa", marks=NIGHTLY
+    ),
+    # The W-only pairing (no neutral boson joins u and c~).
+    pytest.param("u c~ > d s~ a", {"QCD": 0, "QED": 3}, None, id="ucx_dsxa"),
+    # Leptons (FeynKit's chains through the colour-singlet fermions).
+    pytest.param(
+        "u c~ > d s~ e+ e-", {"QCD": 0, "QED": 4}, 4, id="ucx_dsxepem", marks=NIGHTLY
+    ),
+    # A massive quark line (Dirac spinors; HZZ from the top line).
+    pytest.param(
+        "u u~ > s s~ t t~", {"QCD": 0, "QED": 4}, 4, id="uux_ssxttx", marks=NIGHTLY
+    ),
+    # The four-point contacts (WWAA in the W groups).
+    pytest.param(
+        "u u~ > d d~ a a", {"QCD": 0, "QED": 4}, 4, id="uux_ddxaa", marks=NIGHTLY
+    ),
 ]
-# Not here: a massive quark line (u u~ > s s~ t t~: this oracle maps external
-# spinors as massless Weyl states) and the four-point contacts (u u~ > d d~ a a
-# at QED 4: FeynKit's contraction grew past 270 GB). Both lanes keep one
-# input order there too (test_loop_v2_native_dag.py: the one-order and the
-# contact-counting tests), and their poles equal Catani's (test_loop_v2_ew_blocks).
 
 
-@pytest.mark.loop_nightly
+@pytest.mark.loop_physics
 @pytest.mark.parametrize("native", DAG_LANES)
-@pytest.mark.parametrize(("text", "orders"), ELECTROWEAK_SINGLET_MERGES)
+@pytest.mark.parametrize(("text", "orders", "max_legs"), ELECTROWEAK_SINGLET_MERGES)
 def test_electroweak_singlet_merge_blocks_equal_feynkit_tree_sums(
-    ew_models, native, text, orders
+    ew_models, native, text, orders, max_legs
 ):
     from pyamplicol.loops.v2 import dag_input
 
     with dag_input.native_flags(dag=native):
         checked = _assert_blocks_equal_feynkit(
-            ew_models, text, POINT_SEEDS[:1], orders, 4
+            ew_models, text, POINT_SEEDS[:1], orders, 4, max_legs
         )
     assert checked > 0
 

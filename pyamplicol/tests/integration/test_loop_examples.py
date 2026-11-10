@@ -243,13 +243,16 @@ def test_example_2_equals_recola(walkthrough, workspace):
     the block colour-order fix of the e^6 loop): the Born per squared order to
     1e-12; both poles of every sector within ten times the evaluation's own
     estimate E plus 1e-12 of the sector's pole scale (Recola's larger pole
-    coefficient); each sector's finite part within the fixture's CMS
-    convention level of its point (the two codes' complex-mass counterterm
-    prescriptions, measured on the neutral-only helicity rows; at least the
+    coefficient); each sector's finite part, relative to |finite|, within
+    the fixture's CMS convention level of its point (the two codes'
+    complex-mass counterterm prescriptions: the largest deviation of the
+    electroweak-loop sectors' neutral-only helicity rows, applied to every
+    electroweak-loop sector, the pure-QCD sector its own; at least the
     default target accuracy ``stability.RESCUE_TARGET``, read in the child
-    process like the values). Before the fix the
-    QED^10 and QCD^2 QED^8 poles were off by 3e-3 - 1.8 and the finite parts
-    by 0.09 - 2.5."""
+    process like the values; the fixture's ``finite_levels_provenance``
+    states how this differs from a per-sector level and why the residual is
+    the convention's). Before the fix the QED^10 and QCD^2 QED^8 poles were
+    off by 3e-3 - 1.8 and the finite parts by 0.09 - 2.5."""
 
     assert walkthrough("loop_uux_ddxepem").returncode == 0
     root, _client = workspace

@@ -494,7 +494,8 @@ max_coupling_orders = { QCD = 0, QED = 2 }
 [loop]
 external_photons = "none"
 [loop.preparation]
-fixed_parameters = { MB = "0", MTA = "0", WT = "1.37758", WZ = "2.49877", WW = "2.09291", WH = "0.00407468" }
+fixed_parameters = { MB = "0", MTA = "0", WT = "1.37758", WZ = "2.49877", \
+WW = "2.09291", WH = "0.00407468" }
 [loop.model.scheme]
 mass_scheme = "complex-mass"
 [check]
