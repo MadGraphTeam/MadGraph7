@@ -468,3 +468,110 @@ fn ordered_combination_segment(left: &[u8], right: &[u8], word: &[u8]) -> Option
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::input::Particle;
+    use super::*;
+
+    // Particle rows: u, d, W+, W-, A, Z, H, g, a U(1)-projection singlet and
+    // a fundamental-line auxiliary result.
+    const U: u32 = 0;
+    const D: u32 = 1;
+    const WP: u32 = 2;
+    const WM: u32 = 3;
+    const A: u32 = 4;
+    const Z: u32 = 5;
+    const H: u32 = 6;
+    const G: u32 = 7;
+    const U1: u32 = 8;
+    const FLA: u32 = 9;
+
+    fn input() -> DagInput {
+        let particles = vec![
+            Particle::for_colour_tests(2, 3, false, false),
+            Particle::for_colour_tests(1, 3, false, false),
+            Particle::for_colour_tests(24, 1, false, false),
+            Particle::for_colour_tests(-24, 1, false, false),
+            Particle::for_colour_tests(22, 1, false, false),
+            Particle::for_colour_tests(23, 1, false, false),
+            Particle::for_colour_tests(25, 1, false, false),
+            Particle::for_colour_tests(21, 8, false, false),
+            Particle::for_colour_tests(9_000_001, 1, true, false),
+            Particle::for_colour_tests(9_000_002, 1, false, true),
+        ];
+        // u u~ > d d~ a, all outgoing; labels 6 and 7 are gluons.
+        DagInput::for_colour_tests(
+            particles,
+            &[(1, -3), (2, 3), (3, 3), (4, -3), (5, 1), (6, 8), (7, 8)],
+        )
+    }
+
+    fn state() -> ColourState {
+        ColourState {
+            accuracy: "full".into(),
+            sector_id: 0,
+            line_groups: Vec::new(),
+            basis_key: Vec::new(),
+            traces: Vec::new(),
+            lines: Vec::new(),
+            nc_grade: None,
+        }
+    }
+
+    /// Both input orders of a merge: (left first, right first).
+    fn orders(input: &DagInput, left: &[u8], right: &[u8], vertex: [u32; 3]) -> (bool, bool) {
+        let engine = ColourEngine::new(input);
+        let state = state();
+        let forward = Vertex::for_colour_tests(vertex, None);
+        let backward = Vertex::for_colour_tests([vertex[1], vertex[0], vertex[2]], None);
+        (
+            engine.trace_orientation_allowed(left, right, &state, &forward),
+            engine.trace_orientation_allowed(right, left, &state, &backward),
+        )
+    }
+
+    #[test]
+    fn a_singlet_merge_of_two_coloured_inputs_keeps_one_order() {
+        // WWA, WWZ and HZZ joining the bosons of two quark lines (F-A): the
+        // order with the smaller coloured label on the left.
+        let input = input();
+        for vertex in [[WM, WP, A], [WM, WP, Z], [Z, Z, H], [WM, WP, H]] {
+            assert_eq!(orders(&input, &[1, 3], &[2, 4], vertex), (true, false));
+            assert_eq!(orders(&input, &[2, 4], &[1, 3], vertex), (false, true));
+        }
+        // A contact's partial merge (two singlets into a singlet auxiliary).
+        assert_eq!(orders(&input, &[3, 1], &[4, 2], [WM, WP, Z]), (true, false));
+    }
+
+    #[test]
+    fn a_singlet_input_without_coloured_labels_keeps_both_orders() {
+        let input = input();
+        assert_eq!(orders(&input, &[1, 3], &[5], [WM, A, WM]), (true, true));
+        assert_eq!(orders(&input, &[1, 2], &[5], [Z, A, Z]), (true, true));
+    }
+
+    #[test]
+    fn u1_projections_and_fundamental_line_auxiliaries_keep_both_orders() {
+        let input = input();
+        assert_eq!(orders(&input, &[1, 3], &[2, 4], [U1, Z, A]), (true, true));
+        assert_eq!(orders(&input, &[1, 3], &[2, 4], [WM, WP, U1]), (true, true));
+        assert_eq!(
+            orders(&input, &[1, 3], &[2, 4], [WM, WP, FLA]),
+            (true, true)
+        );
+    }
+
+    #[test]
+    fn coloured_results_and_inputs_keep_both_orders() {
+        let input = input();
+        // A quark line absorbing a boson current: the result is coloured.
+        assert_eq!(orders(&input, &[2], &[1, 3], [U, WM, D]), (true, true));
+    }
+
+    #[test]
+    fn two_adjoint_inputs_closing_into_a_singlet_keep_one_order() {
+        let input = input();
+        assert_eq!(orders(&input, &[6], &[7], [G, G, H]), (true, false));
+    }
+}
