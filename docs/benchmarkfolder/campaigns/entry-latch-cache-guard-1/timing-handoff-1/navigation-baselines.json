@@ -1,0 +1,16 @@
+{
+  "applied": false,
+  "files": {
+    "docs/benchmarkfolder/PRECISION_STREAM_TODO.md": {
+      "before_sha256": "b48071ea8b8c4a1176f88ab78eb5678792748deaecc30c2d4845b37316501c03",
+      "proposed_sha256": "0e73ab2bf00877817042d3cf0abc0a71ba2cca9076fcd720366cd2e04abfc1ab"
+    },
+    "docs/benchmarkfolder/README.md": {
+      "before_sha256": "52ea2bba3dd762c6bd0526fb06232ff2f1a6e3e3d13eb8eaab25da44e71b2caa",
+      "proposed_sha256": "ad74582309403117ee78b8122f4b39e5f8bc9c5c94efbb23872e37f6b6e968cc"
+    }
+  },
+  "patch_sha256": "06f3fbb5c84e96289559b3f18ac1086e75bd75f316bd96fbbb28a494564c5b7d",
+  "schema": "madloop-tirust-handoff-navigation-proposal-v1",
+  "scope": "unapplied navigation only; old report reproduction, report selectors, protocols and measurements unchanged"
+}

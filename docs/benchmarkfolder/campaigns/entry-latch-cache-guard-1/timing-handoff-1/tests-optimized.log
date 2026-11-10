@@ -1,0 +1,17 @@
+test_all_documented_launcher_commands_parse_without_actions (test_handoff.TestHandoff.test_all_documented_launcher_commands_parse_without_actions) ... ok
+test_declared_card_ancestry_only_retains_original_bytes (test_handoff.TestHandoff.test_declared_card_ancestry_only_retains_original_bytes) ... ok
+test_exact_new_campaign_source_native_and_pending_summary (test_handoff.TestHandoff.test_exact_new_campaign_source_native_and_pending_summary) ... ok
+test_fresh_full_hundred_point_policy_six_lanes_and_seven_pairs (test_handoff.TestHandoff.test_fresh_full_hundred_point_policy_six_lanes_and_seven_pairs) ... ok
+test_fresh_local_pending_qualification_is_separate_from_shared_runtime_and_ancestry (test_handoff.TestHandoff.test_fresh_local_pending_qualification_is_separate_from_shared_runtime_and_ancestry) ... ok
+test_install_receipt_and_fresh_stages_precede_local_timing (test_handoff.TestHandoff.test_install_receipt_and_fresh_stages_precede_local_timing) ... ok
+test_legacy_failure_stays_in_recursive_predecessor_metadata (test_handoff.TestHandoff.test_legacy_failure_stays_in_recursive_predecessor_metadata) ... ok
+test_no_source_override_and_current_protocol_inventory_matches (test_handoff.TestHandoff.test_no_source_override_and_current_protocol_inventory_matches) ... ok
+test_pinned_shell_activation_and_real_entrypoint_are_explicit (test_handoff.TestHandoff.test_pinned_shell_activation_and_real_entrypoint_are_explicit) ... ok
+test_prior_handoffs_unchanged_and_links_resolve (test_handoff.TestHandoff.test_prior_handoffs_unchanged_and_links_resolve) ... ok
+test_renderer_cli_uses_only_new_local_registry (test_handoff.TestHandoff.test_renderer_cli_uses_only_new_local_registry) ... ok
+test_two_production_templates_bind_raw_and_numerical_identities (test_handoff.TestHandoff.test_two_production_templates_bind_raw_and_numerical_identities) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.658s
+
+OK

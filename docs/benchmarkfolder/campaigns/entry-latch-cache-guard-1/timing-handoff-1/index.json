@@ -1,0 +1,47 @@
+{
+  "actual_local_measurements": false,
+  "file_count": 9,
+  "files": {
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md": {
+      "bytes": 13802,
+      "sha256": "de0d852bac8bbf8d795bd041d42389e82570df6fbb1093a7c627c8e9baa63d31"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/timing-handoff-1/bindings.json": {
+      "bytes": 9035,
+      "sha256": "2c8c2a52d1db9862436b07167ef8fa6c4d7d39e2da29670f8cabd05c1b1a26b0"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/timing-handoff-1/initial-summary.json": {
+      "bytes": 69281,
+      "sha256": "7939fc1e617965e01249cb2921e6f8f2e7f76681328afa192ec0c068afdc54fe"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/timing-handoff-1/navigation-baselines.json": {
+      "bytes": 783,
+      "sha256": "8c327ab32e18bf17bf91ada5c845f4cbbbd0f12e8fe6786206b6f89e832be51e"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/timing-handoff-1/navigation.patch": {
+      "bytes": 4087,
+      "sha256": "06f3fbb5c84e96289559b3f18ac1086e75bd75f316bd96fbbb28a494564c5b7d"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/timing-handoff-1/test_handoff.py": {
+      "bytes": 15507,
+      "sha256": "2d875233602dc592d9e47acaf6258aeded4b9cd8a13da95deb36ef82368f66db"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/timing-handoff-1/tests-optimized.log": {
+      "bytes": 1955,
+      "sha256": "e14825d634c61dd0d43722802dd993f5a1f6334aeb4fc32ecd8c3d35895d88ba"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/timing-handoff-1/tests.log": {
+      "bytes": 1955,
+      "sha256": "4ebbdeda052047ea1e391fa233d9b85385825890122801895e6cdf4ed393e413"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/timing-handoff-1/validation.json": {
+      "bytes": 3368,
+      "sha256": "5c71766cf85189a3c4d2e60b9aa519127871542209a4bacd14c8bd573ac04c7a"
+    }
+  },
+  "overall_goal_qualified": false,
+  "root": "../../../../..",
+  "schema": "madloop-tirust-timing-handoff-index-v2",
+  "scope": "Exact owned additive handoff files only; external source/canonical dependencies are in bindings.json; navigation.patch is unapplied",
+  "source_review_only": true
+}

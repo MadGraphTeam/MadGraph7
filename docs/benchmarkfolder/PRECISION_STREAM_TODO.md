@@ -13,10 +13,12 @@ protocol and buffered DP/QP/unchecked observations, not physical integrals.
 Reproduce these checks with
 `python3 -B -m pytest -q tests/unit_tests/loop/test_tirust_precision_stream.py`.
 
-Use the current-source installation and complete eleven-process numerical
-qualification from
-[handoff 3](campaigns/invariant-symmetry-1/timing-handoff-3/LOCAL_TIMING_TODO.md).
-The example measurement name below is the name used there. Run these commands
+Use the new `entry-latch-cache-guard-1` source installation and complete
+eleven-process, six-lane local numerical qualification from
+[the successor handoff](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
+Those 66 local lanes and precise timings remain pending. Earlier-source
+measurements do not qualify the changed generated Fortran. The example
+measurement name below is the name used in that handoff. Run these commands
 from the repository root of that local checkout. This adapter requires the
 unchanged sealed `numerical-prerequisites.json` and independently replays all
 eleven six-lane numerical prerequisites before preparation and execution.
@@ -35,15 +37,15 @@ registered CPU; no CPU reservation is requested or assumed.
 source tools/tirust_env.sh
 python3 -B tools/tirust_benchmark_precision_stream.py --help
 python3 -B tools/tirust_benchmark_precision_stream.py prepare \
-  --measurement hs-symmetry-local-1 --case qcd_n1_uux_z \
+  --measurement hs-entry-context-local-1 --case qcd_n1_uux_z \
   --lane candidate-9 --label qcd-n1-tirust-stream-1 \
   --loops 1 --batches 7 --timeout 3600
 python3 -B tools/tirust_benchmark_precision_stream.py verify \
-  --measurement hs-symmetry-local-1 --label qcd-n1-tirust-stream-1
+  --measurement hs-entry-context-local-1 --label qcd-n1-tirust-stream-1
 python3 -B tools/tirust_benchmark_precision_stream.py run \
-  --measurement hs-symmetry-local-1 --label qcd-n1-tirust-stream-1 --execute
+  --measurement hs-entry-context-local-1 --label qcd-n1-tirust-stream-1 --execute
 python3 -B tools/tirust_benchmark_precision_stream.py verify \
-  --measurement hs-symmetry-local-1 --label qcd-n1-tirust-stream-1
+  --measurement hs-entry-context-local-1 --label qcd-n1-tirust-stream-1
 ```
 
 `prepare` copies qualified objects and freezes the protocol, selected lane,
@@ -89,7 +91,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-measurement = "hs-symmetry-local-1"
+measurement = "hs-entry-context-local-1"
 config = json.loads((Path("docs/benchmarkfolder/local-measurements") /
                      measurement / "report/cases.json").read_text())
 tool = "tools/tirust_benchmark_precision_stream.py"
@@ -170,7 +172,7 @@ Clock overhead is **never subtracted**; no samples or outliers are removed.
 Evidence is written beneath:
 
 ```text
-docs/benchmarkfolder/local-measurements/hs-symmetry-local-1/precision-stream/<label>/
+docs/benchmarkfolder/local-measurements/hs-entry-context-local-1/precision-stream/<label>/
 ```
 
 `batch-NNNN/result.json` contains every call's category/time and category totals,

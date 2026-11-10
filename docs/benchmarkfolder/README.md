@@ -128,7 +128,13 @@ recorded in [the user amendment](PLAN-AMENDMENT-2026-11-10.md). The latest gener
 Fortran resets reduction-failure flags at each independent amplitude call and
 avoids creating an unused TIRust context during event clearing. Its
 [promotion checks](experiments/fortran-lifecycle-promotion-1/README.md) pass;
-fresh campaign-wide qualification and a successor local handoff are pending.
+the successor registration `entry-latch-cache-guard-1` binds revision
+`0fcd2cd873d6` and numerical identity
+`3c13ad88b825d9d19b1030b62b317c0f31759e002d8dfdb9050142301a7cae24`.
+The runnable [successor local handoff](campaigns/entry-latch-cache-guard-1/timing-handoff-1/LOCAL_TIMING_TODO.md)
+provides fresh installation, all eleven six-lane numerical qualifications,
+precise timing and a separate local PDF. Its 66 fresh local numerical lanes and
+precise timing acceptance remain pending; shared-host observations are separate.
 The published 31-page PDF covers the preceding `invariant-symmetry-1`
 registration, at revision `2c13246ffa63`, with numerical
 identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
