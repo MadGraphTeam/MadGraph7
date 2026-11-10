@@ -929,6 +929,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         self._decay_groups = None
         self.to_decay={}
         self.mg5cmd = master_interface.MasterCmd()
+        # MadSpin runs its matrix elements in its own gauge (the proc_card
+        # 'set gauge' line is skipped below): the automatic choice of the
+        # FD gauge for electroweak processes stays out of here as well
+        self.mg5cmd.options['auto_gauge'] = False
         self.seed = None
         self.err_branching_ratio = 0
         self.me_run_name = "" # Events directory where the events are stored (used by madevent, not used internally)

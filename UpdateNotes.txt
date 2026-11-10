@@ -5,6 +5,20 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: the FD gauge (Feynman-diagram gauge, arXiv:2203.10440, 2405.01256) is now chosen
+       automatically for a tree-level process whose diagrams have no QCD vertex and involve a
+       massive vector boson (VBF/VBS at QCD=0, p p > w+ w-, Drell-Yan, e+ e- > ...): in the
+       unitary gauge the diagrams of such a process grow with the energy and digits are lost in
+       their sum, in the FD gauge the cancellation happens diagram by diagram. The choice is made
+       once the diagrams are known, the model is reloaded in the FD gauge and the processes
+       generated again; a later 'add process' with a QCD vertex goes back to the unitary gauge.
+       'set gauge X' (before 'generate') always wins, 'set gauge default' hands the choice back,
+       'set auto_gauge False' turns it off. Not done for loop processes, bound states,
+       propagator polarisations ({G}, ...), models without goldstone bosons or whose goldstone
+       convention cannot be checked, and an output with --axial_gauge=True goes back to the
+       unitary gauge. The proc_card records the choice as 'set gauge FD', the FD-gauge citation
+       is triggered, and the mg7 output now records the gauge in its proc_characteristics.
+       MadSpin and the reweighting keep their own gauge handling.
    OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
        light jets starts from now also includes the core-process scale of the clustering
        (madevent's central factorisation scale for scalefact = 1), so it no longer drops

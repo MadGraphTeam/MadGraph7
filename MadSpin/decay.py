@@ -1846,6 +1846,8 @@ class width_estimate(object):
         aloha.loop_mode = False
         aloha.unitary_gauge = False
         cmd = Cmd.MasterCmd()        
+        # the width calculator keeps the gauge set just above
+        cmd.options['auto_gauge'] = False
         for line in commandline.split('\n'):
             cmd.run_cmd(line)
         

@@ -198,6 +198,77 @@ def check_amplicol_overlap(procdef, others, what):
                 "your processes." % (procdef.nice_string(prefix=False), what(other)))
 
 
+def iter_tree_amplitudes(amplitudes):
+    """The Amplitude objects behind a list of amplitudes: a decay chain is
+    unfolded into its core amplitudes and those of every decay, recursively."""
+
+    for amp in amplitudes:
+        if isinstance(amp, diagram_generation.DecayChainAmplitude):
+            for one in iter_tree_amplitudes(amp.get('amplitudes')):
+                yield one
+            for one in iter_tree_amplitudes(amp.get('decay_chains')):
+                yield one
+        else:
+            yield amp
+
+
+def fd_gauge_criterion(amplitudes):
+    """Whether generated amplitudes are of the kind the FD gauge is the better
+    default for.  Returns the pair (electroweak_only, massive_vector):
+
+      electroweak_only: no vertex of any diagram carries a QCD coupling order
+          (a VBF/VBS process at QCD=0, p p > w+ w-, Drell-Yan, e+ e- > ...;
+          not p p > t t~, nor p p > w+ j);
+      massive_vector: a massive spin-one particle is an external leg or an
+          internal propagator of at least one diagram.  Only meaningful when
+          electroweak_only holds (the scan stops at the first QCD vertex).
+
+    Both are False for a loop amplitude or a perturbed process: the FD gauge
+    is validated for tree-level amplitudes only.
+
+    The unitary gauge is unstable at high energy because of the q^mu q^nu/m^2
+    term of the massive vector propagator and of the longitudinal polarisation
+    vector, which grow with the energy: the diagrams exceed their sum by a
+    factor growing with the energy and digits are lost when they are summed.
+    In the FD gauge (arXiv:2203.10440, 2405.01256) the goldstone travels as
+    a fifth component of the vector and the cancellation happens diagram by
+    diagram, so the precision no longer depends on the energy.  massive_vector
+    says whether there is anything to gain; electroweak_only keeps the
+    automatic choice to the processes where only the matrix element changes
+    (the multi-channel integration of a QCD process is tuned for the unitary
+    gauge; a mixed process benefits as well and can ask for 'set gauge FD').
+    """
+
+    electroweak_only = True
+    massive_vector = False
+    for amp in iter_tree_amplitudes(amplitudes):
+        if isinstance(amp, loop_diagram_generation.LoopAmplitude):
+            return False, False
+        process = amp.get('process')
+        if process.get('perturbation_couplings'):
+            return False, False
+        model = process.get('model')
+
+        def is_massive_vector(pdg):
+            particle = model.get_particle(pdg)
+            return bool(particle) and particle.get('spin') == 3 and \
+                   particle.get('mass').lower() != 'zero'
+
+        if any(is_massive_vector(leg.get('id')) for leg in process.get('legs')):
+            massive_vector = True
+        for diagram in amp.get('diagrams'):
+            for vertex in diagram.get('vertices'):
+                interaction = model.get_interaction(vertex.get('id'))
+                if interaction is None:
+                    continue
+                if interaction.get('orders').get('QCD', 0):
+                    return False, massive_vector
+                if not massive_vector and any(is_massive_vector(leg.get('id'))
+                                              for leg in vertex.get('legs')):
+                    massive_vector = True
+    return electroweak_only, massive_vector
+
+
 def split_backend_line(line):
     """(line without the bracket, backend) for a process with a matrix-element
     backend bracket like '[amplicol]', (line, '') for any other line."""
@@ -1356,10 +1427,17 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > This option can considerably slow down the loop ME")
         logger.info("   computation time, especially when summing over all color")
         logger.info("   and helicity configuration, hence turned off by default.")        
-        logger.info("gauge unitary|Feynman|axial|FD",'$MG:color:GREEN')
+        logger.info("gauge unitary|Feynman|axial|FD|default",'$MG:color:GREEN')
         logger.info(" > (default unitary) choose the gauge of the non QCD part.")
         logger.info(" > FD is for Feynman Diagram gauge:     2203.10440 ")
         logger.info(" > For loop processes, only Feynman gauge is employable.")
+        logger.info(" > Unless set here, a tree-level process with no QCD vertex and")
+        logger.info("   a massive vector boson is generated in the FD gauge (see auto_gauge).")
+        logger.info("auto_gauge True|False",'$MG:color:GREEN')
+        logger.info(" > (default True) pick the FD gauge automatically for a purely")
+        logger.info("   electroweak tree-level process with massive vector bosons")
+        logger.info("   (VBF/VBS at QCD=0, p p > w+ w-, ...): the unitary gauge loses")
+        logger.info("   digits at high energy for them. 'set gauge X' overrides it.")
         logger.info("complex_mass_scheme True|False",'$MG:color:GREEN')
         logger.info(" > (default False) Set complex mass scheme.")
         logger.info(" > Complex mass scheme is not yet supported for loop processes.")
@@ -2361,7 +2439,7 @@ This will take effect only in a NEW terminal
             if not args[1].isdigit():
                 raise self.InvalidCmd('%s values should be an integer' % args[0])
             
-        if args[0] in ['loop_optimized_output', 'loop_color_flows', 'low_mem_multicore_nlo_generation', 'nlo_mixed_expansion']:
+        if args[0] in ['loop_optimized_output', 'loop_color_flows', 'low_mem_multicore_nlo_generation', 'nlo_mixed_expansion', 'auto_gauge']:
             try:
                 args[1] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
             except Exception:
@@ -3936,6 +4014,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'complex_mass_scheme',
                     'include_lepton_initiated_processes',
                     'gauge',
+                    'auto_gauge',
                     'EWscheme',
                     'max_npoint_for_channel',
                     'max_t_for_channel',
@@ -4020,6 +4099,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'complex_mass_scheme': False,
                           'include_lepton_initiated_processes': False,
                           'gauge':'unitary',
+                          'auto_gauge': True,
                           'stdout_level':None,
                           'loop_optimized_output':True,
                           'loop_color_flows':False,
@@ -4110,6 +4190,18 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._fockstates = []
         self.options = {}
         self._generate_info = "" # store the first generated process
+        # automatic choice of the gauge (apply_automatic_gauge):
+        # the user typed 'set gauge X' -> the gauge is theirs
+        self._explicit_gauge = False
+        # the FD gauge in use was picked by apply_automatic_gauge
+        self._auto_gauge_active = False
+        # the 'generate'/'add process' lines of the session with the process
+        # number each was given, to generate them again in another gauge
+        self._process_lines = []
+        self._auto_gauge_replay = False
+        # models the FD gauge was given up on (import_ufo could not check
+        # their goldstone content): not tried again
+        self._fd_unverified_models = set()
         self._model_v4_path = None
         self._export_dir = None
         self._export_format = 'madevent'
@@ -4231,6 +4323,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # a value matching neither makes the next output redo all of them
         self._quartic_order = 'mixed'
 
+        # as received, to run it again in another gauge (apply_automatic_gauge)
+        raw_line = line
         args = self.split_arg(line)
 
         
@@ -4282,6 +4376,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             # Reset Helas matrix elements
             self._curr_matrix_elements = helas_objects.HelasMultiProcess()
 
+            # the process number: the rank of the line in the history (counter
+            # corrects it when the line is run again in another gauge)
+            nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
+            nb_proc += counter
+
             # Extract process from process definition
             if ',' in line:
                 if ']' in line or '[' in line:
@@ -4292,7 +4391,6 @@ This implies that with decay chains:
   > Loop corrections cannot be considered."""
                     raise MadGraph5Error(error_msg)
                 else:
-                    nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
                     myprocdef, line = self.extract_decay_chain_process(line, proc_number=nb_proc)
                     # Redundant with above, but not completely as in the future
                     # one might think of allowing the core process to be 
@@ -4310,8 +4408,6 @@ This implies that with decay chains:
                         raise MadGraph5Error("Decay processes cannot include negative"+\
                                                 " coupling orders constraints.")                    
             else:
-                nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
-                nb_proc += counter
                 line, backend = split_backend_line(line)
                 myprocdef = self.extract_process(line, proc_number=nb_proc)
                 if backend:
@@ -4429,6 +4525,170 @@ This implies that with decay chains:
                               amp in self._curr_amps])
             logger.info("Total: %i processes with %i diagrams" % \
                   (len(self._curr_amps), ndiags))        
+
+            if not self._auto_gauge_replay:
+                self._process_lines.append((raw_line, nb_proc))
+                self.apply_automatic_gauge()
+
+    # ------------------------------------------------------------------
+    # automatic choice of the gauge
+    # ------------------------------------------------------------------
+    # The gauge is a property of the loaded model: the goldstone bosons are
+    # kept, dropped or merged into the vectors when the model is imported, so
+    # 'set gauge' reloads the model and drops the amplitudes.  The automatic
+    # choice below therefore runs once the diagrams of a process are known
+    # (the criterion reads them) and, when it wants another gauge, reloads the
+    # model and generates the processes of the session again -- the loop of
+    # 'check gauge', which evaluates one process in several gauges that way.
+
+    # the lines written into the history (the proc_card of the output) when
+    # the FD gauge is chosen automatically
+    AUTO_GAUGE_COMMENT = '# FD gauge chosen automatically: purely electroweak ' \
+                         'process with massive vector bosons (help set gauge)'
+    AUTO_GAUGE_LINE = 'set gauge FD'
+
+    def apply_automatic_gauge(self):
+        """Pick the FD gauge for a purely electroweak tree-level process with
+        massive vector bosons (fd_gauge_criterion), and the unitary gauge back
+        when a later 'add process' breaks that, unless the user chose the
+        gauge ('set gauge X', see set2_gauge) or turned the automatic choice
+        off ('set auto_gauge False').  Runs at the end of every 'generate' and
+        'add process'."""
+
+        if self._auto_gauge_replay or not self.options.get('auto_gauge', True):
+            return
+        if self._explicit_gauge:
+            return
+        current = self.options['gauge']
+        if current != 'FD':
+            # an FD gauge we had chosen is gone (a model without the Feynman
+            # gauge was imported since): nothing of ours is in use
+            self._auto_gauge_active = False
+        if current not in ['unitary', 'FD'] or \
+                    (current == 'FD' and not self.automatic_fd_gauge_in_use()):
+            # Feynman/axial are imposed by the model or by a loop interface,
+            # and an FD gauge that is not ours (configuration file) is kept
+            return
+        wanted = 'FD' if self.processes_prefer_fd_gauge() else 'unitary'
+        if wanted == current:
+            return
+        if wanted == 'FD':
+            model = self._curr_model
+            if 1 not in model.get('gauge') or \
+                              model.get('name') in self._fd_unverified_models:
+                # no goldstone boson in the model: no FD gauge to switch to
+                return
+            logger.info('Purely electroweak process with massive vector bosons: '
+                        'generating it in the FD gauge (Feynman-diagram gauge, '
+                        'arXiv:2203.10440, 2405.01256), whose precision does not '
+                        'degrade with the energy as the unitary gauge does for '
+                        'such processes. Type "set gauge unitary" (before '
+                        '"generate") to keep the unitary gauge.', '$MG:BOLD')
+        else:
+            logger.info('The processes are no longer purely electroweak: back '
+                        'to the unitary gauge (the FD gauge had been chosen '
+                        'automatically). Type "set gauge FD" to keep it.')
+        self.switch_gauge_and_regenerate(wanted)
+
+    def automatic_fd_gauge_in_use(self):
+        """Whether the FD gauge in use was picked by apply_automatic_gauge
+        (a later 'import model' may have left the FD gauge on its own)."""
+
+        return self._auto_gauge_active and self.options['gauge'] == 'FD'
+
+    def processes_prefer_fd_gauge(self):
+        """True when every generated process is tree level, purely electroweak
+        and involves a massive vector boson (fd_gauge_criterion), and none is
+        a bound state, a colour-ordered [amplicol] amplitude or carries a
+        propagator-only polarisation ({G}, {H}, {Q}, {W}, {S}: pieces of the
+        unitary-gauge propagator)."""
+
+        if not self._curr_amps or self._curr_amplicol_defs:
+            return False
+        if self.has_onium_amplitude():
+            return False
+        for amp in iter_tree_amplitudes(self._curr_amps):
+            for leg in amp.get('process').get('legs'):
+                if any(abs(pol) > 1 for pol in leg.get('polarization')):
+                    return False
+        electroweak_only, massive_vector = fd_gauge_criterion(self._curr_amps)
+        return electroweak_only and massive_vector
+
+    def fd_gauge_supported_by_model(self, model):
+        """Whether import_ufo could check the goldstone content of the model
+        (loaded in FD gauge) against what the FD gauge assumes."""
+
+        return import_ufo.FD_GAUGE_UNVERIFIED not in model.get('limitations')
+
+    def switch_gauge_and_regenerate(self, gauge):
+        """Reload the model in the given gauge and generate the processes of
+        the session again, as 'set gauge' followed by the 'generate' and
+        'add process' lines of the user would do.
+
+        An FD gauge the model cannot be trusted in (no goldstone boson, or a
+        goldstone phase convention that nothing fixes: import_ufo tags the
+        model) is given up on the spot: the model goes back to the unitary
+        gauge and the switch is not tried again for that model."""
+
+        lines = list(self._process_lines)
+        generate_info = self._generate_info
+        if self.options['gauge'] != gauge:
+            self.do_set('gauge %s' % gauge, log=False)
+        if gauge == 'FD' and \
+                        not self.fd_gauge_supported_by_model(self._curr_model):
+            logger.info('The FD gauge is not chosen automatically for the model '
+                        '%s: its goldstone content could not be checked against '
+                        'the convention of the FD gauge (see the warning above). '
+                        'Type "set gauge FD" to use it anyway.',
+                        self._curr_model.get('name'))
+            self._fd_unverified_models.add(self._curr_model.get('name'))
+            gauge = 'unitary'
+            self.do_set('gauge unitary', log=False)
+        self._auto_gauge_active = (gauge == 'FD')
+        self.record_automatic_gauge(gauge)
+        if self._curr_amps:
+            # the model was not reloaded (already in that gauge): the
+            # amplitudes are still there
+            return
+
+        # the process lines again, with the process numbers they had
+        aloha.npwave = [0]
+        nb_history = len([l for l in self.history
+                            if l.startswith(('generate', 'add process'))])
+        with misc.TMP_variable(self, '_auto_gauge_replay', True):
+            for line, nb_proc in lines:
+                MadGraphCmd.do_add(self, line, counter=nb_proc - nb_history)
+        self._process_lines = lines
+        self._generate_info = generate_info
+
+    def record_automatic_gauge(self, gauge):
+        """Write the automatic choice into the history, i.e. into the
+        proc_card of the output, as the 'set gauge FD' line the user would
+        have typed ahead of the process lines: the card then reproduces the
+        same code explicitly, and the tools reading it (reweighting) run in
+        the gauge of the sample.  Dropped again when the choice goes back to
+        the unitary gauge."""
+
+        for line in [self.AUTO_GAUGE_COMMENT, self.AUTO_GAUGE_LINE]:
+            while line in self.history:
+                self.history.remove(line)
+        if gauge != 'FD':
+            return
+        index = self.history_process_start()
+        self.history.insert(index, self.AUTO_GAUGE_LINE)
+        self.history.insert(index, self.AUTO_GAUGE_COMMENT)
+
+    def history_process_start(self):
+        """Index in the history of the first process line of the current
+        generation: the last 'generate', else the first 'add process'."""
+
+        for index in range(len(self.history) - 1, -1, -1):
+            if self.history[index].startswith('generate'):
+                return index
+        for index, line in enumerate(self.history):
+            if line.startswith('add process'):
+                return index
+        return len(self.history)
                 
     def add_model(self, args):
         """merge two model"""
@@ -6271,6 +6531,8 @@ This implies that with decay chains:
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._generate_info = ""
+        # the process lines to replay on an automatic change of gauge
+        self._process_lines = []
         # Reset the diagrams kept for an 'auto' merge_quartic_vertices, they
         # describe the amplitudes just dropped
         self._quartic_order = None
@@ -6433,7 +6695,16 @@ This implies that with decay chains:
                      perturbation_couplings_re.group("rest")
 
         if LoopOption != 'tree' and self.options['gauge'] in ['FD','axial']:
-            raise Exception('Gauge %s is only supported/validated for tree level amplitude'% self.options['gauge'])
+            if self.options['gauge'] == 'FD' and self.automatic_fd_gauge_in_use():
+                # ours, for a previous tree-level process: step aside
+                logger.info('Loop process: back to the unitary gauge (the FD '
+                            'gauge, chosen automatically for a previous process, '
+                            'is only supported for tree-level amplitudes).')
+                generate_info = self._generate_info
+                self.switch_gauge_and_regenerate('unitary')
+                self._generate_info = generate_info
+            else:
+                raise Exception('Gauge %s is only supported/validated for tree level amplitude'% self.options['gauge'])
 
         ## Now check for orders/squared orders/constrained orders
         order_pattern = re.compile(\
@@ -6650,7 +6921,10 @@ This implies that with decay chains:
                             except KeyError:
                                 continue
                         process += " "+order+order_op+str(order_val)
-                    self.do_add(process)
+                    # a piece of this very line: not a line of its own for
+                    # the automatic choice of the gauge
+                    with misc.TMP_variable(self, '_auto_gauge_replay', True):
+                        self.do_add(process)
                 else:
                     args = [arg.lower() for arg in copy_args]
 
@@ -7772,11 +8046,13 @@ This implies that with decay chains:
                 else:
                     if 1 not in self._curr_model.get('gauge') :
                         logger_stderr.warning('Change the gauge to unitary since the'+\
-                          ' model does not allow Feynman gauge.'+\
-                                                  ' Please re-import the model')
+                          ' model does not allow Feynman gauge.')
                         self._curr_model = None
                         self.do_set('gauge unitary', log= False)
-                        return
+                        # the model again, in the unitary gauge (an FD gauge
+                        # chosen automatically for a previous process is a
+                        # common way to get here)
+                        return self.do_import(line, force=force, options=options)
             if self._curr_model:
                 self._curr_model._curr_gauge = self.options['gauge']
 
@@ -9692,6 +9968,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     logger.warning("Option %s from config file not understood" \
                                    % key)
                 else:
+                    if key == 'gauge' and self.options[key] == 'unitary':
+                        # the default, not a choice: once run again from the
+                        # proc_card, 'set gauge unitary' would count as the
+                        # user's choice (set2_gauge) and keep the automatic
+                        # FD gauge out; a gauge picked for a process is
+                        # recorded as 'set gauge FD' (record_automatic_gauge)
+                        continue
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
 
@@ -11357,8 +11640,37 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger.info(" > axial is also named the parton-shower gauge (for massless particles only).")
         logger.info(" > FD is for Feynman Diagram gauge: (see 2203.10440 and 2405.01256). This is the extension of the axial gauge to massive particles.")
         logger.info(" > For loop processes, only Feynman gauge is employable.")
+        logger.info(" > Unless the gauge is set here, a tree-level process with no QCD vertex")
+        logger.info("   and a massive vector boson (VBF/VBS at QCD=0, p p > w+ w-, ...) is")
+        logger.info("   generated in the FD gauge, where the precision does not degrade with")
+        logger.info("   the energy (see 'set auto_gauge'). 'set gauge default' restores that.")
 
-        
+    def help_set2_auto_gauge(self):
+        """Help for set auto_gauge command"""
+        logger.info("auto_gauge True|False",'$MG:color:GREEN')
+        logger.info(" > (default True) choose the FD gauge automatically for a tree-level")
+        logger.info("   process whose diagrams have no QCD vertex and involve a massive vector")
+        logger.info("   boson (VBF/VBS at QCD=0, p p > w+ w-, Drell-Yan, e+ e- > ...).")
+        logger.info("   In the unitary gauge the diagrams of such a process grow with the")
+        logger.info("   energy and digits are lost in their sum; the FD gauge cancels that")
+        logger.info("   diagram by diagram. 'set gauge X' always takes precedence.")
+
+    def set2_auto_gauge(self, args, log=True):
+        """Set whether the gauge is chosen automatically, see
+        apply_automatic_gauge."""
+
+        args = ['auto_gauge'] + args
+        self.check_set(args)
+        self.options['auto_gauge'] = args[1]
+        if not args[1] and self.automatic_fd_gauge_in_use():
+            # the FD gauge in use was ours: back to the default
+            if log:
+                logger.info('Back to the unitary gauge (the FD gauge had been '
+                            'chosen automatically): the processes have to be '
+                            'generated again.')
+            self._auto_gauge_active = False
+            self.record_automatic_gauge('unitary')
+            self.do_set('gauge unitary', log=False)
 
     def set2_gauge(self, args, log=True):
         """Set the gauge to be used in the model. Options are:
@@ -11367,8 +11679,18 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
               axial: Parton-shower gauge
               FD: Four-Dimensional gauge (see 2203.10440 and 2405.01256)
         """
+        # 'set gauge default' hands the choice back to the automatic selection
+        restore_automatic = bool(args) and args[0] == 'default'
         args = ['gauge'] + args
         self.check_set(args)
+        if log:
+            # typed by the user (the internal callers, 'check gauge' and the
+            # automatic choice, pass log=False): the gauge is theirs from now
+            # on, see apply_automatic_gauge
+            self._explicit_gauge = not restore_automatic
+            self._auto_gauge_active = False
+            if restore_automatic:
+                self.record_automatic_gauge('unitary')
 
         # Treat the case where they are no model loaded
         if not self._curr_model:
@@ -11402,7 +11724,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 if log: logger.warning('Note that parton-shower gauge is not allowed for your current model %s' \
                                         % self._curr_model.get('name'))
         elif args[1] == 'FD':
-            logger.warning("WARNING: NOT ALL MODEL ARE SUPPORTING THIS GAUGE. PLEASE CHECK/CITE 2203.10440 and 2405.01256")
+            if log:
+                logger.warning("WARNING: NOT ALL MODEL ARE SUPPORTING THIS GAUGE. PLEASE CHECK/CITE 2203.10440 and 2405.01256")
             if 1 in self._curr_model.get('gauge'):
                 aloha.unitary_gauge = 3
             else:
@@ -12657,6 +12980,23 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         line_options = dict( (arg[2:].split('=')  if "=" in arg else (arg[2:], True))
                              for arg in args if arg.startswith('--'))
 #        line_options = dict(arg[2:].split('=') for arg in args if arg.startswith('--') and '=' not in arg)
+
+        # --axial_gauge=True builds the polarisation of the massless vectors in
+        # the axial gauge of another leg, which the FD gauge (fixing the gauge
+        # of the massless vectors itself) has no room for: an FD gauge chosen
+        # automatically steps aside; one asked for with 'set gauge' is kept
+        # and the option is dropped with a warning (helas_call_writers)
+        if self.automatic_fd_gauge_in_use() and \
+                str(line_options.get('axial_gauge', False)).strip().lower() \
+                                          in ('true', 't', '1', 'yes', 'on'):
+            logger.info('--axial_gauge=True: back to the unitary gauge (the FD '
+                        'gauge had been chosen automatically), the processes '
+                        'are generated again.')
+            # the reload of the model cleans the process state, this output
+            # command included (clean_process)
+            export_format, export_dir = self._export_format, self._export_dir
+            self.switch_gauge_and_regenerate('unitary')
+            self._export_format, self._export_dir = export_format, export_dir
         main_file_name = ""
         try:
             main_file_name = args[args.index('-name') + 1]

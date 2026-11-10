@@ -135,6 +135,10 @@ class ReweightInterface(extended_cmd.Cmd):
         self.systematics = False # allow to run systematics in ouput2.0 mode
         self.boost_event = False
         self.mg5cmd = master_interface.MasterCmd()
+        # the reweighting runs in the gauge of the sample: the one of its
+        # proc_card ('set gauge FD' when it was chosen automatically at
+        # generation time), never a new automatic choice
+        self.mg5cmd.options['auto_gauge'] = False
         if mother:
             self.mg5cmd.options.update(mother.options)
         self.seed = None

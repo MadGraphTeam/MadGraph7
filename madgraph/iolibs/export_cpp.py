@@ -3607,6 +3607,11 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # NB: this must come *before* create_run_card: it is what fills in
         # self.proc_characteristic, and the run_card defaults are derived from
         # it (e.g. ninitial == 1 -> a decay, which gets no cuts at all).
+        # the gauge of the generation (unitary, FD, ...), as the madevent
+        # output records it: the FD gauge may have been chosen automatically
+        mg5options = args[0] if args else kwargs.get('mg5options')
+        if mg5options and 'gauge' in mg5options:
+            self.proc_characteristic['gauge'] = mg5options['gauge']
         self.create_proc_characteristics(matrix_elements)
 
         # Generate Cards/run_card.toml from the template, filling in
