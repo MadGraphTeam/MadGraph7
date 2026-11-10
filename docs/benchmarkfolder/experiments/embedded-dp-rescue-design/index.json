@@ -1,0 +1,14 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 12088,
+      "sha256": "fa72abdd036833332d01ae2b0c6e0d56ef5734ec81cb2b2d15375cf47125aea6"
+    },
+    "source-audit.json": {
+      "bytes": 10788,
+      "sha256": "b504ae11b20ef31d92b1a6494e86a369cdd1c05b600089abc5e4434842becdeb"
+    }
+  },
+  "schema_version": 1,
+  "scope": "source-only research; no native/build/test/timing"
+}

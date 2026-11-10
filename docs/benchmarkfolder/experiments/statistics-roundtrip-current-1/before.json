@@ -1,0 +1,94 @@
+{
+  "argv": [
+    "/run/current-system/sw/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-m",
+    "pytest",
+    "-v",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit_tests/various/test_ninjars_statistics.py"
+  ],
+  "cleanup_policy": "Own new process group; after120s send TERM, wait2s, then KILL if needed. Never retry a failed or timed-out run.",
+  "cpu": 12,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "environment": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PATH": "/home/external/.codex/packages/app-server-daemon/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/external/.codex/tmp/arg0-linux/codex-arg0lRMkvY:/home/external/.codex/tmp/arg0-linux/codex-arg0Q3My4g:/nix/store/qswjy75ymf911zf9pjhqi4w6kmwm3v73-codex-0.163.0/codex-path:/run/wrappers/bin:/home/external/.nix-profile/bin:/nix/profile/bin:/home/external/.local/state/nix/profile/bin:/etc/profiles/per-user/external/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin:/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin:/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin:/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin:/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin:/nix/store/0g4agjda4ihmd291pamwahhy7praa4sn-gnum4-1.4.21/bin:/nix/store/1m0z4ixir10fg7ba7g131js04bxgv265-cmake-4.1.2/bin:/nix/store/0v0raqk1qw5g2a21km4xa1hwhaq4s976-pkg-config-wrapper-0.29.2/bin:/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin:/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin:/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin:/nix/store/8hz0qnr9z5j1w7rjl9qmsb34v2cb4akr-wget-1.25.0/bin",
+    "PYTEST_ADDOPTS": "",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "TMPDIR": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/statistics-roundtrip-current-1/tmp"
+  },
+  "environment_setup": "source tools/tirust_env.sh",
+  "pytest_version": "9.0.2",
+  "python_modules": {
+    "pytest": {
+      "path": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/lib/python3.13/site-packages/pytest/__init__.py",
+      "sha256": "7be7a1e2218dc59a19d1ad131e4abe21172a295087efc72898938248782e8766"
+    },
+    "unittest": {
+      "path": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/lib/python3.13/unittest/__init__.py",
+      "sha256": "7c22ee0c503b75aba5221e3e8189f9bf4632f85a43315ff841ec9d26a68e3551"
+    }
+  },
+  "recorded_utc": "2026-11-10T02:23:41.027803+00:00",
+  "runner_sha256": "3fd234576e5cc9e91296a934cdaec370cb19ecad3d124bfcf9c1f6a67783c838",
+  "schema_version": 1,
+  "scope": "Current statistics sources: synthetic return-code inputs, four compiled Fortran tally/writer fragment executions, production Python readers. No amplitude, Rust/reducer, timing-acceptance or historical execution claim.",
+  "source_sha256": {
+    "Template/LO/Source/dsample.f": "299260c26754d1a2dd280eac960538ba403e7c81cc74ff85f6ed351e8d4ce6e7",
+    "Template/NLO/SubProcesses/BinothLHA.f": "0827ea085dbb11fa010dc05f62ca4d43ae8e672b3cf51c4067baf9fbd62443bd",
+    "Template/NLO/SubProcesses/driver_mintFO.f": "82240a776f6e473acd619a3db5e1d2ea7616ce5b5093fe16ac243ad1668b2f9c",
+    "Template/NLO/SubProcesses/driver_mintMC.f": "e1c1de44b1181f1c6180cce6ae4511e706a6d1db5e0ce3c753261972feb4663f",
+    "flake.lock": "23f29c13960d2e4dd3f85e2371477f8b7c376706fdb0e7536da817f5866b648a",
+    "flake.nix": "d705c29c12cb4041460d8070eddf790a3a76633287c12e4f47b8c3d825d2af9c",
+    "madgraph/__init__.py": "8117c16be6f92b6691d0aafe028a5e6cb76f9bdbbda90bdc564d36e7724b6fac",
+    "madgraph/interface/amcatnlo_run_interface.py": "82449a318d8c616bb92ba4d41ddd2f36bfb8859c259dcdbbc08b69166252d3c4",
+    "madgraph/iolibs/file_writers.py": "d77219d0ecb8d7f81a69e8f0eef7a7ebbab2dcb1538f9292ce5fa05d597d5c50",
+    "madgraph/iolibs/template_files/matrix_loop_induced_madevent.inc": "c918389040ff855ef0226abfed4199c263e18d0557944bf1bb86f6f58a63224f",
+    "madgraph/iolibs/template_files/matrix_loop_induced_madevent_group.inc": "19eb2bcce0663f373e8c31f0d38b05ee121dcd721a6a12238347509a1e146db5",
+    "madgraph/madevent/sum_html.py": "66cec1dd39c8f9c9645e092c7458154911d4ec3ded61be7a8c291617680e3b34",
+    "tests/unit_tests/various/test_ninjars_statistics.py": "d1741a8a8fd8fc76429759e9df78e612a8902ea76b45738a25e4b64ba8b010db",
+    "tools/tirust_env.sh": "4311818b26bf38090655003a2aa14431267b727a65d167671b948a65fc54de00"
+  },
+  "timeout_seconds": 120,
+  "tools": {
+    "gfortran": {
+      "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+      "resolved_path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+      "returncode": 0,
+      "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+      "version_argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "--version"
+      ],
+      "version_output": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
+    },
+    "python": {
+      "path": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+      "resolved_path": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13",
+      "returncode": 0,
+      "sha256": "b62e17653c7f9b57b7888b94e7eeaf5bce5bd3538002daff47f17cad1d984799",
+      "version_argv": [
+        "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+        "--version"
+      ],
+      "version_output": "Python 3.13.12\n"
+    },
+    "taskset": {
+      "path": "/run/current-system/sw/bin/taskset",
+      "resolved_path": "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+      "returncode": 0,
+      "sha256": "b5d01660bcca50634a7e046ed5702be5d46417b287dfb4cf642683bd70747a15",
+      "version_argv": [
+        "/run/current-system/sw/bin/taskset",
+        "--version"
+      ],
+      "version_output": "taskset from util-linux 2.42.2\n"
+    }
+  }
+}

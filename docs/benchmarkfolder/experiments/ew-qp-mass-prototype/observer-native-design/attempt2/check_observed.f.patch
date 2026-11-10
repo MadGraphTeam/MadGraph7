@@ -1,0 +1,11 @@
+--- attempt1/check_observed.f
++++ attempt2/check_observed.f
+@@ -7,7 +7,7 @@
+       REAL*8 POINTS(0:3,5,2),P(0:3,5),TOTAL(0:3)
+       REAL*8 ANS(0:3,0:1),ACC(0:1)
+       CHARACTER*1024 ARG
+-      CALL SETPARA('param_card.dat')
++      CALL SETPARA('MadLoop5_resources/param_card.dat')
+       CALL ML5_0_GET_ANSWER_DIMENSION(NDIM)
+       CALL ML5_0_GET_NSQSO_LOOP(NSO)
+       IF(NDIM.NE.1.OR.NSO.NE.1) STOP 81

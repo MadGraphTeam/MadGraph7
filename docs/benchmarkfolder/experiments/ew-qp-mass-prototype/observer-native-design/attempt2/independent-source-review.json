@@ -1,0 +1,42 @@
+{
+  "scope": "Independent source-only review; no compiler/native execution",
+  "supervisor": {
+    "reviewer": "/root/madloop_audit/cache_driver",
+    "outcome": "clear",
+    "source_sha256": {
+      "control.py": "acf00431793415817c29f26d997ae272da968f4b024482cfb72c60333b61ed50",
+      "prepare.py": "bf126b7b738aec8edd1e78628cdae99318d0e2bb2689b8ddc97fc7ad5e33a831"
+    },
+    "addressed_findings": [
+      "Deferred nonthrowing signal handlers avoid inherited blockedSIGTERM/INT",
+      "Owned child/group cleanup and directchild reap under sharedflock",
+      "Interrupted child eventmetadata retained",
+      "Loaderinjection rejected and native/system runtimeidentities pinned",
+      "Exact relevant historicalcompiler environment projection rejects new or changed flags",
+      "Explicit separatebuild/smoke/run stages with no retries"
+    ]
+  },
+  "fortran": {
+    "reviewer": "/root/reference_libraries/qp_engine_audit",
+    "outcome": "no blocking source issue",
+    "source_sha256": {
+      "check_observed.f": "3e8d0bb803f2a6af1e21d19f5c5f7288e349a5f6450ad953587cc75206a05d03",
+      "check_setpara.f": "01efad9f98eee5522e87d2d050467f94ad7f5efc3cbea0a8f022ec0c9cdefb33"
+    },
+    "findings": [
+      "Observerdriver differs only the SETPARA string literal",
+      "Nine expectedDPcardvalues and exactDPtoQPpromotions match frozenreader",
+      "PinnedGNU IEEE_ALL order is overflow,dividebyzero,invalid,underflow,inexact",
+      "Flags cumulative immediatelyafterSETPARA",
+      "QPscalecheck uses realstorage plus numericalzeroimaginary, notfullcomplexstorage equality",
+      "Smokecontains only actualSETPARA and intrinsicIO/IEEE/storageoperations; modelonlylink requested"
+    ]
+  },
+  "analysis_review": {
+    "reviewer": "/root/reference_libraries/cache_audit",
+    "addressed_findings": [
+      "Insert captures only after summarization/historicalcontrol succeeds",
+      "Require unchanged systemruntime identity alongside copiednativeDSO identities"
+    ]
+  }
+}

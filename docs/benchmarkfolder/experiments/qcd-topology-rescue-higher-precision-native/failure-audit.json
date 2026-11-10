@@ -1,0 +1,110 @@
+{
+  "actual_runtime_identity_proven": false,
+  "bindings": {
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-native/attempt1/execution.json": "3b9c1b39973c0734aee4afbaab429bcccbe9d0ff71c1a2705438472f1818e5b2",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-native/attempt1/ldd.txt": "47307742d8fad1049edb76b37aeaebab1060904222db36be0df062b9d4859c1e",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-native/attempt1/observed.log": "b9bbdba6693883ce3cd6784865c4db16c76ab4d3e268ed22e9416f018cde4767",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-native/attempt1/process-maps.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-native/attempt1/trace.dat": "b0def488cfed72f95edbcf86cdb13a81dfe4bb2c47d0cc1ac4287d6b05fde0d7",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-native/audit_failure.py": "26bc709441a897ba324b9602c3f2e9b459b45e998e67f22f16e906af787deeee",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-runner/source-index.json": "db98fc5fa2fc23ed7bc46f01555c0d5a4b21ef817cf925c5b0de8c1b5f2015ca",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-native/attempt1/topology-c/backend-9/execution.json": "f4478d35b8e37085dc3352b574d15cd82681c15be9228811d8a0d5af5829f6c5",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-native/attempt1/topology-c/backend-9/observed.log": "77acb0e4cd4177d50f59684a2c26764c257d825c9b410ec1a73d38fd7c70a514",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-native/attempt1/topology-c/backend-9/trace.dat": "a446cf62a2bbb06b44209dc489eafca78e886f409f5d0665b7227d6678f788e2"
+  },
+  "capture_complete": false,
+  "cause_scope": "The expected ldd loader is incompatible with the pinned normal direct-exec PT_INTERP. Empty retained maps cannot prove the actual loaded DSO or CPU affinity.",
+  "executable": {
+    "path": ".tirust-build/qcd-topology-rescue-native/attempt1/topology-c/amplitude-private",
+    "sha256": "82c2a70a4b64242a3f94a506e8dc46610e160e657152d7e981e1fa8258f90f63"
+  },
+  "health": [
+    [
+      1,
+      0,
+      0
+    ],
+    [
+      2,
+      0,
+      0
+    ],
+    [
+      3,
+      0,
+      0
+    ]
+  ],
+  "interpreter": {
+    "pt_interp": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+  },
+  "ldd_expected_loader": {
+    "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2": "e655ec5a68127ee03586457e67039ea9deef55abaeae519c1f53ad1cf18ee5b2"
+  },
+  "native_executed_by_auditor": false,
+  "native_exit_code": 0,
+  "native_process_wall_seconds": 5.36050547612831,
+  "ordinary_numeric_rows_exact": true,
+  "ordinary_raw_words_exact": true,
+  "physics_accepted": false,
+  "point_summaries": [
+    {
+      "health": {
+        "faults": 0,
+        "independent_acknowledgement": true,
+        "io_failures": 0
+      },
+      "host_code": 219,
+      "point": 1,
+      "seq": 1,
+      "summary": {
+        "calls": 0,
+        "native_statuses": {},
+        "outcomes": {}
+      }
+    },
+    {
+      "health": {
+        "faults": 0,
+        "independent_acknowledgement": true,
+        "io_failures": 0
+      },
+      "host_code": 323,
+      "point": 2,
+      "seq": 2,
+      "summary": {
+        "calls": 232,
+        "native_statuses": {
+          "0": 232
+        },
+        "outcomes": {
+          "stable": 232
+        }
+      }
+    },
+    {
+      "health": {
+        "faults": 0,
+        "independent_acknowledgement": true,
+        "io_failures": 0
+      },
+      "host_code": 219,
+      "point": 1,
+      "seq": 3,
+      "summary": {
+        "calls": 0,
+        "native_statuses": {},
+        "outcomes": {}
+      }
+    }
+  ],
+  "raw_scope": "Provisional numerical trace only; neither runtime qualification nor a replacement successful attempt.",
+  "schema": 1,
+  "static_capture_predicate_mismatch": true,
+  "stress_numeric_rows": [
+    "AMPLITUDE_VALUE    2    2    0  323   4.30898559824016835E+019  -4.34315235443401975E+021  -1.58727629046629827E+020  -7.01341075112268595E+018   1.87839970020915500E-015 T T T",
+    "AMPLITUDE_VALUE    2    2    1  323   4.30898559824016835E+019  -4.34315235443401975E+021  -1.58727629046629827E+020  -7.01341075112268595E+018   1.87839970020915500E-015 T T T"
+  ]
+}

@@ -1,0 +1,283 @@
+{
+  "anchors": {
+    "../references/TIRust/crates/iregi-rust/src/direct/exec.rs": [
+      "PartialRescue at77",
+      "inject_external at1227",
+      "geometry partial eligibility at1502",
+      "exact singular solve exits at1633",
+      "Gram retry precedence at1651",
+      "non-top partial branch at1660"
+    ],
+    "../references/TIRust/crates/iregi-rust/src/dispatch/embedded.rs": [
+      "EmbedderOptions defaults69",
+      "LaneRoute::Direct may includeDD at85",
+      "direct thenmethod_choice thentiers reduce_batch at221",
+      "method_choice at272",
+      "precision_tiers at323"
+    ],
+    "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": [
+      "adapter/contract failures converted to DP_FPE at291\u2013345"
+    ],
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": [
+      "reset flags before QP at1904\u20131917"
+    ],
+    "vendor/tirust/src/lib.rs": [
+      "State::dp and EmbedderOptions::default at109",
+      "State::dp_checked at130",
+      "State::mp at162",
+      "lane_status at404",
+      "guard at414",
+      "ml_tirust_last_error at879"
+    ]
+  },
+  "existing_counts": {
+    "ew_n3_epem_ttxa": {
+      "lanes": [
+        {
+          "backend": 8,
+          "counts": {
+            "8:DP": 100
+          },
+          "measurement_phase": "steady-warmup",
+          "numerical_comparison_passed": true,
+          "performance_eligible": false,
+          "return_codes": {
+            "218": 100
+          },
+          "source": "candidate"
+        },
+        {
+          "backend": 9,
+          "counts": {
+            "9:DP": 82,
+            "9:QP": 18
+          },
+          "measurement_phase": "steady-warmup",
+          "numerical_comparison_passed": true,
+          "performance_eligible": false,
+          "return_codes": {
+            "219": 82,
+            "323": 18
+          },
+          "source": "candidate"
+        }
+      ],
+      "source": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/results.json",
+      "timing_inferred": false
+    },
+    "qcd_n3_uux_zgg": {
+      "lanes": [
+        {
+          "backend": 8,
+          "counts": {
+            "8:DP": 100
+          },
+          "measurement_phase": "steady-warmup",
+          "numerical_comparison_passed": true,
+          "performance_eligible": false,
+          "return_codes": {
+            "218": 100
+          },
+          "source": "candidate"
+        },
+        {
+          "backend": 9,
+          "counts": {
+            "9:DP": 87,
+            "9:QP": 13
+          },
+          "measurement_phase": "steady-warmup",
+          "numerical_comparison_passed": true,
+          "performance_eligible": false,
+          "return_codes": {
+            "219": 87,
+            "323": 13
+          },
+          "source": "candidate"
+        }
+      ],
+      "source": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/results.json",
+      "timing_inferred": false
+    }
+  },
+  "internal_retry_history_api": "TensorWorkspace::last_diagnostics; not exported by current C ABI",
+  "kind": "source-only research and future measurement design",
+  "measurement_design": {
+    "actual_precision_required": [
+      "pure53bit",
+      "mixed53/106partial",
+      "106/256/512whole-laneretry",
+      "explicit113bitinputQP"
+    ],
+    "candidate_order": "partial-onlyifeligible-subsetcaused; separatelytiers-onlyifnativeconditioningcaused; no threshold sweep",
+    "cause_attribution_available_now": false,
+    "first_stage": "observation-only private copies of two currentn3 exports; preservecomplete100pointwarmup/order and require observed/unobservedbit/status/IEEEparity",
+    "formal_campaign_first": true,
+    "formal_promotion_requires_new_registration_and_full_gates": true,
+    "maximum_candidate_policies_per_pilot": 1,
+    "minimum_timing_pairs_if_later_authorized": 7,
+    "timing_is_not_authorized_by_this_document": true
+  },
+  "native_identity": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+  "new_compilation": false,
+  "new_native_execution": false,
+  "new_tests_or_timing": false,
+  "options": {
+    "dp_lane_route_is_proof_of_pure53bit_arithmetic_when_partial_enabled": false,
+    "embedded_headroom": 40,
+    "embedded_tier_bits": [
+      106,
+      256,
+      512
+    ],
+    "embedded_tier_threshold_binary_exponents": [
+      -66,
+      -216,
+      -472
+    ],
+    "first_tier_margin_bits": 8,
+    "genuine_qp_input_bits": 113,
+    "genuine_qp_working_bits": 256,
+    "host_rejected_native_success_automatically_retried_by_options": false,
+    "partial_scope": "non-top triangle/box PV subsets after nonzero Gram solve; no jet/lambda shift; rounded106-bit subsets inserted into53-bit recurrence",
+    "registered": {
+      "gate": null,
+      "master_policy": "Default",
+      "method_choice": true,
+      "method_choice_gate": null,
+      "partial_rescue": false,
+      "precision_tiers": false
+    },
+    "zero_condition_first_tier_bits": 256
+  },
+  "production_changes": false,
+  "public_last_error_is_complete_internal_retry_history": false,
+  "registered_campaign_changes": false,
+  "repository_files": {
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/results.json": {
+      "bytes": 2509878,
+      "sha256": "83c54c019230038760b7d37f9da5bdf9ad36a87e4cb01e5a0be4daa11738bc98"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/results.json": {
+      "bytes": 2508799,
+      "sha256": "8eb88c74c3c9496440c38fef052f335e4ffca851d36baa3a17a129177ffeecde"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/manifest.json": {
+      "bytes": 377839,
+      "sha256": "1237c563b16a13e2c98327b494a4e5d0b8dec8eb6c7020d632b9b86839143a31"
+    },
+    "docs/benchmarkfolder/experiments/default-stability-policy-audit/index.json": {
+      "bytes": 1127,
+      "sha256": "85e7ff21e76cd8547ef1278cd0a6150ade30793368f9db226a13507acf511cfa"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/bridge/README.md": {
+      "bytes": 13072,
+      "sha256": "4b524cb3cd71d3c5ac3149130d020dc4761f0670106d695d4889660451a16af7"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/bridge/profile.rs": {
+      "bytes": 4899,
+      "sha256": "7c080e4d456690e4e3150396822393053aa0f17332bdb8d17329b89c0581175a"
+    },
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/prepare.py": {
+      "bytes": 14385,
+      "sha256": "09703853affd173ea85f47203db5f86bdec30bfd714bec793b19605603a43f5e"
+    },
+    "docs/benchmarkfolder/experiments/qp-scalar-shadow-profile/attempt-2/RESULTS.md": {
+      "bytes": 5017,
+      "sha256": "732264b16f1273d58a9ee0422666691b1e47ee0c70e3479fb140dbe87c478b12"
+    },
+    "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/observer.c": {
+      "bytes": 18182,
+      "sha256": "ed5971b3e186d81df65395355f6a3aa9dfd34336802f4df688004948a973ae34"
+    },
+    "docs/benchmarkfolder/qualification/tirust-bridge/qualification.json": {
+      "bytes": 16720,
+      "sha256": "c81844718e3d21b923e17bbc447c5299099a5786626ede14a1580f8228b3f817"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": {
+      "bytes": 11432,
+      "sha256": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": {
+      "bytes": 19521,
+      "sha256": "166ac2e2fb6555568bce4865dca462162b7a5af5b6b436fd64fa96ac23b80f89"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": {
+      "bytes": 103475,
+      "sha256": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8"
+    },
+    "vendor/tirust/Cargo.toml": {
+      "bytes": 1074,
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e"
+    },
+    "vendor/tirust/mtirust.f90": {
+      "bytes": 15997,
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "vendor/tirust/patches/0001-direct-poles-only.patch": {
+      "bytes": 64682,
+      "sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5"
+    },
+    "vendor/tirust/patches/manifest.json": {
+      "bytes": 1050,
+      "sha256": "f9344679b2d7081d03b34aefc112a64837e868d58527fd944951f5345ef27167"
+    },
+    "vendor/tirust/src/lib.rs": {
+      "bytes": 46218,
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    },
+    "vendor/tirust/tirust.h": {
+      "bytes": 5742,
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+    }
+  },
+  "schema_version": 1,
+  "upstream_files": {
+    "../references/TIRust/crates/iregi-rust/src/direct/exec.rs": {
+      "bytes": 188370,
+      "equals_pinned_git_blob": true,
+      "sha256": "4053f5d3a24002829328f75bac5aae3d26f04764f841a8edbaaa0ef938836c81"
+    },
+    "../references/TIRust/crates/iregi-rust/src/direct/shared.rs": {
+      "bytes": 29245,
+      "equals_pinned_git_blob": true,
+      "sha256": "0aeb06b0e8e0788d24653d1d6bdb856c81a3f1740cbf2d7def79c57ac33f8923"
+    },
+    "../references/TIRust/crates/iregi-rust/src/dispatch.rs": {
+      "bytes": 95423,
+      "equals_pinned_git_blob": true,
+      "sha256": "f88c1b3fbe6b7d654b18105789cb7f3a000a3000e79c6382a90d67d455744ea0"
+    },
+    "../references/TIRust/crates/iregi-rust/src/dispatch/direct_hybrid.rs": {
+      "bytes": 81962,
+      "equals_pinned_git_blob": true,
+      "sha256": "230cf32dab679c6f64f44056859bbc43ff8ff764a78f6d6ad9165c0082166b28"
+    },
+    "../references/TIRust/crates/iregi-rust/src/dispatch/embedded.rs": {
+      "bytes": 17538,
+      "equals_pinned_git_blob": true,
+      "sha256": "c4e392171b243c408c4a2802f30e3a90938c2c6cfc70c85d994ff426cce201c4"
+    },
+    "../references/TIRust/crates/iregi-rust/src/store.rs": {
+      "bytes": 15687,
+      "equals_pinned_git_blob": true,
+      "sha256": "973b437f154fdd332d54371bafcfee1c01f3de4a03d67ccebd5314c1fe3c321f"
+    },
+    "../references/TIRust/crates/iregi-rust/tests/amplitude_sharing.rs": {
+      "bytes": 7856,
+      "equals_pinned_git_blob": true,
+      "sha256": "6a9ed3bb29039b14964944b87af06e33925630768d45cce9d9ad473e0cc30fcf"
+    },
+    "../references/TIRust/crates/iregi-rust/tests/direct_concurrency.rs": {
+      "bytes": 8869,
+      "equals_pinned_git_blob": true,
+      "sha256": "91753c66d7960d05cb5adc26dfdbea282806b612cf5459977543e50b6bdb5baa"
+    },
+    "../references/TIRust/crates/iregi-rust/tests/embedder_mode.rs": {
+      "bytes": 14263,
+      "equals_pinned_git_blob": true,
+      "sha256": "3968a21726e4facdc2026a11dff2a5be9adafbe0c4cca4fd4161c5003fb587a3"
+    }
+  },
+  "upstream_revision": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4"
+}

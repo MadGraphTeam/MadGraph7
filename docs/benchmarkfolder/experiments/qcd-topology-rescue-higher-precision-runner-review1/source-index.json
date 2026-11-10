@@ -1,0 +1,22 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3695,
+      "sha256": "8b7a428dda79733a3eb1abd3185b1da07560642b91fa484619ec13397ee9571b"
+    },
+    "controller.py": {
+      "bytes": 11710,
+      "sha256": "fb48fed4043d4a51749362d3eb608e656b86344d7e128b366513fa05e03cff74"
+    },
+    "supervise.py": {
+      "bytes": 5124,
+      "sha256": "3e44e53f29e240c297d3855eb08d2e7ca88da9c59ca8d98e547ab4082838d7a2"
+    },
+    "verify_source.py": {
+      "bytes": 1049,
+      "sha256": "460c4f3adb44d2dfefef18c450b677d17d48c91f3065c6583c11729c11594acf"
+    }
+  },
+  "schema": 1,
+  "scope": "Source-only bounded controller; no compiler/native execution performed or authorized by this file."
+}

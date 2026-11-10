@@ -1,0 +1,40 @@
+{
+  "before_sha256": "a5d043c427ef7e8e0c8ad3091bcceeceb147d72f34803ef72b59f4bc1cef9446",
+  "cleanup": [],
+  "elapsed_seconds": 1.2193972133100033,
+  "historical92_pass_invocation_recovered": false,
+  "passed": true,
+  "python_module_sha256_after": {
+    "pytest": "7be7a1e2218dc59a19d1ad131e4abe21172a295087efc72898938248782e8766",
+    "unittest": "7c22ee0c503b75aba5221e3e8189f9bf4632f85a43315ff841ec9d26a68e3551"
+  },
+  "raw_output_sha256": "63477ba6c01f3ff9dcaa1829e92f7522c2a3dd87129d53b7a492d47664f17a15",
+  "returncode": 0,
+  "schema_version": 1,
+  "scope": "Current statistics sources: synthetic return-code inputs, four compiled Fortran tally/writer fragment executions, production Python readers. No amplitude, Rust/reducer, timing-acceptance or historical execution claim.",
+  "source_sha256_after": {
+    "Template/LO/Source/dsample.f": "299260c26754d1a2dd280eac960538ba403e7c81cc74ff85f6ed351e8d4ce6e7",
+    "Template/NLO/SubProcesses/BinothLHA.f": "0827ea085dbb11fa010dc05f62ca4d43ae8e672b3cf51c4067baf9fbd62443bd",
+    "Template/NLO/SubProcesses/driver_mintFO.f": "82240a776f6e473acd619a3db5e1d2ea7616ce5b5093fe16ac243ad1668b2f9c",
+    "Template/NLO/SubProcesses/driver_mintMC.f": "e1c1de44b1181f1c6180cce6ae4511e706a6d1db5e0ce3c753261972feb4663f",
+    "flake.lock": "23f29c13960d2e4dd3f85e2371477f8b7c376706fdb0e7536da817f5866b648a",
+    "flake.nix": "d705c29c12cb4041460d8070eddf790a3a76633287c12e4f47b8c3d825d2af9c",
+    "madgraph/__init__.py": "8117c16be6f92b6691d0aafe028a5e6cb76f9bdbbda90bdc564d36e7724b6fac",
+    "madgraph/interface/amcatnlo_run_interface.py": "82449a318d8c616bb92ba4d41ddd2f36bfb8859c259dcdbbc08b69166252d3c4",
+    "madgraph/iolibs/file_writers.py": "d77219d0ecb8d7f81a69e8f0eef7a7ebbab2dcb1538f9292ce5fa05d597d5c50",
+    "madgraph/iolibs/template_files/matrix_loop_induced_madevent.inc": "c918389040ff855ef0226abfed4199c263e18d0557944bf1bb86f6f58a63224f",
+    "madgraph/iolibs/template_files/matrix_loop_induced_madevent_group.inc": "19eb2bcce0663f373e8c31f0d38b05ee121dcd721a6a12238347509a1e146db5",
+    "madgraph/madevent/sum_html.py": "66cec1dd39c8f9c9645e092c7458154911d4ec3ded61be7a8c291617680e3b34",
+    "tests/unit_tests/various/test_ninjars_statistics.py": "d1741a8a8fd8fc76429759e9df78e612a8902ea76b45738a25e4b64ba8b010db",
+    "tools/tirust_env.sh": "4311818b26bf38090655003a2aa14431267b727a65d167671b948a65fc54de00"
+  },
+  "temporary_entries_after": [
+    "tmp"
+  ],
+  "timed_out": false,
+  "tool_sha256_after": {
+    "gfortran": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+    "python": "b62e17653c7f9b57b7888b94e7eeaf5bce5bd3538002daff47f17cad1d984799",
+    "taskset": "b5d01660bcca50634a7e046ed5702be5d46417b287dfb4cf642683bd70747a15"
+  }
+}

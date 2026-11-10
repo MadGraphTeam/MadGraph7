@@ -1,0 +1,46 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1966,
+      "sha256": "ac06af86f1ab4d057009205b555665b24f32a9fbb5c9ae215f460ffec9441a88"
+    },
+    "admissions/1794277008685905758.json": {
+      "bytes": 458,
+      "sha256": "679f46f9093f52b8eae64d3eb376001a93f8b7631c1963b5707e663fe0cd13e2"
+    },
+    "attempt1/execution.json": {
+      "bytes": 127108,
+      "sha256": "3b9c1b39973c0734aee4afbaab429bcccbe9d0ff71c1a2705438472f1818e5b2"
+    },
+    "attempt1/ldd.txt": {
+      "bytes": 1910,
+      "sha256": "47307742d8fad1049edb76b37aeaebab1060904222db36be0df062b9d4859c1e"
+    },
+    "attempt1/observed.log": {
+      "bytes": 5808,
+      "sha256": "b9bbdba6693883ce3cd6784865c4db16c76ab4d3e268ed22e9416f018cde4767"
+    },
+    "attempt1/process-maps.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "attempt1/trace.dat": {
+      "bytes": 8035033,
+      "sha256": "b0def488cfed72f95edbcf86cdb13a81dfe4bb2c47d0cc1ac4287d6b05fde0d7"
+    },
+    "audit_failure.py": {
+      "bytes": 6409,
+      "sha256": "26bc709441a897ba324b9602c3f2e9b459b45e998e67f22f16e906af787deeee"
+    },
+    "failure-audit.json": {
+      "bytes": 4608,
+      "sha256": "ff6e27b43a851a550c7ccd00e2a0d990beafded1fa413396b6a62d972c2a9b30"
+    },
+    "verify.py": {
+      "bytes": 1217,
+      "sha256": "0529f2551095a9ab52ddae66528c9189f8b55a5fe8035906b9c65d4ee53f0f1e"
+    }
+  },
+  "schema": 1,
+  "scope": "Complete failed runtime-capture attempt; provisional raw numerical output only. No automatic retry."
+}
