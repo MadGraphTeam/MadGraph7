@@ -757,22 +757,28 @@ class RusticolRuntimeBackend:
 
     def _tree_kinematics_masses(
         self, point: Sequence[Sequence[str]], precision: int
-    ) -> tuple[list[Fraction], int]:
+    ) -> tuple[list[Fraction | None], int]:
         """The external legs' squared masses in caller order (the exact
         executor's mass bindings, those its diagnostic on-shell projection
         reads: the runtime's current parameters) and the number of initial
         states, which come first."""
 
-        _projected, metadata = self._exact()._diagnostic_project_onshell(
-            [point], precision=max(precision, 16)
-        )
-        legs = metadata["points"][0]["legs"]
-        states = [leg["state"] for leg in legs]
+        states = [particle.state for particle in self.physics.external_particles]
         initial = states.count("incoming")
         if states[:initial] != ["incoming"] * initial:
             raise EvaluationError(
                 "the kinematics improvement needs the initial states first"
             )
+        try:
+            _projected, metadata = self._exact()._diagnostic_project_onshell(
+                [point], precision=max(precision, 16)
+            )
+        except ArtifactError:
+            # An artifact without authenticated external mass bindings: no
+            # leg has a bound mass, so each keeps its own p^2 as its target
+            # (m-lit lit-psimprove (G6)); conservation is still restored.
+            return [None] * len(states), initial
+        legs = metadata["points"][0]["legs"]
         return [Fraction(Decimal(leg["mass"])) ** 2 for leg in legs], initial
 
     def _note_kinematics(

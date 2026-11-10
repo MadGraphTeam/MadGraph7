@@ -256,7 +256,9 @@ def _improved(
 ) -> tuple[Any, str | None]:
     """The lifted point a rung in ``carrier`` evaluates (m-lit lit-psimprove
     (G5)): improved in that carrier under the user's ``settings``
-    (``kinematics.KinematicsSettings``; None: the policy's defaults) as
+    (``kinematics.KinematicsSettings``, which ``check_request`` resolves from
+    the run card / CLI, the policy's defaults included; None: an internal
+    caller, no improvement) as
     ``Runtime.evaluate`` improves a user's point, toward the masses the
     executor binds; the lifted point is exact to twice the last carrier's
     digits, so this moves it by the rung's rounding at most. Also the
@@ -265,7 +267,8 @@ def _improved(
 
     from pyamplicol import kinematics
 
-    settings = settings if settings is not None else kinematics.resolve(None, None)
+    if settings is None:
+        return point, None
     name = _carrier_name(carrier)
     variant = settings.variant(name)
     if variant is None:
