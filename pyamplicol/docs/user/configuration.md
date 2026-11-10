@@ -955,8 +955,9 @@ method, its method-choice values are not re-checked (the target then drives
 nothing), and plain Passarino-Veltman at gate 0 serves what they refuse;
 NinjaRS runs with zero stability thresholds. Only points without a finite
 value in any scheme (an exactly singular pivot, a non-finite output, a
-master failure, a NinjaRS lane whose tested quantity is exactly zero or NaN)
-still fail; `"auto"` keeps its choice of backend and its per-point fallback
+master failure, a NinjaRS lane whose tested quantity is exactly zero or NaN
+or that its box mu-expansion's conditioning bound refuses, which no setting
+turns off) still fail; `"auto"` keeps its choice of backend and its per-point fallback
 acts only on those. pyAmpliCol's stability checks and rescue stack stay
 their own settings and check the unchecked values when enabled. It is a
 timing and benchmark mode with **no accuracy certificate**: a served value
