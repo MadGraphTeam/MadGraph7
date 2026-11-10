@@ -772,20 +772,19 @@ impl V2Runtime {
             let missing = || invalid("a successful point without its collected vectors");
             let found = collected[index].as_ref().ok_or_else(missing)?;
             let direct = induced_point_of(induced, &rows, &mut orders, found, Decimal::to_f64)?;
-            let found = runs[index].take().ok_or_else(missing)?;
-            let rotated = induced_point_of(induced, &rows, &mut orders, &found, Decimal::to_f64)?;
+            let turned = runs[index].take().ok_or_else(missing)?;
             let reference: Vec<Vec<f64>> = squared
                 .iter()
                 .map(|laurent| laurent.iter().map(Decimal::to_f64).collect())
                 .collect();
-            let estimate = stability::induced_estimate(
+            let estimate = guard_rotation_estimate(
                 &shape,
+                &arith.context,
                 precision.unit_roundoff(),
                 &reference,
-                &direct,
-                &[rotated],
-                None,
-                None,
+                (&rows, &mut orders),
+                (&direct, found),
+                &turned,
             )?;
             let values = sector_index.iter().map(|&s| squared[s].clone()).collect();
             let estimate = reduction_policy::fallback_estimate(
@@ -924,6 +923,7 @@ fn guard_rotation_failure(reasons: &[String]) -> Vec<String> {
 
 /// Every point's spin source vectors rotated exactly with its momenta
 /// (real and imaginary parts, `observables._rotated_spin`).
+#[allow(clippy::type_complexity)]
 fn rotate_spins(
     rotation: &stability::Rotation,
     spins: &[BTreeMap<usize, [(Rational, Rational); 4]>],
@@ -944,6 +944,122 @@ fn rotate_spins(
                 .collect()
         })
         .collect()
+}
+
+/// The guard's rotation estimate of a loop-induced point in an extended
+/// carrier (`induced.rotation_budget` as the Python API forms it there):
+/// the little-group phase per row (`induced._row_phases`: sum conj(a') a
+/// over the row's loop orders and t at k = 0, its modulus
+/// sqrt(re^2 + im^2) and 1 / modulus in the carrier's context `context`)
+/// and the deviations (`induced._rotation_deviations` of a native point:
+/// per key of the counterterm kets, then of the bare vectors, |y phase - x|
+/// formed in the context and read as `abs(complex(.))` in binary64), then
+/// `quadratic_budget` and the estimate of that one check on the binary64
+/// point `direct` (`v2_stability::induced_estimate` of a rotation, whose
+/// binary64 deviations would floor the estimate at the binary64 rounding
+/// of the vectors). `rows` / `orders` key the vectors as
+/// [`induced_point_of`] did for `direct`.
+#[allow(clippy::too_many_arguments)]
+fn guard_rotation_estimate(
+    shape: &InducedShape,
+    context: &DecimalContext,
+    roundoff: f64,
+    reference: &Budget,
+    (rows, orders): (&[induced::Row], &mut Vec<Orders>),
+    (direct, found): (&InducedPoint, &InducedCollected<Decimal>),
+    turned: &InducedCollected<Decimal>,
+) -> RusticolResult<Estimate> {
+    let row_of = |row: &induced::Row| -> RusticolResult<usize> {
+        rows.iter()
+            .position(|r| r == row)
+            .ok_or_else(|| invalid("a vector of a row outside the plan's rows"))
+    };
+    let negate = |x: &Decimal| context.plus(&x.negated());
+    let times = |(a, b): (&Decimal, &Decimal), (c, d): (&Decimal, &Decimal)| {
+        (
+            context.sub(&context.mul(a, c), &context.mul(b, d)),
+            context.add(&context.mul(a, d), &context.mul(b, c)),
+        )
+    };
+    let mut phases: Vec<(usize, (Decimal, Decimal))> = Vec::with_capacity(shape.rows.len());
+    for &r in &shape.rows {
+        let (mut re, mut im) = (Decimal::zero(), Decimal::zero());
+        for (key, vector) in found.parts.total.iter() {
+            if row_of(&key.1)? != r {
+                continue;
+            }
+            let Some(other) = turned.parts.total.get(key) else {
+                continue;
+            };
+            for t in 0..shape.size {
+                let (y, x) = (&other[t][0], &vector[t][0]);
+                let (pr, pi) = times((&y.re, &negate(&y.im)), (&x.re, &x.im));
+                re = context.add(&re, &pr);
+                im = context.add(&im, &pi);
+            }
+        }
+        let magnitude = context.sqrt(&context.add(&context.mul(&re, &re), &context.mul(&im, &im)));
+        let phase = if magnitude.is_zero() {
+            (Decimal::integer(1), Decimal::zero())
+        } else {
+            let inverse = context.div(&Decimal::integer(1), &magnitude);
+            (context.mul(&re, &inverse), context.mul(&im, &inverse))
+        };
+        phases.push((r, phase));
+    }
+    let mut errors: Keyed<ErrorCells> = Vec::new();
+    for (mine, theirs) in [
+        (&found.parts.kets, &turned.parts.kets),
+        (&found.parts.bare, &turned.parts.bare),
+    ] {
+        let mut keys: Vec<&(Orders, induced::Row)> = Vec::new();
+        for (key, _) in mine.iter().chain(theirs.iter()) {
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+        }
+        for key in keys {
+            let (a, b) = (mine.get(key), theirs.get(key));
+            let r = row_of(&key.1)?;
+            let (pr, pi) = &phases
+                .iter()
+                .find(|(row, _)| *row == r)
+                .ok_or_else(|| invalid("a vector of a row outside the plan's rows"))?
+                .1;
+            let o = match orders.iter().position(|o| *o == key.0) {
+                Some(o) => o,
+                None => {
+                    orders.push(key.0.clone());
+                    orders.len() - 1
+                }
+            };
+            let at = match errors.iter().position(|(k, _)| *k == (o, r)) {
+                Some(at) => at,
+                None => {
+                    errors.push(((o, r), vec![vec![0.0; shape.width]; shape.size]));
+                    errors.len() - 1
+                }
+            };
+            let zero = Decimal::zero();
+            for t in 0..shape.size {
+                for k in 0..shape.width {
+                    let (xr, xi) = a.map_or((&zero, &zero), |v| (&v[t][k].re, &v[t][k].im));
+                    let (yr, yi) = b.map_or((&zero, &zero), |v| (&v[t][k].re, &v[t][k].im));
+                    let (zr, zi) = times((yr, yi), (pr, pi));
+                    let (dr, di) = (context.sub(&zr, xr), context.sub(&zi, xi));
+                    errors[at].1[t][k] += stability::modulus(dr.to_f64(), di.to_f64());
+                }
+            }
+        }
+    }
+    let budget = shape.quadratic_budget(direct, &errors);
+    Estimate::from_checks(
+        reference,
+        vec![(stability::rotation_name(0), budget)],
+        shape.scale(direct)?,
+        roundoff,
+        Vec::new(),
+    )
 }
 
 /// A collected loop-induced run as the shared estimate reads it
@@ -1192,17 +1308,15 @@ fn call_guard_estimate(
         };
         let estimate = if form.inclusive && point.moved.is_none() {
             let shape = induced_shape(induced, gram.clone(), plan_rows.len(), mode, average);
-            let found = turned.collected.as_ref().ok_or_else(missing)?;
-            let rotated =
-                induced_point_of(induced, &plan_rows, &mut orders, found, Decimal::to_f64)?;
-            stability::induced_estimate(
+            let other = turned.collected.as_ref().ok_or_else(missing)?;
+            guard_rotation_estimate(
                 &shape,
+                context,
                 roundoff,
                 &reference,
-                &direct,
-                &[rotated],
-                None,
-                None,
+                (&plan_rows, &mut orders),
+                (&direct, found),
+                other,
             )?
         } else {
             let shape = InducedShape {
