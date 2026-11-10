@@ -620,7 +620,29 @@ class RusticolRuntimeBackend:
         native_module: Any,
         artifact_path: Path,
         manifest: ArtifactManifest | None = None,
+        *,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> None:
+        from pyamplicol import kinematics
+
+        # The kinematics improvement's load-time defaults (m-lit
+        # lit-psimprove; None: the native policy's, MadLoop's variant above
+        # binary64 and off in binary64).
+        self._kinematics_setting = (
+            None
+            if kinematics_improvement is None
+            else kinematics.setting_value(kinematics_improvement)
+        )
+        self._kinematics_binary64 = (
+            None
+            if kinematics_improvement_binary64 is None
+            else kinematics.binary64_value(kinematics_improvement_binary64)
+        )
+        # The improvement's records of the calls since the last
+        # ``take_warnings`` (the tree runtime's warnings channel, (G4)).
+        self._kinematics_notes: list[str] = []
+        self._kinematics_muted = False
         self._runtime = runtime
         self._native_module = native_module
         self._artifact_path = artifact_path
@@ -673,6 +695,97 @@ class RusticolRuntimeBackend:
                 "compiled symmetric-group FFT diagnostic execution supports only "
                 "precision=16 native f64; exact/high-precision execution is unavailable"
             )
+
+    def _improved(
+        self,
+        momenta: Momenta,
+        precision: int,
+        setting: str | None,
+        binary64: bool | None,
+        arithmetic: str | None = None,
+    ) -> Momenta:
+        """The points a tree evaluation at ``precision`` evaluates (m-lit
+        lit-psimprove; ``pyamplicol.kinematics``, the one Rust
+        implementation): above binary64 (an exact executor at ``precision``
+        digits) the caller's points improved in that arbitrary-precision
+        carrier (its working digits) toward the tree runtime's external
+        masses (the exact executors' authenticated mass bindings at the
+        runtime's parameters); at precision 16 only under the binary64
+        switch, in binary64. ``arithmetic`` names the carrier of the
+        correlated paths (``"arbitrary"``, their default, at any precision,
+        16 included; ``"double-double"``). The records go through the
+        warnings channel (``take_warnings``): one line per call and every
+        typed warning."""
+
+        from pyamplicol import kinematics
+
+        settings = kinematics.resolve(
+            setting,
+            binary64,
+            default_setting_=self._kinematics_setting,
+            default_binary64_=self._kinematics_binary64,
+        )
+        carrier = arithmetic or ("double" if precision == 16 else "arbitrary")
+        variant = settings.variant(carrier)
+        if variant is None or not momenta:
+            return momenta
+        from .symbolica_exact import _decimal, _working_precision
+
+        points = [
+            [[str(_decimal(x, "momentum component")) for x in leg] for leg in point]
+            for point in momenta
+        ]
+        masses, initial = self._tree_kinematics_masses(points[0], precision)
+        digits = _working_precision(precision) if carrier == "arbitrary" else None
+        improved, records = kinematics.improve(
+            points, initial, masses, carrier, digits, variant
+        )
+        self._note_kinematics(records, carrier, precision)
+        if carrier == "double":
+            return [
+                [[float(Decimal(x)) for x in leg] for leg in point] for point in improved
+            ]
+        return improved
+
+    def _tree_kinematics_masses(
+        self, point: Sequence[Sequence[str]], precision: int
+    ) -> tuple[list[Fraction], int]:
+        """The external legs' squared masses in caller order (the exact
+        executor's mass bindings, those its diagnostic on-shell projection
+        reads: the runtime's current parameters) and the number of initial
+        states, which come first."""
+
+        _projected, metadata = self._exact()._diagnostic_project_onshell(
+            [point], precision=max(precision, 16)
+        )
+        legs = metadata["points"][0]["legs"]
+        states = [leg["state"] for leg in legs]
+        initial = states.count("incoming")
+        if states[:initial] != ["incoming"] * initial:
+            raise EvaluationError(
+                "the kinematics improvement needs the initial states first"
+            )
+        return [Fraction(Decimal(leg["mass"])) ** 2 for leg in legs], initial
+
+    def _note_kinematics(
+        self, records: Sequence[Mapping[str, Any]], carrier: str, precision: int
+    ) -> None:
+        if self._kinematics_muted:
+            return
+        counts: dict[str, int] = {}
+        for record in records:
+            key = record["produced"] or record["status"]
+            counts[key] = counts.get(key, 0) + 1
+        summary = ", ".join(f"{key} {count}" for key, count in sorted(counts.items()))
+        self._kinematics_notes.append(
+            f"kinematics-improvement: {carrier} at precision {precision} "
+            f"({records[0]['requested']}): {summary}"
+        )
+        self._kinematics_notes.extend(
+            f"point {index}: {record['warning_text']}"
+            for index, record in enumerate(records)
+            if record["warning_text"]
+        )
 
     def _on_the_fly_runtime_state_census(self) -> Mapping[str, object] | None:
         owns_companion = (
@@ -1055,8 +1168,13 @@ class RusticolRuntimeBackend:
         helicity_by_point: Sequence[str] | None = None,
         color_flow_by_point: Sequence[str] | None = None,
         precision: int = 16,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[complex | Decimal, ...]:
         self._require_supported_precision(precision)
+        momenta = self._improved(
+            momenta, precision, kinematics_improvement, kinematics_improvement_binary64
+        )
         helicities = _normalized_selectors(helicities)
         color_flows = _normalized_selectors(color_flows)
         helicity_by_point = _normalized_selectors(helicity_by_point)
@@ -1138,6 +1256,8 @@ class RusticolRuntimeBackend:
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> TreeOrderEvaluation:
         """Split tree values by squared coupling order in one recurrence pass.
 
@@ -1150,6 +1270,9 @@ class RusticolRuntimeBackend:
                 "regenerate with evaluator.execution_mode='recurrence'"
             )
         self._require_supported_precision(precision)
+        momenta = self._improved(
+            momenta, precision, kinematics_improvement, kinematics_improvement_binary64
+        )
         helicities = _normalized_selectors(helicities)
         color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
         if self._order_axes is None:
@@ -1414,8 +1537,13 @@ class RusticolRuntimeBackend:
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> ResolvedEvaluation:
         self._require_supported_precision(precision)
+        momenta = self._improved(
+            momenta, precision, kinematics_improvement, kinematics_improvement_binary64
+        )
         helicities = _normalized_selectors(helicities)
         color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
         if precision != 16:
@@ -1718,13 +1846,16 @@ class RusticolRuntimeBackend:
 
     def mute_warnings(self) -> None:
         _invoke(self._native_module, self._runtime.mute_warnings)
+        self._kinematics_muted = True
 
     def unmute_warnings(self) -> None:
         _invoke(self._native_module, self._runtime.unmute_warnings)
+        self._kinematics_muted = False
 
     def take_warnings(self) -> tuple[str, ...]:
         values = _invoke(self._native_module, self._runtime.take_warnings)
-        return tuple(str(value) for value in values)
+        notes, self._kinematics_notes = self._kinematics_notes, []
+        return tuple(str(value) for value in values) + tuple(notes)
 
     def validation_momenta(self) -> Momenta | None:
         """Return the selected process's verified deterministic artifact point."""
@@ -2028,12 +2159,6 @@ def load_runtime_backend(
             + " options are supported only for virtual artifacts; "
             "select precision when evaluating a tree artifact"
         )
-    if kinematics:
-        raise CompatibilityError(
-            "load-time "
-            + ", ".join(kinematics)
-            + " options are not yet supported for tree artifacts"
-        )
     module = _load_native_module()
     runtime = _invoke(
         module,
@@ -2043,7 +2168,9 @@ def load_runtime_backend(
         model_parameters=parameters,
         mute_warnings=mute_warnings,
     )
-    return RusticolRuntimeBackend(runtime, module, path, manifest)
+    backend = RusticolRuntimeBackend(runtime, module, path, manifest, **kinematics)
+    backend._kinematics_muted = mute_warnings
+    return backend
 
 
 __all__ = ["RusticolRuntimeBackend", "load_runtime_backend"]

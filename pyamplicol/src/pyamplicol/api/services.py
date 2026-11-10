@@ -1484,14 +1484,39 @@ class Runtime:
                     "virtual correlation backend returned an invalid result"
                 )
             return value
+        digits = _validate_precision(16 if precision is None else precision)
+        carrier = "arbitrary" if arithmetic is None else arithmetic
         return self._correlator_evaluator().evaluate(
-            momenta,
+            self._tree_improved(momenta, digits, carrier, options),
             color_correlation=color_correlation,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(16 if precision is None else precision),
-            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+            precision=digits,
+            arithmetic=carrier,
+        )
+
+    def _tree_improved(
+        self,
+        momenta: Momenta,
+        precision: int,
+        arithmetic: str,
+        options: Mapping[str, object],
+    ) -> Momenta:
+        """A tree correlated call's points under the kinematics improvement
+        (m-lit lit-psimprove; its carrier ``arithmetic``, default
+        ``"arbitrary"`` at any precision: DECISIONS 2026-11-10 02:29 (G3),
+        the carrier kind)."""
+
+        improve = getattr(self._backend, "_improved", None)
+        if improve is None:
+            return momenta
+        return improve(
+            momenta,
+            precision,
+            options.get("kinematics_improvement"),
+            options.get("kinematics_improvement_binary64"),
+            arithmetic,
         )
 
     def evaluate_correlated_graded(
@@ -1510,14 +1535,16 @@ class Runtime:
 
         if self.contribution_kind != "tree":
             raise CompatibilityError("graded correlations are implemented for trees")
+        digits = _validate_precision(16 if precision is None else precision)
+        carrier = "arbitrary" if arithmetic is None else arithmetic
         return self._correlator_evaluator().evaluate_graded(
-            momenta,
+            self._tree_improved(momenta, digits, carrier, {}),
             color_correlation=color_correlation,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(16 if precision is None else precision),
-            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+            precision=digits,
+            arithmetic=carrier,
         )
 
     def evaluate_correlated_many(
@@ -1605,14 +1632,16 @@ class Runtime:
                     "virtual correlation backend returned invalid grouped results"
                 )
             return cast(dict[str, VirtualEvaluation], values)
+        digits = _validate_precision(16 if precision is None else precision)
+        carrier = "arbitrary" if arithmetic is None else arithmetic
         return self._correlator_evaluator().evaluate_many(
-            momenta,
+            self._tree_improved(momenta, digits, carrier, options),
             requests,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(16 if precision is None else precision),
-            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+            precision=digits,
+            arithmetic=carrier,
         )
 
     def clear(self) -> None:

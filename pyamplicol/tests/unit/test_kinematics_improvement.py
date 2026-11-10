@@ -305,3 +305,97 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
         improved40, arithmetic="arbitrary", precision=40, kinematics_improvement="off", **{k: v for k, v in CALL.items()}
     )
     assert repr(rescued.values[0]) == repr(direct.values[0])
+
+
+# ------------------------------------------------------------- tree routes
+
+
+@pytest.fixture(scope="module")
+def tree(tmp_path_factory):
+    """u u~ > t t~ (built-in SM, recurrence) through the public Generator."""
+
+    from pyamplicol import Generator, ModelSource
+
+    from tests.integration.test_builtin_sm_normalization import _config
+
+    artifact = tmp_path_factory.mktemp("ki-tree") / "artifact"
+    Generator(_config()).generate("u u~ > t t~", artifact, model=ModelSource.built_in_sm())
+    return artifact
+
+
+def _top_point() -> list[list[float]]:
+    """u u~ > t t~ with beams along z, the tops formed in binary64."""
+
+    e, mt, c, phi = 400.0, 173.0, 0.31, 0.8
+    q = math.sqrt(e * e - mt * mt)
+    s = math.sqrt(1 - c * c)
+    p3 = [e, q * s * math.cos(phi), q * s * math.sin(phi), q * c]
+    return [[e, 0.0, 0.0, e], [e, 0.0, 0.0, -e], p3, [e, -p3[1], -p3[2], -p3[3]]]
+
+
+def test_the_tree_higher_precision_modes_and_the_binary64_switch(tree):
+    """The tree runtime's higher-precision modes (precision 32 / 50, the
+    resolved route, the correlated default 'arbitrary' at 16 digits: the
+    carrier key, DECISIONS 2026-11-10 02:29 (G3)) evaluate the improved point
+    (the value of the pre-improved point with the improvement off, bitwise),
+    the record goes through the warnings channel; precision 16 is bitwise
+    unchanged unless the binary64 switch is on."""
+
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(tree)
+    backend = runtime._backend
+    point = _top_point()
+    texts = [[str(x) for x in leg] for leg in point]
+    for precision in (32, 50):
+        found = runtime.evaluate([point], precision=precision)
+        notes = runtime.take_warnings() if hasattr(runtime, "take_warnings") else backend.take_warnings()
+        assert any(note.startswith("kinematics-improvement: arbitrary") for note in notes), notes
+        from pyamplicol.runtime.symbolica_exact import _working_precision
+
+        masses, initial = backend._tree_kinematics_masses(texts, precision)
+        assert initial == 2 and masses[2] == masses[3] != 0
+        (improved,), (record,) = kinematics.improve(
+            [texts], 2, masses, "arbitrary", _working_precision(precision), "z-shift"
+        )
+        assert record["produced"] == "z-shift" and record["exactness"]["exact"], record
+        assert found == runtime.evaluate(
+            [improved], precision=precision, kinematics_improvement="off"
+        )
+        resolved = runtime.evaluate_resolved([point], precision=precision)
+        assert resolved.values == runtime.evaluate_resolved(
+            [improved], precision=precision, kinematics_improvement="off"
+        ).values
+    # Binary64: bitwise the unimproved point unless switched on.
+    plain = runtime.evaluate([point])
+    assert plain == runtime.evaluate([point], kinematics_improvement="off")
+    switched = runtime.evaluate([point], kinematics_improvement_binary64=True)
+    (b64,), (record,) = kinematics.improve(
+        [texts], 2, backend._tree_kinematics_masses(texts, 16)[0], "double", None, "z-shift"
+    )
+    assert switched == runtime.evaluate([[[float(x) for x in leg] for leg in b64]])
+
+
+def test_the_tree_correlated_default_is_improved_at_16_digits(tree):
+    """``evaluate_correlated``'s default carrier ('arbitrary' at precision
+    16) is above binary64 by the carrier key (DECISIONS 2026-11-10 02:29
+    (G3) (a)): its point is improved (the value of the pre-improved point
+    with the improvement off), and ``"off"`` restores the given point."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.runtime.symbolica_exact import _working_precision
+
+    runtime = Runtime.load(tree)
+    backend = runtime._backend
+    point = _top_point()
+    texts = [[str(x) for x in leg] for leg in point]
+    masses, _ = backend._tree_kinematics_masses(texts, 16)
+    (improved,), (record,) = kinematics.improve(
+        [texts], 2, masses, "arbitrary", _working_precision(16), "z-shift"
+    )
+    assert record["produced"] == "z-shift"
+    found = runtime.evaluate_correlated([point])
+    assert found == runtime.evaluate_correlated([improved], kinematics_improvement="off")
+    assert runtime.evaluate_correlated([point], kinematics_improvement="off") == (
+        runtime.evaluate_correlated([texts], kinematics_improvement="off")
+    )
