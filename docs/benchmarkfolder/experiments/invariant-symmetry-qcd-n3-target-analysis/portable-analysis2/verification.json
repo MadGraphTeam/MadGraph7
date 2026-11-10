@@ -1,0 +1,17 @@
+{
+  "accepted_rows": 1200,
+  "all_external_file_reads_forbidden": true,
+  "analysis_sha256": "e0dcc8460091021db3089f56b181d4b184b4f11df1302fd14b4a383bd1568778",
+  "attempt1_index_sha256": "7f8661e635664374023e057dedf45b6232c13407d01f62ee10605e16bbebdcd0",
+  "clean_relocation": true,
+  "closed_input_count": 7,
+  "exact_attempt1_analysis": true,
+  "finite_only_target_points": 28,
+  "intentional_denied_read_probes": 2,
+  "isolated_python": true,
+  "new_native_evaluations": 0,
+  "passed": true,
+  "reader_only_delta": true,
+  "unexpected_denied_reads": 0,
+  "writes_forbidden_during_replay": true
+}

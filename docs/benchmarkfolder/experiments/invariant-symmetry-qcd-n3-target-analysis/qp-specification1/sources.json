@@ -1,0 +1,54 @@
+{
+  "files": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/candidate-9/candidate-inputs.json": {
+      "bytes": 510100,
+      "sha256": "2cfa41878014841fa3a87b75a70a9a82881504477fbaf12d869e6c349e014b28"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/tirust_benchmark_worker.f": {
+      "bytes": 7825,
+      "sha256": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/tirust_benchmark_worker.py": {
+      "bytes": 18869,
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n3_uux_zgg.dat": {
+      "bytes": 48544,
+      "sha256": "c1dc86e4e0cdd8a049d7a9a87b98831af74f3b6b79fc63fd0bbfe16a7fe55450"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/tirust_benchmark_worker.f": {
+      "bytes": 7825,
+      "sha256": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/tirust_benchmark_worker.py": {
+      "bytes": 18869,
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/qcd-n3-target-triage-1/source/TIR_interface.f": {
+      "bytes": 23310,
+      "sha256": "2a1dffb507f359a9e0c0fe5ff4f597aa752306284e027a2d8c6231acb2b15241"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/qcd-n3-target-triage-1/source/loop_matrix.f": {
+      "bytes": 100824,
+      "sha256": "2846f4d35755abfb7a8709a5bb1560983b3676535fd43b39cd62acac1be6185c"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/points/qcd_n3_uux_zgg.dat": {
+      "bytes": 48544,
+      "sha256": "c1dc86e4e0cdd8a049d7a9a87b98831af74f3b6b79fc63fd0bbfe16a7fe55450"
+    },
+    "docs/benchmarkfolder/experiments/invariant-symmetry-qcd-n3-target-analysis/attempt1/index.json": {
+      "bytes": 588,
+      "sha256": "7f8661e635664374023e057dedf45b6232c13407d01f62ee10605e16bbebdcd0"
+    },
+    "docs/benchmarkfolder/experiments/qcd-n3-adjudication/runs/minimal/baseline-1-init-dp-unchecked/unchecked-worker.f": {
+      "bytes": 5453,
+      "sha256": "4ddb43af9723243dcd87cadf1bda132d2be2b8008ba12f7e0653dc721767b3a8"
+    },
+    "docs/benchmarkfolder/experiments/qcd-n3-adjudication/runs/minimal/candidate-9-init-dp-unchecked/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1"
+    }
+  },
+  "read_scope": "Closed QCDn3 text/metadata only; no live executables or libraries opened",
+  "schema_version": 1
+}

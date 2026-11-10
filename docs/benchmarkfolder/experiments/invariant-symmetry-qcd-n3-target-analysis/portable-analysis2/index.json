@@ -1,0 +1,84 @@
+{
+  "attempt1_index_sha256": "7f8661e635664374023e057dedf45b6232c13407d01f62ee10605e16bbebdcd0",
+  "files": {
+    "README.md": {
+      "bytes": 3699,
+      "sha256": "7f368336a0625c970a0e7727cb6ea173f670d6b266237d7e25947e2af46a50fa"
+    },
+    "analysis.json": {
+      "bytes": 215901,
+      "sha256": "e0dcc8460091021db3089f56b181d4b184b4f11df1302fd14b4a383bd1568778"
+    },
+    "analyze.py": {
+      "bytes": 15044,
+      "sha256": "25c25810cd7b7e678de64ef92dc7186dd6c02e5fb785abc380986ae65f3165ae"
+    },
+    "attempt1-README.md": {
+      "bytes": 6156,
+      "sha256": "585fb64a3134ddf44d39525bebc378761a9f16961e8ea12f6ce6be9d3bbea35b"
+    },
+    "attempt1-analyze.py": {
+      "bytes": 15099,
+      "sha256": "155cf91a0ddff78d06465950541009802090491396347f012c4e354116399f71"
+    },
+    "attempt1-index.json": {
+      "bytes": 588,
+      "sha256": "7f8661e635664374023e057dedf45b6232c13407d01f62ee10605e16bbebdcd0"
+    },
+    "input-01.gz": {
+      "bytes": 210192,
+      "sha256": "b8322d93956f340a6d39c8992b03c37d163b07192ee4223b1aeecdbf4d2a6542"
+    },
+    "input-02.gz": {
+      "bytes": 210194,
+      "sha256": "ece9b48dcebaaae4af0af67607a733e0edf54ecee795d2dbfe0ab14df12919c1"
+    },
+    "input-03.gz": {
+      "bytes": 3164,
+      "sha256": "cd3d54732f2d9bf3a97e0cb82c09c2fcfa06de9e7ec71554b102b5124c259c11"
+    },
+    "input-04.gz": {
+      "bytes": 62709,
+      "sha256": "d7e48c9cb5a6b5164ea32a93ffb169120149a49d6e53c20d6b87a43f9efc1939"
+    },
+    "input-05.gz": {
+      "bytes": 5197,
+      "sha256": "18c844ebb4589d546c11d552b906f3fa5a0c7b53a03735eacc7f7c3373db2fc6"
+    },
+    "input-06.gz": {
+      "bytes": 890,
+      "sha256": "11bd63c0994b837841fd4be46f2190650d674cbe9263420ec03156427c32e21b"
+    },
+    "input-07.gz": {
+      "bytes": 8380,
+      "sha256": "2e0e97eb7f436e5ad2c61de048b0da1e12a40b4424f98ba3b57e08b5b7653f29"
+    },
+    "input-map.json": {
+      "bytes": 2981,
+      "sha256": "072b0c9e76c84a473d6ceaef45b9b30419bcc11f7c2af6b08eac14f216355201"
+    },
+    "portable_inputs.py": {
+      "bytes": 3763,
+      "sha256": "565a03d80b3e517519a1be47b727469c74dcc8f710ce30a259114596abcfabbf"
+    },
+    "reader-only.patch": {
+      "bytes": 1006,
+      "sha256": "41155b9b2b7705e1484a90be02e50ca83c7b98ca9a84b7b0493219f0580f9272"
+    },
+    "relocation_check.py": {
+      "bytes": 2960,
+      "sha256": "af42064096fbf525cd1963380cf3c777601021585edc6cf2d47ae23f4405d9bd"
+    },
+    "verification.json": {
+      "bytes": 600,
+      "sha256": "504a9d148543f3a36cd30af5168162050966ed28f5ee3149e7ab899d9ba99400"
+    },
+    "verify.py": {
+      "bytes": 2761,
+      "sha256": "f1244dc5f4f0dc532993acd11b474ab746514a5cfcecde4ac2931550131ee4cf"
+    }
+  },
+  "new_native_evaluations": 0,
+  "schema_version": 1,
+  "scope": "Portable offline replay of sealed attempt1; seven exact closed inputs"
+}

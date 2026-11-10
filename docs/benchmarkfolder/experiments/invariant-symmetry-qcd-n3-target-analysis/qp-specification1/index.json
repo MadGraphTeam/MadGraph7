@@ -1,0 +1,20 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 9960,
+      "sha256": "fb71e85e1595a9b7f0d576c60dd44574e950751162cd1fc87f9f2f1ab6d88fb8"
+    },
+    "selected-inputs.json": {
+      "bytes": 6080,
+      "sha256": "6258061ae091ea85d047204ba5ab4ad41f4a93392b504cbd247617acdfb216d7"
+    },
+    "sources.json": {
+      "bytes": 2946,
+      "sha256": "8273d03de55f4b3c1a9991e1388806fa5b4754420c24a68c5705a8f1963f0b13"
+    }
+  },
+  "new_builds": 0,
+  "new_native_evaluations": 0,
+  "schema_version": 1,
+  "scope": "Source-only specification; implementation, build and native run not authorized"
+}

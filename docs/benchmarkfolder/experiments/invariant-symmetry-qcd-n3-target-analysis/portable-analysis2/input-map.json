@@ -1,0 +1,82 @@
+{
+  "inputs": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/results.json": {
+      "gzip": {
+        "bytes": 210192,
+        "sha256": "b8322d93956f340a6d39c8992b03c37d163b07192ee4223b1aeecdbf4d2a6542"
+      },
+      "gzip_file": "input-01.gz",
+      "raw": {
+        "bytes": 2508799,
+        "sha256": "59bf41a90d581fb757b2240b57162fc85c5e1f29ec14a1d54713a2255188b373"
+      }
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/results.json": {
+      "gzip": {
+        "bytes": 210194,
+        "sha256": "ece9b48dcebaaae4af0af67607a733e0edf54ecee795d2dbfe0ab14df12919c1"
+      },
+      "gzip_file": "input-02.gz",
+      "raw": {
+        "bytes": 2508799,
+        "sha256": "8eb88c74c3c9496440c38fef052f335e4ffca851d36baa3a17a129177ffeecde"
+      }
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/qcd-n3-target-triage-1/README.md": {
+      "gzip": {
+        "bytes": 3164,
+        "sha256": "cd3d54732f2d9bf3a97e0cb82c09c2fcfa06de9e7ec71554b102b5124c259c11"
+      },
+      "gzip_file": "input-03.gz",
+      "raw": {
+        "bytes": 7157,
+        "sha256": "753037a6a592bcb9bb8d07663ca73d06dac1dcd426221ecbae2ce113f63e7fff"
+      }
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/qcd-n3-target-triage-1/analysis.json": {
+      "gzip": {
+        "bytes": 62709,
+        "sha256": "d7e48c9cb5a6b5164ea32a93ffb169120149a49d6e53c20d6b87a43f9efc1939"
+      },
+      "gzip_file": "input-04.gz",
+      "raw": {
+        "bytes": 760365,
+        "sha256": "e7e10b434e3bf2eddd37e75ca2998f938800e674d19e6c5853a6ac991f436fea"
+      }
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/qcd-n3-target-triage-1/analyze.py": {
+      "gzip": {
+        "bytes": 5197,
+        "sha256": "18c844ebb4589d546c11d552b906f3fa5a0c7b53a03735eacc7f7c3373db2fc6"
+      },
+      "gzip_file": "input-05.gz",
+      "raw": {
+        "bytes": 17027,
+        "sha256": "c94b23ad7d76e2e11dd50ff3cd9ecc59a1e04916a2dd818f6aba7fd8516a3d02"
+      }
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/qcd-n3-target-triage-1/index.json": {
+      "gzip": {
+        "bytes": 890,
+        "sha256": "11bd63c0994b837841fd4be46f2190650d674cbe9263420ec03156427c32e21b"
+      },
+      "gzip_file": "input-06.gz",
+      "raw": {
+        "bytes": 1892,
+        "sha256": "10b5a3339dfba063c4c5a264d769f9e5615387965c503fb7a3e2e2d44c421915"
+      }
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/qcd-n3-target-triage-1/inputs.json": {
+      "gzip": {
+        "bytes": 8380,
+        "sha256": "2e0e97eb7f436e5ad2c61de048b0da1e12a40b4424f98ba3b57e08b5b7653f29"
+      },
+      "gzip_file": "input-07.gz",
+      "raw": {
+        "bytes": 53543,
+        "sha256": "29dab3a329bce5577c3f353dff51bc90ca53a2dc5cdc26a2df97ec7ea5a736ac"
+      }
+    }
+  },
+  "schema_version": 1
+}
