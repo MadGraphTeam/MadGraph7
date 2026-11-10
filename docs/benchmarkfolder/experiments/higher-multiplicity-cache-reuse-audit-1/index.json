@@ -1,0 +1,19 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 6762,
+      "sha256": "72d2482a017295ac03cc2a30c8870107565ccc2b32eb3af768837f7990023639"
+    },
+    "audit.json": {
+      "bytes": 25533,
+      "sha256": "0fcb22d54ce2b4c317395b92546c16a9366990546505a8862a152e410bed5ac2"
+    },
+    "verify.py": {
+      "bytes": 2084,
+      "sha256": "58fed1e9fff150b4ae9c1b1fc8de5eca70141607e9aa8f45b3dee54e7bb93c0f"
+    }
+  },
+  "native_payloads": false,
+  "path_base": "this-directory",
+  "schema": "source-audit-index-v1"
+}
