@@ -501,27 +501,21 @@ full colour (an electroweak model runs at full colour, where a selection keeps
 some helicity rows with every colour component). Generation threshold of this
 example: at most 10 minutes and 8 GiB.
 
-Measured (2026-11-09), before lit-ewprep: generation 205 s, peak 7.67 GiB, of
-which 27 s is the electroweak request-model preparation (`minimal`: 221 s and
-7.73 GiB; with the correlators 200 s, 7.28 GiB), within the 10 min / 8 GiB
-threshold; `check` of the card 228 s (preparation 25 s), 7.20 GiB. After
-lit-ewprep (the shared preparation and its cache, cold): generation 206 s,
-peak 7.64 GiB, preparation 11.7 s; `check` of the card 244 s (preparation
-12.5 s), 7.64 GiB (both beside other jobs; the process's own generation
-dominates). Per point,
-one pinned core, a batch of 8: NinjaRS (`auto`) 113-120 ms checked, 121-123 ms
-unchecked; TIRust 125 ms with 2 of 8 points refused, 131-133 ms unchecked.
-**`check` fails this example** (exit 1): the poles of the QCD^2 QED^8 and
-QED^10 sectors do not match Catani's prediction, in binary64 and in
-double-double, and their ultraviolet poles do not cancel there; the two
-QCD-led sectors pass. The same request with QED corrections and the QED^4
-Born alone fails its QED^10 sector identically, while `u u~ > d d~` and
-`u u~ > d d~ a` at every order pass: the finding is reported for the engine
-(package report lit-examples §0); the walkthrough shows it as it is. The
-whole walkthrough at two points: 550 s (`check` 275 s, generation 242 s on a
-loaded host), peak 7.6 GiB in the generation's child process; at one point
-(the CI smoke test): 671 s. After lit-ewprep: 472 s at two points (`check`
-239 s, generation 203 s).
+Measured (2026-11-09, after the loop-block colour fix lit-ew-blocks, on a
+shared host at load ~160-210): generation 223-232 s, peak 7.65-8.37 GiB
+(three runs; without the fix 7.91-8.38 GiB, the peak varies by run); `check` of the
+card 232 s, 7.64 GiB: every pole row of the four sectors passes in binary64
+at both points. Per point, one pinned core, a batch of 8: NinjaRS (`auto`)
+111-151 ms checked, 145-153 ms unchecked; TIRust 144-152 ms with 2 of 8
+points refused (an ill-conditioned Gram matrix, a typed refusal), 147 ms
+unchecked. At the four points of `data/loop_uux_ddxepem_momenta.json` the
+virtual equals Recola 2.3.0 (the smoke test reads the fixture
+`tests/fixtures/loop/uux-ddxepem-recola-cms.json`): every Born order to
+4e-14, both poles of every sector within the evaluation's estimate, and the
+finite parts within the two codes' complex-mass counterterm prescriptions
+(2e-6 to 5e-4 relative; the difference falls as the widths squared). The
+whole walkthrough at two points: 586 s (`check` 241 s, generation 315 s on
+the loaded host), peak 8.0 GiB.
 
 ### `g g > z g g`, loop-induced (every quark loop)
 

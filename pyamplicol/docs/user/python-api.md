@@ -779,14 +779,18 @@ The sum of the partials is an identity. The test suite checks it against
 contraction of the same amplitudes, to rounding: within gamma_n S, the
 binary64 summation bound of the n resolved entries against the
 pre-cancellation scale S. The walkthrough (`examples/python/loop_walkthrough.py`)
-checks it against the correlated route's `"born"` history at the same
-settings, summed over the sectors (a separate call that does not read the
-partials; the resolved evaluation costs far more memory at full colour): on
-the four examples it agrees bitwise for `u u~ > d d~ e+ e-`, `g g > z g g`
-and `g g > e+ e- m+ m-`, where it reads the same contraction as the plain
-evaluation, and within 28 units of roundoff of S for `u u~ > t t~ g g`; the
-walkthrough prints the deviation in units of roundoff of S and requires it
-within ten times the evaluation's own estimate.
+checks it against another public path at the same settings that does not
+read the partials: for a loop-induced example (`g g > z g g`,
+`g g > e+ e- m+ m-`) the sum of one call per helicity (`helicities=[h]`,
+each forming only that helicity's rows, a different contraction); for a
+Born-interfered one the correlated route's `"born"` history summed over the
+sectors (within 28
+units of roundoff of S for `u u~ > t t~ g g`; bitwise for
+`u u~ > d d~ e+ e-`, where it reads the same contraction as the plain
+evaluation, so there it checks the split's bookkeeping only: that example's
+resolved evaluation takes about 9 GiB at one point). The walkthrough prints
+the deviation in units of roundoff of S and requires it within ten times
+the evaluation's own estimate.
 
 ## Check a one-loop request
 

@@ -383,6 +383,7 @@ points = 3          # seeded phase-space points per process
 seed = 12345        # default: generation.validation.seed
 precision = "auto"  # binary64, then double-double where it fails; or one carrier
 # model = "my_ufo"  # default: model.source (an artifact: the source it records)
+# sqrt_s = 2000.0   # a scattering's energy; default: the validation convention
 ```
 
 Generation also drops the helicity rows of a loop-induced process that are
@@ -1488,7 +1489,15 @@ rule -> cells). It needs a `particle_veto`.
 
 Widths. By default (`mass_scheme = "real-on-shell"`) v2 virtuals use real
 on-shell masses: loop propagators carry no width and the model counterterms
-renormalise the real mass. A coloured particle that a tree current propagates
+renormalise the real mass. Real on-shell takes the real part of every on-shell
+renormalisation constant (the UFO's `CMSParam = 0`, MadLoop's
+`complex_mass_scheme False`, Recola's `set_on_shell_scheme_rcl`; Recola's own
+default is the complex-mass scheme, so a Recola real on-shell reference must
+select it); the complex-mass scheme's limit of vanishing widths keeps the
+absorptive parts of those constants (the imaginary parts of the self-energies
+at the masses, of the size of M W), so it is not real on-shell: from 2 -> 3 on
+the two differ by a one-loop amount that can be of the order of an electroweak
+finite part (up to 1.2 of it in `u u~ > d d~ e+ e-`). A coloured particle that a tree current propagates
 (the top in `g g > t t~`) must therefore have a zero width, fixed in the card,
 otherwise generation and the dry run refuse the request (`coloured-width`; an
 electroweak request refuses any width in its trees, `electroweak-width`):

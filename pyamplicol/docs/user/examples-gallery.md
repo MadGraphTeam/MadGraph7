@@ -109,7 +109,7 @@ machine-readable stdout.
 | `benchmark_z6g_generation_specialized_flow_helicity_sum.toml` | Generation-selected flow baseline | Substantial |
 | `benchmark_z6g_generation_specialized_all_flows_single_helicity.toml` | Generation-selected helicity baseline | Substantial |
 | `loop_uux_ttxgg_generate.toml` (+ `_lc_generate`, `_check`, `_evaluate`, `_profile`) | One-loop `u u~ > t t~ g g`, NLO QCD (Born-interfered); helicity selection at full colour, the LC variant adds colour flows | Generation about 11 s, 0.7 GiB |
-| `loop_uux_ddxepem_generate.toml` (+ `_check`, `_evaluate`, `_orders`, `_profile`) | One-loop `u u~ > d d~ e+ e-`, NLO QCD+EW at every order, complex-mass scheme; partial weights per squared order | Generation about 3.5 minutes, 7.7 GiB |
+| `loop_uux_ddxepem_generate.toml` (+ `_check`, `_evaluate`, `_orders`, `_profile`) | One-loop `u u~ > d d~ e+ e-`, NLO QCD+EW at every order, complex-mass scheme; partial weights per squared order | Generation about 3.7-3.9 minutes, 7.7-8.4 GiB |
 | `loop_gg_zgg_generate.toml` (+ `_check`, `_evaluate`, `_profile`) | Loop-induced `g g > z g g`, every quark loop; colour correlations over four gluons | Generation about 10 s, 0.7 GiB |
 | `loop_gg_epemmpmm_generate.toml` (+ `_check`, `_evaluate`, `_profile`) | Loop-induced `g g > e+ e- m+ m-`, complex-mass scheme | Generation about 2.5 minutes, 4.3 GiB |
 | `all_options.toml` | Exhaustive commented schema reference | Reference only; not runnable via `examples run` |
