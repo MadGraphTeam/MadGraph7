@@ -24,16 +24,18 @@ extern "C" {
  * (int[stride], as the tree provider's: per event the zero-based helicity row,
  * an index into the SDK capabilities' "helicity_ids"; ordinary evaluations,
  * options.resolved = 0) selects that row alone: the event's value is the
- * loop-induced |A(h)|^2/avg (RULED Q39; rusticol_virtual_evaluate_selected's
- * helicity_by_point; only the selected rows are dressed). COLOR_RESOLUTION
+ * loop-induced |A(h)|^2/avg (RULED Q39) or, for a Born-interfered process at
+ * every colour accuracy, that Born row's virtual (lit-fc-hel)
+ * (rusticol_virtual_evaluate_selected's helicity_by_point; only the selected
+ * rows are evaluated). COLOR_RESOLUTION
  * (a NUL-terminated char string, capacity its bytes; options.resolved = 1)
  * selects the colour axis of a loop-induced resolved output: "contracted"
  * (one colour-contracted component, the default) or "amplitude-basis" (one
  * component per amplitude-basis element t, Re(conj(a_t) (G a)_t)/avg, an
  * explicitly basis-dependent split summing to the row's value; C below is
  * then the basis size, the capabilities' "color_resolutions" list the IDs).
- * A Born-interfered process refuses both, as the C ABI does (its
- * leading-colour selection is the Python API's). Other standard inputs,
+ * A Born-interfered process refuses COLOR_RESOLUTION, as the C ABI does.
+ * Other standard inputs,
  * including random/probability selectors (UMAMI_IN_RANDOM_HELICITY),
  * UMAMI_IN_RANDOM_COLOR, channels and flavours, are unsupported; a
  * loop-induced process has no colour flows (full colour only, RULED Q8).
