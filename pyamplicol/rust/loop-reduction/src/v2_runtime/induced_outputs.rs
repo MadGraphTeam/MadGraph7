@@ -391,24 +391,31 @@ pub fn spin_context(working_digits: u32) -> DecimalContext {
     DecimalContext::new(working_digits + SPIN_GUARD_DIGITS)
 }
 
-/// An exact input as the `Decimal` value the Python API reads from its text
-/// (`Decimal(str(x))`): a rational with a finite decimal expansion (every
-/// decimal or binary64 input).
-fn exact(x: &Rational) -> RusticolResult<Decimal> {
-    Decimal::from_rational_exact(x)
-        .ok_or_else(|| invalid("an input component is not a finite decimal"))
+/// An input component as the `Decimal` value the Python API reads: a
+/// rational with a finite decimal expansion (every decimal or binary64
+/// input, `Decimal(str(x))`) exactly, any other rational (a component of a
+/// point or spin vector rotated exactly by a stability check or the fallback
+/// guard's rotation, a `Fraction` in the Python API) as
+/// `Decimal(numerator) / Decimal(denominator)` in the spin context `ctx`
+/// (`induced_observables._decimal`).
+fn exact(ctx: &DecimalContext, x: &Rational) -> Decimal {
+    Decimal::from_rational_exact(x).unwrap_or_else(|| ctx.rational(x))
 }
 
-/// A spin vector's exact components as `Decimal` values (the Python API
-/// reads them exactly, `correlated_exact._prepare_spin_vectors`).
-pub fn exact_vector(vector: &[(Rational, Rational); 4]) -> RusticolResult<[(Decimal, Decimal); 4]> {
-    let read = exact;
-    Ok([
-        (read(&vector[0].0)?, read(&vector[0].1)?),
-        (read(&vector[1].0)?, read(&vector[1].1)?),
-        (read(&vector[2].0)?, read(&vector[2].1)?),
-        (read(&vector[3].0)?, read(&vector[3].1)?),
-    ])
+/// A spin vector's components as `Decimal` values in the spin context `ctx`
+/// (the Python API reads them exactly, `correlated_exact.
+/// _prepare_spin_vectors`; a rotated vector's as [`exact`] does).
+pub fn exact_vector(
+    ctx: &DecimalContext,
+    vector: &[(Rational, Rational); 4],
+) -> [(Decimal, Decimal); 4] {
+    let read = |x: &Rational| exact(ctx, x);
+    [
+        (read(&vector[0].0), read(&vector[0].1)),
+        (read(&vector[1].0), read(&vector[1].1)),
+        (read(&vector[2].0), read(&vector[2].1)),
+        (read(&vector[3].0), read(&vector[3].1)),
+    ]
 }
 
 /// The spin coefficients of every spin leg of one point (`point`: its
@@ -431,13 +438,13 @@ pub fn point_coefficients<A: CarrierPair>(
         }
         let momentum = &point[4 * (leg - 1)..4 * leg];
         let momentum = [
-            exact(&momentum[0])?,
-            exact(&momentum[1])?,
-            exact(&momentum[2])?,
-            exact(&momentum[3])?,
+            exact(&ctx, &momentum[0]),
+            exact(&ctx, &momentum[1]),
+            exact(&ctx, &momentum[2]),
+            exact(&ctx, &momentum[3]),
         ];
         let waves = polarisations(&ctx, sources, leg, &momentum)?;
-        let exact = spin_coefficients(&ctx, &exact_vector(vector)?, &waves);
+        let exact = spin_coefficients(&ctx, &exact_vector(&ctx, vector), &waves);
         out.insert(
             leg - 1,
             exact

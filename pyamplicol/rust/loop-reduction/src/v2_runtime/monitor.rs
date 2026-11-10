@@ -623,8 +623,14 @@ impl V2Runtime {
             .zip(turned)
             .enumerate()
             .map(|(index, (point, turned))| {
-                if point.is_err() {
-                    return Ok((point, None));
+                if let Err(mut reasons) = point {
+                    // A failed point keeps the fallback's own failures, then
+                    // its rotation's, as the Python API's guarded evaluation
+                    // reports them (the guard's check runs with it).
+                    if let Err(more) = &turned {
+                        reasons.extend(guard_rotation_failure(more));
+                    }
+                    return Ok((Err(reasons), None));
                 }
                 if let Err(reasons) = turned {
                     // The guard's check fails the point: the fallback
@@ -748,7 +754,12 @@ impl V2Runtime {
         for (index, point) in points.into_iter().enumerate() {
             let squared = match point {
                 Ok(squared) => squared,
-                Err(reasons) => {
+                Err(mut reasons) => {
+                    // The fallback's own failures, then its rotation's (the
+                    // Python API's guarded evaluation).
+                    if let Some(more) = turned[index].as_ref().err() {
+                        reasons.extend(guard_rotation_failure(more));
+                    }
                     out.push((Err(reasons), None));
                     continue;
                 }

@@ -805,7 +805,7 @@ mod tests {
                 1e-5
             ),
             "auto: TIRust refused or failed the point (TIRust refused the row); the per-point \
-             NinjaRS fallback's value failed its reduction-direction check: estimate 1.4e2 > \
+             NinjaRS fallback's value failed its rotation check: estimate 1.4e2 > \
              1e-5 = max(target 1e-5, 1e-5) (double-double)"
         );
         assert!(
