@@ -1002,9 +1002,25 @@ def test_the_guard_on_improved_near_forward_points(hh, loop_native):
 
     (i) ``kinematics_improvement="projection"``: every point is projected
     exactly (its record), and every value the double-double / 20- / 32-digit
-    ``"auto"`` call returns lies within max(target, 1e-5) of the consistent
-    truth of the projected point (TIRust at 80 digits, the improvement off,
-    on that exact point), or the point fails typed: no GUARD MISS.
+    ``"auto"`` call returns on the summed route lies within max(target,
+    1e-5) of the consistent truth of the projected point (TIRust at 80
+    digits, the improvement off, on that exact point), or the point fails
+    typed: no GUARD MISS. The resolved route (the route of the DECISIONS
+    2026-11-10 01:08 misses, points 0 / 1 at 1.06e-4 / 2.13e4 off on these
+    texts without the improvement) in double-double: every returned row
+    within that limit of the projected point's resolved truth, or the point
+    fails typed (measured: point 0 served 1.0e-12 off, points 1 / 2
+    rejected typed at estimates 2.7e-5 / 1.0). At 20 / 32 digits the
+    resolved route is recorded, not asserted (lit-psimprove fix round 1,
+    ``tmp/lit-psimprove/fgh/xt-table.txt``; items for the coordinator, not
+    input consistency, the projected points being exact): TIRust, the
+    primary, serves point 0 0.39 off at 20 digits and point 1 0.26 off at
+    32 (the TIRust low-digit side finding, DECISIONS 01:30 ROUTING (3)); at
+    20 digits the NinjaRS fallback serves point 2's suppressed rows 1.5e-3
+    off at estimate 1.6e-10 (NinjaRS's rounding at 40 working digits,
+    amplified ~1/Gram on rows ~1e-21 of the largest, which the cached
+    reduction-direction check does not see; 1.2e-15 at 32 digits, where the
+    guard rejects it at 5.7e-2).
 
     (ii) the default (MadLoop's dispatch, DECISIONS 2026-11-10 01:56 (1)):
     ORIG refuses the frame (code 200) and PSMC produces the point, which
@@ -1012,7 +1028,20 @@ def test_the_guard_on_improved_near_forward_points(hh, loop_native):
     typed exactness warning naming PSMC and the residual (01:56 (3)). Its
     values and the guard's decisions there are recorded, not asserted
     correct: lit-ninja-fwd's input-consistency refusal (E_in) is the pending
-    defence in depth for the default chain in such frames (01:56 (4))."""
+    defence in depth for the default chain in such frames (01:56 (4)).
+    Recorded on these decimal texts (fix round 1, against the TIRust-120
+    truth of each PSMC-improved point; ``fgh/xt-table.txt``): the summed
+    route within 1e-5 at every carrier (double-double 1.8e-17 / 6.4e-16 /
+    2.9e-12); the resolved route in double-double serves point 0 2.6e-4 off
+    at estimate 6.0e-10 and point 1 4.77 off at 7.8e-6 (both GUARD MISSES:
+    the 01:08 misses persist at the default on the texts) and rejects point
+    2 typed (1.3e-3); at 20 digits TIRust serves point 0 0.42 off and the
+    fallback serves points 1 / 2 4.8 / 3.7e8 off at 1.6e-10 / 6.8e-10; at 32
+    digits TIRust serves point 1 1.2 off and the fallback point 2 3.7e8 off
+    at 1.4e-9. On C's exact binary64 values of the same points (another
+    exact input, (G7)) the double-double resolved route serves point 0
+    3.7e-7 off and rejects point 1: the default's outcome in such a frame
+    depends on the input's rounding."""
 
     from pyamplicol import Runtime
 
@@ -1054,6 +1083,35 @@ def test_the_guard_on_improved_near_forward_points(hh, loop_native):
                     p,
                     lane,
                 )
+        if carrier == "double-double" and _tirust(loop_native):
+            # The resolved route of the 01:08 misses: every returned row
+            # within the guard's limit of the projected point's truth, or
+            # the point fails typed.
+            resolved = runtime.evaluate_resolved(
+                points, kinematics_improvement="projection", **call
+            )
+            rows_truth = runtime.evaluate_resolved(
+                projected,
+                mu_r2=scales,
+                poles="none",
+                arithmetic="arbitrary",
+                precision=80,
+                reduction="tirust",
+                kinematics_improvement="off",
+            )
+            for p, lane in enumerate(resolved.diagnostics):
+                assert lane.kinematics.produced == "projection", lane.kinematics
+                if resolved.values[p] is None:
+                    assert lane.status == "failed" and lane.detail, lane
+                    continue
+                for row, exact in zip(
+                    resolved.values[p][0], rows_truth.values[p][0], strict=True
+                ):
+                    value = ((row[0].finite,),)
+                    assert _error(value, str(exact[0].finite)) <= _limit(TARGET), (
+                        p,
+                        lane,
+                    )
         found = runtime.evaluate(points, **call)
         for lane in found.diagnostics:
             record = lane.kinematics
