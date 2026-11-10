@@ -886,12 +886,15 @@ contains
   end subroutine
 
   ! rusticol_virtual_evaluate_selected: the selected helicity rows of a
-  ! loop-induced process (resolved absent/false: their sum per point, RULED
-  ! Q39; resolved: per selected row its colour components). helicity_ids are
+  ! loop-induced process or, at every colour accuracy, of a Born-interfered
+  ! one (lit-fc-hel) (resolved absent/false: their sum per point, RULED Q39;
+  ! resolved: per selected row its colour components). helicity_ids are
   ! global IDs (trailing blanks ignored), helicity_by_point zero-based rows
   ! (one per point; exclusive with helicity_ids), color_ids /
-  ! color_flow_by_point colour flows (refused for loop-induced processes),
-  ! color_resolution "contracted" (absent) or "amplitude-basis" (resolved).
+  ! color_flow_by_point colour flows (refused: loop-induced processes have
+  ! none, a Born-interfered one's are the Python API's color_flows=),
+  ! color_resolution "contracted" (absent) or "amplitude-basis" (resolved,
+  ! loop-induced).
   subroutine evaluate_selected(self,momenta,mu_r2,output,helicity_ids,helicity_by_point, &
       color_ids,color_flow_by_point,color_resolution,resolved,point_ids,r2_strategy,ierr,error_message)
     class(virtual_runtime), intent(inout) :: self

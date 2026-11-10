@@ -49,7 +49,7 @@ mod links;
 mod live;
 mod packed;
 pub use binary::{read_binary, read_binary_with};
-pub use live::LiveRows;
+pub use live::{KEPT_SHARE, LiveRows};
 use ninjars::fast::tensor_layout::ncoeff;
 pub use packed::{LinkInterner, PackedLinks, SharedLinks};
 use serde::Deserialize;
@@ -133,6 +133,67 @@ struct PlanFile {
     /// Written only as `true`, and only by amplitude-mode plans (schema 5).
     #[serde(default)]
     dressed: Option<bool>,
+}
+
+/// A column set's seed records over a plan (`native_observables.SEED_FIELDS`,
+/// the overlay of `with_overlay`): a field the overlay lacks keeps the
+/// plan's, a null one is removed (an optional field becomes absent; a
+/// required one is refused, as the merged plan JSON's load refuses it), and
+/// other keys are not read.
+#[derive(Deserialize)]
+struct SeedOverlayFile {
+    #[serde(default, deserialize_with = "present")]
+    seed_classes: Option<Option<Vec<SeedFile>>>,
+    #[serde(default, deserialize_with = "present")]
+    seeds: Option<Option<Vec<SeedKeyFile>>>,
+    #[serde(default, deserialize_with = "present")]
+    columns: Option<Option<usize>>,
+    #[serde(default, deserialize_with = "present")]
+    column_rows: Option<Option<Vec<Option<Vec<usize>>>>>,
+    #[serde(default, deserialize_with = "present")]
+    column_weights: Option<Option<Vec<usize>>>,
+    #[serde(default, deserialize_with = "present")]
+    born_components: Option<Option<usize>>,
+}
+
+/// A present overlay field: its value, null as None.
+fn present<'de, D, T>(field: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(field).map(Some)
+}
+
+impl PlanFile {
+    /// The plan with a column set's seed records ([`SeedOverlayFile`]).
+    fn overlay_seeds(&mut self, overlay: SeedOverlayFile) -> RusticolResult<()> {
+        fn required<T>(field: &mut T, value: Option<Option<T>>, name: &str) -> RusticolResult<()> {
+            match value {
+                None => Ok(()),
+                Some(Some(value)) => {
+                    *field = value;
+                    Ok(())
+                }
+                Some(None) => Err(invalid(format!("missing field `{name}`"))),
+            }
+        }
+        required(&mut self.seed_classes, overlay.seed_classes, "seed_classes")?;
+        required(&mut self.seeds, overlay.seeds, "seeds")?;
+        required(&mut self.columns, overlay.columns, "columns")?;
+        required(
+            &mut self.born_components,
+            overlay.born_components,
+            "born_components",
+        )?;
+        if let Some(rows) = overlay.column_rows {
+            self.column_rows = rows;
+        }
+        if let Some(weights) = overlay.column_weights {
+            self.column_weights = weights;
+        }
+        Ok(())
+    }
 }
 
 /// One exported kernel term: (constant id, monomial as (input, power)).
@@ -2053,6 +2114,30 @@ impl LoopProgramV4 {
             return binary::read_binary_bounded(data, policy);
         }
         binary::PlanModel::from_json(data)?.program(policy)
+    }
+
+    /// [`Self::load_with`] of a column set's plan: the stored plan (its
+    /// binary member, read within the caller's thread bound as
+    /// [`Self::load_with`] reads it, or a plan JSON) with the set's seed
+    /// records (`overlay`, its JSON; `null`: the plan itself), the program
+    /// [`Self::load_with`] gives for the merged plan JSON
+    /// (`native_observables.with_overlay`) without forming that JSON. The
+    /// derivations are bounded as for a plan JSON (the overlay is JSON).
+    pub fn load_overlaid(data: &[u8], overlay: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
+        let overlay: Option<SeedOverlayFile> = serde_json::from_slice(overlay)
+            .map_err(|error| invalid(format!("column seeds: {error}")))?;
+        let Some(overlay) = overlay else {
+            return Self::load_with(data, policy);
+        };
+        let overlaid = |mut model: binary::PlanModel| {
+            model.overlay_seeds(overlay)?;
+            model.program(policy)
+        };
+        if binary::is_binary(data) {
+            binary::read_bounded(|| overlaid(binary::PlanModel::from_binary(data)?))
+        } else {
+            overlaid(binary::PlanModel::from_json(data)?)
+        }
     }
 
     /// The derivations of a plan JSON after the bound's refusals, without

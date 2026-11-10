@@ -192,7 +192,9 @@ The one-loop example client
 [HELICITY]`) opens a loop artifact through `rusticol_virtual.h`, prints its
 squared-order axes and evaluates it with `reduction = "auto"` and the other
 backend, in the unchecked setting, the declared colour and spin correlations
-and, for a loop-induced process, one helicity against the summed call; it
+and one helicity against the summed call (loop-induced and Born-interfered
+processes alike; the first selected call forms a Born-interfered process's
+selection template and its executor once, so the ratio is taken after it); it
 needs no Symbolica licence. `examples/python/loop_walkthrough.py` writes its
 momenta file and runs it.
 
@@ -817,12 +819,19 @@ masses or invariants lie strictly between 0 and 1e-9 in the model's units
 engine, and an x86-64 CPU without AVX and FMA3, where SymJIT cannot compile.
 Double-double and arbitrary precision run under the package key too.
 
-The SDK serves the loop-induced selections of the Python API
-(`helicities=`, `color_resolution="amplitude-basis"`) through
+The SDK serves the helicity selections of the Python API through
 `rusticol_virtual_evaluate_selected` and its wrappers (see the SDK README,
-"Selections"): the amplitude-basis anchors are an explicitly basis-dependent
-split, a helicity selection is |A(h)|²/avg with the total's average, only the
-selected rows are evaluated, and colour flows are refused (full colour).
+"Selections"): for a loop-induced process `helicities=` and
+`color_resolution="amplitude-basis"` (an explicitly basis-dependent split; a
+helicity selection is |A(h)|²/avg with the total's average; colour flows are
+refused, full colour); for a Born-interfered process `helicities=` at every
+colour accuracy (lit-fc-hel: ordinary, per point and resolved; at NLC and
+full colour one contracted colour component per row, at leading colour one
+per Born basis element), its leading-colour colour flows refused with a text
+naming the Python API's `color_flows=`. Only the selected rows are evaluated
+(their trees, loop links, reduction lanes and resolved columns), binary64
+bitwise the Python API's values (the one Rust formation of the selection
+both run).
 
 The reduction backend (`rusticol_virtual_set_reduction`; C++ and Fortran
 `set_reduction`, the packaged Rust wrapper's `set_reduction`) is the Python
