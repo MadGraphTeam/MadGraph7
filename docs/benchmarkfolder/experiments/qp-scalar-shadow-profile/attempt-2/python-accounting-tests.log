@@ -1,0 +1,15 @@
+test_cacheoff_and_budget_refuse (__main__.Accounting.test_cacheoff_and_budget_refuse) ... ok
+test_capped_journal_retains_totals (__main__.Accounting.test_capped_journal_retains_totals) ... ok
+test_check_and_clear_are_isolated (__main__.Accounting.test_check_and_clear_are_isolated) ... ok
+test_missing_flag_sentinel_refused (__main__.Accounting.test_missing_flag_sentinel_refused) ... ok
+test_missing_reader_refused_even_if_flags_match (__main__.Accounting.test_missing_reader_refused_even_if_flags_match) ... ok
+test_modes_share_one_context_budget (__main__.Accounting.test_modes_share_one_context_budget) ... ok
+test_parent_failure_excludes_pending (__main__.Accounting.test_parent_failure_excludes_pending) ... ok
+test_partial_and_synthetic_have_separate_namespaces (__main__.Accounting.test_partial_and_synthetic_have_separate_namespaces) ... ok
+test_public_transport_failure_excludes_pending (__main__.Accounting.test_public_transport_failure_excludes_pending) ... ok
+test_scalar_error_never_commits (__main__.Accounting.test_scalar_error_never_commits) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.001s
+
+OK

@@ -1,0 +1,71 @@
+{
+  "scope": "Bounded diagnostic tensor replay, not amplitude timing",
+  "cpu": 13,
+  "build_manifest_sha256": "70bc4caba3ecc460258c5ac4ec8f1c780313e03bb0460afc0b07d6a310cd467d",
+  "source_manifest_sha256": "0a785e4d6026ae26bca8fa0d97b0fa6747461cf5dd9af922c29db98de6c8bcc1",
+  "individual_timeout_seconds": 180,
+  "process_limit": 3,
+  "runs": [
+    {
+      "label": "original",
+      "command": [
+        "taskset",
+        "-c",
+        "13",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/replay-original",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qp-scalar-shadow-profile/attempt-2/selected-inputs.dat",
+        "0"
+      ],
+      "host_load_before": [
+        221.2197265625,
+        236.57177734375,
+        350.650390625
+      ],
+      "actual_dso_sha256": "49af12f0b88252a2d06420a2ea8768529eb5ab51de34e3db2257ee61cd71ca12",
+      "returncode": 0,
+      "elapsed_seconds_not_a_benchmark": 0.06640691589564085,
+      "log_sha256": "b79bde0f8861609a32ea4b89064f3d06fb34272fe2f16306f4aa364fa0118d52"
+    },
+    {
+      "label": "off",
+      "command": [
+        "taskset",
+        "-c",
+        "13",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/replay-instrumented",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qp-scalar-shadow-profile/attempt-2/selected-inputs.dat",
+        "0"
+      ],
+      "host_load_before": [
+        221.2197265625,
+        236.57177734375,
+        350.650390625
+      ],
+      "actual_dso_sha256": "a4edfcf10ba702d0577672d215d4b7452c42188280da4ab94d7744d02fd6fc6e",
+      "returncode": 0,
+      "elapsed_seconds_not_a_benchmark": 0.0691279168240726,
+      "log_sha256": "b79bde0f8861609a32ea4b89064f3d06fb34272fe2f16306f4aa364fa0118d52"
+    },
+    {
+      "label": "on",
+      "command": [
+        "taskset",
+        "-c",
+        "13",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/replay-instrumented",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qp-scalar-shadow-profile/attempt-2/selected-inputs.dat",
+        "1"
+      ],
+      "host_load_before": [
+        221.2197265625,
+        236.57177734375,
+        350.650390625
+      ],
+      "actual_dso_sha256": "a4edfcf10ba702d0577672d215d4b7452c42188280da4ab94d7744d02fd6fc6e",
+      "returncode": 0,
+      "elapsed_seconds_not_a_benchmark": 0.06601706380024552,
+      "log_sha256": "b79bde0f8861609a32ea4b89064f3d06fb34272fe2f16306f4aa364fa0118d52"
+    }
+  ],
+  "complete": true
+}

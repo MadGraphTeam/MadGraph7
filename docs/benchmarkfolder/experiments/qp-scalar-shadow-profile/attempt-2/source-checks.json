@@ -1,0 +1,20 @@
+{
+  "state": "corrected_source_only",
+  "python_tests": 10,
+  "python_tests_returncode": 0,
+  "python_syntax_files": [
+    "analyze.py",
+    "build.py",
+    "input_bits.py",
+    "prepare.py",
+    "run.py",
+    "test_analyze.py"
+  ],
+  "attempt1_immutable_verified": true,
+  "isolated_source_hashes_verified": true,
+  "core_forbid_unsafe_code_retained": true,
+  "observer_has_no_unsafe_tokens_outside_comments": true,
+  "native_reducer_calls": 0,
+  "compiler_invocations_for_attempt2": 0,
+  "test_log_sha256": "3712071720599fc7023a0ecf3c3f310c4c3e4abff163cbcd28957e27f945fd6a"
+}

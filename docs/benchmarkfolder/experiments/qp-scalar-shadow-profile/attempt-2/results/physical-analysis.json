@@ -1,0 +1,146 @@
+{
+  "scope": "Observed physical scalar kernel work only; no scalar reuse, value-equivalence proof or speedup claim",
+  "source_sha256": {
+    "on-shadow.json": "98de831d97418556c6d0f7c37381e9bc056d4a5f11a19326722600a54a3c9a27",
+    "summary.json": "95eee1e513e73b730fd45ecf598d67d053bb12126f4d20087cd329e19e4bc2d1",
+    "execution.json": "f5ab4e2c8c13e3736dbe6d3ad97c96f62c5f21d8c6d29595f69e979d90f0bec5"
+  },
+  "physical_scopes": {
+    "physical": {
+      "parents": 24,
+      "successful_parents": 22,
+      "requests": 178,
+      "key_ns": 166774,
+      "kernel_ns": 23833060,
+      "new_exact_key_requests": 76,
+      "new_exact_key_kernel_ns": 20426696,
+      "across_parent_repeat_requests": 86,
+      "across_parent_repeat_kernel_ns": 3296344,
+      "requests_matching_prior_eligible_parent": 102,
+      "kernel_ns_matching_prior_eligible_parent": 3406364,
+      "within_parent_repeat_requests": 16,
+      "within_parent_repeat_kernel_ns": 110020,
+      "failed_parents": 2,
+      "fraction_observed_kernel_ns_matching_prior_eligible_parent": 0.14292600278772427
+    },
+    "ordinary": {
+      "parents": 12,
+      "successful_parents": 12,
+      "requests": 104,
+      "key_ns": 114030,
+      "kernel_ns": 13725214,
+      "new_exact_key_requests": 42,
+      "new_exact_key_kernel_ns": 11230765,
+      "across_parent_repeat_requests": 52,
+      "across_parent_repeat_kernel_ns": 2422269,
+      "requests_matching_prior_eligible_parent": 62,
+      "kernel_ns_matching_prior_eligible_parent": 2494449,
+      "within_parent_repeat_requests": 10,
+      "within_parent_repeat_kernel_ns": 72180,
+      "fraction_observed_kernel_ns_matching_prior_eligible_parent": 0.18174208431285663
+    },
+    "threshold": {
+      "parents": 12,
+      "successful_parents": 10,
+      "requests": 74,
+      "key_ns": 52744,
+      "kernel_ns": 10107846,
+      "new_exact_key_requests": 34,
+      "new_exact_key_kernel_ns": 9195931,
+      "across_parent_repeat_requests": 34,
+      "across_parent_repeat_kernel_ns": 874075,
+      "requests_matching_prior_eligible_parent": 40,
+      "kernel_ns_matching_prior_eligible_parent": 911915,
+      "within_parent_repeat_requests": 6,
+      "within_parent_repeat_kernel_ns": 37840,
+      "failed_parents": 2,
+      "fraction_observed_kernel_ns_matching_prior_eligible_parent": 0.09021852924945631
+    }
+  },
+  "physical_families": {
+    "0": {
+      "name": "tadpole",
+      "requests": 46,
+      "key_ns": 53322,
+      "kernel_ns": 353691,
+      "new_exact_key_requests": 4,
+      "new_exact_key_kernel_ns": 44660,
+      "across_parent_repeat_requests": 26,
+      "across_parent_repeat_kernel_ns": 199011,
+      "requests_matching_prior_eligible_parent": 42,
+      "kernel_ns_matching_prior_eligible_parent": 309031,
+      "within_parent_repeat_requests": 16,
+      "within_parent_repeat_kernel_ns": 110020
+    },
+    "1": {
+      "name": "bubble",
+      "requests": 82,
+      "key_ns": 54611,
+      "kernel_ns": 1708088,
+      "new_exact_key_requests": 33,
+      "new_exact_key_kernel_ns": 905544,
+      "across_parent_repeat_requests": 49,
+      "across_parent_repeat_kernel_ns": 802544,
+      "requests_matching_prior_eligible_parent": 49,
+      "kernel_ns_matching_prior_eligible_parent": 802544
+    },
+    "2": {
+      "name": "triangle",
+      "requests": 42,
+      "key_ns": 40142,
+      "kernel_ns": 18974398,
+      "new_exact_key_requests": 31,
+      "new_exact_key_kernel_ns": 16679609,
+      "across_parent_repeat_requests": 11,
+      "across_parent_repeat_kernel_ns": 2294789,
+      "requests_matching_prior_eligible_parent": 11,
+      "kernel_ns_matching_prior_eligible_parent": 2294789
+    },
+    "3": {
+      "name": "box",
+      "requests": 8,
+      "key_ns": 18699,
+      "kernel_ns": 2796883,
+      "new_exact_key_requests": 8,
+      "new_exact_key_kernel_ns": 2796883
+    }
+  },
+  "retained_geometry_failures": [
+    {
+      "parent": 17,
+      "point": 2,
+      "group": 5,
+      "status": 1,
+      "scalar_requests": 0
+    },
+    {
+      "parent": 18,
+      "point": 2,
+      "group": 6,
+      "status": 1,
+      "scalar_requests": 0
+    }
+  ],
+  "synthetic_only_counts": {
+    "requests_observed": 24,
+    "key_ns": 10020,
+    "kernel_ns": 220998,
+    "new_exact_keys": 15,
+    "locally_finite_scalar_successes": 24,
+    "successful_primary_candidate_requests": 12,
+    "simulated_committed_unique_keys": 6,
+    "check_or_cacheoff_candidates_excluded": 12,
+    "across_parent_repeats": 9,
+    "simulated_budget_refusals": 6
+  },
+  "parent_wall_time_recorded": false,
+  "limitations": [
+    "Kernel clocks are instrumented one-shot observations under shared host load.",
+    "Parent and amplitude wall times were not recorded; process launch elapsed times are not attribution denominators.",
+    "Equal exact input keys do not establish equal returned scalar values: output values were not journaled.",
+    "Prior eligible key matches are candidate opportunities, not cache hits, allocated memory or achievable savings.",
+    "Physical input subset covers only two EW3 points and groups1-12 in CTMODE4, not n4 warmups or reverse checks.",
+    "Failed physical parents rejected in geometry before any scalar call, so this native corpus does not exercise discarding completed scalars from a subsequently failing parent.",
+    "Future reuse must preserve MPFR sticky-flag effects and independent stability-check stores."
+  ]
+}

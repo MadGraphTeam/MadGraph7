@@ -1,0 +1,27 @@
+{
+  "library-dynamic.txt": {
+    "command": [
+      "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/readelf",
+      "-d",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/runtime/libmadloop_tirust.so"
+    ],
+    "sha256": "373947c8746e1f29e909ca709d5b83884e65a4bd9e80a8ffd595ad984b91767c"
+  },
+  "library-exports.txt": {
+    "command": [
+      "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/nm",
+      "-D",
+      "--defined-only",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/runtime/libmadloop_tirust.so"
+    ],
+    "sha256": "461ed7eb2d7358d52f00a05dc0876358df1e22869a0248b7d7380e8c5c1cd68c"
+  },
+  "source_inventory_verified": true,
+  "isolated_source_inventory_verified": true,
+  "historical_fortran_inventory_verified": true,
+  "attempt1_inventory_unchanged_files": 29,
+  "artifact_hashes_verified": true,
+  "exports_uniquely_prefixed": true,
+  "native_reducer_calls": 0,
+  "replay_state": "Not authorized or launched; numerical parity unqualified"
+}

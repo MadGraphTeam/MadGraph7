@@ -1,0 +1,25 @@
+{
+  "scope": "Corrected attempt2 source frozen after independent callback review; one 900s two-job build authorized on CPUs2,3; native replay not authorized",
+  "files": {
+    "README.md": "87fa3244472761a62056a3e7195bbf65f6cf4266732fd3f361d9b5f44633011b",
+    "analyze.py": "ba11955aa17c49824b4916e70d5ef3d3f632b50d5eb6998875db87be0099e68e",
+    "attempt-1-binding.json": "0a51ca3a07a079ec03b40d28a56a5f64d253aef2df9b47b514a2910b33170ad2",
+    "bridge-lib.rs.patch": "5e9879ad6569d6f6ebcc5e016beadd25a53b9fa6c4b61cd3a43fb56c5aeb03c5",
+    "build.py": "8de6e6e36fdcab50bbc6b51b66e7ba98679d6eaef90651fcd0687aab579eaef3",
+    "exec.rs.patch": "8bbab72ce9b15a36df4393635525bbe6b7c1c915a04ff144cbd98587116647bd",
+    "expected-input-bits.json": "1ba887be7ce63d1d7c10eea661fd72a9d3163c6edb27f39828e4c36fe0f2e147",
+    "independent-source-review.json": "d373f5598a0678d7b7ba0b358c895cef0753aa2427fcb268d07ff471039df018",
+    "input_bits.py": "3f88d4fd36bf86d0ff5d87196755b26fd4582944e03e8efc270aa2c5fcf75fbc",
+    "iregi-lib.rs.patch": "28a212c610a77e0250a9ff3d4799e77675cc467dc33fc31941584a560907e177",
+    "prepare.py": "58d9b61c6cabbe39b3467d4e64bf9ec991164a1bb466075d3727aa9b2d3eac40",
+    "prepared.json": "0a785e4d6026ae26bca8fa0d97b0fa6747461cf5dd9af922c29db98de6c8bcc1",
+    "python-accounting-tests.log": "3712071720599fc7023a0ecf3c3f310c4c3e4abff163cbcd28957e27f945fd6a",
+    "qp_scalar_shadow.rs": "91e18d9a16710c18f5115931014230979f7c01e6f9ae1673db064198b89ff446",
+    "replay.F90": "ba3ecabc43cb8294f8fd902872ccc7428fabbd019b44fca5b956c18197123337",
+    "run.py": "443f89c75dc606a7a74c44f03339c38f2e63bdae4a7cbe2e787f7d4734ed6048",
+    "selected-inputs.dat": "c197b2afe83a988c32c630c55f3522d8110fdd1138afbdaad496ad77012d8c58",
+    "selected-inputs.json": "07fc81c0d5eb236a68f6858233bec690037325fdfddc3b744a4a4733c101e3df",
+    "source-checks.json": "2426d718b2b93ed5dadd6718ea062bd936bcadfb254c4261d310ba2b06ce46ce",
+    "test_analyze.py": "e4b8b9ee446d96c712d70f07f13ec9c8c4767315dbcd7db65b4e0c603650dced"
+  }
+}

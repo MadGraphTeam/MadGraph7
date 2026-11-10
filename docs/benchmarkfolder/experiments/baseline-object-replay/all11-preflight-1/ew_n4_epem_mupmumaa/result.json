@@ -1,0 +1,30 @@
+{
+  "baseline_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+  "case": {
+    "id": "ew_n4_epem_mupmumaa",
+    "model": "loop_qcd_qed_sm_Gmu",
+    "nfinal": 4,
+    "process": "e+ e- > mu+ mu- a a [virt=QED]",
+    "role": "main"
+  },
+  "expected_executable_sha256": "84adb22690a9127a4015ac9ec6b9978b2a603707ff10c131e0ed06517f5f0020",
+  "files": {
+    "inputs-after.json": "198f70319a959a581cbababec6f7f964f1e103634455ac71eb8bc69163138ce2",
+    "inputs-before.json": "0de1843b31a56b139bd32b3e8ca82d4d47894ae654c801a74f5132ae75e75bd0",
+    "link.log": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51",
+    "make.log": "a525873fddfcd9592f0dde4337133b2fe28981f715333efe375b62647ba1f6d9",
+    "private-copy.json": "fca9773c1811014ad348f9590dbcc47c6a9a3083c4b2d1a2d00c1a3fcfdabe04",
+    "proof.json": "b2e29546d214949acaf8d903c4c9f811d5c45144d99bd323233c9b08d4dff7a0"
+  },
+  "historical_export_environment_recorded": false,
+  "link_commands": 1,
+  "native_amplitude_calls": 0,
+  "numerical_compilation_commands": 0,
+  "original_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/baseline/ew_n4_epem_mupmumaa",
+  "original_inputs_unchanged": true,
+  "performance_acceptance_eligible": false,
+  "private_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/preflights/baseline-all11-1/ew_n4_epem_mupmumaa/export",
+  "private_objects_unchanged": true,
+  "relinked_executable_sha256": "84adb22690a9127a4015ac9ec6b9978b2a603707ff10c131e0ed06517f5f0020",
+  "status": "passed"
+}

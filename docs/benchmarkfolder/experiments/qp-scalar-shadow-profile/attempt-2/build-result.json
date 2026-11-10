@@ -1,0 +1,73 @@
+{
+  "scope": "Private diagnostic compilation only",
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "--release",
+    "--lib",
+    "--features",
+    "poles-only",
+    "--manifest-path",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/bridge/Cargo.toml",
+    "-j",
+    "2",
+    "--",
+    "-C",
+    "link-arg=-Wl,-soname,libmadloop_tirust.so",
+    "-C",
+    "link-arg=-Wl,--exclude-libs,ALL"
+  ],
+  "cap_seconds": 900,
+  "jobs": 2,
+  "actual_inherited_affinity": [
+    2,
+    3
+  ],
+  "source_manifest_sha256": "0a785e4d6026ae26bca8fa0d97b0fa6747461cf5dd9af922c29db98de6c8bcc1",
+  "returncode": 0,
+  "elapsed_seconds": 709.0907992538996,
+  "log_sha256": "ee428b87d8d27af9ba95d2e6e23e764c4410c6332b60687e75c3d838f9ba7adc",
+  "library_sha256": "a4edfcf10ba702d0577672d215d4b7452c42188280da4ab94d7744d02fd6fc6e",
+  "driver_commands": [
+    [
+      "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+      "-O2",
+      "-frounding-math",
+      "-ffree-line-length-none",
+      "-cpp",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qp-scalar-shadow-profile/attempt-2/replay.F90",
+      "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime/libtirust.a",
+      "-lgcc_s",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime/libmadloop_tirust.so",
+      "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime",
+      "-lquadmath",
+      "-o",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/replay-original"
+    ],
+    [
+      "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+      "-O2",
+      "-frounding-math",
+      "-ffree-line-length-none",
+      "-cpp",
+      "-DSHADOW",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qp-scalar-shadow-profile/attempt-2/replay.F90",
+      "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-threshold-tensor-replay-runtime/libtirust.a",
+      "-lgcc_s",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/runtime/libmadloop_tirust.so",
+      "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/runtime",
+      "-lquadmath",
+      "-o",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/replay-instrumented"
+    ]
+  ],
+  "replay_executable_sha256": {
+    "original": "327c3448888468e8033a4fbe0e09baa203ac113e100f3e234392b00c66acfad2",
+    "instrumented": "17bfa015225ea82e27a5d840891f729554368ddc543b2b22d966f047036ab46a"
+  },
+  "historical_library_sha256": "49af12f0b88252a2d06420a2ea8768529eb5ab51de34e3db2257ee61cd71ca12"
+}
