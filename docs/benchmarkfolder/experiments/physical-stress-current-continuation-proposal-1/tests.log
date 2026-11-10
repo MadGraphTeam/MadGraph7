@@ -1,0 +1,38 @@
+test_caps_are_original_caps (test_continuation.Controller.test_caps_are_original_caps) ... ok
+test_default_prints_only_and_does_not_seal_or_execute (test_continuation.Controller.test_default_prints_only_and_does_not_seal_or_execute) ... ok
+test_environment_rebases_writable_paths (test_continuation.Controller.test_environment_rebases_writable_paths) ... ok
+test_inherited_card_alias_rejected_before_write (test_continuation.Controller.test_inherited_card_alias_rejected_before_write) ... ok
+test_original_closed_report_must_match_capsule (test_continuation.Controller.test_original_closed_report_must_match_capsule) ... ok
+test_original_closed_report_rejects_unbound_extra_or_link (test_continuation.Controller.test_original_closed_report_rejects_unbound_extra_or_link) ... ok
+test_readonly_inherit_calls_guard_twice_no_probe (test_continuation.Controller.test_readonly_inherit_calls_guard_twice_no_probe) ... ok
+test_readonly_inherit_rejects_changed_guard (test_continuation.Controller.test_readonly_inherit_rejects_changed_guard) ... ok
+test_request_clean_completion_checks_private_and_original_inputs (test_continuation.Controller.test_request_clean_completion_checks_private_and_original_inputs) ... ok
+test_request_copy_failure_still_guards_originals (test_continuation.Controller.test_request_copy_failure_still_guards_originals) ... ok
+test_request_native_failure_still_checks_private_and_original_inputs (test_continuation.Controller.test_request_native_failure_still_checks_private_and_original_inputs) ... ok
+test_request_original_postguard_revokes_passing_result (test_continuation.Controller.test_request_original_postguard_revokes_passing_result) ... ok
+test_request_preguard_prevents_copy_and_native (test_continuation.Controller.test_request_preguard_prevents_copy_and_native) ... ok
+test_request_private_postguard_revokes_passing_result_and_guards_originals (test_continuation.Controller.test_request_private_postguard_revokes_passing_result_and_guards_originals) ... ok
+test_run_executes_exact_twenty_suffix_with_original_deadlines (test_continuation.Controller.test_run_executes_exact_twenty_suffix_with_original_deadlines) ... ok
+test_run_lock_timeout_does_not_start_request_or_deadline (test_continuation.Controller.test_run_lock_timeout_does_not_start_request_or_deadline) ... ok
+test_source_only_execute_rejected_before_namespaces (test_continuation.Controller.test_source_only_execute_rejected_before_namespaces) ... ok
+test_unrecognized_private_output_refused (test_continuation.Controller.test_unrecognized_private_output_refused) ... ok
+test_combination_preserves_failure_and_no_truth_claim (test_continuation.Policy.test_combination_preserves_failure_and_no_truth_claim) ... ok
+test_combination_rejects_overlap_or_missing_or_reorder (test_continuation.Policy.test_combination_rejects_overlap_or_missing_or_reorder) ... ok
+test_exact_twenty_suffix_not_first_four (test_continuation.Policy.test_exact_twenty_suffix_not_first_four) ... ok
+test_reject_different_deferred_request (test_continuation.Policy.test_reject_different_deferred_request) ... ok
+test_reject_during_request_abort (test_continuation.Policy.test_reject_during_request_abort) ... ok
+test_reject_forged_completion_counts (test_continuation.Policy.test_reject_forged_completion_counts) ... ok
+test_reject_hidden_later_launch (test_continuation.Policy.test_reject_hidden_later_launch) ... ok
+test_reject_identity_changed (test_continuation.Policy.test_reject_identity_changed) ... ok
+test_reject_missing_first_four_point (test_continuation.Policy.test_reject_missing_first_four_point) ... ok
+test_reject_other_timeout (test_continuation.Policy.test_reject_other_timeout) ... ok
+test_reject_partial_later_observation (test_continuation.Policy.test_reject_partial_later_observation) ... ok
+test_reject_partial_or_rejected_first_four (test_continuation.Policy.test_reject_partial_or_rejected_first_four) ... ok
+test_reject_passed_or_active_ancestor (test_continuation.Policy.test_reject_passed_or_active_ancestor) ... ok
+test_reject_reordered_requests (test_continuation.Policy.test_reject_reordered_requests) ... ok
+test_reject_skipped_not_completed_id (test_continuation.Policy.test_reject_skipped_not_completed_id) ... ok
+
+----------------------------------------------------------------------
+Ran 33 tests in 0.064s
+
+OK

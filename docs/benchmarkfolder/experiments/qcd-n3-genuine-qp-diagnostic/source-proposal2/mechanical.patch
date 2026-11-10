@@ -1,0 +1,225 @@
+--- source-proposal1/README.md
++++ source-proposal2/README.md
+@@ -1,4 +1,4 @@
+-# Closed QCD n3 genuine-QP diagnostic — source proposal 1
++# Closed QCD n3 genuine-QP diagnostic — source proposal 2
+ 
+ This is a **source-only proposal**, implementing the frozen specification
+ `invariant-symmetry-qcd-n3-target-analysis/qp-specification1`, index
+@@ -8,6 +8,53 @@
+ fake supervised children. A passing test is not scientific qualification.
+ The prior offline analysis, portable analysis, specification, production code,
+ main campaign, stress pipeline and CMS evidence remain unchanged.
++
++
++## Mechanical environment amendment
++
++Proposal1's source index `bf2cd097…` and its actual failed build1 remain
++unchanged. `prior-build1/` retains exactly its four files: plan, first-command
++metadata, empty diagnostic log and failed build result. Command1 returned
++SIGSEGV (-11) after 0.247 s, before any compiler object or diagnostic appeared.
++No numerical worker ran. The precise crash location was not observed.
++
++Read-only ELF inspection shows host taskset/prlimit use the glibc2.42
++interpreter, whereas the closed donor executable uses glibc2.40. The failed
++command exposed the target's old-libc LD_LIBRARY_PATH to the host utilities.
++`elf-environment-evidence.json` binds that static evidence; it supports the
++loader-mismatch diagnosis without claiming an observed crash-site map.
++
++Only launch mechanics and output namespaces change. Driver, both observers,
++analyzer, scientific fixtures and owned-process supervisor are byte-identical
++to proposal1. The new one-shot directories are **build2** and **run2**; they
++never reuse or rewrite build1. The four compiler/link commands keep their
++numerical objects and scientific flags. A fresh binary must have exactly the
++donor's PT_INTERP, checked before a build can pass and again before execution.
++No dynamic-linker flag is added speculatively.
++
++Compilers, taskset, prlimit and the hash-bound isolated Python start with all
++LD_* variables removed. `exec_target.py` verifies target bytes and PT_INTERP,
++then sets only the bound native LD_LIBRARY_PATH immediately in **execve of
++the target**. It does not fork, invoke a shell or launch ld directly. PID,
++process-group ownership, target argv and final /proc executable identity stay
++compatible with the existing supervisor. The loader check uses the same target
++execve with LD_TRACE_LOADED_OBJECTS=1; ordinary numerical execution removes that
++flag. This trace stage does not enter the Fortran driver.
++
++Historical ldd metadata contains both the host glibc2.42 loader and the donor's
++actual glibc2.40 interpreter. All historical paths/hashes remain bound. The
++new target closure excludes **only** the exact known host ld-linux entry;
++all other fifteen files remain mandatory. The target interpreter and derived
++native library path are explicit. A loader-trace disagreement, missing library,
++wrong interpreter or unexpected actual ELF map fails; there is no blanket
++allowance for missing dependencies.
++
++`prepare.py` is retained as proposal1 provenance and was not rerun here.
++`mechanical-change.json` and `mechanical.patch` expose the source delta.
++The new mock tests exercise environment separation, delayed execve, exact
++argv, trace-only flags, closure mismatch and wrong-interpreter/hash rejection.
++They execute no ELF, loader, compiler or reducer. Source review/seal is separate
++from any later root admission to build2 or run2.
+ 
+ The future experiment has exactly 16 fresh, serial workers: backends 1, 6,
+ 8 and 9, each in fixed mode 4 and mode 5, each with observation disabled and
+@@ -113,7 +160,7 @@
+ 
+ The run stage acquires the common nonblocking numerical lock before creating
+ its one-shot run directory. Busy75 is a scheduling hold. It then performs one
+-30s loader check and 16 workers with 180 s caps, one thread and 4 GiB each, under a
++30s target-loader trace check and 16 workers with 180 s caps, one thread and 4 GiB each, under a
+ shared 3000 s stage budget. It verifies actual mapped ELF closure per worker
+ against the bound libraries, including the current fixed-256 TIRust DSO
+ `eb3d67fd…`. It retains source/object/runtime hashes, full output, param.log,
+@@ -125,12 +172,12 @@
+ 
+ ```sh
+ source tools/tirust_env.sh
+-PYTHONDONTWRITEBYTECODE=1 python3 -B docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal1/run.py verify
+-PYTHONDONTWRITEBYTECODE=1 python3 -B docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal1/run.py plan
++PYTHONDONTWRITEBYTECODE=1 python3 -B docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal2/run.py verify
++PYTHONDONTWRITEBYTECODE=1 python3 -B docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal2/run.py plan
+ # Build only after its explicit admission:
+-PYTHONDONTWRITEBYTECODE=1 python3 -B docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal1/run.py build
++PYTHONDONTWRITEBYTECODE=1 python3 -B docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal2/run.py build
+ # Run only after resulting build/relocations/link/runtime review and admission:
+-PYTHONDONTWRITEBYTECODE=1 python3 -B docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal1/run.py run
++PYTHONDONTWRITEBYTECODE=1 python3 -B docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal2/run.py run
+ ```
+ 
+ Actual wrapped edges must still be demonstrated by the resulting link map,
+--- source-proposal1/run.py
++++ source-proposal2/run.py
+@@ -17,6 +17,7 @@
+ import time
+ import analyze
+ import supervise
++import exec_target
+ 
+ HERE=Path(__file__).resolve().parent
+ ROOT=HERE.parents[4]
+@@ -39,6 +40,10 @@
+     verify_files({str(HERE/name):item['sha256'] for name,item in index['files'].items()})
+     binding=json.loads((HERE/'bindings.json').read_text())
+     verify_files(binding['dependencies'])
++    validate_target_closure(binding)
++    donor=Path(binding['process'])/'check'
++    if exec_target.interpreter(donor.read_bytes())!=binding['target_interpreter']:
++        raise ValueError('Donor interpreter differs from static environment evidence')
+     return binding
+ 
+ def env(binding):
+@@ -50,8 +55,30 @@
+         result.pop(key,None)
+     result.update(LC_ALL='C',OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',
+                   RAYON_NUM_THREADS='1',PYTHONDONTWRITEBYTECODE='1')
+-    result['LD_LIBRARY_PATH']=':'.join(dict.fromkeys(str(Path(p).parent) for p in binding['runtime']))
++    # Never expose target loader settings to utilities, compilers or Python.
++    for key in tuple(result):
++        if key.startswith('LD_'): result.pop(key)
+     return result
++
++def target_command(binding,exe,checksum,arguments,*,trace=False):
++    return prefix(binding)+[binding['programs']['python'],'-I','-B',str(HERE/'exec_target.py'),
++        'trace' if trace else 'run',str(exe),checksum,binding['target_interpreter'],
++        binding['native_library_path'],*map(str,arguments)]
++
++def validate_target_closure(binding):
++    historical=binding['historical_ldd_runtime']
++    excluded=binding['excluded_host_ldd_interpreter']
++    allowed='/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/ld-linux-x86-64.so.2'
++    if set(excluded)!={allowed} or excluded[allowed]!=historical[allowed]:
++        raise ValueError('Unexpected historical loader exclusion')
++    if binding['runtime']!={p:h for p,h in historical.items() if p!=allowed}:
++        raise ValueError('Target closure changed beyond the single host-loader exclusion')
++    interp=binding['target_interpreter']
++    if interp not in binding['runtime'] or interp==allowed:
++        raise ValueError('Target interpreter must remain in the closure')
++    expected=':'.join(dict.fromkeys(str(Path(p).parent) for p in binding['runtime']))
++    if binding['native_library_path']!=expected:
++        raise ValueError('Native library path differs from exact target closure')
+ 
+ def prefix(binding):
+     p=binding['programs']
+@@ -78,7 +105,8 @@
+ def run_command(argv,folder,label,*,binding,deadline,cap=120,native=False,exe=None,runner=None):
+     """One reviewed owned-session call; metadata retained even on interruption."""
+     progress={'argv':argv,'cwd':str(folder),'native':native,'started_unix':time.time(),
+-              'seconds_cap':min(cap,deadline-time.monotonic()),'environment':{k:v for k,v in env(binding).items() if k in ('LC_ALL','OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','RAYON_NUM_THREADS','LD_LIBRARY_PATH')}}
++              'seconds_cap':min(cap,deadline-time.monotonic()),'environment':{k:v for k,v in env(binding).items() if k in ('LC_ALL','OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','RAYON_NUM_THREADS')},
++              'target_loader_environment_at_execve':({'LD_LIBRARY_PATH':binding.get('native_library_path'),**({'LD_TRACE_LOADED_OBJECTS':'1'} if label=='loader' else {})} if native or label=='loader' else {})}
+     if progress['seconds_cap']<=0: raise TimeoutError('Shared stage budget expired')
+     runner=runner or (supervise.run_captured if native else supervise.run_plain_capped)
+     try:
+@@ -114,7 +142,7 @@
+       [*common,'-ffixed-line-length-132','-c',str(HERE/'driver.f'),'-o',objects[2]],link]
+ 
+ def build():
+-    binding=source_check(); folder=WORK/'build1'; folder.mkdir(parents=True,exist_ok=False)
++    binding=source_check(); folder=WORK/'build2'; folder.mkdir(parents=True,exist_ok=False)
+     started=time.monotonic();deadline=started+120
+     plan=commands(binding,folder);dump(folder/'plan.json',plan)
+     result={'source_index_sha256':sha(HERE/'source-index.json'),'passed':False}
+@@ -122,10 +150,12 @@
+         for i,command in enumerate(plan):
+             run_command(prefix(binding)+command,folder,f'command-{i+1}',binding=binding,deadline=deadline)
+         source_check()
++        if exec_target.interpreter((folder/'diagnostic').read_bytes())!=binding['target_interpreter']:
++            raise ValueError('Fresh diagnostic PT_INTERP differs from bound donor')
+         if time.monotonic()>deadline: raise TimeoutError('Shared build budget expired after verification')
+         result.update(passed=True,executable=str(folder/'diagnostic'),executable_sha256=sha(folder/'diagnostic'),
+             objects={str(p):sha(p) for p in folder.glob('*.o')},original_objects={x:sha(Path(x)) for x in binding['objects']},
+-            link_map_sha256=sha(folder/'link.map'),runtime=binding['runtime'])
++            link_map_sha256=sha(folder/'link.map'),runtime=binding['runtime'],target_interpreter=binding['target_interpreter'])
+     except BaseException as error:
+         result['failure']={'type':type(error).__name__,'message':str(error)}
+         raise
+@@ -160,16 +190,18 @@
+     if names!=expected: raise ValueError('Loader closure differs from closed binding: '+repr((sorted(names-expected),sorted(expected-names))))
+ 
+ def run():
+-    binding=source_check(); build_path=WORK/'build1/build.json'; proof=json.loads(build_path.read_text())
++    binding=source_check(); build_path=WORK/'build2/build.json'; proof=json.loads(build_path.read_text())
+     if proof.get('passed') is not True or proof['source_index_sha256']!=sha(HERE/'source-index.json'):
+         raise ValueError('Successful matching private build required')
+     exe=Path(proof['executable']); verify_files({str(exe):proof['executable_sha256'],**proof['objects'],**proof['original_objects']})
++    if proof.get('target_interpreter')!=binding['target_interpreter'] or exec_target.interpreter(exe.read_bytes())!=binding['target_interpreter']:
++        raise ValueError('Built target interpreter mismatch')
+     with numerical_lock():
+-        attempt=WORK/'run1';attempt.mkdir(exist_ok=False)
++        attempt=WORK/'run2';attempt.mkdir(exist_ok=False)
+         started=time.monotonic();deadline=started+3000; all_workers=[]
+         result={'passed':False,'build_sha256':sha(build_path),'source_index_sha256':sha(HERE/'source-index.json')}
+         try:
+-            run_command(prefix(binding)+[binding['programs']['ldd'],str(exe)],attempt,'loader',binding=binding,deadline=deadline,cap=30)
++            run_command(target_command(binding,exe,proof['executable_sha256'],[],trace=True),attempt,'loader',binding=binding,deadline=deadline,cap=30)
+             validate_loader((attempt/'loader.log').read_text(),binding)
+             for backend in analyze.BACKENDS:
+                 for mode in (4,5):
+@@ -177,7 +209,7 @@
+                         folder=attempt/f'b{backend}-m{mode}-o{observation}';folder.mkdir()
+                         inputs=fixture_inputs(folder,backend); dump(folder/'inputs.json',inputs)
+                         try:
+-                            run_command(prefix(binding)+[str(exe),str(backend),str(mode),str(observation)],folder,'worker',
++                            run_command(target_command(binding,exe,proof['executable_sha256'],[backend,mode,observation]),folder,'worker',
+                                 binding=binding,deadline=deadline,cap=180,native=True,exe=exe)
+                             verify_files(inputs);source_check(); verify_files({str(exe):proof['executable_sha256']})
+                             parsed=analyze.parse_worker((folder/'trace.txt').read_text(),(folder/'worker.log').read_text(),
+@@ -205,7 +237,7 @@
+     args=parser.parse_args()
+     with interruptions():
+         if args.stage=='verify': source_check(); print('Source/dependency binding PASS; no compilation or native execution.')
+-        elif args.stage=='plan': print(json.dumps(commands(source_check(),WORK/'build1'),indent=2))
++        elif args.stage=='plan': print(json.dumps(commands(source_check(),WORK/'build2'),indent=2))
+         elif args.stage=='build': build()
+         else: run()
+ if __name__=='__main__': main()
+--- source-proposal1/test_protocol.py
++++ source-proposal2/test_protocol.py
+@@ -199,7 +199,7 @@
+                 self.assertEqual([p.name for p in (Path(temp)/'.tirust-build').iterdir()],['numerical-tests.lock'])
+     def test_existing_build_is_one_shot(self):
+         with tempfile.TemporaryDirectory() as temp,mock.patch.object(control,'WORK',Path(temp)),mock.patch.object(control,'source_check',return_value={}),mock.patch.object(control,'run_command') as launch:
+-            (Path(temp)/'build1').mkdir()
++            (Path(temp)/'build2').mkdir()
+             with self.assertRaises(FileExistsError):control.build()
+             launch.assert_not_called()
+     def test_unrecognized_warmup_rejected(self):

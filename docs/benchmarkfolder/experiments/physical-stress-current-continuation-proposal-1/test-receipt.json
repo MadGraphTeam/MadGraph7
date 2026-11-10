@@ -1,0 +1,40 @@
+{
+  "command": [
+    "python3",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "docs/benchmarkfolder/experiments/physical-stress-current-continuation-proposal-1",
+    "-p",
+    "test_*.py",
+    "-v"
+  ],
+  "exit_code": 0,
+  "final_binding_negative_tests": "not executed: actual terminal capsule/admission not yet available",
+  "independent_reviewer": "/root/stress_unexecuted_continuation/continuation_review",
+  "native_execution": false,
+  "observation_execution": {
+    "compiler_loader_mass_or_worker_launches": 0,
+    "exit_code": 0,
+    "observation_sha256": "198d1d98122f526371b23f02d218a195ecf7f42eef1d6be402e0136166acd899",
+    "pre_read_path_guard_failure": {
+      "cause": "relative output parent compared with absolute source parent",
+      "closed_input_reads": 0,
+      "exit_code": 1,
+      "output_created": false,
+      "session_id": 55958
+    },
+    "successful_session_id": 56591
+  },
+  "schema_version": 1,
+  "source_hashes": {
+    "observe_closed_inputs.py": "341335406931a10a3129952bc117c07572a7d21312c9c86568f0812c00668c2b",
+    "policy.py": "873d3478f02e1fb23de2b0766fc06b4a3ef306769f25c46ba7bceaa8bef682d3",
+    "run.py": "4dd6ce23e9ce92180d0cdf4cf6bad8633484e36779c862679e57d69ef835c9ea",
+    "test_continuation.py": "85813fdaea86f45154646d16eda55f1b4aaa2da4feb94f19ac5bf876848e4bee"
+  },
+  "tests": 33,
+  "tests_log_sha256": "d4b5b3da5e0ea16600e7791328861416a7f30a840d27d2f1980cbef467fddc15"
+}

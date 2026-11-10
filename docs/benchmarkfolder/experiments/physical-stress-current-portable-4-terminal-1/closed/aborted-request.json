@@ -1,0 +1,28 @@
+{
+  "exception": "TimeoutError('Lock wait expired before execution')",
+  "numerically_qualified": false,
+  "request": {
+    "MLReductionLib": "8",
+    "argv": [
+      "taskset",
+      "-c",
+      "12",
+      "./check",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/qcd_n2_gg_ttx/selected.dat",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/qcd_n2_gg_ttx/candidate-8-auto/SubProcesses/P0_gg_ttx/worker-protocol.fifo"
+    ],
+    "backend": 8,
+    "case": "qcd_n2_gg_ttx",
+    "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-1/workers/qcd_n2_gg_ttx/candidate-8-auto/SubProcesses/P0_gg_ttx",
+    "inclusive_worker_seconds": 380,
+    "label": "candidate-8-auto",
+    "points": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/points/qcd_n2_gg_ttx/selected.dat",
+    "requires_common_numerical_lock": true,
+    "retry": false,
+    "source": "candidate",
+    "startup_seconds": 180,
+    "stdin_after_READY": "RUN 1 1\nSTOP 2 0\n",
+    "traversal_seconds": 180
+  },
+  "state": "deferred-before-launch"
+}

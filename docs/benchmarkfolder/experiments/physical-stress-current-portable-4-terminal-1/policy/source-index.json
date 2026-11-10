@@ -1,0 +1,39 @@
+{
+  "actual_execution_evidence_captured": false,
+  "executed_source_index_sha256": "c192146977008a7dec8c3d1dce479eeaaf53e382ab4aad5599db6665dfe42f25",
+  "files": {
+    "README.md": {
+      "kind": "file",
+      "sha256": "a9dc8f28a564c252fc155f5cf9f0c32d47ba5bff3d2668e5cec74d24e26ac61c",
+      "size": 6011
+    },
+    "derive.py": {
+      "kind": "file",
+      "sha256": "619911189cc567691dc0ddddc4b7903dfee5b6385026ced5857284dcc86cd7ed",
+      "size": 10760
+    },
+    "schema.json": {
+      "kind": "file",
+      "sha256": "f59a30d40fd1f6991a94fb90aad5f0d7b0adb1c5f10ca9bfb0a0ae52b1e700dc",
+      "size": 9084
+    },
+    "test-receipt.json": {
+      "kind": "file",
+      "sha256": "26f95404f237248d40b9d2c398b2372561baddafc198c6c39217136273ea288e",
+      "size": 571
+    },
+    "test_derive.py": {
+      "kind": "file",
+      "sha256": "ff6ece44aabd1dd83b0954c75abc167d1863a141ea2b3fc524905f6db2545702",
+      "size": 8777
+    },
+    "tests.log": {
+      "kind": "file",
+      "sha256": "0322eb72f90423ceefab762988e2c48ba6be5f61d10071d834ab38543527ad48",
+      "size": 1837
+    }
+  },
+  "preparation_index_sha256": "49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22",
+  "schema_version": 1,
+  "source_only": true
+}

@@ -1,0 +1,146 @@
+{
+  "schema": "madloop-tirust-appendix-c-stability-pilot-v1",
+  "status": "source-only; no native stages executed",
+  "campaign": "invariant-symmetry-1",
+  "campaign_manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "generator_identity_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+  "candidate_source_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+  "candidate_library_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+  "working_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "private_work_directory": ".tirust-build/stability-appendix-c-pilot-1",
+  "point_count_per_process": 100,
+  "center_of_mass_energy_GeV": 1000,
+  "backends": [
+    1,
+    6,
+    7,
+    8,
+    9
+  ],
+  "baseline_comparison": "existing accepted-output comparison only; no new baseline pilot lane",
+  "cases": [
+    {
+      "id": "qcd_n2_gg_ttx",
+      "model": "loop_sm",
+      "process": "g g > t t~ [virt=QCD]"
+    },
+    {
+      "id": "qcd_n3_uux_zgg",
+      "model": "loop_sm",
+      "process": "u u~ > z g g [virt=QCD]"
+    },
+    {
+      "id": "ew_n2_epem_mupmum",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "e+ e- > mu+ mu- [virt=QED]"
+    },
+    {
+      "id": "qcd_n4_uux_zzgg",
+      "model": "loop_sm",
+      "process": "u u~ > z z g g [virt=QCD]"
+    }
+  ],
+  "sampling": {
+    "common_point_stream_across_backends": true,
+    "source": "new separate deterministic cut-qualified physical RAMBO streams; generated and frozen only in the admitted prepare stage; never subset registered fixtures",
+    "final_state_pt_min_GeV": 50,
+    "final_state_pair_delta_R_min": 0.5,
+    "boundary_rule": "strictly greater than both declared cuts",
+    "no_post_evaluation_point_replacement": true,
+    "helicities": "summed",
+    "colors": "summed with identical generated normalization",
+    "mu_r_GeV": 1000,
+    "seeds": {
+      "qcd_n2_gg_ttx": 20261121,
+      "qcd_n3_uux_zgg": 20261122,
+      "ew_n2_epem_mupmum": 20261123,
+      "qcd_n4_uux_zzgg": 20261124
+    }
+  },
+  "methods": [
+    {
+      "id": "original",
+      "CTModeRun": 1,
+      "rotation": "identity"
+    },
+    {
+      "id": "reversed",
+      "CTModeRun": 2,
+      "rotation": "identity"
+    },
+    {
+      "id": "rotated",
+      "CTModeRun": 1,
+      "rotation": "E'=E, px'=-py, py'=px, pz'=pz"
+    }
+  ],
+  "policy": {
+    "precision": "forced DP primary diagnostics; actual backend and precision checked per result",
+    "automatic_rescue": false,
+    "CTModeInit": 1,
+    "MLReductionLib": "singleton selected backend",
+    "LoopPoleMode": -1,
+    "TIRustComputeFinite": true,
+    "UseQPIntegrandForTIRust": true,
+    "COLLIERComputeUVpoles": true,
+    "COLLIERComputeIRpoles": true,
+    "COLLIERGlobalCache": 0,
+    "COLLIERUseInternalStabilityTest": false,
+    "COLLIERRequiredAccuracy": 1e-13,
+    "TIRustGlobalCache": 0,
+    "numerator_and_model": "unchanged canonical generated Fortran; no private adaptive or mass/geometry patch",
+    "stdout_and_stderr": "retained in full; no /dev/null redirection",
+    "warnings": "##W03 invalidates the affected raw diagnostic and is explicitly retained",
+    "positive_120": "unchecked forced-QP output; excluded from the raw-DP curve because it indicates QP execution",
+    "positive_110": "unchecked forced-DP diagnostic output; never host-qualified or used as independent true error",
+    "active_loop_group_coverage": "after each call, retain stability flags and finite outputs for active nonzero numerator loop groups; failed or unknown coverage invalidates that diagnostic even if unchecked return code is 110 and the amplitude is finite",
+    "backend_observation": "effective singleton card selection; unchecked U=0 is not an actual backend observation; any later ABI observer requires its own reviewed binding"
+  },
+  "limits": {
+    "request_count": 20,
+    "measured_DP_calls": 6000,
+    "request_wall_seconds": 1200,
+    "request_memory_bytes": 4294967296,
+    "cpu": 12,
+    "cpu_is_reserved": false,
+    "common_lock": ".tirust-build/numerical-tests.lock",
+    "lock_backends": [
+      8,
+      9
+    ],
+    "lock_wait_seconds": 3600,
+    "lock_wait_is_outside_execution_cap": true,
+    "automatic_retry": false,
+    "bootstrap_max_calls_per_worker": 16
+  },
+  "statistics": {
+    "raw_DP_metric": "(max(x_original,x_reversed,x_rotated)-min(...))/abs(mean(...))",
+    "raw_DP_observable": "finite coefficient divided by Born; the common alpha_s/(2*pi) factor used by the legacy Born-process display cancels from the relative spread in exact arithmetic; raw coefficients also retained",
+    "zero_mean": "all identical zero values yield metric zero; nonzero spread with zero mean yields positive infinity",
+    "tail": "count(metric > delta)/100; strict greater-than threshold",
+    "unavailable_bounds": "[known_exceedances/100, (known_exceedances+unavailable_points)/100]",
+    "ratio": "tail_backend/tail_Ninja only where both complete and Ninja numerator count > 0; otherwise mask",
+    "zero_metrics": "reported separately; never replaced by a fabricated numerical floor in raw data",
+    "finite_sample_resolution": 0.01,
+    "confidence": "no population confidence claim for deterministic fixtures; full random-sample campaign may add explicitly pointwise binomial intervals"
+  },
+  "delivery": {
+    "plots": "vector PDF plus PNG previews, raw point metrics and JSON summaries",
+    "labels": "100-point pilot; raw forced-DP internal consistency diagnostic; not an independent true-error bound",
+    "local_TODO": "larger frozen random samples: 100000 points for 2-to-2, 10000 for 2-to-3, 1000 for 2-to-4; separate genuine-QP and post-rescue profiles",
+    "ordinary_and_stress_populations": "separate panels; no pooled failure fractions"
+  },
+  "inputs": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-qualification-1/specification.json": "f4ecf8d003faf1a570de53d803ca46ed5d12089235786d8a9a590198406cafd7",
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/cases.json": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef",
+    "tools/tirust_benchmark_points.py": "9f95a9a3475a18597ca182f7d42d7e021933bc01458fcbf3484ad63b5655e46c"
+  },
+  "preparation": {
+    "private_driver_compile_and_link_jobs": 4,
+    "exact_PT_INTERP_loader_list_queries": 4,
+    "amplitude_evaluations": 0,
+    "library_or_generated_amplitude_rebuilds": 0,
+    "outer_environment": "clean compiler/helper environment; native LD_LIBRARY_PATH applied only at target execve",
+    "native_closure": "fresh private executable PT_INTERP and actual loader closure; historical host ldd interpreter retained separately, not required in target maps"
+  }
+}

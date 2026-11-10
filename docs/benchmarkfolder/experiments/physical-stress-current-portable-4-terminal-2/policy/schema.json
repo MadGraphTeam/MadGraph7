@@ -1,0 +1,278 @@
+{
+  "contains_terminal_results": false,
+  "executed_source_index_sha256": "c192146977008a7dec8c3d1dce479eeaaf53e382ab4aad5599db6665dfe42f25",
+  "expected_requests": [
+    {
+      "backend": 1,
+      "case": "qcd_n2_gg_ttx",
+      "final_points_per_request": 2,
+      "label": "baseline-1-auto",
+      "request_id": "qcd_n2_gg_ttx/baseline-1-auto",
+      "source": "baseline"
+    },
+    {
+      "backend": 1,
+      "case": "qcd_n2_gg_ttx",
+      "final_points_per_request": 2,
+      "label": "candidate-1-auto",
+      "request_id": "qcd_n2_gg_ttx/candidate-1-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 6,
+      "case": "qcd_n2_gg_ttx",
+      "final_points_per_request": 2,
+      "label": "candidate-6-auto",
+      "request_id": "qcd_n2_gg_ttx/candidate-6-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 7,
+      "case": "qcd_n2_gg_ttx",
+      "final_points_per_request": 2,
+      "label": "candidate-7-auto",
+      "request_id": "qcd_n2_gg_ttx/candidate-7-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 8,
+      "case": "qcd_n2_gg_ttx",
+      "final_points_per_request": 2,
+      "label": "candidate-8-auto",
+      "request_id": "qcd_n2_gg_ttx/candidate-8-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 9,
+      "case": "qcd_n2_gg_ttx",
+      "final_points_per_request": 2,
+      "label": "candidate-9-auto",
+      "request_id": "qcd_n2_gg_ttx/candidate-9-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 1,
+      "case": "qcd_n3_uux_zgg",
+      "final_points_per_request": 2,
+      "label": "baseline-1-auto",
+      "request_id": "qcd_n3_uux_zgg/baseline-1-auto",
+      "source": "baseline"
+    },
+    {
+      "backend": 1,
+      "case": "qcd_n3_uux_zgg",
+      "final_points_per_request": 2,
+      "label": "candidate-1-auto",
+      "request_id": "qcd_n3_uux_zgg/candidate-1-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 6,
+      "case": "qcd_n3_uux_zgg",
+      "final_points_per_request": 2,
+      "label": "candidate-6-auto",
+      "request_id": "qcd_n3_uux_zgg/candidate-6-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 7,
+      "case": "qcd_n3_uux_zgg",
+      "final_points_per_request": 2,
+      "label": "candidate-7-auto",
+      "request_id": "qcd_n3_uux_zgg/candidate-7-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 8,
+      "case": "qcd_n3_uux_zgg",
+      "final_points_per_request": 2,
+      "label": "candidate-8-auto",
+      "request_id": "qcd_n3_uux_zgg/candidate-8-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 9,
+      "case": "qcd_n3_uux_zgg",
+      "final_points_per_request": 2,
+      "label": "candidate-9-auto",
+      "request_id": "qcd_n3_uux_zgg/candidate-9-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 1,
+      "case": "qcd_n4_uux_zzgg",
+      "final_points_per_request": 2,
+      "label": "baseline-1-auto",
+      "request_id": "qcd_n4_uux_zzgg/baseline-1-auto",
+      "source": "baseline"
+    },
+    {
+      "backend": 1,
+      "case": "qcd_n4_uux_zzgg",
+      "final_points_per_request": 2,
+      "label": "candidate-1-auto",
+      "request_id": "qcd_n4_uux_zzgg/candidate-1-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 6,
+      "case": "qcd_n4_uux_zzgg",
+      "final_points_per_request": 2,
+      "label": "candidate-6-auto",
+      "request_id": "qcd_n4_uux_zzgg/candidate-6-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 7,
+      "case": "qcd_n4_uux_zzgg",
+      "final_points_per_request": 2,
+      "label": "candidate-7-auto",
+      "request_id": "qcd_n4_uux_zzgg/candidate-7-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 8,
+      "case": "qcd_n4_uux_zzgg",
+      "final_points_per_request": 2,
+      "label": "candidate-8-auto",
+      "request_id": "qcd_n4_uux_zzgg/candidate-8-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 9,
+      "case": "qcd_n4_uux_zzgg",
+      "final_points_per_request": 2,
+      "label": "candidate-9-auto",
+      "request_id": "qcd_n4_uux_zzgg/candidate-9-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 1,
+      "case": "ew_n3_epem_ttxa",
+      "final_points_per_request": 2,
+      "label": "baseline-1-auto",
+      "request_id": "ew_n3_epem_ttxa/baseline-1-auto",
+      "source": "baseline"
+    },
+    {
+      "backend": 1,
+      "case": "ew_n3_epem_ttxa",
+      "final_points_per_request": 2,
+      "label": "candidate-1-auto",
+      "request_id": "ew_n3_epem_ttxa/candidate-1-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 6,
+      "case": "ew_n3_epem_ttxa",
+      "final_points_per_request": 2,
+      "label": "candidate-6-auto",
+      "request_id": "ew_n3_epem_ttxa/candidate-6-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 7,
+      "case": "ew_n3_epem_ttxa",
+      "final_points_per_request": 2,
+      "label": "candidate-7-auto",
+      "request_id": "ew_n3_epem_ttxa/candidate-7-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 8,
+      "case": "ew_n3_epem_ttxa",
+      "final_points_per_request": 2,
+      "label": "candidate-8-auto",
+      "request_id": "ew_n3_epem_ttxa/candidate-8-auto",
+      "source": "candidate"
+    },
+    {
+      "backend": 9,
+      "case": "ew_n3_epem_ttxa",
+      "final_points_per_request": 2,
+      "label": "candidate-9-auto",
+      "request_id": "ew_n3_epem_ttxa/candidate-9-auto",
+      "source": "candidate"
+    }
+  ],
+  "frozen_pure_protocol_sources": {
+    "comparator_sha256": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370",
+    "worker_sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+  },
+  "identity": {
+    "baseline_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+    "campaign": "invariant-symmetry-1",
+    "candidate_generator_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+    "candidate_native_files": {
+      "Cargo.lock": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+      "Cargo.toml": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+      "include/mtirust.f90": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+      "include/tirust.h": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad",
+      "lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+      "lib/libtirust.a": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+      "lib/tirust-config.json": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9",
+      "lib/tirust-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "lib/tirust-native-libs.txt": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62"
+    },
+    "candidate_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+    "manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0"
+  },
+  "planned_namespace": "physical-stress-current-portable-4-terminal-1",
+  "pre_comparison_gates": [
+    "provenance and runtime verified by binder",
+    "checked selected backend/precision",
+    "complete two-point ordered stream",
+    "finite coefficients",
+    "nonnegative accuracy at most1e-6",
+    "no ##W03 anywhere in full retained stdout",
+    "no outer timeout/cleanup/controller failure"
+  ],
+  "prepared_dependency": {
+    "index_sha256": "49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22",
+    "own_index_must_not_contain_reserved_prefix": true,
+    "reserved_reader_prefix": "preparation/",
+    "sibling": "physical-stress-current-portable-4-preflight-1",
+    "summary_sha256": "6b5c2450098343b7eac059cb791697817b514fde81959c90414a9980bf9fe4d9",
+    "verifier_sha256": "3850e1dcfbd3cecfc2c11eabd090e5ae174b0d0fbad6da11b6d94557c5e72f24"
+  },
+  "preserved_raw": [
+    "specification",
+    "stdout",
+    "runtime maps",
+    "warmup.dat",
+    "dimensions.dat",
+    "values.dat",
+    "timed_status.dat",
+    "timing.dat",
+    "worker-raw startup/command journals",
+    "result",
+    "completion",
+    "owned command cleanup",
+    "request accounting",
+    "abort record"
+  ],
+  "public_api": "verify(root=None, *, read_bytes=None)",
+  "reader_paths": "own physical index paths plus evidence-index.json; preparation-prefixed parent physical index paths plus preparation/evidence-index.json; no decompressed aliases",
+  "request_states": [
+    "not_started",
+    "deferred_before_launch",
+    "controller_failed",
+    "physical_rejected",
+    "host_checked_complete"
+  ],
+  "return_keys": [
+    "verified",
+    "index_sha256",
+    "preparation_index_sha256",
+    "summary"
+  ],
+  "schema_version": 1,
+  "scientific_limits": {
+    "EW_repaired_geometry_oracle": false,
+    "general_stress_high_rank_qualification": false,
+    "independent_physical_truth_from_reducer_agreement": false,
+    "performance_eligible": false
+  },
+  "source_only": true,
+  "summary_policy": "derive.py output plus exact source/native/prepared binding; counts only derived after root-confirmed terminal capture"
+}

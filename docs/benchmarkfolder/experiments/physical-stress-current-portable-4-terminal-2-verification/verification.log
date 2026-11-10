@@ -1,0 +1,64 @@
+{
+  "CLI_compiler_loader_amplitude_invocations": 0,
+  "checks": [
+    {
+      "name": "authenticated_callback_closure_without_filesystem_reads",
+      "passed": true
+    },
+    {
+      "name": "two_sibling_relocation_without_workspace_reads",
+      "passed": true
+    },
+    {
+      "name": "changed_own_payload",
+      "passed": true,
+      "rejection": "Changed evidence: README.md",
+      "rejection_class": "ValueError"
+    },
+    {
+      "name": "missing_authenticated_preparation",
+      "passed": true,
+      "rejection": "'preparation/evidence-index.json'",
+      "rejection_class": "KeyError"
+    },
+    {
+      "name": "incomplete_declared_dependency_paths",
+      "passed": true,
+      "rejection": "Reader dependency closure differs",
+      "rejection_class": "ValueError"
+    },
+    {
+      "name": "reserved_preparation_namespace_shadow",
+      "passed": true,
+      "rejection": "Reserved preparation namespace in own index",
+      "rejection_class": "ValueError"
+    },
+    {
+      "name": "forged_complete_agreement_summary",
+      "passed": true,
+      "rejection": "Saved terminal summary differs",
+      "rejection_class": "ValueError"
+    },
+    {
+      "name": "serialization_successor_preserves_all_scientific_records_and_summary",
+      "passed": true
+    }
+  ],
+  "elapsed_seconds": 34.7233605151996,
+  "host_checked_complete_streams": 4,
+  "packet_and_parent_unchanged": true,
+  "packet_index_sha256": "6fc2035649ba0387f0d4457784ae883592f13bb7e3b6f9c33b99e038b81f7146",
+  "parent_index_sha256": "49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22",
+  "passed": true,
+  "payloads_in_two_capsule_callback": 3437,
+  "predecessor_index_sha256": "4d644658ce07f4e2311fbe532d900af2b43357b1c5fc824a43769027b355b560",
+  "six_lane_all_cases_agree": false,
+  "state_counts": {
+    "deferred_before_launch": 1,
+    "host_checked_complete": 4,
+    "not_started": 19
+  },
+  "subprocess_invocations": 0,
+  "summary_sha256": "267b38106bff2bf5a0bb4ef5d4bdc41081e48bb0c147a63b7bcc7ad38e94de40",
+  "verifier_sha256": "20d1666c837ca09632121181b1a6a95b9d6afd677cb897598be7de80cb79a3e8"
+}
