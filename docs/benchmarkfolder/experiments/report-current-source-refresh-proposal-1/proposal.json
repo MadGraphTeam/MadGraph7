@@ -1,0 +1,165 @@
+{
+  "canonical_files_modified": false,
+  "canonical_pdf_commit": "584dae7875d20e881a4f9dc27bdb67f5e0fa5512",
+  "canonical_pdf_sha256": "02428f3a7659b33ab55ea116288963f1d9b470ea1bc3a7d2877d1f60fc38387f",
+  "committed_input_pins": {
+    "docs/benchmarkfolder/benchmark.typ": {
+      "bytes": 26076,
+      "sha256": "71ccba8b8757ca307215a7f7982cc020d470c3b04789ba8ee489e01e4884dfdc"
+    },
+    "docs/benchmarkfolder/build_report.py": {
+      "bytes": 22166,
+      "sha256": "0e034e80d688ea8cb2927aafe5040d62808777db10fc41be478ff6f15007c9bd"
+    },
+    "docs/benchmarkfolder/campaign-provisional.typ": {
+      "bytes": 5568,
+      "sha256": "64efa538294293bb155ce7598751d6f7bac75a3de4d17c1d613e1080dbfd3018"
+    },
+    "docs/benchmarkfolder/campaign-report.typ": {
+      "bytes": 15594,
+      "sha256": "f82d323253f97a24f2b237a5adda9f904d7908a7a4fe11ef17b86251847a4ad3"
+    },
+    "docs/benchmarkfolder/campaign_report.py": {
+      "bytes": 14282,
+      "sha256": "c723d2e790d491ecd3653b210307ab2caa0562c840c5e65675d9c95f94a2c115"
+    },
+    "docs/benchmarkfolder/campaign_report_implementation.py": {
+      "bytes": 23161,
+      "sha256": "ab9deeaeefd48738ddacc0fb6ee07afe763fc66c30ba6e7a506a658c8230741e"
+    },
+    "docs/benchmarkfolder/campaign_report_implementation_runtime.py": {
+      "bytes": 34493,
+      "sha256": "00712c2e828dcbc81f96509b2279e8980a9675455b39d991c1d86dc42fff1811"
+    },
+    "docs/benchmarkfolder/campaign_report_lifecycle.py": {
+      "bytes": 10956,
+      "sha256": "d1e04eaf5443275e5f5f0c224b1d5efea105dfc13d05fea47be001cf47499ccc"
+    },
+    "docs/benchmarkfolder/campaign_report_numerical.py": {
+      "bytes": 30466,
+      "sha256": "63ae9db2ef98db7269d7290b68feb5a02ae0c454e88086b0644253ebef8c4192"
+    },
+    "docs/benchmarkfolder/campaign_report_provisional.py": {
+      "bytes": 12986,
+      "sha256": "659dd893cab5f08c66caf614a0dc402d539524d9e3ebf69261b2ac30a30fa606"
+    },
+    "docs/benchmarkfolder/campaign_report_qualification.py": {
+      "bytes": 19180,
+      "sha256": "a01d190caa0e9402392393517a4866f8da27fd2aa19dfb74fc93130e758b691b"
+    },
+    "docs/benchmarkfolder/campaign_report_refresh.py": {
+      "bytes": 13973,
+      "sha256": "a1acbee40ee639b875a370e70b9b04a31593e594c927a84a6c70a33df58bdb32"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/manifest.json": {
+      "bytes": 397109,
+      "sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-qualification-1/index.json": {
+      "bytes": 1147,
+      "sha256": "4bb73302fc2c1faf53c457c6f4dba82114759ddd07adc92364364d8234014380"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/timing-handoff-3/index.json": {
+      "bytes": 1362,
+      "sha256": "b56d5c77631ff30be883c26f1382660b338e9171142f129b670b479e1d30c564"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-1.json": {
+      "bytes": 1511580,
+      "sha256": "5b7af33ef0126d7f5de717662eb87e4f59c078461d71f026d456c616b80e1335"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-selection-1.json": {
+      "bytes": 6433,
+      "sha256": "2443d39de743c6973b1a1e0d8a222a81345f255264212dbd439dd867d7aa4a3f"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/qualification-1/evidence-index.json": {
+      "bytes": 15433,
+      "sha256": "d60f909d5dd20d749342c446a74b605743aa43556cb6554ba9ea8030519d967e"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/qualification-1/offline-analysis.json": {
+      "bytes": 65941,
+      "sha256": "0a11cc63d4ae14f9565061e01d7ce9a0740ab6a4f1798b21035a95354db047f2"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-physical-replay-independent-8-audit-1/analysis.json": {
+      "bytes": 88576,
+      "sha256": "3a7e0d6e417c27a9aec11d407c65ea7a2c98c7622c07be5a38e373738ef34d1b"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-physical-replay-independent-8-audit-1/evidence-index.json": {
+      "bytes": 1361,
+      "sha256": "5b9100fc21b6d197c07401d89ec77709d9e37486f32e40f9e1e7a7e537345e32"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-physical-replay-qualification-1/corrected-analysis.json": {
+      "bytes": 134056,
+      "sha256": "7ecf08bb2d86504da9599c15e6bb6326447dcf5f0247229848f552d14095d376"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-physical-replay-qualification-1/evidence-index.json": {
+      "bytes": 10134,
+      "sha256": "a728fbeb29c64e77b09189c5a97b1a509c71a681aa722dbe3affa1312895c9e9"
+    },
+    "docs/benchmarkfolder/experiments/rank6-feynman-parameter-qualification-1/index.json": {
+      "bytes": 9203,
+      "sha256": "c2fe806d2996e7ee758e2a7894318d04388b640126b9f636fd23be99650b90d7"
+    },
+    "docs/benchmarkfolder/experiments/rank6-feynman-parameter-qualification-1/summary.json": {
+      "bytes": 3234,
+      "sha256": "538f3c7c0be6ab4d400d873181ac55a771bf91bce612500a13fdfae3277c1438"
+    },
+    "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/attempt5/qualification-summary.json": {
+      "bytes": 13116,
+      "sha256": "b57c9d345291a29424620b26f5982aa3590ebd041d5fe9390d77cb1ece0d1842"
+    },
+    "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/attempt5/resume.py": {
+      "bytes": 7339,
+      "sha256": "00c6a77ab88f8785908ffa81ce684eb79f9b714cad6733a41e8a7150e1fa8006"
+    },
+    "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/materialized-source.json": {
+      "bytes": 3371588,
+      "sha256": "fd83e391b5144e7c9fa31c56491fdf0d8788353e45bf739c3b9ff66ba9beb442"
+    },
+    "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/qualify.py": {
+      "bytes": 31845,
+      "sha256": "a408dc73d880a9471defaf6cf4fa9b426e616780b4861c595d608826b6b0f89a"
+    },
+    "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/source-freeze.json": {
+      "bytes": 3720,
+      "sha256": "2f971799fa749a7591736967da1e119655670b21fd304b01e452d601bb131c50"
+    },
+    "docs/benchmarkfolder/report-build.json": {
+      "bytes": 938633,
+      "sha256": "5286830f1ae2506e55fa8c3f0015f13b5a3f507a3f4070c288a400331642d5a1"
+    },
+    "docs/benchmarkfolder/style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "current_selected_campaign": "split-dp-terminal-1",
+  "native_build_or_execution": false,
+  "new_numerical_inputs_read": false,
+  "new_numerical_results_claimed": false,
+  "precise_timing": "deferred to Hua-Sheng local execution",
+  "prerequisites": [
+    "all eleven current numerical cases terminal and immutable checkpoint indexed",
+    "fresh current-source lifecycle proof or explicit pending current lifecycle status",
+    "new dossier replays raw current numerical observations",
+    "old PDF/input ledger closure archived against original Git commit",
+    "new immutable selection with no old campaign timing mapped into current fields"
+  ],
+  "proposed_selected_campaign": "invariant-symmetry-1",
+  "read_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+  "schema": "tirust-source-only-current-report-refresh-proposal-v1",
+  "source_audit": {
+    "higher_rank_fortran_proof_registered_mismatches": [],
+    "lifecycle_registered_mismatches": {
+      "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": {
+        "current": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b",
+        "old": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec"
+      },
+      "madgraph/various/tirust_install.py": {
+        "current": "4397d9f60e146354154cde942c20e01a086cf25797e41ddea6ac5054a563663e",
+        "old": "352052637afbd82ab84f27508eda1bdfd9abc6115409adc23f8262e94c38d370"
+      }
+    },
+    "statistics_proof_registered_mismatches": []
+  },
+  "typst_execution": false
+}

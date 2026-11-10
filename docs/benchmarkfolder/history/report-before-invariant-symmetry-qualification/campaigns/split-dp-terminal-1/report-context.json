@@ -1,0 +1,27 @@
+{
+  "campaign_id": "split-dp-terminal-1",
+  "campaign_report_path": "campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-1.json",
+  "cases_path": "campaigns/split-dp-terminal-1/cases.json",
+  "delivery_complete": false,
+  "numerical_identity_sha256": "accb7e50eec50093fdcb08dc2030714d1cfd9c40b8161c43ce3ce5efc761985d",
+  "observed_candidate_revisions": [],
+  "predecessors": [
+    {
+      "acceptance_eligible": true,
+      "directory": "runs/qcd_n1_uux_z/tirust-first-attempt-3",
+      "geometric_mean_ratio": 1.1210500947672746,
+      "id": "qcd_n1_uux_z",
+      "label": "tirust-first",
+      "lower_95": 1.1034925280600616,
+      "passed": false,
+      "predecessor_id": "legacy",
+      "process": "u u~ > z [virt=QCD]",
+      "revision": "c91cb85f3aa942c90299b3518bb1f195f55334a5",
+      "source_sha256": "74116e4bb2ba7abdb24a3dbcdb51cfae6547f05c3e276d3e17f5d5dab2b8d7a5",
+      "upper_95": 1.138887018281026
+    }
+  ],
+  "ratio_figure": null,
+  "registered_exporter_revision": "b33801545f1361fd6a86e3d1d125560abb367870",
+  "summary_path": "campaigns/split-dp-terminal-1/summary.json"
+}
