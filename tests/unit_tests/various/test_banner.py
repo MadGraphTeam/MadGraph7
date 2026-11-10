@@ -1179,7 +1179,76 @@ class TestRunCard(unittest.TestCase):
         self.assertTrue(hasattr(run_card2, 'fortran_name'))
         self.assertFalse(hasattr(run_card2, 'default'))
         self.assertTrue(hasattr(run_card2, 'cuts_parameter'))   
-              
+
+    def test_nlo_matching_modes(self):
+        """Legacy matching selections must not silently change the physics."""
+        for mode in (0, 3):
+            with self.subTest(mode=mode):
+                card = bannermod.RunCardNLO(
+                    '%s = ickkw\n' % mode, consistency=False)
+                self.assertEqual(card['ickkw'], mode)
+                output = io.StringIO()
+                card.write(output)
+                restored = bannermod.RunCardNLO(output.getvalue(), consistency=False)
+                self.assertEqual(restored['ickkw'], mode)
+                include = io.StringIO()
+                card.write_include_file(None, output_file=include)
+                self.assertIn('ickkw = %s' % mode, include.getvalue())
+
+        for mode in (-1, 4):
+            with self.subTest(unsupported_mode=mode):
+                with self.assertRaisesRegex(bannermod.InvalidRunCard, 'ickkw'):
+                    bannermod.RunCardNLO('%s = ickkw\n' % mode, consistency=False)
+        for initial_mode in (0, 3):
+            card = bannermod.RunCardNLO()
+            card['ickkw'] = initial_mode
+            for mode in (-1, 4):
+                with self.subTest(initial_mode=initial_mode, unsupported_mode=mode):
+                    with self.assertRaisesRegex(bannermod.InvalidRunCard, 'ickkw'):
+                        card.set('ickkw', mode, user=True)
+                    self.assertEqual(card['ickkw'], initial_mode)
+                    with self.assertRaisesRegex(bannermod.InvalidRunCard, 'ickkw'):
+                        card['ickkw'] = mode
+                    self.assertEqual(card['ickkw'], initial_mode)
+
+    def test_born_spreading_option(self):
+        """Born spreading is off by default and can be enabled."""
+        run_card = bannermod.RunCardNLO()
+        self.assertFalse(run_card['born_spreading'])
+        self.assertEqual(run_card.fortran_name.get('born_spreading'),
+                         'born_spreading')
+        run_card['born_spreading'] = True
+        self.assertTrue(run_card['born_spreading'])
+        card_path = pjoin(self.tmpdir, 'born_spreading_run_card.dat')
+        with open(card_path, 'w') as output:
+            run_card.write(output)
+        saved_card = bannermod.RunCard(card_path, consistency=False)
+        self.assertTrue(saved_card['born_spreading'])
+
+
+    def test_herwig7_legacy_run_card(self):
+        """Legacy shower selections reach both the run card and Fortran as HERWIG7."""
+        for value in ('HERWIGPP', 'herwigpp', 'HeRwIgPp', "'HERWIGPP'",
+                      '"herwigpp"', 'HERWIG++'):
+            with self.subTest(value=value):
+                run_card = bannermod.RunCardNLO(
+                    '%s = parton_shower\n' % value, consistency=False)
+                self.assertEqual(run_card['parton_shower'], 'HERWIG7')
+                self.assertIn('parton_shower', run_card.user_set)
+
+                output = io.StringIO()
+                run_card.write(output)
+                self.assertRegex(output.getvalue(), r'HERWIG7\s*=\s*parton_shower')
+
+                include = io.StringIO()
+                run_card.write_include_file(None, output_file=include)
+                self.assertIn("shower_mc = 'HERWIG7'", include.getvalue())
+
+        run_card.set('parton_shower', 'herwigpp', user=True)
+        self.assertEqual(run_card['parton_shower'], 'HERWIG7')
+        for value in ('HERWIG6', 'PYTHIA8', 'PYTHIA6Q', 'PYTHIA6PT'):
+            run_card['parton_shower'] = value
+            self.assertEqual(run_card['parton_shower'], value)
 
     def test_default(self):
       
@@ -3423,4 +3492,3 @@ class TestMadLoopParam(unittest.TestCase):
         for key, value in new.items():
             if key != 'CTLoopLibrary':
                 self.assertEqual(value, param2[key])
-
