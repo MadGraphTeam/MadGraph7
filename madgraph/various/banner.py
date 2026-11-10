@@ -2023,6 +2023,11 @@ class ProcCharacteristic(ConfigFile):
         # output written with --density (spin-density matrix): like a
         # polarisation, the matrix element is then not Lorentz invariant
         self.add_param('density_matrix', False)
+        # the max_jet_flavor the MLM clustering needs for this output: the
+        # flavour scheme of the model, raised to the heaviest quark taken from
+        # a beam (default_max_jet_flavor). 0: no hadronic beam, or a model
+        # with no flavour scheme, and then nothing is enforced.
+        self.add_param('max_jet_flavor', 0)
 
     def read(self, finput):
         """Read the input file, this can be a path to a file, 
@@ -4591,6 +4596,14 @@ def get_model_flavour_scheme(proc_def):
         if isinstance(item, (list, tuple)):
             todo = list(item) + todo
     return None
+
+
+def default_max_jet_flavor(nflav, beam_ids):
+    """The heaviest quark flavour that is a jet, as madevent sets maxjetflavor:
+    the flavour scheme ``nflav`` of the model (4 when unknown), raised to the
+    heaviest quark that is taken from a beam (a b-initiated process in a
+    4-flavour model)."""
+    return max([nflav or 4] + [abs(i) for i in beam_ids if -7 < i < 7])
 
 
 def default_me_frame_for_process(proc_def, density=False, radiates=None):
@@ -7803,6 +7816,35 @@ class RunCardMG7(RunCard):
                 and not bool(beam['leptonic'])
                 and float(self['phasespace']['xqcut']) > 0)
 
+    def check_mlm_max_jet_flavor(self, expected):
+        """With the MLM clustering (dynamical_scale_choice = "mlm") on hadronic
+        beams, max_jet_flavor has to be ``expected``, the flavour scheme of the
+        model (proc_characteristics max_jet_flavor): the clustering decides
+        from it which partons are jets, and the shower's jet matching
+        (JetMatching:nQmatch) uses the same number. A massless b that is not a
+        jet gets no clustering scale and is never matched, so the sample
+        double counts; a massive b that is a jet is matched as if it were
+        massless. Any other scale choice uses max_jet_flavor for nothing but
+        the default jet list, so the user is free to set it.
+        ``expected`` 0 (unknown) checks nothing."""
+        beam = self['beam']
+        try:
+            expected = int(expected)
+        except (TypeError, ValueError):
+            return
+        if not expected or beam['dynamical_scale_choice'] != 'mlm' \
+                or bool(beam['leptonic']):
+            return
+        if int(beam['max_jet_flavor']) != expected:
+            raise InvalidRunCard(
+                "beam.max_jet_flavor = %s is not supported with "
+                "dynamical_scale_choice = \"mlm\": the MLM clustering and jet "
+                "matching need the flavour scheme of the model, "
+                "max_jet_flavor = %s (the quarks up to %s are massless jets). "
+                "Set beam.max_jet_flavor = %s, or use another "
+                "dynamical_scale_choice." % (beam['max_jet_flavor'], expected,
+                                             expected, expected))
+
     def _legacy_compat(self, key):
         beam = self['beam']
         leptonic = bool(beam['leptonic'])
@@ -8854,10 +8896,9 @@ class RunCardMG7(RunCard):
             # the heaviest quark the MLM clustering treats as a jet follows the
             # flavour scheme of the model, as madevent's maxjetflavor does: 5
             # once the b is massless and in the proton
-            nflav = get_model_flavour_scheme(proc_def) or 4
             old = self['beam']['max_jet_flavor']
-            self['beam']['max_jet_flavor'] = max(
-                [nflav] + [abs(i) for i in beam_id if -7 < i < 7])
+            self['beam']['max_jet_flavor'] = default_max_jet_flavor(
+                get_model_flavour_scheme(proc_def), beam_id)
             # and so do the jet cuts: in a 5-flavour model a final-state b is
             # a jet (madevent applies ptj/etaj/drjj to it), not an uncut
             # particle

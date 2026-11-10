@@ -3198,6 +3198,59 @@ class TestRunCardMG7JetFlavours(unittest.TestCase):
         self.assertEqual(sorted(mg7['multiparticles']['jet']), sorted(self.JET5))
         self.assertIn('jet-pt', mg7['cuts'])
 
+    # --- MLM: max_jet_flavor is not free -------------------------------
+
+    def test_default_max_jet_flavor(self):
+        self.assertEqual(bannermod.default_max_jet_flavor(5, {2, -2}), 5)
+        self.assertEqual(bannermod.default_max_jet_flavor(4, {21, 2}), 4)
+        # a b from the beam in a 4-flavour model is a jet
+        self.assertEqual(bannermod.default_max_jet_flavor(4, {5, -5}), 5)
+        # no flavour scheme: madevent's 4
+        self.assertEqual(bannermod.default_max_jet_flavor(None, {21}), 4)
+
+    def test_proc_characteristics_has_max_jet_flavor(self):
+        pc = bannermod.ProcCharacteristic()
+        self.assertEqual(pc['max_jet_flavor'], 0)
+
+    def mlm_card(self, max_jet_flavor, xqcut=30.0):
+        rc = bannermod.RunCardMG7()
+        rc['beam']['dynamical_scale_choice'] = 'mlm'
+        rc['phasespace']['xqcut'] = xqcut
+        rc['beam']['max_jet_flavor'] = max_jet_flavor
+        return rc
+
+    def test_mlm_wrong_max_jet_flavor_crashes(self):
+        # 5-flavour model, 4 in the card: massless b not a jet
+        with self.assertRaises(bannermod.InvalidRunCard) as error:
+            self.mlm_card(4).check_mlm_max_jet_flavor(5)
+        self.assertIn('max_jet_flavor = 5', str(error.exception))
+        # 4-flavour model, 5 in the card: massive b clustered as a jet
+        with self.assertRaises(bannermod.InvalidRunCard):
+            self.mlm_card(5).check_mlm_max_jet_flavor(4)
+        # the MLM clustering scale without a merging cut is no different
+        with self.assertRaises(bannermod.InvalidRunCard):
+            self.mlm_card(4, xqcut=0.0).check_mlm_max_jet_flavor(5)
+
+    def test_mlm_correct_max_jet_flavor_passes(self):
+        self.mlm_card(5).check_mlm_max_jet_flavor(5)
+        self.mlm_card(4).check_mlm_max_jet_flavor(4)
+
+    def test_mlm_unknown_flavour_scheme_is_not_checked(self):
+        # an output older than the check, or a model with no flavour scheme
+        self.mlm_card(5).check_mlm_max_jet_flavor(0)
+        self.mlm_card(5).check_mlm_max_jet_flavor(None)
+
+    def test_no_mlm_max_jet_flavor_is_free(self):
+        rc = bannermod.RunCardMG7()
+        rc['beam']['max_jet_flavor'] = 3
+        for choice in ('transverse_energy', 'partonic_energy'):
+            rc['beam']['dynamical_scale_choice'] = choice
+            rc.check_mlm_max_jet_flavor(5)
+        # nor on lepton beams
+        rc = self.mlm_card(4)
+        rc['beam']['leptonic'] = True
+        rc.check_mlm_max_jet_flavor(5)
+
 
 class TestRunCardMG7Histograms(unittest.TestCase):
     """[histograms]: the default plots written at output time."""
