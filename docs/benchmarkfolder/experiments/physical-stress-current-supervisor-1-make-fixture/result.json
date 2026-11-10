@@ -1,0 +1,109 @@
+{
+  "actual_make_commands": 3,
+  "compiler_loader_amplitude_commands": 0,
+  "external_inputs": {
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stress-make-fixture-1/include/fixture.mod": "23f695d34b43259e694512fb489c1cc33b046849303e54a43c9e3d3c0c01919b",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stress-make-fixture-1/lib/libfixture.a": "d6a6e9eef71aa328ae74f3aa4a1dcd4c5eea5c2b5245c97afb47e69704d3418b"
+  },
+  "make_info": "FC fixture-compiler-MUST-NOT-EXECUTE\nFFLAGS -O2 -fno-fast-math\nLDFLAGS -Wl,--as-needed\nLINKLIBS -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stress-make-fixture-1/lib -lfixture -Wl,--as-needed\nLOOP_INCLUDE -I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stress-make-fixture-1/include\n",
+  "make_object_names": [
+    "check_sa.o",
+    "tensor.o",
+    "denominator.o"
+  ],
+  "mocked_compiler_queries": [
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=Scrt1.o"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=crt1.o"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=crtbegin.o"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=crtbeginS.o"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=crtend.o"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=crtendS.o"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=crti.o"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=crtn.o"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libc.a"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libc.so"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libfixture.a"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libfixture.so"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libgcc.a"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libgcc.so"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libgcc_s.a"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libgcc_s.so"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libgfortran.a"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libgfortran.so"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libm.a"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libm.so"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libquadmath.a"
+    ],
+    [
+      "fixture-compiler-MUST-NOT-EXECUTE",
+      "-print-file-name=libquadmath.so"
+    ]
+  ],
+  "owned_cleanup_all_passed": true,
+  "passed": true,
+  "source_index_sha256": "dbfa3ca37a05f7f7e7f2f91872902adf249106968314192a273ab804a24ff1bf",
+  "source_run_sha256": "878280d34caf20678914301ef27639e8601597734d5df84829d47e8e6713521c",
+  "source_unchanged": true
+}

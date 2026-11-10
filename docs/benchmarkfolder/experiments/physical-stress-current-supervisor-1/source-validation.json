@@ -1,0 +1,140 @@
+{
+  "installed": {
+    "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a": {
+      "sha256": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396",
+      "size": 3281212
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/baseline/vendor/IREGI/src/libiregi.a": {
+      "sha256": "aca67384c89cfaa47cd01d23ab86e9d808c3d48086869f29b60f32f809e0f47d",
+      "size": 3821942
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/Cargo.lock": {
+      "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+      "size": 35857
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/Cargo.toml": {
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+      "size": 1074
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/include/mtirust.f90": {
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+      "size": 15997
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/include/tirust.h": {
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad",
+      "size": 5742
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": {
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+      "size": 69094528
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libtirust.a": {
+      "sha256": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+      "size": 26118
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/mtirust.mod": {
+      "sha256": "d7838e75335c908a31e644d909bdd6dc71d98467ef8bdca3ca06f8bfad20eaf5",
+      "size": 3432
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-NOTICES.txt": {
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+      "size": 717
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-config.json": {
+      "sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9",
+      "size": 3055
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-dependency-notices.tar.gz": {
+      "sha256": "edd742d13608a107e1a19fd1502b4553382def731de9f39727827345520428fa",
+      "size": 849506
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-dependency-provenance.json": {
+      "sha256": "5a328ed1a6cab615b5afc9952e758e3417f705578186d7914258d885f6851f78",
+      "size": 539682
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-link-before.txt": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "size": 8
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-native-libs.txt": {
+      "sha256": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62",
+      "size": 17
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.a": {
+      "sha256": "70891c9d04fd5e109838a701df1ee616ab2092599c5a615d24b5f9cd33c96a07",
+      "size": 5037496
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.a": {
+      "sha256": "4d9aa36adc1df40eae062d82d3fb930a5cd64040252df5af68dc1a3e247f8fb9",
+      "size": 3935002
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a": {
+      "sha256": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6",
+      "size": 298293528
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-NOTICES.txt": {
+      "sha256": "6d82540c9a7bd21647da949b892f956603bf69f6ec90dca1d390f17e69de2352",
+      "size": 720
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-config.json": {
+      "sha256": "ebb9ebfec9c71041fc3e441e2546524025080a13692b522d5495bef710be8d56",
+      "size": 4706
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-dependency-notices.tar.gz": {
+      "sha256": "67696adaa31e58b35ee4404d02d66194a0496f45126651a6a57ad715b2bad6b8",
+      "size": 1393576
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-dependency-provenance.json": {
+      "sha256": "231dd32ac82cf432835410970024eb48f47023a4709a10b7cadc67720e0dbaae",
+      "size": 1103244
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-link-before.txt": {
+      "sha256": "ef7dc598f2fee7b363feabeaf30bd352dbc67456f2ba8ea5b176d70ec9ed9abe",
+      "size": 117
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-native-libs.txt": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "size": 48
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/libavh_olo.a": {
+      "sha256": "10acae25536d5f7580d60980290e21033eb7413224554f167f031d2c809bab48",
+      "size": 2585768
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a": {
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "size": 10134496
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/libiregi.a": {
+      "sha256": "6246428ec9d75ec8d57e0d1dd16efc4525053dc8d49857c6c41366ea14eb4fdf",
+      "size": 3821534
+    }
+  },
+  "native_or_build_commands_executed": 0,
+  "plan": {
+    "bound_read_only_inputs": 99,
+    "candidate_requests": 20,
+    "cases": 4,
+    "commands_executed": 0,
+    "driver_delta": "stdout retention only",
+    "passed": true,
+    "source_control_requests": 4,
+    "source_only": true
+  },
+  "template_serialization": {
+    "baseline": {
+      "ignored_baseline_fields": {
+        "tirustcachemaxbytes": 268435456,
+        "tirustcomputefinite": true,
+        "tirustglobalcache": -1,
+        "useqpintegrandfortirust": true
+      },
+      "rendered_sha256": "8badc7fb1a4407961555942151cc4de56639077409d6057670a13da0e57dc8d4",
+      "source_sha256": "0e2dc5cb17e844e5e871afbd50eb604a389ba585c10b3cc471f752e509b52f61"
+    },
+    "candidate": {
+      "ignored_baseline_fields": {},
+      "rendered_sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85",
+      "source_sha256": "3583415d485e9d212ff40f5da5e16749c0cb8473582966ea038af426ce08dec6"
+    }
+  }
+}

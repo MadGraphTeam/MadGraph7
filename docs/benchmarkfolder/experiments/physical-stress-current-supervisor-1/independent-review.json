@@ -1,0 +1,20 @@
+{
+  "builds_native_or_compiler_queries": 0,
+  "initial_findings": [
+    "Cleanup/controller errors could be swallowed; outer failures must force ineligible results.",
+    "Every observed ELF hash and non-ELF mapping must be classified; errors must persist.",
+    "Generation/prelink receipt hashes must be revalidated.",
+    "All nine registered native artifact hashes must be enforced.",
+    "Card serialization must avoid mutable shared imports.",
+    "Aborted/deferred requests and remaining lanes must be explicit.",
+    "Actual STOP0 differs from illustrative STOP2 and must be documented."
+  ],
+  "passed": true,
+  "resolution": "All targeted findings corrected; no remaining material blocker in rechecked changes. AST parsing passed; reviewer did not run tests/native.",
+  "reviewed_sources": {
+    "native_job.py": "f28965de44a34ab76a94291b3d0b2f2da2909cead876025aeaf0cff97190e991",
+    "run.py": "878280d34caf20678914301ef27639e8601597734d5df84829d47e8e6713521c",
+    "test_supervisor.py": "422d8eeb52dbee57b2be4307af49570c315d79c151f2259289fedb07043bdda0"
+  },
+  "scope": "Independent narrow source-only review by /root/complex_stress/ct_qp_source_audit"
+}

@@ -1,0 +1,8 @@
+FC = fixture-compiler-MUST-NOT-EXECUTE
+FFLAGS = -O2 -fno-fast-math
+LDFLAGS = -Wl,--as-needed
+LINKLIBS = -L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stress-make-fixture-1/lib -lfixture $(LDFLAGS)
+LOOP_INCLUDE = -I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stress-make-fixture-1/include
+PROCESS = tensor.o denominator.o
+check_sa.o tensor.o denominator.o:
+	@printf 'synthetic make fixture %s\n' '$@' > $@
