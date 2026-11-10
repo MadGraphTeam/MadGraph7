@@ -1,0 +1,46 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3149,
+      "sha256": "fe64e8a8f31dc1044990af12e01c29d7b0f52e04c1773f57778c329fb32b2370"
+    },
+    "TIRUST_interface.inc": {
+      "bytes": 14339,
+      "sha256": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b"
+    },
+    "compare_source-first-attempt.py": {
+      "bytes": 7150,
+      "sha256": "53460fca4026fba5b7ee5760560c2174c4767b9f153cf8d062557870e1909824"
+    },
+    "compare_source.py": {
+      "bytes": 7296,
+      "sha256": "f239301f3ec016a2c9a37e1efb0f8cd1706148bd31df663809929a2f9b52993d"
+    },
+    "promotion.patch": {
+      "bytes": 11828,
+      "sha256": "ea580786efd41bbad2e2df5061b564ba2c7e8f02a425ba7865a768d7fcd9ea8e"
+    },
+    "rendered-AmplitudeReduction-true.f": {
+      "bytes": 15003,
+      "sha256": "ab6fdb707236ad4d46e8016f4ed14c0f80de014c3ed2ca584c42d2b1672204f4"
+    },
+    "rendered-TIRUST_interface.f": {
+      "bytes": 15072,
+      "sha256": "ee691e92cea6ad69dc67b2e3fc1527773b379353d37ec4b8f7afab2bcddf8eae"
+    },
+    "source-comparison-first-attempt.json": {
+      "bytes": 1915,
+      "sha256": "d76776bedd43258544bc6c3fda601613a3e2eaa6eb4755ebfeda4b64eec132fd"
+    },
+    "source-comparison.json": {
+      "bytes": 3748,
+      "sha256": "d23fca9f5345cd676b367d8939fc6b82663d623b615e0e13e0ee51f4d68ae574"
+    },
+    "test_tirust_fortran.py": {
+      "bytes": 21436,
+      "sha256": "74b02f5d373fa515c440b0d59a3ad1654c7c7fcb15c7707f5c5b8aa00b486d1a"
+    }
+  },
+  "schema": "ew-v2-production-promotion-proposal-v1",
+  "stage": "historical-source-proposal"
+}

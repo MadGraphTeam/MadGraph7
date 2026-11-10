@@ -1,0 +1,47 @@
+{
+  "canonical_diff": [
+    "--- qualified\n",
+    "+++ first-render\n",
+    "@@ -236,9 +236,9 @@\n",
+    " PARAMETER(NORMALIZATION=1.0E0_16/(16.0E0_16*3.141592653589793238462643383279502884E0_16**2))",
+    " LOGICALSTABLE,FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION",
+    " COMMON/ML5_0_FPE_IN_REDUCTION/FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION",
+    "-INTEGERID,SQSOINDEX,R",
+    "-COMMON/ML5_0_LOOP/ID,SQSOINDEX,R",
+    "-COMPLEX*32LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)",
+    "+INTEGERID,R",
+    "+COMMON/ML5_0_LOOP/ID,R",
+    "+COMPLEX*32LOOPCOEFS(0:LOOPMAXCOEFS-1,NLOOPGROUPS)",
+    " COMMON/ML5_0_MP_LCOEFS/LOOPCOEFS",
+    " RES=0",
+    " CALLML5_0_MP_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK,PL,M2L,COEFS,STABLE)",
+    "@@ -249,9 +249,9 @@\n",
+    " RESULT=0",
+    " DOI=1,3",
+    " DOJ=0,NCOEF_R(RANK)-1",
+    "-RESULT(I)=RESULT(I)+LOOPCOEFS(J,SQSOINDEX,ID)*COEFS(J,I)",
+    "-ENDDO",
+    "-RESULT(I)=2.0E0_16*NORMALIZATION*REAL(RESULT(I),KIND=KI_QTIR)",
+    "+RESULT(I)=RESULT(I)+LOOPCOEFS(J,ID)*COEFS(J,I)",
+    "+ENDDO",
+    "+RESULT(I)=NORMALIZATION*RESULT(I)",
+    " RES(I)=CMPLX(RESULT(I),KIND=KIND(0D0))",
+    " STABLE=STABLE.AND.IEEE_IS_FINITE(DBLE(RES(I))).AND.IEEE_IS_FINITE(AIMAG(RES(I)))",
+    " ENDDO"
+  ],
+  "compiled": false,
+  "context": {
+    "AmplitudeReduction": true,
+    "tirust_available": true,
+    "tirust_supports_quad_prec": true
+  },
+  "exit_code": 1,
+  "native_executed": false,
+  "reason": "Qualified physical export uses AmplitudeReduction=False; diagnostic insertions match but the existing MP_TIRUST_LOOP contraction branch differs.",
+  "retained": {
+    "compare_source-first-attempt.py": "53460fca4026fba5b7ee5760560c2174c4767b9f153cf8d062557870e1909824",
+    "rendered-AmplitudeReduction-true.f": "ab6fdb707236ad4d46e8016f4ed14c0f80de014c3ed2ca584c42d2b1672204f4"
+  },
+  "schema": "ew-invariant-v2-source-comparison-mismatch-v1",
+  "tests_executed": false
+}

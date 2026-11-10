@@ -437,7 +437,107 @@ def _shared_files(bench, source_report):
     return {name: bench.digest(_inside(source_report, source_report / name)) for name in names}
 
 
-def register_campaign(bench, campaign_id, tirust_prefix, predecessor="legacy", reason="", worker_timeouts=None):
+CARD_ORIGINS_SCHEMA = "madloop-physical-card-origins-v1"
+
+
+def _card_origin_path(base, name):
+    """Card evidence must be portable, contained, and free of symlink aliases."""
+    relative = Path(name)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Physical-card origin path escapes its report")
+    cursor = Path(base)
+    for part in relative.parts:
+        cursor /= part
+        if cursor.is_symlink():
+            raise ValueError("Physical-card origin path may not be a symlink")
+    return _inside(base, Path(base) / relative)
+
+
+def _physical_card_origins(bench, predecessor, shared_inputs, observations=None):
+    """Freeze actual predecessor input evidence, never measurements for a successor.
+
+    An explicit observation inventory is used for verification; new observations
+    are not implicitly imported. Registration alone scans the named predecessor.
+    """
+    base = Path(bench.LEGACY_REPORT)
+    if predecessor["id"] == "legacy" or predecessor["manifest_sha256"] is None:
+        raise ValueError("Physical-card origins require a named immediate predecessor")
+    report = _card_origin_path(base, predecessor["report"])
+    if report != _paths(bench, predecessor["id"])[0]:
+        raise ValueError("Physical-card origins must name the immediate predecessor")
+    if bench.digest(report / "manifest.json") != predecessor["manifest_sha256"]:
+        raise ValueError("Physical-card predecessor manifest changed")
+    prior = _read(report / "manifest.json")
+    if (prior.get("schema") != SCHEMA or prior.get("id") != predecessor["id"]
+            or prior["shared_inputs"] != shared_inputs):
+        raise ValueError("Physical-card origin model, points, or policy differs")
+    for name, checksum in shared_inputs["files"].items():
+        if bench.digest(_card_origin_path(report, name)) != checksum:
+            raise ValueError("Physical-card origin frozen inputs changed")
+    config = _read(report / "cases.json")
+    if bench.content_digest(config) != shared_inputs["policy_sha256"]:
+        raise ValueError("Physical-card origin policy binding differs")
+    cases = {case["id"]: case for case in config["cases"]}
+    if len(cases) != len(config["cases"]):
+        raise ValueError("Duplicate physical-card origin cases")
+    prefix = report / "experiments/numerical"
+    paths = (sorted(prefix.glob("*/*/*-inputs.json")) if observations is None
+             else [_card_origin_path(base, name) for name in sorted(observations)])
+    observed, cards = {}, {}
+    expected_binding = {"id": predecessor["id"], "manifest_sha256": predecessor["manifest_sha256"]}
+    for path in paths:
+        if (not path.is_relative_to(prefix) or len(path.relative_to(prefix).parts) != 3
+                or not path.name.endswith("-inputs.json")):
+            raise ValueError("Physical-card origin is not a retained numerical input record")
+        name = path.relative_to(base).as_posix()
+        path = _card_origin_path(base, name)
+        checksum = bench.digest(path)
+        if observations is not None and checksum != observations[name]:
+            raise ValueError("Declared physical-card observation changed")
+        record = _read(path)
+        generation = record["generation"]
+        case_id = generation["case"]["id"]
+        card_hash = record["param_card_sha256"]
+        if (case_id not in cases or generation["case"] != cases[case_id]
+                or record.get("campaign_binding") != expected_binding
+                or generation.get("campaign_binding") != expected_binding
+                or generation["source"] not in ("baseline", "candidate")
+                or generation["parameter_card_sha256"] != card_hash):
+            raise ValueError("Physical-card observation case, ancestry, or hash differs")
+        for field, suffix in (("points_sha256", ".dat"), ("points_metadata_sha256", ".json")):
+            if record[field] != shared_inputs["files"]["points/" + case_id + suffix]:
+                raise ValueError("Physical-card observation uses different frozen points")
+        card = report / "inputs" / generation["source"] / case_id / "param_card.dat"
+        card_name = card.relative_to(base).as_posix()
+        if bench.digest(_card_origin_path(base, card_name)) != card_hash:
+            raise ValueError("Retained physical-card bytes differ from the observation")
+        entry = cards.setdefault(case_id, {"param_card_sha256": card_hash, "files": {}})
+        if entry["param_card_sha256"] != card_hash:
+            raise ValueError("Physical-card observations disagree for " + case_id)
+        entry["files"][card_name] = card_hash
+        observed[name] = checksum
+    if set(cards) != set(cases):
+        raise ValueError("Physical-card origins require observations for every frozen case")
+    return {"schema": CARD_ORIGINS_SCHEMA, "scope": "physical-input-ancestry-only",
+            "origin": {key: predecessor[key] for key in ("id", "report", "manifest_sha256")},
+            "shared_inputs_sha256": bench.content_digest(shared_inputs),
+            "observations": observed, "cards": cards}
+
+
+def verify_physical_card_origins(bench, manifest):
+    """Optional registration metadata; never substitute for fresh numerical runs."""
+    declared = manifest.get("physical_card_origins")
+    if declared is None:
+        return None
+    actual = _physical_card_origins(bench, manifest["predecessor"], manifest["shared_inputs"],
+                                    declared["observations"])
+    if actual != declared:
+        raise ValueError("Declared physical-card origins changed")
+    return actual
+
+
+def register_campaign(bench, campaign_id, tirust_prefix, predecessor="legacy", reason="", worker_timeouts=None,
+                      inherit_physical_cards=False):
     """Register one namespace per numerical identity/policy, before any runs."""
     _paths(bench, campaign_id)
     if not isinstance(reason, str) or not reason.strip():
@@ -448,10 +548,12 @@ def register_campaign(bench, campaign_id, tirust_prefix, predecessor="legacy", r
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".registration.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason, worker_timeouts)
+        return _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason, worker_timeouts,
+                                  inherit_physical_cards)
 
 
-def _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason, worker_timeouts):
+def _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason, worker_timeouts,
+                       inherit_physical_cards):
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("Campaign registration requires an optimization reason")
     report, work = _paths(bench, campaign_id)
@@ -505,6 +607,8 @@ def _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason, w
         "candidate": {"exporter_identity": exporter, "numerical_sources": sources, "native": native,
                       "source_snapshot": "inputs/numerical-sources",
                       "numerical_identity_sha256": numerical}}
+    if inherit_physical_cards:
+        manifest["physical_card_origins"] = _physical_card_origins(bench, previous, manifest["shared_inputs"])
     report.parent.mkdir(parents=True, exist_ok=True)
     work.parent.mkdir(parents=True, exist_ok=True)
     report.mkdir()
@@ -533,6 +637,7 @@ def _register_campaign(bench, campaign_id, tirust_prefix, predecessor, reason, w
             if bench.digest(report / name) != checksum:
                 raise ValueError("Frozen report input changed during registration")
         _verify_predecessor(bench, previous)
+        verify_physical_card_origins(bench, manifest)
         # Exclusive publication seals preregistration. No command runs before
         # activate_campaign verifies this manifest and its copied input bytes.
         with (report / "manifest.json").open("x") as stream:
@@ -622,6 +727,7 @@ def verify_campaign(bench, stage="run", inputs=None):
         snapshot = _inside(report, report / candidate["source_snapshot"] / name)
         if not snapshot.is_file() or bench.digest(snapshot) != identity["sha256"]:
             raise ValueError("Frozen campaign numerical source snapshot changed")
+    verify_physical_card_origins(bench, manifest)
     discovered = _verify_predecessor(bench, manifest["predecessor"])
     _retain_discoveries(bench, report, manifest, discovered)
     if stage not in HISTORICAL_STAGES:

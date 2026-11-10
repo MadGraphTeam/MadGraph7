@@ -1,0 +1,9 @@
+test_invariant_mirroring_preserves_words_and_ieee_state (tests.unit_tests.loop.test_tirust_fortran.TensorAdapterTest.test_invariant_mirroring_preserves_words_and_ieee_state) ... ok
+test_recorded_dp_qp_tensors_and_failure_lifecycle (tests.unit_tests.loop.test_tirust_fortran.TensorAdapterTest.test_recorded_dp_qp_tensors_and_failure_lifecycle) ... ok
+test_sparse_qp_rescue_list_wraps_at_the_zero_sentinel (tests.unit_tests.loop.test_tirust_fortran.TensorAdapterTest.test_sparse_qp_rescue_list_wraps_at_the_zero_sentinel) ... ok
+test_all_components_through_rank_six (tests.unit_tests.loop.test_tirust_fortran.TensorPermutationTest.test_all_components_through_rank_six) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 2.817s
+
+OK

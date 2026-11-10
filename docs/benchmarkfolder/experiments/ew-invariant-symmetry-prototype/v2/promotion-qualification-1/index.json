@@ -1,0 +1,93 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3985,
+      "sha256": "e71d5fa307d0c2feadb7d28224493fa34b41e5b2de285c1026a5ea1ec6a226a0"
+    },
+    "rendered-TIRUST_interface.f": {
+      "bytes": 15072,
+      "sha256": "ee691e92cea6ad69dc67b2e3fc1527773b379353d37ec4b8f7afab2bcddf8eae"
+    },
+    "source-comparison.json": {
+      "bytes": 3009,
+      "sha256": "134be92c59f639d79b56416de009309a62ef122253a55797fe6bea579909310c"
+    },
+    "source/TIRUST_interface.inc": {
+      "bytes": 14339,
+      "sha256": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b"
+    },
+    "source/test_tirust_fortran.py": {
+      "bytes": 21436,
+      "sha256": "74b02f5d373fa515c440b0d59a3ad1654c7c7fcb15c7707f5c5b8aa00b486d1a"
+    },
+    "tests.json": {
+      "bytes": 1680,
+      "sha256": "a3393d74d52c86018ab996e878d68abf0779767159e308c2634cf46f381bc676"
+    },
+    "unittest.log": {
+      "bytes": 772,
+      "sha256": "b49ef25879ffe98870e6cd0ee8c1da288d01978ae0b9430daa4bc0d54ed72788"
+    }
+  },
+  "old_campaign_or_other_exports_requalified": false,
+  "performance_claim": false,
+  "recording_tests": {
+    "passed": 4,
+    "real_reducer_invoked": false,
+    "reaped": true,
+    "returncode": 0,
+    "skipped": 0
+  },
+  "repository_bindings": {
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/controller/run.py": {
+      "bytes": 34631,
+      "sha256": "6a0512b620f0f9723af8811bbbd128f3b1f0990aac64e3aaf1da60ec7e5cab10"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/TIRUST_interface.f": {
+      "bytes": 15135,
+      "sha256": "177a7973ea9182978097d5256fab0f0c93c1d4c799919203f7855631bee294ad"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/build-qualification-1/index.json": {
+      "bytes": 9858,
+      "sha256": "9749d31821172abb1cb5d8da6c45568b7728af4afcef7b0a6833f3d3bc74bb4e"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/index.json": {
+      "bytes": 58233,
+      "sha256": "62368b50b659f388a031f35528bd0cda6ae54c82ed751dd39c49a3df3db97300"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/index.json": {
+      "bytes": 3225,
+      "sha256": "d3c1e4212669d66846195bf65af0a05153ce406c87ac12cb30cc58a612b3bb93"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/promotion-proposal/compare_source.py": {
+      "bytes": 7296,
+      "sha256": "f239301f3ec016a2c9a37e1efb0f8cd1706148bd31df663809929a2f9b52993d"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/promotion-proposal/promotion.patch": {
+      "bytes": 11828,
+      "sha256": "ea580786efd41bbad2e2df5061b564ba2c7e8f02a425ba7865a768d7fcd9ea8e"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/promotion-proposal/source-comparison.json": {
+      "bytes": 3748,
+      "sha256": "d23fca9f5345cd676b367d8939fc6b82663d623b615e0e13e0ee51f4d68ae574"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/index.json": {
+      "bytes": 43245,
+      "sha256": "7aa5cbe23c6b787cc57a9a58d323db8a8acdd4b6f3bf54d6e07f268a50a55fde"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": {
+      "bytes": 14339,
+      "sha256": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b"
+    },
+    "tests/unit_tests/loop/test_tirust_fortran.py": {
+      "bytes": 21436,
+      "sha256": "74b02f5d373fa515c440b0d59a3ad1654c7c7fcb15c7707f5c5b8aa00b486d1a"
+    }
+  },
+  "schema": "ew-v2-production-promotion-qualification-v1",
+  "source_comparison": {
+    "canonical_statement_count": 316,
+    "original_recovered_by_removing_four_exact_blocks": true,
+    "qualified_statements_equal": true
+  }
+}

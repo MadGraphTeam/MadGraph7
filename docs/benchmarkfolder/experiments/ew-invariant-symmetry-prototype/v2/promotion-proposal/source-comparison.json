@@ -1,0 +1,61 @@
+{
+  "canonical_statement_count": 316,
+  "canonical_statements_sha256": "503ceb964ad0a27212939b86a497719fcfaad01a6b763533b1d27fe2349cf2e2",
+  "comparison_script_sha256": "f239301f3ec016a2c9a37e1efb0f8cd1706148bd31df663809929a2f9b52993d",
+  "compiled": false,
+  "inserted_blocks": [
+    {
+      "bytes": 826,
+      "sha256": "152d9854e81c9e1d94c8efaf3e7a0f5f785d59b85f04aef363969e6ab156fe95"
+    },
+    {
+      "bytes": 604,
+      "sha256": "b5366df34087950e6255961bc0f194b741e68569b09e897c308c1e7cc4166fb0"
+    },
+    {
+      "bytes": 873,
+      "sha256": "decb08f0b84ad94d129816397099b1264a690e12d14e3a28a9023d1f62c433f3"
+    },
+    {
+      "bytes": 604,
+      "sha256": "b5366df34087950e6255961bc0f194b741e68569b09e897c308c1e7cc4166fb0"
+    }
+  ],
+  "live_before_sha256": {
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec",
+    "tests/unit_tests/loop/test_tirust_fortran.py": "f278c9609724165591f92d22a83284a2e1a9203b79ac07f78f24a91e076859ee"
+  },
+  "live_files_modified": false,
+  "mapping_entries": 35,
+  "native_executed": false,
+  "original_template_recovered_by_removing_four_exact_blocks": true,
+  "patch_sha256": "ea580786efd41bbad2e2df5061b564ba2c7e8f02a425ba7865a768d7fcd9ea8e",
+  "proposed_template_sha256": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b",
+  "proposed_tests_sha256": "74b02f5d373fa515c440b0d59a3ad1654c7c7fcb15c7707f5c5b8aa00b486d1a",
+  "python_test_source_parsed": true,
+  "qualified_canonical_statements_equal": true,
+  "qualified_source_sha256": "177a7973ea9182978097d5256fab0f0c93c1d4c799919203f7855631bee294ad",
+  "registration_call_count": 13,
+  "render_context": {
+    "AmplitudeReduction": false,
+    "tirust_available": true,
+    "tirust_supports_quad_prec": true
+  },
+  "render_replacements": {
+    "complex_dp_format": "COMPLEX*16",
+    "complex_mp_format": "COMPLEX*32",
+    "include_vector": "",
+    "mass_dp_format": "COMPLEX*16",
+    "maxrank": 3,
+    "nSquaredSO": 1,
+    "nloop_groups": 200,
+    "proc_prefix": "ML5_0_",
+    "real_dp_format": "REAL*8",
+    "real_mp_format": "REAL*16",
+    "tirust_coefmap": "DATA (TIRUST_MAP(I),I=0,9)/1,2,3,4,5,6,7,10,8,11/\nDATA (TIRUST_MAP(I),I=10,19)/13,9,12,14,15,16,17,20,26,18/\nDATA (TIRUST_MAP(I),I=20,29)/21,27,23,29,32,19,22,28,24,30/\nDATA (TIRUST_MAP(I),I=30,34)/33,25,31,34,35/",
+    "tirust_plan_registration": "      CALL TIRUST_REGISTER_PLAN(1,0,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(2,0,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(2,1,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(2,2,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(3,0,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(3,1,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(3,2,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(3,3,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(4,1,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(4,2,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(4,3,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(5,2,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      CALL TIRUST_REGISTER_PLAN(5,3,STATUS)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n"
+  },
+  "rendered_sha256": "ee691e92cea6ad69dc67b2e3fc1527773b379353d37ec4b8f7afab2bcddf8eae",
+  "schema": "ew-invariant-v2-production-source-comparison-v1",
+  "tests_executed": false
+}

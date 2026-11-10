@@ -1,0 +1,43 @@
+{
+  "command": [
+    "/run/current-system/sw/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "-m",
+    "unittest",
+    "-v",
+    "tests.unit_tests.loop.test_tirust_fortran"
+  ],
+  "compiler": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+  "cpu": 12,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "full_numerical_replay_repeated": false,
+  "helper_sha256": "6a0512b620f0f9723af8811bbbd128f3b1f0990aac64e3aaf1da60ec7e5cab10",
+  "log_sha256": "b49ef25879ffe98870e6cd0ee8c1da288d01978ae0b9430daa4bc0d54ed72788",
+  "pid": 14,
+  "process_reaped": true,
+  "process_spawned": true,
+  "real_reducer_invoked": false,
+  "returncode": 0,
+  "schema": "ew-v2-production-recording-tests-v1",
+  "seconds_cap": 180,
+  "shared_numerical_lock": true,
+  "source_sha256_after": {
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b",
+    "tests/unit_tests/loop/test_tirust_fortran.py": "74b02f5d373fa515c440b0d59a3ad1654c7c7fcb15c7707f5c5b8aa00b486d1a"
+  },
+  "source_sha256_before": {
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b",
+    "tests/unit_tests/loop/test_tirust_fortran.py": "74b02f5d373fa515c440b0d59a3ad1654c7c7fcb15c7707f5c5b8aa00b486d1a"
+  },
+  "sources_unchanged_by_tests": true,
+  "test_process_exit": 0,
+  "thread_environment": {
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1"
+  }
+}

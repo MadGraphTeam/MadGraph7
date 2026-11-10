@@ -1504,6 +1504,8 @@ def main():
                         help="Explicit append-only source/native/policy campaign namespace")
     parser.add_argument("--tirust-prefix", type=Path, help="Pinned installation prefix for register-campaign")
     parser.add_argument("--predecessor", default="legacy", help="Predecessor campaign ID, or legacy")
+    parser.add_argument("--inherit-physical-cards", action="store_true",
+                        help="Freeze immediate predecessor physical-card ancestry only; registration does not inherit measurements")
     parser.add_argument("--reason", help="Pre-registered concrete optimization for a new campaign")
     parser.add_argument("--worker-timeout", action="append", default=[], metavar="CASE=SECONDS",
                         help="Per-case administrative deadline, only during campaign registration")
@@ -1536,10 +1538,10 @@ def main():
                 parser.error("Use one --worker-timeout CASE=SECONDS per case")
         manifest = register_campaign(sys.modules[__name__], args.campaign_id,
                                      args.tirust_prefix, predecessor=args.predecessor, reason=args.reason,
-                                     worker_timeouts=worker_timeouts)
+                                     worker_timeouts=worker_timeouts, inherit_physical_cards=args.inherit_physical_cards)
         print(json.dumps({"id": manifest["id"], "manifest": str(LEGACY_REPORT / "campaigns" / manifest["id"] / "manifest.json")}))
         return
-    if args.tirust_prefix is not None or args.reason is not None or args.predecessor != "legacy" or args.worker_timeout:
+    if args.tirust_prefix is not None or args.reason is not None or args.predecessor != "legacy" or args.worker_timeout or args.inherit_physical_cards:
         parser.error("Installation prefix, predecessor, reason and worker deadlines are immutable registration arguments")
     if args.campaign_id:
         from tirust_benchmark_campaign import activate_campaign

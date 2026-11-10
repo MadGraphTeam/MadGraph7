@@ -10,6 +10,21 @@ C     no numerator contraction or counterterm addition.
       IMPLICIT NONE
       INCLUDE 'loop_max_coefs.inc'
       INTEGER CTMODE,NLOOPLINE,RANK,I,J,K,NC,STATUS
+C     integer exponent classification does not quiet sNaN.
+      INTEGER,PARAMETER :: TIRUST_INVARIANT_KIND=C_INT64_T
+      INTEGER(TIRUST_INVARIANT_KIND),PARAMETER ::
+     $ TIRUST_EXPONENT_MASK=INT(Z'7FF0000000000000',TIRUST_INVARIANT_KIND)
+C     Restrict this source to the qualified GNU IEEE formats.
+      INTEGER,PARAMETER :: TIRUST_FORMAT_ASSERT=1/MERGE(1,0,
+     $ STORAGE_SIZE(REAL(0,KIND=KI_TIR)).EQ.64.AND.
+     $ STORAGE_SIZE(INT(0,KIND=TIRUST_INVARIANT_KIND)).EQ.64.AND.
+     $ BIT_SIZE(INT(0,KIND=TIRUST_INVARIANT_KIND)).EQ.64.AND.
+     $ RADIX(REAL(0,KIND=KI_TIR)).EQ.2.AND.
+     $ DIGITS(REAL(0,KIND=KI_TIR)).EQ.53.AND.
+     $ MAXEXPONENT(REAL(0,KIND=KI_TIR)).EQ.1024.AND.
+     $ MINEXPONENT(REAL(0,KIND=KI_TIR)).EQ.-1021)
+      INTEGER(TIRUST_INVARIANT_KIND)
+     $ TIRUST_INVARIANT_BITS(NLOOPLINE*NLOOPLINE)
       %(real_dp_format)s PL(0:3,NLOOPLINE)
       %(mass_dp_format)s M2L(NLOOPLINE)
       %(complex_dp_format)s TIRCOEFS(0:LOOPMAXCOEFS-1,3)
@@ -71,6 +86,21 @@ C     Accumulate ordered prefixes once, preserving the zero-seeded sum.
           INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J),KIND=KI_TIR)
         ENDDO
       ENDDO
+C     the ABI consumes the upper triangle (I<J).
+C     Retain all original arithmetic and each already-equal pair's bits.
+C     Classify every entry through integer bits before any FP comparison.
+      TIRUST_INVARIANT_BITS=TRANSFER(INVARIANTS,
+     $ TIRUST_INVARIANT_BITS,NLOOPLINE*NLOOPLINE)
+      IF(ALL(IAND(TIRUST_INVARIANT_BITS,TIRUST_EXPONENT_MASK)
+     $ .NE.TIRUST_EXPONENT_MASK)) THEN
+        DO J=2,NLOOPLINE
+          DO I=1,J-1
+            IF(INVARIANTS(J,I).NE.INVARIANTS(I,J)) THEN
+              INVARIANTS(J,I)=INVARIANTS(I,J)
+            ENDIF
+          ENDDO
+        ENDDO
+      ENDIF
       SCALE=MU_R**2
       NC=NCOEF_R(RANK)
       CACHE_ENABLED=TIRustGlobalCache.EQ.-1.OR.NLOOPLINE.LE.TIRustGlobalCache
@@ -106,6 +136,22 @@ C     no numerator contraction or counterterm addition.
       IMPLICIT NONE
       INCLUDE 'loop_max_coefs.inc'
       INTEGER CTMODE,NLOOPLINE,RANK,I,J,K,NC,STATUS
+C     integer exponent classification does not quiet sNaN.
+      INTEGER,PARAMETER :: TIRUST_INVARIANT_KIND=SELECTED_INT_KIND(33)
+      INTEGER(TIRUST_INVARIANT_KIND),PARAMETER ::
+     $ TIRUST_EXPONENT_MASK=INT(Z'7FFF0000000000000000000000000000',
+     $ TIRUST_INVARIANT_KIND)
+C     Restrict this source to the qualified GNU IEEE formats.
+      INTEGER,PARAMETER :: TIRUST_FORMAT_ASSERT=1/MERGE(1,0,
+     $ STORAGE_SIZE(REAL(0,KIND=KI_QTIR)).EQ.128.AND.
+     $ STORAGE_SIZE(INT(0,KIND=TIRUST_INVARIANT_KIND)).EQ.128.AND.
+     $ BIT_SIZE(INT(0,KIND=TIRUST_INVARIANT_KIND)).EQ.128.AND.
+     $ RADIX(REAL(0,KIND=KI_QTIR)).EQ.2.AND.
+     $ DIGITS(REAL(0,KIND=KI_QTIR)).EQ.113.AND.
+     $ MAXEXPONENT(REAL(0,KIND=KI_QTIR)).EQ.16384.AND.
+     $ MINEXPONENT(REAL(0,KIND=KI_QTIR)).EQ.-16381)
+      INTEGER(TIRUST_INVARIANT_KIND)
+     $ TIRUST_INVARIANT_BITS(NLOOPLINE*NLOOPLINE)
       %(real_mp_format)s PL(0:3,NLOOPLINE)
       %(mass_dp_format)s M2L(NLOOPLINE)
       %(complex_mp_format)s TIRCOEFS(0:LOOPMAXCOEFS-1,3)
@@ -166,6 +212,21 @@ C     Accumulate ordered prefixes once, preserving the zero-seeded sum.
           INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J),KIND=KI_QTIR)
         ENDDO
       ENDDO
+C     the ABI consumes the upper triangle (I<J).
+C     Retain all original arithmetic and each already-equal pair's bits.
+C     Classify every entry through integer bits before any FP comparison.
+      TIRUST_INVARIANT_BITS=TRANSFER(INVARIANTS,
+     $ TIRUST_INVARIANT_BITS,NLOOPLINE*NLOOPLINE)
+      IF(ALL(IAND(TIRUST_INVARIANT_BITS,TIRUST_EXPONENT_MASK)
+     $ .NE.TIRUST_EXPONENT_MASK)) THEN
+        DO J=2,NLOOPLINE
+          DO I=1,J-1
+            IF(INVARIANTS(J,I).NE.INVARIANTS(I,J)) THEN
+              INVARIANTS(J,I)=INVARIANTS(I,J)
+            ENDIF
+          ENDDO
+        ENDDO
+      ENDIF
       SCALE=REAL(MU_R,KIND=KI_QTIR)**2
       NC=NCOEF_R(RANK)
       CACHE_ENABLED=TIRustGlobalCache.EQ.-1.OR.NLOOPLINE.LE.TIRustGlobalCache

@@ -277,6 +277,17 @@ def origin_inventory(campaign_id):
             raise ValueError(f"Canonical physical cards disagree for {case_id}")
         physical[case_id] = checksum
         add(path)
+    declared = campaign.verify_physical_card_origins(bench, manifest)
+    if declared is not None:
+        for case_id, record in declared["cards"].items():
+            checksum = record["param_card_sha256"]
+            if case_id in physical and physical[case_id] != checksum:
+                raise ValueError(f"Observed and declared physical cards disagree for {case_id}")
+            physical[case_id] = checksum
+            for name in record["files"]:
+                add(within(base, name))
+        for name in declared["observations"]:
+            add(within(base, name))
     return {"campaign": campaign_id, "manifest": manifest,
             "manifest_sha256": bench.digest(origin / "manifest.json"),
             "predecessor": predecessor, "qualified_failures": found,

@@ -182,6 +182,157 @@ end program
             self.run_command(str(self.work / 'capacity'))
 
 
+    def test_invariant_mirroring_preserves_words_and_ieee_state(self):
+        # Exercise the actual template insertions without a reducer or model.
+        source = (TEMPLATES / 'TIRUST_interface.inc').read_text()
+        wrappers = []
+        for suffix, name, real_format, size in (
+                ('dp', 'TIRUST_TENSOR_DIAGNOSTIC', 'real_dp_format', 8),
+                ('qp', 'MP_TIRUST_TENSOR_DIAGNOSTIC', 'real_mp_format', 16)):
+            start = source.index('      SUBROUTINE %(proc_prefix)s' + name + '(')
+            part = source[start:source.index('\n      END\n', start)]
+            declaration = '      INTEGER,PARAMETER :: TIRUST_INVARIANT_KIND='
+            body = '      TIRUST_INVARIANT_BITS=TRANSFER(INVARIANTS,'
+            self.assertEqual(part.count(declaration), 1)
+            self.assertEqual(part.count(body), 1)
+            declarations = part[part.index(declaration):part.index(
+                '      %(' + real_format + ')s PL(0:3,NLOOPLINE)')]
+            operation = part[part.index(body):part.index('      SCALE=')]
+            wrappers.append(
+                '      SUBROUTINE TEST_' + suffix.upper() + '_CANONICAL(NLOOPLINE,INVARIANTS)\n'
+                '      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT64_T\n'
+                '      IMPLICIT NONE\n'
+                '      INTEGER,PARAMETER :: KI_TIR=8,KI_QTIR=16\n'
+                '      INTEGER NLOOPLINE,I,J\n' + declarations +
+                '      REAL*' + str(size) + ' INVARIANTS(NLOOPLINE,NLOOPLINE)\n' +
+                operation + '      END\n')
+        with tempfile.TemporaryDirectory(prefix='tirust-invariants-') as directory:
+            self.work = Path(directory)
+            with FortranWriter(str(self.work / 'canonical.f')) as writer:
+                writer.writelines(''.join(wrappers))
+            (self.work / 'driver.f90').write_text(invariant_policy_driver())
+            self.run_command('gfortran', '-ffixed-line-length-132',
+                             '-ffree-line-length-none', '-fcheck=all',
+                             'canonical.f', 'driver.f90', '-o', 'check')
+            self.assertIn('INVARIANT_POLICY_OK',
+                          self.run_command(str(self.work / 'check')))
+
+
+def invariant_policy_driver():
+    """Independent raw-word oracle for the finite-matrix policy and IEEE state."""
+    checks = []
+    for suffix, rk, integer_kind, infinity, quiet, signaling, negative_zero in (
+            ('dp', 8, 'c_int64_t', '7FF0000000000000', '7FF8000000000001',
+             '7FF0000000000001', '8000000000000000'),
+            ('qp', 16, 'selected_int_kind(33)', '7FFF0000000000000000000000000000',
+             '7FFF8000000000000000000000000001', '7FFF0000000000000000000000000001',
+             '80000000000000000000000000000000')):
+        checks.append(f'''
+subroutine check_{suffix}()
+  integer, parameter :: rk={rk}, bk={integer_kind}
+  real(rk) :: matrix(3,3)
+  integer(bk) :: expected(3,3), actual(3,3)
+  integer :: i,j,caseid,roundid,initial,trap_mode,normal_count,trap_count
+  logical :: entry(10), after(10)
+  type(ieee_round_type) :: entry_round, after_round
+  type(ieee_status_type) :: saved
+  call ieee_get_status(saved)
+  normal_count=0; trap_count=0
+  if(.not.ieee_support_flag(ieee_invalid,0.0_rk)) stop 40
+  if(.not.ieee_support_halting(ieee_invalid)) stop 41
+  do i=1,5
+    if(ieee_support_halting(flags(i))) call ieee_set_halting_mode(flags(i),.false.)
+  enddo
+  do roundid=1,4
+    if(.not.ieee_support_rounding(rounds(roundid),0.0_rk)) cycle
+    call ieee_set_rounding_mode(rounds(roundid))
+    do initial=0,5
+      if(initial>0) then
+        if(.not.ieee_support_flag(flags(initial),0.0_rk)) cycle
+      endif
+      do trap_mode=0,1
+        ! Sticky-flag cases and enabled-invalid cases have separate setup.
+        if(trap_mode==1.and.initial/=0) cycle
+        do caseid=1,8
+          call ieee_set_halting_mode(ieee_invalid,.false.)
+          do j=1,3
+            do i=1,3
+              matrix(i,j)=real(i+j,rk)
+            enddo
+          enddo
+          select case(caseid)
+          case(1) ! Finite unequal pairs: selected upper words must survive.
+            matrix(1,2)=1.0_rk; matrix(2,1)=2.0_rk
+            matrix(1,3)=3.0_rk; matrix(3,1)=4.0_rk
+          case(2) ! Equal opposite zeros and a negative-zero diagonal.
+            matrix(1,1)=transfer(int(z'{negative_zero}',bk),0.0_rk)
+            matrix(1,2)=0.0_rk
+            matrix(2,1)=transfer(int(z'{negative_zero}',bk),0.0_rk)
+          case default
+            ! A nonfinite entry anywhere must also prevent this finite repair.
+            matrix(1,3)=1.0_rk; matrix(3,1)=2.0_rk
+            select case(caseid)
+            case(3); matrix(2,1)=transfer(int(z'{infinity}',bk),0.0_rk)
+            case(4); matrix(2,1)=transfer(int(z'{quiet}',bk),0.0_rk)
+            case(5); matrix(1,2)=transfer(int(z'{signaling}',bk),0.0_rk)
+            case(6); matrix(2,1)=transfer(int(z'{signaling}',bk),0.0_rk)
+            case(7); matrix(2,2)=transfer(int(z'{signaling}',bk),0.0_rk)
+            case(8); matrix(1,2)=transfer(int(z'{infinity}',bk),0.0_rk)
+            end select
+          end select
+          expected=reshape(transfer(matrix,[0_bk],9),[3,3])
+          if(caseid==1) then
+            expected(2,1)=expected(1,2)
+            expected(3,1)=expected(1,3)
+          endif
+          call ieee_set_flag(ieee_all,.false.)
+          if(initial>0) call ieee_set_flag(flags(initial),.true.)
+          if(trap_mode==1) call ieee_set_halting_mode(ieee_invalid,.true.)
+          call snapshot(entry,entry_round)
+          call TEST_{suffix.upper()}_CANONICAL(3,matrix)
+          call snapshot(after,after_round)
+          call ieee_set_halting_mode(ieee_invalid,.false.)
+          if(any(entry.neqv.after).or.entry_round/=after_round) stop 42
+          actual=reshape(transfer(matrix,[0_bk],9),[3,3])
+          if(any(actual/=expected)) stop 43
+          if(trap_mode==0) normal_count=normal_count+1
+          if(trap_mode==1) trap_count=trap_count+1
+        enddo
+      enddo
+    enddo
+  enddo
+  ! At least one rounding mode must exercise every case in both control modes.
+  if(normal_count<8.or.trap_count<8) stop 44
+  call ieee_set_status(saved)
+end subroutine
+''')
+    return '''program check_invariant_policy
+  use iso_c_binding, only: c_int64_t
+  use, intrinsic :: ieee_arithmetic
+  use, intrinsic :: ieee_exceptions
+  implicit none
+  type(ieee_flag_type), parameter :: flags(5) = &
+       [ieee_invalid,ieee_divide_by_zero,ieee_overflow,ieee_underflow,ieee_inexact]
+  type(ieee_round_type), parameter :: rounds(4) = &
+       [ieee_nearest,ieee_to_zero,ieee_up,ieee_down]
+  call check_dp()
+  call check_qp()
+  print *, 'INVARIANT_POLICY_OK'
+contains
+subroutine snapshot(values,rounding)
+  logical, intent(out) :: values(10)
+  type(ieee_round_type), intent(out) :: rounding
+  integer :: i
+  values=.false.
+  do i=1,5
+    if(ieee_support_flag(flags(i))) call ieee_get_flag(flags(i),values(i))
+    if(ieee_support_halting(flags(i))) call ieee_get_halting_mode(flags(i),values(i+5))
+  enddo
+  call ieee_get_rounding_mode(rounding)
+end subroutine
+''' + ''.join(checks) + 'end program\n'
+
+
 def recording_module():
     source = '''module TEST_POLYNOMIAL_CONSTANTS
 integer :: NCOEF_R(0:6)=[1,5,15,35,70,126,210]
