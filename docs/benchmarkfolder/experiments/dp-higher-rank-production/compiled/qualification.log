@@ -1,0 +1,37 @@
+test_actual_caller_capture_and_create_merge_preserve_coefficients (tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_actual_caller_capture_and_create_merge_preserve_coefficients) ... ok
+test_actual_dimensions_inactive_snan_tails_and_nonfour_fallback (tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_actual_dimensions_inactive_snan_tails_and_nonfour_fallback) ... ok
+test_frozen_ieee_corpus_admission_bits_flags_and_traps (tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_frozen_ieee_corpus_admission_bits_flags_and_traps) ... ok
+test_higher_rank_dimensions_inactive_tails_and_active_endpoints (tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_higher_rank_dimensions_inactive_tails_and_active_endpoints) ... ok
+test_higher_rank_ieee_corpus_admission_bits_flags_and_traps (tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_higher_rank_ieee_corpus_admission_bits_flags_and_traps) ... ok
+test_off_diagonal_inexact_requires_preexisting_flag (tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_off_diagonal_inexact_requires_preexisting_flag) ... ok
+test_unknown_binary64_layout_refuses_optimization (tests.unit_tests.various.test_dp_terminal_compiled.DPTerminalCompiledTest.test_unknown_binary64_layout_refuses_optimization) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 164.602s
+
+OK
+
+SOURCE PROVENANCE (SHA256)
+{
+  "source_sha256_before": {
+    "tests/unit_tests/various/test_dp_terminal_compiled.py": "d2e63aeb0e8dbf6b4c25f92856a6d101080afd169f60d6b689ec7ef0f4480be3",
+    "madgraph/various/q_polynomial.py": "649e586f201608c9063ed9d4016f2d936078753b2f45fa90887f0f4573288ea1",
+    "madgraph/loop/loop_exporters.py": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74",
+    "madgraph/iolibs/template_files/loop_optimized/polynomial.inc": "7f2685a6fc7b9aaea15892792a8a49e1a867721ed08599c97c318b5bf3730eaf",
+    "docs/benchmarkfolder/experiments/dp-terminal/oracle.f90": "9a0e0d96e493c69f51018cb1b24d3eedf8095e41c5be0f669dee1b930ec3a73e",
+    "docs/benchmarkfolder/experiments/dp-terminal/guard-driver.f90": "49d097b6035e27a693eb0cfa6fff14763ddd9d67eebdfa970e66ee588a092fb2",
+    "docs/benchmarkfolder/experiments/dp-terminal/trap-driver.f90": "791ad65a11649ffae18a364d3916215018d108e653e78459ef097339b3d09f36",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/public.f": "836116f037c543ca6acc5a40ff178459723f4a7fb5234cf4ee1ae6f0c17bacb2"
+  },
+  "source_sha256_after": {
+    "tests/unit_tests/various/test_dp_terminal_compiled.py": "d2e63aeb0e8dbf6b4c25f92856a6d101080afd169f60d6b689ec7ef0f4480be3",
+    "madgraph/various/q_polynomial.py": "649e586f201608c9063ed9d4016f2d936078753b2f45fa90887f0f4573288ea1",
+    "madgraph/loop/loop_exporters.py": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74",
+    "madgraph/iolibs/template_files/loop_optimized/polynomial.inc": "7f2685a6fc7b9aaea15892792a8a49e1a867721ed08599c97c318b5bf3730eaf",
+    "docs/benchmarkfolder/experiments/dp-terminal/oracle.f90": "9a0e0d96e493c69f51018cb1b24d3eedf8095e41c5be0f669dee1b930ec3a73e",
+    "docs/benchmarkfolder/experiments/dp-terminal/guard-driver.f90": "49d097b6035e27a693eb0cfa6fff14763ddd9d67eebdfa970e66ee588a092fb2",
+    "docs/benchmarkfolder/experiments/dp-terminal/trap-driver.f90": "791ad65a11649ffae18a364d3916215018d108e653e78459ef097339b3d09f36",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/public.f": "836116f037c543ca6acc5a40ff178459723f4a7fb5234cf4ee1ae6f0c17bacb2"
+  },
+  "sources_unchanged": true
+}

@@ -1,0 +1,9 @@
+{
+  "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank-production/outputs/candidate/qcd_n3_uux_zgg",
+  "control": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank-production/outputs/control/qcd_n3_uux_zgg",
+  "errors": [
+    "both source roots must exist"
+  ],
+  "passed": false,
+  "script_sha256": "e807840538d363ccafcf3bfbc5d082b7c0d7c01885ff3b68ae41310c95572574"
+}

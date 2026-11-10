@@ -1,8 +1,10 @@
-"""Compiled DP terminal contracts against a frozen independent dense oracle.
+"""Compiled DP terminal contracts against frozen fixtures and dense arithmetic.
 
-The experiment's oracle and IEEE fixtures are immutable inputs, not generated
-from the implementation under test. Only a test copy of the private routine
-receives an admission-output argument; production keeps its ordinary ABI.
+The rank-one independent oracle and IEEE fixtures are immutable inputs. Higher
+ranks use the unchanged public compact updater as the executable baseline,
+preserving its zero-vertex skip and operation order, including exceptional
+values. Only a test copy of the private routine receives an admission-output
+argument; production keeps its ordinary ABI.
 """
 from hashlib import sha256
 import os
@@ -22,6 +24,8 @@ from madgraph.various.q_polynomial import FortranPolynomialRoutines
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / 'docs/benchmarkfolder/experiments/dp-terminal'
+COMPACT_FIXTURE = ROOT / 'docs/benchmarkfolder/experiments/dp-higher-rank/kernels/public.f'
+COMPACT_SHA256 = '836116f037c543ca6acc5a40ff178459723f4a7fb5234cf4ee1ae6f0c17bacb2'
 FROZEN_HASHES = {
     'oracle.f90': '9a0e0d96e493c69f51018cb1b24d3eedf8095e41c5be0f669dee1b930ec3a73e',
     'guard-driver.f90': '49d097b6035e27a693eb0cfa6fff14763ddd9d67eebdfa970e66ee588a092fb2',
@@ -48,10 +52,10 @@ def replace_once(text, old, new):
     return text.replace(old, new, 1)
 
 
-def instrument(private):
+def instrument(private, left_rank=1):
     """Record the executed branch without extra floating-point operations."""
     private, count = re.subn(
-        r'(?i)(SUBROUTINE TEST_DP_TERMINAL_WL_1_1\([^\n]*)(\))',
+        r'(?i)(SUBROUTINE TEST_DP_TERMINAL_WL_%d_1\([^\n]*)(\))' % left_rank,
         r'\1,TEST_FAST\2', private, count=1)
     if count != 1:
         raise AssertionError('Private terminal signature was not found')
@@ -72,7 +76,8 @@ def write_fixed(path, source, context=None):
         writer.writelines(source, context={} if context is None else context)
 
 
-def prepare(work, max_size=4, rank=2, vertex_rank=1, traced=True, reject_layout=False):
+def prepare(work, max_size=4, rank=2, vertex_rank=1, traced=True,
+            reject_layout=False, left_rank=1):
     ncoef = (rank+1)*(rank+2)*(rank+3)*(rank+4)//24
     nvertex = (vertex_rank+1)*(vertex_rank+2)*(vertex_rank+3)*(vertex_rank+4)//24
     (work / 'coef_specs.inc').write_text(
@@ -83,20 +88,45 @@ def prepare(work, max_size=4, rank=2, vertex_rank=1, traced=True, reject_layout=
     gen = FortranPolynomialRoutines(rank, updater_max_rank=vertex_rank,
         proc_prefix='TEST_', sub_prefix='TEST_', coef_format='complex*16')
     write_fixed(work / 'constants.f', gen.write_polynomial_constant_module())
-    source = gen.write_dp_terminal_wl_updater()
+    source = gen.write_dp_terminal_wl_updater(left_rank, 1)
     if reject_layout:
         # Force the actual representation-check branch to refuse, without
         # altering arithmetic, dimensions, inputs or the public fallback.
         source = replace_once(source, 'ONE_WORDS(1).NE.ISHFT(1023_8,52)',
                               'ONE_WORDS(1).NE.0_8')
     if traced:
-        source = instrument(source)
-    write_fixed(work / 'generated.f', gen.write_expanded_wl_updater(1, 1) + '\n' + source)
+        source = instrument(source, left_rank)
+    public = (gen.write_expanded_wl_updater(1, 1) if left_rank == 1
+              else gen.write_compact_wl_updater(left_rank, 1))
+    write_fixed(work / 'generated.f', public + '\n' + source)
     # The frozen module is replaced by the actual generated module. The entire
     # independent dense arithmetic body, including its grouping, is retained.
-    oracle = frozen('oracle.f90').split('SUBROUTINE DP_DENSE', 1)[1]
-    oracle = ('SUBROUTINE DP_DENSE' + oracle).replace(
-        'USE ML5_0_POLYNOMIAL_CONSTANTS', 'USE TEST_POLYNOMIAL_CONSTANTS')
+    if left_rank == 1:
+        (work/'reference_public.f').write_text('')
+        oracle = frozen('oracle.f90').split('SUBROUTINE DP_DENSE', 1)[1]
+        oracle = ('SUBROUTINE DP_DENSE' + oracle).replace(
+            'USE ML5_0_POLYNOMIAL_CONSTANTS', 'USE TEST_POLYNOMIAL_CONSTANTS')
+    else:
+        data = COMPACT_FIXTURE.read_bytes()
+        if sha256(data).hexdigest() != COMPACT_SHA256:
+            raise AssertionError('Frozen compact baseline changed')
+        reference = re.search(r'(?ms)^      SUBROUTINE TEST_UPDATE_WL_%d_1\(.*?^      END\n' %
+                              left_rank, data.decode()).group(0)
+        write_fixed(work/'public.f', public)
+        if (work/'public.f').read_text().strip() != reference.strip():
+            raise AssertionError('Public compact updater changed from frozen baseline')
+        (work/'reference_public.f').write_text(reference.replace(
+            'TEST_UPDATE_WL_%d_1' % left_rank, 'FROZEN_UPDATE_WL_%d_1' % left_rank))
+        oracle = '''subroutine DP_DENSE(a,ls,b,ins,outs,out)
+use TEST_POLYNOMIAL_CONSTANTS
+implicit none
+integer :: ls,ins,outs
+complex(8) :: a(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+complex(8) :: b(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+complex(8) :: out(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+call FROZEN_UPDATE_WL_%d_1(a,ls,b,ins,outs,out)
+end subroutine
+''' % left_rank
     (work / 'oracle.f90').write_text(oracle)
     return gen
 
@@ -124,6 +154,67 @@ if(took_fast) then
     return driver
 
 
+def higher_rank_driver(driver, left_rank, process_rank=6):
+    """Resize immutable fixtures; arithmetic remains in compiled routines."""
+    ncoef = (process_rank+1)*(process_rank+2)*(process_rank+3)*(process_rank+4)//24
+    return (driver.replace('TEST_DP_TERMINAL_WL_1_1',
+                           'TEST_DP_TERMINAL_WL_%d_1' % left_rank)
+        .replace('0:14', '0:%d' % (ncoef-1))
+        .replace('0,14', '0,%d' % (ncoef-1))
+        .replace('4*4*15*2', '4*4*%d*2' % ncoef)
+        .replace('15*2', '%d*2' % ncoef)
+        .replace(',new_bits,30)', ',new_bits,%d)' % (2*ncoef)))
+
+
+def higher_dimension_driver(left_rank):
+    nleft = (left_rank+1)*(left_rank+2)*(left_rank+3)*(left_rank+4)//24
+    nout = (left_rank+2)*(left_rank+3)*(left_rank+4)*(left_rank+5)//24
+    source = _DIMENSION_DRIVER.replace('TEST_DP_TERMINAL_WL_1_1',
+                                      'TEST_DP_TERMINAL_WL_%d_1' % left_rank)
+    source = replace_once(source, 'logical :: entry,fast,want,',
+                          'logical :: entry,fast,want,raised,')
+    source = replace_once(source, 'do trial=1,2', 'do trial=1,5')
+    source = replace_once(source, 'do j=0,4', 'do j=0,%d' % (nleft-1))
+    source = replace_once(source,
+        '        b(i,j,k)=cmplx(real(2*i+j+k,8)/4,real(i-2*j+k,8)/8,8)', '')
+    source = replace_once(source, '  abits=transfer(a,abits)', '''  do k=1,MAXLWFSIZE
+    do j=0,4
+      do i=1,MAXLWFSIZE
+        b(i,j,k)=cmplx(real(2*i+j+k,8)/4,real(i-2*j+k,8)/8,8)
+      enddo
+    enddo
+  enddo
+  ! The upper active endpoints must be guarded.
+  if(trial==3) then
+    a(4,%d,4)=cmplx(snan,snan,8)
+    b=cmplx(-0.0_8,0.0_8,8)
+  endif
+  if(trial==4) b(4,4,4)=cmplx(snan,snan,8)
+  if(trial==5) then
+    a(:,0:%d,:)=cmplx(0.0_8,0.0_8,8)
+    b=cmplx(0.0_8,0.0_8,8)
+    a(1,%d,1)=cmplx(2.0_8,0.0_8,8)
+    b(1,4,1)=cmplx(3.0_8,0.0_8,8)
+  endif
+  abits=transfer(a,abits)''' % (nleft-1, nleft-1, nleft-1))
+    source = source.replace('trial==1)', 'trial/=2)')
+    source = replace_once(source, 'want=MAXLWFSIZE==4.and.trial==1',
+                          'want=MAXLWFSIZE==4.and.(trial==1.or.trial==5)')
+    source = source.replace('0:14', '0:%d' % (nout-1)).replace(',30)', ',%d)' % (nout*2))
+    source = replace_once(source, '        checks=checks+1', '''        if(trial==3) then
+          if(any(transfer(new,newbits)/=0_int64)) stop 28
+          call ieee_get_flag(ieee_invalid,raised)
+          if(raised) stop 29
+        endif
+        if(trial==5) then
+          if(new(1,%d,1)/=cmplx(6.0_8,0.0_8,8)) stop 30
+          if(count(new/=cmplx(0.0_8,0.0_8,8))/=1) stop 31
+        endif
+        checks=checks+1''' % (nout-1))
+    return replace_once(source, 'if(any(new(:,15:,:)/=sentinel)) stop 25',
+        'if(any(transfer(new(:,%d:,:),newbits)/=0_int64)) stop 25' % nout)
+
+
 def no_core():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
@@ -133,7 +224,7 @@ class DPTerminalCompiledTest(unittest.TestCase):
     def build(self, work, source, flags, output='check', extra=()):
         command = ['gfortran', *flags, '-fcheck=all', '-ffixed-line-length-132',
                    '-ffree-line-length-none', 'constants.f', 'oracle.f90',
-                   'generated.f', *extra, source, '-o', output]
+                   'reference_public.f', 'generated.f', *extra, source, '-o', output]
         result = subprocess.run(command, cwd=work, capture_output=True,
                                 text=True, timeout=180)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -145,12 +236,31 @@ class DPTerminalCompiledTest(unittest.TestCase):
             preexec_fn=no_core if traps else None)
 
     def test_frozen_ieee_corpus_admission_bits_flags_and_traps(self):
+        self.check_ieee_corpus(1)
+
+    def test_higher_rank_ieee_corpus_admission_bits_flags_and_traps(self):
+        for left_rank in (2, 3):
+            with self.subTest(left_rank=left_rank):
+                self.check_ieee_corpus(left_rank)
+
+    def check_ieee_corpus(self, left_rank):
         with tempfile.TemporaryDirectory(prefix='madloop-dp-terminal-') as tmp:
             work = Path(tmp)
-            prepare(work)
-            (work/'guards.f90').write_text(guard_driver())
-            (work/'traps.f90').write_text(frozen('trap-driver.f90').replace(
-                'call DP_TERMINAL(', 'call TEST_DP_TERMINAL_WL_1_1('))
+            prepare(work, rank=2 if left_rank == 1 else 6, left_rank=left_rank)
+            guards = guard_driver()
+            traps = frozen('trap-driver.f90').replace(
+                'call DP_TERMINAL(', 'call TEST_DP_TERMINAL_WL_1_1(')
+            if left_rank != 1:
+                guards = higher_rank_driver(guards, left_rank)
+                traps = higher_rank_driver(traps, left_rank)
+                traps = replace_once(traps, 'case default', '''case(9)
+  ! Compact traversal still compares B with LCUT_SIZE zero.
+  selected=ieee_invalid
+  b(1,0,1)=cmplx(ieee_value(0.0_8,ieee_signaling_nan),0.0_8,kind=8)
+  cut=0
+case default''')
+            (work/'guards.f90').write_text(guards)
+            (work/'traps.f90').write_text(traps)
             for name, flags in FLAGS:
                 with self.subTest(compiler_mode=name):
                     self.build(work, 'guards.f90', flags)
@@ -161,7 +271,7 @@ class DPTerminalCompiledTest(unittest.TestCase):
                     self.assertGreater(int(fields[2]), 0)
                     self.assertEqual(int(fields[2])+int(fields[3]), 384000)
                     self.build(work, 'traps.f90', flags, output='traps')
-                    for mode in range(1, 9):
+                    for mode in range(1, 9 if left_rank == 1 else 10):
                         with self.subTest(trap_mode=mode):
                             old = self.run_binary(work, 'traps', (mode, 0), traps=True)
                             new = self.run_binary(work, 'traps', (mode, 1), traps=True)
@@ -172,7 +282,7 @@ class DPTerminalCompiledTest(unittest.TestCase):
                             # setup; it does not alone locate the signal inside
                             # the updater. The clear-entry witness below tests
                             # omitted arithmetic's INEXACT independently.
-                            if mode <= 4:
+                            if mode <= 4 or mode == 9:
                                 self.assertEqual(old.returncode, -signal.SIGFPE)
                             elif mode in (5, 6, 8):
                                 self.assertEqual(old.returncode, 0, old.stderr)
@@ -203,29 +313,59 @@ class DPTerminalCompiledTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             self.assertIn('PASS DIMENSIONS', result.stdout)
 
+    def test_higher_rank_dimensions_inactive_tails_and_active_endpoints(self):
+        for left_rank in (2, 3):
+            for size, process_rank in ((4, left_rank+1), (4, 6), (5, 6)):
+                with self.subTest(left_rank=left_rank, max_size=size,
+                                  process_rank=process_rank), tempfile.TemporaryDirectory(
+                        prefix='madloop-dp-higher-dimensions-') as tmp:
+                    work = Path(tmp)
+                    prepare(work, max_size=size, rank=process_rank, left_rank=left_rank)
+                    (work/'dimensions.f90').write_text(higher_dimension_driver(left_rank))
+                    self.build(work, 'dimensions.f90', ['-O3', '-frounding-math'])
+                    result = self.run_binary(work)
+                    self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                    self.assertIn('PASS DIMENSIONS', result.stdout)
+
     def test_off_diagonal_inexact_requires_preexisting_flag(self):
-        with tempfile.TemporaryDirectory(prefix='madloop-dp-inexact-') as tmp:
-            work = Path(tmp)
-            prepare(work)
-            (work/'inexact.f90').write_text(_INEXACT_DRIVER)
-            self.build(work, 'inexact.f90', ['-O3', '-frounding-math'])
-            result = self.run_binary(work)
-            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-            self.assertIn('PASS OFF-DIAGONAL INEXACT', result.stdout)
+        for left_rank in (1, 2, 3):
+            with self.subTest(left_rank=left_rank), tempfile.TemporaryDirectory(
+                    prefix='madloop-dp-inexact-') as tmp:
+                work = Path(tmp)
+                prepare(work, rank=2 if left_rank == 1 else 6, left_rank=left_rank)
+                driver = _INEXACT_DRIVER
+                if left_rank != 1:
+                    driver = higher_rank_driver(driver, left_rank).replace('480', '6720')
+                (work/'inexact.f90').write_text(driver)
+                self.build(work, 'inexact.f90', ['-O3', '-frounding-math'])
+                result = self.run_binary(work)
+                self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                self.assertIn('PASS OFF-DIAGONAL INEXACT', result.stdout)
 
     def test_actual_caller_capture_and_create_merge_preserve_coefficients(self):
         # The caller is transformed by the production exporter. Its final
         # vertex changes INEXACT in both directions, catching capture before
         # the vertex as well as omission of the query. CREATE and MERGE are
         # the actual production template and generator, not a trace sum.
+        for left_rank in (1, 2, 3):
+            with self.subTest(left_rank=left_rank):
+                self.check_actual_caller(left_rank)
+
+    def check_actual_caller(self, left_rank):
         for static in (False, True):
             with self.subTest(static=static), tempfile.TemporaryDirectory(
                     prefix='madloop-dp-consumer-') as tmp:
                 work = Path(tmp)
-                gen = prepare(work, rank=3, vertex_rank=2, traced=False)
-                write_fixed(work/'caller.f', _CALLER)
+                gen = prepare(work, rank=3 if left_rank == 1 else 6,
+                    vertex_rank=2 if left_rank == 1 else 1,
+                    traced=False, left_rank=left_rank)
+                updater = 'TEST_UPDATE_WL_%d_1' % left_rank
+                caller = _CALLER.replace('TEST_UPDATE_WL_1_1', updater)
+                caller = replace_once(caller, '),2,4,2,3,-2,2,2)',
+                                      '),%d,4,2,3,-2,2,2)' % (left_rank+1))
+                write_fixed(work/'caller.f', caller)
                 original = (work/'caller.f').read_text()
-                expected = {2: dict(loop_mother_rank=1, vertex_rank=1,
+                expected = {2: dict(loop_mother_rank=left_rank, vertex_rank=1,
                     loop_mother_number=1, out=2, lcut_size=4, in_size=4, out_size=4)}
                 candidate, found = Exporter.prepare_dp_terminal_batch(original, 'TEST_', expected)
                 self.assertEqual(found, {2})
@@ -233,7 +373,7 @@ class DPTerminalCompiledTest(unittest.TestCase):
                 self.assertNotIn('TEST_FAST', candidate)
                 (work/'caller.f').write_text(candidate)
                 (work/'reference.f').write_text(original.replace(
-                    'CHECK_CANDIDATE', 'CHECK_REFERENCE').replace('TEST_UPDATE_WL_1_1', 'DP_DENSE'))
+                    'CHECK_CANDIDATE', 'CHECK_REFERENCE').replace(updater, 'DP_DENSE'))
                 template = (ROOT/'madgraph/iolibs/template_files/loop_optimized/polynomial.inc').read_text()
                 replacements = dict(mp_prefix='', proc_prefix='TEST_', nbornamps=2,
                     real_format='REAL*8', complex_format='COMPLEX*16', kind=8,
@@ -242,7 +382,14 @@ class DPTerminalCompiledTest(unittest.TestCase):
                     color_matrix_size='2')
                 write_fixed(work/'consumer.f', template % replacements + '\n' + gen.write_wl_merger(),
                     context={'AmplitudeReduction': False, 'LoopInduced': False, 'ninja_available': False})
-                (work/'consumer_driver.f90').write_text(_CONSUMER_DRIVER)
+                driver = _CONSUMER_DRIVER
+                if left_rank != 1:
+                    nout = (left_rank+2)*(left_rank+3)*(left_rank+4)*(left_rank+5)//24
+                    driver = driver.replace('0:14', '0:%d' % (nout-1)).replace(',30)', ',%d)' % (nout*2))
+                    driver = replace_once(driver,
+                        'if(any(wl(:,15:,:,2)/=sentinel)) stop 49',
+                        'if(any(transfer(wl(:,%d:,:,2),wbits)/=0_int64)) stop 49' % nout)
+                (work/'consumer_driver.f90').write_text(driver)
                 options = ['-fno-automatic'] if static else []
                 # Generated callers use ordinary flags; polynomial.f has its
                 # own -O3 rule. Preserve that distinction in this integration.

@@ -1,0 +1,124 @@
+--- control/Source/DHELAS/VVV1L2P0_1.f
++++ candidate/Source/DHELAS/VVV1L2P0_1.f
+@@ -5,32 +5,32 @@
+ C     
+       SUBROUTINE VVV1L2P0_1(P2, V3, COUP, M1, W1, P1, COEFF)
+       USE ALOHA_OBJECT
+       IMPLICIT NONE
+       COMPLEX*16 CI
+       PARAMETER (CI=(0D0,1D0))
+-      COMPLEX*16 TMP1
+-      COMPLEX*16 P3(0:3)
+-      REAL*8 W1
+-      COMPLEX*16 TMP0
+       INCLUDE 'coef_specs.inc'
+       COMPLEX*16 COEFF(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
++      COMPLEX*16 COUP
++      COMPLEX*16 TMP1
++      REAL*8 M1
+       TYPE(ALOHA) V3
++      COMPLEX*16 TMP0
++      COMPLEX*16 P2(0:3)
++      COMPLEX*16 P3(0:3)
+       COMPLEX*16 P1(0:3)
+-      COMPLEX*16 P2(0:3)
+-      COMPLEX*16 COUP
+-      REAL*8 M1
++      REAL*8 W1
+       P3(:) = V3 % P (:)
+       P1(0) = +P2(0)+V3%P(0)
+       P1(1) = +P2(1)+V3%P(1)
+       P1(2) = +P2(2)+V3%P(2)
+       P1(3) = +P2(3)+V3%P(3)
++      TMP0 = (V3 % W(1)*P1(0)-V3 % W(2)*P1(1)-V3 % W(3)*P1(2)-V3 % W(4)
++     $ *P1(3))
+       TMP1 = (V3 % W(1)*P2(0)-V3 % W(2)*P2(1)-V3 % W(3)*P2(2)-V3 % W(4)
+      $ *P2(3))
+-      TMP0 = (V3 % W(1)*P1(0)-V3 % W(2)*P1(1)-V3 % W(3)*P1(2)-V3 % W(4)
+-     $ *P1(3))
+       COEFF(1,0,1)= COUP*(V3 % W(1)*(-1D0)*(+CI*(P1(0)+P2(0)))+(+CI
+      $ *(TMP0+TMP1)))
+       COEFF(2,0,1)= COUP*(-1D0)*(V3 % W(1)*(+CI*(P2(1))-CI*(P3(1)))+V3
+      $  % W(2)*(+CI*(P1(0)+P3(0))))
+       COEFF(3,0,1)= COUP*(-1D0)*(V3 % W(1)*(+CI*(P2(2))-CI*(P3(2)))+V3
+      $  % W(3)*(+CI*(P1(0)+P3(0))))
+--- control/Source/DHELAS/MP_VVV1L2P0_1.f
++++ candidate/Source/DHELAS/MP_VVV1L2P0_1.f
+@@ -5,32 +5,32 @@
+ C     
+       SUBROUTINE MP_VVV1L2P0_1(P2, V3, COUP, M1, W1, P1, COEFF)
+       USE ALOHA_OBJECT
+       IMPLICIT NONE
+       COMPLEX*32 CI
+       PARAMETER (CI=(0Q0,1Q0))
+-      COMPLEX*32 TMP1
+-      COMPLEX*32 P3(0:3)
+-      REAL*16 W1
+-      COMPLEX*32 TMP0
+       INCLUDE 'coef_specs.inc'
+       COMPLEX*32 COEFF(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
++      COMPLEX*32 COUP
++      COMPLEX*32 TMP1
++      REAL*16 M1
+       TYPE(MP_ALOHA) V3
++      COMPLEX*32 TMP0
++      COMPLEX*32 P2(0:3)
++      COMPLEX*32 P3(0:3)
+       COMPLEX*32 P1(0:3)
+-      COMPLEX*32 P2(0:3)
+-      COMPLEX*32 COUP
+-      REAL*16 M1
++      REAL*16 W1
+       P3(:) = V3 % P (:)
+       P1(0) = +P2(0)+V3%P(0)
+       P1(1) = +P2(1)+V3%P(1)
+       P1(2) = +P2(2)+V3%P(2)
+       P1(3) = +P2(3)+V3%P(3)
++      TMP0 = (V3 % W(1)*P1(0)-V3 % W(2)*P1(1)-V3 % W(3)*P1(2)-V3 % W(4)
++     $ *P1(3))
+       TMP1 = (V3 % W(1)*P2(0)-V3 % W(2)*P2(1)-V3 % W(3)*P2(2)-V3 % W(4)
+      $ *P2(3))
+-      TMP0 = (V3 % W(1)*P1(0)-V3 % W(2)*P1(1)-V3 % W(3)*P1(2)-V3 % W(4)
+-     $ *P1(3))
+       COEFF(1,0,1)= COUP*(V3 % W(1)*(-1Q0)*(+CI*(P1(0)+P2(0)))+(+CI
+      $ *(TMP0+TMP1)))
+       COEFF(2,0,1)= COUP*(-1Q0)*(V3 % W(1)*(+CI*(P2(1))-CI*(P3(1)))+V3
+      $  % W(2)*(+CI*(P1(0)+P3(0))))
+       COEFF(3,0,1)= COUP*(-1Q0)*(V3 % W(1)*(+CI*(P2(2))-CI*(P3(2)))+V3
+      $  % W(3)*(+CI*(P1(0)+P3(0))))
+--- control/SubProcesses/makefile
++++ candidate/SubProcesses/makefile
+@@ -212,12 +212,12 @@
+ 	@rm -f *.o *.so *.$(libext) *.$(dylibext)
+ 
+ # For python linking (require f2py part of numpy)
+ ifeq ($(origin MENUM),undefined)
+   MENUM=2
+ endif
+-all:  MadLoop5_resources/matrix$(MENUM)py.so  P0_uux_zgg/matrix$(MENUM)py.so 
++all:  P0_uux_zgg/matrix$(MENUM)py.so  MadLoop5_resources/matrix$(MENUM)py.so 
+ 	echo 'done'
++P0_uux_zgg/matrix$(MENUM)py.so:
++	cd P0_uux_zgg;make matrix$(MENUM)py.so
+ MadLoop5_resources/matrix$(MENUM)py.so:
+ 	cd MadLoop5_resources;make matrix$(MENUM)py.so
+-P0_uux_zgg/matrix$(MENUM)py.so:
+-	cd P0_uux_zgg;make matrix$(MENUM)py.so
+--- control/SubProcesses/P0_uux_zgg/makefile
++++ candidate/SubProcesses/P0_uux_zgg/makefile
+@@ -212,12 +212,12 @@
+ 	@rm -f *.o *.so *.$(libext) *.$(dylibext)
+ 
+ # For python linking (require f2py part of numpy)
+ ifeq ($(origin MENUM),undefined)
+   MENUM=2
+ endif
+-all:  MadLoop5_resources/matrix$(MENUM)py.so  P0_uux_zgg/matrix$(MENUM)py.so 
++all:  P0_uux_zgg/matrix$(MENUM)py.so  MadLoop5_resources/matrix$(MENUM)py.so 
+ 	echo 'done'
++P0_uux_zgg/matrix$(MENUM)py.so:
++	cd P0_uux_zgg;make matrix$(MENUM)py.so
+ MadLoop5_resources/matrix$(MENUM)py.so:
+ 	cd MadLoop5_resources;make matrix$(MENUM)py.so
+-P0_uux_zgg/matrix$(MENUM)py.so:
+-	cd P0_uux_zgg;make matrix$(MENUM)py.so

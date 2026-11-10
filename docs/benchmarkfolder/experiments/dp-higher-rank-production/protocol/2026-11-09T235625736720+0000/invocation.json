@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "docs/benchmarkfolder/experiments/dp-higher-rank-production/run_qualification.py",
+    "generate"
+  ],
+  "cpu": 10,
+  "generator_sha256": "752a66c81938beae61ab399e5c192a189f5a27be85979dbdedef4f28400b78f3",
+  "performance_acceptance_eligible": false,
+  "python_hash_seed": "0",
+  "source_sha256": {
+    "madgraph/iolibs/helas_call_writers.py": "7a267fa78b75fa5b8efc4fc2f595769f938ee59919f55c6fffc3ab86ec5707ea",
+    "madgraph/loop/dp_terminal_proof.py": "c2382211b08594d88cda551f07f2b2056de3f4635daa61f7eb6a0dc805408985",
+    "madgraph/loop/loop_exporters.py": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74",
+    "madgraph/various/q_polynomial.py": "649e586f201608c9063ed9d4016f2d936078753b2f45fa90887f0f4573288ea1"
+  },
+  "started_utc": "2026-11-09T23:56:26.287600+00:00"
+}

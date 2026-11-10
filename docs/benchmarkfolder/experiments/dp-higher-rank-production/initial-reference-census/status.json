@@ -1,0 +1,9 @@
+{
+  "export_completed": true,
+  "applied": 147,
+  "declined": 0,
+  "built_or_evaluated": false,
+  "scope": "Superseded source-proof qualification attempt; independent review subsequently found missing global private-symbol reference census. Generated arithmetic unchanged.",
+  "original_work_directory": ".tirust-build/dp-higher-rank-production",
+  "retained_work_directory": ".tirust-build/dp-higher-rank-production-initial-reference-census"
+}

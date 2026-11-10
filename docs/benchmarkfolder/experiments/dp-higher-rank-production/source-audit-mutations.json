@@ -1,0 +1,167 @@
+{
+  "audit_script": {
+    "path": "docs/benchmarkfolder/experiments/dp-higher-rank-production/source-audit.py",
+    "sha256": "e807840538d363ccafcf3bfbc5d082b7c0d7c01885ff3b68ae41310c95572574"
+  },
+  "baseline": {
+    "classification_counts": {
+      "declaration_line_permutation_only": 44,
+      "immediate_query_and_private_call_substitutions_only": 1,
+      "two_private_helpers_added_only": 1
+    },
+    "errors": [],
+    "passed": true,
+    "unchanged_selected_files": 149
+  },
+  "build_configuration_selection": {
+    "GNUmakefile": true,
+    "flags.mk": true
+  },
+  "checks": [
+    {
+      "control_sha256": "0b74f7e80bdea97a5d4ae6b119f0e690382ef6332272f7bab10e5b0db4e64d18",
+      "expected": "accepted",
+      "identical_original_accepted": true,
+      "name": "unmodified DHELAS pair and identical original",
+      "observed": "accepted",
+      "passed": true,
+      "path": "Source/DHELAS/FFV1L1P0_3.f",
+      "tested_candidate_sha256": "a863ea1088ba41a15a30415d2b4f000d57f35f55609a64a5e9af9547548833f9"
+    },
+    {
+      "control_sha256": "0b74f7e80bdea97a5d4ae6b119f0e690382ef6332272f7bab10e5b0db4e64d18",
+      "expected": "rejected",
+      "name": "declaration type change",
+      "observed": "rejected",
+      "passed": true,
+      "path": "Source/DHELAS/FFV1L1P0_3.f",
+      "refusal": "DHELAS raw declaration-line multisets differ",
+      "tested_candidate_sha256": "7a68d0b48e1fc7840ec9de5bfff3387ea35eae2ef023e2978144aebefc2a94bf"
+    },
+    {
+      "control_sha256": "0b74f7e80bdea97a5d4ae6b119f0e690382ef6332272f7bab10e5b0db4e64d18",
+      "expected": "rejected",
+      "name": "executable byte change",
+      "observed": "rejected",
+      "passed": true,
+      "path": "Source/DHELAS/FFV1L1P0_3.f",
+      "refusal": "DHELAS executable body bytes differ",
+      "tested_candidate_sha256": "6b0700639589ab9e53916e5a63a21c64d0abe609040739a452466786c7c65c98"
+    },
+    {
+      "control_sha256": "0b74f7e80bdea97a5d4ae6b119f0e690382ef6332272f7bab10e5b0db4e64d18",
+      "expected": "rejected",
+      "name": "include/COEFF dependency reorder",
+      "observed": "rejected",
+      "passed": true,
+      "path": "Source/DHELAS/FFV1L1P0_3.f",
+      "refusal": "coefficient declaration must immediately follow its dimension include",
+      "tested_candidate_sha256": "45ea66181e012ad5b7418b1a62217ba43b20204b06e162f655339e5f06eca506"
+    },
+    {
+      "control_sha256": "dd7265ae818d224601f6c74a1446a1c5711c8095a073af463d3368eabfa9b8ac",
+      "expected": "accepted",
+      "name": "unmodified polynomial pair",
+      "observed": "accepted",
+      "passed": true,
+      "path": "SubProcesses/P0_uux_zgg/polynomial.f",
+      "tested_candidate_sha256": "ae4910b2a3bc9d7395891d4745f997308973c1e64797b566b3dbf2393b2196d3"
+    },
+    {
+      "control_sha256": "dd7265ae818d224601f6c74a1446a1c5711c8095a073af463d3368eabfa9b8ac",
+      "expected": "rejected",
+      "name": "retained 1x1 helper guard change",
+      "observed": "rejected",
+      "passed": true,
+      "path": "SubProcesses/P0_uux_zgg/polynomial.f",
+      "refusal": "retained/public polynomial routine changed: ML5_0_DP_TERMINAL_WL_1_1",
+      "tested_candidate_sha256": "f77396d0f556ef8f6b66e3c228c5725e9153e95fe1bc1ac8b3e02250356c2df8"
+    },
+    {
+      "control_sha256": "dd7265ae818d224601f6c74a1446a1c5711c8095a073af463d3368eabfa9b8ac",
+      "expected": "rejected",
+      "name": "public compact loop bound change",
+      "observed": "rejected",
+      "passed": true,
+      "path": "SubProcesses/P0_uux_zgg/polynomial.f",
+      "refusal": "retained/public polynomial routine changed: ML5_0_UPDATE_WL_2_1",
+      "tested_candidate_sha256": "bcf817e66656415500eb02520fd5c1db0dc22e0aac68644392b2bf86f78664af"
+    },
+    {
+      "control_sha256": "04968e30a965f2c3f570b625db5523b697fcb6f09c274b1f7b33c7ef4dcb682c",
+      "expected": "accepted",
+      "name": "unmodified caller pair",
+      "observed": "accepted",
+      "passed": true,
+      "path": "SubProcesses/P0_uux_zgg/coef_construction_1.f",
+      "tested_candidate_sha256": "73eec00f3f6e7262fb81d267b1ab52e51003e18a1beec860170b3d02ae70e383"
+    },
+    {
+      "control_sha256": "04968e30a965f2c3f570b625db5523b697fcb6f09c274b1f7b33c7ef4dcb682c",
+      "expected": "rejected",
+      "name": "extra private caller argument",
+      "observed": "rejected",
+      "passed": true,
+      "path": "SubProcesses/P0_uux_zgg/coef_construction_1.f",
+      "refusal": "new private call changed original arguments",
+      "tested_candidate_sha256": "6e80c033a8090b22217d9aad255ce941be397fb4e2da3bb26eb8dcd87880349e"
+    },
+    {
+      "control_sha256": "04968e30a965f2c3f570b625db5523b697fcb6f09c274b1f7b33c7ef4dcb682c",
+      "expected": "rejected",
+      "name": "query changes selected IEEE flag",
+      "observed": "rejected",
+      "passed": true,
+      "path": "SubProcesses/P0_uux_zgg/coef_construction_1.f",
+      "refusal": "caller differs outside an immediate IEEE query/new private-call pair",
+      "tested_candidate_sha256": "a251498ab6f3c2f27f84deba43652488567b50dba977deff377969e32e82bc20"
+    },
+    {
+      "control_sha256": "04968e30a965f2c3f570b625db5523b697fcb6f09c274b1f7b33c7ef4dcb682c",
+      "expected": "rejected",
+      "name": "statement inserted between query and call",
+      "observed": "rejected",
+      "passed": true,
+      "path": "SubProcesses/P0_uux_zgg/coef_construction_1.f",
+      "refusal": "new private call changed original arguments",
+      "tested_candidate_sha256": "85cbf1feb072bf7e31b96f4348eed93ee2f58c9bd16add1521d9ea5d0b39cfea"
+    }
+  ],
+  "errors": [],
+  "generated_at_utc": "2026-11-09T23:56:23.351227+00:00",
+  "input_snapshots": {
+    "candidate": {
+      "manifest_sha256": "95a276d838ee664139a4b34099af2d9db3b422cd209301769a92bdabfa61300b",
+      "root": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank-production-initial-reference-census/outputs/candidate/qcd_n3_uux_zgg",
+      "selected_file_count": 195
+    },
+    "control": {
+      "manifest_sha256": "fd6129bd7c06c9733b81617e9cad27679ff1fe4e3f18490364bffefc116e0c37",
+      "root": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal-production/outputs/candidate/qcd_n3_uux_zgg",
+      "selected_file_count": 195
+    }
+  },
+  "input_snapshots_and_audit_script_stable": true,
+  "passed": true,
+  "python": {
+    "executable": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "version": "3.13.12 (main, Feb  3 2026, 17:53:27) [GCC 15.2.0]"
+  },
+  "runner_sha256": "f59ba05a5055defe75eaa067c06ec07fbd2d9c2d14cc0a71ca1d0835e09f6870",
+  "schema": 1,
+  "scope": "In-memory source-classifier checks only; no numerical or compiler qualification.",
+  "selected_inputs": {
+    "Source/DHELAS/FFV1L1P0_3.f": {
+      "candidate_sha256": "a863ea1088ba41a15a30415d2b4f000d57f35f55609a64a5e9af9547548833f9",
+      "control_sha256": "0b74f7e80bdea97a5d4ae6b119f0e690382ef6332272f7bab10e5b0db4e64d18"
+    },
+    "SubProcesses/P0_uux_zgg/coef_construction_1.f": {
+      "candidate_sha256": "73eec00f3f6e7262fb81d267b1ab52e51003e18a1beec860170b3d02ae70e383",
+      "control_sha256": "04968e30a965f2c3f570b625db5523b697fcb6f09c274b1f7b33c7ef4dcb682c"
+    },
+    "SubProcesses/P0_uux_zgg/polynomial.f": {
+      "candidate_sha256": "ae4910b2a3bc9d7395891d4745f997308973c1e64797b566b3dbf2393b2196d3",
+      "control_sha256": "dd7265ae818d224601f6c74a1446a1c5711c8095a073af463d3368eabfa9b8ac"
+    }
+  }
+}

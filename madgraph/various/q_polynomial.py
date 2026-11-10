@@ -590,8 +590,8 @@ END FUNCTION
 """
         return declarations, preparation, classifier
 
-    def write_dp_terminal_wl_updater(self):
-        """Private binary64 rank-1 x rank-1 diagonal updater.
+    def write_dp_terminal_wl_updater(self, r_1=1, r_2=1):
+        """Private binary64 diagonal updater for the qualified rank pairs.
 
         The exporter must prove that only the final diagonal is consumed.
         Keep the public updater and all surviving arithmetic unchanged. Signed
@@ -600,11 +600,12 @@ END FUNCTION
         add invalid, overflow, underflow or divide-by-zero. INEXACT must already
         be sticky, with nearest rounding and no enabled exception traps.
         """
-        if (self.coef_format != 'complex*16' or self.max_rank < 2 or
-                self.updater_max_rank < 1):
-            raise PolynomialError("DP terminal updates require a binary64 rank-1 x rank-1 kernel")
-        public = self.sub_prefix + 'UPDATE_WL_1_1'
-        private = self.sub_prefix + 'DP_TERMINAL_WL_1_1'
+        if (self.coef_format != 'complex*16' or (r_1, r_2) not in ((1, 1), (2, 1), (3, 1))
+                or self.max_rank < r_1 + r_2 or self.updater_max_rank < 1
+                or (r_1 > 1 and (self.max_rank > 6 or self.updater_max_rank != 1))):
+            raise PolynomialError("Unsupported DP terminal rank or storage shape")
+        public = self.sub_prefix + 'UPDATE_WL_%d_%d' % (r_1, r_2)
+        private = self.sub_prefix + 'DP_TERMINAL_WL_%d_%d' % (r_1, r_2)
         if len(private) > 63:
             raise PolynomialError("DP terminal updater name exceeds 63 characters")
         def replace_once(text, old, new):
@@ -612,12 +613,24 @@ END FUNCTION
                 raise PolynomialError("Unrecognized dense DP updater structure")
             return text.replace(old, new, 1)
 
-        source = self.write_expanded_wl_updater(1, 1, _sparse=False)
+        source = (self.write_expanded_wl_updater(1, 1, _sparse=False) if r_1 == 1 else
+                  self.write_compact_wl_updater(r_1, r_2, _sparse=False))
         source = replace_once(source, 'SUBROUTINE '+public+'(', 'SUBROUTINE '+private+'(')
         source = replace_once(source, 'OUT_SIZE,OUT)\n', 'OUT_SIZE,OUT,WL_ENTRY_INEXACT)\n')
-        source = replace_once(source, '  INTEGER I,J,K\n', '''  USE, INTRINSIC :: IEEE_ARITHMETIC
+        if r_1 == 1:
+            source = replace_once(source, '  INTEGER I,J,K\n', '''  USE, INTRINSIC :: IEEE_ARITHMETIC
   USE, INTRINSIC :: IEEE_EXCEPTIONS
   INTEGER I,J,K,WL_H
+  LOGICAL WL_ENTRY_INEXACT
+  LOGICAL WL_HALTING(SIZE(IEEE_ALL))
+  TYPE(IEEE_ROUND_TYPE) WL_ROUNDING
+''')
+        else:
+            source = replace_once(source, '  implicit none\n', '''  USE, INTRINSIC :: IEEE_ARITHMETIC
+  USE, INTRINSIC :: IEEE_EXCEPTIONS
+  implicit none
+''')
+            source = replace_once(source, '  INTEGER I,J,K,L,M\n', '''  INTEGER I,J,K,L,M,WL_H
   LOGICAL WL_ENTRY_INEXACT
   LOGICAL WL_HALTING(SIZE(IEEE_ALL))
   TYPE(IEEE_ROUND_TYPE) WL_ROUNDING
@@ -638,9 +651,17 @@ IF(.NOT.ALL(WL_DP_BOUNDED(REAL(B(:,0:4,:),KIND=8)))) GOTO 900
 IF(.NOT.ALL(WL_DP_BOUNDED(AIMAG(B(:,0:4,:))))) GOTO 900
 C DP_TERMINAL_FAST_PATH
 '''
-        source = replace_once(source, 'DO I=1,LCUT_SIZE\n', guard+'DO I=1,LCUT_SIZE\n')
-        source = replace_once(source, '  DO K=1,IN_SIZE\n    DO J=1,OUT_SIZE',
-                              '  DO K=1,IN_SIZE\n    DO J=I,I')
+        if r_1 == 1:
+            source = replace_once(source, 'DO I=1,LCUT_SIZE\n', guard+'DO I=1,LCUT_SIZE\n')
+            source = replace_once(source, '  DO K=1,IN_SIZE\n    DO J=1,OUT_SIZE',
+                                  '  DO K=1,IN_SIZE\n    DO J=I,I')
+        else:
+            guard = guard.replace('A(:,0:4,:)', 'A(:,0:%d,:)' %
+                                  (get_number_of_coefs_for_rank(r_1) - 1))
+            initialize = 'OUT(:,:,:)=%s\n' % self.czero
+            source = replace_once(source, initialize, guard + initialize)
+            source = replace_once(source, '          DO I=1,LCUT_SIZE',
+                                  '          DO I=J,J')
         if not source.endswith('\nEND'):
             raise PolynomialError("Unrecognized dense DP updater terminator")
         source = source[:-3] + '''RETURN

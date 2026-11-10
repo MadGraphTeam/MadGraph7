@@ -1,0 +1,40 @@
+{
+  "scope": "Production compiled contracts; no performance evidence",
+  "argv": [
+    "docs/benchmarkfolder/experiments/dp-higher-rank-production/compiled/run.py",
+    "qualification"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "affinity": [
+    10
+  ],
+  "python": "3.13.12 (main, Feb  3 2026, 17:53:27) [GCC 15.2.0]",
+  "source_sha256_before": {
+    "tests/unit_tests/various/test_dp_terminal_compiled.py": "d2e63aeb0e8dbf6b4c25f92856a6d101080afd169f60d6b689ec7ef0f4480be3",
+    "madgraph/various/q_polynomial.py": "649e586f201608c9063ed9d4016f2d936078753b2f45fa90887f0f4573288ea1",
+    "madgraph/loop/loop_exporters.py": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74",
+    "madgraph/iolibs/template_files/loop_optimized/polynomial.inc": "7f2685a6fc7b9aaea15892792a8a49e1a867721ed08599c97c318b5bf3730eaf",
+    "docs/benchmarkfolder/experiments/dp-terminal/oracle.f90": "9a0e0d96e493c69f51018cb1b24d3eedf8095e41c5be0f669dee1b930ec3a73e",
+    "docs/benchmarkfolder/experiments/dp-terminal/guard-driver.f90": "49d097b6035e27a693eb0cfa6fff14763ddd9d67eebdfa970e66ee588a092fb2",
+    "docs/benchmarkfolder/experiments/dp-terminal/trap-driver.f90": "791ad65a11649ffae18a364d3916215018d108e653e78459ef097339b3d09f36",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/public.f": "836116f037c543ca6acc5a40ff178459723f4a7fb5234cf4ee1ae6f0c17bacb2"
+  },
+  "compiler": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "passed": true,
+  "tests": 7,
+  "failures": 0,
+  "errors": 0,
+  "elapsed_seconds": 164.60206788405776,
+  "source_sha256_after": {
+    "tests/unit_tests/various/test_dp_terminal_compiled.py": "d2e63aeb0e8dbf6b4c25f92856a6d101080afd169f60d6b689ec7ef0f4480be3",
+    "madgraph/various/q_polynomial.py": "649e586f201608c9063ed9d4016f2d936078753b2f45fa90887f0f4573288ea1",
+    "madgraph/loop/loop_exporters.py": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74",
+    "madgraph/iolibs/template_files/loop_optimized/polynomial.inc": "7f2685a6fc7b9aaea15892792a8a49e1a867721ed08599c97c318b5bf3730eaf",
+    "docs/benchmarkfolder/experiments/dp-terminal/oracle.f90": "9a0e0d96e493c69f51018cb1b24d3eedf8095e41c5be0f669dee1b930ec3a73e",
+    "docs/benchmarkfolder/experiments/dp-terminal/guard-driver.f90": "49d097b6035e27a693eb0cfa6fff14763ddd9d67eebdfa970e66ee588a092fb2",
+    "docs/benchmarkfolder/experiments/dp-terminal/trap-driver.f90": "791ad65a11649ffae18a364d3916215018d108e653e78459ef097339b3d09f36",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/public.f": "836116f037c543ca6acc5a40ff178459723f4a7fb5234cf4ee1ae6f0c17bacb2"
+  },
+  "subprocess_count": 290,
+  "sources_unchanged": true
+}

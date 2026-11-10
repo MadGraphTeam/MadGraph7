@@ -2436,7 +2436,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         return calls
 
     def get_dp_terminal_wavefunctions(self, matrix_element):
-        """Select only the qualified standalone DP rank-1 x rank-1 shape."""
+        """Select the qualified standalone DP diagonal rank/shape pairs."""
         if (type(self) is not LoopProcessOptimizedExporterFortranSA or
                 self.opt.get('vector_size') or
                 self.get_context(matrix_element)['MadEventOutput'] or
@@ -2446,8 +2446,13 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             return {}
         terminal = helas_call_writers.FortranUFOHelasCallWriterOptimized.\
             get_terminal_wavefunctions(matrix_element)
+        rank = matrix_element.get_max_loop_rank()
+        vertex_rank = matrix_element.get_max_loop_vertex_rank()
         return {number: info for number, info in terminal.items()
-                if info['loop_mother_rank'] == info['vertex_rank'] == 1 and
+                if info['vertex_rank'] == 1 and
+                (info['loop_mother_rank'] == 1 or
+                 (info['loop_mother_rank'] in (2, 3) and vertex_rank == 1 and
+                  info['loop_mother_rank'] + 1 <= rank <= 6)) and
                 info['lcut_size'] == info['in_size'] == info['out_size'] == 4}
 
     @staticmethod
@@ -2462,10 +2467,11 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             raise ValueError('Unknown DP terminal batch declaration')
         wanted = {}
         for target, info in expected.items():
-            if (info['loop_mother_rank'] != 1 or info['vertex_rank'] != 1 or
+            if (info['loop_mother_rank'] not in (1, 2, 3) or info['vertex_rank'] != 1 or
                     any(info[key] != 4 for key in ('lcut_size', 'in_size', 'out_size'))):
                 raise ValueError('Unsupported DP terminal shape')
-            call = ('CALL '+prefix+'UPDATE_WL_1_1(WL(1,0,1,{loop_mother_number}),'
+            call = ('CALL '+prefix+'UPDATE_WL_{loop_mother_rank}_{vertex_rank}'
+                    '(WL(1,0,1,{loop_mother_number}),'
                     '4,COEFS,4,4,WL(1,0,1,{out}))').format(**info)
             wanted[re.sub(r'\s+', '', call).upper()] = target
         physical = source.splitlines(True)
@@ -2499,7 +2505,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 raise ValueError('Comment inside DP terminal call')
             found.add(target)
             private = text.replace('CALL', 'CALL ', 1).replace(
-                'UPDATE_WL_1_1(', 'DP_TERMINAL_WL_1_1(', 1)[:-1]+',WL_ENTRY_INEXACT)'
+                'UPDATE_WL_', 'DP_TERMINAL_WL_', 1)[:-1]+',WL_ENTRY_INEXACT)'
             replacements.append((start, end,
                 fixed('CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)')+fixed(private)))
         if not found:
@@ -2880,8 +2886,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 
         terminal = helas_call_writers.FortranUFOHelasCallWriterOptimized.\
             get_terminal_wavefunctions(matrix_element)
-        if self.get_dp_terminal_wavefunctions(matrix_element):
-            subroutines.append(poly_writer.write_dp_terminal_wl_updater())
+        dp_terminal = self.get_dp_terminal_wavefunctions(matrix_element)
+        for left, right in sorted(set((item['loop_mother_rank'], item['vertex_rank'])
+                                      for item in dp_terminal.values())):
+            subroutines.append(poly_writer.write_dp_terminal_wl_updater(left, right))
         for left, right in sorted(set((item['loop_mother_rank'], item['vertex_rank'])
                                       for item in terminal.values())):
             if left == right == 1 or left == 0 or right == 0:

@@ -1,0 +1,9 @@
+{
+  "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank-production-initial-reference-census/outputs/candidate/qcd_n3_uux_zgg",
+  "control": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal-production/outputs/candidate/qcd_n3_uux_zgg",
+  "errors": [
+    "source-tree directory symlink: /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-terminal-production/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/MadLoop5_resources"
+  ],
+  "passed": false,
+  "script_sha256": "ac49454953b657ed0900ebed78a6dcddf1aeecbffd111eaa95bef296e16176cb"
+}

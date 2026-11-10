@@ -1,0 +1,33 @@
+{
+  "command": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/unit_tests/loop/test_dp_terminal_wavefunctions.py",
+    "tests/unit_tests/loop/test_dp_terminal_export.py",
+    "tests/unit_tests/loop/test_terminal_wavefunctions.py",
+    "tests/unit_tests/various/test_q_polynomial.py"
+  ],
+  "elapsed_seconds": 3.1439954359084368,
+  "returncode": 0,
+  "scope": "Source proof/exporter and existing polynomial/QP tests; not a performance measurement.",
+  "source_sha256_after": {
+    "madgraph/loop/dp_terminal_proof.py": "c2382211b08594d88cda551f07f2b2056de3f4635daa61f7eb6a0dc805408985",
+    "madgraph/loop/loop_exporters.py": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74",
+    "madgraph/various/q_polynomial.py": "649e586f201608c9063ed9d4016f2d936078753b2f45fa90887f0f4573288ea1",
+    "tests/unit_tests/loop/test_dp_terminal_export.py": "26bf7ec5627a7617e329e9fbf1d9447a2f44f9557201c01ce03b6f6fbfc8ee31",
+    "tests/unit_tests/loop/test_dp_terminal_wavefunctions.py": "7d7557c808edafc16316743bbd0e1bd7d860dc725fcfe0fae43568a156e0acb7",
+    "tests/unit_tests/various/test_dp_terminal_compiled.py": "d2e63aeb0e8dbf6b4c25f92856a6d101080afd169f60d6b689ec7ef0f4480be3"
+  },
+  "source_sha256_before": {
+    "madgraph/loop/dp_terminal_proof.py": "c2382211b08594d88cda551f07f2b2056de3f4635daa61f7eb6a0dc805408985",
+    "madgraph/loop/loop_exporters.py": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74",
+    "madgraph/various/q_polynomial.py": "649e586f201608c9063ed9d4016f2d936078753b2f45fa90887f0f4573288ea1",
+    "tests/unit_tests/loop/test_dp_terminal_export.py": "26bf7ec5627a7617e329e9fbf1d9447a2f44f9557201c01ce03b6f6fbfc8ee31",
+    "tests/unit_tests/loop/test_dp_terminal_wavefunctions.py": "7d7557c808edafc16316743bbd0e1bd7d860dc725fcfe0fae43568a156e0acb7",
+    "tests/unit_tests/various/test_dp_terminal_compiled.py": "d2e63aeb0e8dbf6b4c25f92856a6d101080afd169f60d6b689ec7ef0f4480be3"
+  },
+  "sources_unchanged": true
+}

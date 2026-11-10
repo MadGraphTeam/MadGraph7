@@ -577,6 +577,236 @@ class DPTerminalConsumerProofTest(unittest.TestCase):
         manifest = [path.name for path in root.glob('*.f')] + [str(outside)]
         self.assertFalse(self.validate(fixture, source_manifest=manifest))
 
+    def higher_fixture(self, process_rank=4, mother_rank=3, prefix='TEST_'):
+        """Use the actual generator, independent of the proof's monomial code."""
+        from madgraph.various.q_polynomial import FortranPolynomialRoutines
+        from madgraph.various.q_polynomial import get_number_of_coefs_for_rank
+
+        root, prefix, _ = self.fixture(prefix)
+        count = get_number_of_coefs_for_rank(process_rank)
+        self.replace(root, 'coef_specs.inc', 'LOOPMAXCOEFS=15',
+                     'LOOPMAXCOEFS=%d' % count)
+        (root / 'loop_max_coefs.inc').write_text('C Bounds are in coef_specs.inc.\n')
+        constants = FortranPolynomialRoutines(
+            process_rank, updater_max_rank=1, sub_prefix=prefix).write_polynomial_constant_module()
+        rendered = root / 'rendered_constants.inc'
+        with FortranWriter(str(rendered)) as writer:
+            writer.writelines(constants)
+        polynomial = root / 'polynomial.f'
+        text = polynomial.read_text()
+        end = text.index('\n', text.index('END MODULE')) + 1
+        polynomial.write_text(rendered.read_text() + text[end:] +
+            '      SUBROUTINE ' + prefix + 'LOOKUP()\n'
+            '      USE ' + prefix + 'POLYNOMIAL_CONSTANTS\n'
+            '      INTEGER NEW_POSITION,L,M\n'
+            '      NEW_POSITION=COMB_COEF_POS(L,M)\n'
+            '      END\n')
+        rendered.unlink()
+        output = mother_rank + 1
+        for path in root.glob('*.f'):
+            path.write_text(path.read_text().replace('NLOOPWAVEFUNCS=2',
+                                                     'NLOOPWAVEFUNCS=%d' % output))
+        batch = root / 'coef_construction_1.f'
+        text = batch.read_text()
+        calls = ''.join(
+            '      CALL %sUPDATE_WL_%d_1(WL(1,0,1,%d),4,COEFS,4,4,\n'
+            '     $ WL(1,0,1,%d))\n' % (prefix, rank, rank, rank + 1)
+            for rank in range(mother_rank))
+        calls += (
+            '      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n'
+            '      CALL %sDP_TERMINAL_WL_%d_1(WL(1,0,1,%d),4,COEFS,4,4,\n'
+            '     $ WL(1,0,1,%d),WL_ENTRY_INEXACT)\n'
+            '      CALL %sCREATE_LOOP_COEFS(WL(1,0,1,%d),%d,4,1,1,1,1,1)\n'
+            '      END\n' % (prefix, mother_rank, mother_rank, output,
+                             prefix, output, output))
+        batch.write_text(text[:text.index('      CALL ')] + calls)
+        expected = {output: dict(loop_mother_rank=mother_rank, vertex_rank=1,
+                                loop_mother_number=mother_rank, lcut_size=4,
+                                in_size=4, out_size=4, out=output)}
+        return root, prefix, expected
+
+    def test_higher_terminal_process_ranks_three_through_six(self):
+        for rank in (3, 4, 5, 6):
+            for mother in (2, 3):
+                for prefix in ('TEST_', ''):
+                    with self.subTest(process_rank=rank, mother_rank=mother, prefix=prefix):
+                        fixture = self.higher_fixture(rank, mother, prefix)
+                        self.assertEqual(self.validate(fixture), mother + 1 <= rank)
+
+    def test_higher_gate_does_not_change_single_rank_one_validation(self):
+        # The original 1x1 fixture has no combination table and still passes.
+        self.assertTrue(self.validate(self.fixture()))
+        # The original path also permits storage above the new higher-rank gate.
+        fixture = self.fixture()
+        self.replace(fixture[0], 'coef_specs.inc', 'LOOPMAXCOEFS=15', 'LOOPMAXCOEFS=330')
+        self.replace(fixture[0], 'coef_specs.inc', 'VERTEXMAXCOEFS=5', 'VERTEXMAXCOEFS=15')
+        self.assertTrue(self.validate(fixture))
+
+    def test_higher_gate_rejects_other_process_ranks_and_vertex_storage(self):
+        for rank in (2, 7):
+            with self.subTest(rank=rank):
+                self.assertFalse(self.validate(self.higher_fixture(rank, 2)))
+        for old, new in (('LOOPMAXCOEFS=70', 'LOOPMAXCOEFS=71'),
+                         ('VERTEXMAXCOEFS=5', 'VERTEXMAXCOEFS=15')):
+            with self.subTest(new=new):
+                fixture = self.higher_fixture()
+                self.replace(fixture[0], 'coef_specs.inc', old, new)
+                self.assertFalse(self.validate(fixture))
+
+    def test_higher_combination_table_layout_and_values_are_literal(self):
+        from madgraph.loop.dp_terminal_proof import _compact
+
+        changes = (
+            ('INTEGERCOMB_COEF_POS(0:LOOPMAXCOEFS-1,0:4)',
+             'INTEGER COMB_COEF_POS(1:LOOPMAXCOEFS,0:4)'),
+            ('INTEGERCOMB_COEF_POS(0:LOOPMAXCOEFS-1,0:4)',
+             'INTEGER COMB_COEF_POS(0:LOOPMAXCOEFS-1,1:5)'),
+            ('DATACOMB_COEF_POS(0,0:4)/0,1,2,3,4/',
+             'DATA COMB_COEF_POS(0,0:4)/1,1,2,3,4/'),
+            ('DATACOMB_COEF_POS(14,0:4)/14,31,32,33,34/',
+             'DATA COMB_COEF_POS(14,0:4)/14,31,32,33,35/'),
+            ('DATACOMB_COEF_POS(34,0:4)/34,66,67,68,69/',
+             'DATA COMB_COEF_POS(34,0:4)/34,66,67,68,70/'),
+            # Even the unused final rows must retain their canonical values.
+            ('DATACOMB_COEF_POS(69,0:4)/69,122,123,124,125/',
+             'DATA COMB_COEF_POS(69,0:4)/69,122,123,124,124/'),
+        )
+        for old, new in changes:
+            with self.subTest(mutation=new):
+                fixture = self.higher_fixture()
+                path = fixture[0] / 'polynomial.f'
+                lines = path.read_text().splitlines(True)
+                match = next(line for line in lines if _compact(line) == old)
+                self.replace(fixture[0], path.name, match, '      ' + new + '\n')
+                self.assertFalse(self.validate(fixture))
+        for mode in ('missing', 'duplicate'):
+            with self.subTest(mode=mode):
+                fixture = self.higher_fixture()
+                path = fixture[0] / 'polynomial.f'
+                line = next(line for line in path.read_text().splitlines(True)
+                            if _compact(line).startswith('DATACOMB_COEF_POS(14,'))
+                self.replace(fixture[0], path.name, line, '' if mode == 'missing' else line + line)
+                self.assertFalse(self.validate(fixture))
+
+    def test_higher_combination_table_cannot_be_written_shadowed_or_escape(self):
+        statements = (
+            'COMB_COEF_POS(0,0)=1', 'CALL HIDDEN(COMB_COEF_POS)',
+            'INTEGER COMB_COEF_POS(0:69,0:4)', 'COMMON/ESCAPE/COMB_COEF_POS',
+            'EQUIVALENCE(COM B_COEF_POS,ESCAPE)', 'P=C_LOC(COMB_COEF_POS)',
+            'USE TEST_POLYNOMIAL_CONSTANTS,ONLY:ALIAS=>COMB_COEF_POS',
+            'NEW_POSITION=COMB_COEF_POS(L,HIDDEN())',
+        )
+        for statement in statements:
+            with self.subTest(statement=statement):
+                fixture = self.higher_fixture()
+                (fixture[0] / 'born_matrix.f').write_text(
+                    '      SUBROUTINE OTHER()\n'
+                    '      USE TEST_POLYNOMIAL_CONSTANTS\n'
+                    '      ' + statement + '\n      END\n')
+                self.assertFalse(self.validate(fixture))
+
+    def test_higher_combination_readers_bind_only_known_modules(self):
+        for addition in ('USE EVIL', 'USE EVIL, ONLY: OPERATOR(==)',
+                         'USE IEEE_ARITHMETIC', 'INTERFACE HIDDEN',
+                         'INTEGER COMB_COEF_POS(0:69,0:4)'):
+            with self.subTest(addition=addition):
+                fixture = self.higher_fixture()
+                self.replace(fixture[0], 'polynomial.f', '      INTEGER NEW_POSITION,L,M',
+                             '      ' + addition + '\n      INTEGER NEW_POSITION,L,M')
+                self.assertFalse(self.validate(fixture))
+        fixture = self.higher_fixture()
+        self.replace(fixture[0], 'polynomial.f', '      INTEGER NEW_POSITION,L,M',
+                     '      USE, INTRINSIC :: IEEE_ARITHMETIC\n'
+                     '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n'
+                     '      INTEGER NEW_POSITION,L,M')
+        self.assertTrue(self.validate(fixture))
+
+    def test_higher_capture_rank_and_consumer_checks_remain_binding(self):
+        changes = (
+            ('      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n', ''),
+            ('DP_TERMINAL_WL_3_1(', 'DP_TERMINAL_WL_2_1('),
+            ('DP_TERMINAL_WL_3_1(', 'DP_TERMINAL_WL_3_0('),
+            ('CREATE_LOOP_COEFS(WL(1,0,1,4),4,4,',
+             'CREATE_LOOP_COEFS(WL(1,0,1,4),3,4,'),
+            ('WL(1,0,1,3),4,COEFS,4,4,', 'WL(1,0,1,3),4,COEFS,1,4,'),
+            ('      END\n', '      CALL HIDDEN(WL(1,0,1,4))\n      END\n'),
+        )
+        for old, new in changes:
+            with self.subTest(mutation=new):
+                fixture = self.higher_fixture()
+                self.replace(fixture[0], 'coef_construction_1.f', old, new)
+                self.assertFalse(self.validate(fixture))
+        fixture = self.higher_fixture()
+        self.replace(fixture[0], 'coef_construction_1.f', '      CALL TEST_CREATE_LOOP_COEFS(',
+                     '      CONTINUE\n      CALL TEST_CREATE_LOOP_COEFS(')
+        self.assertTrue(self.validate(fixture))
+
+    def test_higher_reader_internal_bit_views_cannot_alias_the_table(self):
+        fixture = self.higher_fixture()
+        marker = '      NEW_POSITION=COMB_COEF_POS(L,M)\n      END\n'
+        helpers = (
+            '      NEW_POSITION=COMB_COEF_POS(L,M)\n'
+            '      CONTAINS\n'
+            '      LOGICAL FUNCTION SAFE(X)\n'
+            '      REAL*8 X\n'
+            '      INTEGER*8 ONE\n'
+            '      PARAMETER(ONE=1)\n'
+            '      ASSOCIATE(WORDS=>TRANSFER(X,ONE))\n'
+            '      SAFE=WORDS.EQ.0\n'
+            '      END ASSOCIATE\n'
+            '      END FUNCTION SAFE\n'
+            '      END\n')
+        self.replace(fixture[0], 'polynomial.f', marker, helpers)
+        self.assertTrue(self.validate(fixture))
+        self.replace(fixture[0], 'polynomial.f', 'WORDS=>TRANSFER(X,ONE)',
+                     'WORDS=>COMB_COEF_POS')
+        self.assertFalse(self.validate(fixture))
+
+    def test_private_references_outside_certified_graph_are_rejected(self):
+        for make_fixture, pair in ((self.fixture, '1_1'), (self.higher_fixture, '3_1')):
+            references = (
+                'CALL TEST_DP_TERMINAL_WL_%s(A,4,B,4,4,C,.TRUE.)' % pair,
+                'X=TEST_DP_TERMINAL_WL_%s(A)' % pair,
+                'EXTERNAL TEST_DP_TERMINAL_WL_%s' % pair,
+                'CALL CALLBACK(TEST_DP_TERMINAL_WL_%s)' % pair,
+                'PROCEDURE(TEST_DP_TERMINAL_WL_%s),POINTER::P' % pair,
+                'CALL TEST_DP_TERMINAL_WL_4_1(A,4,B,4,4,C,.TRUE.)',
+                'CALL TEST_DP_TERMINAL_WL_3_0(A,4,B,4,4,C,.TRUE.)',
+            )
+            for statement in references:
+                with self.subTest(pair=pair, statement=statement):
+                    fixture = make_fixture()
+                    (fixture[0] / 'born_matrix.f').write_text(
+                        '      SUBROUTINE OTHER(A,B,C)\n'
+                        '      COMPLEX*16 A(4,0:69,4),B(4,0:4,4),C(4,0:69,4)\n'
+                        '      ' + statement + '\n      END\n')
+                    self.assertFalse(self.validate(fixture))
+            with self.subTest(pair=pair, source='polynomial.f'):
+                fixture = make_fixture()
+                with (fixture[0] / 'polynomial.f').open('a') as output:
+                    output.write('      SUBROUTINE OTHER(A,B,C)\n'
+                                 '      CALL TEST_DP_TERMINAL_WL_%s(A,4,B,4,4,C,.TRUE.)\n'
+                                 '      END\n' % pair)
+                self.assertFalse(self.validate(fixture))
+
+    def test_private_definition_names_and_included_call_replay_are_binding(self):
+        fixture = self.higher_fixture()
+        with (fixture[0] / 'polynomial.f').open('a') as output:
+            output.write('      SUBROUTINE TEST_DP_TERMINAL_WL_3_1(A)\n'
+                         '      END SUBROUTINE TEST_DP_TERMINAL_WL_3_1\n')
+        self.assertTrue(self.validate(fixture))
+        with (fixture[0] / 'polynomial.f').open('a') as output:
+            output.write('      SUBROUTINE TEST_DP_TERMINAL_WL_3_1(A)\n      END\n')
+        self.assertFalse(self.validate(fixture))
+        fixture = self.higher_fixture()
+        with (fixture[0] / 'polynomial.f').open('a') as output:
+            output.write('      SUBROUTINE TEST_DP_TERMINAL_WL_4_1(A)\n      END\n')
+        self.assertFalse(self.validate(fixture))
+        fixture = self.higher_fixture()
+        (fixture[0] / 'born_matrix.f').write_text(
+            "      INCLUDE 'coef_construction_1.f'\n")
+        self.assertFalse(self.validate(fixture))
+
 
 if __name__ == '__main__':
     unittest.main()

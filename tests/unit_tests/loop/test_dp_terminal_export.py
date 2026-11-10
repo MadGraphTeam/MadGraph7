@@ -1,5 +1,6 @@
 """DP private call proposals must preserve dense output when proof is missing."""
 from pathlib import Path
+from hashlib import sha256
 import sys
 import tempfile
 import types
@@ -62,10 +63,20 @@ class DPTerminalProposalTest(unittest.TestCase):
 
     def test_unsupported_shape_refused(self):
         for field, value in [('lcut_size', 3), ('in_size', 5), ('out_size', 3),
-                             ('loop_mother_rank', 2), ('vertex_rank', 0)]:
+                             ('loop_mother_rank', 4), ('vertex_rank', 0)]:
             info = dict(EXPECTED[3], **{field: value})
             with self.subTest(field=field), self.assertRaises(ValueError):
                 Exporter.prepare_dp_terminal_batch(batch(), 'TEST_', {3: info})
+
+    def test_compact_rank_capture_preserves_consumer_and_unselected_calls(self):
+        for rank in (2, 3):
+            source = batch().replace('UPDATE_WL_1_1', 'UPDATE_WL_%d_1' % rank)
+            expected = {3: dict(EXPECTED[3], loop_mother_rank=rank)}
+            candidate, found = Exporter.prepare_dp_terminal_batch(source, 'TEST_', expected)
+            self.assertEqual(found, {3})
+            self.assertEqual(candidate.count('CALL IEEE_GET_FLAG'), 1)
+            self.assertIn('DP_TERMINAL_WL_%d_1' % rank, candidate)
+            self.assertIn('      CALL TEST_CREATE_LOOP_COEFS(WL(1,0,1,3),2,4,1)\n', candidate)
 
 
 class DPTerminalSelectionTest(unittest.TestCase):
@@ -76,6 +87,8 @@ class DPTerminalSelectionTest(unittest.TestCase):
         matrix = Mock()
         matrix.rep_dict = {'proc_prefix': 'TEST_', 'max_lwf_size': 4}
         matrix.get.return_value = [{'has_born': True}]
+        matrix.get_max_loop_rank.return_value = 2
+        matrix.get_max_loop_vertex_rank.return_value = 1
         return exporter, matrix
 
     def test_only_qualified_shape_is_selected(self):
@@ -87,6 +100,24 @@ class DPTerminalSelectionTest(unittest.TestCase):
             choices[number] = dict(EXPECTED[3], out=number, **{field: value})
         with patch.object(Writer, 'get_terminal_wavefunctions', return_value=choices):
             self.assertEqual(exporter.get_dp_terminal_wavefunctions(matrix), EXPECTED)
+
+    def test_higher_pairs_require_qualified_process_storage(self):
+        exporter, matrix = self.exporter()
+        choices = dict(EXPECTED)
+        for left in (2, 3, 4):
+            choices[left+2] = dict(EXPECTED[3], out=left+2, loop_mother_rank=left)
+        with patch.object(Writer, 'get_terminal_wavefunctions', return_value=choices):
+            for rank in (2, 3, 4, 5, 6, 7):
+                for vertex_rank in (1, 2):
+                    matrix.get_max_loop_rank.return_value = rank
+                    matrix.get_max_loop_vertex_rank.return_value = vertex_rank
+                    wanted = {3}
+                    if vertex_rank == 1 and 3 <= rank <= 6:
+                        wanted.add(4)
+                        if rank >= 4:
+                            wanted.add(5)
+                    with self.subTest(rank=rank, vertex_rank=vertex_rank):
+                        self.assertEqual(set(exporter.get_dp_terminal_wavefunctions(matrix)), wanted)
 
     def test_custom_vector_nlo_and_unknown_shapes_stay_dense(self):
         class CustomExporter(Exporter):
@@ -110,6 +141,43 @@ class DPTerminalSelectionTest(unittest.TestCase):
 
 
 class DPTerminalGeneratorTest(unittest.TestCase):
+    def test_existing_rank1_generated_bytes_are_unchanged(self):
+        # Hash from the independently retained committed 1x1-only generator.
+        expected = '9389e3c76827e677ab0ae4bf6f828d6d8a42f50eeb7c2676576869223bd2eb56'
+        for rank in (2, 4, 7):
+            writer = FortranPolynomialRoutines(rank, updater_max_rank=1,
+                sub_prefix='TEST_', proc_prefix='TEST_', coef_format='complex*16')
+            self.assertEqual(sha256(writer.write_dp_terminal_wl_updater().encode()).hexdigest(), expected)
+
+    def test_compact_surviving_arithmetic_and_full_initialization_are_unchanged(self):
+        for rank in (2, 3):
+            writer = FortranPolynomialRoutines(4, updater_max_rank=1,
+                sub_prefix='TEST_', coef_format='complex*16')
+            dense = writer.write_compact_wl_updater(rank, 1, _sparse=False)
+            private = writer.write_dp_terminal_wl_updater(rank, 1)
+            expected = dense[dense.index('OUT(:,:,:)'):].removesuffix('\nEND')
+            expected = expected.replace('          DO I=1,LCUT_SIZE', '          DO I=J,J')
+            actual = private.split('C DP_TERMINAL_FAST_PATH\n', 1)[1].split('RETURN\n900 CONTINUE', 1)[0]
+            self.assertEqual(actual, expected+'\n')
+            self.assertIn('CALL TEST_UPDATE_WL_%d_1(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT)' % rank, private)
+
+    def test_unsupported_compact_storage_or_rank_cannot_be_emitted(self):
+        for process_rank, vertex_rank, pair in ((2, 1, (2, 1)), (3, 1, (3, 1)),
+                (7, 1, (2, 1)), (4, 2, (2, 1)), (6, 1, (4, 1)), (4, 1, (2, 2))):
+            writer = FortranPolynomialRoutines(process_rank, updater_max_rank=vertex_rank)
+            with self.subTest(storage=process_rank, vertex=vertex_rank, pair=pair), self.assertRaises(PolynomialError):
+                writer.write_dp_terminal_wl_updater(*pair)
+
+    def test_unrecognized_compact_structure_fails_closed(self):
+        writer = FortranPolynomialRoutines(4, updater_max_rank=1)
+        dense = writer.write_compact_wl_updater(2, 1, _sparse=False)
+        for old, new in (('  implicit none\n', ''), ('OUT(:,:,:)', 'OUT(:, :, :)'),
+                         ('          DO I=1,LCUT_SIZE', '          DO I = 1,LCUT_SIZE')):
+            with self.subTest(marker=old), patch.object(writer, 'write_compact_wl_updater',
+                                                       return_value=dense.replace(old, new)):
+                with self.assertRaises(PolynomialError):
+                    writer.write_dp_terminal_wl_updater(2, 1)
+
     def test_unrecognized_dense_structure_cannot_emit_unguarded_private_code(self):
         writer = FortranPolynomialRoutines(2, updater_max_rank=1,
             sub_prefix='TEST_', coef_format='complex*16')

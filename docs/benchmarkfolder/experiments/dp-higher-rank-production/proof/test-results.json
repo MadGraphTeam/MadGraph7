@@ -1,0 +1,12 @@
+{
+  "command": "PYTHONDONTWRITEBYTECODE=1 /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3 -B -m pytest -q tests/unit_tests/loop/test_dp_terminal_wavefunctions.py",
+  "exit_code": 0,
+  "result": "45 passed, 160 subtests passed",
+  "schema_version": 1,
+  "scope": "Source-only tests; no native/compiler execution",
+  "source_sha256": {
+    "madgraph/loop/dp_terminal_proof.py": "c2382211b08594d88cda551f07f2b2056de3f4635daa61f7eb6a0dc805408985",
+    "tests/unit_tests/loop/test_dp_terminal_wavefunctions.py": "7d7557c808edafc16316743bbd0e1bd7d860dc725fcfe0fae43568a156e0acb7"
+  },
+  "utc": "2026-11-09T23:48:28.724974+00:00"
+}

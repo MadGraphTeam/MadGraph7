@@ -1,0 +1,157 @@
+--- production-base.py
++++ dp_terminal_proof.py
+@@ -494,6 +494,99 @@
+     return set(counts)
+ 
+ 
++def _canonical_comb(rows, prefix, mother_ranks):
++    """Certify the higher-rank updater's literal coefficient-product table.
++
++    This additional gate is deliberately absent from the existing 1x1 path.
++    Columns 0..4 multiply a monomial by 1,q0,q1,q2,q3.  The generator also
++    initializes unused final rows whose products exceed output storage; only
++    rows below NCOEF_R(mother_rank) are reachable by the supported helpers.
++    """
++    from itertools import combinations_with_replacement
++
++    module = 'MODULE' + prefix + 'POLYNOMIAL_CONSTANTS'
++    start = next(index for index, row in enumerate(rows)
++                 if _compact(row.text) == module)
++    end = next(index for index in range(start + 1, len(rows))
++               if _compact(rows[index].text) in ('ENDMODULE', 'END' + module))
++    body = rows[start:end + 1]
++    texts = [_compact(row.text) for row in body]
++    declaration = next(re.fullmatch(r'INTEGERNCOEF_R\(0:([0-9]+)\)', text)
++                       for text in texts if text.startswith('INTEGERNCOEF_R('))
++    rank = int(declaration[1])
++    _need(rank in (3, 4, 5, 6), 'Unsupported higher-terminal process rank')
++    counts = [(r + 1) * (r + 2) * (r + 3) * (r + 4) // 24
++              for r in range(rank + 2)]
++    parameters = {}
++    for text in texts:
++        if text.startswith('PARAMETER('):
++            for argument in _arguments(text[10:-1]):
++                name, _, value = argument.partition('=')
++                parameters[name] = value
++    _need(parameters.get('LOOPMAXCOEFS') == str(counts[rank]) and
++          parameters.get('VERTEXMAXCOEFS') == '5',
++          'Unsupported higher-terminal coefficient storage')
++    _need(all(left in (2, 3) and left + 1 <= rank for left in mother_ranks),
++          'Higher terminal rank exceeds coefficient storage')
++    table = [row for row in body if 'COMB_COEF_POS' in _compact(row.text)]
++    _need(len(table) == counts[rank] + 1 and _compact(table[0].text) ==
++          'INTEGERCOMB_COEF_POS(0:LOOPMAXCOEFS-1,0:4)',
++          'Combination table declaration/extent')
++    monomials = []
++    for degree in range(rank + 2):
++        monomials.extend(sorted(combinations_with_replacement(range(4), degree),
++                                key=lambda indices: indices[::-1]))
++    positions = {indices: index for index, indices in enumerate(monomials)}
++    reachable = max(counts[left] for left in mother_ranks)
++    for index, row in enumerate(table[1:]):
++        base = monomials[index]
++        values = [index] + [positions[tuple(sorted(base + (axis,)))]
++                            for axis in range(4)]
++        expected = 'DATACOMB_COEF_POS(%d,0:4)/%s/' % (
++            index, ','.join(map(str, values)))
++        _need(_compact(row.text) == expected, 'Noncanonical combination table entry')
++        if index < reachable:
++            _need(all(0 <= value < counts[rank] for value in values),
++                  'Consumed combination entry exceeds output storage')
++    return set(table)
++
++
++def _readonly_comb(expanded, certified_rows, prefix):
++    """Reject table writes, shadows, renamed imports and argument escapes.
++
++    Generated readers import the certified module directly.  Restrict their
++    other imports to intrinsic IEEE modules so an added module or interface
++    cannot change the binding of a textually unchanged table lookup.
++    """
++    for rows in expanded.values():
++        checked_scopes = set()
++        for index, row in enumerate(rows):
++            text = _compact(row.text)
++            if 'COMB_COEF_POS' not in text or row in certified_rows:
++                continue
++            _need(re.fullmatch(r'NEW_POSITION=COMB_COEF_POS\(L,(?:M|[1-4])\)', text),
++                  'Mutable, escaped or shadowed combination table')
++            scope = _scope(rows, index)
++            if scope[0] in checked_scopes:
++                continue
++            checked_scopes.add(scope[0])
++            statements = [_compact(item.text) for item in scope]
++            _need(statements.count('USE' + prefix + 'POLYNOMIAL_CONSTANTS') == 1,
++                  'Unbound combination table reader')
++            allowed_imports = {'USE' + prefix + 'POLYNOMIAL_CONSTANTS',
++                               'USE,INTRINSIC::IEEE_ARITHMETIC',
++                               'USE,INTRINSIC::IEEE_EXCEPTIONS'}
++            _need(all(not text.startswith('USE') or text in allowed_imports
++                      for text in statements), 'Unknown combination reader import')
++            # Existing IEEE guards contain local bit-classification functions
++            # and ASSOCIATE views of TRANSFER results. They do not alias the
++            # table: every occurrence of its name is checked above, including
++            # declarations and aliases in contained procedures.
++            _need(not any(text.startswith(('INTERFACE', 'ABSTRACTINTERFACE',
++                                           'ENTRY', 'PROCEDURE'))
++                          for text in statements), 'Aliased combination reader binding')
++
++
+ def _proof(directory, prefix, expected, source_manifest, include_roots):
+     directory = Path(directory).resolve()
+     _need(directory.is_dir() and re.fullmatch(r'(?:[A-Za-z][A-Za-z0-9_]*)?', prefix), 'Invalid proof scope')
+@@ -501,7 +594,7 @@
+     _need(isinstance(expected, dict) and expected, 'No terminal candidates')
+     for number, item in expected.items():
+         _need(isinstance(number, int) and number > 0 and isinstance(item, dict), 'Invalid terminal map')
+-        _need(item.get('out') == number and item.get('loop_mother_rank') == 1
++        _need(item.get('out') == number and item.get('loop_mother_rank') in (1, 2, 3)
+               and item.get('vertex_rank') == 1
+               and all(item.get(key) == 4 for key in ('lcut_size', 'in_size', 'out_size')),
+               'Unsupported terminal shape')
+@@ -513,8 +606,15 @@
+     _need(polynomial is not None, 'Missing polynomial')
+     certified_counts = _polynomial(polynomial, prefix)
+     _readonly_ncoef(expanded, certified_counts)
++    higher_ranks = {item['loop_mother_rank'] for item in expected.values()
++                    if item['loop_mother_rank'] > 1}
++    if higher_ranks:
++        certified_comb = _canonical_comb(polynomial, prefix, higher_ranks)
++        _readonly_comb(expanded, certified_comb, prefix)
+     protected = (prefix + 'CREATE_LOOP_COEFS', prefix + 'MERGE_WL',
+                  prefix + 'DP_TERMINAL_WL_1_1')
++    if higher_ranks:
++        protected += (prefix + 'DP_TERMINAL_WL_2_1', prefix + 'DP_TERMINAL_WL_3_1')
+     for unit, rows in expanded.items():
+         for row in rows:
+             text = _compact(row.text)
+@@ -619,7 +719,8 @@
+                 if _mentions(row.text, 'WL_ENTRY_INEXACT'):
+                     _need(text == 'LOGICALWL_ENTRY_INEXACT' or
+                           text == 'CALLIEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)' or
+-                          text.startswith('CALL' + prefix + 'DP_TERMINAL_WL_1_1('),
++                          any(text.startswith('CALL' + prefix + 'DP_TERMINAL_WL_' + pair + '(')
++                              for pair in ('1_1', '2_1', '3_1')),
+                           'Aliased or modified capture flag')
+         for row in uses:
+             text = _compact(row.text)
+@@ -649,7 +750,7 @@
+                 consumed.add(source)
+                 if is_private:
+                     index = rows.index(row)
+-                    _need((left, right) == (1, 1) and arguments[6] == 'WL_ENTRY_INEXACT' and
++                    _need((left, right) in ((1, 1), (2, 1), (3, 1)) and arguments[6] == 'WL_ENTRY_INEXACT' and
+                           index > 0 and normalized[index - 1] == 'CALLIEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)'
+                           and not row.label and not rows[index - 1].label and rows[index - 1].origin == unit,
+                           'Terminal call without immediate capture')
+@@ -677,7 +778,9 @@
+     """Return whether a proposed standalone DP rewrite has only diagonal consumers.
+ 
+     ``expected`` is the terminal map returned by the HELAS graph inspection,
+-    narrowed to rank 1 x 1 and 4 x 4.  The optional ``source_manifest`` is an
++    narrowed to ranks 1/2/3 x 1 and shape (4,4,4). Higher ranks additionally
++    require a canonical, read-only coefficient-product table in process ranks
++    3..6 with a rank-one vertex. The optional ``source_manifest`` is an
+     exact iterable of generated Fortran units (paths relative to ``directory``
+     or absolute): it must include the source closure in SubProcesses, MODEL and
+     DHELAS, not merely coefficient batches.  ``include_roots`` may add generated
