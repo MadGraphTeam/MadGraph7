@@ -1117,8 +1117,7 @@ produced point misses exactness) are records, not failures. The default is
 exact in every frame: where the beams lie along the z axis it is MadLoop's
 z-shift bit for bit; in other frames MadLoop's chain produces the
 rescaling's point, which keeps a conservation residual of the input's own
-order, and the chain finishes it with the projection (USER 2026-11-10
-"Projection after MadLoop"). Near forward, backward and thresholds that
+order, and the chain finishes it with the projection. Near forward, backward and thresholds that
 matters: NinjaRS amplifies an input's shell or conservation defect by about
 the inverse box Gram determinant, and no rotation check sees it (a rotation
 keeps the defect), which the improvement removes.

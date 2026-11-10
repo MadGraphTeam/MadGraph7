@@ -923,7 +923,7 @@ def test_the_default_rescue_stack_escalates_the_guarded_fallback(zzz, loop_nativ
         if reduction.guard_estimate is not None:
             # The fallback served the point: the guard's typed failure.
             assert not reduction.guard_estimate <= _limit(TARGET), reduction
-            assert "fallback's value failed its rotation check" in (attempt.failure)
+            assert "fallback's value failed its rotation check" in attempt.failure
             assert attempt.failure.endswith("(double-double)"), attempt.failure
 
 

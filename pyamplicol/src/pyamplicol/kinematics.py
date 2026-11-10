@@ -1,16 +1,13 @@
 # SPDX-License-Identifier: 0BSD
-"""The kinematics improvement of the input points (m-lit lit-psimprove).
+"""The kinematics improvement of the input points.
 
 Before a point is evaluated in a carrier above binary64 (double-double or
 arbitrary precision), its external momenta are moved onto exact
 energy-momentum conservation and the external mass shells in that carrier's
-arithmetic (USER 2026-11-10 ~00:56), by default with MadLoop's default
-(``ImprovePSPoint = 2`` with MadLoop's own fallback to ``ImprovePSPoint =
-1``; USER ~01:56, DECISIONS 2026-11-10 01:56 (1)), finished by the projection
-where MadLoop leaves the point inexact (USER ~19:20, DECISIONS 19:20 (F1));
-binary64 evaluations are
-improved only under the binary64 switch (DECISIONS 01:56 (2); what counts as
-a binary64 evaluation is the carrier kind, DECISIONS 02:29 (G3)).
+arithmetic, by default with MadLoop's default (``ImprovePSPoint = 2`` with
+MadLoop's own fallback to ``ImprovePSPoint = 1``), finished by the
+projection where MadLoop leaves the point inexact; binary64 evaluations
+(by carrier kind) are improved only under the binary64 switch.
 
 The one implementation is Rust's (``rusticol_core::kinematics_improvement``,
 through ``improve_kinematics``); this module reads its policy (the values,

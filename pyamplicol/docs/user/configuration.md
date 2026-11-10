@@ -1077,7 +1077,7 @@ reduction can amplify that defect far beyond the extra digits. So before
 anything is evaluated in a carrier above binary64 (double-double, and
 arbitrary precision at any requested digit count, 16 included), each point is
 first moved onto exact conservation and the exact external shells in that
-carrier's arithmetic, MadLoop's `ImprovePSPoint` (USER 2026-11-10):
+carrier's arithmetic, MadLoop's `ImprovePSPoint`:
 
 ```toml
 [evaluation]
@@ -1094,7 +1094,7 @@ kinematics_improvement_binary64 = false  # true: also improve binary64 evaluatio
   `"rescaling"`. Where the point MadLoop's chain produces misses exactness
   (the rescaling's residual below, or a shell defect the z-shift keeps) or
   both variants refuse, the chain FINISHES with `"projection"`, continuing
-  from MadLoop's point (USER 2026-11-10 "Projection after MadLoop"); only if
+  from MadLoop's point; only if
   the projection refuses too is the point evaluated as given (typed), or,
   after a produced point, used with the `kinematics-inexact` record. So the
   default is exact in every frame: on points whose beams are along z it is
