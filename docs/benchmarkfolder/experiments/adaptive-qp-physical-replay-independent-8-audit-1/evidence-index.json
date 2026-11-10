@@ -1,0 +1,35 @@
+{
+  "antecedent_indices": {
+    "docs/benchmarkfolder/experiments/adaptive-qp-physical-replay-qualification-1/evidence-index.json": "a728fbeb29c64e77b09189c5a97b1a509c71a681aa722dbe3affa1312895c9e9",
+    "docs/benchmarkfolder/experiments/ew-qp-mass-prototype/combined-qualification-1/evidence-index.json": "4f2555b2d4e707e4308bda68bed306a0193b60959f90cccf8e2253bfc65cba73"
+  },
+  "files": {
+    "README.md": {
+      "bytes": 2726,
+      "sha256": "3d3f2874a7906a3b1cd40a8028b98c9b1a1e0578d274c4ee6ecb905df8835473"
+    },
+    "analysis.json": {
+      "bytes": 88576,
+      "sha256": "3a7e0d6e417c27a9aec11d407c65ea7a2c98c7622c07be5a38e373738ef34d1b"
+    },
+    "audit.py": {
+      "bytes": 7756,
+      "sha256": "77a48a7935697df29986d7e7690c31d32d11ef3bad875210f76de4abb8631dba"
+    },
+    "capture.py": {
+      "bytes": 2331,
+      "sha256": "86874e857387754da688c1ff5cd443e8ecaec629b7d6d46ec4a82196b92f652a"
+    },
+    "text-inputs.json.gz": {
+      "bytes": 1365549,
+      "sha256": "3b41c59a792706124ea2397d5f51305f4a31b36211158440cd861ba68a2f1926"
+    },
+    "text-inventory.json": {
+      "bytes": 7031,
+      "sha256": "64f1b58e093bb76e1f384f0ce73ab4c707c8d4eff26b94de262878cd44cb128e"
+    }
+  },
+  "native_executed": false,
+  "schema": "adaptive-native8-independent-fixed-QP-diagnostic-audit-v1",
+  "truth_or_stability_or_performance_qualified": false
+}

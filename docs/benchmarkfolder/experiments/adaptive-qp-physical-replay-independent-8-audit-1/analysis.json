@@ -1,0 +1,4958 @@
+{
+  "W03": {
+    "adaptive9": [],
+    "guarded8": []
+  },
+  "checked_stability_qualified": false,
+  "failures": [],
+  "identical_nonselection_card_resource_files": [
+    "MadLoop5_resources/ML5_0_ColorDenomFactors.dat",
+    "MadLoop5_resources/ML5_0_ColorNumFactors.dat",
+    "MadLoop5_resources/ML5_0_HelConfigs.dat",
+    "MadLoop5_resources/ident_card.dat",
+    "MadLoop5_resources/param_card.dat",
+    "param_card.dat",
+    "selected.dat"
+  ],
+  "native_integral_input_bits_identical": false,
+  "native_integral_input_differences": [
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 1,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 2,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 3,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 4,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 5,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 6,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 7,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 8,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 9,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 10,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 11,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 12,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 13,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 14,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 15,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 16,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 17,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 18,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 19,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 20,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 21,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 22,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 23,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 24,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 25,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 26,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 27,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 28,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 29,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 30,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 31,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 32,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 33,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 34,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 35,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 36,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 37,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 38,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 39,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 40,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 41,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 42,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 43,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 44,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 45,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 46,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 47,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 48,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 49,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 50,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 51,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 52,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 53,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 54,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 55,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 56,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 57,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 58,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 59,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 60,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 61,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 62,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 63,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 64,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 65,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 66,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 67,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 68,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 69,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 70,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 71,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 72,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 73,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 74,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 75,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 76,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 77,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 78,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 79,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 80,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 81,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 82,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 83,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 84,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 85,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 86,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 87,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 88,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 89,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 90,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 91,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 92,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 93,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 94,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 95,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 96,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 97,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 98,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 99,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 100,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 101,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 102,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 103,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 104,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 105,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 106,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 107,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 108,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 109,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 110,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 111,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 112,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 113,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 114,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 115,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 116,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 117,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 118,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 119,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 120,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 121,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 122,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 123,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 124,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 125,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 126,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 127,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 128,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 129,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 130,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 131,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 132,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 133,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 134,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 135,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 136,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 137,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 138,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 139,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 140,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 141,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 142,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 143,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 144,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 145,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 146,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 147,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 148,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 149,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 150,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 151,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 152,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 153,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 154,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 155,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 156,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 157,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 158,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 159,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 160,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 161,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 162,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 163,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 164,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 165,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 166,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 167,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 168,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 169,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 170,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 171,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 172,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 173,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 174,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 175,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 176,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 177,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 178,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 179,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 180,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 181,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 182,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 183,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 184,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 185,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 186,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 187,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 188,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 189,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 190,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 191,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 192,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 193,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 194,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 195,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 196,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 197,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 198,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 199,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    },
+    {
+      "adaptive9": [
+        [
+          "R16",
+          1,
+          "63ACEBF7FD7E3900",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "backend8": [
+        [
+          "R16",
+          1,
+          "6000000000000000",
+          "400FD5439582BF9B"
+        ]
+      ],
+      "group": 200,
+      "label": "NATIVE_SCALE",
+      "point": 2
+    }
+  ],
+  "native_served_counts": {
+    "8": 400,
+    "9": 400
+  },
+  "per_call_working_precision_available": false,
+  "performance_qualified": false,
+  "physical_accuracy_qualified": false,
+  "physical_input_and_Born_parity_passed": true,
+  "point_observations": [
+    {
+      "adaptive9": {
+        "ACCURACY": [
+          [
+            "R8",
+            1,
+            "BFF0000000000000"
+          ],
+          [
+            "R8",
+            2,
+            "BFF0000000000000"
+          ]
+        ],
+        "AMPLITUDE": [
+          [
+            "R8",
+            1,
+            "3E889488CA877C57"
+          ],
+          [
+            "R8",
+            2,
+            "3E1EC1C61663DE84"
+          ],
+          [
+            "R8",
+            3,
+            "3E0A78E02E0038EA"
+          ],
+          [
+            "R8",
+            4,
+            "BDFE3B64BAE5880C"
+          ],
+          [
+            "R8",
+            5,
+            "3E889488CA877C57"
+          ],
+          [
+            "R8",
+            6,
+            "3E1EC1C61663DE84"
+          ],
+          [
+            "R8",
+            7,
+            "3E0A78E02E0038EA"
+          ],
+          [
+            "R8",
+            8,
+            "BDFE3B64BAE5880C"
+          ]
+        ],
+        "FPE_DP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_DP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "PUBLIC_STATUS": [
+          [
+            "INTEGER",
+            "120",
+            "FFFFF"
+          ]
+        ]
+      },
+      "adaptive9_IEEE_begin_end": [
+        "FFFFF",
+        "FFFFF"
+      ],
+      "backend8": {
+        "ACCURACY": [
+          [
+            "R8",
+            1,
+            "BFF0000000000000"
+          ],
+          [
+            "R8",
+            2,
+            "BFF0000000000000"
+          ]
+        ],
+        "AMPLITUDE": [
+          [
+            "R8",
+            1,
+            "3E889488CA877C57"
+          ],
+          [
+            "R8",
+            2,
+            "3E1EC1C61663DE83"
+          ],
+          [
+            "R8",
+            3,
+            "3E0A78E02E0038E8"
+          ],
+          [
+            "R8",
+            4,
+            "BDFE3B64BAE5880C"
+          ],
+          [
+            "R8",
+            5,
+            "3E889488CA877C57"
+          ],
+          [
+            "R8",
+            6,
+            "3E1EC1C61663DE83"
+          ],
+          [
+            "R8",
+            7,
+            "3E0A78E02E0038E8"
+          ],
+          [
+            "R8",
+            8,
+            "BDFE3B64BAE5880C"
+          ]
+        ],
+        "FPE_DP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_DP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "PUBLIC_STATUS": [
+          [
+            "INTEGER",
+            "120",
+            "FFFFF"
+          ]
+        ]
+      },
+      "backend8_IEEE_begin_end": [
+        "FFFFF",
+        "FFFFF"
+      ],
+      "point": 1
+    },
+    {
+      "adaptive9": {
+        "ACCURACY": [
+          [
+            "R8",
+            1,
+            "BFF0000000000000"
+          ],
+          [
+            "R8",
+            2,
+            "BFF0000000000000"
+          ]
+        ],
+        "AMPLITUDE": [
+          [
+            "R8",
+            1,
+            "41600A722CBC6EB8"
+          ],
+          [
+            "R8",
+            2,
+            "4261842759E0DBF3"
+          ],
+          [
+            "R8",
+            3,
+            "40CC7F6327A71CD3"
+          ],
+          [
+            "R8",
+            4,
+            "C0D3BAA6EBC582E5"
+          ],
+          [
+            "R8",
+            5,
+            "41600A722CBC6EB8"
+          ],
+          [
+            "R8",
+            6,
+            "4261842759E0DBF3"
+          ],
+          [
+            "R8",
+            7,
+            "40CC7F6327A71CD3"
+          ],
+          [
+            "R8",
+            8,
+            "C0D3BAA6EBC582E5"
+          ]
+        ],
+        "FPE_DP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_DP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "PUBLIC_STATUS": [
+          [
+            "INTEGER",
+            "120",
+            "FFFFF"
+          ]
+        ]
+      },
+      "adaptive9_IEEE_begin_end": [
+        "FFFFF",
+        "FFFFF"
+      ],
+      "backend8": {
+        "ACCURACY": [
+          [
+            "R8",
+            1,
+            "BFF0000000000000"
+          ],
+          [
+            "R8",
+            2,
+            "BFF0000000000000"
+          ]
+        ],
+        "AMPLITUDE": [
+          [
+            "R8",
+            1,
+            "41600A722CBC6EB8"
+          ],
+          [
+            "R8",
+            2,
+            "4261842759E0DBF4"
+          ],
+          [
+            "R8",
+            3,
+            "40CC7F6327A71CD3"
+          ],
+          [
+            "R8",
+            4,
+            "C0D3BAA6EBC582E4"
+          ],
+          [
+            "R8",
+            5,
+            "41600A722CBC6EB8"
+          ],
+          [
+            "R8",
+            6,
+            "4261842759E0DBF4"
+          ],
+          [
+            "R8",
+            7,
+            "40CC7F6327A71CD3"
+          ],
+          [
+            "R8",
+            8,
+            "C0D3BAA6EBC582E4"
+          ]
+        ],
+        "FPE_DP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_DP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "PUBLIC_STATUS": [
+          [
+            "INTEGER",
+            "120",
+            "FFFFF"
+          ]
+        ]
+      },
+      "backend8_IEEE_begin_end": [
+        "FFFFF",
+        "FFFFF"
+      ],
+      "point": 2
+    }
+  ],
+  "residuals": [
+    {
+      "absolute_difference": "0",
+      "adaptive9": "1.83136852584749221438829218204513704648661587E-7",
+      "adaptive9_bits": [
+        "R8",
+        1,
+        "3E889488CA877C57"
+      ],
+      "backend8": "1.83136852584749221438829218204513704648661587E-7",
+      "backend8_bits": [
+        "R8",
+        1,
+        "3E889488CA877C57"
+      ],
+      "coefficient": "Born",
+      "flat_index": 1,
+      "point": 1,
+      "symmetric_relative_difference": "0",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "2.06795153138256918717852173017490713391453028E-25",
+      "adaptive9": "1.79028888377297963960597029634859433944171769E-9",
+      "adaptive9_bits": [
+        "R8",
+        2,
+        "3E1EC1C61663DE84"
+      ],
+      "backend8": "1.79028888377297943281081715809167562158954468E-9",
+      "backend8_bits": [
+        "R8",
+        2,
+        "3E1EC1C61663DE83"
+      ],
+      "coefficient": "finite",
+      "flat_index": 2,
+      "point": 1,
+      "symmetric_relative_difference": "1.15509376733905866698590992628280404699151016E-16",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "2.06795153138256918717852173017490713391453028E-25",
+      "adaptive9": "7.70441568183463029163798587936346634608142381E-10",
+      "adaptive9_bits": [
+        "R8",
+        3,
+        "3E0A78E02E0038EA"
+      ],
+      "backend8": "7.70441568183462822368645449679427916755969363E-10",
+      "backend8_bits": [
+        "R8",
+        3,
+        "3E0A78E02E0038E8"
+      ],
+      "coefficient": "single_pole",
+      "flat_index": 3,
+      "point": 1,
+      "symmetric_relative_difference": "2.68411209465029001612590957335443487868555137E-16",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "0",
+      "adaptive9": "-4.39933585131251741133712623063167085346591989E-10",
+      "adaptive9_bits": [
+        "R8",
+        4,
+        "BDFE3B64BAE5880C"
+      ],
+      "backend8": "-4.39933585131251741133712623063167085346591989E-10",
+      "backend8_bits": [
+        "R8",
+        4,
+        "BDFE3B64BAE5880C"
+      ],
+      "coefficient": "double_pole",
+      "flat_index": 4,
+      "point": 1,
+      "symmetric_relative_difference": "0",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "0",
+      "adaptive9": "1.83136852584749221438829218204513704648661587E-7",
+      "adaptive9_bits": [
+        "R8",
+        5,
+        "3E889488CA877C57"
+      ],
+      "backend8": "1.83136852584749221438829218204513704648661587E-7",
+      "backend8_bits": [
+        "R8",
+        5,
+        "3E889488CA877C57"
+      ],
+      "coefficient": "Born",
+      "flat_index": 5,
+      "point": 1,
+      "symmetric_relative_difference": "0",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "2.06795153138256918717852173017490713391453028E-25",
+      "adaptive9": "1.79028888377297963960597029634859433944171769E-9",
+      "adaptive9_bits": [
+        "R8",
+        6,
+        "3E1EC1C61663DE84"
+      ],
+      "backend8": "1.79028888377297943281081715809167562158954468E-9",
+      "backend8_bits": [
+        "R8",
+        6,
+        "3E1EC1C61663DE83"
+      ],
+      "coefficient": "finite",
+      "flat_index": 6,
+      "point": 1,
+      "symmetric_relative_difference": "1.15509376733905866698590992628280404699151016E-16",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "2.06795153138256918717852173017490713391453028E-25",
+      "adaptive9": "7.70441568183463029163798587936346634608142381E-10",
+      "adaptive9_bits": [
+        "R8",
+        7,
+        "3E0A78E02E0038EA"
+      ],
+      "backend8": "7.70441568183462822368645449679427916755969363E-10",
+      "backend8_bits": [
+        "R8",
+        7,
+        "3E0A78E02E0038E8"
+      ],
+      "coefficient": "single_pole",
+      "flat_index": 7,
+      "point": 1,
+      "symmetric_relative_difference": "2.68411209465029001612590957335443487868555137E-16",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "0",
+      "adaptive9": "-4.39933585131251741133712623063167085346591989E-10",
+      "adaptive9_bits": [
+        "R8",
+        8,
+        "BDFE3B64BAE5880C"
+      ],
+      "backend8": "-4.39933585131251741133712623063167085346591989E-10",
+      "backend8_bits": [
+        "R8",
+        8,
+        "BDFE3B64BAE5880C"
+      ],
+      "coefficient": "double_pole",
+      "flat_index": 8,
+      "point": 1,
+      "symmetric_relative_difference": "0",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "0",
+      "adaptive9": "8410001.39800201356410980224609375",
+      "adaptive9_bits": [
+        "R8",
+        1,
+        "41600A722CBC6EB8"
+      ],
+      "backend8": "8410001.39800201356410980224609375",
+      "backend8_bits": [
+        "R8",
+        1,
+        "41600A722CBC6EB8"
+      ],
+      "coefficient": "Born",
+      "flat_index": 1,
+      "point": 2,
+      "symmetric_relative_difference": "0",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "0.0001220703125",
+      "adaptive9": "601852923654.8734130859375",
+      "adaptive9_bits": [
+        "R8",
+        2,
+        "4261842759E0DBF3"
+      ],
+      "backend8": "601852923654.87353515625",
+      "backend8_bits": [
+        "R8",
+        2,
+        "4261842759E0DBF4"
+      ],
+      "coefficient": "finite",
+      "flat_index": 2,
+      "point": 2,
+      "symmetric_relative_difference": "2.02824158033001405916306313187021110248849797E-16",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "0",
+      "adaptive9": "14590.774647606920552789233624935150146484375",
+      "adaptive9_bits": [
+        "R8",
+        3,
+        "40CC7F6327A71CD3"
+      ],
+      "backend8": "14590.774647606920552789233624935150146484375",
+      "backend8_bits": [
+        "R8",
+        3,
+        "40CC7F6327A71CD3"
+      ],
+      "coefficient": "single_pole",
+      "flat_index": 3,
+      "point": 2,
+      "symmetric_relative_difference": "0",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "3.63797880709171295166015625E-12",
+      "adaptive9": "-20202.60814035208386485464870929718017578125",
+      "adaptive9_bits": [
+        "R8",
+        4,
+        "C0D3BAA6EBC582E5"
+      ],
+      "backend8": "-20202.608140352080226875841617584228515625",
+      "backend8_bits": [
+        "R8",
+        4,
+        "C0D3BAA6EBC582E4"
+      ],
+      "coefficient": "double_pole",
+      "flat_index": 4,
+      "point": 2,
+      "symmetric_relative_difference": "1.80074710246214355950681132673576768582571077E-16",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "0",
+      "adaptive9": "8410001.39800201356410980224609375",
+      "adaptive9_bits": [
+        "R8",
+        5,
+        "41600A722CBC6EB8"
+      ],
+      "backend8": "8410001.39800201356410980224609375",
+      "backend8_bits": [
+        "R8",
+        5,
+        "41600A722CBC6EB8"
+      ],
+      "coefficient": "Born",
+      "flat_index": 5,
+      "point": 2,
+      "symmetric_relative_difference": "0",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "0.0001220703125",
+      "adaptive9": "601852923654.8734130859375",
+      "adaptive9_bits": [
+        "R8",
+        6,
+        "4261842759E0DBF3"
+      ],
+      "backend8": "601852923654.87353515625",
+      "backend8_bits": [
+        "R8",
+        6,
+        "4261842759E0DBF4"
+      ],
+      "coefficient": "finite",
+      "flat_index": 6,
+      "point": 2,
+      "symmetric_relative_difference": "2.02824158033001405916306313187021110248849797E-16",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "0",
+      "adaptive9": "14590.774647606920552789233624935150146484375",
+      "adaptive9_bits": [
+        "R8",
+        7,
+        "40CC7F6327A71CD3"
+      ],
+      "backend8": "14590.774647606920552789233624935150146484375",
+      "backend8_bits": [
+        "R8",
+        7,
+        "40CC7F6327A71CD3"
+      ],
+      "coefficient": "single_pole",
+      "flat_index": 7,
+      "point": 2,
+      "symmetric_relative_difference": "0",
+      "within_1e_8": true,
+      "within_3e_6": true
+    },
+    {
+      "absolute_difference": "3.63797880709171295166015625E-12",
+      "adaptive9": "-20202.60814035208386485464870929718017578125",
+      "adaptive9_bits": [
+        "R8",
+        8,
+        "C0D3BAA6EBC582E5"
+      ],
+      "backend8": "-20202.608140352080226875841617584228515625",
+      "backend8_bits": [
+        "R8",
+        8,
+        "C0D3BAA6EBC582E4"
+      ],
+      "coefficient": "double_pole",
+      "flat_index": 8,
+      "point": 2,
+      "symmetric_relative_difference": "1.80074710246214355950681132673576768582571077E-16",
+      "within_1e_8": true,
+      "within_3e_6": true
+    }
+  ],
+  "same_input_independent_truth_qualified": false,
+  "scale_difference_explanation": "Backend8 computes REAL(MU_R**2,QP), squaring in DP before promotion; backend9 computes REAL(MU_R,QP)**2. Frozen adapter source records both expressions.",
+  "schema": "adaptive-fixed-QP-independent8-diagnostic-audit-v1",
+  "scope": "Independent fixed-QP amplitude diagnostic with identical physical inputs; explicit native scale-encoding difference atpoint2. Neither status120 nor agreement is checked truth."
+}

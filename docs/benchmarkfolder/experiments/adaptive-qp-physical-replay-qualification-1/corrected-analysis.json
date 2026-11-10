@@ -1,0 +1,5208 @@
+{
+  "Born_bit_checks": [
+    {
+      "bits_preserved": true,
+      "flat_indices": [
+        1,
+        5
+      ],
+      "new": [
+        [
+          "R8",
+          1,
+          "3E889488CA877C57"
+        ],
+        [
+          "R8",
+          5,
+          "3E889488CA877C57"
+        ]
+      ],
+      "old": [
+        [
+          "R8",
+          1,
+          "3E889488CA877C57"
+        ],
+        [
+          "R8",
+          5,
+          "3E889488CA877C57"
+        ]
+      ],
+      "point": 1
+    },
+    {
+      "bits_preserved": true,
+      "flat_indices": [
+        1,
+        5
+      ],
+      "new": [
+        [
+          "R8",
+          1,
+          "41600A722CBC6EB8"
+        ],
+        [
+          "R8",
+          5,
+          "41600A722CBC6EB8"
+        ]
+      ],
+      "old": [
+        [
+          "R8",
+          1,
+          "41600A722CBC6EB8"
+        ],
+        [
+          "R8",
+          5,
+          "41600A722CBC6EB8"
+        ]
+      ],
+      "point": 2
+    }
+  ],
+  "actual_per_call_working_precision_available": false,
+  "failures": [],
+  "fixed_CTMode4_is_checked": false,
+  "group_or_native_IEEE_flag_differences": [
+    {
+      "group": 33,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 35,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 41,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFTT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 43,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 51,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFTT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 52,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 55,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 56,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFTT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 63,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 78,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 87,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 88,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFTT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 92,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFTT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 93,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 105,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 109,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 115,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 172,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 179,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 180,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    },
+    {
+      "group": 183,
+      "new_group_flags": "FFFFF",
+      "new_native_flags": "TFFFT",
+      "old_group_flags": "FFFFF",
+      "old_native_flags": "FFFFT",
+      "point": 2
+    }
+  ],
+  "independent_truth_gate": "Same-input independent reducer or precision-convergence evidence remains required.",
+  "invariants_passed": true,
+  "native_execution_performed_by_this_comparison": false,
+  "new_W03": [],
+  "new_footer": {
+    "dropped": 0,
+    "flag_changes": 0,
+    "limit": 1000000,
+    "records": 96314
+  },
+  "observed_native_calls": 400,
+  "observed_sums_have_no_recorded_native_omissions": true,
+  "offline_analyzer_sha256": "83b1f2f2c6391c777930e48894ded570309e78f49d3db031ef40fd80d8431b71",
+  "offline_input_sha256": {
+    "new_console": "da7869e638bdc058ea0c7b2a96f2fb989f53caf6268894fadd383162298b9e81",
+    "new_journal": "fa7cce970eb83668da625ee1b6fd69ea834834e7d1f80071029264c30d395c2d",
+    "old_console": "11aa23cc84d1ff4de8d9050de8929eaed452b500ce34a47bfe42ae17c10dc22a",
+    "old_journal": "bea2a4c3a31a144db6b7ec9614617d76f15076ebe74a197c425bcba71d090d0c",
+    "parser": "5c255423ba0f656df2e1e338beebfab2dee4c7a5f85c2a92ac57d503b143ebb8"
+  },
+  "old_W03": [
+    {
+      "line": 59,
+      "text": " ##W03 WARNING Contribution            5  is unstable."
+    },
+    {
+      "line": 60,
+      "text": " ##W03 WARNING Contribution            6  is unstable."
+    },
+    {
+      "line": 61,
+      "text": " ##W03 WARNING Contribution           23  is unstable."
+    },
+    {
+      "line": 62,
+      "text": " ##W03 WARNING Contribution           32  is unstable."
+    },
+    {
+      "line": 63,
+      "text": " ##W03 WARNING Contribution           33  is unstable."
+    },
+    {
+      "line": 64,
+      "text": " ##W03 WARNING Contribution           34  is unstable."
+    },
+    {
+      "line": 65,
+      "text": " ##W03 WARNING Contribution           35  is unstable."
+    },
+    {
+      "line": 66,
+      "text": " ##W03 WARNING Contribution           40  is unstable."
+    },
+    {
+      "line": 67,
+      "text": " ##W03 WARNING Contribution           41  is unstable."
+    },
+    {
+      "line": 68,
+      "text": " ##W03 WARNING Contribution           42  is unstable."
+    },
+    {
+      "line": 69,
+      "text": " ##W03 WARNING Contribution           43  is unstable."
+    },
+    {
+      "line": 70,
+      "text": " ##W03 WARNING Contribution           51  is unstable."
+    },
+    {
+      "line": 71,
+      "text": " ##W03 WARNING Contribution           52  is unstable."
+    },
+    {
+      "line": 72,
+      "text": " ##W03 WARNING Contribution           55  is unstable."
+    },
+    {
+      "line": 73,
+      "text": " ##W03 WARNING Contribution           56  is unstable."
+    },
+    {
+      "line": 74,
+      "text": " ##W03 WARNING Contribution           62  is unstable."
+    },
+    {
+      "line": 75,
+      "text": " ##W03 WARNING Contribution           63  is unstable."
+    },
+    {
+      "line": 76,
+      "text": " ##W03 WARNING Contribution           78  is unstable."
+    },
+    {
+      "line": 77,
+      "text": " ##W03 WARNING Contribution           87  is unstable."
+    },
+    {
+      "line": 78,
+      "text": " ##W03 WARNING Contribution           88  is unstable."
+    },
+    {
+      "line": 79,
+      "text": " ##W03 WARNING Contribution           92  is unstable."
+    },
+    {
+      "line": 80,
+      "text": " ##W03 WARNING Contribution           93  is unstable."
+    },
+    {
+      "line": 81,
+      "text": " ##W03 WARNING Contribution          105  is unstable."
+    },
+    {
+      "line": 82,
+      "text": " ##W03 WARNING Contribution          108  is unstable."
+    },
+    {
+      "line": 83,
+      "text": " ##W03 WARNING Contribution          109  is unstable."
+    },
+    {
+      "line": 84,
+      "text": " ##W03 WARNING Contribution          115  is unstable."
+    },
+    {
+      "line": 85,
+      "text": " ##W03 WARNING Contribution          142  is unstable."
+    },
+    {
+      "line": 86,
+      "text": " ##W03 WARNING Contribution          143  is unstable."
+    },
+    {
+      "line": 87,
+      "text": " ##W03 WARNING Contribution          147  is unstable."
+    },
+    {
+      "line": 88,
+      "text": " ##W03 WARNING Contribution          148  is unstable."
+    },
+    {
+      "line": 89,
+      "text": " ##W03 WARNING Contribution          149  is unstable."
+    },
+    {
+      "line": 90,
+      "text": " ##W03 WARNING Contribution          151  is unstable."
+    },
+    {
+      "line": 91,
+      "text": " ##W03 WARNING Contribution          172  is unstable."
+    },
+    {
+      "line": 92,
+      "text": " ##W03 WARNING Contribution          176  is unstable."
+    },
+    {
+      "line": 93,
+      "text": " ##W03 WARNING Contribution          179  is unstable."
+    },
+    {
+      "line": 94,
+      "text": " ##W03 WARNING Contribution          180  is unstable."
+    },
+    {
+      "line": 95,
+      "text": " ##W03 WARNING Contribution          183  is unstable."
+    },
+    {
+      "line": 96,
+      "text": " ##W03 WARNING Contribution            5  is unstable."
+    },
+    {
+      "line": 97,
+      "text": " ##W03 WARNING Contribution            6  is unstable."
+    },
+    {
+      "line": 98,
+      "text": " ##W03 WARNING Contribution           23  is unstable."
+    },
+    {
+      "line": 99,
+      "text": " ##W03 WARNING Contribution           32  is unstable."
+    },
+    {
+      "line": 100,
+      "text": " ##W03 WARNING Contribution           33  is unstable."
+    },
+    {
+      "line": 101,
+      "text": " ##W03 WARNING Contribution           34  is unstable."
+    },
+    {
+      "line": 102,
+      "text": " ##W03 WARNING Contribution           35  is unstable."
+    },
+    {
+      "line": 103,
+      "text": " ##W03 WARNING Contribution           40  is unstable."
+    },
+    {
+      "line": 104,
+      "text": " ##W03 WARNING Contribution           41  is unstable."
+    },
+    {
+      "line": 105,
+      "text": " ##W03 WARNING Contribution           42  is unstable."
+    },
+    {
+      "line": 106,
+      "text": " ##W03 WARNING Contribution           43  is unstable."
+    },
+    {
+      "line": 107,
+      "text": " ##W03 WARNING Contribution           51  is unstable."
+    },
+    {
+      "line": 108,
+      "text": " ##W03 WARNING Contribution           52  is unstable."
+    },
+    {
+      "line": 109,
+      "text": " ##W03 WARNING Contribution           55  is unstable."
+    },
+    {
+      "line": 110,
+      "text": " ##W03 WARNING Contribution           56  is unstable."
+    },
+    {
+      "line": 111,
+      "text": " ##W03 WARNING Contribution           62  is unstable."
+    },
+    {
+      "line": 112,
+      "text": " ##W03 WARNING Contribution           63  is unstable."
+    },
+    {
+      "line": 113,
+      "text": " ##W03 WARNING Contribution           78  is unstable."
+    },
+    {
+      "line": 114,
+      "text": " ##W03 WARNING Contribution           87  is unstable."
+    },
+    {
+      "line": 115,
+      "text": " ##W03 WARNING Contribution           88  is unstable."
+    },
+    {
+      "line": 116,
+      "text": " ##W03 WARNING Contribution           92  is unstable."
+    },
+    {
+      "line": 117,
+      "text": " ##W03 WARNING Contribution           93  is unstable."
+    },
+    {
+      "line": 118,
+      "text": " ##W03 WARNING Contribution          105  is unstable."
+    },
+    {
+      "line": 119,
+      "text": " ##W03 WARNING Contribution          108  is unstable."
+    },
+    {
+      "line": 120,
+      "text": " ##W03 WARNING Contribution          109  is unstable."
+    },
+    {
+      "line": 121,
+      "text": " ##W03 WARNING Contribution          115  is unstable."
+    },
+    {
+      "line": 122,
+      "text": " ##W03 WARNING Contribution          142  is unstable."
+    },
+    {
+      "line": 123,
+      "text": " ##W03 WARNING Contribution          143  is unstable."
+    },
+    {
+      "line": 124,
+      "text": " ##W03 WARNING Contribution          147  is unstable."
+    },
+    {
+      "line": 125,
+      "text": " ##W03 WARNING Contribution          148  is unstable."
+    },
+    {
+      "line": 126,
+      "text": " ##W03 WARNING Contribution          149  is unstable."
+    },
+    {
+      "line": 127,
+      "text": " ##W03 WARNING Contribution          151  is unstable."
+    },
+    {
+      "line": 128,
+      "text": " ##W03 WARNING Contribution          172  is unstable."
+    },
+    {
+      "line": 129,
+      "text": " ##W03 WARNING Contribution          176  is unstable."
+    },
+    {
+      "line": 130,
+      "text": " ##W03 WARNING Contribution          179  is unstable."
+    },
+    {
+      "line": 131,
+      "text": " ##W03 WARNING Contribution          180  is unstable."
+    },
+    {
+      "line": 132,
+      "text": " ##W03 WARNING Contribution          183  is unstable."
+    }
+  ],
+  "old_footer": {
+    "dropped": 0,
+    "flag_changes": 0,
+    "limit": 1000000,
+    "records": 91171
+  },
+  "physical_accuracy_qualified": false,
+  "point_FPE_state_differences": [
+    {
+      "classification": "Observed host FPE state; not physical/model/native input",
+      "label": "FPE_QP_BEGIN",
+      "new": [
+        [
+          "LOGICAL",
+          "F",
+          "FFFFF"
+        ]
+      ],
+      "old": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFF"
+        ]
+      ],
+      "point": 1
+    },
+    {
+      "classification": "Observed host FPE state; not physical/model/native input",
+      "label": "FPE_QP_END",
+      "new": [
+        [
+          "LOGICAL",
+          "F",
+          "FFFFF"
+        ]
+      ],
+      "old": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFF"
+        ]
+      ],
+      "point": 1
+    },
+    {
+      "classification": "Observed host FPE state; not physical/model/native input",
+      "label": "FPE_QP_BEGIN",
+      "new": [
+        [
+          "LOGICAL",
+          "F",
+          "FFFFF"
+        ]
+      ],
+      "old": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFF"
+        ]
+      ],
+      "point": 2
+    },
+    {
+      "classification": "Observed host FPE state; not physical/model/native input",
+      "label": "FPE_QP_END",
+      "new": [
+        [
+          "LOGICAL",
+          "F",
+          "FFFFF"
+        ]
+      ],
+      "old": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFF"
+        ]
+      ],
+      "point": 2
+    }
+  ],
+  "point_outputs": [
+    {
+      "new": {
+        "ACCURACY": [
+          [
+            "R8",
+            1,
+            "BFF0000000000000"
+          ],
+          [
+            "R8",
+            2,
+            "BFF0000000000000"
+          ]
+        ],
+        "AMPLITUDE": [
+          [
+            "R8",
+            1,
+            "3E889488CA877C57"
+          ],
+          [
+            "R8",
+            2,
+            "3E1EC1C61663DE84"
+          ],
+          [
+            "R8",
+            3,
+            "3E0A78E02E0038EA"
+          ],
+          [
+            "R8",
+            4,
+            "BDFE3B64BAE5880C"
+          ],
+          [
+            "R8",
+            5,
+            "3E889488CA877C57"
+          ],
+          [
+            "R8",
+            6,
+            "3E1EC1C61663DE84"
+          ],
+          [
+            "R8",
+            7,
+            "3E0A78E02E0038EA"
+          ],
+          [
+            "R8",
+            8,
+            "BDFE3B64BAE5880C"
+          ]
+        ],
+        "FPE_DP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_DP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "PUBLIC_STATUS": [
+          [
+            "INTEGER",
+            "120",
+            "FFFFF"
+          ]
+        ]
+      },
+      "new_begin_flags": "FFFFF",
+      "new_end_flags": "FFFFF",
+      "old": {
+        "ACCURACY": [
+          [
+            "R8",
+            1,
+            "BFF0000000000000"
+          ],
+          [
+            "R8",
+            2,
+            "BFF0000000000000"
+          ]
+        ],
+        "AMPLITUDE": [
+          [
+            "R8",
+            1,
+            "3E889488CA877C57"
+          ],
+          [
+            "R8",
+            2,
+            "3E1EC1C61663DE84"
+          ],
+          [
+            "R8",
+            3,
+            "3E0A78E02E0038EA"
+          ],
+          [
+            "R8",
+            4,
+            "BDFE3B64BAE5880C"
+          ],
+          [
+            "R8",
+            5,
+            "3E889488CA877C57"
+          ],
+          [
+            "R8",
+            6,
+            "3E1EC1C61663DE84"
+          ],
+          [
+            "R8",
+            7,
+            "3E0A78E02E0038EA"
+          ],
+          [
+            "R8",
+            8,
+            "BDFE3B64BAE5880C"
+          ]
+        ],
+        "FPE_DP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_DP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_BEGIN": [
+          [
+            "LOGICAL",
+            "T",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_END": [
+          [
+            "LOGICAL",
+            "T",
+            "FFFFF"
+          ]
+        ],
+        "PUBLIC_STATUS": [
+          [
+            "INTEGER",
+            "120",
+            "FFFFF"
+          ]
+        ]
+      },
+      "old_begin_flags": "FFFFF",
+      "old_end_flags": "FFFFF",
+      "point": 1
+    },
+    {
+      "new": {
+        "ACCURACY": [
+          [
+            "R8",
+            1,
+            "BFF0000000000000"
+          ],
+          [
+            "R8",
+            2,
+            "BFF0000000000000"
+          ]
+        ],
+        "AMPLITUDE": [
+          [
+            "R8",
+            1,
+            "41600A722CBC6EB8"
+          ],
+          [
+            "R8",
+            2,
+            "4261842759E0DBF3"
+          ],
+          [
+            "R8",
+            3,
+            "40CC7F6327A71CD3"
+          ],
+          [
+            "R8",
+            4,
+            "C0D3BAA6EBC582E5"
+          ],
+          [
+            "R8",
+            5,
+            "41600A722CBC6EB8"
+          ],
+          [
+            "R8",
+            6,
+            "4261842759E0DBF3"
+          ],
+          [
+            "R8",
+            7,
+            "40CC7F6327A71CD3"
+          ],
+          [
+            "R8",
+            8,
+            "C0D3BAA6EBC582E5"
+          ]
+        ],
+        "FPE_DP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_DP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "PUBLIC_STATUS": [
+          [
+            "INTEGER",
+            "120",
+            "FFFFF"
+          ]
+        ]
+      },
+      "new_begin_flags": "FFFFF",
+      "new_end_flags": "FFFFF",
+      "old": {
+        "ACCURACY": [
+          [
+            "R8",
+            1,
+            "BFF0000000000000"
+          ],
+          [
+            "R8",
+            2,
+            "BFF0000000000000"
+          ]
+        ],
+        "AMPLITUDE": [
+          [
+            "R8",
+            1,
+            "41600A722CBC6EB8"
+          ],
+          [
+            "R8",
+            2,
+            "4261842A36721CA9"
+          ],
+          [
+            "R8",
+            3,
+            "4107782D13BF346E"
+          ],
+          [
+            "R8",
+            4,
+            "C0C337B1A50072AB"
+          ],
+          [
+            "R8",
+            5,
+            "41600A722CBC6EB8"
+          ],
+          [
+            "R8",
+            6,
+            "4261842A36721CA9"
+          ],
+          [
+            "R8",
+            7,
+            "4107782D13BF346E"
+          ],
+          [
+            "R8",
+            8,
+            "C0C337B1A50072AB"
+          ]
+        ],
+        "FPE_DP_BEGIN": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_DP_END": [
+          [
+            "LOGICAL",
+            "F",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_BEGIN": [
+          [
+            "LOGICAL",
+            "T",
+            "FFFFF"
+          ]
+        ],
+        "FPE_QP_END": [
+          [
+            "LOGICAL",
+            "T",
+            "FFFFF"
+          ]
+        ],
+        "PUBLIC_STATUS": [
+          [
+            "INTEGER",
+            "120",
+            "FFFFF"
+          ]
+        ]
+      },
+      "old_begin_flags": "FFFFF",
+      "old_end_flags": "FFFFF",
+      "point": 2
+    }
+  ],
+  "precision_transport": "Same captured genuine binary128 inputs; no new per-call precision telemetry",
+  "previously_refused_calls": [
+    {
+      "actual_working_precision_bits": null,
+      "group": 5,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "fe7f995d7818fe8cd9141614f9fbf677421e2af1b84674ca6986592b1f46f6e1",
+      "key": [
+        5,
+        5,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "40F2831F6ECBCE18",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "3F504019F02D8A06",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.17087249323416102389347898161025014759805184193548859610469286e-30\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 6,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "9c03c18721baf151ad6f71ae8af3655abd82c27eec017199f3cad978c5b18816",
+      "key": [
+        6,
+        6,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "40F2DD655AC25E15",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "3F5485219D436556",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.24874187036917333028574425445310618661546079420538199763722981e-22\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 23,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "5daeb38963d622c117d08f332848dca3c0ec3ed9738d85234f9efdf7c103d660",
+      "key": [
+        23,
+        23,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "C1577A0BC91C5EAF",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "C125B036ABD435F8",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "C0E43D9C328A931F",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.570291785765733699369409285694621170500756678843946610700491458e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 32,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "86358ae0716a5721529f4bc660af7269562d8d995b3365774cdeb703b3b904b7",
+      "key": [
+        32,
+        32,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BFF496F968472B92",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "BFB25FE4EBCB0A8A",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "BF45DA26BE349857",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.421746765795778473460523897448473611738612318902767806538331797e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 33,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "8efb23dd7175d2118d8f3b5e1f467b55a8e8b7904067fde8c61c0316b47cc99e",
+      "key": [
+        33,
+        33,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BFAB9C975E3B91CA",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "BF66C67EF3FAAE01",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "BF4128ECAC24B3BF",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.421746765795778473460523897448473611738612318902767806538331797e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 34,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "3432c6d480663b03cab2eb503f554d218e9256b49bbd196a3124b3eccad7a8ca",
+      "key": [
+        34,
+        34,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "415979638F626043",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "3F605DD6D245A393",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "C0D85434151F0E46",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.81092611032472119243655186143138501964717780276323540720368527e-16\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 35,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "93bb32ec63e37b94c2059bc39b8b0578acad8e8a8d2eb67b88d9b20e948d9146",
+      "key": [
+        35,
+        35,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "411071680E127BEB",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "40762A35B77F35F6",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "C08ECE0F818452BB",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.81092611032472119243655186143138501964717780276323540720368527e-16\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 40,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "f82e3ed05bac607880706ffbbc0f6862e910a5979a45894ea4ee60894d379c5f",
+      "key": [
+        40,
+        40,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BFE580710713C54B",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "BF9F5D6450FA51EB",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "3F45DA26BE349857",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.421750132032766340139619785144791070419124320241183424623749413e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 41,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "c1dc6836ce01bd65b6e64188ee18b04ca7eed92e5512e11ae94d20a204a3c0c1",
+      "key": [
+        41,
+        41,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF9B2655FCD117C1",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "BF58035D62DD3D24",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "3F411EBCF67DF746",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFTT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.421750132032766340139619785144791070419124320241183424623749413e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 42,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "54455f5543b8e3506f8b6e10b9935eb833b545cc84f7e5870b8268c04e9fdd29",
+      "key": [
+        42,
+        42,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "C1597963875CE7CE",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "3F5EF6B0BD938282",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "40D85434151F0E46",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.81092627657461313058870034859511822217110434785786511035593399e-16\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 43,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "c3029f86d25c723138c6d5be92fd7a23d218a584ae1dd019744ca433d4881df3",
+      "key": [
+        43,
+        43,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "C11071665540C485",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "C0762A3516316EB4",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "408ECE0F818452BB",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.81092627657461313058870034859511822217110434785786511035593399e-16\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 51,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "f32c52b114dd2e8acaf8501104bff473d31308c2386053855b2676afd7c1869b",
+      "key": [
+        51,
+        51,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF9A93928774C10A",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "BF57663DD7308B21",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "3F4128ECAC24B3BF",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFTT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.421750132032766340139619785144791070419124320241183424623749413e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 52,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "0e2a7aa43917f1b7f46d7158152f2816d4fba4fce6864c05b433c66f31a4961c",
+      "key": [
+        52,
+        52,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "C1116CEE2E73231F",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "C077584B37733A3F",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "409038F37CB40245",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.81092627657461313058870034859511822217110434785786511035593399e-16\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 55,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "494ffee5d5c9b52046a4c0d5e2962ddfdb8b4628f745b7a310c619e564dc31e3",
+      "key": [
+        55,
+        55,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BFAB53357BF7D793",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "BF6677EF05119BEF",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "BF411EBCF67DF746",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.421746765795778473460523897448473611738612318902767806538331797e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 56,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "43a0f38e90b758bb81f820b6afa5bd98343a9e61c382de9991954cb32cac333c",
+      "key": [
+        56,
+        56,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "41116CEFEA574B62",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "4077584BE15769AB",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "C09038F37CB40245",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFTT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.81092611032472119243655186143138501964717780276323540720368527e-16\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 62,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "f96ef98cebffbbe37ee925a393b11af570559879f89fa18716e8072db53f8ee5",
+      "key": [
+        62,
+        62,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3F5CE1CF7456F88D",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.17087249323416102389347898161025014759805184193548859610469286e-30\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 63,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "6fb7d2c81cbaa5241616224cf27a498dcd780497e1f7a91dda2a2ffd55fd2e9f",
+      "key": [
+        63,
+        63,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3F5CE1CF62875FFA",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.24874187036917333028574425445310618661546079420538199763722981e-22\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 78,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "3e7884aa72b139ace42d18a70d4bd36277fe3cc5c6e31b249e37b8788d114027",
+      "key": [
+        78,
+        78,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF84BCDDAFDDC93C",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "38A28A545D68173A",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.570291785765733699369409285694621170500756678843946610700491458e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 87,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "102200683a542ac60fbe2e12d9be7fab722c2dc4d8b8df7cc88236c590818c3f",
+      "key": [
+        87,
+        87,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF7060669D072260",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.421746765795778473460523897448473611738612318902767806538331797e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 88,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "3048960486f0247af474c0c4c0d69298984d43023288dda72e7bd345f47b313b",
+      "key": [
+        88,
+        88,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF51649C7C17970E",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "B5A7276ACCB1B48B",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFTT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.81092611032472119243655186143138501964717780276323540720368527e-16\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 92,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "21ef655a37461ae717451d0aae5939a71c2b4173683e99014d200690c18ccc0c",
+      "key": [
+        92,
+        92,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF645DA4FA336F0B",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFTT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.421750132032766340139619785144791070419124320241183424623749413e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 93,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "5686ccd9487d5b9dd1d08c96d7de41c0e70d2b9e468fd32a404e80f296362d1b",
+      "key": [
+        93,
+        93,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF766E84B35D33DC",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "35A3EB0C5B4FE564",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.81092627657461313058870034859511822217110434785786511035593399e-16\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 105,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "683960a04a140ece03c02b449f68c615a41dca8a5dc691038248183d52c96755",
+      "key": [
+        105,
+        105,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3F235F2E8C56E327",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.89989917338276486303198544734461147344575607738795839775361999e-29\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 108,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "faeb474c0b913f1910ecc175ab3ffc53ab2692faa352a2de1128897487b02aae",
+      "key": [
+        108,
+        108,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3F81D6BD4F2A5F06",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.17087249323416102389347898161025014759805184193548859610469286e-30\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 109,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "3da25fbb8a68436e509a26b954eff3d4f42e596bb70f643d0f6886b949bb51f7",
+      "key": [
+        109,
+        109,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3F81D6BD7438AF33",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.24874187036917333028574425445310618661546079420538199763722981e-22\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 115,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "f361f77f13a4727341d808b03f56e42d14e635451f71680042ec40a8fe984a13",
+      "key": [
+        115,
+        115,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3F235F2E3ADCB983",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.89989917338276486303198544734461147344575607738795839775361999e-29\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 142,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "f239496276502172935c51e5065cc22f499c342be41dbcf9be901ad69f2c5e24",
+      "key": [
+        142,
+        142,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3FA1320851EE88C1",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.17087249323416102389347898161025014759805184193548859610469286e-30\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 143,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "6f2f5624f7701dd59f1a305f9835d82523378648ad9c400baf0e0e5397e0f003",
+      "key": [
+        143,
+        143,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF93619F6AB51D63",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "B8C4E9424EB21C61",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.89989917338276486303198544734461147344575607738795839775361999e-29\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 147,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "32be806da822d7bfa00f9b02554837123a725d58aa0220084beb4fbdf4aa9e05",
+      "key": [
+        147,
+        147,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF796154D4B78959",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "B878EDF43D42FAF3",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.17087249323416102389347898161025014759805184193548859610469286e-30\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 148,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "c56be53e7c42140095093291a47618a864d288ba8d40a9dec402012e52ce358f",
+      "key": [
+        148,
+        148,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BF796154D59A2186",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "B5B2E295F608F4A6",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.24874187036917333028574425445310618661546079420538199763722981e-22\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 149,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "718e85bc433d931a89c3f6f9d0255755d85dae0decfb3f53d9403c1fa4b70f6e",
+      "key": [
+        149,
+        149,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3FA2F6C36611FE83",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.89989917338276486303198544734461147344575607738795839775361999e-29\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 151,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "5f9c0d7737a662b48781cf28c7908f2042e5d07ca0242d5967204db01719b7f8",
+      "key": [
+        151,
+        151,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3FA132085410490E",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.24874187036917333028574425445310618661546079420538199763722981e-22\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 172,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "ec15061617cd41e5905d566232f0e5bab5d0db6d1fe9e1b2f6c3f25f7b229a24",
+      "key": [
+        172,
+        172,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3FB528D8A4887F15",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.570291785765733699369409285694621170500756678843946610700491458e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 176,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "6ae90da9b272023b282dd223d7a42ff797895d4fdf877d6cee615d6ce308376b",
+      "key": [
+        176,
+        176,
+        1,
+        4,
+        4,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3F92D23E14D1BB9C",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "FFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.1594784498770145713916864226591047516352210709771150311555045649463573e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 179,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "824ca177b7e865b1f0eb6fbb79ce97d4def1fd34a758f8154db75c1e01544a55",
+      "key": [
+        179,
+        179,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BFC7263B21456B9B",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.17087249323416102389347898161025014759805184193548859610469284e-30\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 180,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "98f9c6f85993184d498462bfdd55e08d7a25003fe21f7137b0acc31a6529758d",
+      "key": [
+        180,
+        180,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "3FB2A739EFAFBC88",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "38C2689A2D8FB450",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.421746765795778473460523897576897184994220467640315519091283583e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    },
+    {
+      "actual_working_precision_bits": null,
+      "group": 183,
+      "independent_numerical_truth_available": false,
+      "input_sha256": "92e663c6cd4e4a545682229b2f1c058ffb222101cc02766c85c0bbd3b9d1a0fe",
+      "key": [
+        183,
+        183,
+        1,
+        4,
+        5,
+        3
+      ],
+      "new_errors": [],
+      "new_group_result": [
+        [
+          "C16",
+          1,
+          "BFC7263B1456B6C1",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          2,
+          "0000000000000000",
+          "0000000000000000"
+        ],
+        [
+          "C16",
+          3,
+          "0000000000000000",
+          "0000000000000000"
+        ]
+      ],
+      "new_group_stable": [
+        [
+          "LOGICAL",
+          "T",
+          "TFFFT"
+        ]
+      ],
+      "new_raw_slots": [
+        "RAW_FINITE",
+        "RAW_IR1",
+        "RAW_IR2",
+        "RAW_UV1"
+      ],
+      "new_status": 0,
+      "old_errors": [
+        "TIRust QP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 1.80044844908646089956012451944535374825669222792500596873109441e-15\")"
+      ],
+      "old_status": 1,
+      "point": 2
+    }
+  ],
+  "previously_served_calls": [
+    {
+      "group": 1,
+      "input_sha256": "f012fcf4375dfa1c9b9d265810e18dffc90e77d133ab647813295ae04a5a3c38",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 2,
+      "input_sha256": "6e4a5f6ee1493c1a61ebe45cbef179ee4808c0a6e4bb40c9934b0730daed4af3",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 3,
+      "input_sha256": "350d3151fb35b596c383fb534bf2f54965f13bc0d1e4c11d58912df1b35cc7e7",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 4,
+      "input_sha256": "29f35f0d0a0fc2a3d41d555850c212ae73aa015babd17b4285c89ddff5f3b645",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 5,
+      "input_sha256": "0e694fe4be3c4fab9116c44495a04d7f786456b85ca160357cf749e3634526a6",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 6,
+      "input_sha256": "f950f1ceacd7b1251638b8ec91c82a168ebf8dc8386dfba051af9d5267129470",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 7,
+      "input_sha256": "d85ab7009f0c69b2237ae2059c8fa8482bfd6f80de0bb48b0e01a7cf17b44433",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 8,
+      "input_sha256": "3569ce4b4b8ad101a073d65d3f0ac0abf6b219bb5dddd65ee010476fe155bdf6",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 9,
+      "input_sha256": "e0f4fef36161ca6759e8fd8d71968161fc02af49fc8886c6a7b51c04c8c93fa5",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 10,
+      "input_sha256": "c4748a926bde03e68fcc16c508599343f4beb04bedb8508a2b854fae2148605f",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 11,
+      "input_sha256": "5c90cc9e7cd6bdaa84917117d8cb0c86448264c5782d9761214a9e61f0c40868",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 12,
+      "input_sha256": "c86152d4584358a7a51e8cd94131e251900e74bde4cfa0ab49e5f500bd9e597f",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 13,
+      "input_sha256": "ac06c6f75a21e0fe52aa25682a2952384e3f31317ec377a12a2c15dd23ce581d",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 14,
+      "input_sha256": "883424a7a207b91c0d2e990d6f91de2a57341373c5aa17aca0c890230fd06800",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 15,
+      "input_sha256": "ec09072d7eab5a80ff4a6af84a346b8a0da139e373adf51026345b2df6d8def9",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 16,
+      "input_sha256": "7c2b7c1c4af5a974666480f6161e3caf12f154c3ee5f10413a1e311617780b67",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 17,
+      "input_sha256": "54d61d542dc7d7225fb676e5885192028e36c41e4b46a6cf1442d44e7258c5d0",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 18,
+      "input_sha256": "a979d4ababa68ab2b77b7e640f40dab3d476f51ed39619313b74698c846cbf8c",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 19,
+      "input_sha256": "47cb50fece3b45f3340a94303c20a5f2f70bc88838f95a0e567ee465d6294fe4",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 20,
+      "input_sha256": "2ca8dd911cd4d6154d6679c8dbf937a9f0b16ff410aeb37c748b20b72e93b354",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 21,
+      "input_sha256": "98c5874f536e112eee2814565a29895a6efaccf72ab574f307dee266cdf21aa2",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 22,
+      "input_sha256": "a649cbf9dde8d315c3655ae6dacb782e5bd549e80aab2b424138546a150b1b34",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 23,
+      "input_sha256": "2aae2b0515b685f0bb5b751554ef420c78901e74dd3389eb99d20b81bd8201a3",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 24,
+      "input_sha256": "f3fdfeca3b2759cab0aed9335263fc63aaf05e498327c1d8d0347b9d016ff3f7",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 25,
+      "input_sha256": "c531a30970dcb15cbdf2a5d51e8aa28ab85f31774238d17a914e59b358a941f6",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 26,
+      "input_sha256": "dab2fd6f4eb5c64623928d8f1d4dba9e2583a06df85e65f10a450e4f4da2a594",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 27,
+      "input_sha256": "0773b6246387042cec11ccedf8c72e6e32fe2d4896765f5e6a8ced2ba15690d8",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 28,
+      "input_sha256": "015b29a7815ba6155b45739d62c1783042429bca9448df233532eb3984ed2c92",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 29,
+      "input_sha256": "f131ef6b1d2556b0033a7c3283068f8d94ce23cfb256d212fa1169ed993de4b7",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 30,
+      "input_sha256": "7dafe7ce1f15fc27497e3c9ab0859c87eb3661034dea18172d41ae3e5b22a2e8",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 31,
+      "input_sha256": "b2aa1abbe2d9fdfee53e59f91de8cb98853cf31fc8c564cc66e74d91ddb3060a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 32,
+      "input_sha256": "6b3af987ca239b6246964073f73d7cf9ab7b24ddfbbf852bfba19ef61eb68f5a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 33,
+      "input_sha256": "bd799ea7d988663fe372c9f531ca1912c38e69700fa096b855ad3abb80bd8adc",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 34,
+      "input_sha256": "02edbfbbeb036308e0ab2e9dd08a15ec55819bb10d7ef75e985ee8fa627e53da",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 35,
+      "input_sha256": "eab06337b0977a4224f4576427b1d3c7f7b1953f2653c57e870c770eeea5c1a9",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 36,
+      "input_sha256": "08abcb273bf32a3381680f63f66787601a9b06ffbe0c8aa18392dae44ec4ff73",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 37,
+      "input_sha256": "37ab77c26af789dade0bc10075d898b0135481a9bc33d0b17fd2ca6dd62444e8",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 38,
+      "input_sha256": "dcbc1d88f67ca8198ab0abca591421ff5f384423f2ef6654211de5c3cf33b2fd",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 39,
+      "input_sha256": "22dcd30f43e4da1940b6fd0827c0b1c65a281e6b0349d29d314f0f63f3623bec",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 40,
+      "input_sha256": "00aecbf1c046c440e053ce11fe81fdd025e8140488e3d6487bed4f365bc703de",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 41,
+      "input_sha256": "2a09eb06bf85d1653691f572bbab5c483bad427a908ab040de5166487f428d64",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 42,
+      "input_sha256": "a52a460c0b69dd1dbe04977f012329c709265e8f242c7e555c6aa8dbff5d589f",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 43,
+      "input_sha256": "d99facae2f2e105706cfcaf633ba20e5733e809b9b8982a82e232d1ae0061197",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 44,
+      "input_sha256": "0ed46060f768cf9e0e30bb9c712b9a006f96380e10c0e929d34c1339d83657ac",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 45,
+      "input_sha256": "52c18c8b1af873393b0e4d7be0ee0f020bf0c9e92f3cf351324ab2308c61edbb",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 46,
+      "input_sha256": "28420cf344dabae00dfe1fdd5ff38be91fb0cbc3f558103bed0d33f1e12645f8",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 47,
+      "input_sha256": "412e7c8e32d055c06c56c59429690c97e7c44658e6157af0a8d37911b12f43cc",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 48,
+      "input_sha256": "3b810c40223af275056cbba0e93e3a4354e69ca1e6865c1160f7653398ba7939",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 49,
+      "input_sha256": "94553aef9b51052d689caf2db894af3b675c9ff5f92a73fb129a1d741da9c38e",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 50,
+      "input_sha256": "21dabc9d874f2c644663be00140a9ed4f8885610b4aee8ad2725ecb4399ce907",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 51,
+      "input_sha256": "2d65a6d976e8138ed8b1bee5880b3b4129cd2e4a31681fe458e2dfffe630499b",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 52,
+      "input_sha256": "33a28e3aaaf74a44733d523d91177594b475b234bdffa6d0bb4c379aff587081",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 53,
+      "input_sha256": "9204b4c28b3eb2dcab4a215538af00c2b6cf9899e49b0d5d28b52db3cc9c1bd0",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 54,
+      "input_sha256": "4c32e82213b05e6a9a2c3defd141ca5fc4430fa4db9562a13dd2f65dd3e46101",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 55,
+      "input_sha256": "fafe3f7d0037c54bd7a11ffd5ed4eabdaafc13f7e012b67121cd71b34babe7d0",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 56,
+      "input_sha256": "49eb1ccff27b123485c7e6dd6f2d223be13486ce681785a23185563ef5fd36a4",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 57,
+      "input_sha256": "04b5caebb83110b98f89ed5c1c9f9e1c63408b890403b4741d8f15cbe109dc39",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 58,
+      "input_sha256": "042ca9a8329f26539663a79d0d640b43d52ad96b49ca4579aced7a9ac291750e",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 59,
+      "input_sha256": "65702a94e36b445212f0ff00639c56ab9f904ac0726104e4bcb4f909153a7c3d",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 60,
+      "input_sha256": "634e32a89165fb27535d1de253f6c46d5e11908d55ff980b5ea76be372b2dffe",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 61,
+      "input_sha256": "9f113757e9ae1c35f816b5824d45f0c5b76e357cd6eed1f97e0f2aaea740236c",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 62,
+      "input_sha256": "d286e12b19e0cd227b62d2d4ab419d679036bdc34b62e11da54d559cd56f1702",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 63,
+      "input_sha256": "01a5f00dfaf9399723adf060c68488db7783d0ee46c03f1b3aa9a36e6fa4f901",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 64,
+      "input_sha256": "3af0812a6c430f35815c63f3b76f09b1477ce4bf502f40da9e0f9fc4252efd3f",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 65,
+      "input_sha256": "5c9e770791fc804c6dd27f4671d92c25d6f1b86e2893610fa31ab845203591d9",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 66,
+      "input_sha256": "9a48cf29c25f277856294fee5c5605541b1e7a76a9ab5085b7059d9173a21597",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 67,
+      "input_sha256": "4369f816a425ca3ffde6f6dcb99692e9134e4f79b76c6acddb8b22b6cba288e8",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 68,
+      "input_sha256": "3aa0863628f50cdabeaf52c41323cbc07693ac0db6344827eb45dd2e1059713a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 69,
+      "input_sha256": "1c78efbbb0d669efbcbbe5fa5cce1e93333cd1529914d3c6fbed0bf265e1abf2",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 70,
+      "input_sha256": "376681660ed3e5b998caf1e05b880ad58c59442b2f8a0e6842256dbd63450877",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 71,
+      "input_sha256": "cfcedadcadabfc8b9216572a23d1312fde4be27338079af478b29e3b175b76dc",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 72,
+      "input_sha256": "04766d676e7d08665d5779f3454c9a29abe1594795679b5e68134ff9a8cc3370",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 73,
+      "input_sha256": "b81feef7be1edbad1e9e0c33bc54079ce59607a7bddf06aa9c8b42045883bb5f",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 74,
+      "input_sha256": "7c028ba2046b70e753eae5aa21288b8087084d5eb1d194d16fa94cb365a0d360",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 75,
+      "input_sha256": "0ee3453dfa321e2ba50e8f1212f9cd1efc61f631126db7d556386a0d4ed212e8",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 76,
+      "input_sha256": "1cd4558c911c7919e459424376d0978e059aa6db4d2c76a0971e7ebfe0508b42",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 77,
+      "input_sha256": "92a3008d37ad676ecd5c8a65bdb717745b34551e578becd8dbe2614ee19a38ea",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 78,
+      "input_sha256": "2bc45625d077c2a97367c8d705b8301ee6b106eaac67b8b5c1ac92420173397e",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 79,
+      "input_sha256": "7e166aca87a1b57600fe0e239d6b10e83747658dc525b42fd9d40da443ec5419",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 80,
+      "input_sha256": "785c9d0a9325e9214c4579561366beed15192a7d4069a4c9872389e3aebc324e",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 81,
+      "input_sha256": "d49dcc8607f6931afa965928f40fcd073868ea156e49b23d768b092accba9b67",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 82,
+      "input_sha256": "31632c067c61bb7bb1f31a0e962d15630fb89bf1aaba1bd529a9e8f9d063a5cd",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 83,
+      "input_sha256": "55e7986490a869c9160a821e446f172ff0e995e226ab42ab346b10a0a29ff405",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 84,
+      "input_sha256": "ab37ba073d4c66bfed66e7bf7bf167ac2a145c498b71bc17617da6f139c2136f",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 85,
+      "input_sha256": "c6e2cfde1de2672972230034c316d367eb6d7220793cea1a4fef277bae677798",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 86,
+      "input_sha256": "ce35e57cbdf886956857993ed990a35304245198502cd1f4ec4b11352afb5878",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 87,
+      "input_sha256": "4f45252142f279a7bae0436bd3c5840daa3bf0e9dd325e90b3dc4aac79312d3d",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 88,
+      "input_sha256": "0b8f811bced626d96226730c3c31b1b997a79e08c0b05f87311fbb52268edec7",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 89,
+      "input_sha256": "69c824ee1f7239e7a3a00f75c0b64a64a984356699f8d35b55c9039d053ace20",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 90,
+      "input_sha256": "95c9ab6559ce90a7167f47d71ebe9fe5c494ecc97ae9069215b736f1ef9d6bf9",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 91,
+      "input_sha256": "d3a8a80bb2ca8c5fa0e400240107aadd206d22981f24729149bb490e4e83961f",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 92,
+      "input_sha256": "7d8eed72996d826fe5a3baca20d8fe8be24fadd173eb9d38120587707412ac7b",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 93,
+      "input_sha256": "cc933460aa1a0956825969215cf5ceb77b6e2cac932ccfff24ff90684f64ddaa",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 94,
+      "input_sha256": "1691fdc78749038832ef00d5f60fc19fd4f4f5218386bbcde3f6172b8279244d",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 95,
+      "input_sha256": "a94172f0cd0c384ca8b7c221d0c80dc6861f3ef1d48f697306c7341aa3d9515b",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 96,
+      "input_sha256": "bacbe47c8b40fd9df486125e97ee076b9244b68a6d0bc7a5a82d0bb598960cde",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 97,
+      "input_sha256": "cd6ae38c49fc376f8bbf9db17781b4717409c206aae554df474963a1b4f63ad5",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 98,
+      "input_sha256": "1a8e2ebb46afbb480796e107c4af40ae7f92b46212cf8c4d702f13aa09709bba",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 99,
+      "input_sha256": "720c22df35806e6b16dc124c2339268cce470a014a41d32c663b3e3fdde58d7a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 100,
+      "input_sha256": "06734e2a5c12d969c58e5aef65905c50d87bcf2bae7d296955116a51d70960c9",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 101,
+      "input_sha256": "0a54c2ac5b21f73b55cca993af1de8ac81aabbbd7687a9d9efdf4723de8c7193",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 102,
+      "input_sha256": "dc28d8f3524add5ea0cea2a1b8c0548016e34e0a5ecfc66b43075404603d91ff",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 103,
+      "input_sha256": "57faf9eb8b449bab55ed9128ce96a843c1a7a9f62bc269b4ba802cf83af5c425",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 104,
+      "input_sha256": "441f82f13406df4330707c06de9151637d0c6630005171e698bb8b7bd72913a1",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 105,
+      "input_sha256": "a292ad33476211f27533c72ea42ad1ce501d1a0518726312eadbb3c618adc2a9",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 106,
+      "input_sha256": "a08c2d4a5c7d6bb7b8f55427d6b56ddaae8601bcd45a11cf089a9b5a128c6b75",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 107,
+      "input_sha256": "e86c94c1f4c0ba8283548f59bf3e375b565c0faec838fa48c78a315b2e3b0f01",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 108,
+      "input_sha256": "c78b29e8989c8fb2e3980dfdc1495619a01894d62224a5add1b7ddbe2d605b1c",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 109,
+      "input_sha256": "56a1a5e195fe1c5094628d16d2efdf4d8ed86032b5232ff92a54a906e6290695",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 110,
+      "input_sha256": "bab4bdb95032cc80ea4c9b1948c7cb9a2ebadf37ca99f8ec44fb1051979c640a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 111,
+      "input_sha256": "7d9956dbadebc16f8a9c31f532cda9e502d6b017d677a3e7c9cddb59a6cffba0",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 112,
+      "input_sha256": "23550a4674078d733b615717812228c7235c4aa1523b03d36b74432e6408db18",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 113,
+      "input_sha256": "3174deab453fd3fb12f78dc64845ff25e37ed3a0934e007381ee7048934ce119",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 114,
+      "input_sha256": "ab7bc86b12a9a1966a3492224da069172f4c8bea111220ab1363aa4fa0bcd7e9",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 115,
+      "input_sha256": "9f27b67a38dc120e9a051bd8e3e0646ab7ed6f3e1379519d76e2aa52198be2b6",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 116,
+      "input_sha256": "2d1a17cb78a1638c2faa1b4a4024a3507a264b4ed62095c9572156a95cd39e01",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 117,
+      "input_sha256": "99cc2215180dac0493b82fe2fa92dcb04f272efdfaf47b65e366e8181636e78b",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 118,
+      "input_sha256": "0a2d3d7049ce9bd4a4d580d599f3bea0283702cb854c283be1dd36d01bcfc5fb",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 119,
+      "input_sha256": "39e13069aca74ce6d74c88babb05656ab0a21d7e2dae13ca9b973495bc8ec9c2",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 120,
+      "input_sha256": "7a714d4a4b8a9befd2f7bb790592f61f02ab22a451284c036f821fd19409130c",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 121,
+      "input_sha256": "21cc026c507e37fe9d451ec08c94b665ee46a25763fb3bee3dc00c933efd0291",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 122,
+      "input_sha256": "c906c34b4cca2f870d5a613feaf4e686adae978cef37dad5846487a7a0638fb0",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 123,
+      "input_sha256": "06a4e1ecc7a3e5cdcca574b8ad5e28f3c1a5458db885f0e42f5395dcadd2493a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 124,
+      "input_sha256": "7dd8ad73630a6f9be3d88d836c35939e1ae8d57ab14d26adf3e39df9cff1832a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 125,
+      "input_sha256": "d777a86877ed33aebed3c3f5b62f202a40a7a522fea5a3c1f9a104909ffc2126",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 126,
+      "input_sha256": "1002ab1d1033e4a5b61a029d2d1c851ff92edca9ba68f05722992304be818b14",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 127,
+      "input_sha256": "4116540fcf9ccf24867246cae00a840f34853636e2cb8e7ee1f882829f27df33",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 128,
+      "input_sha256": "70fae38f170042973100b4cf06150b5b533f1b25594a6e26c11e8c18afd16128",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 129,
+      "input_sha256": "b3128a0f8f33b74bf1b42885ac495d52fe70ae707cf57f6b7120f62dfa7da85a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 130,
+      "input_sha256": "71f829d58958896bf31ee106e139c1741fac94da47eb7e9107efebcfd48c35c3",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 131,
+      "input_sha256": "070c01918779fbe67b4dee5e29b54484f2c3f5b86da5090640d13c3f546e90ae",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 132,
+      "input_sha256": "d86d2745de04cae15d049cf46b4dc756a1ebd6f27e3c37bccba7dd30cfe4e2b3",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 133,
+      "input_sha256": "b6c69c404aba92a16d443873d435475fbdacc958e55e1f2ed9767e175649740a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 134,
+      "input_sha256": "e2771e953e29c7a5752b91a6dd8d93d929c377c2607b39b89f1227f4c04bf1ac",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 135,
+      "input_sha256": "28ada6f106a8adeac1166b2b43127faed3094bac0490029277b8f39e4013d306",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 136,
+      "input_sha256": "b84566da349b3bca1e3f35506e96db9984d69e1fa840e57abe1821418d861916",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 137,
+      "input_sha256": "d012b0499ac8f34188aea7a5f2f8fda43f88eef41f514d772b8110adbb85d463",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 138,
+      "input_sha256": "4589a1da9d4967856ab5aa344b44b9e1830f61bd6bd32696bfce19a5b2d601fa",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 139,
+      "input_sha256": "1fd2ab0ccb8ca404788347cdf95cd914e66cd263e327460ccdac99b1e1d4e711",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 140,
+      "input_sha256": "998a0eacb76fb3956a5bd6e48d2a79100efe96def854bc89804f4916e47ca115",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 141,
+      "input_sha256": "aeec2d061b5f5dc15f339fa59e6a668e802727ab323d1ec3fad23fadbaf0cfca",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 142,
+      "input_sha256": "99a4aa13bd71050db870f8d704d3caf4a5729e4e8d1dc9751afb27dd06a9f5b0",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 143,
+      "input_sha256": "c68dd20e620c31b57404c3c71db0d2e78e0b78f04a3e4a8c3a2fe72daa76f550",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 144,
+      "input_sha256": "1506bde802a2b31fab9e76caf07fb4be53bcda04852ef795c51171c5e4846980",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 145,
+      "input_sha256": "3a41224f4213297e81258f448e1b6ec53da2bbb12811f484f3713195e1cc9dd0",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 146,
+      "input_sha256": "e5bc731523d99b4fa7d09d05cdb2831c0b573b7994cff7b364a552bd9e2e31e4",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 147,
+      "input_sha256": "49a54db98c1eadbb509903ceb95479de525ab26748763c10542fdd077946e8d6",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 148,
+      "input_sha256": "8c9265dcd5dd855d7e1c79b5186b6ad442b6e9fa2c6c311b77e3c1a4b022f293",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 149,
+      "input_sha256": "26c05521e3a7737694fd16af6618c2457555e99a979ca4a26cf9dbddcdcaa846",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 150,
+      "input_sha256": "09dadc06f8776e4eec1fed63cab96bd9f946f63397ed03acd93c5f6e09601cb3",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 151,
+      "input_sha256": "3aeb5f51f8ef19a9dab4154607ff766d48232b056597a386843c45c080625152",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 152,
+      "input_sha256": "aab0f86db003a8c1c32660b9734f7158360b0859ebb9194be39ad745f86a4e52",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 153,
+      "input_sha256": "77248156440da4c6ab89deef87423e1a34b269bc4a11cb3e8d5876cf3631489b",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 154,
+      "input_sha256": "812dd779a1101ce201f45789b3ec6d7fba8b98238ead844cd9c5975e73895e7a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 155,
+      "input_sha256": "573b6095fb50d2bb581c0c14b71c13958ba2be0302d868c373e70000126d3bfa",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 156,
+      "input_sha256": "7b9c6d394e18c6f99d44b44bc5136bb7c210b6829ebb137b4bb5287efcfc715d",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 157,
+      "input_sha256": "8bc2491b37cd4051f314c7951a8acef5f31917f7be700c4ca30f6f008fed336e",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 158,
+      "input_sha256": "9b85db07c5e0f5bd3af1149d1405e882e83217f13e398653fd473ff724cd79aa",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 159,
+      "input_sha256": "e95cc8b8b51ab008145bbd482b830d2fb1637a59ffaddd327852899b8521cec7",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 160,
+      "input_sha256": "552737aaf804dd8b3d46360a5beb1e15122d03dea4e8ca1ae8934def9d75e287",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 161,
+      "input_sha256": "71995872b918ae5cee728e9a988a3d918c37f2b2c62525670fc5bbceb7cca863",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 162,
+      "input_sha256": "7188a735a9c859f460082f39f7cac9295d4e13b8ab54b4148819d3437060fc9a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 163,
+      "input_sha256": "edd95896734419fa10eb3230ea411d85187096076d12a1d71bef8887a0f1a75c",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 164,
+      "input_sha256": "40de7d63bf69e86823f85e0570abed44f52d7f54d098d75e43e3f6c66a3fc9ca",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 165,
+      "input_sha256": "58f4674135811b3793f14e8f0edc4ef7f9725a0b77104a61f3adc17df3dfb40b",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 166,
+      "input_sha256": "821fe54810ee7309ddacbec582514d4e83d1ff5e2aae1b199b7ce27f73d4e291",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 167,
+      "input_sha256": "8f448ef9939d2f05b77bc530b1ddf30ecf8c9441ba796e80c1b0234023d30a84",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 168,
+      "input_sha256": "3a11e78c54f7fd976ec340a85855c81c00e601615ccf4307f9ed4b0a9ea36040",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 169,
+      "input_sha256": "c183043debfe46a66616bfecf623b971d54a0ed2bc474ef1b29a19b2dbde0658",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 170,
+      "input_sha256": "5670859e90b969765fdf53c88a39725ca2b891b6a860e14dba0ea969bb882ae6",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 171,
+      "input_sha256": "6befa57cfe8164067e60448c7013076cd322363ee9b81d9f001d5094aeed863b",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 172,
+      "input_sha256": "9a13138439c8f1ff0a0e610f18156dccf8358a006fdbeb140698aa41f47c6d9c",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 173,
+      "input_sha256": "9339b689fc98250127aa0f9910de0ffdae9050961aa85bb412263f5daddb598f",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 174,
+      "input_sha256": "0533b4f15e37f4cf3eeb819c4b884096eb4932e6dd457bb72608094fab731219",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 175,
+      "input_sha256": "803a9eee7d4f7707165fa5a3ddfe81c2e3fbda04a9d650ce0f280bfe3094bbd2",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 176,
+      "input_sha256": "e112a809e575c25e9b7225669f290445ddeefff6b027eb2d206d94b92baadb84",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 177,
+      "input_sha256": "de7a2d86c5316f267a76ab37db99559a4c2ef347f2a0e1749ffabd0e1323c395",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 178,
+      "input_sha256": "3e6b60657bcdd657b288825b0ba2fa644f47d028b80e81429892b683763055e9",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 179,
+      "input_sha256": "48330ea2595a052ea165f735026c08f230b85edbcb196ecb8e6ed838b03111a3",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 180,
+      "input_sha256": "117678ee31affc64dcbaa0d8157d67e841e119e09f88146ef6253f1139b497f0",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 181,
+      "input_sha256": "a0f348c6a9a3ecda2b5bba50c6da875ff7e1aeb4befdf08474c2bef776d26a27",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 182,
+      "input_sha256": "8123cc0f80b6bc9cf07e13772d05120987152c3f1acdf3af9664542461a7d640",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 183,
+      "input_sha256": "020e554283b0e10d960952bccdae41839af5d4a361ae71e35cc2538019eab0cb",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 184,
+      "input_sha256": "a29eb99911c8f54bab96e1eae5758cc94aa0e9072e0cb41a134277f71a40dce7",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 185,
+      "input_sha256": "5386924d40b5907c19c7cf29bc681fd992732f764d10c501cea449c70365ece6",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 186,
+      "input_sha256": "c1897b53a4ed66f8a2482d34504a857c472b6cb87707bf3be6dd33d5236601a8",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 187,
+      "input_sha256": "a1d1d28079a27be67be250ddd859b48aa8732e83459f84f4b149c9ae7cf26081",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 188,
+      "input_sha256": "b56665911c7189e1a9f5061e0365ccab8efd14a41e895fd2f0c7479129e8fb7e",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 189,
+      "input_sha256": "9b390670d888b33fa22d56ede7839381ea229e72a9c5fe1d942c0c7a79437d94",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 190,
+      "input_sha256": "b5ddda1d897b7e6f02a40690d42739a914870ca9a3860688949c16356f55ee43",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 191,
+      "input_sha256": "2f7ea5e8eecb49648db181749b09417c23b341a043dcee4a4f75d0482479dd56",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 192,
+      "input_sha256": "f4b881c746b364e2e8e7d8632e732f83dac0b033eae44dec78c5081300e64b4a",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 193,
+      "input_sha256": "daf3e5b3fafd82fb06b5d0ade18a1d70d6571dfab8aa4cd98b4d71e91802fa40",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 194,
+      "input_sha256": "642df2f9b8d5033124e8c536ad330e8bfa5793cb418a553265e83f8a0d3ab5d5",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 195,
+      "input_sha256": "0ac6277abb7a07f56f837d193e998ed10bc7074b08fc4966c855323051e52780",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 196,
+      "input_sha256": "0bd8b41b4bbd30ceb89fb1e262fd778deabdea877e856ccaacc24b13e379d82e",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 197,
+      "input_sha256": "dd1629a118887ba7f116a6c970cea338cefc81707978cbe5bcb9c8a57b2b98ea",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 198,
+      "input_sha256": "bc9d4fa40cf1756c79c4a3e74778c09f98f888383e54175154e779216eb8273b",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 199,
+      "input_sha256": "093642fc94eab8ac8d250905fb5d2a887825c182cbcb103fe6e349bbab2bcbda",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 200,
+      "input_sha256": "ec311a923b279b0e8f2b72fb254fe530a20e719fa29fcb1e5d21619fd0fb956d",
+      "old_served_output_bits_preserved": true,
+      "point": 1
+    },
+    {
+      "group": 1,
+      "input_sha256": "459248fd2428889aab75648297bc03bee68b3fae002486ca688170a89ed19ed4",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 2,
+      "input_sha256": "c1cd9246de8089583e47b0deb796a7ac07f5f138094ba9c4deaf0c573d36418c",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 3,
+      "input_sha256": "e9266bdedf909f60af6aa52977b300bc35723101276f2a2cfec7026371a211fb",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 4,
+      "input_sha256": "7778549ab6cd71e9bd7792e921d55fd1ba7cc811e5c0d79d1d966d34621b5a2e",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 7,
+      "input_sha256": "ef8a94436e1242d2b93859b69fc7e364591ac7da05b5fd247d7849bf35a42be3",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 8,
+      "input_sha256": "cc166c74834c16b7949c49cdf4f2f8b461f1ea5f33faf85b56423b2d41e09c3d",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 9,
+      "input_sha256": "2a93c2d775a80cdbc33cae70891992cca9f3dfc1ce9f263cf4396be6954eecf0",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 10,
+      "input_sha256": "f95ce362d2b7e873afe5a686aae01d28235755037eac5479cfa0159b4677f15a",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 11,
+      "input_sha256": "47771ad21d277daff3863dd9999ed4a8cd35e36b3cae9e25a31ab82316df91ea",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 12,
+      "input_sha256": "f79973fc3d7e9323cae4451fd616911299086693ca683c621a7596a99400f5ab",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 13,
+      "input_sha256": "399a1063126012f65f4a36bba2c6e5631b2ef43f33d27f3cc9055ac3d81c336a",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 14,
+      "input_sha256": "d35d6cdce34ffcf3f1db5858e85d6351c06640417114251b884214cdccd602b0",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 15,
+      "input_sha256": "8c21de615e8f0e406d15807c2909ca14b942dec237ec3dde0c6d28b2d0e29c39",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 16,
+      "input_sha256": "c3f1a641d85e1be635f78441ecca9bc0962de9b3addcb0708b21851c9c9d1e2c",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 17,
+      "input_sha256": "cfc24f159a19941c7b7af0f3beb66b7927a13fc22ff6c1445948bdcb9c3e1f82",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 18,
+      "input_sha256": "a39a16fc0eac4c933b4700539297b8f36f631a316caf13f784996adcc24d32f9",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 19,
+      "input_sha256": "95033808fc524b8516994b4ca502d8f495c7b8dd632380d9a682a30edd06e576",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 20,
+      "input_sha256": "7afaec59f5b32c7c859777b4bbc970b8ff62b9aa9ad632cc3f97dc8f74df42a7",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 21,
+      "input_sha256": "80120200edc86efe8dad83a91da817ce28df42cd4245cfc9612afa82215c90af",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 22,
+      "input_sha256": "bf2dff8aa8f9e87b22b3b3bad61d321fd33b5239efa135f3d66ce1107940b186",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 24,
+      "input_sha256": "fbc8e2ebb957e01f092f76d3332f39194225a9ad6be88b5c7df4d907e3a1b951",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 25,
+      "input_sha256": "49e515286357a48ab89fbed174e267a3961ca40f71f351ab7f09d1c5ca683a07",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 26,
+      "input_sha256": "6a9cc5bcf5fcfe751bcaa0f0901eeb528906b5af3221a83c27286b87fd08e835",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 27,
+      "input_sha256": "c14590eca1e048a2ab2a9e9da02f3c887c6807f57ead088f1b29484266a73731",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 28,
+      "input_sha256": "19105b1b33b74d84874cfead082c68bbbd5b3b4aeae6cd0c43a9ccbf1f6c7559",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 29,
+      "input_sha256": "c136b9e7c38b6e2c8e7005d7170d3dfb030b740434fd138c54a887fe81f7df85",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 30,
+      "input_sha256": "4301faf4b66d4cda3d0746aff2d9c5a8f06143c3b8e3defb1f6d750cd06964d4",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 31,
+      "input_sha256": "4d7697f71a62cd4b97c54aafdbf72d4172e6a5b6ad59598708d4569eff8501f2",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 36,
+      "input_sha256": "22f8023b23afec4411758ceeb84fe1867d5a2879422a09c822d913ee3f54eb7c",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 37,
+      "input_sha256": "7d847489ef9345009bbe73794c85ac1ec5c629d5901d2c6072959784c873daa2",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 38,
+      "input_sha256": "34bfc27df8edf9ba660b60f15da2b5a2877149a7890eeab075668a92d5543279",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 39,
+      "input_sha256": "209561160423c173bb889cb7e41732ef7972b52b6f4fe22894326cdf17c64723",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 44,
+      "input_sha256": "6789679d071bdf1a28b54a8875dbf68b160391305e0ef72a8505c6a2817e8f55",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 45,
+      "input_sha256": "c2d3cbf9266482c022276eda2572ab30a6e75feb2c24b0624f250117e1096407",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 46,
+      "input_sha256": "5055a63c775b104503779e9bf5862f4983415eca8d89fc7943b4ae3772f019a9",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 47,
+      "input_sha256": "eaf6e641e7c655af2de8b9f8ab7f07e3dbbc77a763fab05e72b076a31d727f8f",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 48,
+      "input_sha256": "06a4db529a95ef3210b1e5892386313e24652bc3301590a8905cc83687f5be81",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 49,
+      "input_sha256": "f491f35e92a4639bca862606e1d3a5de4420f1fa7474df10fe91ad26fc716a7b",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 50,
+      "input_sha256": "d73ce0f7224956179209dda1823e3aa3e7656cc6ec3df224e15eaaf5a11157d4",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 53,
+      "input_sha256": "402b3ae0efb3cc5fcc971ed72f56aa1467e300beaa24abd2f905f202e68ce779",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 54,
+      "input_sha256": "e155b9cc904aafb7c2b29f64da5a39c67178ad16f1ddf17d0a56ccc0bcfad0e7",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 57,
+      "input_sha256": "0fca1e13441975f822cf02ce342bd34e405d6588d4c22e4db534a1a95f849ac0",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 58,
+      "input_sha256": "442c2b3f9c1dd4e7899f8ff57444a8e48fd3c9d8452aa1ccf89792aae5db1a02",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 59,
+      "input_sha256": "a0d8b8b9540fc2a51cc31be290b21e85148068cd4d2e2256c77bd4f381d4f391",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 60,
+      "input_sha256": "ec2c92e349abc75b9bd92d301266f578ee0cf698c9957c5dae0aa2d2c5766125",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 61,
+      "input_sha256": "050dc7884f2f95d46efd647343123fe5f14f8b8567ebbec084e920b102e44535",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 64,
+      "input_sha256": "ffcc1d22224ed66258291df7cc39821709eebfb390d9105ab8a3a071a326d13a",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 65,
+      "input_sha256": "f734dd6e6f6c9dce83fbc2da466cad0c65c9772c68d7a734338c1e5f8aa28adc",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 66,
+      "input_sha256": "47b555d5e31b32bd91abca12c48345154afe827ef1b68f81516498c0ba69d800",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 67,
+      "input_sha256": "cb8b8342bcb0c0b0fe313ea2a6399178aca04ba51dd43425b9e8040ab6017079",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 68,
+      "input_sha256": "a0db3d2ea3f5b3c082a8d4ec37cb6553c801c1197bc6683dd370413d7830e9df",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 69,
+      "input_sha256": "94259efb8f0f76f632163ec3586b18b4bfd98813cb49a96f0f7990dd4d2834cd",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 70,
+      "input_sha256": "e25cbaac587d17d777f637dcae822f674cff63d476578425a606d40356e7bff5",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 71,
+      "input_sha256": "5404d663927028e36ca88169d88901e28d6b4800f1c9fd47ad4a6b3b018484f0",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 72,
+      "input_sha256": "0a595d232d034b7eee98dc68a1de61d03c09cd51c68f6f372663c706475c05be",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 73,
+      "input_sha256": "ad5dd656fdff53a88c579c929008923f62e0ff4689c813a581de13a21bdbef12",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 74,
+      "input_sha256": "36ce1acfe7b488ed65ab7eec7678e5a993bbf5ac059e9af299f17ce097ad125d",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 75,
+      "input_sha256": "776430d3a21ecdcc8836591490fd3ee580b86d728deb3d31484449a5268ff7e1",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 76,
+      "input_sha256": "39ac93f54083575ca5eb62d9ab4eff02c5e1c097209eae7c82780488fb1fdbd9",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 77,
+      "input_sha256": "f94a7526102fb677a4a2d1dc68f6a678d88b05e79d19963a7d39a38de634aad8",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 79,
+      "input_sha256": "2459dfcb18e2bca78f020d455406c0cde157696820ca0db0e3bb34ed8dd41585",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 80,
+      "input_sha256": "b236f13d8c7f49f7e4d7587b2c9a4ebab218c4e4097f8cd38290c14a05aa3486",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 81,
+      "input_sha256": "df6c87f1c72b605cf55e95477f3061f328fd1ab4bbd304695896ac3a559b3d59",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 82,
+      "input_sha256": "f934d669129d7ece0e7d60b62eb2a6f51a1cb03640a229010d1feb3b03c3b2aa",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 83,
+      "input_sha256": "fe114f206858119a0d7d517a85b8959c353e4d2adc4fb5f02d8dc8a7edfd1150",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 84,
+      "input_sha256": "38027f858e3c2a16ed04fcf94dd5f02e1c92675d0bc9d4b8f1f0171aa7d09706",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 85,
+      "input_sha256": "a60c4ac64e3ff4867d327a90d09c4dc5a03f862c9e3fcaed79be52c6c486c5e1",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 86,
+      "input_sha256": "696f07b7939915f7288c8ba41edf99b85abecac66bd311ac87e68651ea342d78",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 89,
+      "input_sha256": "55d553ae9875f94eccffc5e6424361847a42fc3cd97a6a00a86fb4579730b141",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 90,
+      "input_sha256": "b2d7e5a25a6ee88660488a0212175ef080114da9cdb7e3d1e9fd26efee0b0bb6",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 91,
+      "input_sha256": "bc5ba929d9c5126de2f216e284d45ed541089268b62e7a62143451d3823e6a65",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 94,
+      "input_sha256": "0ae455659ffaa37cde76b2bead9b860f13e9e9b17c01a3c15ed1644a94626879",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 95,
+      "input_sha256": "9aaf9a35360c7502bd33bb068c94344fa866afdc3528da0ca92847db71d3526b",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 96,
+      "input_sha256": "4803121f24501e3d8848a6a11378d86b39340b1739b4048e43c51a0459ca4d07",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 97,
+      "input_sha256": "fe9d85ace4d4cc0f8c2b1326b4c1417ad971da388a816290e3b86e2416458b3d",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 98,
+      "input_sha256": "40f22da1b94119bd11d29eb8ca88d6c76e8cde7be81b1ad395293865c8d49d8b",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 99,
+      "input_sha256": "7e0c69192caef01a71866f439ab540f7fb16afe5c767d1c8e95831992fb3fbb4",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 100,
+      "input_sha256": "2404607a570fc3b33029d0be32e62f0dc2183be67586a32158f19d66819130c8",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 101,
+      "input_sha256": "845981ef4f89d54cfbc7eab839791c1d890781705730f4961aae75215a9f8598",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 102,
+      "input_sha256": "31b745e9511464c85bb0615b6f36ccd8af44d3f2065fbd16757d270984112689",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 103,
+      "input_sha256": "75a1f46c30082e277b215e1608b1eec674c2e2171abb8fddaa1bff24b6112044",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 104,
+      "input_sha256": "a4f478f71a1be50a996b2c740e46d61d97d517e2ea4e236711d9bed109456b80",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 106,
+      "input_sha256": "e696692f910c7ba0a1082a53e65f13041f6c13bbf229ffda57aa16de13fc9178",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 107,
+      "input_sha256": "d707a20583cece14f073895d1db5a7795df9fba732f7ca7a19f3700df5fae19d",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 110,
+      "input_sha256": "4f696a819ac40d88d6d722b589921317478a90f63d74393429cf52e3b65feb21",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 111,
+      "input_sha256": "3686c66d74cab5218491b813d553a2219517e101bb3c9e72bbf351d6fa244b74",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 112,
+      "input_sha256": "c16dbe7fad0b1b2b56ae23201782dc4a5ac68591e0ddce24885d4d5e38768f6a",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 113,
+      "input_sha256": "0c737d855ff6d0d6869472f3807820326ad8dc07ef36296c905c5ae9b14e6899",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 114,
+      "input_sha256": "78d6da3edb58db161d1abed9c4ad2a48bfbb7d34a86724d49ed7e0d0ff045351",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 116,
+      "input_sha256": "36c17d2a3ca98ff56f44ba91de9b012dcee196dd48f598ebf2e866e9dba3fa96",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 117,
+      "input_sha256": "027b7012814eb2a015abaaa31642f9a32c6ea05dacdaebb9b09e66a20d1d84b1",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 118,
+      "input_sha256": "f33449469229117acd35d50ccbb1cf97ea2e92eec94a9b5860cb5e77e7225a27",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 119,
+      "input_sha256": "763dcb3085a5b730238ee7f011996100c0f52a316983c49e7da99cf3fb9d14b0",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 120,
+      "input_sha256": "84149b471ad435fedb283ec9fdc5e80f3271fc6e6475e0ed7db285bd73d38f39",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 121,
+      "input_sha256": "dd795219ea22dfb166f593dfdaa744b49d4f46cecd7d8f14dcf4a50f7e46d2f0",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 122,
+      "input_sha256": "55fb6fd5aece0c84d54d62b3b7511c647b532a283a181da2fea22cbbc205736b",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 123,
+      "input_sha256": "3cbadb53a16313a2b120b14633b537b72d8fe83ee93d64930a333ec4d53a2ec1",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 124,
+      "input_sha256": "d2dbd2029e511e76099dd2f444f97199da4fd103843aaf5204958e4619b23b51",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 125,
+      "input_sha256": "1791e9639f71ab2896a8102c343f4ae02afce6966f472d3853a36774ee4623b3",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 126,
+      "input_sha256": "bbc6c14c60c0bd0145a97d785ab9685c9557a1fe0ad13a18aac80f5eec4290cc",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 127,
+      "input_sha256": "24934ec21d11159c8d42e4bc40c9c8b304c3c6b1916fcc3cdf6c2a74bb96c94b",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 128,
+      "input_sha256": "29958cb7f954aad7e2ee4cda423634f04a54ffa061b4e66050c4983a3ea3acbd",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 129,
+      "input_sha256": "b09d39d5b29490e08abcf6eb08e67413b1adaad80eb8ef09a41661f8b87f2fd3",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 130,
+      "input_sha256": "e5f7336736440e367ddd5a3c2a75f3331689a2817c4367e5898567a3a7820f27",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 131,
+      "input_sha256": "b10d20b0fbae4f978ae36c637cdf078fd003ca7773cb0db37cc0fa3eb2c4b6fe",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 132,
+      "input_sha256": "ce4bbbdc7fba8de865cfe6b3e2f89eed7816d8cfe8f8320fc0a174919923c5cf",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 133,
+      "input_sha256": "0731e30357ddb4a978c0098c815290796595245570ffd7295374bdf22e57ae20",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 134,
+      "input_sha256": "cb6b52a7f55a7e536502a994538974c13d4e62fbe5e02beb6034170b44d8a287",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 135,
+      "input_sha256": "434f923b7479f306942a4d764321e83c0b4e8e4ec729f4e4d0eb88a01ee158be",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 136,
+      "input_sha256": "bfb36d75e6a99d6317adafec1a04b543cee9f6ab2b952c0edf63575c60a1dfab",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 137,
+      "input_sha256": "3771da4760c85441cb58fbb1d67eee612e577a8c2dae8198d176375f9ced94a9",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 138,
+      "input_sha256": "5882ffb4dce0105b5c8d721bca75bc15d80920b427c93171a9af5892d4ae73be",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 139,
+      "input_sha256": "5b9da0e6b841385f068e2781f3105f730df50d61a0f93f1448328ab88ab5ecb6",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 140,
+      "input_sha256": "8ff137e6dd2461ad76405f4130e8998a30c4992730bb617f80508325301255d8",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 141,
+      "input_sha256": "c6cf726169882acf22d7bb9cc27405e60db2316559d1d3d0798f6d559e19d8f3",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 144,
+      "input_sha256": "14276ed970038ab287ecad7a35381c8dec6d2e31baeacfe565e4463f6fdaf611",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 145,
+      "input_sha256": "3ca814fc7792646ed6cf94983a868cfb375da48e037ecc74b4ee8697697d1294",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 146,
+      "input_sha256": "e95a034528ee48a56210985bb3b1e3e7bf45065ac5a58404e8a722a0002b13fb",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 150,
+      "input_sha256": "c4c4db230f11ef5c5ff0a28a3544157da130b87bcafeebd54e92397ecd110a9d",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 152,
+      "input_sha256": "36f258a4a6d0c8b2d432ed4529b750b47fc8d98cfc59e1bc9230510bca91f4c0",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 153,
+      "input_sha256": "97067c6d35e20dadf016175c4df0e958b1e1d471a54fa7afdcd68e99f5ba5138",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 154,
+      "input_sha256": "dbe9ba419a9851f43844ab6f7f32108df89295c668edd48bc2c43867ac610b0e",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 155,
+      "input_sha256": "730c3551729a7b5a3d5f2a8cfcb7096a899c7c9e70f47cb0ada889985bb2ee70",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 156,
+      "input_sha256": "9e8209cc74c174ea38fc74d27215d9fa79f19bcc260f5d6d82d25a7c8ad2ce35",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 157,
+      "input_sha256": "f60c192a0ead226cc4d23108755cc0eda47c1d5da5bd3dbe396e818c97f8c239",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 158,
+      "input_sha256": "81246c9daa9fd0af59c05790eb50c387b5a228749618fab3aae6e716e3a492de",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 159,
+      "input_sha256": "36ef0c148be7aa372ec334e74106fa142c74f30dabe33230898db2aeb09988e0",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 160,
+      "input_sha256": "96b08639f2e00ac2a0e66eeeb2fcfecebbb11aaba1f132ff812e95c20627f1a7",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 161,
+      "input_sha256": "9a4fd4ca4ce7c11cd9cfea8a655d128823128fbf444817a0e979e700a1d14a73",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 162,
+      "input_sha256": "8e8ae8f6c0742a332829dcdb0529949b184c754d8215214ad4a7cefff8bde10d",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 163,
+      "input_sha256": "df83af5c31b06361414fc399d4d6623106a69708b4ef3114d2fbbccddfb7e73f",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 164,
+      "input_sha256": "e7977872f259f0981bec2d596fa0ad0adc7fdbd8e0684f350b0be4fca0dc9f17",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 165,
+      "input_sha256": "6ce59e9f7ee3122b3f3fc8f101a31540d56b357ed4e61a0c6b3ccce3a40803f6",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 166,
+      "input_sha256": "41f4b42a4b5507b87a889aa3ba20c09c4405a8ae0900366a0706a46de7db987c",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 167,
+      "input_sha256": "51d2e1a7b6b08cf68cdf3b9f639b6ff144334f6b8f36fdd803956995ebf311bd",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 168,
+      "input_sha256": "ad89ed4ba15da0416f641e7804831a83fee493c327d5cea1d0385392f566d624",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 169,
+      "input_sha256": "9b72a6f4f4c62bbb965b326a48b5bd59c046deed5e64426839a05477dbc903a5",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 170,
+      "input_sha256": "2acd1baabf6123a0e9192f1cb961a5b26a3df5bfc647bbf0948649a52ff84b39",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 171,
+      "input_sha256": "55ac8b1589cfe380696200d2e7a1fda0d04f116a3890bc7f44cc6f1b32957fd8",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 173,
+      "input_sha256": "26d3c59aebb5c7b27df768ec7f9ac0a5ac00c91c7f095076b27c8ce3443f9b3d",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 174,
+      "input_sha256": "ceeb1fc4fb266974405198152f920eaaf8d26f86555d1a9933b43c1ff8be57aa",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 175,
+      "input_sha256": "192024e8aaf4717ee70a4835f979f90c97c63d1bc5604385fe284452e045958b",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 177,
+      "input_sha256": "648fec07350fb50d46c9741197061e7a78f3703e8a8e507907cb60cf79473009",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 178,
+      "input_sha256": "d92b2b9760455160377d5ce22363b928319aaf67f91460329e1fa8d3d2d35235",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 181,
+      "input_sha256": "bea67e272644bcff79cad1de3e4c3371eabb1932f5b9d95a94ce78946d4a2378",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 182,
+      "input_sha256": "d9f69a2343abdafa19e6b073e781c65059e84d8ca2c503975e06db516d1cfe38",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 184,
+      "input_sha256": "f152dd18fb16338705b7acc02618729d51203a4e6f368c549890b654d0d26abc",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 185,
+      "input_sha256": "adbbefe1e66fb70df49d007279e613d464cef1053c10f0081df4e53d04fa760c",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 186,
+      "input_sha256": "1fa1091f0f7a062671bfc76cd485073a08da9bd7c0999991b342eff89dd23d67",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 187,
+      "input_sha256": "898e2967f7b7f6171120d1963432db1c560b7039df6daf17fcfc069cf90c448b",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 188,
+      "input_sha256": "be930fe16c8d5247fbbcede048298a93e57c682331c3b68a621f99e789bf057a",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 189,
+      "input_sha256": "c79c56068af954297ead55a45b06b6b0b678065c51917f0897df9ad0896fac59",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 190,
+      "input_sha256": "9dc49c8ee7d92f5b8250b4418d9e133baad5bc749985f2bc402a32e740ae12ed",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 191,
+      "input_sha256": "713479a7580a373f05ffecdd0fa1d646464c2a0ca3de2d4ad91c838609d8c7b7",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 192,
+      "input_sha256": "fbfea7cd887feededfe631fddbf1be215b5d0a6b2cd3bb82e782e3270d3a71ad",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 193,
+      "input_sha256": "5529201422675dd6b2ad9c0126ef207c330631306f2d3110293df73851f75130",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 194,
+      "input_sha256": "86715457565dbe3c02e0e532328a24f8e6da617de09512065a96e994996fe7e4",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 195,
+      "input_sha256": "2437f07aa97f40a9791fcaada2ba1d657ed0abc884ed534ed3a753aa60b05a4b",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 196,
+      "input_sha256": "063a7ebd05bb9fb55e5f2cdfced1aa88ccb146ad7c25c64c2b0c863c41c79937",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 197,
+      "input_sha256": "1cc6252b700816f08a1ffdf3939389fbdc73ee8d0c3d2eba0d814a6c8fb1e30c",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 198,
+      "input_sha256": "73a6ebe779c956eeb6a6c7d2f3f0645d1858d5f3bce7833a4c7feacaec8d4638",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 199,
+      "input_sha256": "f3261de967c38d1f6f4417274478167be52399bc9b146463a4fad65aed86ed03",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    },
+    {
+      "group": 200,
+      "input_sha256": "3a3e147ecefbb19ae206997bd818115a43be55ea50af47104be59b80a863893e",
+      "old_served_output_bits_preserved": true,
+      "point": 2
+    }
+  ],
+  "refusals_now_served": 37,
+  "schema": "adaptive-physical-same-input-diagnostic-v2-offline-classification-only",
+  "stability_or_performance_qualified": false
+}

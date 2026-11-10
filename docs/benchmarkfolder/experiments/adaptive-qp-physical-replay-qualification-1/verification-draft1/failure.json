@@ -1,0 +1,7 @@
+{
+  "corrected_scientific_analysis_changed": false,
+  "correction": "Reconstruct same frozen text under three more temporary directory components; parser and actual evidence bytes unchanged",
+  "error": "IndexError:4 from frozen journal-parser.py HERE.parents[4] at import: temporary hierarchy too shallow",
+  "native_launched": false,
+  "stage": "portable offline verification only"
+}

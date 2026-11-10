@@ -1,0 +1,10 @@
+{
+  "corrected_offline_analysis_sha256": "7ecf08bb2d86504da9599c15e6bb6326447dcf5f0247229848f552d14095d376",
+  "loader_or_build_executed": false,
+  "native_executed_by_capture": false,
+  "native_files_hash_only": 16,
+  "original_failed_analysis_sha256": "413170bd050e600f4ddce7763650720ee90717ec530c891c518f64549362137c",
+  "original_failed_execution_sha256": "ad79e8cf32260247eb6e27ccc8b70eb163ad8f84dd9e30a93cad88203c1ce4bb",
+  "text_records": 55,
+  "unique_text_payloads": 39
+}

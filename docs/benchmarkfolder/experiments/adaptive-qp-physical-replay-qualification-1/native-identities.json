@@ -1,0 +1,98 @@
+{
+  "attempt/guarded-qp": {
+    "bytes": 88665784,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/guarded-qp",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "beb1fdb8f3c5239bbc7ee3b57d660b0104afc32c7061601e6d8a58cb8d1e81f9"
+  },
+  "attempt/runtime/libc.so.6": {
+    "bytes": 2413048,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libc.so.6",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+  },
+  "attempt/runtime/libcollier.so": {
+    "bytes": 3752144,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libcollier.so",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+  },
+  "attempt/runtime/libdl.so.2": {
+    "bytes": 15688,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libdl.so.2",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+  },
+  "attempt/runtime/libgcc_s.so.1": {
+    "bytes": 196968,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libgcc_s.so.1",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+  },
+  "attempt/runtime/libgfortran.so.5": {
+    "bytes": 3647568,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libgfortran.so.5",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+  },
+  "attempt/runtime/libm.so.6": {
+    "bytes": 1029504,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libm.so.6",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+  },
+  "attempt/runtime/libmadloop_tirust.so": {
+    "bytes": 69157632,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libmadloop_tirust.so",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7"
+  },
+  "attempt/runtime/libmvec.so.1": {
+    "bytes": 1070952,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libmvec.so.1",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+  },
+  "attempt/runtime/libninja.so.0": {
+    "bytes": 3770520,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libninja.so.0",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+  },
+  "attempt/runtime/libpthread.so.0": {
+    "bytes": 16536,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libpthread.so.0",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+  },
+  "attempt/runtime/libquadmath.so.0": {
+    "bytes": 302136,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libquadmath.so.0",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+  },
+  "attempt/runtime/librt.so.1": {
+    "bytes": 16352,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/librt.so.1",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+  },
+  "attempt/runtime/libstdc++.so.6": {
+    "bytes": 3230392,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libstdc++.so.6",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+  },
+  "attempt/runtime/libutil.so.1": {
+    "bytes": 15512,
+    "origin": ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/runtime/libutil.so.1",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+  },
+  "external-runtime/ld-linux-x86-64.so.2": {
+    "bytes": 253696,
+    "origin": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "retained_as": "hash_only_native_ELF",
+    "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+  }
+}

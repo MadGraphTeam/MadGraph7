@@ -1,0 +1,39 @@
+{
+  "actual_module_paths": {
+    "tirust_benchmark": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tools/tirust_benchmark.py",
+    "tirust_benchmark_campaign": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tools/tirust_benchmark_campaign.py",
+    "tirust_benchmark_local": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tools/tirust_benchmark_local.py"
+  },
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "errors": 0,
+  "failures": 0,
+  "input_sha256_after": {
+    "tests/unit_tests/loop/test_tirust_benchmark_campaign.py": "4aa6c38a43ac281a5af735fe76215e0fb8ff43ffd04222581cbdd99b7f184adf",
+    "tests/unit_tests/loop/test_tirust_benchmark_local.py": "13ce5c0d9ab9b016e88eca7d95864f0bb75b12d66eed031f545eb0dc563ff58b",
+    "tests/unit_tests/loop/test_tirust_physical_card_origins.py": "1009964fabd758e33bcf32464ec2ada0177ff4b711e5cecda3c0c3fb466e8794",
+    "tools/tirust_benchmark.py": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370",
+    "tools/tirust_benchmark_campaign.py": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710",
+    "tools/tirust_benchmark_local.py": "70fd4c19ad6d35f6941b470ec6953068f5626aab5d4f6968e0dfe670d4bc4e9b"
+  },
+  "input_sha256_before": {
+    "tests/unit_tests/loop/test_tirust_benchmark_campaign.py": "4aa6c38a43ac281a5af735fe76215e0fb8ff43ffd04222581cbdd99b7f184adf",
+    "tests/unit_tests/loop/test_tirust_benchmark_local.py": "13ce5c0d9ab9b016e88eca7d95864f0bb75b12d66eed031f545eb0dc563ff58b",
+    "tests/unit_tests/loop/test_tirust_physical_card_origins.py": "1009964fabd758e33bcf32464ec2ada0177ff4b711e5cecda3c0c3fb466e8794",
+    "tools/tirust_benchmark.py": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370",
+    "tools/tirust_benchmark_campaign.py": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710",
+    "tools/tirust_benchmark_local.py": "70fd4c19ad6d35f6941b470ec6953068f5626aab5d4f6968e0dfe670d4bc4e9b"
+  },
+  "passed": true,
+  "reviewed_patch_sha256": "3cd7fc056ed4d4fded35a7ffa4978ebd8ac812d74b5450d0b0965643d7839697",
+  "schema": "tirust-live-protocol-source-qualification-v1",
+  "scope": "Python unit tests of actual live tools; no real registration/native/build",
+  "seconds": 1.9219658374786377,
+  "skipped": 0,
+  "test_log_sha256": "0d4bedf439be4d55ca068fd0bc2aad348784c10b7c847f52eab54a66232d373d",
+  "test_modules": [
+    "tests.unit_tests.loop.test_tirust_physical_card_origins",
+    "tests.unit_tests.loop.test_tirust_benchmark_local",
+    "tests.unit_tests.loop.test_tirust_benchmark_campaign"
+  ],
+  "tests_run": 61
+}

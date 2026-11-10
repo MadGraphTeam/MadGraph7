@@ -1,0 +1,11 @@
+{
+  "files": {
+    "README.md": "bfef52fb5d63aa553a37fb12c8794259fed63840cd8306b2943f3a7a563e9316",
+    "proposed.patch": "3cd7fc056ed4d4fded35a7ffa4978ebd8ac812d74b5450d0b0965643d7839697",
+    "qualification.json": "fbcfd030b6b49bbc62fa3a0cc9dbeb8573498cada6f1a66abde4b7bcc4ba49b0",
+    "source-text.json.gz": "4fe2923785da78989cb82d3517fc2d79b30b4cf0a986fa4e64883c48e1141253",
+    "tests.log": "0d4bedf439be4d55ca068fd0bc2aad348784c10b7c847f52eab54a66232d373d",
+    "verify.py": "5d3afe76de9bdb3c1470cc56f7f5fc4166a0acfadc41a45428471c0c64783184"
+  },
+  "schema": "tirust-portable-source-qualification-v1"
+}

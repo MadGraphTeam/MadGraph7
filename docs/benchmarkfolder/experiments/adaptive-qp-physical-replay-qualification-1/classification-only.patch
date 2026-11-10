@@ -1,0 +1,60 @@
+--- frozen-proposal/analyze.py
++++ offline-successor/analyze.py
+@@ -3,7 +3,8 @@
+ import json
+ from pathlib import Path
+ 
+-POINT_OUTPUTS={'AMPLITUDE','ACCURACY','PUBLIC_STATUS','FPE_DP_END','FPE_QP_END'}
++POINT_OUTPUTS={'AMPLITUDE','ACCURACY','PUBLIC_STATUS',
++               'FPE_DP_BEGIN','FPE_QP_BEGIN','FPE_DP_END','FPE_QP_END'}
+ GROUP_OUTPUTS={'RAW_UV1','RAW_IR1','RAW_IR2','RAW_FINITE','GROUP_RESULT','GROUP_STABLE'}
+ RAW={'RAW_UV1','RAW_IR1','RAW_IR2','RAW_FINITE'}
+ EXPECTED_REFUSALS=[5,6,23,32,33,34,35,40,41,42,43,51,52,55,56,62,63,78,87,88,
+@@ -22,7 +23,7 @@
+ 
+ def compare(old,new,old_stdout,new_stdout):
+     """Require input parity and served-output preservation; report recoveries."""
+-    failures=[];served=[];transitions=[];flags=[];point_outputs=[]
++    failures=[];served=[];transitions=[];flags=[];point_outputs=[];point_fpe=[];born=[]
+     original_refusals={};calls=0
+     if set(old['points'])!={1,2} or set(new['points'])!={1,2}:
+         raise ValueError('Exactly the same two observed physical points are required')
+@@ -31,6 +32,23 @@
+         a={k:v for k,v in left['data'].items() if k not in POINT_OUTPUTS}
+         b={k:v for k,v in right['data'].items() if k not in POINT_OUTPUTS}
+         if canonical(a)!=canonical(b):failures.append([number,'point_input_or_model_bits'])
++        # ANS(0:3,0:1) is stored in Fortran order. Each split-order block's
++        # coefficient0 is Born; retain those physics checks independently of
++        # changing loop sums after formerly omitted reductions are served.
++        left_amplitude=left['data']['AMPLITUDE'];right_amplitude=right['data']['AMPLITUDE']
++        if len(left_amplitude)!=8 or len(right_amplitude)!=8:
++            failures.append([number,'expected_two_four_coefficient_amplitude_blocks'])
++        else:
++            same=all(left_amplitude[i]==right_amplitude[i] for i in (0,4))
++            born.append({'point':number,'flat_indices':[1,5],
++                         'old':[left_amplitude[i] for i in (0,4)],
++                         'new':[right_amplitude[i] for i in (0,4)],'bits_preserved':same})
++            if not same:failures.append([number,'Born_output_bits_changed'])
++        for label in ('FPE_DP_BEGIN','FPE_QP_BEGIN','FPE_DP_END','FPE_QP_END'):
++            if left['data'][label]!=right['data'][label]:
++                point_fpe.append({'point':number,'label':label,
++                                  'old':left['data'][label],'new':right['data'][label],
++                                  'classification':'Observed host FPE state; not physical/model/native input'})
+         if [g['key'] for g in left['groups']]!=[g['key'] for g in right['groups']]:
+             failures.append([number,'group_sequence']);continue
+         original_refusals[number]=[]
+@@ -76,11 +94,12 @@
+     if len(old_warnings)!=74:failures.append(['original_W03_fixture_changed'])
+     all_served=all(n['status']==0 for p in new['points'].values() for g in p['groups'] for n in g['native'])
+     all_stable=all(g['data']['GROUP_STABLE'][0][1]=='T' for p in new['points'].values() for g in p['groups'])
+-    return {'schema':'adaptive-physical-same-input-diagnostic-v1','invariants_passed':not failures,
++    return {'schema':'adaptive-physical-same-input-diagnostic-v2-offline-classification-only','invariants_passed':not failures,
+             'failures':failures,'observed_native_calls':calls,'previously_served_calls':served,
+             'previously_refused_calls':transitions,'refusals_now_served':sum(t['new_status']==0 for t in transitions),
+             'old_W03':old_warnings,'new_W03':new_warnings,'group_or_native_IEEE_flag_differences':flags,
+-            'point_outputs':point_outputs,'old_footer':old['footer'],'new_footer':new['footer'],
++            'point_outputs':point_outputs,'point_FPE_state_differences':point_fpe,
++            'Born_bit_checks':born,'old_footer':old['footer'],'new_footer':new['footer'],
+             'observed_sums_have_no_recorded_native_omissions':all_served and all_stable and not new_warnings,
+             'precision_transport':'Same captured genuine binary128 inputs; no new per-call precision telemetry',
+             'actual_per_call_working_precision_available':False,'fixed_CTMode4_is_checked':False,
