@@ -1,0 +1,30 @@
+{
+  "0.log": {
+    "compression": null,
+    "path": "0.log",
+    "raw_bytes": 0,
+    "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "1.log": {
+    "compression": null,
+    "path": "1.log",
+    "raw_bytes": 314,
+    "raw_sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51",
+    "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+  },
+  "build.json": {
+    "compression": null,
+    "path": "build.json",
+    "raw_bytes": 49326,
+    "raw_sha256": "adef9bdc409518c346514cba95de2d04e4d51db90b4b4df9bb0ca64514e2b412",
+    "sha256": "adef9bdc409518c346514cba95de2d04e4d51db90b4b4df9bb0ca64514e2b412"
+  },
+  "link.map": {
+    "compression": "gzip",
+    "path": "link.map.gz",
+    "raw_bytes": 31091303,
+    "raw_sha256": "da5eb678e2a32579979ad8f96a44e2ddd5a09338981472e7c47240dfb8b4f4d7",
+    "sha256": "806ed020b81411cec40c1b2246f2e0863d13a583eb9368c943d85a862be3fe85"
+  }
+}

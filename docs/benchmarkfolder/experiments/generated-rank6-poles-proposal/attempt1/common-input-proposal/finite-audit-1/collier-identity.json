@@ -1,0 +1,10 @@
+{
+  "bytes_hex": "312e322e39",
+  "dso_sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+  "file_offset": 3677864,
+  "section_index": 24,
+  "symbol": "__collier_global_MOD_version_cll",
+  "symbol_size": 5,
+  "version": "1.2.9",
+  "virtual_address_hex": "0x382ea8"
+}

@@ -1,0 +1,241 @@
+{
+  "file_count": 58,
+  "files": {
+    "README.md": {
+      "bytes": 2521,
+      "sha256": "bca70c8a41f34fe9d0fb1458cf74bd1d00e65ef88e88ace5f1449c5b1aefe0a3"
+    },
+    "copies.json": {
+      "bytes": 5615,
+      "sha256": "d6fbd71095f6391879edb4c78efff4bae8ea653465c868547ab557595fabead6"
+    },
+    "data/console.log": {
+      "bytes": 793,
+      "sha256": "25ea459bb951898115d8427c901db12ab3c706280e66732ceb3d5717c03c457f"
+    },
+    "data/execution.json": {
+      "bytes": 30171,
+      "sha256": "6e8f37d337f8475495d7e90df7ef746fbd846307cf0908cf89b3d643fd1b8cf1"
+    },
+    "data/loader.log": {
+      "bytes": 1841,
+      "sha256": "0dff76b6d91409d03aa0f15930c6633e4c8d56eb90276728f36dde901203d9ef"
+    },
+    "data/maps.snapshots/complete.txt.gz": {
+      "bytes": 1512,
+      "sha256": "c5934cacd7b01886cf5fbe07cfb435ee6690bad5ee32b9101ff505f8ceb9ab6f"
+    },
+    "data/maps.snapshots/first-incomplete.txt": {
+      "bytes": 8910,
+      "sha256": "5dca9d03f08f3a17af84d64c608f4618762dcd57566d38f6809adac1da10275e"
+    },
+    "data/maps.snapshots/first-nonempty.txt": {
+      "bytes": 8910,
+      "sha256": "5dca9d03f08f3a17af84d64c608f4618762dcd57566d38f6809adac1da10275e"
+    },
+    "data/maps.snapshots/first-read.txt": {
+      "bytes": 8910,
+      "sha256": "5dca9d03f08f3a17af84d64c608f4618762dcd57566d38f6809adac1da10275e"
+    },
+    "data/maps.snapshots/last-incomplete.txt": {
+      "bytes": 8910,
+      "sha256": "5dca9d03f08f3a17af84d64c608f4618762dcd57566d38f6809adac1da10275e"
+    },
+    "data/maps.snapshots/last-nonempty.txt.gz": {
+      "bytes": 1512,
+      "sha256": "c5934cacd7b01886cf5fbe07cfb435ee6690bad5ee32b9101ff505f8ceb9ab6f"
+    },
+    "data/maps.snapshots/last-read.txt.gz": {
+      "bytes": 1512,
+      "sha256": "c5934cacd7b01886cf5fbe07cfb435ee6690bad5ee32b9101ff505f8ceb9ab6f"
+    },
+    "data/maps.txt.gz": {
+      "bytes": 1512,
+      "sha256": "c5934cacd7b01886cf5fbe07cfb435ee6690bad5ee32b9101ff505f8ceb9ab6f"
+    },
+    "data/nominal/ident_card.dat": {
+      "bytes": 389,
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    "data/nominal/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "data/observer.txt.gz": {
+      "bytes": 114115,
+      "sha256": "18f731b47a471e1043ba4f4ac198dc8817a8c11336de9d0d76b5e30dd880accd"
+    },
+    "data/param.log": {
+      "bytes": 936,
+      "sha256": "0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635"
+    },
+    "data/records.txt.gz": {
+      "bytes": 407290,
+      "sha256": "7f4f4442a1bc475ef6d1ca2216102cff04d9cbf391bc2ef43265f2327c2843cb"
+    },
+    "data/results.json": {
+      "bytes": 18079,
+      "sha256": "6dacc4651d0017b8ebacdce331bf68643c10185974e36d914a5f54d44e3dd81c"
+    },
+    "data/schedule.dat": {
+      "bytes": 1053,
+      "sha256": "5649873a7e772f4480e4c652d5bbac5eaf2ae08cce4e7370c63a572d02cc75f2"
+    },
+    "frozen-sources.json": {
+      "bytes": 11937,
+      "sha256": "6babcbddd1aa58e6a95c845d41df644fde838505e37141bba5095d2585ef1245"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/analyze.py": {
+      "bytes": 24764,
+      "sha256": "d3e6583162f3e3efe74bf933cda34e82eb0d8f606f752c475d15c6a3ac06eb4e"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build-plan.json": {
+      "bytes": 84027,
+      "sha256": "69333b95bd0eff677948ac9c75d311989e3bc74d4df8f915304456e087334047"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build1/archive.json": {
+      "bytes": 2545,
+      "sha256": "dc5fcf8ea9c52c2ede4db605e8aaea2a554ed638fafda7190e1e885fc4473d40"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build1/build.json": {
+      "bytes": 51668,
+      "sha256": "906e752fd9f3970fe9b5388c589e852544466d972221bced3ec04db2bc67533a"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/controller.py": {
+      "bytes": 9702,
+      "sha256": "fcaa871f6c5b6bc880b0c9c315d151ac27c04e63751d46e7309065e2d32aeeb4"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/source-index.json": {
+      "bytes": 3000,
+      "sha256": "9ae56e046cced87962495ce875c0466743bd76740013e07bef9d0f6aeed11982"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/README.md": {
+      "bytes": 3489,
+      "sha256": "de0935c4df485632c8e8c7999e8858dde191bcf131f95383f05037f4bcbe9513"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/analyze.py": {
+      "bytes": 9684,
+      "sha256": "311b14ac14b258cc0ac589bb6ec2361c6d93d999a1815242d404eeca5bfbcb14"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/0.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/1.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/README.md": {
+      "bytes": 459,
+      "sha256": "7ea4969bb1180efe7715a08de73173c701a1ee6e6fc90c22a0ea1b64ad54eb32"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/build.json": {
+      "bytes": 49356,
+      "sha256": "a45c87070daf842e7c33acb36ead395ca1748b732199ed9038c0fc50222de350"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/copies.json": {
+      "bytes": 1041,
+      "sha256": "8672482af1a7ccec8514a917243bd2468bbc4130c8b5d999a6068cef0e47c1db"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/evidence-index.json": {
+      "bytes": 693,
+      "sha256": "26e2ec613daf4c9876c318fc2a7ae0d08ded1c335a829dd3fd21d3f40dcf4344"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/link.map.gz": {
+      "bytes": 1727478,
+      "sha256": "66e851c33945635f034a99206db776fe2e220b8953c9e791f8746d3def19c716"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/controller.py": {
+      "bytes": 1992,
+      "sha256": "4007fd7f065e525d64b80106039df6aef71329162bc561a44e13e89d03c65f3e"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/driver.f": {
+      "bytes": 9246,
+      "sha256": "b3d70c1a07910dcd88cfcba0cc54a92f6c8fa6ab531072ea7ae9be360d2c2059"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/driver.patch": {
+      "bytes": 3863,
+      "sha256": "304f1f7575b1d80abf60399898d7b1d54d7424efc71e49915115e208b2501fe9"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/fixtures.json": {
+      "bytes": 8585,
+      "sha256": "180cb642d3886dab8055a70a7f4fef6586e2b2c635e998aab0066e95886f53f4"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/q0-source-audit.json": {
+      "bytes": 2301,
+      "sha256": "c84c8bd9ac0fe285435e74bacf7928f8c6be50da3a90c8c120a89656f77d15e2"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/schedule.dat": {
+      "bytes": 1053,
+      "sha256": "5649873a7e772f4480e4c652d5bbac5eaf2ae08cce4e7370c63a572d02cc75f2"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/schedule.json": {
+      "bytes": 6423,
+      "sha256": "00d56063dd164fb6d327f8c38cebc8d28d2c6f874144bd382667286bfd0dc37f"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/source-check.txt": {
+      "bytes": 129,
+      "sha256": "93f7eb6c56dcd8137807350781af2ee4ba10900ee514815f18921111ac96eba4"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/source-index.json": {
+      "bytes": 4032,
+      "sha256": "1573321dfc2c2e22295a21e61b37887e85f5dc0480b2a8a09666a55bdfe60ae2"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/verify_fixture.py": {
+      "bytes": 3976,
+      "sha256": "01500d39a6123713bdbd4fa03579d322f28ca28a5c0e91c49b1a1a51318da653"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/cap_collier.f": {
+      "bytes": 31641,
+      "sha256": "26c5a83505d0a564e2ba459a62b4fadf358bc5019e7a512d76e3bd7d628ea756"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/cap_tirust.f": {
+      "bytes": 14078,
+      "sha256": "4a336465f6e239b6f0a344b162938ade7d839b1a6989a0ae30e61779108e5bfc"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/driver.f": {
+      "bytes": 9414,
+      "sha256": "3e9ac28982f957438d66eb3f6b0c9bc386f88fc082a925d93b5fff470bdce87a"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/review-index.json": {
+      "bytes": 5894,
+      "sha256": "38b30cda616b7ef9d589b8c83a0d4e1eaa8699397d567d97c8517695a80f72fb"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/run.py": {
+      "bytes": 11822,
+      "sha256": "8fd4ee125e8169f1e8cd232c16cca2ab58ac0844fdb9083c75553448eeffd8d2"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/runtime1/evidence-index.json": {
+      "bytes": 3841,
+      "sha256": "73056ddbe46cbe5f83ad2c1b26e9b10ed7b79b39d98a651388b813e95fa262b5"
+    },
+    "frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/runtime1/execution.json": {
+      "bytes": 59585,
+      "sha256": "b7930275a8a61b043d308d6cca1f556d20594d8181da191589df5e64663cad62"
+    },
+    "frozen/repo/madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": {
+      "bytes": 34634,
+      "sha256": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16"
+    },
+    "frozen/repo/madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": {
+      "bytes": 10645,
+      "sha256": "29dcb05866279d2039676a7fb369c068483fa556767254b15b399b736d289692"
+    },
+    "frozen/repo/madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": {
+      "bytes": 11432,
+      "sha256": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec"
+    },
+    "replay.py": {
+      "bytes": 5973,
+      "sha256": "a84bd0e0438bbc12cfc77b5c31b090358f78b0f24336aeb342267f60376dff91"
+    },
+    "summary.json": {
+      "bytes": 2864,
+      "sha256": "6146fdc8f56d31527b1136bb9f24dbefe49cc266c25aee7fba0ce5692158a807"
+    }
+  },
+  "new_native_execution": false,
+  "schema": "madloop-tirust-common-input-retained-index-v1",
+  "scope": "Portable text retention and unchanged frozen-analyzer replay of completed30-row synthetic diagnostic; native acceptance remainsopen",
+  "total_bytes": 2852609
+}

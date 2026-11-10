@@ -1,0 +1,50 @@
+{
+  "build_proposal": {
+    "bytes": 4294967296,
+    "commands": 2,
+    "cpu": 12,
+    "exclusive": false,
+    "seconds": 120
+  },
+  "dependencies": {
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/analyze.py": "d3e6583162f3e3efe74bf933cda34e82eb0d8f606f752c475d15c6a3ac06eb4e",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build-plan.json": "69333b95bd0eff677948ac9c75d311989e3bc74d4df8f915304456e087334047",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build1/archive.json": "dc5fcf8ea9c52c2ede4db605e8aaea2a554ed638fafda7190e1e885fc4473d40",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build1/build.json": "906e752fd9f3970fe9b5388c589e852544466d972221bced3ec04db2bc67533a",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/controller.py": "fcaa871f6c5b6bc880b0c9c315d151ac27c04e63751d46e7309065e2d32aeeb4",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/source-index.json": "9ae56e046cced87962495ce875c0466743bd76740013e07bef9d0f6aeed11982",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/cap_collier.f": "26c5a83505d0a564e2ba459a62b4fadf358bc5019e7a512d76e3bd7d628ea756",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/cap_tirust.f": "4a336465f6e239b6f0a344b162938ade7d839b1a6989a0ae30e61779108e5bfc",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/driver.f": "3e9ac28982f957438d66eb3f6b0c9bc386f88fc082a925d93b5fff470bdce87a",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/review-index.json": "38b30cda616b7ef9d589b8c83a0d4e1eaa8699397d567d97c8517695a80f72fb",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/run.py": "8fd4ee125e8169f1e8cd232c16cca2ab58ac0844fdb9083c75553448eeffd8d2",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/runtime1/evidence-index.json": "73056ddbe46cbe5f83ad2c1b26e9b10ed7b79b39d98a651388b813e95fa262b5",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/runtime1/execution.json": "b7930275a8a61b043d308d6cca1f556d20594d8181da191589df5e64663cad62",
+    "madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16",
+    "madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": "29dcb05866279d2039676a7fb369c068483fa556767254b15b399b736d289692",
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec"
+  },
+  "files": {
+    "README.md": "de0935c4df485632c8e8c7999e8858dde191bcf131f95383f05037f4bcbe9513",
+    "analyze.py": "311b14ac14b258cc0ac589bb6ec2361c6d93d999a1815242d404eeca5bfbcb14",
+    "controller.py": "4007fd7f065e525d64b80106039df6aef71329162bc561a44e13e89d03c65f3e",
+    "driver.f": "b3d70c1a07910dcd88cfcba0cc54a92f6c8fa6ab531072ea7ae9be360d2c2059",
+    "driver.patch": "304f1f7575b1d80abf60399898d7b1d54d7424efc71e49915115e208b2501fe9",
+    "fixtures.json": "180cb642d3886dab8055a70a7f4fef6586e2b2c635e998aab0066e95886f53f4",
+    "q0-source-audit.json": "c84c8bd9ac0fe285435e74bacf7928f8c6be50da3a90c8c120a89656f77d15e2",
+    "schedule.dat": "5649873a7e772f4480e4c652d5bbac5eaf2ae08cce4e7370c63a572d02cc75f2",
+    "schedule.json": "00d56063dd164fb6d327f8c38cebc8d28d2c6f874144bd382667286bfd0dc37f",
+    "source-check.txt": "93f7eb6c56dcd8137807350781af2ee4ba10900ee514815f18921111ac96eba4",
+    "verify_fixture.py": "01500d39a6123713bdbd4fa03579d322f28ca28a5c0e91c49b1a1a51318da653"
+  },
+  "native_proposal": {
+    "admitted": false,
+    "bytes": 4294967296,
+    "physical_captures": 0,
+    "seconds": 900,
+    "tensor_rows": 30,
+    "workers": 1
+  },
+  "schema": 1,
+  "status": "source-only proposal; no compiler/loader/native admission"
+}

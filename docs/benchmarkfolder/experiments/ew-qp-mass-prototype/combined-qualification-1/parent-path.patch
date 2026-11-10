@@ -1,0 +1,10 @@
+--- current-original-qp/analyze.py
++++ loader-correction/continuation/additive-offline-analysis/analyze.py
+@@ -122,6 +122,7 @@
+ 
+ def main():
+     spec=json.loads((HERE/'child-prepared.json').read_text())
++    spec['required_prior_run']['path']=str(HERE.parent/'run.json')
+     for name in ('frozen_parser','frozen_support'):
+         require(sha(spec[name]['path'])==spec[name]['sha256'],'Frozen analysis dependency changed')
+     parser=load('original_qp_frozen_parser',spec['frozen_parser']['path'])

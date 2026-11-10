@@ -1,0 +1,45 @@
+{
+  "closure_proof": [
+    {
+      "capture_action": 901,
+      "exact_bytes_equal": true,
+      "model": "ew",
+      "native_first_shift_hex": "000000000000303d000000000000000000000000000020bd0000000000000000",
+      "sequential_binary64_closure": [
+        5.684341886080802e-14,
+        0.0,
+        -2.842170943040401e-14,
+        0.0
+      ]
+    },
+    {
+      "capture_action": 903,
+      "exact_bytes_equal": true,
+      "model": "qcd",
+      "native_first_shift_hex": "0000000000004c3d0000000000000000000000000000143d00000000000010bd",
+      "sequential_binary64_closure": [
+        1.9895196601282805e-13,
+        0.0,
+        1.7763568394002505e-14,
+        -1.4210854715202004e-14
+      ]
+    }
+  ],
+  "finding": "P_TMP(:,0) accumulates full external-loop closure for conservation validation and is then reused directly as SHIFTS(:,1), without zeroing. Retained native first-shift bytes equal the explicit ordered binary64 sum exactly. COLLIER carries only shifts1..N-1 with implicit zero reference; its cyclic external sums give slightly different invariant round trips.",
+  "schema": 1,
+  "scope": "Read-only source and retained input proof; no production change proposed",
+  "source_locations": {
+    "CT_interface.inc": "closure accumulation410/710/939",
+    "NINJARS_interface.inc": "explicit residual convention60-65/205-210",
+    "TIRUST_interface.inc": "DP40-63; QP135-158",
+    "cap_collier.f": "395-445 cyclic invariant construction",
+    "cap_tirust.f": "DP78-104; QP217-243"
+  },
+  "sources": {
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/cap_collier.f": "26c5a83505d0a564e2ba459a62b4fadf358bc5019e7a512d76e3bd7d628ea756",
+    "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/cap_tirust.f": "4a336465f6e239b6f0a344b162938ade7d839b1a6989a0ae30e61779108e5bfc",
+    "madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16",
+    "madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": "29dcb05866279d2039676a7fb369c068483fa556767254b15b399b736d289692",
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec"
+  }
+}

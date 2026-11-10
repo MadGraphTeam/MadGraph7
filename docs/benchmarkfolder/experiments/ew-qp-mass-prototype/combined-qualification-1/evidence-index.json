@@ -1,0 +1,58 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 4459,
+      "sha256": "2668067f9b8551500cd8a498d7611b0da85c19b14c149624c32000e048246f45"
+    },
+    "additive-failed-run.json": {
+      "bytes": 20948,
+      "sha256": "798d7bb5bcc51215cf383c55666820a3399e7eacb687d3a5220d6aa9eb26b54f"
+    },
+    "capture.py": {
+      "bytes": 5119,
+      "sha256": "68daa679f06e99a96a5b0ab60674e965e0c2bbc252c049e57aee9368384f005a"
+    },
+    "continuation-run.json": {
+      "bytes": 347575,
+      "sha256": "9eb684860f2e0aaddc94b7868b192d5dad1d9e33380904b8b4742f64c14b05f3"
+    },
+    "direct-copies.json": {
+      "bytes": 1611,
+      "sha256": "dff24bfb5c1d59a98080c2cc1d10b6606ca2be7e8ac5d204f86ea6e4db194a3b"
+    },
+    "native-identities.json": {
+      "bytes": 39395,
+      "sha256": "ef0149032249694dde3be420d437cbbd0c41fd0ef8c280d999732bc3cff0af6f"
+    },
+    "offline-analysis-execution.json": {
+      "bytes": 906,
+      "sha256": "646d0d98af169f02a69e9290838f8c86b827021d9b2469a93dfe6d5840910a6b"
+    },
+    "offline-lineage.json": {
+      "bytes": 5949,
+      "sha256": "6976f6a7d35b8e18a7249ca255320f5fe170a503765d09d48871a69f1dcdcc7a"
+    },
+    "parent-path.patch": {
+      "bytes": 503,
+      "sha256": "0f050f9976bc56448151350289c5b85bba1730a1c44c4f0244151fe66499b32b"
+    },
+    "payload-inventory.json": {
+      "bytes": 212238,
+      "sha256": "2f6ade8a5334166b183483a23f27a804eb3d9c35eedac41bdfe8d808e203038d"
+    },
+    "payload.json.gz": {
+      "bytes": 6317245,
+      "sha256": "d534639d07f0e0ccb588155d442651e273fa229064f26d6f7700184fc2f09834"
+    },
+    "verify.py": {
+      "bytes": 8771,
+      "sha256": "9bd1b7171bc6dc7f424a931e84897c20060ab1105f843923ce658137207e33d9"
+    },
+    "warning-audit.json": {
+      "bytes": 19549,
+      "sha256": "e585e0f49ae9d3c655511d7fbb7d768dc5e3e783ecad41453c455d6cf29bae21"
+    }
+  },
+  "schema": "portable-mass-continuation-incomplete-qp-v1",
+  "scope": "Recorded234-event continuation and2additive native controls; offline path repair only. Backend9 original/guarded QP sums incomplete. No coefficient qualification."
+}

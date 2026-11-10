@@ -1,0 +1,1134 @@
+{
+  "cases": 30,
+  "checks": [
+    {
+      "actions": [
+        3001,
+        3002
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3001,
+        3013
+      ],
+      "kind": "independent_collier",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3002,
+        3013
+      ],
+      "kind": "partial_independent_collier",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3003,
+        3004
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3003,
+        3014
+      ],
+      "kind": "independent_collier",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3004,
+        3014
+      ],
+      "kind": "partial_independent_collier",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3005,
+        3006
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3005,
+        3015
+      ],
+      "kind": "independent_collier",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3006,
+        3015
+      ],
+      "kind": "partial_independent_collier",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3007,
+        3008
+      ],
+      "kind": "full_partial",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3007,
+        3013
+      ],
+      "kind": "independent_collier",
+      "maximum_residual": "1",
+      "status": "mismatched",
+      "target_1e8_met": false
+    },
+    {
+      "actions": [
+        3008,
+        3013
+      ],
+      "kind": "partial_independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": false
+    },
+    {
+      "actions": [
+        3009,
+        3010
+      ],
+      "kind": "full_partial",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3009,
+        3014
+      ],
+      "kind": "independent_collier",
+      "maximum_residual": "1",
+      "status": "mismatched",
+      "target_1e8_met": false
+    },
+    {
+      "actions": [
+        3010,
+        3014
+      ],
+      "kind": "partial_independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": false
+    },
+    {
+      "actions": [
+        3011,
+        3012
+      ],
+      "kind": "full_partial",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3011,
+        3015
+      ],
+      "kind": "independent_collier",
+      "maximum_residual": "0.001328503783968076507182373140791393336777901025039757623503226807035318255650764465262709528303390672",
+      "status": "mismatched",
+      "target_1e8_met": false
+    },
+    {
+      "actions": [
+        3012,
+        3015
+      ],
+      "kind": "partial_independent_collier",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3007,
+        3009
+      ],
+      "kind": "selector_finite_exact",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3007,
+        3011
+      ],
+      "kind": "selector_finite_exact",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3016,
+        3017
+      ],
+      "kind": "full_partial",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3016,
+        3028
+      ],
+      "kind": "independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3017,
+        3028
+      ],
+      "kind": "partial_independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3018,
+        3019
+      ],
+      "kind": "full_partial",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3018,
+        3029
+      ],
+      "kind": "independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3019,
+        3029
+      ],
+      "kind": "partial_independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3020,
+        3021
+      ],
+      "kind": "full_partial",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3020,
+        3030
+      ],
+      "kind": "independent_collier",
+      "maximum_residual": "1.407012868826294256993094267412168749988287843723051397366871404053504950360982232924914567938743268E-13",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3021,
+        3030
+      ],
+      "kind": "partial_independent_collier",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3016,
+        3018
+      ],
+      "kind": "selector_finite_exact",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3016,
+        3020
+      ],
+      "kind": "selector_finite_exact",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3022,
+        3023
+      ],
+      "kind": "full_partial",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3022,
+        3028
+      ],
+      "kind": "independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3023,
+        3028
+      ],
+      "kind": "partial_independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3024,
+        3025
+      ],
+      "kind": "full_partial",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3024,
+        3029
+      ],
+      "kind": "independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3025,
+        3029
+      ],
+      "kind": "partial_independent_collier",
+      "maximum_residual": "1",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3026,
+        3027
+      ],
+      "kind": "full_partial",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3026,
+        3030
+      ],
+      "kind": "independent_collier",
+      "maximum_residual": "2.424517407887808834304340893003467022146055246643432580487559997212327154703977430033005906445733668E-13",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3027,
+        3030
+      ],
+      "kind": "partial_independent_collier",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        3022,
+        3024
+      ],
+      "kind": "selector_finite_exact",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    },
+    {
+      "actions": [
+        3022,
+        3026
+      ],
+      "kind": "selector_finite_exact",
+      "maximum_residual": "0",
+      "status": "passed",
+      "target_1e8_met": null
+    }
+  ],
+  "effective_inputs_exact": true,
+  "initial_ieee": [
+    0,
+    0
+  ],
+  "mapping_witnesses": {
+    "108": {
+      "count": 210,
+      "nonzero_coefficient_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209
+      ],
+      "slot": "finite"
+    },
+    "109": {
+      "count": 210,
+      "nonzero_coefficient_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209
+      ],
+      "slot": "UV simple pole"
+    }
+  },
+  "model_ieee": [
+    32,
+    0
+  ],
+  "open_items": [
+    {
+      "action": 3001,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 4, 5]: conditioning 1.985573481977949e-3\")",
+      "kind": "refused"
+    },
+    {
+      "action": 3002,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 4, 5]: conditioning 1.985573481977949e-3\")",
+      "kind": "refused"
+    },
+    {
+      "action": 3003,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 4, 5]: conditioning 1.985573481977949e-3\")",
+      "kind": "refused"
+    },
+    {
+      "action": 3004,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 4, 5]: conditioning 1.985573481977949e-3\")",
+      "kind": "refused"
+    },
+    {
+      "action": 3005,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 4, 5]: conditioning 1.985573481977949e-3\")",
+      "kind": "refused"
+    },
+    {
+      "action": 3006,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 2, 4, 5]: conditioning 1.985573481977949e-3\")",
+      "kind": "refused"
+    },
+    {
+      "action": 3013,
+      "detail": [
+        32,
+        0,
+        37,
+        0,
+        1,
+        0,
+        -1
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3014,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        -1
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3015,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        -1
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3016,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3017,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3018,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3019,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3020,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3021,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3022,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3023,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3024,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3025,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3026,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3027,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3028,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3029,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3030,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "host_ieee"
+    },
+    {
+      "action": 3007,
+      "detail": "independent_collier",
+      "kind": "mismatched"
+    },
+    {
+      "action": 3009,
+      "detail": "independent_collier",
+      "kind": "mismatched"
+    },
+    {
+      "action": 3011,
+      "detail": "independent_collier",
+      "kind": "mismatched"
+    }
+  ],
+  "schema": 1,
+  "scope": "Independent exact common-input tensors only; no physical kinematic, amplitude or performance conclusion.",
+  "status": "open_acceptance_items"
+}

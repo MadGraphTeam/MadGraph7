@@ -1,0 +1,19 @@
+{
+  "mass_squared_binary64": [
+    "40c03da02c0a4a06",
+    "c06c7b736a456e1e"
+  ],
+  "mass_squared_promoted_binary128": [
+    "6000000000000000",
+    "400C03DA02C0A4A0",
+    "E000000000000000",
+    "C006C7B736A456E1"
+  ],
+  "origin": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/Cards/param_card_default.dat",
+  "private_driver_literal": "2.498770D0",
+  "schema": 1,
+  "scope": "Only private tensor mass override; model card and all other numerical objects unchanged",
+  "sha256": "1021dca10f11bb82d06080dfd61b8a04e9b9429e75f23d42625a2d741b56d2f8",
+  "z_mass_literal": "9.118800e+01",
+  "z_width_literal": "2.498770e+00"
+}

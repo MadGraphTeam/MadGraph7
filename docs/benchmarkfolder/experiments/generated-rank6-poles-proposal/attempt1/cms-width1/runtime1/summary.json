@@ -1,0 +1,36 @@
+{
+  "acceptance": false,
+  "cms_collier_stable_rows": 3,
+  "cms_ieee_flag_rows": 15,
+  "cms_refused_rows": 6,
+  "cms_stable_rows": 9,
+  "cms_tirust_dp_refusals": 6,
+  "cms_tirust_qp_successes": 6,
+  "combined_check_statuses": {
+    "passed": 61,
+    "refused": 27
+  },
+  "combined_open_items": {
+    "capture_refused": 5,
+    "ieee_flags": 123,
+    "input_policy_mismatch": 18,
+    "refused": 45
+  },
+  "combined_status": "open_acceptance_items",
+  "expected_mass_squared_words": [
+    "6000000000000000",
+    "400C03DA02C0A4A0",
+    "E000000000000000",
+    "C006C7B736A456E1"
+  ],
+  "fresh_captures": 2,
+  "new_rows": 15,
+  "performance_qualification": false,
+  "physical_amplitude_qualification": false,
+  "positive_width_fixture": 105,
+  "precise_timing_todo": "Hua-Sheng local machine; this diagnostic is not a timing measurement.",
+  "runtime_complete": true,
+  "schema": "madloop-tirust-cms-width-runtime-summary-v1",
+  "scope": "Completed private tensor diagnostic only; protocol completion does not imply numerical acceptance.",
+  "source_run_path": ".tirust-build/generated-rank6-poles-1/cms-width1/run1"
+}

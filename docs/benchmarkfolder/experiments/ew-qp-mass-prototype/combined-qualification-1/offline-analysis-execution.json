@@ -1,0 +1,18 @@
+{
+  "changed_inputs": {},
+  "command": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/continuation/additive-offline-analysis/analyze.py"
+  ],
+  "compiler_executed": false,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "elapsed_seconds": 4.60128237772733,
+  "native_rerun": false,
+  "returncode": 0,
+  "scope": "Offline input-axis comparison, never a completeness or amplitude-accuracy acceptance",
+  "source_sha256": "447166dbe1ff40ce29c8de0c594b975554751ddce1245c9c37d573af03a06976",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_sha256": "df593688b0de7b88bc495b4f7ed1c6b64b0491de22323e64fc5c1b44fdb3bd0f",
+  "timeout_seconds": 30
+}

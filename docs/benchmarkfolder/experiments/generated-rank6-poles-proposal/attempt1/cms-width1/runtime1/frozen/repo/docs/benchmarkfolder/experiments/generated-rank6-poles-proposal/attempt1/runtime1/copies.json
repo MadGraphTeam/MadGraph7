@@ -1,0 +1,198 @@
+{
+  "ew-console.log": {
+    "compression": null,
+    "path": "ew-console.log",
+    "raw_bytes": 793,
+    "raw_sha256": "25ea459bb951898115d8427c901db12ab3c706280e66732ceb3d5717c03c457f",
+    "sha256": "25ea459bb951898115d8427c901db12ab3c706280e66732ceb3d5717c03c457f"
+  },
+  "ew-loader.log": {
+    "compression": null,
+    "path": "ew-loader.log",
+    "raw_bytes": 1841,
+    "raw_sha256": "dad9fa888e74e85571e5ac87666f0de19e6f80c7bed921d92a3ab13271cf5f57",
+    "sha256": "dad9fa888e74e85571e5ac87666f0de19e6f80c7bed921d92a3ab13271cf5f57"
+  },
+  "ew-maps.snapshots/complete.txt": {
+    "compression": null,
+    "path": "ew-maps.snapshots/complete.txt",
+    "raw_bytes": 13598,
+    "raw_sha256": "0662d8077cf03c062de54185a02d35028e69698e65ab558f398ba83ea360b55e",
+    "sha256": "0662d8077cf03c062de54185a02d35028e69698e65ab558f398ba83ea360b55e"
+  },
+  "ew-maps.snapshots/first-incomplete.txt": {
+    "compression": null,
+    "path": "ew-maps.snapshots/first-incomplete.txt",
+    "raw_bytes": 3686,
+    "raw_sha256": "f7ffebeab19d2aac5e0d555289f43d3e15e42bee4b23cc2bb1716173ca94d415",
+    "sha256": "f7ffebeab19d2aac5e0d555289f43d3e15e42bee4b23cc2bb1716173ca94d415"
+  },
+  "ew-maps.snapshots/first-nonempty.txt": {
+    "compression": null,
+    "path": "ew-maps.snapshots/first-nonempty.txt",
+    "raw_bytes": 3686,
+    "raw_sha256": "f7ffebeab19d2aac5e0d555289f43d3e15e42bee4b23cc2bb1716173ca94d415",
+    "sha256": "f7ffebeab19d2aac5e0d555289f43d3e15e42bee4b23cc2bb1716173ca94d415"
+  },
+  "ew-maps.snapshots/first-read.txt": {
+    "compression": null,
+    "path": "ew-maps.snapshots/first-read.txt",
+    "raw_bytes": 3686,
+    "raw_sha256": "f7ffebeab19d2aac5e0d555289f43d3e15e42bee4b23cc2bb1716173ca94d415",
+    "sha256": "f7ffebeab19d2aac5e0d555289f43d3e15e42bee4b23cc2bb1716173ca94d415"
+  },
+  "ew-maps.snapshots/last-incomplete.txt": {
+    "compression": null,
+    "path": "ew-maps.snapshots/last-incomplete.txt",
+    "raw_bytes": 3686,
+    "raw_sha256": "f7ffebeab19d2aac5e0d555289f43d3e15e42bee4b23cc2bb1716173ca94d415",
+    "sha256": "f7ffebeab19d2aac5e0d555289f43d3e15e42bee4b23cc2bb1716173ca94d415"
+  },
+  "ew-maps.snapshots/last-nonempty.txt": {
+    "compression": null,
+    "path": "ew-maps.snapshots/last-nonempty.txt",
+    "raw_bytes": 13598,
+    "raw_sha256": "0662d8077cf03c062de54185a02d35028e69698e65ab558f398ba83ea360b55e",
+    "sha256": "0662d8077cf03c062de54185a02d35028e69698e65ab558f398ba83ea360b55e"
+  },
+  "ew-maps.snapshots/last-read.txt": {
+    "compression": null,
+    "path": "ew-maps.snapshots/last-read.txt",
+    "raw_bytes": 13598,
+    "raw_sha256": "0662d8077cf03c062de54185a02d35028e69698e65ab558f398ba83ea360b55e",
+    "sha256": "0662d8077cf03c062de54185a02d35028e69698e65ab558f398ba83ea360b55e"
+  },
+  "ew-maps.txt": {
+    "compression": null,
+    "path": "ew-maps.txt",
+    "raw_bytes": 13598,
+    "raw_sha256": "0662d8077cf03c062de54185a02d35028e69698e65ab558f398ba83ea360b55e",
+    "sha256": "0662d8077cf03c062de54185a02d35028e69698e65ab558f398ba83ea360b55e"
+  },
+  "ew/observer.txt": {
+    "compression": "gzip",
+    "path": "ew/observer.txt.gz",
+    "raw_bytes": 6062035,
+    "raw_sha256": "cab50bd47e6e846a387f930900de180d490542ff2b3724090fe447ed6234ee58",
+    "sha256": "328ca0628059fe8916658b53f100fc86c14fc70a32397ec14acf828c7d59677b"
+  },
+  "ew/param.log": {
+    "compression": null,
+    "path": "ew/param.log",
+    "raw_bytes": 936,
+    "raw_sha256": "0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635",
+    "sha256": "0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635"
+  },
+  "ew/records.txt": {
+    "compression": "gzip",
+    "path": "ew/records.txt.gz",
+    "raw_bytes": 7442570,
+    "raw_sha256": "677d9bef5c631c937172e20fb682d92a39d25e8c8383a14a4584738d11bdbc34",
+    "sha256": "bbcf1b83b3b22b9aacec9d840be2ce25ef32d21cc2a9ee90a792deb73ac898d3"
+  },
+  "execution.json": {
+    "compression": null,
+    "path": "execution.json",
+    "raw_bytes": 59585,
+    "raw_sha256": "b7930275a8a61b043d308d6cca1f556d20594d8181da191589df5e64663cad62",
+    "sha256": "b7930275a8a61b043d308d6cca1f556d20594d8181da191589df5e64663cad62"
+  },
+  "inputs-before.json": {
+    "compression": null,
+    "path": "inputs-before.json",
+    "raw_bytes": 2378,
+    "raw_sha256": "67c9fbda31db6c2f816bc7355afaac478e94cbb2d02a0439078858e4bbe39567",
+    "sha256": "67c9fbda31db6c2f816bc7355afaac478e94cbb2d02a0439078858e4bbe39567"
+  },
+  "qcd-console.log": {
+    "compression": null,
+    "path": "qcd-console.log",
+    "raw_bytes": 793,
+    "raw_sha256": "25ea459bb951898115d8427c901db12ab3c706280e66732ceb3d5717c03c457f",
+    "sha256": "25ea459bb951898115d8427c901db12ab3c706280e66732ceb3d5717c03c457f"
+  },
+  "qcd-loader.log": {
+    "compression": null,
+    "path": "qcd-loader.log",
+    "raw_bytes": 1841,
+    "raw_sha256": "f8ea9d534ac69732ec28995e740d43344ef081dc63907a4a2ef9552ab23dc1ad",
+    "sha256": "f8ea9d534ac69732ec28995e740d43344ef081dc63907a4a2ef9552ab23dc1ad"
+  },
+  "qcd-maps.snapshots/complete.txt": {
+    "compression": null,
+    "path": "qcd-maps.snapshots/complete.txt",
+    "raw_bytes": 13603,
+    "raw_sha256": "4704442f4253fb06708315e701134c22c471ece840e2877cefc547f33d0bf8ec",
+    "sha256": "4704442f4253fb06708315e701134c22c471ece840e2877cefc547f33d0bf8ec"
+  },
+  "qcd-maps.snapshots/first-incomplete.txt": {
+    "compression": null,
+    "path": "qcd-maps.snapshots/first-incomplete.txt",
+    "raw_bytes": 6256,
+    "raw_sha256": "e0563ef9f4e0b83d2a6d5631fcd788e443398830a22099102fe3c119bdccec87",
+    "sha256": "e0563ef9f4e0b83d2a6d5631fcd788e443398830a22099102fe3c119bdccec87"
+  },
+  "qcd-maps.snapshots/first-nonempty.txt": {
+    "compression": null,
+    "path": "qcd-maps.snapshots/first-nonempty.txt",
+    "raw_bytes": 6256,
+    "raw_sha256": "e0563ef9f4e0b83d2a6d5631fcd788e443398830a22099102fe3c119bdccec87",
+    "sha256": "e0563ef9f4e0b83d2a6d5631fcd788e443398830a22099102fe3c119bdccec87"
+  },
+  "qcd-maps.snapshots/first-read.txt": {
+    "compression": null,
+    "path": "qcd-maps.snapshots/first-read.txt",
+    "raw_bytes": 6256,
+    "raw_sha256": "e0563ef9f4e0b83d2a6d5631fcd788e443398830a22099102fe3c119bdccec87",
+    "sha256": "e0563ef9f4e0b83d2a6d5631fcd788e443398830a22099102fe3c119bdccec87"
+  },
+  "qcd-maps.snapshots/last-incomplete.txt": {
+    "compression": null,
+    "path": "qcd-maps.snapshots/last-incomplete.txt",
+    "raw_bytes": 6256,
+    "raw_sha256": "e0563ef9f4e0b83d2a6d5631fcd788e443398830a22099102fe3c119bdccec87",
+    "sha256": "e0563ef9f4e0b83d2a6d5631fcd788e443398830a22099102fe3c119bdccec87"
+  },
+  "qcd-maps.snapshots/last-nonempty.txt": {
+    "compression": null,
+    "path": "qcd-maps.snapshots/last-nonempty.txt",
+    "raw_bytes": 13603,
+    "raw_sha256": "4704442f4253fb06708315e701134c22c471ece840e2877cefc547f33d0bf8ec",
+    "sha256": "4704442f4253fb06708315e701134c22c471ece840e2877cefc547f33d0bf8ec"
+  },
+  "qcd-maps.snapshots/last-read.txt": {
+    "compression": null,
+    "path": "qcd-maps.snapshots/last-read.txt",
+    "raw_bytes": 13603,
+    "raw_sha256": "4704442f4253fb06708315e701134c22c471ece840e2877cefc547f33d0bf8ec",
+    "sha256": "4704442f4253fb06708315e701134c22c471ece840e2877cefc547f33d0bf8ec"
+  },
+  "qcd-maps.txt": {
+    "compression": null,
+    "path": "qcd-maps.txt",
+    "raw_bytes": 13603,
+    "raw_sha256": "4704442f4253fb06708315e701134c22c471ece840e2877cefc547f33d0bf8ec",
+    "sha256": "4704442f4253fb06708315e701134c22c471ece840e2877cefc547f33d0bf8ec"
+  },
+  "qcd/observer.txt": {
+    "compression": "gzip",
+    "path": "qcd/observer.txt.gz",
+    "raw_bytes": 4246036,
+    "raw_sha256": "ea8eec41bd5c870638d267553124d449dde644d57e47894479eb394164063f27",
+    "sha256": "1456b3792562155b4cb1ba4eabd8601d85316532780062991d1059759da72534"
+  },
+  "qcd/param.log": {
+    "compression": null,
+    "path": "qcd/param.log",
+    "raw_bytes": 1248,
+    "raw_sha256": "096b9ce6b50c43b806b7db1014a2dec56ebaaa0d6e7ac298d08251aa403fbf68",
+    "sha256": "096b9ce6b50c43b806b7db1014a2dec56ebaaa0d6e7ac298d08251aa403fbf68"
+  },
+  "qcd/records.txt": {
+    "compression": "gzip",
+    "path": "qcd/records.txt.gz",
+    "raw_bytes": 4842598,
+    "raw_sha256": "a8e7f7a730fdc9739798def769a7318e3d13695f5408fc13b8a5ffac59d762b8",
+    "sha256": "b52f008247a561f969a25d4f766f466ced932608d04a0fdb8eaedf1c75aee1f3"
+  }
+}
