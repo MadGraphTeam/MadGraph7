@@ -1092,7 +1092,10 @@ kinematics_improvement_binary64 = false  # true: also improve binary64 evaluatio
   `"rescaling"`, and where that refuses too the point is evaluated as given
   with a typed warning. Exact on points whose beams are along z. A final
   state of small |pz| moves by about sqrt(2 E dE) rather than by the input's
-  defect (up to about 1e-8 relative on values; MadLoop behaves so).
+  defect (up to about 1e-8 relative on values; MadLoop behaves so), and one
+  whose given energy lies below its transverse mass keeps a shell defect of
+  the input's order (MadLoop takes |E^2 - pT^2 - m^2|), which the record
+  flags with `kinematics-inexact`.
 * `"rescaling"` is MadLoop's `ImprovePSPoint = 1` (after PSMC; the fallback
   is `"z-shift"`): the last particle balances the 3-momentum, every
   3-momentum is scaled (particle 1 by x^2, the others by x, x from Newton on
