@@ -2823,10 +2823,12 @@ def is_virtual_target(target: object) -> bool:
 
 
 def _initial_invariant(point: Sequence[Sequence[object]], initial: int) -> str:
-    total = [
-        math.fsum(float(cast(Any, p[mu])) for p in point[:initial]) for mu in range(4)
-    ]
-    return repr(total[0] ** 2 - total[1] ** 2 - total[2] ** 2 - total[3] ** 2)
+    """mu_R^2 = s of the initial state in binary64 (``induced.
+    initial_invariant``, the convention of the probes and of check)."""
+
+    from pyamplicol.loops.v2.induced import initial_invariant
+
+    return repr(initial_invariant(point, initial, exact=False))
 
 
 def profile_virtual(

@@ -638,8 +638,12 @@ tree propagator breaks the identities; the complex-mass scheme is gauge
 invariant and keeps its widths), as the generation-time probes do. Checks run
 at `--points N` (default 3, `check.points`) seeded phase-space points
 (`--seed S`, default `generation.validation.seed`) of the generation's
-validation convention, lifted to exact momentum conservation, at mu_R^2 = the
-squared invariant mass of the initial state, on NinjaRS at every carrier:
+validation convention (decays at rest; scatterings in the centre-of-mass
+frame at sqrt(s) = max(1000, final threshold + 100) for massless beams,
+twice the larger threshold for massive ones; `--sqrt-s E`, `check.sqrt_s`,
+sets a scattering's energy in the model's mass unit, above its threshold),
+lifted to exact momentum conservation, at mu_R^2 = the squared invariant mass
+of the initial state, on NinjaRS at every carrier:
 
 | Check | Born-interfered | Loop-induced | Criterion |
 | --- | --- | --- | --- |
@@ -653,10 +657,13 @@ row whose binary64 run fails, is refused or is out of its criterion's scope
 1e-5 or that carries no estimate; a Ward row with E above 1e-9 of the
 physical scale or without an estimate); `double` or `double-double` runs one
 carrier alone, and there a row out of its carrier's scope reads "not run"
-(exit 3), never a failure or a pass. A sector Catani's operators do not
-predict (a QCD correction of a process with photon-exchange Borns, ...) is
-listed as "no prediction" with its reason (as is any sector the evaluation
-formed no pole row for); a check that does not apply (no
+(exit 3), never a failure or a pass. When binary64 evaluated a point and
+the double-double run is refused, the rows binary64 left undecided keep its
+verdict and say that double-double was refused. A sector Catani's operators
+do not predict (a QCD correction of a process with photon-exchange Borns,
+...) is listed as "no prediction" with its reason; a sector they predict
+that got no pole row at a point reads "not run" (exit 3: an applicable
+check did not run); a check that does not apply (no
 external gluon or photon, no massive vector, a unitary-gauge request) reads
 "not applicable" with the reason; a Goldstone side the engine refuses reads
 "not run". None of these is a pass.
@@ -675,7 +682,7 @@ nothing to check (or an applicable check did not run). `--json` returns the
 `expression`, `contribution`, `widths`, `zeroed_widths`, `reduction`,
 `status`, `seconds` and `rows` with the fields above); `source` names the run
 card or artifact checked. Python: `pyamplicol.api.check(target, points=...,
-seed=..., precision=..., model=...)`.
+seed=..., precision=..., model=..., sqrt_s=...)`.
 
 Cost: one probe-slice generation per process (about the generation's own
 cost: the request-model preparation included) plus a few evaluations per

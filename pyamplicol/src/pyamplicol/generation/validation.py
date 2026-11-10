@@ -82,11 +82,14 @@ def build_process_validation_point(
     *,
     process_id: str,
     seed: int,
+    sqrt_s: float | None = None,
 ) -> ValidationPointRecord:
-    """Build validation momenta without requiring a materialized DAG."""
+    """Build validation momenta without requiring a materialized DAG.
+    ``sqrt_s`` replaces the centre-of-mass energy of a 2 -> n scattering
+    (n >= 2) (None: the convention of ``_build_particles``)."""
 
     try:
-        particles = _build_particles(process, model, seed=seed)
+        particles = _build_particles(process, model, seed=seed, sqrt_s=sqrt_s)
     except (ArithmeticError, KeyError, RuntimeError, ValueError) as exc:
         return ValidationPointRecord(
             process_id=process_id,
@@ -176,6 +179,7 @@ def _build_particles(
     model: Model,
     *,
     seed: int,
+    sqrt_s: float | None = None,
 ) -> tuple[tuple[int, FourMomentum], ...]:
     """One on-shell point of ``process`` from the model's masses.
 
@@ -186,7 +190,9 @@ def _build_particles(
     beams keep the historical ``sqrt(s) = max(1000, final threshold + 100)``
     exactly (their points are byte-identical). A 2 -> 1 scattering takes
     ``sqrt(s)`` = the final mass. A process has one or two initial particles
-    (``processes.model.require_external_leg_counts``).
+    (``processes.model.require_external_leg_counts``). A given ``sqrt_s``
+    replaces the energy of a 2 -> n scattering (n >= 2) and must exceed both
+    thresholds; a decay or a 2 -> 1 point has no free energy and refuses it.
     """
 
     initial_pdgs = tuple(int(pdg) for pdg in process.initial_pdgs)
@@ -200,6 +206,11 @@ def _build_particles(
     initial_masses = tuple(_mass(model, pdg) for pdg in initial_pdgs)
     final_masses = tuple(_mass(model, pdg) for pdg in final_pdgs)
     threshold = sum(final_masses)
+    if sqrt_s is not None and (len(initial_pdgs) == 1 or len(final_pdgs) == 1):
+        raise ValueError(
+            "a validation energy applies to 2 -> n scatterings with n >= 2 (a "
+            "decay or a 2 -> 1 point has no free energy)"
+        )
     if len(initial_pdgs) == 1:
         (mass,) = initial_masses
         if len(final_pdgs) < 2 or not mass > threshold:
@@ -229,11 +240,18 @@ def _build_particles(
         sqrt_s = threshold
         final_momenta: tuple[FourMomentum, ...] = ((float(sqrt_s), 0.0, 0.0, 0.0),)
     else:
-        sqrt_s = (
-            max(1000.0, threshold + 100.0)
-            if beams == 0.0
-            else _MASSIVE_BEAM_SCALE * max(threshold, beams)
-        )
+        if sqrt_s is None:
+            sqrt_s = (
+                max(1000.0, threshold + 100.0)
+                if beams == 0.0
+                else _MASSIVE_BEAM_SCALE * max(threshold, beams)
+            )
+        elif not (math.isfinite(sqrt_s) and sqrt_s > max(threshold, beams)):
+            raise ValueError(
+                f"no validation point at sqrt(s) = {sqrt_s!r}: it must exceed the "
+                f"final-state threshold {threshold!r} and the beams' total mass "
+                f"{beams!r}"
+            )
         final_momenta = massive_rambo_final_state(
             len(final_pdgs),
             sqrt_s=sqrt_s,

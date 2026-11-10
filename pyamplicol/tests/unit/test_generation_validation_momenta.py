@@ -105,3 +105,35 @@ def test_a_closed_decay_has_no_point():
     assert "decay of mass 4.7" in record.error
     assert not _point((24,), (6,)).available  # one final state: no decay
     assert math.isfinite(_point((6,), (5, 24)).particles[1][1][0])
+
+
+def test_a_given_energy_replaces_the_scattering_convention():
+    """``sqrt_s`` (``pyamplicol check --sqrt-s``) replaces a 2 -> n
+    scattering's energy; it must exceed both thresholds, and a decay or a
+    2 -> 1 point has no free energy to set."""
+
+    record = build_process_validation_point(
+        _process((2, -2), (6, -6, 21)), _Model(), process_id="p", seed=7, sqrt_s=2500.0
+    )
+    final = massive_rambo_final_state(
+        3, sqrt_s=2500.0, masses=(173.0, 173.0, 0.0), seed=7
+    )
+    assert record.particles == (
+        (2, (1250.0, 0.0, 0.0, 1250.0)),
+        (-2, (1250.0, 0.0, 0.0, -1250.0)),
+        *zip((6, -6, 21), final, strict=True),
+    )
+    massive = build_process_validation_point(
+        _process((6, -6), (21, 21)), _Model(), process_id="p", seed=7, sqrt_s=1000.0
+    )
+    _assert_on_shell_and_conserved(massive, 2)
+    assert sum(m[0] for _pdg, m in massive.particles[:2]) == pytest.approx(1000.0)
+    below = build_process_validation_point(
+        _process((2, -2), (6, -6, 21)), _Model(), process_id="p", seed=7, sqrt_s=300.0
+    )
+    assert not below.available and "threshold" in below.error
+    for initial, final in (((6,), (5, 24)), ((2, -2), (6,))):
+        fixed = build_process_validation_point(
+            _process(initial, final), _Model(), process_id="p", seed=7, sqrt_s=500.0
+        )
+        assert not fixed.available and "no free energy" in fixed.error
