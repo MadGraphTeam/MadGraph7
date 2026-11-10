@@ -1,8 +1,10 @@
 #pragma once
 
 #include <array>
+#include <limits>
 #include <optional>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -19,6 +21,65 @@
 #include "madspace/phasespace.hpp"
 
 namespace madspace {
+
+/**
+ * Sums over the events that entered a weighting step, for the ratio estimate of
+ * the step, see @ref ratio. Weights are absolute: the weight an event carries
+ * is its expected contribution to the integral, so that events of jobs with
+ * different maximum weights can be added.
+ */
+struct StepSums {
+    std::size_t n = 0;
+    /// Weight when entering the step.
+    double a = 0., aa = 0.;
+    /// Absolute weight after the ratio of the step, and its product with `a`.
+    double b = 0., ab = 0., bb = 0.;
+    /// Signed weight after the ratio, with the bias divided out, and its
+    /// product with `a`.
+    double sb = 0., a_sb = 0., sb2 = 0.;
+    /// Weight after the ratio relative to the maximum of the last unweighting,
+    /// the weight that an unweighting step unweights, and its square.
+    double u = 0., u2 = 0.;
+
+    void operator+=(const StepSums& other) {
+        n += other.n;
+        a += other.a;
+        aa += other.aa;
+        b += other.b;
+        ab += other.ab;
+        bb += other.bb;
+        sb += other.sb;
+        a_sb += other.a_sb;
+        sb2 += other.sb2;
+        u += other.u;
+        u2 += other.u2;
+    }
+    /// Relative standard deviation of the weight after the step, in units of
+    /// the maximum of the last unweighting. NaN with fewer than two events.
+    double weight_rsd() const {
+        if (n < 2 || !(u > 0)) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        double mean = u / n;
+        double variance = std::max(0., u2 / n - mean * mean) * n / (n - 1);
+        return std::sqrt(variance) / mean;
+    }
+    /// The ratio of the weight after to the weight before the step, averaged
+    /// with the weights before the step, and the variance of that estimate.
+    /// NaN with fewer than two events.
+    std::pair<double, double> ratio(bool with_sign) const {
+        if (n < 2 || !(a > 0)) {
+            double nan = std::numeric_limits<double>::quiet_NaN();
+            return {nan, nan};
+        }
+        double num = with_sign ? sb : b;
+        double cross = with_sign ? a_sb : ab;
+        double num2 = with_sign ? sb2 : bb;
+        double r = num / a;
+        double residual = std::max(0., num2 - 2 * r * cross + r * r * aa);
+        return {r, static_cast<double>(n) / (n - 1) * residual / (a * a)};
+    }
+};
 
 /// Events of one job that passed all re- and unweighting steps, see
 /// @ref WeightingPipeline.
@@ -41,12 +102,27 @@ struct StepEvents {
     std::vector<double> biases;
     /// Number of points generated for these events.
     std::size_t generated_count;
+    /// Number of those points that passed the cuts.
+    std::size_t generated_count_after_cuts = 0;
+    /// Per step, the sums over the events that entered it.
+    std::vector<StepSums> sums;
 };
 
-/// Sums of the final weights over the generated points.
+/// Number of generated points behind events that went through all steps.
 struct StepIntegral {
     std::size_t count = 0;
-    double sum = 0., sum2 = 0., abs_sum = 0., abs_sum2 = 0.;
+    std::size_t count_after_cuts = 0;
+    /// Per step, the sums over the events that entered it.
+    std::vector<StepSums> sums;
+};
+
+/// Statistics of one weighting step of a channel.
+struct StepStatistics {
+    bool unweight;
+    /// Events that entered and passed the step, counted as if the current
+    /// maximum weights had been used all along.
+    double entered, passed;
+    StepSums sums;
 };
 
 /**
@@ -189,7 +265,9 @@ public:
     const std::array<bool, 3>& provided_indices() const { return _provided_indices; }
 
     /// Integral of the final weights: after the last re- or unweighting step,
-    /// or the weights of the integrand without steps.
+    /// or the weights of the integrand without steps. With steps, it is the
+    /// integral of the first step times the ratios of the steps, each averaged
+    /// over the events that entered the step.
     struct IntegralEstimate {
         double mean;
         double variance;
@@ -197,8 +275,9 @@ public:
         double variance_abs;
         std::size_t count;
     };
-    /// See @ref IntegralEstimate. With steps, but no events through all of
-    /// them yet, the integral of the first step.
+    /// See @ref IntegralEstimate. With steps, but fewer than two events in
+    /// one of them yet, the integral of the first step. The errors assume that
+    /// the estimates of the first step and of the steps are independent.
     IntegralEstimate result_integral() const;
     /// The integral of the first step, see @ref IntegralEstimate.
     IntegralEstimate first_step_integral() const;
@@ -259,26 +338,34 @@ public:
     /// of the steps, which are updated with the target count of each job. Like
     /// @ref set_target_count for the first maximum.
     void apply_step_truncation_budgets();
-    /// Count `count` events accepted by step `step`, which passed the earlier
-    /// unweightings with the maxima `max_weight` (first step) and
-    /// `max_weights` (the steps before).
-    void add_step_accepted(
+    /// Record that `entered` events went into step `step` and `passed` came
+    /// out. The events passed the earlier unweightings with the maxima
+    /// `max_weight` (first step) and `max_weights` (the steps before). The
+    /// integral is not changed, see @ref add_step_integral.
+    void add_step_statistics(
         std::size_t step,
-        double count,
+        std::size_t entered,
+        std::size_t passed,
         double max_weight,
         const std::vector<double>& max_weights
     );
-    /// Estimated number of events accepted by the first unweighting and each
-    /// step so far; without steps, just @ref GeneratorStatus::count_unweighted.
-    std::vector<double> step_accepted_counts() const {
-        if (_step_settings.empty()) {
-            return {_status.count_unweighted};
-        }
-        std::vector<double> counts{_first_step_count};
-        for (auto& state : _step_states) {
-            counts.push_back(state.count_accepted);
-        }
-        return counts;
+    /// Statistics of each step, in order.
+    std::vector<StepStatistics> step_statistics() const;
+    /// Events accepted by the first unweighting, counted as if the current
+    /// maximum weight had been used all along.
+    double first_step_count() const { return _first_step_count; }
+    /// Generated points behind the final events counted in
+    /// @ref GeneratorStatus::count_unweighted. With steps, only the points of
+    /// jobs whose events went through all steps, so that the quotient is not
+    /// distorted by jobs still in the steps.
+    double count_opt_completed() const {
+        return _step_settings.empty() ? _status.count_opt : _completed.count;
+    }
+    /// Like @ref count_opt_completed, for the points after the cuts.
+    double count_after_cuts_opt_completed() const {
+        return _step_settings.empty()
+            ? _status.count_after_cuts_opt
+            : _completed.count_after_cuts;
     }
     /// Count `count` events accepted by the first unweighting with
     /// `job_max_weight`, with steps.
@@ -290,7 +377,8 @@ public:
     void write_step_events(const StepEvents& step_events);
     /// The contribution of `step_events` to the integral of the final weights.
     StepIntegral step_integral(const StepEvents& step_events) const;
-    /// Add to the integral of the final weights.
+    /// Add the generated points and the step sums of finished events to the
+    /// integral of the final weights.
     void add_step_integral(const StepIntegral& integral);
     /// Pack `step_events` into an event buffer and a weight buffer (layouts
     /// @ref event_file_layout and @ref weight_layout).
@@ -366,6 +454,9 @@ private:
         bool max_weight_fixed = false;
         std::vector<double> large_weights;
         double count_accepted = 0.;
+        // the events that entered the step, see count_accepted
+        double count_entered = 0.;
+        StepSums sums;
         // like _freeze_count, the expected accepted events of this step alone
         double freeze_count = 0.;
     };
@@ -470,7 +561,7 @@ private:
     // expected number of unweighted events, counted in the commit order of the
     // jobs to freeze the maximum weight independently of the thread timing
     double _freeze_count = 0.;
-    StepIntegral _final_integral;
+    StepIntegral _completed;
     std::size_t _event_epoch = 0;
     std::optional<std::size_t> _first_pass_freeze_max_weight_after;
 

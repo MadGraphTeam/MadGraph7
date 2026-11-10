@@ -248,8 +248,27 @@ private:
     );
     // run the re- and unweighting steps of all collected events
     void drain_pipeline();
-    // unweighting efficiency of each pass, the first one before and after cuts
-    std::tuple<double, double, std::vector<double>> pass_efficiencies() const;
+    // Statistics of the passes: the first unweighting, then the steps. A step
+    // that does not unweight has no efficiency (NaN). The efficiencies and
+    // RSDs only use events that have gone through the pass, whatever is still
+    // in later passes.
+    struct PassStatistics {
+        bool unweight;
+        double efficiency;
+        // relative standard deviation of the weight leaving the pass, since the
+        // last unweighting
+        double rsd;
+    };
+    struct PassSummary {
+        double first_efficiency_after_cuts;
+        std::vector<PassStatistics> passes;
+    };
+    PassSummary pass_statistics() const;
+    // Overall unweighting efficiency of the events that have gone through all
+    // passes, NaN if there are none.
+    double unweighting_efficiency(bool after_cuts) const;
+    // formats the pass efficiencies and RSDs, "-" for NaN
+    std::pair<std::string, std::string> pass_strings() const;
     // start the jobs of the steps whose batches are full, and the partial ones
     // once the generation jobs leave threads idle
     std::size_t start_pipeline_jobs();
