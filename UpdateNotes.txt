@@ -5,6 +5,13 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   TH: [amplicol] lc_flavors = two_lines_resample (the new default): the leading-colour
+       pass only samples the flavours with at most two quark lines, and the full-colour
+       pass switches events to the others (all initial states and both beam
+       orientations), in proportion to the leading colour of all flavours at the event,
+       with weights that stay within a few per cent of one. lc_flavors = two_lines keeps
+       neglecting them, lc_flavors = all samples every flavour at leading colour; the
+       proof-of-concept initial_sum is removed. Needs a regenerated [amplicol] output.
    OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
        light jets starts from now also includes the core-process scale of the clustering
        (madevent's central factorisation scale for scalefact = 1), so it no longer drops

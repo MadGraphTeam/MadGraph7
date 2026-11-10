@@ -983,7 +983,24 @@ class MadgraphSubprocess:
                 cond_dim += perm_count
 
             discrete_flavor = channel.discrete_flavor
-            if discrete_flavor is not None:
+            if (discrete_flavor is not None and madnis_args["flavor_levels"]
+                    and not self.process.leptonic):
+                initials, contents, weights = self.flavor_levels()
+                discrete_flavor = ms.DiscreteFlavorLevels(
+                    flavor_initials=initials,
+                    flavor_contents=contents,
+                    flavor_weights=weights,
+                    prefix=f"{prefix}.discrete_flavor_levels",
+                    condition_dim=cond_dim,
+                    prior_floor=madnis_args["flavor_prior_floor"],
+                    logit_bound=madnis_args["flavor_logit_bound"],
+                    subnet_hidden_dim=self.madnis_settings["discrete_hidden_dim"],
+                    subnet_layers=madnis_args["discrete_layers"],
+                    subnet_activation=self.activation(madnis_args["discrete_activation"]),
+                    subnet_precision=self.nn_precision(),
+                )
+                discrete_flavor.initialize_globals(self.process.contexts[0], seed)
+            elif discrete_flavor is not None:
                 discrete_flavor = ms.DiscreteFlow(
                     option_counts=[len(self.meta["flavors"])],
                     prefix=f"{prefix}.discrete_flow_flavor",
@@ -1169,6 +1186,38 @@ class MadgraphSubprocess:
             matrix_elements.append(mat)
         return matrix_elements
 
+    def resolved_flavors(self) -> list[dict]:
+        """The flavours of the integrand, those of the merged subprocesses
+        resolved, in the order of build_integrands."""
+        flavors = []
+        for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                subproc_index = self.meta["subprocesses"][flav["subprocess"]]
+                flav = self.unmerged_meta[subproc_index]["flavors"][flav["flavor"]]
+            flavors.append(flav)
+        return flavors
+
+    def flavor_levels(self) -> tuple[list[int], list[int], list[float]]:
+        """For ms.DiscreteFlavorLevels, per flavour its initial state, its
+        final-state content (given the initial state) and its weight, the factor
+        of its prior that the parton densities do not give."""
+        initials, contents, weights = {}, {}, []
+        flavor_initials, flavor_contents = [], []
+        for flav in self.resolved_flavors():
+            pdgs = flav["options"][0]
+            initial = tuple(pdgs[:2])
+            content = (initial, tuple(sorted(pdgs[2:])))
+            flavor_initials.append(initials.setdefault(initial, len(initials)))
+            flavor_contents.append(contents.setdefault(content, len(contents)))
+            factor = flav.get("prior_factor", flav.get("factor", len(flav["options"])))
+            weights.append(factor * (2. if flav["mirror"] else 1.))
+        return flavor_initials, flavor_contents, weights
+
+    def parton_density_output(self) -> bool:
+        """Whether the events carry the parton densities of all partons, for a
+        weighting step that switches their flavour."""
+        return False
+
     def build_integrands(
         self,
         phasespace: PhaseSpace,
@@ -1183,15 +1232,12 @@ class MadgraphSubprocess:
         flavor_subproc_indices = []
         flavor_per_subproc_remap = []
 
-        for flav in self.meta["flavors"]:
+        for merged, flav in zip(self.meta["flavors"], self.resolved_flavors()):
             if self.unmerged_meta is not None:
-                diff_xs_index = flav["subprocess"]
-                subproc_index = self.meta["subprocesses"][diff_xs_index]
-                ps_flavor = flav["flavor"]
+                diff_xs_index = merged["subprocess"]
                 flavor_diff_xs_indices.append(diff_xs_index)
-                flavor_subproc_indices.append(subproc_index)
-                flavor_per_subproc_remap.append(ps_flavor)
-                flav = self.unmerged_meta[subproc_index]["flavors"][ps_flavor]
+                flavor_subproc_indices.append(self.meta["subprocesses"][diff_xs_index])
+                flavor_per_subproc_remap.append(merged["flavor"])
             flavors.append(flav["options"][0])
             flavor_remap.append(flav["index"])
             flavor_factors.append(flav.get("factor", len(flav["options"])))
@@ -1264,6 +1310,7 @@ class MadgraphSubprocess:
                 None if self.process.leptonic else self.process.pdf_grid2,
                 phasespace.mapping_chan_weights,
                 mlm_history_qcd_power,
+                parton_density_output=self.parton_density_output() and not madnis_training,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

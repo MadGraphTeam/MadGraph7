@@ -8,6 +8,7 @@
 #include "phasespace/cross_section.hpp"
 #include "phasespace/custom_function.hpp"
 #include "phasespace/cuts.hpp"
+#include "phasespace/discrete_flavor_levels.hpp"
 #include "phasespace/discrete_flow.hpp"
 #include "phasespace/discrete_sampler.hpp"
 #include "phasespace/flow.hpp"

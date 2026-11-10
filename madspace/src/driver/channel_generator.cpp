@@ -768,7 +768,7 @@ void ChannelEventGenerator::clear_events() {
     _large_weights.clear();
     _first_step_count = 0.;
     _freeze_count = 0.;
-    _final_integral = {};
+    _completed = {};
     ++_event_epoch;
     for (auto& state : _step_states) {
         if (!state.max_weight_fixed) {
@@ -776,6 +776,8 @@ void ChannelEventGenerator::clear_events() {
         }
         state.large_weights.clear();
         state.count_accepted = 0.;
+        state.count_entered = 0.;
+        state.sums = {};
         state.freeze_count = 0.;
     }
     for (auto& hist : _histograms) {
@@ -845,6 +847,7 @@ void ChannelEventGenerator::apply_truncation_budget() {
                 _freeze_count *= _max_weight / w;
                 for (auto& state : _step_states) {
                     state.count_accepted *= _max_weight / w;
+                    state.count_entered *= _max_weight / w;
                 }
                 _max_weight = w;
                 _unweighted_count = 0;
@@ -1189,24 +1192,44 @@ ChannelEventGenerator::first_step_integral() const {
 }
 
 ChannelEventGenerator::IntegralEstimate ChannelEventGenerator::result_integral() const {
-    if (_step_settings.empty() || _final_integral.count == 0) {
-        return first_step_integral();
+    auto first = first_step_integral();
+    if (_step_settings.empty() || first.count == 0) {
+        return first;
     }
-    auto& integral = _final_integral;
-    double count = static_cast<double>(integral.count);
-    auto variance = [&](double sum2, double mean) {
-        return integral.count > 1
-            ? std::max(0., (sum2 - count * mean * mean) / (count - 1))
-            : 0.;
-    };
-    double mean = integral.sum / count;
-    double mean_abs = integral.abs_sum / count;
+    double count = static_cast<double>(first.count);
+    // Product of the first integral and the ratios of the steps, with the
+    // errors propagated as for independent factors. The signed integral takes
+    // the signed ratio of the last step.
+    double mean_abs = first.mean_abs;
+    double var_abs = first.variance_abs / count;
+    double mean = mean_abs, var = var_abs;
+    for (std::size_t i = 0; i < _step_states.size(); ++i) {
+        auto& sums = _step_states.at(i).sums;
+        auto [ratio_abs, ratio_var_abs] = sums.ratio(false);
+        if (!std::isfinite(ratio_abs) || !std::isfinite(ratio_var_abs)) {
+            return first;
+        }
+        bool last = i + 1 == _step_states.size();
+        auto [ratio, ratio_var] = last
+            ? sums.ratio(true)
+            : std::pair<double, double>{ratio_abs, ratio_var_abs};
+        if (last) {
+            // the signed integral starts from the absolute one before this step
+            mean = mean_abs * ratio;
+            var = mean_abs * mean_abs * ratio_var + ratio * ratio * var_abs +
+                ratio_var * var_abs;
+        }
+        double new_var_abs = mean_abs * mean_abs * ratio_var_abs +
+            ratio_abs * ratio_abs * var_abs + ratio_var_abs * var_abs;
+        mean_abs *= ratio_abs;
+        var_abs = new_var_abs;
+    }
     return {
         .mean = mean,
-        .variance = variance(integral.sum2, mean),
+        .variance = var * count,
         .mean_abs = mean_abs,
-        .variance_abs = variance(integral.abs_sum2, mean_abs),
-        .count = integral.count,
+        .variance_abs = var_abs * count,
+        .count = first.count,
     };
 }
 
@@ -1386,6 +1409,10 @@ void ChannelEventGenerator::apply_step_truncation_budget(
                 _status.count_unweighted *= factor;
                 for (std::size_t i = step - 1; i < _step_states.size(); ++i) {
                     _step_states.at(i).count_accepted *= factor;
+                    // the events that entered this step did not see its maximum
+                    if (i > step - 1) {
+                        _step_states.at(i).count_entered *= factor;
+                    }
                 }
                 state.freeze_count *= factor;
                 state.max_weight = value;
@@ -1398,9 +1425,10 @@ void ChannelEventGenerator::apply_step_truncation_budget(
     large_weights.erase(large_weights.begin() + count, large_weights.end());
 }
 
-void ChannelEventGenerator::add_step_accepted(
+void ChannelEventGenerator::add_step_statistics(
     std::size_t step,
-    double count,
+    std::size_t entered,
+    std::size_t passed,
     double max_weight,
     const std::vector<double>& max_weights
 ) {
@@ -1411,7 +1439,22 @@ void ChannelEventGenerator::add_step_accepted(
             factor *= max_weights.at(i) / _step_states.at(i).max_weight;
         }
     }
-    _step_states.at(step - 1).count_accepted += count * factor;
+    auto& state = _step_states.at(step - 1);
+    state.count_entered += entered * factor;
+    state.count_accepted += passed * factor;
+}
+
+std::vector<StepStatistics> ChannelEventGenerator::step_statistics() const {
+    std::vector<StepStatistics> statistics;
+    for (auto [state, settings] : zip(_step_states, _step_settings)) {
+        statistics.push_back({
+            .unweight = settings.unweight,
+            .entered = state.count_entered,
+            .passed = state.count_accepted,
+            .sums = state.sums,
+        });
+    }
+    return statistics;
 }
 
 void ChannelEventGenerator::add_first_step_events(
@@ -1422,46 +1465,19 @@ void ChannelEventGenerator::add_first_step_events(
 }
 
 StepIntegral ChannelEventGenerator::step_integral(const StepEvents& step_events) const {
-    std::size_t step_count = _step_settings.size();
-    // the final weights in units of the cross section
-    double weight_unit = step_events.max_weight;
-    for (auto [settings, job_max_weight] :
-         zip(_step_settings, step_events.max_weights)) {
-        if (settings.unweight) {
-            weight_unit *= job_max_weight;
-        }
-    }
-    StepIntegral integral{.count = step_events.generated_count};
-    std::vector<double> ratios(step_count);
-    for (std::size_t i = 0; i < step_events.weights.size(); ++i) {
-        for (std::size_t k = 0; k < step_count; ++k) {
-            ratios.at(k) = step_events.ratios.at(k).at(i);
-        }
-        double weight = weight_unit *
-            evaluate_step_chain(
-                step_events.weights.at(i),
-                step_events.max_weight,
-                ratios.data(),
-                step_events.max_weights.data(),
-                _step_settings
-            )
-                .weight;
-        double xs_weight =
-            step_events.biases.empty() ? weight : weight / step_events.biases.at(i);
-        integral.sum += xs_weight;
-        integral.sum2 += xs_weight * xs_weight;
-        integral.abs_sum += std::abs(weight);
-        integral.abs_sum2 += weight * weight;
-    }
-    return integral;
+    return {
+        .count = step_events.generated_count,
+        .count_after_cuts = step_events.generated_count_after_cuts,
+        .sums = step_events.sums,
+    };
 }
 
 void ChannelEventGenerator::add_step_integral(const StepIntegral& integral) {
-    _final_integral.count += integral.count;
-    _final_integral.sum += integral.sum;
-    _final_integral.sum2 += integral.sum2;
-    _final_integral.abs_sum += integral.abs_sum;
-    _final_integral.abs_sum2 += integral.abs_sum2;
+    _completed.count += integral.count;
+    _completed.count_after_cuts += integral.count_after_cuts;
+    for (std::size_t i = 0; i < integral.sums.size(); ++i) {
+        _step_states.at(i).sums += integral.sums.at(i);
+    }
     update_status_integrals();
 }
 

@@ -61,7 +61,7 @@ def _defaults(run_card):
 class TestGridpackCard(unittest.TestCase):
     def test_card_without_amplicol_section(self):
         args = _defaults(_run_card(amplicol=None))
-        self.assertEqual(args.first_pass_max_overweight_truncation, 0.01)
+        self.assertEqual(args.first_pass_max_overweight_truncation, 0.001)
         self.assertEqual(args.first_pass_freeze_max_weight_after, 10000)
         self.assertEqual(args.max_overweight_truncation, 0.001)
 

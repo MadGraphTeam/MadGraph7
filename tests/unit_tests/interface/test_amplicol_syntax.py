@@ -135,6 +135,14 @@ class AmplicolExportTest(unittest.TestCase):
                                       {'mp0': ['u', 'd'], 'mp1': ['u~', 'd~']}))
         self.assertEqual(len(processes), 4)
 
+    def test_restricted_quark_flavours_keep_the_gluon(self):
+        self.cmd.exec_cmd('define p = g u d u~ d~', printcmd=False, precmd=True)
+        self.cmd.exec_cmd('define j = g u d u~ d~', printcmd=False, precmd=True)
+        _, (expression, multiparticles), _ = self.export('p p > e+ ve j j')
+        self.assertEqual(expression, 'mp0 mp0 > e+ ve mp0 mp0')
+        self.assertEqual(sorted(multiparticles['mp0']),
+                         sorted(['g', 'u', 'd', 'u~', 'd~']))
+
     def test_multiparticles(self):
         name, (expression, multiparticles), processes = self.export('p p > j j')
         self.assertEqual(name, 'pp_jj')
@@ -271,6 +279,34 @@ class AmplicolExportTest(unittest.TestCase):
                          [{'pdg': 6, 'legs': [2, 3, 4], 'color': 3}])
 
 
+    def test_switch_targets_get_their_resonance_charges(self):
+        """The targets of the flavour switch are written with the charges of
+        their decay legs, and without a resonance they cannot decay to."""
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        metadata = {
+            'pdg_ids': [[2, -1, -11, 12, 21]],
+            'provider': {'incoming_count': 2, 'masses': [0.] * 5,
+                         'supports_alpha_s': True},
+            'channels': [{
+                'phasespace_order': [0, 4, 1, 2, 3],
+                'phasespace_channels': [
+                    {'phasespace_order': [0, 4, 1, 2, 3],
+                     'resonances': [{'pdg': 24, 'legs': [2, 3]}]}],
+                'processes': [{'multichannels': [0], 'color_flows': 0,
+                               'matrix_elements': [{'pdg_ids': 0, 'factor': 1}]}],
+            }],
+            'color_flows': [], 'helicities': [], 'runtime_processes': [],
+        }
+        partons = {21, 1, 2, 3, 4, -1, -2, -3, -4}
+        switch = ('SubProcesses/A1/reweight/flavor_switch_p0.json', {'targets': [
+            [2, -1, -11, 12, 21], [1, -2, 11, -12, 21], [2, -2, 11, -11, 21]]})
+        entry = export_amplicol.subprocess_entries(
+            metadata, self.cmd._curr_model, 'SubProcesses/A1', 'me.so', 'ratio.so',
+            3, [partons, partons], switch)[0]
+        self.assertEqual(entry['flavor_switch'], switch[0])
+        self.assertEqual(entry['switch_resonance_pdgs'], [[[24]], [[-24]], [[0]]])
+
+
 class AmplicolLaunchResonancesTest(unittest.TestCase):
     """The s-channel resonances of an [amplicol] subprocess are fixed at output;
     the launch keeps those that go on shell with the param card values."""
@@ -342,3 +378,123 @@ class AmplicolLaunchResonancesTest(unittest.TestCase):
         widths[6] = 1.5
         with self.assertRaisesRegex(RuntimeError, 'coloured s-channel resonance 6'):
             self.active(masses, widths)
+
+
+class AmplicolLeadingColourFlavoursTest(unittest.TestCase):
+    """The flavours of the leading-colour pass: their sampling prior factors
+    and the two_lines selection."""
+
+    def setUp(self):
+        try:
+            from madgraph.mg7 import subprocess_amplicol
+        except ImportError:
+            self.skipTest('madspace is not installed')
+        self.module = subprocess_amplicol
+        flavor = lambda pdgs, factor, mirror, channels: {
+            'index': 0, 'options': [pdgs], 'factor': factor, 'mirror': mirror,
+            'channels': channels}
+        self.meta = {'flavors': [
+            flavor([21, 21, 21, 21], 2., False, [0]),
+            flavor([2, -2, 21, 21], 1., True, [0, 1]),
+            flavor([2, -2, 1, -1], 3., True, [0, 2]),
+            flavor([2, -2, 2, -2], 1., True, [0]),
+            flavor([2, 1, 2, 1], 1., True, [0, 1, 2]),
+        ]}
+        for index, flavor in enumerate(self.meta['flavors']):
+            flavor['index'] = index
+
+    def test_prior_factors_share_the_partner_channels(self):
+        on = self.module.with_prior_factors(self.meta, True)
+        off = self.module.with_prior_factors(self.meta, False)
+        self.assertEqual([f['prior_factor'] for f in on['flavors']],
+                         [2., 0.5, 1.5, 1., 1. / 3])
+        self.assertEqual([f['prior_factor'] for f in off['flavors']],
+                         [2., 1., 3., 1., 1.])
+
+    def test_two_lines_drops_three_quark_lines(self):
+        flavors = self.meta['flavors'] + [{
+            'index': 5, 'options': [[2, -2, 1, -1, 3, -3]], 'factor': 1.,
+            'mirror': True, 'channels': [0]}]
+        kept = self.module.lc_flavors({'flavors': flavors}, 'two_lines')
+        self.assertEqual([f['index'] for f in kept['flavors']], [0, 1, 2, 3, 4])
+        self.assertIs(self.module.lc_flavors(self.meta, 'all'), self.meta)
+        resampled = self.module.lc_flavors({'flavors': flavors}, 'two_lines_resample')
+        self.assertEqual(resampled['flavors'], kept['flavors'])
+
+    def test_event_flavors_follow_lc_flavors(self):
+        from types import SimpleNamespace
+        from madgraph.mg7.madgraph_process import MadgraphProcess
+        flavors = self.meta['flavors'] + [{
+            'index': 5, 'options': [[1, -1, 2, -2, 3, -3]], 'factor': 1.,
+            'mirror': True, 'channels': [0]}]
+        meta = {'backend': 'amplicol', 'flavors': flavors, 'qcd_power': 4}
+        process = SimpleNamespace(
+            run_card={'amplicol': {'lc_flavors': 'two_lines'}}, subprocess_data=[meta])
+        self.assertEqual([f['index'] for f in self.module.event_flavors(meta, process)],
+                         [0, 1, 2, 3, 4])
+        self.assertIs(self.module.event_flavors({'flavors': flavors}, process), flavors)
+        # systematics index the beam pdgs like the events
+        args = MadgraphProcess.build_systematics_args(process)
+        self.assertEqual([list(pdgs) for pdgs in args[0].beam_pdgs],
+                         [[21, 21], [2, -2], [2, -2], [2, -2], [2, 1]])
+
+    def test_flavor_switch_needs_the_output_and_full_colour(self):
+        import json
+        import os
+        import tempfile
+        from types import SimpleNamespace
+        flavors = self.meta['flavors'] + [{
+            'index': 5, 'options': [[2, -2, 1, -1, 3, -3]], 'factor': 1.,
+            'mirror': True, 'channels': [0]}]
+        meta = {'backend': 'amplicol', 'flavors': flavors}
+        process = SimpleNamespace(run_card={'amplicol': {
+            'lc_flavors': 'two_lines_resample', 'color_accuracy': 'full'}})
+        with self.assertRaisesRegex(RuntimeError, 'regenerate the output'):
+            self.module.flavor_switch(meta, process)
+        # without dropped flavours there is nothing to switch to
+        self.assertIsNone(self.module.flavor_switch(self.meta | {'backend': 'amplicol'},
+                                                    process))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'flavor_switch_p0.json')
+            targets = [[2, -2, 1, -1, 3, -3], [2, -2, 1, -1, -3, 3]]
+            with open(path, 'w') as stream:
+                json.dump({'switch_lines': 3, 'targets': targets,
+                           'color_flow_offset': 0, 'color_flows': []}, stream)
+            meta['flavor_switch'] = path
+            self.assertEqual(self.module.flavor_switch(meta, process)['targets'],
+                             targets)
+            # events index the targets after their own flavours
+            self.assertEqual(
+                [f['options'] for f in self.module.event_flavors(meta, process)[5:]],
+                [[t] for t in targets])
+            process.run_card['amplicol']['color_accuracy'] = 'lc'
+            with self.assertRaisesRegex(RuntimeError, 'color_accuracy'):
+                self.module.flavor_switch(meta, process)
+
+    def test_switched_events_keep_the_channel_of_their_diagram(self):
+        meta = {'switch_resonance_pdgs': [[[24], [24]], [[-24], [0]]]}
+        diagrams = [(0, (24,)), (1, (24,))]
+        extended, switch_map = self.module.switch_diagrams(meta, diagrams)
+        self.assertEqual(extended, diagrams + [(0, (-24,)), (1, (0,))])
+        self.assertEqual(switch_map, [[0, 1], [2, 3]])
+        self.assertEqual(self.module.switch_diagrams({}, diagrams), (diagrams, []))
+        # an inactive resonance goes for the targets too
+        resonances = self.module.active_resonances(
+            {'incoming': [2, -1], 'outgoing': [-11, 12], 'colored_resonances': [],
+             'phasespace_channels': [{'order': [0, 1, 2, 3], 'resonances': [
+                 {'pdg': 24, 'legs': [2, 3]}]}],
+             'flavors': [], 'switch_resonance_pdgs': [[[24]]]},
+            lambda pid: 0.0, lambda pid: 0.0)
+        self.assertEqual(resonances['switch_resonance_pdgs'], [[[]]])
+
+    def test_subprocesses_without_lc_flavours_are_skipped(self):
+        from types import SimpleNamespace
+        from madgraph.mg7.madgraph_process import MadgraphProcess
+        three = {'backend': 'amplicol', 'flavors': [{'options': [[2, -2, 1, -1, 3, -3]]}]}
+        two = {'backend': 'amplicol', 'flavors': self.meta['flavors']}
+        other = {'flavors': [{'options': [[2, -2, 1, -1, 3, -3]]}]}
+        for mode, kept in [('all', 3), ('two_lines', 2), ('two_lines_resample', 2)]:
+            process = SimpleNamespace(run_card={'amplicol': {'lc_flavors': mode}},
+                                      subprocess_data=[three, two, other])
+            MadgraphProcess.drop_amplicol_without_lc_flavors(process)
+            self.assertEqual(len(process.subprocess_data), kept)

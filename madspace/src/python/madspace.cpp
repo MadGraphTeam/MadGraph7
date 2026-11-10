@@ -586,6 +586,8 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"scale", UMAMI_IN_SCALE},
              {"pdg_id", UMAMI_IN_PDG_ID},
              {"beam_index", UMAMI_IN_BEAM_INDEX},
+             {"random_flavor", UMAMI_IN_RANDOM_FLAVOR},
+             {"parton_densities", UMAMI_IN_PARTON_DENSITIES},
          }) {
         umami_input_keys[name] = key;
     }
@@ -601,6 +603,7 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"pdf", UMAMI_OUT_PDF},
              {"bias", UMAMI_OUT_BIAS},
              {"matrix_element_ratio", UMAMI_OUT_MATRIX_ELEMENT_RATIO},
+             {"flavor_index", UMAMI_OUT_FLAVOR_INDEX},
          }) {
         umami_output_keys[name] = key;
     }
@@ -1639,6 +1642,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"scale_in", MatrixElement::scale_in},
             {"pdg_id_in", MatrixElement::pdg_id_in},
             {"beam_index_in", MatrixElement::beam_index_in},
+            {"random_flavor_in", MatrixElement::random_flavor_in},
+            {"parton_densities_in", MatrixElement::parton_densities_in},
         }
     );
     add_enum<MatrixElement::MatrixElementOutput>(
@@ -1657,6 +1662,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"pdf_out", MatrixElement::pdf_out},
             {"bias_out", MatrixElement::bias_out},
             {"matrix_element_ratio_out", MatrixElement::matrix_element_ratio_out},
+            {"flavor_index_out", MatrixElement::flavor_index_out},
         }
     );
     matrix_element
@@ -2029,6 +2035,63 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("context"),
             py::arg("seed") = std::nullopt,
             pydoc::doc("DiscreteFlow::initialize_globals")
+        );
+
+    py::classh<DiscreteFlavorLevels, Mapping>(
+        m, "DiscreteFlavorLevels", pydoc::doc("DiscreteFlavorLevels")
+    )
+        .def(
+            py::init<
+                const std::vector<me_int_t>&,
+                const std::vector<me_int_t>&,
+                const std::vector<double>&,
+                const std::string&,
+                std::size_t,
+                double,
+                double,
+                std::size_t,
+                std::size_t,
+                MLP::Activation,
+                DataType>(),
+            py::arg("flavor_initials"),
+            py::arg("flavor_contents"),
+            py::arg("flavor_weights"),
+            py::arg("prefix"),
+            py::arg("condition_dim"),
+            py::arg("prior_floor") = 0.,
+            py::arg("logit_bound") = 0.,
+            py::arg("subnet_hidden_dim") = 32,
+            py::arg("subnet_layers") = 3,
+            py::arg("subnet_activation") = MLP::leaky_relu,
+            py::arg("subnet_precision") = DataType::dt_float64,
+            pydoc::doc("DiscreteFlavorLevels::DiscreteFlavorLevels")
+        )
+        .def(
+            "flavor_count",
+            &DiscreteFlavorLevels::flavor_count,
+            pydoc::doc("DiscreteFlavorLevels::flavor_count")
+        )
+        .def(
+            "initial_count",
+            &DiscreteFlavorLevels::initial_count,
+            pydoc::doc("DiscreteFlavorLevels::initial_count")
+        )
+        .def(
+            "content_count",
+            &DiscreteFlavorLevels::content_count,
+            pydoc::doc("DiscreteFlavorLevels::content_count")
+        )
+        .def(
+            "condition_dim",
+            &DiscreteFlavorLevels::condition_dim,
+            pydoc::doc("DiscreteFlavorLevels::condition_dim")
+        )
+        .def(
+            "initialize_globals",
+            &DiscreteFlavorLevels::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = std::nullopt,
+            pydoc::doc("DiscreteFlavorLevels::initialize_globals")
         );
 
     py::classh<MLMClustering, FunctionGenerator> mlm(m, "MLMClustering");
@@ -2576,7 +2639,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<CustomFunction>&,
                 const std::optional<PdfGrid>&,
                 const std::optional<MappingChannelWeights>&,
-                int>(),
+                int,
+                bool>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -2609,6 +2673,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pdf_grid2") = std::nullopt,
             py::arg("mapping_chan_weights") = std::nullopt,
             py::arg("mlm_history_qcd_power") = -1,
+            py::arg("parton_density_output") = false,
             pydoc::doc("Integrand::Integrand")
         )
         .def(
@@ -2686,6 +2751,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             "active_flavors",
             &Integrand::active_flavors,
             pydoc::doc("Integrand::active_flavors")
+        )
+        .def(
+            "set_flavor_prior_factors",
+            &Integrand::set_flavor_prior_factors,
+            py::arg("factors"),
+            pydoc::doc("Integrand::set_flavor_prior_factors")
         )
         .def_readonly_static(
             "matrix_element_inputs",
@@ -3768,26 +3839,37 @@ PYBIND11_MODULE(_madspace_py, m) {
     );
     weighting_step
         .def(
-            py::init([](const std::vector<MatrixElement>& matrix_elements,
-                        WeightingStep::Mode mode,
-                        double max_overweight_truncation,
-                        std::size_t freeze_max_weight_after,
-                        const std::vector<MatrixElement::MatrixElementOutput>&
-                            override_outputs) {
-                return WeightingStep{
-                    .matrix_elements = matrix_elements,
-                    .mode = mode,
-                    .max_overweight_truncation = max_overweight_truncation,
-                    .freeze_max_weight_after = freeze_max_weight_after,
-                    .override_outputs = override_outputs,
-                };
-            }),
+            py::init(
+                [](const std::vector<MatrixElement>& matrix_elements,
+                   WeightingStep::Mode mode,
+                   double max_overweight_truncation,
+                   std::size_t freeze_max_weight_after,
+                   const std::vector<MatrixElement::MatrixElementOutput>&
+                       override_outputs,
+                   std::size_t flavor_target_count,
+                   me_int_t flavor_offset,
+                   const nested_vector2<me_int_t>& switch_diagram_map) {
+                    return WeightingStep{
+                        .matrix_elements = matrix_elements,
+                        .mode = mode,
+                        .max_overweight_truncation = max_overweight_truncation,
+                        .freeze_max_weight_after = freeze_max_weight_after,
+                        .override_outputs = override_outputs,
+                        .flavor_target_count = flavor_target_count,
+                        .flavor_offset = flavor_offset,
+                        .switch_diagram_map = switch_diagram_map,
+                    };
+                }
+            ),
             py::arg("matrix_elements"),
             py::arg("mode") = WeightingStep::unweight,
             py::arg("max_overweight_truncation") = 0.01,
             py::arg("freeze_max_weight_after") = 10000,
             py::arg("override_outputs") =
                 std::vector<MatrixElement::MatrixElementOutput>{},
+            py::arg("flavor_target_count") = 0,
+            py::arg("flavor_offset") = 0,
+            py::arg("switch_diagram_map") = nested_vector2<me_int_t>{},
             pydoc::doc("WeightingStep")
         )
         .def_readwrite(
@@ -3811,10 +3893,35 @@ PYBIND11_MODULE(_madspace_py, m) {
             &WeightingStep::override_outputs,
             pydoc::doc("WeightingStep::override_outputs")
         )
+        .def_readwrite(
+            "flavor_target_count",
+            &WeightingStep::flavor_target_count,
+            pydoc::doc("WeightingStep::flavor_target_count")
+        )
+        .def_readwrite(
+            "flavor_offset",
+            &WeightingStep::flavor_offset,
+            pydoc::doc("WeightingStep::flavor_offset")
+        )
+        .def_readwrite(
+            "switch_diagram_map",
+            &WeightingStep::switch_diagram_map,
+            pydoc::doc("WeightingStep::switch_diagram_map")
+        )
         .def(
             "returns_ratio",
             &WeightingStep::returns_ratio,
             pydoc::doc("WeightingStep::returns_ratio")
+        )
+        .def(
+            "switches_flavor",
+            &WeightingStep::switches_flavor,
+            pydoc::doc("WeightingStep::switches_flavor")
+        )
+        .def(
+            "needs_parton_densities",
+            &WeightingStep::needs_parton_densities,
+            pydoc::doc("WeightingStep::needs_parton_densities")
         );
 
     py::classh<WeightingGroup>(m, "WeightingGroup", pydoc::doc("WeightingGroup"))

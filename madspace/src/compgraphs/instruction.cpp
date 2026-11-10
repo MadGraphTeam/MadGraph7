@@ -941,6 +941,7 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         case UMAMI_IN_RANDOM_COLOR:
         case UMAMI_IN_RANDOM_HELICITY:
         case UMAMI_IN_RANDOM_DIAGRAM:
+        case UMAMI_IN_RANDOM_FLAVOR:
         case UMAMI_IN_MOMENTUM_FRACTION:
         case UMAMI_IN_SCALE:
             if (input_type.dtype != DataType::dt_float64 ||
@@ -974,6 +975,18 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
                 throw std::invalid_argument(
                     std::format(
                         "matrix_element, argument {}: expected array of integers", i + 1
+                    )
+                );
+            }
+            break;
+        case UMAMI_IN_PARTON_DENSITIES:
+            if (input_type.dtype != DataType::dt_float64 ||
+                input_type.shape != std::vector<int>{2, 13}) {
+                throw std::invalid_argument(
+                    std::format(
+                        "matrix_element, argument {}: expected parton densities of "
+                        "shape (2, 13)",
+                        i + 1
                     )
                 );
             }
@@ -1014,6 +1027,7 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         case UMAMI_OUT_COLOR_INDEX:
         case UMAMI_OUT_HELICITY_INDEX:
         case UMAMI_OUT_DIAGRAM_INDEX:
+        case UMAMI_OUT_FLAVOR_INDEX:
             dtype = DataType::dt_int32;
             shape = {};
             break;

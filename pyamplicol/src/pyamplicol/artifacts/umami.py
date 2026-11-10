@@ -132,6 +132,15 @@ def _alpha_s_name(model: Mapping, physics: Mapping, parameters: Mapping) -> str 
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _alpha_s_power(physics: Mapping, name: str | None) -> int | None:
+    """The proven power of alpha_s in the ME, see generation.alpha_s_power."""
+    proof = physics.get("extensions", {}).get("alpha_s_power")
+    if name is None or not isinstance(proof, Mapping) or proof.get("parameter") != name:
+        return None
+    power = proof.get("power")
+    return power if isinstance(power, int) and power >= 0 else None
+
+
 def _slha_reference(declaration: Mapping) -> dict[str, Any]:
     """The parameter card entry of an external UFO parameter, if it has one."""
     if declaration.get("nature") != "external" or not declaration.get("lhablock"):
@@ -963,13 +972,16 @@ def _build_provider(
         helicities = _records(physics.get("helicities"))
         if process.process_id not in runtime_indices:
             runtime_indices[process.process_id] = len(data["runtime_processes"])
+            alpha_s_name = _alpha_s_name(model, physics, parameters)
             data["runtime_processes"].append(
                 {
                     "id": process.process_id,
                     "expression": process.expression,
                     "pdgs": list(process.external_pdgs),
                     "color_accuracy": process.color_accuracy,
-                    "alpha_s_parameter": _alpha_s_name(model, physics, parameters),
+                    "alpha_s_parameter": alpha_s_name,
+                    # ME(alpha_s) = (alpha_s / alpha_s_0)^power ME(alpha_s_0)
+                    "alpha_s_power": _alpha_s_power(physics, alpha_s_name),
                     "parameters": [
                         {
                             **p,

@@ -88,7 +88,10 @@ def generate(job):
         for accuracy in ('lc', 'full'):
             generate_artifact(pyamplicol, os.path.join(path, accuracy), accuracy,
                               process, model)
+        # the flavour switch of lc_flavors = two_lines_resample
         providers.append(umami_reweight.write_reweight_provider(
             os.path.join(path, 'lc'), os.path.join(path, 'full'),
-            os.path.join(path, 'reweight')))
+            os.path.join(path, 'reweight'),
+            switch_lines=process.get('switch_lines'),
+            initial_legs=process.get('initial_legs')))
     return providers

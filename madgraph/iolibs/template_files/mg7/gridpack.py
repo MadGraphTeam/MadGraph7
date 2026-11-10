@@ -138,7 +138,7 @@ def main() -> None:
     parser.add_argument("--freeze_max_weight_after", type=int, default=gen_args["freeze_max_weight_after"])
     parser.add_argument(
         "--first_pass_max_overweight_truncation", type=float,
-        default=amplicol_args.get("first_pass_max_overweight_truncation", 0.01),
+        default=amplicol_args.get("first_pass_max_overweight_truncation", 0.001),
         help="max_overweight_truncation of the leading-colour unweighting of "
              "[amplicol] processes unweighted to full colour"
     )

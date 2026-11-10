@@ -126,6 +126,40 @@ def test_multiple_outputs_fixed_particle_count(context, momenta):
     assert (np.asarray(helicity) == 3).all()
 
 
+def test_flavor_switch_keys(context, momenta):
+    def matrix_element(p, densities, random):
+        assert densities.shape == (len(p), 2, 13)
+        flavor = np.where(random < 0.5, -1, 7).astype(np.int32)
+        return densities[:, 0, 6] * densities[:, 1, 8], flavor
+
+    api = context.add_matrix_element(
+        ms.PythonFunction(
+            matrix_element,
+            ["momenta", "parton_densities", "random_flavor"],
+            ["matrix_element_ratio", "flavor_index"],
+            particle_count=4,
+        )
+    )
+    generator = ms.MatrixElement(
+        api.index(),
+        4,
+        [
+            ms.MatrixElement.momenta_in,
+            ms.MatrixElement.parton_densities_in,
+            ms.MatrixElement.random_flavor_in,
+        ],
+        [ms.MatrixElement.matrix_element_ratio_out, ms.MatrixElement.flavor_index_out],
+    )
+    rng = np.random.default_rng(5)
+    densities = rng.random((len(momenta), 2, 13))
+    random = rng.random(len(momenta))
+    ratio, flavor = ms.FunctionRuntime(generator.function(), context)(
+        momenta, densities, random
+    )
+    assert np.allclose(ratio, densities[:, 0, 6] * densities[:, 1, 8])
+    assert np.array_equal(np.asarray(flavor), np.where(random < 0.5, -1, 7))
+
+
 def test_fixed_channel(context, momenta):
     def matrix_element(p, flavor, channel):
         return p[:, 2, 0] * (channel + 10 * flavor)
