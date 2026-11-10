@@ -1,0 +1,21 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 764,
+      "sha256": "cd551825196dd6c23c9e061ef580c09b62717dd527e3c7b856195f2dd2e3cf78"
+    },
+    "qualification.json": {
+      "bytes": 1221,
+      "sha256": "89a80f4a0a7c97a885154031c56b4d84e21c183836b24a49862d7c7b17490c54"
+    },
+    "test_tirust_install.py": {
+      "bytes": 27547,
+      "sha256": "e29c11ed4c57011025215f6735ad56c85972c3be04711fae6afb58feb558b6b7"
+    },
+    "tirust_install.py": {
+      "bytes": 25573,
+      "sha256": "4397d9f60e146354154cde942c20e01a086cf25797e41ddea6ac5054a563663e"
+    }
+  },
+  "schema": "tirust-strict-metadata-promotion-index-v1"
+}

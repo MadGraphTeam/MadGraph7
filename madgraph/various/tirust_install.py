@@ -51,7 +51,9 @@ def read_config(libdir):
         raise MadGraph5Error(
             "Cannot read TIRust installation metadata in %s: %s. "
             "Run 'install tirust --update'." % (libdir, error))
-    if not isinstance(config, dict) or config.get('abi_version') != ABI_VERSION:
+    if (not isinstance(config, dict) or
+            type(config.get('abi_version')) is not int or
+            config.get('abi_version') != ABI_VERSION):
         raise MadGraph5Error("Unsupported TIRust bridge ABI in %s; "
                              "run 'install tirust --update'." % libdir)
     flags = config.get('native_libs')
@@ -61,7 +63,8 @@ def read_config(libdir):
         raise MadGraph5Error("Invalid TIRust native link metadata in %s; "
                              "run 'install tirust --update'." % libdir)
     before = config.get('link_before')
-    if (config.get('link_order_version') != 1 or
+    if (type(config.get('link_order_version')) is not int or
+            config.get('link_order_version') != 1 or
             not isinstance(before, list) or not before or
             any(not isinstance(flag, str) or '\n' in flag or '\r' in flag
                 for flag in before)):

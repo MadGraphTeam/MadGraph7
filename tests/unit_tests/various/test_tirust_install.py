@@ -214,6 +214,58 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
         self.assertFalse(tirust_install.is_available(lib))
         self.assertFalse(tirust_install.supports_quad_precision(lib))
 
+    def assert_incompatible_metadata_rejected(self, cases):
+        """Exercise the real metadata readers with mocked installation artifacts."""
+        with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(tirust_install, '_run', side_effect=self.fake_run) as run:
+            lib = self.install()
+            path = lib / tirust_install.CONFIG_NAME
+            original = path.read_bytes()
+            config = json.loads(original)
+            calls = run.call_count
+            for field, value, message in cases:
+                with self.subTest(field=field, value=value):
+                    path.write_text(json.dumps({**config, field: value}))
+                    try:
+                        with self.assertRaisesRegex(MadGraph5Error, message):
+                            tirust_install.read_config(lib)
+                        self.assertFalse(tirust_install.is_available(lib))
+                        self.assertFalse(tirust_install.supports_quad_precision(lib))
+                        self.assertEqual(run.call_count, calls)
+                    finally:
+                        path.write_bytes(original)
+            self.assertTrue(tirust_install.is_available(lib))
+            self.assertTrue(tirust_install.supports_quad_precision(lib))
+
+    def test_incompatible_abi_metadata_is_unavailable(self):
+        self.assert_incompatible_metadata_rejected([
+            ('abi_version', value, 'Unsupported TIRust bridge ABI')
+            for value in (None, 0, tirust_install.ABI_VERSION + 1,
+                          str(tirust_install.ABI_VERSION), True,
+                          float(tirust_install.ABI_VERSION))])
+
+    def test_invalid_native_link_metadata_is_unavailable(self):
+        self.assert_incompatible_metadata_rejected([
+            ('native_libs', value, 'Invalid TIRust native link metadata')
+            for value in (None, '-lmadloop_tirust', [1],
+                          ['-lmadloop_tirust\n-lunexpected'],
+                          ['-lmadloop_tirust\r-lunexpected'])])
+
+    def test_invalid_compiler_runtime_link_metadata_is_unavailable(self):
+        message = 'Missing or invalid TIRust compiler-runtime link metadata'
+        cases = [('link_order_version', value, message)
+                 for value in (None, 0, 2, '1', True, 1.0)]
+        cases += [('link_before', value, message)
+                  for value in (None, '-lgcc_s', [], [1],
+                                ['-lgcc_s\n-lunexpected'],
+                                ['-lgcc_s\r-lunexpected'])]
+        self.assert_incompatible_metadata_rejected(cases)
+
+    def test_incompatible_shared_runtime_metadata_is_unavailable(self):
+        self.assert_incompatible_metadata_rejected([
+            ('runtime_artifacts', value, 'Missing TIRust shared-runtime metadata')
+            for value in (None, [], 'libmadloop_tirust.so', ['libother.so'])])
+
     def test_patch_or_pristine_source_change_is_rejected(self):
         for kind in ('patch', 'source'):
             with self.subTest(kind=kind):
