@@ -2334,16 +2334,26 @@ def _parameter_program(
                 lambda v=bound: v.replace_multiple(every_input),
             )
         )
-    # The scalar library's helper functions (e.g. ``cond``, ``reglog``) the
-    # counterterm and field couplings and the CT references call; every plan
-    # shares the library.
+
+    # The scalar library's helper functions (e.g. ``cond``, ``reglog``, the
+    # UFO function library's ``complexconjugate`` and ``re``), each library
+    # registered whole (a body may call another helper): here the libraries
+    # of the plans the counterterm and field couplings read and the CT
+    # references' library. The Born couplings call helpers too (G_mu's re()
+    # through Gfbar, a CKM coupling's complexconjugate), and a program
+    # without counterterm or field slots (the certified-scaleless companion,
+    # exported without counterterms) reads no plan here: the libraries its
+    # outputs call are registered once every output exists, below.
+    def register(library: Any) -> None:
+        for head, body in library._bodies.items():
+            if helpers.setdefault(head, body) != body:
+                raise ValueError(f"the scalar plans define {head!r} differently")
+
     libraries = [plans[p].program.library for p in sorted(used)]
     if counterterm_trees is not None and references.library is not None:
         libraries.append(references.library)
     for library in libraries:
-        for head, body in library._bodies.items():
-            if helpers.setdefault(head, body) != body:
-                raise ValueError(f"the scalar plans define {head!r} differently")
+        register(library)
 
     # Derived model parameters (internal), on the program's inputs.
     derived = {
@@ -2519,6 +2529,23 @@ def _parameter_program(
         ratio = output(("photon-ratio", photons.alpha0_inverse), photon_ratio)
         positive.append(ratio)
         photon_record = [ratio, sorted(int(leg) for leg in photons.legs)]
+    # Every plan library (each distinct one, in plan order) of which an
+    # output calls a helper that is not registered yet (the outputs' symbols,
+    # function heads included): registered whole, under the same rule.
+    # Digest-neutral: a program that compiled without this has no output
+    # calling an unregistered helper (Symbolica refuses one), so no library
+    # qualifies there and its helpers, hence every byte, stay as they were.
+    distinct = {id(plan.program.library): plan.program.library for plan in plans}
+    pending = [
+        library
+        for library in distinct.values()
+        if any(head not in helpers for head in library._bodies)
+    ]
+    if pending:
+        called = {symbol for value in outputs for symbol in value.get_all_symbols(True)}
+        for library in pending:
+            if any(head in called and head not in helpers for head in library._bodies):
+                register(library)
     # The helpers in the order of their names, not the library's (which
     # follows the model's function bindings: a model compiled from its UFO
     # source and the same model read from the cache list them in different
