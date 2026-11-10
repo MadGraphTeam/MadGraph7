@@ -1,0 +1,61 @@
+{
+  "ownership/analyze.py": {
+    "sha256": "0014bbf833cce64344ffcf38e2cb8c9a92605eeeb697fcf260553a13e5d1d40b",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-supervisor-3/ownership/analyze.py"
+  },
+  "ownership/legacy_qualify.py": {
+    "sha256": "a408dc73d880a9471defaf6cf4fa9b426e616780b4861c595d608826b6b0f89a",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-supervisor-3/ownership/legacy_qualify.py"
+  },
+  "ownership/linker_bind.py": {
+    "sha256": "b54528ebf6b9847f134a7d8ad927c7394607e927397e45169cb644479c8452c6",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-supervisor-3/ownership/linker_bind.py"
+  },
+  "ownership/process_cleanup.py": {
+    "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-supervisor-3/ownership/process_cleanup.py"
+  },
+  "ownership/run.py": {
+    "sha256": "be6212d7e93f698b551eee35ec577132c0ebb6db73d07cc203262be6319ce861",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-supervisor-3/ownership/run.py"
+  },
+  "ownership/smoke.py": {
+    "sha256": "a651c23461f27acb51e15b8b5fd5c46ab06199b2e76e8fef5aab5dbe047c56de",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-supervisor-3/ownership/smoke.py"
+  },
+  "prerequisites.json": {
+    "sha256": "301f6ddf143e15de184a236b27aad971d7adaeabed795b551e8342189d0e3e24",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-supervisor-4/prerequisites.json",
+    "source_index_sha256": "c192146977008a7dec8c3d1dce479eeaaf53e382ab4aad5599db6665dfe42f25"
+  },
+  "prerequisites.py": {
+    "sha256": "11fac77b292668ce32c0304c082bc59eb2128edbd669fd097e0d435c04b58b79",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-supervisor-4/prerequisites.py",
+    "source_index_sha256": "c192146977008a7dec8c3d1dce479eeaaf53e382ab4aad5599db6665dfe42f25"
+  },
+  "protocol/process_cleanup.py": {
+    "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/protocol/process_cleanup.py"
+  },
+  "protocol/tirust_benchmark.py": {
+    "sha256": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/protocol/tirust_benchmark.py"
+  },
+  "protocol/tirust_benchmark_campaign.py": {
+    "sha256": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/protocol/tirust_benchmark_campaign.py"
+  },
+  "protocol/tirust_benchmark_compiler.py": {
+    "sha256": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/protocol/tirust_benchmark_compiler.py"
+  },
+  "protocol/tirust_benchmark_worker.py": {
+    "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57",
+    "source": "docs/benchmarkfolder/experiments/physical-stress-current-source-proposal-1/protocol/tirust_benchmark_worker.py"
+  },
+  "run.py": {
+    "ancestor_sha256": "c13c43eadc30103011b078a026804be0aa1247c9a12261f17da2a706303491a6",
+    "changes": "CMS-only proposal/roots/6requests/21points/1e-3/300s; fresh CMS model probe+prelink; raw fresh CLI archive; exact card and model receipts; source4 complete prerequisite checks; separate ordinary target reporting",
+    "derived_from": "docs/benchmarkfolder/experiments/physical-stress-current-supervisor-3/run.py"
+  }
+}

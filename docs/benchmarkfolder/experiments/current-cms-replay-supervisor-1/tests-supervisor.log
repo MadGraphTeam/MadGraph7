@@ -1,0 +1,25 @@
+test_all_six_frozen_literal_cards_render_exactly (__main__.SupervisorTests.test_all_six_frozen_literal_cards_render_exactly) ... ok
+test_build_receipt_mutation_fails_before_using_products (__main__.SupervisorTests.test_build_receipt_mutation_fails_before_using_products) ... ok
+test_cleanup_controller_and_map_failures_stop (__main__.SupervisorTests.test_cleanup_controller_and_map_failures_stop) ... ok
+test_comparison_separates_ordinary_target_and_raw_pole_errors (__main__.SupervisorTests.test_comparison_separates_ordinary_target_and_raw_pole_errors) ... ok
+test_current_model_proof_is_exact_card_and_complex (__main__.SupervisorTests.test_current_model_proof_is_exact_card_and_complex) ... ok
+test_default_is_plan_without_creating_or_sealing (__main__.SupervisorTests.test_default_is_plan_without_creating_or_sealing) ... ok
+test_execute_requires_stage (__main__.SupervisorTests.test_execute_requires_stage) ... ok
+test_failed_outer_execution_never_preserves_success (__main__.SupervisorTests.test_failed_outer_execution_never_preserves_success) ... ok
+test_fresh_roots_required_before_materializing (__main__.SupervisorTests.test_fresh_roots_required_before_materializing) ... ok
+test_loader_uses_actual_interpreter (__main__.SupervisorTests.test_loader_uses_actual_interpreter) ... ok
+test_model_proof_rejects_nonfinite (__main__.SupervisorTests.test_model_proof_rejects_nonfinite) ... ok
+test_native_request_rechecks_its_fresh_model_proof_receipt (__main__.SupervisorTests.test_native_request_rechecks_its_fresh_model_proof_receipt) ... ok
+test_only_preflight_executes_masses_or_model (__main__.SupervisorTests.test_only_preflight_executes_masses_or_model) ... ok
+test_owned_timeout_cleans_and_retains_receipt (__main__.SupervisorTests.test_owned_timeout_cleans_and_retains_receipt) ... ok
+test_prelink_requires_completed_inventory_before_actual_LOAD (__main__.SupervisorTests.test_prelink_requires_completed_inventory_before_actual_LOAD) ... ok
+test_primary_agreement_stays_null_without_all_current_backends (__main__.SupervisorTests.test_primary_agreement_stays_null_without_all_current_backends) ... ok
+test_private_links_admit_only_private_or_bound_external (__main__.SupervisorTests.test_private_links_admit_only_private_or_bound_external) ... ok
+test_probe_is_prebound_before_its_link_and_has_own_map (__main__.SupervisorTests.test_probe_is_prebound_before_its_link_and_has_own_map) ... ok
+test_raw_cli_driver_bytes_survive_diagnostic_substitution (__main__.SupervisorTests.test_raw_cli_driver_bytes_survive_diagnostic_substitution) ... ok
+test_unknown_card_field_requires_review (__main__.SupervisorTests.test_unknown_card_field_requires_review) ... ok
+
+----------------------------------------------------------------------
+Ran 20 tests in 0.055s
+
+OK

@@ -1,0 +1,24 @@
+{
+  "ancestor_bindings_verified": 43,
+  "build_or_native_physics_commands_executed": 0,
+  "campaign_manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "checkout_HEAD": "3589a9c981c6548d7d2cb27fece602951daad101",
+  "copied_prebuilt_counts": {
+    "baseline": 123,
+    "candidate": 123
+  },
+  "exact_CLI_entrypoints": "archive-tracked bin/madgraph, --plain; exact hashes from proposal",
+  "external_prerequisite_files": 24,
+  "frozen_request_count": 6,
+  "future_report_exists": false,
+  "future_work_exists": false,
+  "generator_inventory_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+  "installed_and_external_file_records": 34,
+  "passed": true,
+  "prerequisite_helper_sha256": "11fac77b292668ce32c0304c082bc59eb2128edbd669fd097e0d435c04b58b79",
+  "prerequisite_manifest_sha256": "301f6ddf143e15de184a236b27aad971d7adaeabed795b551e8342189d0e3e24",
+  "proposal_index_sha256": "9c1703b96ec3933b9f8644a4850db2d9742579a109d4fdb7e72d3d776f0eba2e",
+  "proposal_payload_count": 32,
+  "registered_source_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+  "source_only": true
+}
