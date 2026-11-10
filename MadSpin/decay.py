@@ -5610,6 +5610,16 @@ class decay_all_events_onshell(decay_all_events):
             self.output_density_me(pjoin(path_me, ms_me_subdir), backend, 'p',
                                    '--zerowidth_tchannel=True --zerowidth_decay=%s'
                                    % zero_width)
+            onia = getattr(self.mscmd, 'onia', None)
+            if onia and onia.production_needs_uncoupled(
+                    self.mscmd, [proc for amp in mgcmd._curr_amps for proc in [amp.get('process')]]):
+                # a hadron produced as a 3P colour octet: the production with
+                # its P waves in L_z x S_z as well (onia_madspin.spin_transfer)
+                commandline = ('output standalone_fortran %s --prefix=int --density=1 '
+                               '--onia_uncoupled=True --zerowidth_tchannel=True -f'
+                               % pjoin(path_me, ms_me_subdir + '_unc'))
+                logger.info(commandline)
+                mgcmd.exec_cmd(commandline, precmd=True)
 
             # store information about the production matrix elements
             fill_all_me(self, "production")
@@ -5879,12 +5889,12 @@ class decay_all_events_onshell(decay_all_events):
             return
         ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
         ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
-        for subdir in (ms_me_subdir, ms_me_decay_subdir):
+        for subdir in (ms_me_subdir, ms_me_decay_subdir, ms_me_subdir + '_unc'):
             cards = pjoin(self.path_me, subdir, 'Cards')
             if not os.path.isdir(cards):
                 continue
             shutil.copyfile(source, pjoin(cards, 'param_card.dat'))
-            onia_madspin.OniaRegistry.write_onia_card(self.banner, cards)
+            onia_madspin.OniaRegistry.write_onia_card(getattr(self, 'banner', None), cards)
 
     def compile(self):
         logger.info('Compiling code')
@@ -5931,6 +5941,12 @@ class decay_all_events_onshell(decay_all_events):
         #Valentin: not sure the decay_folder exists in all cases, so I check
         if os.path.exists(pjoin(self.path_me, ms_me_decay_subdir)):
             trees.append((ms_me_decay_subdir, decay_args, 'd'))
+        if os.path.exists(pjoin(self.path_me, ms_me_subdir + '_unc')):
+            # the uncoupled production of colour octets (MENUM 3)
+            unc_args = ['MENUM=3', 'all_matrix3py.so']
+            if ms_run_id > 1:
+                unc_args.insert(0, 'PROCNAME=_ms%d' % ms_run_id)
+            trees.append((ms_me_subdir + '_unc', unc_args, 'u'))
         for subdir, fortran_args, side in trees:
             tree = pjoin(self.path_me, subdir)
             if madmatrix_density.is_output(tree):

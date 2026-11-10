@@ -2805,6 +2805,35 @@ class TestCmdShell2(unittest.TestCase,
         mg_cmd.exec_cmd('generate tata(1|1S0) > Jpsi(1|3S11) a / z h')
         self.assertTrue(mg_cmd._curr_amps[0].get('diagrams'))
 
+    def test_onia_fock_states_not_combined(self):
+        """Fock states with the same diagrams but a different J (or L, S,
+        colour, hadron) have different projectors and LDMEs, so they never
+        share a matrix element. 'g g > Jpsi(1|3PJ8)' is three matrix
+        elements, also in an ungrouped output (standalone_fortran, or
+        madevent with group_subprocesses False), where identical matrix
+        elements are combined; the quark channels of one J still share
+        theirs."""
+
+        import madgraph.interface.master_interface as MGCmd
+        import madgraph.core.helas_objects as helas_objects
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate g g > Jpsi(1|3PJ8)')
+        mg_cmd.exec_cmd('add process u u~ > Jpsi(1|3PJ8)')
+        mg_cmd.exec_cmd('add process d d~ > Jpsi(1|3PJ8)')
+        mes = helas_objects.HelasMultiProcess(
+            mg_cmd._curr_amps, combine_matrix_elements=True).get_matrix_elements()
+        js = sorted(sorted(set(l.get('onium').get('J')
+                               for p in me.get('processes')
+                               for l in p.get('legs') if l.get('onium')))
+                    for me in mes)
+        self.assertEqual(js, [[0], [0], [1], [1], [2], [2]])
+        self.assertEqual(sorted(len(me.get('processes')) for me in mes),
+                         [1, 1, 1, 2, 2, 2])
+
     def test_onia_density_matrix(self):
         """Spin-density matrices of onia (output standalone_fortran
         --density, the input of MadSpin's spin correlations): the onium leg

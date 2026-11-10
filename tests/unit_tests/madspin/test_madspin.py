@@ -15152,3 +15152,181 @@ class TestDensityLibtag(unittest.TestCase):
             self.assertIn('LIBTAG=_ms2p', str(error))
         else:
             self.fail('no library, yet a LIBTAG was found')
+
+
+class TestOniaSpinTransfer(unittest.TestCase):
+    """The spin of a colour-octet Fock state given to its hadron at LO in v
+    (heavy-quark spin symmetry, MadSpin/onia_madspin.py): M1 isotropic, the
+    spin kept in E1, the orbital part isotropic for L = 0 > L_H = 1 and traced
+    over for L = 1 > L_H = 0. Every transfer keeps the trace, the production
+    |M|^2 of the event."""
+
+    @staticmethod
+    def fock(name, pdg, S, L, J, colour):
+        return {'name': name, 'pdg_code': pdg, 'spin': 2 * S + 1, 'orbital': L,
+                'J': J, 'color': colour, 'principal': 1, 'charge': 0}
+
+    def setUp(self):
+        import numpy
+        import MadSpin.onia_madspin as onia_madspin
+        self.np = numpy
+        self.om = onia_madspin
+        F = self.fock
+        self.psi = F('Jpsi(1|3S11)', 443, 1, 0, 1, 1)
+        self.psi_1s08 = F('Jpsi(1|1S08)', 9941003, 0, 0, 0, 8)
+        self.psi_3s18 = F('Jpsi(1|3S18)', 9942003, 1, 0, 1, 8)
+        self.psi_3pj8 = [F('Jpsi(1|3P%d8)' % J, 9943003 + 1000 * J, 1, 1, J, 8) for J in range(3)]
+        self.chi = [F('chi%d(1|3P%d1)' % (J, J), (10441, 20443, 445)[J], 1, 1, J, 1)
+                    for J in range(3)]
+        self.chi2_3s18 = F('chi2(1|3S18)', 9940445, 1, 0, 1, 8)
+
+        class Cmd(object):
+            pass
+        cmd = Cmd()
+        cmd._fockstates = [self.psi, self.psi_1s08, self.psi_3s18] + self.psi_3pj8 + \
+            self.chi + [self.chi2_3s18]
+        cmd._boundstates = {'Jpsi': [f['name'] for f in cmd._fockstates[:6]]}
+        self.registry = onia_madspin.OniaRegistry(cmd)
+        self.rng = numpy.random.RandomState(7)
+
+    def random_density(self, n):
+        a = self.rng.normal(size=(n, n)) + 1j * self.rng.normal(size=(n, n))
+        return a @ a.conj().T
+
+    def test_clebsch_gordan(self):
+        cg = self.om.clebsch_gordan
+        r = math.sqrt
+        self.assertAlmostEqual(cg(1, 1, 1, -1, 0, 0), 1 / r(3), 14)
+        self.assertAlmostEqual(cg(1, 0, 1, 0, 0, 0), -1 / r(3), 14)
+        self.assertAlmostEqual(cg(1, 1, 1, 0, 1, 1), 1 / r(2), 14)
+        self.assertAlmostEqual(cg(1, 0, 1, 0, 2, 0), r(2. / 3), 14)
+        self.assertAlmostEqual(cg(1, -1, 1, 1, 2, 0), 1 / r(6), 14)
+        # orthonormal: sum over (m1, m2) of CG(J M) CG(J' M') = delta
+        for J in range(3):
+            for Jp in range(3):
+                for M in range(-J, J + 1):
+                    for Mp in range(-Jp, Jp + 1):
+                        s = sum(cg(1, m1, 1, M - m1, J, M) * cg(1, m1, 1, Mp - m1, Jp, Mp)
+                                for m1 in (-1, 0, 1) if M - m1 == Mp - m1)
+                        self.assertAlmostEqual(s, float(J == Jp and M == Mp), 14)
+
+    def test_m1_isotropic(self):
+        """1S0[8] > J/psi (spin flipped): isotropic J/psi."""
+        out = self.om.spin_transfer(self.psi_1s08, self.psi, self.np.array([[2.5]]),
+                                    [0], [-1, 0, 1])
+        self.assertTrue(self.np.allclose(out, 2.5 / 3 * self.np.eye(3), atol=1e-14))
+
+    def test_s_wave_kept(self):
+        """3S1[8] > J/psi: the density is the J/psi's."""
+        rho = self.random_density(3)
+        out = self.om.spin_transfer(self.psi_3s18, self.psi, rho, [-1, 0, 1], [-1, 0, 1])
+        self.assertTrue(self.np.allclose(out, rho, atol=1e-14))
+
+    def test_s_to_p_wave(self):
+        """3S1[8] > chi_cJ: the orbital L_z of the chi_cJ isotropic. From
+        S_z = +1, chi_c2 has J_z = 2, 1, 0 with 1/3, 1/6, 1/18 (normalised:
+        0.6, 0.3, 0.1); an unpolarised octet gives an unpolarised chi_cJ;
+        before normalisation the chi_cJ share the trace as (2J+1)/9."""
+        np = self.np
+        rho = np.diag([1., 0., 0.]).astype(complex)[::-1, ::-1]  # S_z = +1 in [-1, 0, 1]
+        hels = [-2, -1, 0, 1, 2]
+        out = self.om.spin_transfer(self.chi2_3s18, self.chi[2], rho, [-1, 0, 1], hels)
+        self.assertTrue(np.allclose(np.diag(out).real, [0, 0, 0.1, 0.3, 0.6], atol=1e-14))
+        self.assertAlmostEqual(np.trace(out).real, 1., 14)
+        total = 0.
+        for J in range(3):
+            hJ = list(range(-J, J + 1))
+            iso = self.om.spin_transfer(self.chi2_3s18, self.chi[J], np.eye(3) * 2., [-1, 0, 1], hJ)
+            self.assertTrue(np.allclose(iso, np.eye(2 * J + 1) * 6. / (2 * J + 1), atol=1e-14))
+            raw = self.om.spin_transfer(self.chi2_3s18, self.chi[J], rho, [-1, 0, 1], hJ,
+                                        renormalise=False)
+            self.assertAlmostEqual(np.trace(raw).real, (2 * J + 1) / 9., 14)
+            total += np.trace(raw).real
+        self.assertAlmostEqual(total, np.trace(rho).real, 14)
+
+    def test_p_to_s_wave(self):
+        """3PJ[8] > J/psi: the partial trace over L_z. A J_z = +-2 octet gives
+        a transverse J/psi, a 3P0[8] an isotropic one; the uncoupled
+        (L_z, S_z) density of a single J gives the result of its J-resolved
+        density, and its trace is the sum of the J-resolved traces."""
+        np, cg = self.np, self.om.clebsch_gordan
+        out = self.om.spin_transfer(self.psi_3pj8[2], self.psi, np.diag([1., 0, 0, 0, 1.]),
+                                    [-2, -1, 0, 1, 2], [-1, 0, 1])
+        self.assertTrue(np.allclose(out, np.diag([1., 0, 1.]), atol=1e-14))
+        out = self.om.spin_transfer(self.psi_3pj8[0], self.psi, np.array([[3.]]), [0], [-1, 0, 1])
+        self.assertTrue(np.allclose(out, np.eye(3), atol=1e-14))
+        pairs = [(Lz, Sz) for Lz in (-1, 0, 1) for Sz in (-1, 0, 1)]
+        A = self.rng.normal(size=9) + 1j * self.rng.normal(size=9)  # A(L_z, S_z)
+        AJ = [np.array([sum(cg(1, Lz, 1, Sz, J, M) * A[i] for i, (Lz, Sz) in enumerate(pairs))
+                        for M in range(-J, J + 1)]) for J in range(3)]
+        unc = np.outer(A, A.conj())
+        self.assertAlmostEqual(np.trace(unc).real,
+                               sum(np.vdot(a, a).real for a in AJ), 12)
+        for J in range(3):
+            # a single J: A(L_z, S_z) = sum_M CG A_J(M)
+            AJunc = np.array([sum(cg(1, Lz, 1, Sz, J, M) * AJ[J][k]
+                                  for k, M in enumerate(range(-J, J + 1))) for Lz, Sz in pairs])
+            coupled = self.om.spin_transfer(self.psi_3pj8[J], self.psi, np.outer(AJ[J], AJ[J].conj()),
+                                            list(range(-J, J + 1)), [-1, 0, 1])
+            uncoupled = self.om.spin_transfer(self.psi_3pj8[J], self.psi, np.outer(AJ[J], AJ[J].conj()),
+                                              list(range(-J, J + 1)), [-1, 0, 1],
+                                              rho_uncoupled=(pairs, np.outer(AJunc, AJunc.conj())))
+            self.assertTrue(np.allclose(coupled, uncoupled, atol=1e-12))
+        # the J-summed partial trace
+        ref = np.array([[sum(unc[pairs.index((Lz, Sz)), pairs.index((Lz, Szp))] for Lz in (-1, 0, 1))
+                         for Szp in (-1, 0, 1)] for Sz in (-1, 0, 1)])
+        out = self.om.spin_transfer(self.psi_3pj8[1], self.psi, np.outer(AJ[1], AJ[1].conj()),
+                                    [-1, 0, 1], [-1, 0, 1], rho_uncoupled=(pairs, unc),
+                                    renormalise=False)
+        self.assertTrue(np.allclose(out, ref, atol=1e-12))
+
+    def test_apply_transfer(self):
+        """The production density of a process with a colour-octet onium:
+        the transfer on the onium leg, packed as GET_DENSITY packs it; with
+        the uncoupled matrix element (helicity codes -4..4 for the (L_z, S_z)
+        pairs) the partial trace, at the trace of the event's own |M|^2."""
+        np = self.np
+        reg = self.registry
+        self.assertTrue(reg.needs_uncoupled(self.psi_3pj8[2]))
+        self.assertFalse(reg.needs_uncoupled(self.psi_3s18))
+        self.assertIs(reg.singlet_of(self.psi_3pj8[2]), self.psi)
+        plan = reg.transfer_plan([21, 21, 9945003], [3], [-1, 0, 1])
+        self.assertEqual(plan['fock_hels'], [[-2, -1, 0, 1, 2]])
+        self.assertEqual(plan['unc_legs'], [0])
+        self.assertEqual(plan['unc_allow'], list(range(-4, 5)))
+        rho = self.random_density(5)
+        out = reg.unpack(reg.apply_transfer(plan, reg.pack(rho)), 3)
+        ref = self.om.spin_transfer(self.psi_3pj8[2], self.psi, rho, [-2, -1, 0, 1, 2], [-1, 0, 1])
+        self.assertTrue(np.allclose(out, ref, atol=1e-12))
+        unc = self.random_density(9)
+        out = reg.unpack(reg.apply_transfer(plan, reg.pack(unc), uncoupled=True,
+                                            target_trace=2.), 3)
+        # codes h = 3(L_z + 1) + (S_z + 1) - 4: (L_z, S_z) = ((h+4)//3 - 1, (h+4)%3 - 1)
+        ref = np.array([[sum(unc[3 * (Lz + 1) + Sz + 1, 3 * (Lz + 1) + Szp + 1] for Lz in (-1, 0, 1))
+                         for Szp in (-1, 0, 1)] for Sz in (-1, 0, 1)])
+        self.assertTrue(np.allclose(out, ref * 2. / np.trace(ref).real, atol=1e-12))
+        # two decaying legs, the octet second: the map acts on that leg only
+        plan = reg.transfer_plan([21, 21, 443, 9942003], [3, 4],
+                                 [h for a in (-1, 0, 1) for b in (-1, 0, 1) for h in (a, b)])
+        self.assertIsNone(plan['legs'][0])
+        r1, r2 = self.random_density(3), self.random_density(3)
+        out = reg.unpack(reg.apply_transfer(plan, reg.pack(np.kron(r1, r2))), 9)
+        self.assertTrue(np.allclose(out, np.kron(r1, r2), atol=1e-12))
+        plan = reg.transfer_plan([21, 21, 443, 9941003], [3, 4],
+                                 [h for a in (-1, 0, 1) for b in (-1, 0, 1) for h in (a, b)])
+        self.assertEqual(plan['fock_hels'], [[-1, 0, 1], [0]])
+        r2 = np.array([[1.5]])
+        out = reg.unpack(reg.apply_transfer(plan, reg.pack(np.kron(r1, r2))), 9)
+        self.assertTrue(np.allclose(out, np.kron(r1, np.eye(3) * 1.5 / 3), atol=1e-12))
+
+    def test_hqss_ldmes(self):
+        """The 3PJ[8] LDMEs of the onia card checked against
+        <O(3PJ[8])> = (2J+1) <O(3P0[8])>."""
+        reg = self.registry
+        card = ('Block ldme\n  9943003  0.0343  # 3P08\n  9944003  0.1029\n  9945003  %s\n'
+                'Block onium_mass\n  9943003  3.3\n')
+        self.assertEqual(reg.hqss_ldme_mismatch(card % '0.1715', self.psi), [])
+        out = reg.hqss_ldme_mismatch(card % '0.2', self.psi)
+        self.assertEqual([o[0] for o in out], ['Jpsi(1|3P28)'])
+        self.assertAlmostEqual(out[0][2], 5 * 0.0343, 14)
+        self.assertEqual(reg.onia_masses(card % '0.2'), {9943003: 3.3})

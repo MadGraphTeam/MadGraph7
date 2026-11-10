@@ -2957,6 +2957,15 @@ class MadSpinInterface(extended_cmd.Cmd):
             misc.gzip(self.gunzipped_input)
                     
     
+    def _onia_relabel(self, event):
+        """A decayed colour-octet bound state becomes its hadron in the output
+        event (onia_madspin.OniaRegistry.relabel_octets)."""
+        onia = getattr(self, 'onia', None)
+        if onia:
+            for one in (event if isinstance(event, list) and event and
+                        isinstance(event[0], lhe_parser.Event) else [event]):
+                onia.relabel_octets(one)
+
     def _bookkeeping_model(self):
         """The model of MadSpin's names and pdg codes: the generator's, or with
         bound states the copy that also knows their pseudo-particles."""
@@ -5918,6 +5927,8 @@ class MadSpinInterface(extended_cmd.Cmd):
                     wgts[key] *= br
                 self._add_polarization_weights(
                     full_evt, getattr(self, '_pol_weight_ratios', None))
+                if getattr(self, 'onia', None):
+                    self._onia_relabel(full_evt)
                 output_lhe.write_events(full_evt)
                 continue
 
@@ -6156,6 +6167,8 @@ class MadSpinInterface(extended_cmd.Cmd):
                     sum_w2 += full_evt.wgt ** 2
             self._add_polarization_weights(
                 full_evt, getattr(self, '_pol_weight_ratios', None))
+            if getattr(self, 'onia', None):
+                self._onia_relabel(full_evt)
 
             output_lhe.write_events(full_evt)
 
@@ -12245,6 +12258,14 @@ class MadSpinInterface(extended_cmd.Cmd):
             It also fills all_prefix, all_pdg, all_procid which are lists of 2 elements. 
             The first element is the value for the production part, the second element is for the decay part.
         """
+        # the uncoupled production of colour octets (onia), if written
+        self.f2py_module_unc = None
+        sp_path_unc = pjoin(self.path_me, self.ms_me_subdir + '_unc', 'SubProcesses')
+        if getattr(self, 'onia', None) and os.path.isdir(sp_path_unc):
+            mod = self._load_f2py_matrix_module(sp_path_unc, menum=3)
+            with misc.chdir(sp_path_unc):
+                mod.initialise(self.me_param_card(self.ms_me_subdir + '_unc'))
+            self.f2py_module_unc = mod
         try:
             sp_path_prod = pjoin(self.path_me, self.ms_me_subdir, 'SubProcesses')
             self.create_f2py_module(sp_path_prod, 'prod', all_prefix, all_pdg, all_procid)
@@ -13053,13 +13074,32 @@ class MadSpinInterface(extended_cmd.Cmd):
                 raise ValueError('get_density: lab_boost needs the madmatrix backend')
             # PY_GET_DENSITY(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2)
             P = rwgt_interface.ReweightInterface.invert_momenta(p)
+            # a colour-octet bound state decays as its hadron: its own density
+            # (in its J_z) carried over to the hadron's (onia_madspin)
+            onia = getattr(self, 'onia', None)
+            plan = onia.transfer_plan(pdgs, position, allow_hel) if (
+                onia and self.all_me[tag]['type'] == 'production') else None
             density_array = module.py_get_density(pdgs=pdgs,
                                                   procid=-1,
                                                   p=P,
                                                   pos=position,
-                                                  allow_hel=allow_hel,
+                                                  allow_hel=plan['fock_allow'] if plan else allow_hel,
                                                   alphas=event.aqcd,
                                                   scale2=event.scale**2)
+            if plan and plan['unc_allow'] and getattr(self, 'f2py_module_unc', None) is not None:
+                # a 3P octet of an S-wave hadron: the shape from the uncoupled
+                # production, the trace (the event's |M|^2) from its own
+                import numpy
+                rho_j = onia.unpack(density_array, len(plan['fock_combos']))
+                unc = self.f2py_module_unc.py_get_density(pdgs=pdgs, procid=-1, p=P,
+                                                          pos=position,
+                                                          allow_hel=plan['unc_allow'],
+                                                          alphas=event.aqcd,
+                                                          scale2=event.scale**2)
+                density_array = onia.apply_transfer(plan, unc, uncoupled=True,
+                                                    target_trace=numpy.trace(rho_j).real)
+            elif plan:
+                density_array = onia.apply_transfer(plan, density_array)
 
 
         #print(f"density_array = {density_array}") 

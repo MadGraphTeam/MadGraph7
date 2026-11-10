@@ -264,7 +264,7 @@ C
 
       LOGICAL IS_PROJ_COMPUTED(NONIA,-1:1,-1:1)
       TYPE(DUAL),SAVE::PROJ_SAVED(NONIA,-1:1,-1:1,-1:1,-1:1) 
-      REAL*8 CG_SAVED(NONIA,-1:1,-1:1,-2:2)
+      REAL*8 CG_SAVED(NONIA,-1:1,-1:1,-4:4)
       COMMON/%(proc_prefix)sIS_PROJ_COMPUTED/IS_PROJ_COMPUTED
 
       LOGICAL IS_JAMP_COMPUTED(4**NONIA,3**(NEXTERNAL-NONIA),-(3**(NPWAVE)-1)/2:(3**(NPWAVE)-1)/2)
@@ -347,6 +347,11 @@ C       Computing the projectors
         DO LZ = -L_ONIA(I), L_ONIA(I)
 C         SZ = JZ - LZ with the physical condition |SZ| < S 
           SZ = NHEL(QQ)-LZ
+          IF (UNCOUPLED_ONIA(I).EQ.1) THEN
+C           L_z x S_z basis: the helicity codes 3*(LZ+1)+(SZ+1)-4
+            IF (LZ.NE.(NHEL(QQ)+4)/3-1) CYCLE
+            SZ = MODULO(NHEL(QQ)+4,3)-1
+          ENDIF
           IF (ABS(SZ).GT.S_ONIA(I)) THEN
             CYCLE
           ENDIF
@@ -381,7 +386,11 @@ c               LM::I think that the normalisation of the proj can also be moved
           ENDIF
 
 C         Computing the Jz projector (Clebsch-Gordan coefficient table)
-          CALL CLEBSCH_GORDAN(L_ONIA(I),LZ,S_ONIA(I),SZ,J_ONIA(I),NHEL(QQ),CG_COEFF)
+          IF (UNCOUPLED_ONIA(I).EQ.1) THEN
+            CG_COEFF = 1D0
+          ELSE
+            CALL CLEBSCH_GORDAN(L_ONIA(I),LZ,S_ONIA(I),SZ,J_ONIA(I),NHEL(QQ),CG_COEFF)
+          ENDIF
           CG_SAVED(I,LZ,SZ,NHEL(QQ)) = CG_COEFF
         ENDDO
 
@@ -448,6 +457,10 @@ C           For each L>0 state, retrieving LZ encoded in H
             ENDIF
 C           Verifying if the current H value is accepted
             SZ = NHEL(QQ) - LZ
+            IF (UNCOUPLED_ONIA(I).EQ.1) THEN
+              IF (LZ.NE.(NHEL(QQ)+4)/3-1) CYCLE LZ_LOOP
+              SZ = MODULO(NHEL(QQ)+4,3)-1
+            ENDIF
             IF (ABS(SZ).GT.S_ONIA(I)) CYCLE LZ_LOOP
           ENDIF
         ENDDO
@@ -464,6 +477,7 @@ C           Verifying if the current H value is accepted
               LZ = LZ_LIST(SUM(L_ONIA(1:I)))
 C             Cross-check SZ physical condition 
               SZ = NHEL(QQ) - LZ
+              IF (UNCOUPLED_ONIA(I).EQ.1) SZ = MODULO(NHEL(QQ)+4,3)-1
               IF (ABS(SZ).GT.S_ONIA(I)) CYCLE LZ_LOOP
 C             Cross-check passed!
 C             Inserting dual components

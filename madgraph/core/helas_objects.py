@@ -188,11 +188,22 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         # is structurally what it was before.
         polarization = base_objects.canonical_polarization(
             leg.get('polarization'))
+        # A constituent of a bound state carries its Fock state: two onia
+        # with the same diagrams but a different Fock state (J, L, S, colour,
+        # hadron) have different projectors, LDMEs and masses, so they must not
+        # share a matrix element ('g g > Jpsi(1|3PJ8)' is three of them). The
+        # comparison only reads the first entry, so the Fock state goes there.
+        onium = leg.get('onium')
+        if onium:
+            onium = (onium.get('id'), onium.get('N'), onium.get('L'),
+                     onium.get('S'), onium.get('J'), onium.get('C'))
+        else:
+            onium = ()
         # Include also onshell, since this specifies forbidden s-channel
         return [((number, id, part.get('spin'), leg.get('onshell'),
                   part.get('is_part'), part.get('self_antipart'),
                   part.get('mass'), part.get('width'), part.get('color'),
-                  polarization),
+                  polarization, onium),
                  leg.get('number'),leg.get('onium'))]
         
     @staticmethod
@@ -5681,6 +5692,17 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 pdgs.append(leg.get('id'))
         return pdgs
 
+    def get_onium_helicities(self, onium):
+        """The helicities of a bound-state leg: its J_z = -J..J, or, for a
+        3P state of an output written with uncoupled P waves (onia_uncoupled,
+        the L_z x S_z basis MadSpin needs for the spin of a colour octet), the
+        nine (L_z, S_z) pairs coded as 3*(L_z+1) + (S_z+1) - 4 = -4..4."""
+        if getattr(self, 'onia_uncoupled', False) and onium.get('L') == 1 \
+                and onium.get('S') == 1:
+            return list(range(-4, 5))
+        j = onium.get('J')
+        return list(range(-j, j + 1))
+
     def get_physical_helicities(self):
         """The helicities of every physical leg, the J_z = -J..J of an
         onium (the index of NHEL for that leg in the onia templates)."""
@@ -5695,8 +5717,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             if number in onia_second:
                 continue
             if number in onia_first:
-                j = wf.get('onium').get('J')
-                out.append(list(range(-j, j + 1)))
+                out.append(self.get_onium_helicities(wf.get('onium')))
             else:
                 out.append(hel_per_part[i])
         return out
@@ -6609,7 +6630,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             constituent = []
             external_wavefunctions = self.get_external_wavefunctions()
             for pair in onia_pairs:
-                hel_per_part[pair[0]-1] = int(2*external_wavefunctions[pair[0]-1].get('onium').get('J')+1)
+                hel_per_part[pair[0]-1] = len(self.get_onium_helicities(
+                                    external_wavefunctions[pair[0]-1].get('onium')))
                 constituent.append(pair[1])
             for i in sorted(constituent, reverse=True):
                 del hel_per_part[i-1]
@@ -6635,8 +6657,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             constituent = []
             external_wavefunctions = self.get_external_wavefunctions()
             for pair in onia_pairs:
-                j = external_wavefunctions[pair[0]-1].get('onium').get('J')
-                hel = [i for i in range(-j,j+1,1)]
+                hel = self.get_onium_helicities(
+                                    external_wavefunctions[pair[0]-1].get('onium'))
                 hel_per_part[pair[0]-1] = hel
                 constituent.append(pair[1])
             for i in sorted(constituent, reverse=True):

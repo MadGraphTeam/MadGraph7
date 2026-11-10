@@ -2003,6 +2003,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                          (nonia,",".join(str(x) for x in incoming)))
         lines.append("DATA (JH2_ONIA(i),i=1,%d)/%s/" % \
                          (nonia,",".join(str(x) for x in jh2)))
+        # a 3P wave written in the L_z x S_z basis (helicity -4..4, no
+        # Clebsch-Gordan coefficient): output option --onia_uncoupled, for
+        # the spin of a colour octet in MadSpin
+        uncoupled = [1 if (getattr(matrix_element, 'onia_uncoupled', False)
+                           and l[i] == 1 and s[i] == 1) else 0 for i in range(nonia)]
+        lines.append("\nINTEGER UNCOUPLED_ONIA(NONIA)")
+        lines.append("DATA (UNCOUPLED_ONIA(i),i=1,%d)/%s/" % \
+                         (nonia,",".join(str(x) for x in uncoupled)))
 
         # Write the file
         writer.writelines(lines)
@@ -5912,6 +5920,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 p = model.get_particle(pid)
                 iden *= nhel_from_particle(p) * color_dim_from_particle(p)
             return int(iden)
+
+        # --onia_uncoupled: the 3P bound states in the L_z x S_z basis
+        # (HelasMatrixElement.get_onium_helicities, onia.inc), set before
+        # any helicity of this matrix element is written
+        if str(self.cmd_options.get('onia_uncoupled', False)).lower() in ('true', '1', 'yes') \
+                and matrix_element.get_nonia() > 0:
+            matrix_element.onia_uncoupled = True
         
         cwd = os.getcwd()
         # Create the directory PN_xx_xxxxx in the specified path

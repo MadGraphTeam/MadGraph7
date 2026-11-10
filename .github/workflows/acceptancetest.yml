@@ -800,10 +800,12 @@ jobs:
             ./tests/test_manager.py test_onia_production_channels -pA -t0 -l INFO
             ./tests/test_manager.py test_onium_production_default_scale -pA -t0 -l INFO
             ./tests/test_manager.py test_onia_full_model_fock_states -pA -t0 -l INFO
+            ./tests/test_manager.py test_onia_fock_states_not_combined -pA -t0 -l INFO
             ./tests/test_manager.py test_onium_decay_massive_products -pA -t0 -l INFO
             ./tests/test_manager.py test_leptonium_decay_without_photon_vertex -pA -t0 -l INFO
             ./tests/test_manager.py test_onia_density_matrix -pA -t0 -l INFO
             ./tests/test_manager.py test_madspin_onium_decay -pA -t0 -l INFO
+            ./tests/test_manager.py test_madspin_onium_octet_decay -pA -t0 -l INFO
 
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
