@@ -1175,12 +1175,17 @@ class ALOHAWriterForFortran(WriteALOHA):
         # number of Lorentz components of the outgoing wavefunction: in FD
         # gauge a vector and its Goldstone share the same 5 slots
         size = self.type_to_size[self.particles[self.outgoing-1]] - 2
-        # js1 and js2 contract the wavefunction with n and q (the 5th component
-        # of q carries the mass, hence the conjugation)
+        # js1 and js2 contract the wavefunction with n and q. The 5th component
+        # of q is -i*m and enters js2 as +i*m = -FDQ(4). With a real mass that
+        # is also DCONJG(FDQ(4)), the form written outside the complex-mass
+        # scheme (the generated code stays as it was). With a complex mass the
+        # conjugate would be +i*conj(m), which is not analytic in m and breaks
+        # the gauge cancellations of the complex-mass scheme.
         out.write('    FDJS1 = (%s)/FDNQ\n' % '-'.join(
             ['FDN(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]))
-        out.write('    FDJS2 = (%s-DCONJG(FDQ(4))*%s%%W(5))/FDNQ\n' % (
+        out.write('    FDJS2 = (%s%s*%s%%W(5))/FDNQ\n' % (
             '-'.join(['FDQ(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]),
+            '+FDQ(4)' if aloha.complex_mass else '-DCONJG(FDQ(4))',
             outname))
         for i in range(size):
             out.write('    %(o)s%%W(%(k)d) = %(o)s%%W(%(k)d)-FDQ(%(i)d)*FDJS1'

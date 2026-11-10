@@ -20,8 +20,10 @@ import math
 import copy
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 import tests.unit_tests as unittest
@@ -237,6 +239,63 @@ class TestMatrixElementChecker(unittest.TestCase):
         relative_difference = abs(values['unitary'] - values['FD']) / \
             max(abs(values['unitary']), abs(values['FD']))
         self.assertLess(relative_difference, 5e-2)
+
+    def test_fd_complex_mass_scheme_matches_unitary(self):
+        """In the complex-mass scheme the FD and the unitary gauge agree to
+        machine precision once the EXTERNAL unstable particles have a zero
+        width; the internal W, Z, h, t keep theirs (complex masses).
+
+        With the width of an external particle the two gauges cannot agree:
+        its momentum sits on the real mass shell, not on the complex one the
+        Ward identities need, and every gauge gives another O(width/mass)
+        answer (unitary and Feynman included). See docs/auto-fd-gauge.md.
+
+        Guards the FD propagator, which contracted the goldstone component
+        with the conjugate of -i*m: 6e-7 (w+ w- > w+ w-) and 1e-5
+        (b b > h b b) before the fix."""
+
+        import aloha
+        import madgraph.interface.master_interface as interface
+        import madgraph.core.helas_objects as helas_objects
+        import madgraph.models.write_param_card as write_param_card
+        import madgraph.models.check_param_card as check_param_card
+
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+        tmpdir = tempfile.mkdtemp(prefix='fd_cms_')
+        self.addCleanup(shutil.rmtree, tmpdir, True)
+
+        # process, the external particle(s) whose width is set to zero
+        for process_line, external in (('w+ w- > w+ w-', [24]),
+                                       ('b b > h b b QCD=0', [25])):
+            values = {}
+            p = None
+            for gauge in ['unitary', 'FD']:
+                cmd = interface.MasterCmd()
+                cmd.no_notification()
+                cmd.exec_cmd('set auto_gauge False')
+                cmd.exec_cmd('set complex_mass_scheme True')
+                cmd.exec_cmd('set gauge %s' % gauge)
+                cmd.exec_cmd('import model sm')
+                cmd.exec_cmd('generate %s' % process_line)
+                me = helas_objects.HelasMatrixElement(cmd._curr_amps[0])
+                card = os.path.join(tmpdir, 'param_card_%s.dat' % gauge)
+                write_param_card.ParamCardWriter(cmd._curr_model, card)
+                param_card = check_param_card.ParamCard(card)
+                for pdg in external:
+                    param_card['decay'].get((pdg,)).value = 0.
+                evaluator = process_checks.MatrixElementEvaluator(
+                    cmd._curr_model, param_card=param_card, cmd=cmd, reuse=False)
+                if p is None:
+                    p, _ = evaluator.get_momenta(me.get('processes')[0])
+                values[gauge], _ = evaluator.evaluate_matrix_element(me, p=p)
+
+            self.assertGreater(abs(values['unitary']), 0)
+            relative_difference = abs(values['unitary'] - values['FD']) / \
+                max(abs(values['unitary']), abs(values['FD']))
+            self.assertLess(relative_difference, 1e-10, process_line)
 
     def test_failed_process(self):
         """Test that check process fails for wrong color-Lorentz."""

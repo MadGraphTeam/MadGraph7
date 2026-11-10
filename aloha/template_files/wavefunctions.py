@@ -421,7 +421,9 @@ def multiply_propagator_factor(win, m):
         return wout
 
     js1 = (n[0] * w0[0] - n[1] * w0[1] - n[2] * w0[2] - n[3] * w0[3]) / nq
-    js2 = (q[0] * w0[0] - q[1] * w0[1] - q[2] * w0[2] - q[3] * w0[3] - q[4].conjugate() * w0[4]) / nq
+    # q[4] = -i*m enters as +i*m, not as its conjugate: the two only agree for
+    # a real mass, and the complex-mass scheme needs the analytic form
+    js2 = (q[0] * w0[0] - q[1] * w0[1] - q[2] * w0[2] - q[3] * w0[3] + q[4] * w0[4]) / nq
 
     for i in range(5):
         wout[i+2] = w0[i] - q[i] * js1 - n[i] * js2

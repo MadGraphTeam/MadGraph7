@@ -38,7 +38,8 @@ void define_gauge_dir(const complex<double> q[5], double n[5]) {
   }
 }
 
-void multiply_propagator_factor(const ALOHAOBJ &win, double m, ALOHAOBJ &wout) {
+void multiply_propagator_factor(const ALOHAOBJ &win, std::complex<double> m,
+                                ALOHAOBJ &wout) {
   static const complex<double> cI(0., 1.);
   complex<double> q[5], w0[5], w1[5], js1, js2;
   double n[5], nq;
@@ -59,8 +60,10 @@ void multiply_propagator_factor(const ALOHAOBJ &win, double m, ALOHAOBJ &wout) {
        n[3] * real(q[3]);
 
   js1 = (n[0] * w0[0] - n[1] * w0[1] - n[2] * w0[2] - n[3] * w0[3]) / nq;
-  js2 = (q[0] * w0[0] - q[1] * w0[1] - q[2] * w0[2] - q[3] * w0[3] -
-         conj(q[4]) * w0[4]) / nq;
+  // q[4] = -i*m enters as +i*m, not as its conjugate: the two only agree for
+  // a real mass, and the complex-mass scheme needs the analytic form
+  js2 = (q[0] * w0[0] - q[1] * w0[1] - q[2] * w0[2] - q[3] * w0[3] +
+         q[4] * w0[4]) / nq;
 
   for (int i = 0; i < 5; ++i) {
     wout.W[i] = w0[i] - q[i] * js1 - n[i] * js2;

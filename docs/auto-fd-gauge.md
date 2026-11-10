@@ -224,10 +224,103 @@ process with W bosons by this much. Two things follow from it:
   which also has the off-resonance gauge dependence of a decay-chain diagram
   subset: 0.9% for `e+ e- > z z h, z > u u~, z > e+ e-, h > b b~`) pin the
   unitary gauge;
-- in the complex-mass scheme the gauges should agree exactly, and they do
-  not here (`u u~ > w+ w-`: 5.1085553001036475e-3 unitary against
+- in the complex-mass scheme the two gauges do not agree either
+  (`u u~ > w+ w-`: 5.1085553001036475e-3 unitary against
   5.1080495446772884e-3 FD, `u d > z u d QCD=0`: 1.4697541998128762e-6
-  against 1.4704511965777327e-6). The FD gauge with `complex_mass_scheme`
-  is not consistent at the 1e-4 level, a pre-existing issue worth its own
-  investigation (real masses in the external polarisation vectors or in the
-  goldstone sector are the usual suspects).
+  against 1.4704511965777327e-6), and they cannot as long as an external
+  W or Z has a width: see the next section.
+
+### The complex-mass scheme
+
+The difference had two causes: an FD bug, now fixed, and a limit of the
+complex-mass scheme that every gauge shares.
+
+**The FD propagator contracted the goldstone component with the conjugate
+mass.** The FD propagator projects the off-shell wavefunction with the
+5-momentum `q^A = (q^mu, -i m)`, and its `js2` coefficient contracts the
+fifth component with `+i m`. The routines wrote that as the complex
+conjugate `DCONJG(FDQ(4))`. That is the same number for a real mass. For the
+complex mass `m^2 = M^2 - i M Gamma` it gives `+i conj(m)`, which is not
+analytic in `m` and breaks the gauge cancellations of the scheme. It
+matters for an internal W, Z, h whose goldstone component is fed at both ends
+(a longitudinal W, a massive fermion, a Higgs). With the width of the
+external particles set to zero, so that only this effect is left (internal
+widths kept):
+
+| process (complex-mass scheme)       | widths set to zero | unitary                | FD before              | FD after               |
+|-------------------------------------|--------------------|------------------------|------------------------|------------------------|
+| `w+ w- > w+ w-`                     | W                  | 0.43405089229016358    | 0.43405107789616149    | 0.43405089229016591    |
+| `t t~ > w+ w-`                      | t, W               | 7.5254435207372905e-2  | 7.5254488939839950e-2  | 7.5254435207374043e-2  |
+| `b b > h b b QCD=0`                 | h                  | 1.8856866728922558e-9  | 1.8857291829819852e-9  | 1.8856866728922546e-9  |
+
+The routines now use the analytic `-FDQ(4)`: the Fortran and madmatrix
+writers in the complex-mass scheme (with a real mass the generated code is
+unchanged, byte for byte), the Python `wavefunctions.multiply_propagator_factor`
+and the Fortran and C++ `multiply_propagator_factor` templates. The C++
+one now takes a complex mass, and madmatrix builds `FDQ[4]` from both parts of
+the complex `M` (it used to write `-M` into the imaginary part). The madmatrix
+`multiply_propagator_factor` of `helas_fd.h` keeps its conjugate: it takes a
+real mass, no generated routine calls it, and it is part of an IOTest
+reference. Neither
+`u u~ > w+ w-` nor `u d > z u d QCD=0` was affected: their internal Z/W
+propagators end on massless quarks, which have no goldstone coupling.
+
+`goldstone_mass_mismatches` (the import-time check of the goldstone couplings)
+read the couplings, built with the complex masses, against the real masses,
+and warned about every massive particle of the `sm` in the complex-mass scheme
+(t at 172.975 GeV, h at 124.978 GeV, ...). It now uses `CMASS_<mass>` when the
+model has it.
+
+Tests: `test_fd_complex_mass_scheme_matches_unitary` (test_process_checks,
+Python evaluation, both gauges at 1e-10), `FDPropagatorComplexMassTest`
+(test_helas_call_writers: the Fortran and madmatrix routines, and the
+analyticity of the Python template), and the complex-mass case of
+`test_goldstone_mass_mismatches`.
+
+**An external particle with a width has no gauge-independent amplitude.** The
+complex-mass scheme is gauge invariant for stable external states only. The
+Ward identity that relates the longitudinal polarisation to the goldstone,
+`k_mu M^mu = i mu M_G`, is exact only when the other external legs sit on
+their complex mass shell `p^2 = mu^2`. An external W generated at
+`p^2 = M_W^2` is `i M_W Gamma_W` away from it, and the identity is broken by
+a term proportional to that. The FD gauge writes the longitudinal W as
+`k^mu/M + eps~` and uses the identity to trade `k^mu/M` for the goldstone, so
+it drops that term. The unitary gauge keeps it, multiplied by the `E^2/M^2`
+of its longitudinal polarisations. So `u u~ > w+ w-` and
+`u d > z u d QCD=0` cannot agree at machine precision with the width of
+their external W/Z in, and no other choice in the FD routines makes them
+agree: putting `mu/M` instead of 1 in the goldstone component of the external
+W moves the FD number by 1e-4, but not onto the unitary one.
+
+This is not specific to FD. In `w+ z > w+ z` the Feynman and unitary
+propagators differ in a way that matters, and the three gauges give three
+numbers (complex-mass scheme, `check_sa` point at 1 TeV):
+
+| widths                    | unitary            | Feynman            | FD                 |
+|---------------------------|--------------------|--------------------|--------------------|
+| all in                    | 2.0314519609875217 | 2.0243218774357561 | 1.9415286927692104 |
+| W and Z set to zero       | 1.9421716420326598 | 1.9421716420326913 | 1.9421716420327024 |
+
+With the widths of the external particles set to zero, every process here
+agrees between the gauges to machine precision: `u u~ > w+ w-` with the W
+width at zero, 5.0417665595190201e-3 unitary against 5.0417665595190401e-3
+FD; `u d > z u d QCD=0` with the Z width at zero, 1.4544995228660480e-6
+against 1.4544995228660486e-6.
+
+Of the gauge-dependent answers, the FD one is the better behaved. It stays
+within O(Gamma/M) of the zero-width value, while the unitary gauge
+amplifies the gauge-violating piece with the energy. At 1 TeV
+`w+ w- > w+ w-` gives 0.47460 unitary, 0.43991 FD, and 0.43405 with the W
+width at zero. `w+ z > w+ z` gives 2.0315 unitary, 1.9415 FD, and 1.9422
+with the W and Z widths at zero. For a gauge-independent number, set the width
+of the particles that appear as external states to zero (the param_card has
+one width per particle, so this also removes it from their internal
+propagators). `help set gauge` says so.
+
+Pre-existing, not addressed here: `check gauge` with `complex_mass_scheme`
+stops in its axial-gauge step (the Python writer refuses custom denominators
+with a complex mass), and the madmatrix output (`output standalone`, mg7)
+does not compile in the complex-mass scheme (`sqrt` of `cxsmpl` in
+`Parameters.cc`, and complex masses in the `double` parameter table of
+`CPPProcess.cc`). So the madmatrix change above is checked on the generated
+text only.
