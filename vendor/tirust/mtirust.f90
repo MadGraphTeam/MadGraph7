@@ -347,6 +347,9 @@ contains
     do k=1,8*count
       call unpack(output(:,k),values(k),ios)
       if (ios /= 0) then
+        ! Native insertion precedes this public Fortran transport check.
+        ! Reject all numerical cache entries when decoding the result fails.
+        ios = clear_cache(context)
         status = TIRUST_ERROR
         local_error = 'TIRust returned an invalid or nonfinite binary128 output record.'
         return
