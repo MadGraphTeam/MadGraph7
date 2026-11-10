@@ -279,6 +279,32 @@ pub mod virtual_amplitudes {
                 )
             })
         }
+        /// Kinematics improvement of later evaluations, the Python API's
+        /// `kinematics_improvement=`: `"z-shift"` (MadLoop's default),
+        /// `"rescaling"`, `"projection"` or `"off"`; recorded per point in
+        /// the diagnostics (`"kinematics"`). Another value is an
+        /// invalid-argument error.
+        pub fn set_kinematics_improvement(&mut self, setting: &str) -> Result<()> {
+            let setting = checked_cstring(setting, "kinematics improvement")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe {
+                ffi::rusticol_virtual_set_kinematics_improvement(
+                    self.handle.as_ptr(),
+                    setting.as_ptr(),
+                )
+            })
+        }
+        /// Whether later binary64 evaluations are improved too, the Python
+        /// API's `kinematics_improvement_binary64=` (default false).
+        pub fn set_kinematics_improvement_binary64(&mut self, binary64: bool) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_kinematics_improvement_binary64(
+                    self.handle.as_ptr(),
+                    c_int::from(binary64),
+                )
+            })
+        }
         /// Stability checks of later evaluations, the Python API's
         /// `stability_checks=`: `rotation_count` default rotations, or (with
         /// a count of 0) the rotation specifications `rotations`, the
@@ -946,6 +972,14 @@ pub mod virtual_amplitudes {
             pub(super) fn rusticol_virtual_set_reduction_unchecked(
                 handle: *mut c_void,
                 unchecked: c_int,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_kinematics_improvement(
+                handle: *mut c_void,
+                setting: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_kinematics_improvement_binary64(
+                handle: *mut c_void,
+                binary64: c_int,
             ) -> c_int;
             pub(super) fn rusticol_virtual_set_stability_checks(
                 handle: *mut c_void,

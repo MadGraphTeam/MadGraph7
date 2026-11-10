@@ -161,9 +161,33 @@ def improve(
         extra.get("onshell"),
         extra.get("close"),
     )
-    return [[list(leg) for leg in point] for point in out], [
-        json.loads(record) for record in records
+    found = [json.loads(record) for record in records]
+    # An improved point as the exact decimal texts of its carrier values
+    # (dyadic rationals: finite decimal expansions, the inputs' syntax); any
+    # other point is the caller's own, unchanged.
+    improved = [
+        [[_exact_decimal(x) for x in leg] for leg in point]
+        if record["status"] == "improved"
+        else [[str(x) for x in leg] for leg in original]
+        for point, record, original in zip(out, found, points, strict=True)
     ]
+    return improved, found
+
+
+def _exact_decimal(text: str) -> str:
+    """The exact decimal text of a dyadic rational (a carrier value's exact
+    rational, ``n / 2^k``)."""
+
+    from decimal import Decimal
+
+    value = Fraction(text)
+    k = value.denominator.bit_length() - 1
+    if value.denominator != 1 << k:
+        raise ValueError(f"not a carrier value: {text}")
+    scaled = value.numerator * 5**k
+    digits = tuple(int(c) for c in str(abs(scaled)))
+    # Constructed from its digits: exact (no context rounding).
+    return str(Decimal((int(scaled < 0), digits, -k)))
 
 
 def off_record(setting: str) -> dict[str, Any]:

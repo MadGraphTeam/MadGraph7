@@ -380,9 +380,12 @@ mod exact_points {
                 let (out, record) = improve_exact(&input, n_initial, &masses, arithmetic, Variant::Projection, true, &Tolerances::default());
                 assert_eq!(record.produced, Some(Variant::Projection), "{name} {arithmetic:?}");
                 assert_exact(&out, n_initial, &m2, arithmetic, &record);
-                // Quadratic convergence from the binary64 input: 1 to 3 steps.
+                // Quadratic convergence from the binary64 input: 1 to 3 steps
+                // above binary64; in binary64 the rounded input may already
+                // lie within the carrier's own bound (0 steps).
                 let steps = record.iterations.unwrap();
-                assert!((1..=4).contains(&steps), "{name} {arithmetic:?}: {steps} steps");
+                let fewest = u32::from(arithmetic != Arithmetic::Binary64);
+                assert!((fewest..=4).contains(&steps), "{name} {arithmetic:?}: {steps} steps");
                 // The move is of the input's own defect.
                 assert!(record.moved < 1e-14, "{name} {arithmetic:?}: moved {}", record.moved);
             }

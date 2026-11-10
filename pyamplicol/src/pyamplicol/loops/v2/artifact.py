@@ -1852,6 +1852,51 @@ class V2VirtualRuntime:
             return masses
         return [masses[leg] for leg in member.legs]
 
+    def improved_points(
+        self,
+        momenta: Momenta,
+        *,
+        arithmetic: str | None = None,
+        precision: int | None = None,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        variant: str | None = None,
+        fallback: bool = True,
+    ) -> tuple[list[Any], list[Any]]:
+        """The points an evaluation in the call's carrier evaluates under the
+        kinematics improvement ``variant`` (default: the runtime's setting,
+        else MadLoop's; ``fallback=False`` runs the variant alone, without
+        MadLoop's fallback: a forced variant), in the caller's leg order, and
+        each point's record (``VirtualKinematics``): the exact decimal texts
+        of the carrier values, toward the masses the evaluation binds. An
+        evaluation of these points with ``kinematics_improvement="off"``
+        equals the improving evaluation bitwise (m-lit lit-psimprove; the
+        acceptance's forced variants)."""
+
+        from pyamplicol.api.virtual_results import VirtualKinematics
+        from pyamplicol.kinematics import improve, initial_count, resolve
+        from pyamplicol.runtime.virtual import _inputs
+
+        carrier, setting = self._carrier(arithmetic, precision)
+        chosen = (
+            variant if variant is not None else self._kinematics(None, None).setting
+        )
+        resolve(chosen, None)
+        points, scales = _inputs(momenta, mu_r2, self.external_count)
+        if chosen == "off" or not points:
+            return list(points), [None] * len(points)
+        n_initial = initial_count(self._executor.slice.blocks.process.legs)
+        out: list[Any] = list(points)
+        records: list[Any] = [None] * len(points)
+        for index, (point, scale) in enumerate(zip(points, scales, strict=True)):
+            masses = self._kinematics_masses(setting, point, scale, 1)
+            digits = setting.working_digits if carrier == "arbitrary" else None
+            (improved,), (record,) = improve(
+                [point], n_initial, masses, carrier, digits, chosen, fallback=fallback
+            )
+            out[index] = improved
+            records[index] = VirtualKinematics.from_record(record)
+        return out, records
+
     def _improver(self, settings: Any) -> Any:
         """A call's level-by-level improvement (``kinematics.LevelImprover``)
         of its caller-order points."""

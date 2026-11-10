@@ -357,6 +357,59 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction_unchecked(
         Ok(())
     })
 }
+/// The kinematics improvement of the handle's later evaluations, the Python
+/// API's `kinematics_improvement=` (m-lit lit-psimprove; additive, ABI
+/// version 2 kept): `"z-shift"` (MadLoop's ImprovePSPoint 2 with MadLoop's
+/// own fallback to 1; the default, also for NULL), `"rescaling"`
+/// (ImprovePSPoint 1), `"projection"` (the frame-independent minimal-norm
+/// projection) or `"off"`. Before a double-double or arbitrary-precision
+/// evaluation (and a binary64 one under
+/// `rusticol_virtual_set_kinematics_improvement_binary64`) each point is
+/// moved onto exact energy-momentum conservation and the external shells in
+/// that carrier, from the caller's inputs in the caller's leg order; the
+/// diagnostics record it per point (`"kinematics"`). Another value is
+/// `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` (`kinematics_improvement::
+/// SETTING_REFUSAL`) and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread; `setting` is NULL or a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_kinematics_improvement(
+    handle: *mut VirtualHandle,
+    setting: *const c_char,
+) -> c_int {
+    guard(|| unsafe {
+        let default = kinematics_improvement::DEFAULT_VARIANT.name();
+        mutable(handle)?
+            .0
+            .set_kinematics_improvement(text(setting)?.unwrap_or(default))?;
+        Ok(())
+    })
+}
+/// Whether the handle's later binary64 evaluations are improved too, the
+/// Python API's `kinematics_improvement_binary64=` (m-lit lit-psimprove;
+/// additive, ABI version 2 kept): 1 improves them with the selected variant,
+/// 0 (the default) evaluates them as given (bitwise as without the
+/// improvement). Any other value is `RUSTICOL_VIRTUAL_INVALID_ARGUMENT`
+/// (`kinematics_improvement::BINARY64_REFUSAL`) and nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_kinematics_improvement_binary64(
+    handle: *mut VirtualHandle,
+    binary64: c_int,
+) -> c_int {
+    guard(|| unsafe {
+        let binary64 = kinematics_improvement::binary64_switch(i64::from(binary64)).map_err(bad)?;
+        mutable(handle)?.0.set_kinematics_improvement_binary64(binary64);
+        Ok(())
+    })
+}
 /// The stability checks of the handle's later evaluations, the Python API's
 /// `stability_checks=` (`VirtualStabilityChecks`; additive, ABI version 2
 /// kept): `rotation_count` default rotations (the Python API's count), or,

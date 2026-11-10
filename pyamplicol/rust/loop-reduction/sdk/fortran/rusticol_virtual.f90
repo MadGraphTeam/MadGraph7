@@ -115,6 +115,8 @@ module rusticol_virtual
     procedure :: set_reduction
     procedure :: set_reduction_target
     procedure :: set_reduction_unchecked
+    procedure :: set_kinematics_improvement
+    procedure :: set_kinematics_improvement_binary64
     procedure :: set_stability_checks
     procedure :: evaluate
     procedure :: evaluate_selected
@@ -229,6 +231,19 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle
       integer(c_int), value :: unchecked
+      integer(c_int) :: value
+    end function
+    function c_set_kinematics_improvement(handle, setting) &
+        bind(C, name="rusticol_virtual_set_kinematics_improvement") result(value)
+      import
+      type(c_ptr), value :: handle, setting
+      integer(c_int) :: value
+    end function
+    function c_set_kinematics_improvement_binary64(handle, binary64) &
+        bind(C, name="rusticol_virtual_set_kinematics_improvement_binary64") result(value)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: binary64
       integer(c_int) :: value
     end function
     function c_set_stability_checks(handle, rotation_count, rotations, reduction_direction, rescaled, &
@@ -736,6 +751,35 @@ contains
     flag = 0_c_int
     if (unchecked) flag = 1_c_int
     call finish(c_set_reduction_unchecked(handle_of(self),flag),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Kinematics improvement of later evaluations (the Python API's
+  ! kinematics_improvement=): "z-shift" (MadLoop's default), "rescaling",
+  ! "projection" or "off"; recorded per point in the diagnostics
+  ! ("kinematics"); another value is refused with an invalid-argument status.
+  subroutine set_kinematics_improvement(self,setting,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: setting
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(setting)
+    call finish(c_set_kinematics_improvement(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Whether later binary64 evaluations are improved too (the Python API's
+  ! kinematics_improvement_binary64=; default .false.).
+  subroutine set_kinematics_improvement_binary64(self,binary64,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    logical, intent(in) :: binary64
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    integer(c_int) :: flag
+    flag = 0_c_int
+    if (binary64) flag = 1_c_int
+    call finish(c_set_kinematics_improvement_binary64(handle_of(self),flag),ierr, &
       error_message=error_message)
   end subroutine
 

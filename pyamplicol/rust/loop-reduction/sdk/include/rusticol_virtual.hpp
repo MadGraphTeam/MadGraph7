@@ -274,6 +274,20 @@ public:
         virtual_detail::check(
             rusticol_virtual_set_reduction_unchecked(handle_.get(), unchecked ? 1 : 0));
     }
+    // Kinematics improvement of later evaluations (the Python API's
+    // kinematics_improvement=): "z-shift" (MadLoop's default), "rescaling",
+    // "projection" or "off"; recorded per point in the diagnostics
+    // ("kinematics"). A refused value throws VirtualError.
+    void set_kinematics_improvement(const std::string &setting) {
+        virtual_detail::check(
+            rusticol_virtual_set_kinematics_improvement(handle_.get(), setting.c_str()));
+    }
+    // Whether later binary64 evaluations are improved too (the Python API's
+    // kinematics_improvement_binary64=; default false).
+    void set_kinematics_improvement_binary64(bool binary64) {
+        virtual_detail::check(rusticol_virtual_set_kinematics_improvement_binary64(
+            handle_.get(), binary64 ? 1 : 0));
+    }
     // Stability checks of later evaluations (the Python API's stability_checks=):
     // rotation_count default rotations, or the rotation specifications of
     // `rotations` (a JSON array; rotation_count then 0); all off, the default,

@@ -104,6 +104,7 @@ use crate::runtime::{
 };
 pub use crate::v2_decimal::{Arith, Binary64, C, Decimal, DecimalArith, cadd, cmul, conj};
 use rusticol_core::VerifiedArtifact;
+pub use rusticol_core::kinematics_improvement;
 use rusticol_core::loop_artifact::{
     LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact,
     LoopV2ExecutionMetadata, LoopV2NativeTrees, is_loop_v2_manifest, load_loop_v2_artifact,
@@ -723,6 +724,36 @@ impl Runner {
             let inputs = inputs(trees, runtime, executor.plan(), &bound)?;
             Ok((bound, inputs))
         })
+    }
+
+    /// The squared mass each leg's external state binds at `values` and the
+    /// scale `scale` in the carrier of `zero` (`TreeProgram::bind`'s
+    /// `BoundParameters::leg_masses`, exactly the `V2Batch::leg_masses` an
+    /// evaluation in that carrier binds; m-lit lit-psimprove's targets).
+    pub(crate) fn leg_masses<T: Native>(
+        &mut self,
+        precision: V2Precision,
+        values: &[Rational],
+        scale: &Rational,
+        zero: &T,
+    ) -> RusticolResult<Vec<Option<Rational>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        if !self.runtimes.contains_key(&precision) {
+            let runtime = self.trees.runtime(zero)?;
+            self.runtimes.insert(precision, Box::new(runtime));
+        }
+        let runtime = self
+            .runtimes
+            .get_mut(&precision)
+            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
+            .ok_or_else(|| invalid("a tree runtime of another carrier"))?;
+        let bound = self
+            .trees
+            .bind(runtime, values, std::slice::from_ref(scale), zero)?;
+        Ok(bound.leg_masses)
     }
 
     /// Dress and reduce a batch (`V2Executor::evaluate`).
@@ -1598,6 +1629,81 @@ impl V2Runtime {
             return Err(invalid("mu_R² must be positive"));
         }
         Ok(())
+    }
+
+    /// The kinematics improvement of a batch's points in `precision` (m-lit
+    /// lit-psimprove; `rusticol_core::kinematics_improvement`, the one
+    /// implementation): each point's physical momenta (`4 × legs` exact
+    /// rationals, label order, the initial states first) improved in that
+    /// carrier's arithmetic with `variant` (MadLoop's dispatch with
+    /// `fallback`, the public chain) toward the squared masses an evaluation
+    /// in that carrier binds (`TreeProgram::bind`'s leg masses, one source
+    /// with `V2Batch::leg_masses`). Returns the points to evaluate (exact
+    /// rationals of the carrier values; a point no variant improves, or an
+    /// exactly physical one, unchanged) and one record per point. The SDK
+    /// applies it once per call above every evaluation entry (the per-point
+    /// fallback and the stability rotations act on its points), never inside
+    /// `evaluate_batch`, so a rotated point is never improved again.
+    pub fn improve_kinematics(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        precision: V2Precision,
+        variant: kinematics_improvement::Variant,
+        fallback: bool,
+    ) -> RusticolResult<(Vec<Vec<Rational>>, Vec<kinematics_improvement::Record>)> {
+        use kinematics_improvement::{Arithmetic as Carrier, Tolerances, improve_exact};
+        self.check_batch(momenta, scales)?;
+        if momenta.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+        // MadLoop's convention: the initial states first (label order).
+        let initial = self
+            .record
+            .legs
+            .iter()
+            .take_while(|&&(_, initial, _)| initial)
+            .count();
+        if self.record.legs[initial..].iter().any(|&(_, initial, _)| initial) {
+            return Err(invalid(
+                "the kinematics improvement needs the initial states first",
+            ));
+        }
+        // The legs' bound masses do not depend on mu_R^2 (`TreeProgram::
+        // bind` checks the masses equal at every point): one binding.
+        let values = self.parameter_values()?;
+        let masses = match precision {
+            V2Precision::Double => self.process.leg_masses(precision, &values, &scales[0], &0.0)?,
+            V2Precision::DoubleDouble => self.process.leg_masses(
+                precision,
+                &values,
+                &scales[0],
+                &DoubleFloat::from(0.0),
+            )?,
+            V2Precision::Arbitrary(_) => {
+                let zero = Float::with_val(precision.bits()?, 0);
+                self.process.leg_masses(precision, &values, &scales[0], &zero)?
+            }
+        };
+        let carrier = match precision {
+            V2Precision::Double => Carrier::Binary64,
+            V2Precision::DoubleDouble => Carrier::DoubleDouble,
+            V2Precision::Arbitrary(_) => Carrier::Arbitrary(precision.bits()?),
+        };
+        let tolerances = Tolerances::default();
+        let mut points = Vec::with_capacity(momenta.len());
+        let mut records = Vec::with_capacity(momenta.len());
+        for point in momenta {
+            let legs: Vec<[Rational; 4]> = point
+                .chunks_exact(4)
+                .map(|p| [p[0].clone(), p[1].clone(), p[2].clone(), p[3].clone()])
+                .collect();
+            let (out, record) =
+                improve_exact(&legs, initial, &masses, carrier, variant, fallback, &tolerances);
+            points.push(out.into_iter().flatten().collect());
+            records.push(record);
+        }
+        Ok((points, records))
     }
 
     /// All-incoming momenta: final legs negated.
