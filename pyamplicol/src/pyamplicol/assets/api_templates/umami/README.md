@@ -33,7 +33,9 @@ The interface reports unsupported alpha_s when the model has no explicit mapping
 parameter changes.
 
 Momenta use `input[event + stride*(particle + particle_count*component)]`, with
-components `(E,px,py,pz)`. Channel and flavour indices are zero-based. The returned
+components `(E,px,py,pz)`. Channel and flavour indices are zero-based. The events
+of a call are grouped by channel and flavour and evaluated in native batches of up
+to 512 points; invalid inputs are rejected before any evaluation. The returned
 matrix element includes the native incoming averaging and identical-particle
 normalization. It sums the artifact's available helicities. A random helicity
 input produces only an informational label; it does not sample the matrix element.

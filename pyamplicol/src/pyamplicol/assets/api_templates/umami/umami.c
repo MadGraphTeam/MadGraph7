@@ -15,6 +15,9 @@
 #endif
 #include UMAMI_PROVIDER_HEADER
 
+/* Events are evaluated in batches of at most this many points per native call. */
+#define UMAMI_CHUNK 512
+
 typedef struct {
     char *name;
     double real, imaginary;
@@ -23,11 +26,18 @@ typedef struct {
 typedef struct {
     char *artifact;
     RusticolRuntimeHandle **runtimes;
-    double *momenta;
-    double *helicity_values;
     /* Parameters set so far, applied to the processes loaded later. */
     Override *overrides;
     size_t override_count;
+    /* Flat (channel, flavour) selections: offset of each channel, and their count. */
+    size_t *selection_offsets, selection_count;
+    /* Per call: the events sorted by selection, and their selection. */
+    size_t *order, *keys, order_capacity, keys_capacity;
+    size_t *starts, *cursor;
+    /* Per chunk of UMAMI_CHUNK events. */
+    double *batch, *values, *totals;
+    size_t *picked, *positions;
+    uint32_t *helicities;
 } Instance;
 
 static bool const supported_inputs[UMAMI_INPUT_KEY_COUNT] = {
@@ -185,16 +195,32 @@ UmamiStatus umami_initialize(UmamiHandle *handle, char const *param_card_path) {
     if (param_card_path == NULL || param_card_path[0] != '/' ||
         stat(param_card_path, &info) != 0 || !S_ISDIR(info.st_mode) ||
         umami_provider.process_count == 0 || umami_provider.particle_count > INT_MAX ||
-        umami_provider.particle_count > SIZE_MAX / (4 * sizeof(double))) return UMAMI_ERROR;
+        umami_provider.particle_count > SIZE_MAX / (4 * sizeof(double) * UMAMI_CHUNK))
+        return UMAMI_ERROR;
     Instance *instance = calloc(1, sizeof(*instance));
     if (instance == NULL) return UMAMI_ERROR;
     size_t length = strlen(param_card_path) + 1;
     instance->artifact = malloc(length);
     instance->runtimes = calloc(umami_provider.process_count, sizeof(*instance->runtimes));
-    instance->momenta = calloc(4 * umami_provider.particle_count, sizeof(double));
-    instance->helicity_values = calloc(umami_provider.helicity_count + 1, sizeof(double));
-    if (instance->artifact == NULL || instance->runtimes == NULL || instance->momenta == NULL ||
-        instance->helicity_values == NULL) {
+    instance->selection_offsets = calloc(umami_provider.channel_count + 1, sizeof(size_t));
+    for (size_t c = 0; instance->selection_offsets != NULL && c < umami_provider.channel_count; ++c) {
+        instance->selection_offsets[c] = instance->selection_count;
+        instance->selection_count += umami_provider.channels[c].flavour_count;
+    }
+    size_t chunk = UMAMI_CHUNK, width = umami_provider.helicity_count + 1;
+    instance->starts = calloc(instance->selection_count + 1, sizeof(size_t));
+    instance->cursor = calloc(instance->selection_count + 1, sizeof(size_t));
+    instance->batch = calloc(4 * umami_provider.particle_count * chunk, sizeof(double));
+    instance->values = calloc(width * chunk, sizeof(double));
+    instance->totals = calloc(chunk, sizeof(double));
+    instance->picked = calloc(chunk, sizeof(size_t));
+    instance->positions = calloc(chunk, sizeof(size_t));
+    instance->helicities = calloc(chunk, sizeof(uint32_t));
+    if (instance->artifact == NULL || instance->runtimes == NULL ||
+        instance->selection_offsets == NULL || instance->starts == NULL ||
+        instance->cursor == NULL || instance->batch == NULL || instance->values == NULL ||
+        instance->totals == NULL || instance->picked == NULL || instance->positions == NULL ||
+        instance->helicities == NULL) {
         umami_free(instance); return UMAMI_ERROR;
     }
     memcpy(instance->artifact, param_card_path, length);
@@ -263,29 +289,38 @@ rollback:
     return UMAMI_ERROR;
 }
 
-/* Total of one contribution, at a fixed runtime helicity if helicity is not NULL. With
- * values, the values of all runtime helicities are written there and summed. */
-static UmamiStatus evaluate_contribution(Instance *instance, UmamiContribution const *entry,
-                                        double const *momenta, size_t event, size_t stride,
-                                        double const *alpha_s, uint32_t const *helicity,
-                                        double *values, double *result) {
+static bool reserve(size_t **buffer, size_t *capacity, size_t count) {
+    if (count <= *capacity) return true;
+    if (count > SIZE_MAX / sizeof(size_t)) return false;
+    size_t *grown = realloc(*buffer, count * sizeof(size_t));
+    if (grown == NULL) return false;
+    *buffer = grown;
+    *capacity = count;
+    return true;
+}
+
+/* One native evaluation of the points events[0..count), which share one alpha_s (or
+ * NULL). With resolved, values gets [point][runtime helicity], otherwise the totals,
+ * at helicities[point] if helicities is not NULL. */
+static UmamiStatus evaluate_points(Instance *instance, UmamiContribution const *entry,
+                                   double const *momenta, size_t stride,
+                                   size_t const *events, size_t count,
+                                   uint32_t const *helicities, double const *alpha_s,
+                                   bool resolved, double *values) {
     size_t process = entry->process_index;
     UmamiProcess const *description = &umami_provider.processes[process];
-    UmamiStatus status = load_process(instance, process);
-    if (status != UMAMI_SUCCESS) return status;
     RusticolRuntimeHandle *runtime = instance->runtimes[process];
     size_t n = umami_provider.particle_count;
-    for (size_t j = 0; j < n; ++j)
-        for (size_t k = 0; k < 4; ++k) {
-            double value = momenta[event + stride * (n*k + entry->permutation[j])];
-            if (!isfinite(value)) return UMAMI_ERROR;
-            instance->momenta[4*j+k] = value;
-        }
+    double *batch = instance->batch;
+    for (size_t i = 0; i < count; ++i)
+        for (size_t j = 0; j < n; ++j)
+            for (size_t k = 0; k < 4; ++k)
+                batch[4*(n*i + j) + k] =
+                    momenta[events[i] + stride * (n*k + entry->permutation[j])];
     double previous_real = 0.0, previous_imaginary = 0.0;
     bool changed = false;
+    UmamiStatus status;
     if (alpha_s != NULL) {
-        if (description->alpha_s_name == NULL) return UMAMI_ERROR_UNSUPPORTED_INPUT;
-        if (!isfinite(*alpha_s) || *alpha_s < 0.0) return UMAMI_ERROR;
         status = native_error(rusticol_runtime_get_model_parameter(
             runtime, description->alpha_s_name, &previous_real, &previous_imaginary));
         if (status != UMAMI_SUCCESS) return status;
@@ -296,29 +331,23 @@ static UmamiStatus evaluate_contribution(Instance *instance, UmamiContribution c
             if (status != UMAMI_SUCCESS) return status;
         }
     }
+    char const *const *color = entry->color_id == NULL ? NULL : &entry->color_id;
+    size_t color_count = entry->color_id == NULL ? 0 : 1;
     int native_status;
-    if (values != NULL) {
-        size_t helicity_count = 0, color_count = 0;
+    if (resolved) {
+        size_t helicity_count = 0, resolved_colors = 0;
         native_status = rusticol_runtime_evaluate_resolved_f64(
-            runtime, instance->momenta, 4*n, 1, NULL, 0,
-            entry->color_id == NULL ? NULL : &entry->color_id,
-            entry->color_id == NULL ? 0 : 1,
-            values, description->helicity_count, &helicity_count, &color_count);
+            runtime, batch, 4*n*count, count, NULL, 0, color, color_count,
+            values, count * description->helicity_count, &helicity_count, &resolved_colors);
         if (native_status == RUSTICOL_STATUS_OK &&
-            (helicity_count != description->helicity_count || color_count != 1)) {
+            (helicity_count != description->helicity_count || resolved_colors != 1)) {
             fprintf(stderr, "umami: unexpected resolved shape of process %s\n", description->key);
             native_status = RUSTICOL_STATUS_RUNTIME_ERROR;
         }
-        *result = 0.0;
-        for (size_t h = 0; native_status == RUSTICOL_STATUS_OK && h < helicity_count; ++h)
-            *result += values[h];
     } else {
         native_status = rusticol_runtime_evaluate_selected_f64(
-            runtime, instance->momenta, 4*n, 1,
-            NULL, 0,
-            entry->color_id == NULL ? NULL : &entry->color_id,
-            entry->color_id == NULL ? 0 : 1,
-            helicity, helicity == NULL ? 0 : 1, NULL, 0, result, 1);
+            runtime, batch, 4*n*count, count, NULL, 0, color, color_count,
+            helicities, helicities == NULL ? 0 : count, NULL, 0, values, count);
     }
     status = native_error(native_status);
     if (changed) {
@@ -327,6 +356,99 @@ static UmamiStatus evaluate_contribution(Instance *instance, UmamiContribution c
         if (restored != UMAMI_SUCCESS) return restored;
     }
     return status;
+}
+
+/* evaluate_points over runs of events with equal alpha_s; values as there. */
+static UmamiStatus evaluate_runs(Instance *instance, UmamiContribution const *entry,
+                                 double const *momenta, size_t stride,
+                                 size_t const *events, size_t count,
+                                 uint32_t const *helicities, double const *alpha_s,
+                                 bool resolved, double *values) {
+    size_t width = resolved ? umami_provider.processes[entry->process_index].helicity_count : 1;
+    for (size_t start = 0, end; start < count; start = end) {
+        end = count;
+        if (alpha_s != NULL)
+            for (end = start + 1; end < count && alpha_s[events[end]] == alpha_s[events[start]];)
+                ++end;
+        UmamiStatus status = evaluate_points(
+            instance, entry, momenta, stride, events + start, end - start,
+            helicities == NULL ? NULL : helicities + start,
+            alpha_s == NULL ? NULL : &alpha_s[events[start]], resolved, values + start * width);
+        if (status != UMAMI_SUCCESS) return status;
+    }
+    return UMAMI_SUCCESS;
+}
+
+/* The events of one channel and flavour, at most UMAMI_CHUNK of them. */
+static UmamiStatus evaluate_selection(Instance *instance, UmamiFlavour const *selection,
+                                      void const *const *in, void *const *out,
+                                      size_t const *events, size_t count, size_t stride) {
+    double const *momenta = in[UMAMI_IN_MOMENTA];
+    double const *alpha_s = in[UMAMI_IN_ALPHA_S];
+    int const *fixed = in[UMAMI_IN_HELICITY_INDEX];
+    double *totals = instance->totals;
+    for (size_t i = 0; i < count; ++i) totals[i] = 0.0;
+    UmamiContribution const *first = &selection->contributions[0];
+    bool sample = fixed == NULL && out[UMAMI_OUT_HELICITY_INDEX] != NULL;
+    for (size_t j = 0; j < selection->contribution_count; ++j) {
+        UmamiContribution const *entry = &selection->contributions[j];
+        UmamiStatus status = load_process(instance, entry->process_index);
+        if (status != UMAMI_SUCCESS) return status;
+        double *values = instance->values;
+        if (fixed != NULL) {
+            /* a fixed exported helicity, absent ones do not contribute */
+            size_t kept = 0;
+            for (size_t i = 0; i < count; ++i) {
+                int runtime = entry->helicity_runtime[fixed[events[i]]];
+                if (runtime < 0) continue;
+                instance->picked[kept] = events[i];
+                instance->positions[kept] = i;
+                instance->helicities[kept++] = (uint32_t)runtime;
+            }
+            status = evaluate_runs(instance, entry, momenta, stride, instance->picked, kept,
+                                   instance->helicities, alpha_s, false, values);
+            if (status != UMAMI_SUCCESS) return status;
+            for (size_t i = 0; i < kept; ++i)
+                totals[instance->positions[i]] += entry->factor * values[i];
+            continue;
+        }
+        status = evaluate_runs(instance, entry, momenta, stride, events, count, NULL,
+                               alpha_s, sample, values);
+        if (status != UMAMI_SUCCESS) return status;
+        if (!sample) {
+            for (size_t i = 0; i < count; ++i) totals[i] += entry->factor * values[i];
+            continue;
+        }
+        /* sample the helicity in proportion to its contribution */
+        double const *random = in[UMAMI_IN_RANDOM_HELICITY];
+        size_t width = umami_provider.processes[entry->process_index].helicity_count;
+        int *labels = out[UMAMI_OUT_HELICITY_INDEX];
+        for (size_t i = 0; i < count; ++i) {
+            double const *row = &values[i * width];
+            double total = 0.0;
+            for (size_t h = 0; h < width; ++h) total += row[h];
+            double target = (random ? random[events[i]] : 0.5) * total, cumulative = 0.0;
+            size_t chosen = 0;
+            for (size_t h = 0; h < width; ++h) {
+                if (row[h] <= 0.0) continue;
+                chosen = h;
+                cumulative += row[h];
+                if (cumulative > target) break;
+            }
+            labels[events[i]] = (int)entry->helicity_export[chosen];
+            totals[i] = entry->factor * total;
+        }
+    }
+    for (size_t i = 0; i < count; ++i) {
+        size_t event = events[i];
+        if (!isfinite(totals[i])) return UMAMI_ERROR;
+        if (out[UMAMI_OUT_MATRIX_ELEMENT]) ((double *)out[UMAMI_OUT_MATRIX_ELEMENT])[event] = totals[i];
+        if (fixed != NULL && out[UMAMI_OUT_HELICITY_INDEX])
+            ((int *)out[UMAMI_OUT_HELICITY_INDEX])[event] = fixed[event];
+        if (out[UMAMI_OUT_COLOR_INDEX])
+            ((int *)out[UMAMI_OUT_COLOR_INDEX])[event] = (int)first->color_index;
+    }
+    return UMAMI_SUCCESS;
 }
 
 UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride, size_t offset,
@@ -355,7 +477,15 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
     if (count == 0) return UMAMI_SUCCESS;
     if (in[UMAMI_IN_MOMENTA] == NULL) return UMAMI_ERROR_MISSING_INPUT;
     Instance *instance = handle;
-    for (size_t event = offset; event < offset+count; ++event) {
+    size_t n = umami_provider.particle_count;
+    if (!reserve(&instance->order, &instance->order_capacity, count) ||
+        !reserve(&instance->keys, &instance->keys_capacity, count)) return UMAMI_ERROR;
+    /* Validate every event and sort them by channel and flavour. */
+    size_t *starts = instance->starts;
+    for (size_t s = 0; s <= instance->selection_count; ++s) starts[s] = 0;
+    double const *momenta = in[UMAMI_IN_MOMENTA];
+    for (size_t i = 0; i < count; ++i) {
+        size_t event = offset + i;
         size_t channel = in[UMAMI_IN_CHANNEL_INDEX] ?
             ((unsigned int const *)in[UMAMI_IN_CHANNEL_INDEX])[event] : 0;
         int flavour = in[UMAMI_IN_FLAVOR_INDEX] ?
@@ -364,61 +494,47 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
             (size_t)flavour >= umami_provider.channels[channel].flavour_count) return UMAMI_ERROR;
         UmamiFlavour const *selection = &umami_provider.channels[channel].flavours[flavour];
         if (selection->contribution_count == 0) return UMAMI_ERROR;
-        double random = in[UMAMI_IN_RANDOM_HELICITY] ?
-            ((double const *)in[UMAMI_IN_RANDOM_HELICITY])[event] : 0.5;
-        if (!isfinite(random) || random < 0.0 || random >= 1.0) return UMAMI_ERROR;
-        double const *alpha_s =
-            in[UMAMI_IN_ALPHA_S] ? &((double const *)in[UMAMI_IN_ALPHA_S])[event] : NULL;
-        UmamiContribution const *first = &selection->contributions[0];
-        int label = 0;
-        double total = 0.0;
         if (in[UMAMI_IN_HELICITY_INDEX]) {
-            /* a fixed exported helicity, absent ones do not contribute */
-            label = ((int const *)in[UMAMI_IN_HELICITY_INDEX])[event];
+            int label = ((int const *)in[UMAMI_IN_HELICITY_INDEX])[event];
             if (label < 0 || (size_t)label >= umami_provider.exported_helicity_count)
                 return UMAMI_ERROR;
-            for (size_t j = 0; j < selection->contribution_count; ++j) {
-                UmamiContribution const *entry = &selection->contributions[j];
-                if (entry->helicity_runtime[label] < 0) continue;
-                uint32_t helicity = (uint32_t)entry->helicity_runtime[label];
-                double value = 0.0;
-                UmamiStatus status = evaluate_contribution(instance, entry,
-                    in[UMAMI_IN_MOMENTA], event, stride, alpha_s, &helicity, NULL, &value);
+        } else if (out[UMAMI_OUT_HELICITY_INDEX] && selection->contribution_count != 1) {
+            return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
+        }
+        if (in[UMAMI_IN_RANDOM_HELICITY]) {
+            double random = ((double const *)in[UMAMI_IN_RANDOM_HELICITY])[event];
+            if (!isfinite(random) || random < 0.0 || random >= 1.0) return UMAMI_ERROR;
+        }
+        if (in[UMAMI_IN_ALPHA_S]) {
+            double alpha_s = ((double const *)in[UMAMI_IN_ALPHA_S])[event];
+            for (size_t j = 0; j < selection->contribution_count; ++j)
+                if (umami_provider.processes[selection->contributions[j].process_index]
+                        .alpha_s_name == NULL) return UMAMI_ERROR_UNSUPPORTED_INPUT;
+            if (!isfinite(alpha_s) || alpha_s < 0.0) return UMAMI_ERROR;
+        }
+        for (size_t k = 0; k < 4 * n; ++k)
+            if (!isfinite(momenta[event + stride * k])) return UMAMI_ERROR;
+        size_t key = instance->selection_offsets[channel] + (size_t)flavour;
+        instance->keys[i] = key;
+        ++starts[key + 1];
+    }
+    for (size_t s = 0; s < instance->selection_count; ++s) starts[s + 1] += starts[s];
+    for (size_t s = 0; s < instance->selection_count; ++s) instance->cursor[s] = starts[s];
+    for (size_t i = 0; i < count; ++i)
+        instance->order[instance->cursor[instance->keys[i]]++] = offset + i;
+    for (size_t channel = 0; channel < umami_provider.channel_count; ++channel) {
+        UmamiChannel const *description = &umami_provider.channels[channel];
+        for (size_t flavour = 0; flavour < description->flavour_count; ++flavour) {
+            size_t key = instance->selection_offsets[channel] + flavour;
+            for (size_t start = starts[key]; start < starts[key + 1]; start += UMAMI_CHUNK) {
+                size_t size = starts[key + 1] - start;
+                if (size > UMAMI_CHUNK) size = UMAMI_CHUNK;
+                UmamiStatus status = evaluate_selection(
+                    instance, &description->flavours[flavour], in, out,
+                    &instance->order[start], size, stride);
                 if (status != UMAMI_SUCCESS) return status;
-                total += entry->factor * value;
-            }
-        } else if (out[UMAMI_OUT_HELICITY_INDEX] && selection->contribution_count == 1) {
-            /* sample the helicity in proportion to its contribution */
-            double *values = instance->helicity_values;
-            UmamiStatus status = evaluate_contribution(instance, first,
-                in[UMAMI_IN_MOMENTA], event, stride, alpha_s, NULL, values, &total);
-            if (status != UMAMI_SUCCESS) return status;
-            size_t count = umami_provider.processes[first->process_index].helicity_count;
-            double target = random * total, cumulative = 0.0;
-            size_t chosen = 0;
-            for (size_t h = 0; h < count; ++h) {
-                if (values[h] <= 0.0) continue;
-                chosen = h;
-                cumulative += values[h];
-                if (cumulative > target) break;
-            }
-            label = (int)first->helicity_export[chosen];
-            total *= first->factor;
-        } else {
-            if (out[UMAMI_OUT_HELICITY_INDEX]) return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
-            for (size_t j = 0; j < selection->contribution_count; ++j) {
-                double value = 0.0;
-                UmamiStatus status = evaluate_contribution(instance, &selection->contributions[j],
-                    in[UMAMI_IN_MOMENTA], event, stride, alpha_s, NULL, NULL, &value);
-                if (status != UMAMI_SUCCESS) return status;
-                total += selection->contributions[j].factor * value;
             }
         }
-        if (!isfinite(total)) return UMAMI_ERROR;
-        if (out[UMAMI_OUT_MATRIX_ELEMENT]) ((double *)out[UMAMI_OUT_MATRIX_ELEMENT])[event] = total;
-        if (out[UMAMI_OUT_HELICITY_INDEX]) ((int *)out[UMAMI_OUT_HELICITY_INDEX])[event] = label;
-        if (out[UMAMI_OUT_COLOR_INDEX]) ((int *)out[UMAMI_OUT_COLOR_INDEX])[event] =
-            (int)first->color_index;
     }
     return UMAMI_SUCCESS;
 }
@@ -431,7 +547,10 @@ UmamiStatus umami_free(UmamiHandle handle) {
             if (instance->runtimes[i] != NULL) (void)rusticol_runtime_free(instance->runtimes[i]);
     for (size_t i = 0; i < instance->override_count; ++i) free(instance->overrides[i].name);
     free(instance->overrides);
-    free(instance->runtimes); free(instance->momenta); free(instance->helicity_values);
+    free(instance->runtimes); free(instance->selection_offsets);
+    free(instance->order); free(instance->keys); free(instance->starts); free(instance->cursor);
+    free(instance->batch); free(instance->values); free(instance->totals);
+    free(instance->picked); free(instance->positions); free(instance->helicities);
     free(instance->artifact); free(instance);
     return UMAMI_SUCCESS;
 }
