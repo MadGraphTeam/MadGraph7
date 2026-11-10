@@ -829,7 +829,9 @@ energies the events are written, and the <span class="math notranslate nohighlig
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">leptonic</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Treat the beams as leptons: no PDFs are used and the partonic energy equals the
 collision energy. This is set automatically for lepton-collider processes, together
-with 500 GeV beams and no jet cuts.</p>
+with 500 GeV beams; the jet cuts stay, as in madevent. Without a PDF,
+<span class="math notranslate nohighlight">\(\alpha_s\)</span> is the 2-loop running of the <span class="math notranslate nohighlight">\(\alpha_s(m_Z)\)</span> of the param card,
+as madevent does, and <code class="docutils literal notranslate"><span class="pre">pdf1</span></code>/<code class="docutils literal notranslate"><span class="pre">pdf2</span></code> are not used (nor downloaded).</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">pdf1</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;NNPDF40_lo_as_01180&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">pdf2</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;NNPDF40_lo_as_01180&quot;</span></code>)</dt><dd><p>Name of the LHAPDF set of each beam. <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">beam.pdf</span> <span class="pre">X</span></code> sets both. MG7 tries to
 download a set that is not installed. The default is the 5-flavor NNPDF 4.0 LO set,
