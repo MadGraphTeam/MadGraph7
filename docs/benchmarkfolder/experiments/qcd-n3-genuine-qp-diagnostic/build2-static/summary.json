@@ -1,0 +1,30 @@
+{
+  "build_elapsed_seconds": 6.137125036213547,
+  "executable_sha256": "ed6a51fff0312b06a45cd97a409aafa7d2447eef5ae7800579b44c0c904b8474",
+  "external_relocations": 17,
+  "limits": [
+    "Runtime closure and plain/observed parity remain unexecuted.",
+    "Compiler startup objects/scripts and selected support libraries are post-link snapshots, not previously frozen inputs.",
+    "Linked libquadmath path differs from intended runtime libquadmath: runtime loader/maps gates must resolve the exact bound path.",
+    "Historical donor object identity is not claimed; current frozen twenty-object identities are preserved.",
+    "Internal DP-repair to QP-repair call in improve_ps.o is same-object and unwrapped; public QP-repair from loop_matrix.o is wrapped.",
+    "Linker GNU-stack warning is retained; no scientific conclusion or runtime success is inferred."
+  ],
+  "link_map_sha256": "28baebd869a17b26e08a35f3f331679703c0f80ce0f244f0af46adc2b93401f2",
+  "linked_edges": 32,
+  "load_records": 81,
+  "matching_object_relocations": 18,
+  "original_objects": 20,
+  "passed": true,
+  "post_link_support_inputs": 11,
+  "root_reported_terminal": {
+    "attribution": "reported by root; actual four retained command receipts independently checked",
+    "exit_code": 0,
+    "session": 63632
+  },
+  "same_object_relocations": 1,
+  "scope": "closed build2 static audit only; no target execution or loader invocation",
+  "source_index_sha256": "44039ba25e451910d1ab7c264ac1f397437ce41f965d8e381b539dd9baf44046",
+  "unique_resolved_loads": 55,
+  "wrapper_count": 14
+}

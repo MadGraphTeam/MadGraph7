@@ -1,0 +1,329 @@
+{
+  "all_wrappers_forward_to_real_symbol": true,
+  "all_wrappers_have_external_relocations_and_linked_incoming_edges": true,
+  "expected_wrappers": [
+    "ml5_0_smatrixhel_splitorders_",
+    "ml5_0_improve_ps_point_precision_",
+    "ml5_0_mp_improve_ps_point_precision_",
+    "ml5_0_mp_compute_loop_coefs_",
+    "mp_update_as_param_",
+    "ml5_0_mp_helas_calls_ampb_1_",
+    "ml5_0_mp_coef_construction_1_",
+    "ml5_0_mploopnum_",
+    "ml5_0_mp_switch_order_",
+    "ml5_0_loop_ct_calls_1_",
+    "ctsxcut_",
+    "quadninja_tensor_evaluate_smat_cm_",
+    "ninjars_evaluate_mp_with_poles",
+    "ml_tirust_evaluate_mp"
+  ],
+  "linked_edges": [
+    {
+      "caller": "__mninjars_MOD_tensor_mp",
+      "instruction": "3c8f63b:\te8 bd 54 4b fc       \tcall   144afd <__wrap_ninjars_evaluate_mp_with_poles>",
+      "target": "__wrap_ninjars_evaluate_mp_with_poles"
+    },
+    {
+      "caller": "__mtirust_MOD_tensor_mp",
+      "instruction": "3cc6557:\te8 e8 e7 47 fc       \tcall   144d44 <__wrap_ml_tirust_evaluate_mp>",
+      "target": "__wrap_ml_tirust_evaluate_mp"
+    },
+    {
+      "caller": "__wrap_ctsxcut_",
+      "instruction": "144878:\te8 d3 8d 1e 00       \tcall   32d650 <ctsxcut_>",
+      "target": "ctsxcut_"
+    },
+    {
+      "caller": "__wrap_ml5_0_improve_ps_point_precision_",
+      "instruction": "140b04:\te8 13 93 07 00       \tcall   1b9e1c <ml5_0_improve_ps_point_precision_>",
+      "target": "ml5_0_improve_ps_point_precision_"
+    },
+    {
+      "caller": "__wrap_ml5_0_loop_ct_calls_1_",
+      "instruction": "13b5c9:\te8 83 64 0b 00       \tcall   1f1a51 <ml5_0_loop_ct_calls_1_>",
+      "target": "ml5_0_loop_ct_calls_1_"
+    },
+    {
+      "caller": "__wrap_ml5_0_mp_coef_construction_1_",
+      "instruction": "13ddb6:\te8 98 6f 0b 00       \tcall   1f4d53 <ml5_0_mp_coef_construction_1_>",
+      "target": "ml5_0_mp_coef_construction_1_"
+    },
+    {
+      "caller": "__wrap_ml5_0_mp_compute_loop_coefs_",
+      "instruction": "13f461:\te8 04 26 09 00       \tcall   1d1a6a <ml5_0_mp_compute_loop_coefs_>",
+      "target": "ml5_0_mp_compute_loop_coefs_"
+    },
+    {
+      "caller": "__wrap_ml5_0_mp_helas_calls_ampb_1_",
+      "instruction": "13e6ef:\te8 d2 55 09 00       \tcall   1d3cc6 <ml5_0_mp_helas_calls_ampb_1_>",
+      "target": "ml5_0_mp_helas_calls_ampb_1_"
+    },
+    {
+      "caller": "__wrap_ml5_0_mp_improve_ps_point_precision_",
+      "instruction": "1402a2:\te8 91 61 07 00       \tcall   1b6438 <ml5_0_mp_improve_ps_point_precision_>",
+      "target": "ml5_0_mp_improve_ps_point_precision_"
+    },
+    {
+      "caller": "__wrap_ml5_0_mp_switch_order_",
+      "instruction": "13c86e:\te8 31 2f 0d 00       \tcall   20f7a4 <ml5_0_mp_switch_order_>",
+      "target": "ml5_0_mp_switch_order_"
+    },
+    {
+      "caller": "__wrap_ml5_0_mploopnum_",
+      "instruction": "13d394:\te8 63 d1 08 00       \tcall   1ca4fc <ml5_0_mploopnum_>",
+      "target": "ml5_0_mploopnum_"
+    },
+    {
+      "caller": "__wrap_ml5_0_smatrixhel_splitorders_",
+      "instruction": "141414:\te8 89 c2 07 00       \tcall   1bd6a2 <ml5_0_smatrixhel_splitorders_>",
+      "target": "ml5_0_smatrixhel_splitorders_"
+    },
+    {
+      "caller": "__wrap_ml_tirust_evaluate_mp",
+      "instruction": "144f17:\te8 b4 85 f8 ff       \tcall   cd4d0 <ml_tirust_evaluate_mp@plt>",
+      "target": "ml_tirust_evaluate_mp"
+    },
+    {
+      "caller": "__wrap_mp_update_as_param_",
+      "instruction": "13eea6:\te8 67 f1 1c 00       \tcall   30e012 <mp_update_as_param_>",
+      "target": "mp_update_as_param_"
+    },
+    {
+      "caller": "__wrap_ninjars_evaluate_mp_with_poles",
+      "instruction": "144cee:\te8 5d 1c 20 01       \tcall   1346950 <ninjars_evaluate_mp_with_poles>",
+      "target": "ninjars_evaluate_mp_with_poles"
+    },
+    {
+      "caller": "__wrap_quadninja_tensor_evaluate_smat_cm_",
+      "instruction": "144a90:\te8 3b 88 f8 ff       \tcall   cd2d0 <quadninja_tensor_evaluate_smat_cm_@plt>",
+      "target": "quadninja_tensor_evaluate_smat_cm_"
+    },
+    {
+      "caller": "ml5_0_ctloop_",
+      "instruction": "1c389c:\t48 8d 05 77 98 f7 ff \tlea    -0x86789(%rip),%rax        # 13d11a <__wrap_ml5_0_mploopnum_>",
+      "target": "__wrap_ml5_0_mploopnum_"
+    },
+    {
+      "caller": "ml5_0_ctloop_",
+      "instruction": "1c3908:\te8 fa 0d f8 ff       \tcall   144707 <__wrap_ctsxcut_>",
+      "target": "__wrap_ctsxcut_"
+    },
+    {
+      "caller": "ml5_0_improve_ps_point_precision_",
+      "instruction": "1b9ee9:\te8 4a c5 ff ff       \tcall   1b6438 <ml5_0_mp_improve_ps_point_precision_>",
+      "target": "ml5_0_mp_improve_ps_point_precision_"
+    },
+    {
+      "caller": "ml5_0_mp_compute_loop_coefs_",
+      "instruction": "1d1b6e:\te8 4e d2 f6 ff       \tcall   13edc1 <__wrap_mp_update_as_param_>",
+      "target": "__wrap_mp_update_as_param_"
+    },
+    {
+      "caller": "ml5_0_mp_compute_loop_coefs_",
+      "instruction": "1d2892:\te8 a0 b9 f6 ff       \tcall   13e237 <__wrap_ml5_0_mp_helas_calls_ampb_1_>",
+      "target": "__wrap_ml5_0_mp_helas_calls_ampb_1_"
+    },
+    {
+      "caller": "ml5_0_mp_compute_loop_coefs_",
+      "instruction": "1d37bb:\te8 3e a1 f6 ff       \tcall   13d8fe <__wrap_ml5_0_mp_coef_construction_1_>",
+      "target": "__wrap_ml5_0_mp_coef_construction_1_"
+    },
+    {
+      "caller": "ml5_0_mp_ninja_loop_",
+      "instruction": "1c09be:\te8 87 b5 f7 ff       \tcall   13bf4a <__wrap_ml5_0_mp_switch_order_>",
+      "target": "__wrap_ml5_0_mp_switch_order_"
+    },
+    {
+      "caller": "ml5_0_mp_ninja_loop_",
+      "instruction": "1c1ccc:\te8 2f 2c f8 ff       \tcall   144900 <__wrap_quadninja_tensor_evaluate_smat_cm_>",
+      "target": "__wrap_quadninja_tensor_evaluate_smat_cm_"
+    },
+    {
+      "caller": "ml5_0_mp_ninjars_loop_",
+      "instruction": "1be846:\te8 ff d6 f7 ff       \tcall   13bf4a <__wrap_ml5_0_mp_switch_order_>",
+      "target": "__wrap_ml5_0_mp_switch_order_"
+    },
+    {
+      "caller": "ml5_0_mp_tirust_tensor_diagnostic_",
+      "instruction": "213d19:\te8 2c 82 f2 ff       \tcall   13bf4a <__wrap_ml5_0_mp_switch_order_>",
+      "target": "__wrap_ml5_0_mp_switch_order_"
+    },
+    {
+      "caller": "ml5_0_mploopnum_",
+      "instruction": "1ca5c6:\te8 c0 49 f7 ff       \tcall   13ef8b <__wrap_ml5_0_mp_compute_loop_coefs_>",
+      "target": "__wrap_ml5_0_mp_compute_loop_coefs_"
+    },
+    {
+      "caller": "ml5_0_set_mp_ps_",
+      "instruction": "1b5503:\te8 5a a9 f8 ff       \tcall   13fe62 <__wrap_ml5_0_mp_improve_ps_point_precision_>",
+      "target": "__wrap_ml5_0_mp_improve_ps_point_precision_"
+    },
+    {
+      "caller": "ml5_0_sloopmatrix_retry_impl_",
+      "instruction": "1ae3ad:\te8 74 2b f9 ff       \tcall   140f26 <__wrap_ml5_0_smatrixhel_splitorders_>",
+      "target": "__wrap_ml5_0_smatrixhel_splitorders_"
+    },
+    {
+      "caller": "ml5_0_sloopmatrix_retry_impl_",
+      "instruction": "1aede6:\te8 d9 18 f9 ff       \tcall   1406c4 <__wrap_ml5_0_improve_ps_point_precision_>",
+      "target": "__wrap_ml5_0_improve_ps_point_precision_"
+    },
+    {
+      "caller": "ml5_0_sloopmatrix_retry_impl_",
+      "instruction": "1af366:\te8 20 fc f8 ff       \tcall   13ef8b <__wrap_ml5_0_mp_compute_loop_coefs_>",
+      "target": "__wrap_ml5_0_mp_compute_loop_coefs_"
+    },
+    {
+      "caller": "ml5_0_sloopmatrix_retry_impl_",
+      "instruction": "1afcda:\te8 32 b4 f8 ff       \tcall   13b111 <__wrap_ml5_0_loop_ct_calls_1_>",
+      "target": "__wrap_ml5_0_loop_ct_calls_1_"
+    }
+  ],
+  "object_relocations": [
+    {
+      "caller": "ml5_0_sloopmatrix_retry_impl_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.o",
+      "object_sha256": "a8b46bb9f9e358325d08fcec9af162801fc3920dce8295085bd16cea23971a45",
+      "relocation": "1f0c: R_X86_64_PLT32\tml5_0_smatrixhel_splitorders_-0x4",
+      "target": "ml5_0_smatrixhel_splitorders_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_sloopmatrix_retry_impl_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.o",
+      "object_sha256": "a8b46bb9f9e358325d08fcec9af162801fc3920dce8295085bd16cea23971a45",
+      "relocation": "2945: R_X86_64_PLT32\tml5_0_improve_ps_point_precision_-0x4",
+      "target": "ml5_0_improve_ps_point_precision_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_sloopmatrix_retry_impl_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.o",
+      "object_sha256": "a8b46bb9f9e358325d08fcec9af162801fc3920dce8295085bd16cea23971a45",
+      "relocation": "2ec5: R_X86_64_PLT32\tml5_0_mp_compute_loop_coefs_-0x4",
+      "target": "ml5_0_mp_compute_loop_coefs_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_sloopmatrix_retry_impl_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.o",
+      "object_sha256": "a8b46bb9f9e358325d08fcec9af162801fc3920dce8295085bd16cea23971a45",
+      "relocation": "3839: R_X86_64_PLT32\tml5_0_loop_ct_calls_1_-0x4",
+      "target": "ml5_0_loop_ct_calls_1_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_set_mp_ps_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.o",
+      "object_sha256": "a8b46bb9f9e358325d08fcec9af162801fc3920dce8295085bd16cea23971a45",
+      "relocation": "9062: R_X86_64_PLT32\tml5_0_mp_improve_ps_point_precision_-0x4",
+      "target": "ml5_0_mp_improve_ps_point_precision_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_improve_ps_point_precision_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/improve_ps.o",
+      "object_sha256": "f5a9a7a0c8d3edcb1fb517701e715b191228daad926046aba79f275aa5e3d6a5",
+      "relocation": "3b2c: R_X86_64_PLT32\tml5_0_mp_improve_ps_point_precision_-0x4",
+      "target": "ml5_0_mp_improve_ps_point_precision_",
+      "target_undefined_in_object": false
+    },
+    {
+      "caller": "ml5_0_mp_ninjars_loop_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.o",
+      "object_sha256": "e4bcf06702268da5f0791c88e1ba0319509f73a06b5eec8750d8d11dfac68b19",
+      "relocation": "3fa: R_X86_64_PLT32\tml5_0_mp_switch_order_-0x4",
+      "target": "ml5_0_mp_switch_order_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_mp_ninja_loop_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.o",
+      "object_sha256": "e4bcf06702268da5f0791c88e1ba0319509f73a06b5eec8750d8d11dfac68b19",
+      "relocation": "2572: R_X86_64_PLT32\tml5_0_mp_switch_order_-0x4",
+      "target": "ml5_0_mp_switch_order_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_mp_ninja_loop_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.o",
+      "object_sha256": "e4bcf06702268da5f0791c88e1ba0319509f73a06b5eec8750d8d11dfac68b19",
+      "relocation": "3880: R_X86_64_PLT32\tquadninja_tensor_evaluate_smat_cm_-0x4",
+      "target": "quadninja_tensor_evaluate_smat_cm_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_ctloop_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.o",
+      "object_sha256": "e4bcf06702268da5f0791c88e1ba0319509f73a06b5eec8750d8d11dfac68b19",
+      "relocation": "5452: R_X86_64_REX_GOTPCRELX\tml5_0_mploopnum_-0x4",
+      "target": "ml5_0_mploopnum_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_ctloop_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.o",
+      "object_sha256": "e4bcf06702268da5f0791c88e1ba0319509f73a06b5eec8750d8d11dfac68b19",
+      "relocation": "54bc: R_X86_64_PLT32\tctsxcut_-0x4",
+      "target": "ctsxcut_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_mploopnum_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_num.o",
+      "object_sha256": "4fc528756b002c50705d7c8b9fc5760f19d7d9852cec811cf03413eee3b03678",
+      "relocation": "21e: R_X86_64_PLT32\tml5_0_mp_compute_loop_coefs_-0x4",
+      "target": "ml5_0_mp_compute_loop_coefs_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_mp_compute_loop_coefs_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.o",
+      "object_sha256": "53d090cde1975811375d1bc3bdc0f0a8a43a1e05f4ed8b962f8396eb0631eea6",
+      "relocation": "105: R_X86_64_PLT32\tmp_update_as_param_-0x4",
+      "target": "mp_update_as_param_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_mp_compute_loop_coefs_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.o",
+      "object_sha256": "53d090cde1975811375d1bc3bdc0f0a8a43a1e05f4ed8b962f8396eb0631eea6",
+      "relocation": "e29: R_X86_64_PLT32\tml5_0_mp_helas_calls_ampb_1_-0x4",
+      "target": "ml5_0_mp_helas_calls_ampb_1_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_mp_compute_loop_coefs_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.o",
+      "object_sha256": "53d090cde1975811375d1bc3bdc0f0a8a43a1e05f4ed8b962f8396eb0631eea6",
+      "relocation": "1d52: R_X86_64_PLT32\tml5_0_mp_coef_construction_1_-0x4",
+      "target": "ml5_0_mp_coef_construction_1_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "ml5_0_mp_tirust_tensor_diagnostic_",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIRUST_interface.o",
+      "object_sha256": "92ad6dca630ee52ee4790686c6fcfb9880625e838b268db015c91a4c03d8035a",
+      "relocation": "55d: R_X86_64_PLT32\tml5_0_mp_switch_order_-0x4",
+      "target": "ml5_0_mp_switch_order_",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "__mninjars_MOD_tensor_mp",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/static-audit2/mninjars.o",
+      "object_sha256": "51192b363ea1152f82be16be90a71a028e2e7ffd6d25385ebcfc25939c678de5",
+      "relocation": "a9c: R_X86_64_PLT32\tninjars_evaluate_mp_with_poles-0x4",
+      "target": "ninjars_evaluate_mp_with_poles",
+      "target_undefined_in_object": true
+    },
+    {
+      "caller": "__mtirust_MOD_tensor_mp",
+      "object": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/static-audit2/mtirust.o",
+      "object_sha256": "f8e6dbbc7c86192117aa1c2bd310941b7990da9fb810a83cf2c314be4d596d76",
+      "relocation": "1598: R_X86_64_PLT32\tml_tirust_evaluate_mp-0x4",
+      "target": "ml_tirust_evaluate_mp",
+      "target_undefined_in_object": true
+    }
+  ],
+  "static_edges_do_not_prove_runtime_traversal": true
+}

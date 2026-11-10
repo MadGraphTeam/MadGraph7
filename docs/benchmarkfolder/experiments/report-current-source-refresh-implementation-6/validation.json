@@ -1,0 +1,188 @@
+{
+  "active_current_payload_reads": false,
+  "actual_current_main_checkpoint_ingested": false,
+  "all_canonical_and_frozen_predecessor_payloads_verified_unchanged": true,
+  "closed_diagnostic_integration": {
+    "CMS2": {
+      "amplitude_evaluations": null,
+      "ancestry_statuses": [
+        "failed"
+      ],
+      "coverage": {
+        "amplitude_requests_started": 6,
+        "amplitude_requests_unobserved": 0,
+        "complete_final_streams": 0,
+        "completed_requests": 6,
+        "expected_requests": 6,
+        "host_checked_requests": 0,
+        "pending_requests": 0,
+        "phase_order_outcomes": {
+          "final": {
+            "accepted": 0,
+            "rejected": 0,
+            "unchecked": 0,
+            "unexecuted": 252
+          },
+          "warmup": {
+            "accepted": 234,
+            "rejected": 8,
+            "unchecked": 0,
+            "unexecuted": 10
+          }
+        },
+        "unchecked_final_order_rows": 0,
+        "unexecuted_amplitude_streams": null,
+        "unstarted_worker_requests": 0,
+        "worker_requests_started": 6
+      },
+      "gates": {
+        "five_current_reducers_complete": false,
+        "host_checked_full21": false,
+        "independent_finite_term_oracle": false,
+        "native_run_passed": true,
+        "numerically_qualified": false,
+        "preflight_passed": true,
+        "preparation_passed": true,
+        "primary_policy_agreement": null
+      },
+      "status": "incomplete"
+    },
+    "active_payload_reads": false,
+    "bound_paths": 5695,
+    "main_checkpoint_ingested": false,
+    "notes": [
+      {
+        "evidence": "experiments/current-cms-replay-retention-2/evidence-index.json",
+        "status": "incomplete",
+        "text": "incomplete: 6 expected automatic requests. This selected closed capsule records 6 amplitude streams started; 6 completed. Each CMS final stream requires 21 points and 42 order outcomes; warmup, bootstrap and final phases remain separate. Integrity/preparation/preflight do not establish checked full-stream agreement. Failed, unexecuted and unchecked outcomes remain retained. No repaired-geometry EW oracle, broad stress/CMS acceptance or performance qualification follows. Native orchestration completed 6 requests, while 0 complete streams were host checked and 252 final order outcomes remain unexecuted. Individual recorded warmup acceptance does not qualify a request or imply READY/RUN/final traversal. Worker launches, observed amplitude entry, bootstrap rows and repeated warmup observations do not determine the hidden amplitude evaluation count. Preparation/preflight are inherited from explicitly indexed prior setup; this capsule does not claim fresh CLI exports or builds. Explicit failed ancestor capsules and all their request rows remain retained separately; successor observations do not erase them.",
+        "title": "Current CMS coverage"
+      },
+      {
+        "evidence": "experiments/physical-stress-current-portable-4-terminal-2/evidence-index.json",
+        "status": "failed",
+        "text": "failed: 24 expected automatic requests. This selected closed capsule records 4 amplitude streams started; 4 completed. Each stress stream has two saved points. Integrity/preparation/preflight do not establish checked full-stream agreement. Failed, unexecuted and unchecked outcomes remain retained. No repaired-geometry EW oracle, broad stress/CMS acceptance or performance qualification follows. 4 host-checked two-point streams supply 8 qualified final point evaluations and 12 observed warmup calls; these observations do not count hidden evaluations. 5 of 6 checked-subset comparisons fail the 3e-6 criterion. Complete six-lane coverage and agreement remain separate gates. The retained comparator's ordinary_target_passed field applies the 1e-8 target to the whole two-point stream. Deferred and not-started requests remain explicit; the stage outcome is not replaced by a passing subset. The stage ended with a lock timeout before backend 8 launched. Four threshold streams were host checked; five of their six pairwise comparisons fail the regression criterion. One stream was deferred and 19 were not started. Preparation/preflight are inherited from explicitly indexed prior setup; this capsule does not claim fresh CLI exports or builds.",
+        "title": "Current physical stress coverage"
+      }
+    ],
+    "passed": true,
+    "process_and_DSO_loading_blocked": true,
+    "selection_or_dossier_created": false,
+    "stress": {
+      "ancestry_statuses": [
+        "prepared"
+      ],
+      "comparisons": 6,
+      "coverage": {
+        "amplitude_observations_are_trace_only": true,
+        "amplitude_requests_started": 4,
+        "completed_requests": 4,
+        "expected_requests": 24,
+        "host_checked_requests": 4,
+        "pending_requests": 20,
+        "qualified_final_points": 8,
+        "state_counts": {
+          "deferred_before_launch": 1,
+          "host_checked_complete": 4,
+          "not_started": 19
+        },
+        "warmup_calls_observed": 12,
+        "worker_requests_started": null
+      },
+      "failed_comparisons": 5,
+      "gates": {
+        "agreement": false,
+        "full_stream": false,
+        "host_checked": false,
+        "native_orchestration_passed": false,
+        "preflight_passed": true,
+        "preparation_passed": true,
+        "two_point_target_1e8": false
+      },
+      "status": "failed"
+    }
+  },
+  "default_plan": {
+    "current_results_claimed": false,
+    "status": "source-only-no-ingestion"
+  },
+  "independent_successor_review": {
+    "agent": "/root/current_report_refresh/statistics_review",
+    "bounded_read_only_source_prose_pin_review": true,
+    "findings": "exact terminal stress and CMS2 pins, current status/alias parity, CMS incomplete vs controller pass, inherited source1 setup and failed ancestry, unchanged full11/performance/Typst; no blockers",
+    "passed": true,
+    "tests_or_proof_replay_during_review": false
+  },
+  "native_calls": 0,
+  "new_test_independent_review": {
+    "agent": "/root/current_report_refresh/diagnostic_roles",
+    "passed": true,
+    "test_sha256": "5c8fad8a86a6cfdcba48c719481bd81db3067add42b9418930e95735693564a1",
+    "tests": 17
+  },
+  "ordinary_observability": "current warmup-only final100 traversal precedes OPEN6(/dev/null) and retains console; parser does not attribute/gate every warning percall; subsequent postREADY timed RUN batches suppressconsole; internal retries/hardware FPE unobserved",
+  "patch_admission_checks": {
+    "candidate.patch": "git apply --check passed",
+    "canonical-README.patch": "git apply --check passed"
+  },
+  "plot_packets_ingested": false,
+  "precision_scope_note": {
+    "cross_adapter_native_scalar_inputs_bit_identical_claim": false,
+    "documentation_only": true,
+    "independent_read_only_review_passed": true,
+    "low_level_complex_QP_transport_and_contraction": "genuine QP; 113-to-256-bit transport",
+    "origin": "root independent precision-scope audit",
+    "production_denominator_masses": "optimized callers form complex-DP M2L=M**2; exactly widened by TIRust"
+  },
+  "required_after_promotion": [
+    "genuine terminal full11 checkpoint selection/dossier replay",
+    "new report build input/context/PDF drift checks",
+    "matching verify-only after separately admitted render",
+    "formal performance acceptance remains deferred to Hua-Sheng locally"
+  ],
+  "schema": "madloop-tirust-private-current-report-source-validation-v6",
+  "scientific_boundaries": {
+    "broad_stress_CMS_and_performance_remain_open": true,
+    "checked_subset_does_not_close_six_lanes": true,
+    "failed_ancestry_retained": true,
+    "inherited_setup_not_new_CLI_builds": true,
+    "integrity_is_not_scientific_success": true,
+    "main_full11_gate_unchanged": true,
+    "no_automatic_newer_capsule_selection": true,
+    "no_repaired_geometry_EW_oracle": true,
+    "ordinary_target_field_is_whole_two_point_stress_stream": true,
+    "positive_launches_do_not_supply_evaluation_count": true,
+    "preparation_and_preflight_are_not_numerical_qualification": true,
+    "status120_420_alias_contradictions_not_host_qualified": true,
+    "worker_start_amplitude_entry_bootstrap_warmup_final_separate": true
+  },
+  "scope": "source-only exact closed terminal-stress and CMS2 admission; no main checkpoint/native/Typst or plot ingestion",
+  "selection_or_dossier_created": false,
+  "syntax_check": {
+    "native_or_Typst_execution": false,
+    "python_sources_parsed": true
+  },
+  "tests": [
+    {
+      "command": "source tools/tirust_env.sh && python3 -B -m unittest discover -s docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-6 -p test_*.py",
+      "new_terminal_diagnostic_tests": 17,
+      "observed_output": "Ran 111 tests in 28.016s; OK",
+      "passed": true,
+      "preserved_successor5_tests": 94,
+      "synthetic_only": true,
+      "tests": 111
+    },
+    {
+      "command": "source tools/tirust_env.sh && python3 -O -B -m unittest discover -s docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-6 -p test_campaign_report_terminal_diagnostics.py",
+      "observed_output": "Ran 17 tests in 0.101s; OK",
+      "passed": true,
+      "tests": 17
+    },
+    {
+      "command": "source tools/tirust_env.sh && python3 -O -B -m unittest discover -s docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-6 -p test_campaign_report_current_diagnostics.py",
+      "observed_output": "Ran 31 tests in 0.291s; OK",
+      "passed": true,
+      "tests": 31
+    }
+  ],
+  "typst_execution": false
+}

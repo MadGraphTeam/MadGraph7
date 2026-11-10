@@ -1,0 +1,85 @@
+{
+  "failed_preparation1_index_sha256": "7c4ec9028893b7bb7242e0fa42a60ff56a186128ad1602195fe3548f6cf0e781",
+  "files": {
+    "README.md": {
+      "bytes": 2414,
+      "sha256": "b19027054e6a4359e387965fe15a09cfa3056cad8ad64e694c22ee57d430f9e2"
+    },
+    "ancestry.json": {
+      "bytes": 1152,
+      "sha256": "04ab296a1f66e9d70296449f43a92f4428b46eb173b5a1368b5b5db84049ac33"
+    },
+    "pilot.py": {
+      "bytes": 79378,
+      "sha256": "9087426b5e5f8d1fc98a0e1d084da1d31761f27801d9018a6240bdfe7e9ddbee"
+    },
+    "plot_metrics.py": {
+      "bytes": 14354,
+      "sha256": "52e49e37b66be930a7afa6598f49ce25542fdff9b3281b99bc48bd7aa2997944"
+    },
+    "points.py": {
+      "bytes": 5936,
+      "sha256": "db03305deb2a607ca8f8955a8bf103316e2ce33b830da3cefd8fc557326bb3f1"
+    },
+    "protocol.json": {
+      "bytes": 6720,
+      "sha256": "23b4a2c980d480fd3878a7075cf4d57293ec35612eace7428287438598de756c"
+    },
+    "source1-to-source2.patch": {
+      "bytes": 9220,
+      "sha256": "ea320057b68435684e90ad0142c9aa6066ee1c599b24ee040e24be3809575d1f"
+    },
+    "stability_worker.f": {
+      "bytes": 13025,
+      "sha256": "371f8ccb72a5ee3dc1bad628cc855e239c7d0c26d5f30b5ff652f15afc564cc9"
+    },
+    "successor-delta.json": {
+      "bytes": 734,
+      "sha256": "fa244000343661f251358f1183e235fea056e0397cd4eb591936ba496a886c7b"
+    },
+    "test_driver_source.py": {
+      "bytes": 11294,
+      "sha256": "f1f7a1cd94484536f3f43044f12416efdd07a90317fd4281fac6ead4bda054f4"
+    },
+    "test_pilot.py": {
+      "bytes": 35489,
+      "sha256": "481d7658155ee849cf495e44118f9df6a082ac2eb3e86b800292656b5439a948"
+    },
+    "test_plot_metrics.py": {
+      "bytes": 6982,
+      "sha256": "92f500dca128bb9d58aea12dd8dca5ebe8596910e4977c01a9ecf4e42865d4ce"
+    },
+    "test_points.py": {
+      "bytes": 3308,
+      "sha256": "8819804f0c505ec221c7ce850f8a12034fcedcd7168de81c08cdeacb7e546f47"
+    }
+  },
+  "inputs": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/cases.json": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef",
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/manifest.json": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/numerical-qualification-1/specification.json": "f4ecf8d003faf1a570de53d803ca46ed5d12089235786d8a9a590198406cafd7",
+    "docs/benchmarkfolder/experiments/current-cms-replay-supervisor-1/ownership/process_cleanup.py": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "docs/benchmarkfolder/experiments/current-cms-replay-supervisor-2/link_closure.py": "e6ac52e09b699e8929a567a9c963e7f8e52da6e18b0220f8ef8b1ec5a5ac92a7",
+    "docs/benchmarkfolder/stability_appendix_c/failed-preparation-1/README.md": "21443dd85aca67959c9ac69f61102ec928a6087edd4be77b930186677852055e",
+    "docs/benchmarkfolder/stability_appendix_c/failed-preparation-1/index.json": "7c4ec9028893b7bb7242e0fa42a60ff56a186128ad1602195fe3548f6cf0e781",
+    "docs/benchmarkfolder/stability_appendix_c/failed-preparation-1/prepare-started.json": "6f3e18c392ee9a21aeff0e51bec5000c88c415fcc90bbc21819355976bf008aa",
+    "docs/benchmarkfolder/stability_appendix_c/failed-preparation-1/prepare-terminal.json": "d6693797ab5253a9fe7d671e454f9122bc83ed63ffede43b7648cefe3fb3c6e6",
+    "docs/benchmarkfolder/stability_appendix_c/failed-preparation-1/retention.json": "d59dfc77d08a21ab0a1cf615bf5f760c82d237b79dacc9d5c3694f66e147e534",
+    "docs/benchmarkfolder/stability_appendix_c/failed-preparation-1/verify.py": "57713c613421964952f8bcea6613c4ec961aa772f39bf2e74f0525a9ccc638d5",
+    "docs/benchmarkfolder/stability_appendix_c/source-index.json": "99a8101b18f511d57490e443069ee58dd4da085bdd9cf741727f69b91066348f",
+    "tools/tirust_benchmark_points.py": "9f95a9a3475a18597ca182f7d42d7e021933bc01458fcbf3484ad63b5655e46c"
+  },
+  "native_stage_plan": {
+    "prepare": "four private driver relinks plus four exact-loader queries; zero amplitudes",
+    "run": "unchanged20workers; failures/unexecuted retained"
+  },
+  "schema": "madloop-stability-appendix-c-pilot-source-v1",
+  "scope": "same four processes, five explicit backends,100newpoints and6000forced-DP primary diagnostics; exact2null-link inventory fix and freshwork2 only",
+  "source1_index_sha256": "99a8101b18f511d57490e443069ee58dd4da085bdd9cf741727f69b91066348f",
+  "status": "source2 sealed; no native stages executed",
+  "validation": {
+    "independent_source_review": "current_acceptance_audit cleared narrow9087426 controller delta; no stage admission implied",
+    "pure_mock_source_tests": 104,
+    "result": "passed in0.682s"
+  }
+}

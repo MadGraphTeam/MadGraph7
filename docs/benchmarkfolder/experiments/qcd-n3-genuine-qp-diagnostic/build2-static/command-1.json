@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/prlimit",
+    "--as=4294967296",
+    "--",
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-w",
+    "-fPIC",
+    "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg",
+    "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2",
+    "-ffree-line-length-none",
+    "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2",
+    "-c",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal2/observer.f90",
+    "-o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/observer_f.o"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2",
+  "environment": {
+    "LC_ALL": "C",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1"
+  },
+  "exit_observed_unix": 1794317352.4491005,
+  "finished_unix": 1794317352.449531,
+  "native": false,
+  "pid": 13,
+  "process_reaped": true,
+  "process_spawned": true,
+  "process_wall_seconds": 0.36431110464036465,
+  "returncode": 0,
+  "seconds_cap": 119.999460097868,
+  "spawn_unix": 1794317352.0861902,
+  "started_unix": 1794317352.0845253,
+  "target_loader_environment_at_execve": {}
+}

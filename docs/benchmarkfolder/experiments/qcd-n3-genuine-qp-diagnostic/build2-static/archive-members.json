@@ -1,0 +1,16 @@
+[
+  {
+    "archive": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a",
+    "archive_sha256": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6",
+    "member": "mninjars.o",
+    "member_sha256": "51192b363ea1152f82be16be90a71a028e2e7ffd6d25385ebcfc25939c678de5",
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/static-audit2/mninjars.o"
+  },
+  {
+    "archive": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libtirust.a",
+    "archive_sha256": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+    "member": "mtirust.o",
+    "member_sha256": "f8e6dbbc7c86192117aa1c2bd310941b7990da9fb810a83cf2c314be4d596d76",
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/static-audit2/mtirust.o"
+  }
+]

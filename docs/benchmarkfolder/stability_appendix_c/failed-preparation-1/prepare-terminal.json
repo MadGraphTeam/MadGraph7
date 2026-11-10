@@ -1,0 +1,154 @@
+{
+  "amplitude_evaluations": 0,
+  "cases": {},
+  "completed_cases": [],
+  "error": {
+    "class": "FileNotFoundError",
+    "message": "[Errno 2] No such file or directory: '/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/NLO/MCatNLO/include/pineappl_maxproc.inc'"
+  },
+  "protocol_sha256": "43a1a9d4cea51ecab070414b1f14fd2db72b5d3bfbc5e44d4d01cdd7433bcd90",
+  "requests": [
+    {
+      "backend": 1,
+      "case": "qcd_n2_gg_ttx",
+      "id": "qcd_n2_gg_ttx-backend1",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 6,
+      "case": "qcd_n2_gg_ttx",
+      "id": "qcd_n2_gg_ttx-backend6",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 7,
+      "case": "qcd_n2_gg_ttx",
+      "id": "qcd_n2_gg_ttx-backend7",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 8,
+      "case": "qcd_n2_gg_ttx",
+      "id": "qcd_n2_gg_ttx-backend8",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 9,
+      "case": "qcd_n2_gg_ttx",
+      "id": "qcd_n2_gg_ttx-backend9",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 1,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend1",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 6,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend6",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 7,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend7",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 8,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend8",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 9,
+      "case": "qcd_n3_uux_zgg",
+      "id": "qcd_n3_uux_zgg-backend9",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 1,
+      "case": "ew_n2_epem_mupmum",
+      "id": "ew_n2_epem_mupmum-backend1",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 6,
+      "case": "ew_n2_epem_mupmum",
+      "id": "ew_n2_epem_mupmum-backend6",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 7,
+      "case": "ew_n2_epem_mupmum",
+      "id": "ew_n2_epem_mupmum-backend7",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 8,
+      "case": "ew_n2_epem_mupmum",
+      "id": "ew_n2_epem_mupmum-backend8",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 9,
+      "case": "ew_n2_epem_mupmum",
+      "id": "ew_n2_epem_mupmum-backend9",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 1,
+      "case": "qcd_n4_uux_zzgg",
+      "id": "qcd_n4_uux_zzgg-backend1",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 6,
+      "case": "qcd_n4_uux_zzgg",
+      "id": "qcd_n4_uux_zzgg-backend6",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 7,
+      "case": "qcd_n4_uux_zzgg",
+      "id": "qcd_n4_uux_zzgg-backend7",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 8,
+      "case": "qcd_n4_uux_zzgg",
+      "id": "qcd_n4_uux_zzgg-backend8",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    },
+    {
+      "backend": 9,
+      "case": "qcd_n4_uux_zzgg",
+      "id": "qcd_n4_uux_zzgg-backend9",
+      "primary_calls_expected": 300,
+      "state": "unexecuted"
+    }
+  ],
+  "source_index_sha256": "99a8101b18f511d57490e443069ee58dd4da085bdd9cf741727f69b91066348f",
+  "status": "failed"
+}

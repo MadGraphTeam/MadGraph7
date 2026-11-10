@@ -1,0 +1,27 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 583,
+      "sha256": "21443dd85aca67959c9ac69f61102ec928a6087edd4be77b930186677852055e"
+    },
+    "prepare-started.json": {
+      "bytes": 238,
+      "sha256": "6f3e18c392ee9a21aeff0e51bec5000c88c415fcc90bbc21819355976bf008aa"
+    },
+    "prepare-terminal.json": {
+      "bytes": 3922,
+      "sha256": "d6693797ab5253a9fe7d671e454f9122bc83ed63ffede43b7648cefe3fb3c6e6"
+    },
+    "retention.json": {
+      "bytes": 828,
+      "sha256": "d59dfc77d08a21ab0a1cf615bf5f760c82d237b79dacc9d5c3694f66e147e534"
+    },
+    "verify.py": {
+      "bytes": 1690,
+      "sha256": "57713c613421964952f8bcea6613c4ec961aa772f39bf2e74f0525a9ccc638d5"
+    }
+  },
+  "root_reported_terminal_session": 71205,
+  "schema": "madloop-stability-failed-preparation-retention-v1",
+  "source1_index_sha256": "99a8101b18f511d57490e443069ee58dd4da085bdd9cf741727f69b91066348f"
+}

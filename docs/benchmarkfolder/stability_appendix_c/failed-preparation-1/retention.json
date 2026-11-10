@@ -1,0 +1,22 @@
+{
+  "amplitude_evaluations": 0,
+  "compiler_launches": 0,
+  "completed_cases": 0,
+  "failure": {
+    "class": "FileNotFoundError",
+    "message": "[Errno 2] No such file or directory: '/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/NLO/MCatNLO/include/pineappl_maxproc.inc'"
+  },
+  "loader_query_launches": 0,
+  "point_streams_generated": 0,
+  "root_reported_terminal": {
+    "exit_code": 1,
+    "observation": "reported by root after tool terminal; not a new execution",
+    "session_id": 71205
+  },
+  "schema": "madloop-stability-failed-preparation-v1",
+  "source1_and_work1": "preserved unchanged; no production symlink targets created",
+  "source1_index_sha256": "99a8101b18f511d57490e443069ee58dd4da085bdd9cf741727f69b91066348f",
+  "stage": "prepare",
+  "status": "failed",
+  "unexecuted_requests": 20
+}

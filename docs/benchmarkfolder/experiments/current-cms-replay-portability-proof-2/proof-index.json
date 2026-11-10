@@ -1,0 +1,51 @@
+{
+  "capsule_pins": {
+    "evidence-index.json": "aa39809c5d6cde25367454bb1fd9c3500b9aaa9b14b976fc1ff42bb0783714d3",
+    "summary.json": "a84cf40930f9ef8d824ab993df6a1d4eb6f0be8694306d828777d6b8a0cb5cce",
+    "verify_evidence.py": "1cf318978a06d1afedff084d9d1e727a8b25610b82d163b41220a5e5906eb0b8"
+  },
+  "files": {
+    "README.md": {
+      "bytes": 2062,
+      "sha256": "244c2addf3b06b52ee4903a86f25a5b87e59f17e579098cd35e9f9a178a6f89a"
+    },
+    "independent-review.json": {
+      "bytes": 1192,
+      "sha256": "ee4020b7dc9fbf4179d0136d2e09cb53babea26227ab2c61f3c890d4c3abfb92"
+    },
+    "prove.py": {
+      "bytes": 9770,
+      "sha256": "db09f209b95b5f00efa9ac577f838c674ee8680a6077030f6ad03aea1ef31c39"
+    },
+    "receipt.json": {
+      "bytes": 4758,
+      "sha256": "b641eb5c51e64fca8c37ce32a5771872f52fd1834aa1e22629d743beb2f5764a"
+    }
+  },
+  "kind": "CMS2-copied-capsule-portability-proof",
+  "preserved_test_evidence": {
+    "ancestor1/source-tests.json": {
+      "bytes": 711,
+      "sha256": "5751a9f07a9cf9e5597f47935926befb3bea332f258617b65babc5ed20166f55"
+    },
+    "ancestor1/source/supervisor1/test-receipt.json": {
+      "bytes": 1408,
+      "sha256": "787f3e8b3b0cfcdb27e76bffbac294c1ee69cc8c063a63ae8f11772ae80e04c7"
+    },
+    "source-tests.json": {
+      "bytes": 1471,
+      "sha256": "2b8213ccf304508f88d13d70b03d60ded98b141869842b0258a99e3011259d9a"
+    },
+    "source/supervisor2/test-receipt.json": {
+      "bytes": 1475,
+      "sha256": "0127dbdfe07b73812fc18ad228d6bb23ce7df59283a5e28b2d206332cad69559"
+    },
+    "test_verify_evidence.py": {
+      "bytes": 24507,
+      "sha256": "ecdc15e9ac1a31d47c418447c9125a02eb277fefaf154bc3c8487c085ee8ae27"
+    }
+  },
+  "schema_version": 1,
+  "scope": "Pure relocated callback verification with Python entrypoint/audit I/O gates; no scientific native execution or source capsule modification",
+  "status": "passed"
+}

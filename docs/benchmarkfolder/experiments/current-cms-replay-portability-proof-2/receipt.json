@@ -1,0 +1,181 @@
+{
+  "audit_hook_active_during_verification": true,
+  "blocked_probe_attempts": [
+    {
+      "operation": "builtins.open",
+      "phase": "probes"
+    },
+    {
+      "operation": "Path.read_bytes",
+      "phase": "probes"
+    },
+    {
+      "operation": "os.open",
+      "phase": "probes"
+    },
+    {
+      "operation": "os.stat",
+      "phase": "probes"
+    },
+    {
+      "operation": "os.listdir",
+      "phase": "probes"
+    },
+    {
+      "operation": "subprocess.Popen",
+      "phase": "probes"
+    },
+    {
+      "operation": "os.system",
+      "phase": "probes"
+    },
+    {
+      "operation": "ctypes.CDLL",
+      "phase": "probes"
+    },
+    {
+      "operation": "ctypes.PyDLL",
+      "phase": "probes"
+    },
+    {
+      "operation": "LibraryLoader.LoadLibrary",
+      "phase": "probes"
+    },
+    {
+      "operation": "audit:open",
+      "phase": "probes"
+    },
+    {
+      "operation": "audit:subprocess.Popen",
+      "phase": "probes"
+    },
+    {
+      "operation": "audit:ctypes.dlopen",
+      "phase": "probes"
+    }
+  ],
+  "callback_is_complete_io_boundary": true,
+  "callback_paths": 1181,
+  "callback_reads": 1181,
+  "callback_unique_reads": 1181,
+  "compiled_verifier_filename": "/tmp/cms2-portability-9kpth1bd/capsule/verify_evidence.py",
+  "copied_bytes": 25055685,
+  "copied_files": 1181,
+  "copied_inventory_sha256": "c428d2ea9bd06e62b9c34c521e5dc670a7bd13aa605becb3b54ec28fcbbbb86d",
+  "copy_preserved_for_review": true,
+  "elapsed_seconds": 1.9293854851275682,
+  "external_access_attempts_during_verify": 0,
+  "gate_scope": "Reviewed pinned Python verifier under Python entrypoint/audit gates; not a general hostile-code OS sandbox",
+  "harness_sha256": "db09f209b95b5f00efa9ac577f838c674ee8680a6077030f6ad03aea1ef31c39",
+  "kind": "copied-capsule-callback-portability-proof",
+  "negative_probes": {
+    "CDLL": true,
+    "PyDLL": true,
+    "audit_dlopen": true,
+    "audit_open": true,
+    "audit_subprocess": true,
+    "filesystem_builtin_open": true,
+    "filesystem_directory": true,
+    "filesystem_os_open": true,
+    "filesystem_path_read": true,
+    "filesystem_stat": true,
+    "library_loader": true,
+    "shell": true,
+    "subprocess": true
+  },
+  "new_scientific_native_executions": 0,
+  "new_subprocesses": 0,
+  "patched_entrypoints": [
+    "builtins.open",
+    "io.open",
+    "io.open_code",
+    "os.open",
+    "os.read",
+    "os.write",
+    "os.stat",
+    "os.lstat",
+    "os.listdir",
+    "os.scandir",
+    "os.readlink",
+    "os.access",
+    "os.getcwd",
+    "os.chdir",
+    "os.fchdir",
+    "os.mkdir",
+    "os.makedirs",
+    "os.remove",
+    "os.unlink",
+    "os.rmdir",
+    "os.rename",
+    "os.replace",
+    "os.link",
+    "os.symlink",
+    "os.truncate",
+    "os.chmod",
+    "os.chown",
+    "os.utime",
+    "os.system",
+    "os.fork",
+    "os.forkpty",
+    "os.execv",
+    "os.execve",
+    "os.execl",
+    "os.execle",
+    "os.execlp",
+    "os.execlpe",
+    "os.execvp",
+    "os.execvpe",
+    "os.spawnl",
+    "os.spawnle",
+    "os.spawnlp",
+    "os.spawnlpe",
+    "os.spawnv",
+    "os.spawnve",
+    "os.spawnvp",
+    "os.spawnvpe",
+    "os.posix_spawn",
+    "os.posix_spawnp",
+    "Path.open",
+    "Path.read_bytes",
+    "Path.read_text",
+    "Path.write_bytes",
+    "Path.write_text",
+    "Path.stat",
+    "Path.lstat",
+    "Path.iterdir",
+    "Path.glob",
+    "Path.rglob",
+    "Path.resolve",
+    "subprocess.Popen",
+    "subprocess.run",
+    "subprocess.call",
+    "subprocess.check_call",
+    "subprocess.check_output",
+    "ctypes.CDLL",
+    "ctypes.PyDLL",
+    "ctypes._dlopen",
+    "LibraryLoader.LoadLibrary",
+    "LibraryLoader.LoadLibrary"
+  ],
+  "pins": {
+    "evidence-index.json": "aa39809c5d6cde25367454bb1fd9c3500b9aaa9b14b976fc1ff42bb0783714d3",
+    "summary.json": "a84cf40930f9ef8d824ab993df6a1d4eb6f0be8694306d828777d6b8a0cb5cce",
+    "verify_evidence.py": "1cf318978a06d1afedff084d9d1e727a8b25610b82d163b41220a5e5906eb0b8"
+  },
+  "python_optimization": 0,
+  "schema_version": 1,
+  "scope": "Relocated pure callback verification after stdlib initialization; no original qualification/workspace paths or live binaries read",
+  "source_and_copy_identical_before_after": true,
+  "source_capsule": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-cms-replay-retention-2",
+  "status": "passed",
+  "temporary_copy": "/tmp/cms2-portability-9kpth1bd/capsule",
+  "verification": {
+    "completed_requests": 6,
+    "full_final_streams": 0,
+    "index_sha256": "aa39809c5d6cde25367454bb1fd9c3500b9aaa9b14b976fc1ff42bb0783714d3",
+    "overall_status": "incomplete",
+    "summary_sha256": "a84cf40930f9ef8d824ab993df6a1d4eb6f0be8694306d828777d6b8a0cb5cce",
+    "verified": true
+  },
+  "verification_cwd": "/tmp/cms2-portability-9kpth1bd/capsule"
+}
