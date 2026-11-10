@@ -25,7 +25,8 @@ class TestMintChannels(unittest.TestCase):
         (cls.path / 'check.f90').write_text(PROGRAM)
         result = subprocess.run(
             ['gfortran', '-O0', '-g', '-fcheck=all', '-ffree-line-length-none',
-             '-o', 'check', 'support.f90', 'mint_module.f90', 'check.f90'],
+             '-o', 'check', 'support.f90', str(ROOT / 'Template/NLO/SubProcesses/virtual_surrogate.f90'),
+             'mint_module.f90', 'check.f90'],
             cwd=cls.path, capture_output=True, text=True)
         if result.returncode:
             cls.directory.cleanup()
@@ -100,6 +101,7 @@ class TestMintChannels(unittest.TestCase):
 SUPPORT = '''
 module FKSParams
 logical :: use_poly_virtual=.false.
+integer :: VirtTrickSurrogate=0
 double precision :: virt_fraction=1d0,min_virt_fraction=.005d0
 end module
 
@@ -113,7 +115,8 @@ end function
 for _name in ('accum', 'HwU_accum_iter', 'HwU_add_points', 'initplot',
               'regrid_MC_integer', 'empty_MC_integer', 'reset_MC_grid',
               'init_polyfit', 'get_polyfit', 'add_point_polyfit', 'do_polyfit',
-              'save_polyfit', 'restore_polyfit'):
+              'save_polyfit', 'restore_polyfit', 'timing_begin_point',
+              'timing_end_point', 'deallocate_born_spread_lines'):
     SUPPORT += '\nsubroutine %s\nend subroutine\n' % _name
 
 
@@ -183,6 +186,7 @@ case('history')
 case('pilot')
  nit=1
  double_events=.true.
+ initial_channel_scan_pending=.true.
  channel_moment(1:2)=[0d0,100d0]
  call set_channel_probabilities
  do j=1,2
