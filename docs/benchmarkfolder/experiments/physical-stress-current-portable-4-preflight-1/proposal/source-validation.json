@@ -1,0 +1,10 @@
+{
+  "bound_read_only_inputs": 99,
+  "candidate_requests": 20,
+  "cases": 4,
+  "commands_executed": 0,
+  "driver_delta": "stdout retention only",
+  "passed": true,
+  "source_control_requests": 4,
+  "source_only": true
+}

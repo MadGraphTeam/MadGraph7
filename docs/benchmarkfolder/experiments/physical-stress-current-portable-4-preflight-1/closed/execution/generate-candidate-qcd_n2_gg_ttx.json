@@ -1,0 +1,550 @@
+{
+  "argv": [
+    "taskset",
+    "-c",
+    "12-15",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "./bin/madgraph",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-supervisor-4/commands/candidate-qcd_n2_gg_ttx.mg5"
+  ],
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 698,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357015,
+        "state": "R"
+      },
+      {
+        "parent_pid": 698,
+        "pid": 699,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357156,
+        "state": "R"
+      },
+      {
+        "parent_pid": 698,
+        "pid": 721,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357512,
+        "state": "S"
+      },
+      {
+        "parent_pid": 721,
+        "pid": 728,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357515,
+        "state": "S"
+      },
+      {
+        "parent_pid": 721,
+        "pid": 727,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357515,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 740,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357517,
+        "state": "S"
+      },
+      {
+        "parent_pid": 740,
+        "pid": 746,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357518,
+        "state": "R"
+      },
+      {
+        "parent_pid": 728,
+        "pid": 744,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357518,
+        "state": "S"
+      },
+      {
+        "parent_pid": 728,
+        "pid": 739,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357517,
+        "state": "S"
+      },
+      {
+        "parent_pid": 728,
+        "pid": 750,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357519,
+        "state": "R"
+      },
+      {
+        "parent_pid": 739,
+        "pid": 745,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357518,
+        "state": "R"
+      },
+      {
+        "parent_pid": 744,
+        "pid": 749,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357518,
+        "state": "R"
+      },
+      {
+        "parent_pid": 728,
+        "pid": 763,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357528,
+        "state": "S"
+      },
+      {
+        "parent_pid": 728,
+        "pid": 764,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357528,
+        "state": "R"
+      },
+      {
+        "parent_pid": 728,
+        "pid": 757,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357524,
+        "state": "S"
+      },
+      {
+        "parent_pid": 757,
+        "pid": 759,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357525,
+        "state": "R"
+      },
+      {
+        "parent_pid": 763,
+        "pid": 765,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357529,
+        "state": "R"
+      },
+      {
+        "parent_pid": 728,
+        "pid": 776,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357536,
+        "state": "S"
+      },
+      {
+        "parent_pid": 728,
+        "pid": 780,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357538,
+        "state": "S"
+      },
+      {
+        "parent_pid": 780,
+        "pid": 781,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357539,
+        "state": "R"
+      },
+      {
+        "parent_pid": 776,
+        "pid": 778,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357537,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 792,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357547,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 785,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357544,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 795,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357550,
+        "state": "R"
+      },
+      {
+        "parent_pid": 785,
+        "pid": 797,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357550,
+        "state": "R"
+      },
+      {
+        "parent_pid": 792,
+        "pid": 793,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357548,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 809,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357556,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 818,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357560,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 811,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357557,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 814,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357557,
+        "state": "S"
+      },
+      {
+        "parent_pid": 814,
+        "pid": 816,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357558,
+        "state": "R"
+      },
+      {
+        "parent_pid": 811,
+        "pid": 815,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357558,
+        "state": "R"
+      },
+      {
+        "parent_pid": 809,
+        "pid": 812,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357557,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 832,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357564,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 836,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357565,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 831,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357564,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 823,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357561,
+        "state": "S"
+      },
+      {
+        "parent_pid": 823,
+        "pid": 827,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357562,
+        "state": "R"
+      },
+      {
+        "parent_pid": 831,
+        "pid": 835,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357565,
+        "state": "R"
+      },
+      {
+        "parent_pid": 836,
+        "pid": 837,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357566,
+        "state": "R"
+      },
+      {
+        "parent_pid": 832,
+        "pid": 834,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357565,
+        "state": "R"
+      },
+      {
+        "parent_pid": 832,
+        "pid": 843,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357580,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 842,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357580,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 864,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357590,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 865,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357590,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 867,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357590,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 860,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357589,
+        "state": "S"
+      },
+      {
+        "parent_pid": 860,
+        "pid": 863,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357590,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 881,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357594,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 885,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357596,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 886,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357597,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 889,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357597,
+        "state": "S"
+      },
+      {
+        "parent_pid": 889,
+        "pid": 891,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357598,
+        "state": "R"
+      },
+      {
+        "parent_pid": 886,
+        "pid": 890,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357597,
+        "state": "R"
+      },
+      {
+        "parent_pid": 885,
+        "pid": 888,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357597,
+        "state": "R"
+      },
+      {
+        "parent_pid": 881,
+        "pid": 882,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357596,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 914,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357610,
+        "state": "S"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 916,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357610,
+        "state": "D"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 911,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357609,
+        "state": "S"
+      },
+      {
+        "parent_pid": 911,
+        "pid": 913,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357610,
+        "state": "R"
+      },
+      {
+        "parent_pid": 916,
+        "pid": 918,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357611,
+        "state": "R"
+      },
+      {
+        "parent_pid": 914,
+        "pid": 917,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357611,
+        "state": "R"
+      },
+      {
+        "parent_pid": 727,
+        "pid": 944,
+        "process_group": 698,
+        "session": 698,
+        "start_time_ticks": 234357621,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cleanup_exception": null,
+  "command_work_cap_seconds": 589.488252831623,
+  "cpu": "12-15",
+  "cpu_exclusive": false,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-4/mg-candidate",
+  "elapsed_seconds": 7.141886699013412,
+  "environment": {
+    "CC": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/cc",
+    "CXX": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/c++",
+    "FC": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "MAKEFLAGS": "-j4 SHELL=/nix/store/1mv3qz005gkbalxfghk4y3s8ayv4d2dl-bash-interactive-5.3p15/bin/bash",
+    "MKL_NUM_THREADS": "1",
+    "MPLCONFIGDIR": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-4/matplotlib",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PATH": "/home/external/.codex/packages/app-server-daemon/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/external/.codex/tmp/arg0-linux/codex-arg0lRMkvY:/home/external/.codex/tmp/arg0-linux/codex-arg0Q3My4g:/nix/store/qswjy75ymf911zf9pjhqi4w6kmwm3v73-codex-0.163.0/codex-path:/run/wrappers/bin:/home/external/.nix-profile/bin:/nix/profile/bin:/home/external/.local/state/nix/profile/bin:/etc/profiles/per-user/external/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin:/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin:/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin:/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin:/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin:/nix/store/0g4agjda4ihmd291pamwahhy7praa4sn-gnum4-1.4.21/bin:/nix/store/1m0z4ixir10fg7ba7g131js04bxgv265-cmake-4.1.2/bin:/nix/store/0v0raqk1qw5g2a21km4xa1hwhaq4s976-pkg-config-wrapper-0.29.2/bin:/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin:/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin:/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin:/nix/store/8hz0qnr9z5j1w7rjl9qmsb34v2cb4akr-wget-1.25.0/bin",
+    "PWD": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-4/mg-candidate",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONHASHSEED": "0",
+    "RAYON_NUM_THREADS": "1",
+    "XDG_CACHE_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-4/xdg/cache",
+    "XDG_CONFIG_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-4/xdg/config",
+    "XDG_STATE_HOME": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-4/xdg/state"
+  },
+  "exception": null,
+  "log_sha256": "6011cc399739155f59279cb548d942222016c0b404a225ed8d6475ce7c5693a0",
+  "returncode": 0,
+  "started_utc": "2026-11-10T11:24:29.039541+00:00"
+}

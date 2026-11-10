@@ -1,0 +1,50 @@
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c      written by the UFO converter
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+
+C     
+C     NB: VECSIZE_MEMMAX is defined in vector.inc
+C     NB: vector.inc must be included before coupl.inc
+C     
+
+      DOUBLE PRECISION G, ALL_G
+      COMMON/STRONG/ G, ALL_G
+
+      DOUBLE COMPLEX GAL(2)
+      COMMON/WEAK/ GAL
+
+      DOUBLE PRECISION MU_R, ALL_MU_R
+      COMMON/RSCALE/ MU_R, ALL_MU_R
+
+      DOUBLE PRECISION NF
+      PARAMETER(NF=4D0)
+      DOUBLE PRECISION NL
+      PARAMETER(NL=2D0)
+
+      DOUBLE PRECISION MDL_MB,MDL_MH,MDL_MT,MDL_MTA,MDL_MW,MDL_MZ
+
+      COMMON/MASSES/ MDL_MB,MDL_MH,MDL_MT,MDL_MTA,MDL_MW,MDL_MZ
+
+
+      DOUBLE PRECISION MDL_WH,MDL_WT,MDL_WW,MDL_WZ
+
+      COMMON/WIDTHS/ MDL_WH,MDL_WT,MDL_WW,MDL_WZ
+
+
+      DOUBLE COMPLEX, TARGET :: GC_21, GC_22, GC_23
+
+      DOUBLE COMPLEX, TARGET :: GC_4, GC_5, GC_6, R2_3GQ, R2_3GG,
+     $  R2_GQQ, R2_GGQ, R2_GGB, R2_GGT, R2_GGG_1, R2_GGG_2, R2_QQQ,
+     $  UV_3GG_1EPS, UV_3GB_1EPS, UV_GQQG_1EPS, UV_GQQB_1EPS,
+     $  UVWFCT_G_1_1EPS, R2_DDZ_V3, R2_UUZ_V2, R2_GGZUP, R2_GGZDOWN,
+     $  R2_GGGZVECUP, R2_GGGZVECDOWN, R2_GGGZAXIALUP, R2_GGGZAXIALDOWN
+     $ , UV_3GB, UV_3GT, UV_GQQB, UV_GQQT, UVWFCT_G_1, UVWFCT_G_2
+
+      COMMON/COUPLINGS/ GC_4, GC_5, GC_6, R2_3GQ, R2_3GG, R2_GQQ,
+     $  R2_GGQ, R2_GGB, R2_GGT, R2_GGG_1, R2_GGG_2, R2_QQQ,
+     $  UV_3GG_1EPS, UV_3GB_1EPS, UV_GQQG_1EPS, UV_GQQB_1EPS,
+     $  UVWFCT_G_1_1EPS, R2_DDZ_V3, R2_UUZ_V2, R2_GGZUP, R2_GGZDOWN,
+     $  R2_GGGZVECUP, R2_GGGZVECDOWN, R2_GGGZAXIALUP, R2_GGGZAXIALDOWN
+     $ , UV_3GB, UV_3GT, UV_GQQB, UV_GQQT, UVWFCT_G_1, UVWFCT_G_2,
+     $  GC_21, GC_22, GC_23
+

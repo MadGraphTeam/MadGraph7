@@ -1,0 +1,11 @@
+{
+  "campaign_manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "cap_seconds_excluding_lock_wait": 600,
+  "elapsed_seconds_including_wait": 22.66500471299514,
+  "exception": null,
+  "native_execution": true,
+  "performance_eligible": false,
+  "source_index_sha256": "c192146977008a7dec8c3d1dce479eeaaf53e382ab4aad5599db6665dfe42f25",
+  "stage": "preflight",
+  "status": "passed"
+}

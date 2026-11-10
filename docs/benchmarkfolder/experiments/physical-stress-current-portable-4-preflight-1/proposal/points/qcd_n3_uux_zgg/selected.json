@@ -1,0 +1,130 @@
+{
+  "inputs": {
+    "count": 2,
+    "energy": 1000.0,
+    "incoming_masses": [
+      0.0,
+      0.0
+    ],
+    "masses": [
+      91.188,
+      0.0,
+      0.0
+    ],
+    "seed": 20261111
+  },
+  "parents": [
+    {
+      "point_id": "ordinary-0000",
+      "role": "ordinary-control",
+      "sha256": "c1dc86e4e0cdd8a049d7a9a87b98831af74f3b6b79fc63fd0bbfe16a7fe55450",
+      "source": "docs/benchmarkfolder/points/qcd_n3_uux_zgg.dat",
+      "source_point_index": 1
+    },
+    {
+      "point_id": "stress-soft-collinear",
+      "role": "stress",
+      "sha256": "56bf8297036012f208d06de1420a732047a0d88301c7cf2ed8ed6c4b8a2bc92b",
+      "source": "docs/benchmarkfolder/points/qcd_n3_uux_zgg-stress.dat",
+      "source_point_index": 2
+    }
+  ],
+  "points": [
+    {
+      "id": "ordinary-0000",
+      "incoming_masses": [
+        0.0,
+        0.0
+      ],
+      "kind": "ordinary",
+      "masses": [
+        91.188,
+        0.0,
+        0.0
+      ],
+      "momenta": [
+        [
+          500.0,
+          0.0,
+          0.0,
+          500.0
+        ],
+        [
+          500.0,
+          0.0,
+          0.0,
+          -500.0
+        ],
+        [
+          255.26772174416203,
+          215.2904611038351,
+          40.685798010708844,
+          -94.02681329485115
+        ],
+        [
+          367.7269511544715,
+          56.67120275810469,
+          -162.22970971651517,
+          325.10460880862337
+        ],
+        [
+          377.00532710136645,
+          -271.9616638619398,
+          121.54391170580631,
+          -231.0777955137722
+        ]
+      ],
+      "sqrt_s": 1000.0
+    },
+    {
+      "id": "stress-soft-collinear",
+      "incoming_masses": [
+        0.0,
+        0.0
+      ],
+      "kind": "soft-collinear",
+      "masses": [
+        91.188,
+        0.0,
+        0.0
+      ],
+      "momenta": [
+        [
+          500.0,
+          0.0,
+          0.0,
+          500.0
+        ],
+        [
+          500.0,
+          0.0,
+          0.0,
+          -500.0
+        ],
+        [
+          504.1575756959985,
+          -413.49817343793495,
+          -273.6119872931765,
+          3.918004675409035
+        ],
+        [
+          9.999999999999999e-05,
+          9.999999999998332e-11,
+          0.0,
+          9.999999999994998e-05
+        ],
+        [
+          495.8423243040017,
+          413.49817343783496,
+          273.6119872931765,
+          -3.9181046754090354
+        ]
+      ],
+      "soft_energy_fraction": 1e-07,
+      "soft_leg": 3,
+      "sqrt_s": 1000.0
+    }
+  ],
+  "scope": "Point1 is the ordinary initialization/control anchor; point2 is the sole selected stress point. Exact DAT rows are copied, not regenerated. Parent metadata count is the original generator setting; this derivative records its actual count.",
+  "sha256": "a2d4bb120bf442179ceadd6c3bf8b842732dfa8e3af50f71e30bb7c9948eed9b"
+}

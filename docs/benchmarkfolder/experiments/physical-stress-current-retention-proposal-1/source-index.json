@@ -1,0 +1,17 @@
+{
+  "files": {
+    "README.md": {
+      "kind": "file",
+      "sha256": "160817d0675c0c2451b8a3d42be2d874964943c4947d40ca01275e0e00e1aca6",
+      "size": 4283
+    },
+    "retention-plan.json": {
+      "kind": "file",
+      "sha256": "447c7f31773a508021a3989e52545627eae4aad6c908e66a35d03c5f0d781c8a",
+      "size": 10038
+    }
+  },
+  "no_active_execution_reads": true,
+  "schema_version": 1,
+  "source_only": true
+}

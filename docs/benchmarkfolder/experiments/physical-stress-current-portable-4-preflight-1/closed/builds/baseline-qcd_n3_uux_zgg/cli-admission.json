@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "./bin/madgraph",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-supervisor-4/commands/baseline-qcd_n3_uux_zgg.mg5"
+  ],
+  "entrypoint": "bin/madgraph",
+  "materialized_receipt_sha256": "df2b138ef66e27badd848a7e16877254a391be6ed4b87cbcf8c290996a287fd9",
+  "sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0"
+}

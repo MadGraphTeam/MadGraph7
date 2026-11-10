@@ -1,0 +1,36 @@
+{
+  "CLI_compiler_loader_amplitude_invocations": 0,
+  "capture_code_sha256": "279cc0f814dd12c5dfdaf851864e6d72a87c2e8841a359fd29bbb5b2afc5e063",
+  "checks": [
+    {
+      "name": "relocated_without_workspace_reads",
+      "passed": true
+    },
+    {
+      "name": "unsafe_index_path",
+      "passed": true,
+      "rejection": "Nonportable evidence name"
+    },
+    {
+      "name": "changed_payload_bytes",
+      "passed": true,
+      "rejection": "Changed evidence: README.md"
+    },
+    {
+      "name": "changed_gzip_raw_binding",
+      "passed": true,
+      "rejection": "Compressed text binding differs"
+    },
+    {
+      "name": "forged_preflight_numerical_success",
+      "passed": true,
+      "rejection": "Saved summary differs"
+    }
+  ],
+  "packet_index_sha256": "49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22",
+  "packet_payloads": 3306,
+  "packet_unchanged": true,
+  "passed": true,
+  "subprocess_invocations": 0,
+  "verifier_sha256": "3850e1dcfbd3cecfc2c11eabd090e5ae174b0d0fbad6da11b6d94557c5e72f24"
+}

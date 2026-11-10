@@ -1,0 +1,30 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 4138,
+      "sha256": "92307ef997ebebb4a6ec7d4912ca78403f3876bb025a3b9c6076eafc13b4015f"
+    },
+    "audit.py": {
+      "bytes": 11504,
+      "sha256": "f9f8bdae70cccf9c0601cf77d21538d72717561332b59cebd3e161fcf68be8c8"
+    },
+    "compare.py": {
+      "bytes": 7398,
+      "sha256": "109a79416c7034724a6c51abc0dabf415cc267541be740a643cf21e3f046314c"
+    },
+    "comparisons.json": {
+      "bytes": 34768,
+      "sha256": "1258f663458662f313c0b728a684c39bfe38b377db3cde560aaacbc1b666bcad"
+    },
+    "source-review.md": {
+      "bytes": 6325,
+      "sha256": "c656f56058486f9f51d09b762b8e437d406f7517efc7ed68e3c96ba55e72b5ab"
+    },
+    "summary.json": {
+      "bytes": 14844,
+      "sha256": "623a3b36ddd4049d5c4e4bdaf30f4aef2c6afa83c5ef35c5444eef08425cdbc6"
+    }
+  },
+  "schema": 1,
+  "scope": "Pure source/input arithmetic audit; no native evaluation or compiler invocation."
+}

@@ -1,0 +1,35 @@
+{
+  "source_only": true,
+  "commands_executed": 0,
+  "stages": {
+    "prepare": 3600,
+    "preflight": 600,
+    "run": 9120
+  },
+  "requests": 24,
+  "work": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/physical-stress-current-4",
+  "report": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-qualification-4",
+  "commands": [
+    [
+      "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python",
+      "-B",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-supervisor-4/run.py",
+      "prepare",
+      "--execute"
+    ],
+    [
+      "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python",
+      "-B",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-supervisor-4/run.py",
+      "preflight",
+      "--execute"
+    ],
+    [
+      "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python",
+      "-B",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/physical-stress-current-supervisor-4/run.py",
+      "run",
+      "--execute"
+    ]
+  ]
+}

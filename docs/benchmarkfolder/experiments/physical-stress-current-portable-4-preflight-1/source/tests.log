@@ -1,0 +1,46 @@
+test_attempted_dependency_rebuild_rejected (__main__.PrerequisiteTests.test_attempted_dependency_rebuild_rejected) ... ok
+test_donor_retarget_or_mutation_fails (__main__.PrerequisiteTests.test_donor_retarget_or_mutation_fails) ... ok
+test_explicit_symlink_directory_donor_is_dereferenced (__main__.PrerequisiteTests.test_explicit_symlink_directory_donor_is_dereferenced) ... ok
+test_external_helper_and_shared_inputs_are_pinned (__main__.PrerequisiteTests.test_external_helper_and_shared_inputs_are_pinned) ... ok
+test_full_generated_capabilities_and_fixed_form_ranges (__main__.PrerequisiteTests.test_full_generated_capabilities_and_fixed_form_ranges) ... ok
+test_missing_required_module_fails_before_copy (__main__.PrerequisiteTests.test_missing_required_module_fails_before_copy) ... ok
+test_missing_tirust_or_duplicate_qp_declaration_rejected (__main__.PrerequisiteTests.test_missing_tirust_or_duplicate_qp_declaration_rejected) ... ok
+test_per_revision_iregi_is_declared_separately (__main__.PrerequisiteTests.test_per_revision_iregi_is_declared_separately) ... ok
+test_private_dependency_link_escape_fails (__main__.PrerequisiteTests.test_private_dependency_link_escape_fails) ... ok
+test_private_module_or_compiler_version_mutation_fails (__main__.PrerequisiteTests.test_private_module_or_compiler_version_mutation_fails) ... ok
+test_silent_ninja_qp_downgrade_rejected (__main__.PrerequisiteTests.test_silent_ninja_qp_downgrade_rejected) ... ok
+test_unresolved_include_and_internal_dependency_tree_rejected (__main__.PrerequisiteTests.test_unresolved_include_and_internal_dependency_tree_rejected) ... ok
+test_120_is_rejected_by_retained_parser (__main__.SourceTests.test_120_is_rejected_by_retained_parser) ... ok
+test_actual_launch_entrypoint_exists_in_both_archived_git_trees (__main__.SourceTests.test_actual_launch_entrypoint_exists_in_both_archived_git_trees) ... ok
+test_all_declared_campaign_native_artifacts_are_checked (__main__.SourceTests.test_all_declared_campaign_native_artifacts_are_checked) ... ok
+test_all_private_cli_cards_change_only_namespace (__main__.SourceTests.test_all_private_cli_cards_change_only_namespace) ... ok
+test_build_receipt_mutation_is_rejected_before_products (__main__.SourceTests.test_build_receipt_mutation_is_rejected_before_products) ... ok
+test_card_serialization_is_literal_and_explicitly_scoped (__main__.SourceTests.test_card_serialization_is_literal_and_explicitly_scoped) ... ok
+test_card_writer_does_not_import_shared_banner (__main__.SourceTests.test_card_writer_does_not_import_shared_banner) ... ok
+test_cleanup_failure_stops_even_after_numerical_timeout (__main__.SourceTests.test_cleanup_failure_stops_even_after_numerical_timeout) ... ok
+test_cli_history_is_private_without_home_override (__main__.SourceTests.test_cli_history_is_private_without_home_override) ... ok
+test_complete_export_files_are_required (__main__.SourceTests.test_complete_export_files_are_required) ... ok
+test_controller_failure_stops (__main__.SourceTests.test_controller_failure_stops) ... ok
+test_default_never_creates_or_executes (__main__.SourceTests.test_default_never_creates_or_executes) ... ok
+test_entrypoint_admission_binds_actual_materialized_bytes (__main__.SourceTests.test_entrypoint_admission_binds_actual_materialized_bytes) ... ok
+test_execute_requires_stage (__main__.SourceTests.test_execute_requires_stage) ... ok
+test_gate_rejects_w03_even_for_finite_checked_output (__main__.SourceTests.test_gate_rejects_w03_even_for_finite_checked_output) ... ok
+test_gate_requires_actual_map_and_strict_accuracy (__main__.SourceTests.test_gate_requires_actual_map_and_strict_accuracy) ... ok
+test_loader_uses_binary_interpreter_not_ldd (__main__.SourceTests.test_loader_uses_binary_interpreter_not_ldd) ... ok
+test_mapped_inode_mismatch_is_fatal (__main__.SourceTests.test_mapped_inode_mismatch_is_fatal) ... ok
+test_native_commands_stay_singleton_and_bound (__main__.SourceTests.test_native_commands_stay_singleton_and_bound) ... ok
+test_only_preflight_has_mass_execution (__main__.SourceTests.test_only_preflight_has_mass_execution) ... ok
+test_outer_timeout_never_preserves_child_success (__main__.SourceTests.test_outer_timeout_never_preserves_child_success) ... ok
+test_output_parent_matches_exporter_mkdir_contract (__main__.SourceTests.test_output_parent_matches_exporter_mkdir_contract) ... ok
+test_owned_nonzero_exit_also_cleans_up (__main__.SourceTests.test_owned_nonzero_exit_also_cleans_up) ... ok
+test_owned_timeout_retains_cleanup_and_reaps (__main__.SourceTests.test_owned_timeout_retains_cleanup_and_reaps) ... ok
+test_preparation_does_not_request_loader (__main__.SourceTests.test_preparation_does_not_request_loader) ... ok
+test_preparation_owns_only_fresh_roots (__main__.SourceTests.test_preparation_owns_only_fresh_roots) ... ok
+test_same_mapped_path_changed_bytes_is_fatal (__main__.SourceTests.test_same_mapped_path_changed_bytes_is_fatal) ... ok
+test_unknown_nonelf_and_deleted_maps_are_fatal (__main__.SourceTests.test_unknown_nonelf_and_deleted_maps_are_fatal) ... ok
+test_zero_exit_console_fatal_markers_are_rejected (__main__.SourceTests.test_zero_exit_console_fatal_markers_are_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 41 tests in 2.175s
+
+OK
