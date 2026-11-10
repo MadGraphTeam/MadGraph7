@@ -191,13 +191,42 @@ pub struct SelectionTemplate {
     /// contracted component (None) otherwise.
     axis: Vec<Option<usize>>,
     /// Per plan: the plan Born components of each colour component's seed
-    /// weights, the components each seed class reads, the plan's Born
-    /// component count, and per family the seed classes its leaves read
-    /// (None: a forward or merged program, which reads every family).
+    /// weights, the plan's Born component count, and per family the colour
+    /// components (`axis` positions) whose components its leaves' seed
+    /// classes read (None: a forward or merged program, which reads every
+    /// family). A family is dressed when it reads a kept colour component:
+    /// its seed classes then read a kept plan Born component, since each
+    /// plan Born component carries one colour component's seed weights.
     basis_components: Vec<BTreeMap<Option<usize>, BTreeSet<usize>>>,
-    class_components: Vec<Vec<BTreeSet<usize>>>,
     components: Vec<usize>,
-    family_classes: Vec<Option<Vec<BTreeSet<usize>>>>,
+    family_axis: Vec<Option<AxisSets>>,
+}
+
+/// One set of `axis` positions per family, as bits (`words` per family):
+/// a few words per family where the seed classes' component sets would
+/// hold every seed term (u u~ > g g g g g at full colour: 1.9 M, about
+/// 70 MB as ordered sets).
+#[derive(Clone, Debug)]
+struct AxisSets {
+    words: usize,
+    bits: Vec<u64>,
+}
+
+impl AxisSets {
+    fn words(axis: usize) -> usize {
+        axis.div_ceil(64).max(1)
+    }
+
+    fn set(bits: &mut [u64], position: usize) {
+        bits[position / 64] |= 1 << (position % 64);
+    }
+
+    fn reads(&self, family: usize, kept: &[u64]) -> bool {
+        self.bits[family * self.words..(family + 1) * self.words]
+            .iter()
+            .zip(kept)
+            .any(|(read, kept)| read & kept != 0)
+    }
 }
 
 /// The records a formation reads of a plan (its seed classes and keys, its
@@ -730,9 +759,9 @@ impl SelectionTemplate {
             })
             .collect::<RusticolResult<Vec<_>>>()?;
         let mut basis_components = Vec::new();
-        let mut class_components = Vec::new();
         let mut components = Vec::new();
-        let mut family_classes = Vec::new();
+        let mut family_axis = Vec::new();
+        let words = AxisSets::words(axis.len());
         let mut formed = Vec::new();
         for (p, (overlay, plan)) in resolved.overlays.iter().zip(&plans).enumerate() {
             let (seed_records, keys) = seed_records(overlay, plan_seeds[p].as_ref())?;
@@ -762,11 +791,22 @@ impl SelectionTemplate {
                 }
             }
             basis_components.push(per_basis);
+            // The colour component (`axis` position) of each plan Born
+            // component with seed weights.
+            let position: BTreeMap<usize, usize> = owner
+                .iter()
+                .filter_map(|(&component, b)| {
+                    axis.iter()
+                        .position(|a| a == b)
+                        .map(|position| (component, position))
+                })
+                .collect();
             let mut class_columns = Vec::new();
-            let mut reads = Vec::new();
-            for record in seed_records {
+            // Per seed class: the colour components whose plan Born
+            // components it reads.
+            let mut class_axis = vec![0u64; seed_records.len() * words];
+            for (r, record) in seed_records.iter().enumerate() {
                 let mut merged = Vec::new();
-                let mut read = BTreeSet::new();
                 for ws in &template_weights[p] {
                     let mut terms = Vec::new();
                     for &w in ws {
@@ -779,33 +819,42 @@ impl SelectionTemplate {
                              resolved seed weights",
                         ));
                     }
-                    read.extend(distinct);
+                    for component in distinct {
+                        if let Some(&at) = position.get(&component) {
+                            AxisSets::set(&mut class_axis[r * words..(r + 1) * words], at);
+                        }
+                    }
                     merged.push(terms);
                 }
                 class_columns.push(SeedClassView { columns: merged });
-                reads.push(read);
             }
-            class_components.push(reads);
             let born_components = overlay.born_components;
             components.push(born_components);
             let reads_every = plan.forward.is_some() || plan.merged.is_some();
             if reads_every {
-                family_classes.push(None);
+                family_axis.push(None);
             } else {
                 let keys: Vec<SeedKeyView> = serde_json::from_str(keys.get())
                     .map_err(|e| invalid(format!("the seed keys: {e}")))?;
-                let mut per_family = Vec::with_capacity(plan.families.len());
-                for family in &plan.families {
-                    let mut classes_read = BTreeSet::new();
+                let mut bits = vec![0u64; plan.families.len() * words];
+                for (f, family) in plan.families.iter().enumerate() {
+                    let read = &mut bits[f * words..(f + 1) * words];
                     for leaf in &family.leaves {
                         let key = keys
                             .get(leaf.seed)
                             .ok_or_else(|| invalid("a leaf of an unknown seed key"))?;
-                        classes_read.extend(key.classes.iter().map(|class| class.0));
+                        for class in &key.classes {
+                            // A class the records lack reads nothing.
+                            if let Some(of) = class_axis.get(class.0 * words..(class.0 + 1) * words)
+                            {
+                                for (read, of) in read.iter_mut().zip(of) {
+                                    *read |= of;
+                                }
+                            }
+                        }
                     }
-                    per_family.push(classes_read);
                 }
-                family_classes.push(Some(per_family));
+                family_axis.push(Some(AxisSets { words, bits }));
             }
             let any_rows = seed_rows.iter().any(Option::is_some);
             let in_place = plan_weights(
@@ -853,9 +902,8 @@ impl SelectionTemplate {
             basis: resolved.basis,
             axis,
             basis_components,
-            class_components,
             components,
-            family_classes,
+            family_axis,
         })
     }
 
@@ -913,19 +961,20 @@ impl SelectionTemplate {
             components.push(
                 (!every).then(|| (0..self.components[p]).map(|k| kept.contains(&k)).collect()),
             );
-            let Some(family_classes) = &self.family_classes[p] else {
+            let Some(family_axis) = &self.family_axis[p] else {
                 families.push(None);
                 continue;
             };
-            let live: BTreeSet<usize> = self.class_components[p]
-                .iter()
-                .enumerate()
-                .filter(|(_, read)| !read.is_disjoint(&kept))
-                .map(|(c, _)| c)
-                .collect();
-            let flags: Vec<bool> = family_classes
-                .iter()
-                .map(|classes| !classes.is_disjoint(&live))
+            // The kept colour components' positions; a family whose seed
+            // classes read none of them has vanishing seeds.
+            let mut kept_axis = vec![0u64; family_axis.words];
+            for (at, b) in self.axis.iter().enumerate() {
+                if kept_basis.contains(b) {
+                    AxisSets::set(&mut kept_axis, at);
+                }
+            }
+            let flags: Vec<bool> = (0..family_axis.bits.len() / family_axis.words)
+                .map(|f| family_axis.reads(f, &kept_axis))
                 .collect();
             families.push((!flags.iter().all(|&f| f)).then_some(flags));
         }

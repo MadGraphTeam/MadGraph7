@@ -1913,6 +1913,11 @@ class StoredColumns:
         self.families = (None, None) if parts is None or template else parts.families
         self._native: dict[tuple[str, int | None, int, bool], Any] = {}
         self._plans: dict[bool, str] = {}
+        # A formed set (the selection template, a resolved selection) builds
+        # one executor per plan and derives the others (``_executor``), so
+        # it keeps no copy of its plan JSON (u u~ > g g g g g at full colour:
+        # 66 MB).
+        self._formed = template or subset is not None
         self.last_report: dict[str, Any] | None = None
 
     def check_resolution(self, resolution: Any) -> None:
@@ -1947,7 +1952,8 @@ class StoredColumns:
                 plan = json.loads(found)
                 plan["families"] = [plan["families"][f] for f in kept]
                 found = json.dumps(plan, separators=(",", ":"))
-            self._plans[twin] = found
+            if not self._formed:
+                self._plans[twin] = found
         return found
 
     def _executor(self, arithmetic: str, digits: int | None, points: int, twin: bool):
