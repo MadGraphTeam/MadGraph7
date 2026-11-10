@@ -285,7 +285,9 @@ The CMS transfers have zero time difference and genuine nonzero spacelike
 squares, but satisfy the existing energy-normalized zeroing test. The EW group
 instead exposes a DP-formed mass-square mismatch after massive-shell snapping.
 Both pure recomputations pass independent replay; no threshold or numerical
-guard change is qualified.
+guard change is qualified. The [symbolic-routing research note](qualification/benchmark-audit/kinematic-provenance-research.md)
+identifies existing topology metadata and a trace-only next experiment; it
+separates routing provenance from the unresolved DP/QP mass contract.
 
 The bounded [closed QCD n3 investigation](experiments/invariant-symmetry-qcd-n3-target-analysis/portable-analysis2/index.json)
 retains the same 1,200 rows and 4,800 coefficient values as its prior closed
