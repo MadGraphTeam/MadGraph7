@@ -961,12 +961,14 @@ def test_binary64_tree_observables_need_no_symbolica_licensing(
         assert "kinematics-not-improved" not in notes, (name, notes)
     python = Runtime.load(tree_artifacts[_ARTIFACTS[0][0]], process=_NAME)
     improved = python.evaluate(points, kinematics_improvement_binary64=True)
-    assert [struct.pack(">d", float(v)).hex() for v in improved] == reference[
+    assert [struct.pack(">d", complex(v).real).hex() for v in improved] == reference[
         "values-kinematics"
     ][1:]
     assert any("(z-shift): z-shift" in text for text in python.take_warnings())
     plain = python.evaluate(points)
-    assert [struct.pack(">d", float(v)).hex() for v in plain] == reference["values"][1:]
+    assert [struct.pack(">d", complex(v).real).hex() for v in plain] == reference[
+        "values"
+    ][1:]
     for language in ("cpp", "fortran", "rust"):
         wrapped = {}
         for name in _WRAPPED:
