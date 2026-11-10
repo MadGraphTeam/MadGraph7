@@ -144,13 +144,14 @@ and the mixed QCD/QED control. The two three-particle processes have also closed
 all 54 completed lanes pass `3e-6`; QCD three-particle production retains `1e-8`
 target misses and TIRust uses QP rescue at 13 points. The two four-particle cases
 and precise timing remain pending.
-The published 31-page PDF covers the preceding `invariant-symmetry-1`
+The preceding 31-page PDF covers the `invariant-symmetry-1`
 registration, at revision `2c13246ffa63`, with numerical
 identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
 Its numerical report is bound to a sealed terminal eleven-process checkpoint
 and immutable source-specific selection/dossier. Those 66 lanes do not qualify
-the changed Fortran source. Precise timing remains
-deferred. The runnable
+the changed Fortran source. The current 33-page PDF retains that evidence and
+adds the separately bound nine-case current-source supplement. Precise timing
+remains deferred. The runnable
 [preceding-source local timing handoff](campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md)
 documents fresh installation, local registration, numerical replay, timing and a
 separate local PDF for that preceding source. Handoff 4 binds the tracked `bin/madgraph` launcher;
@@ -345,20 +346,29 @@ inputs missing. The original capture failure and later inventory-admission
 failure remain visible. These boundary diagnostics establish neither independent
 accuracy nor the exact cause of every internal fallback failure.
 
-The current PDF has 31 pages. The raw pilot methodology is on page 26, its four
-plots on pages 27–30, and complete call/failure accounting on page 31. All six new
-pages passed visual review. PDF SHA-256:
+The [published 31-page preceding-source PDF](https://github.com/MadGraphTeam/MadGraph7/blob/913a746201eb6ef806ccb219c890a7f3486d6322/docs/benchmarkfolder/benchmark.pdf)
+retains its exact source, ledger and plots at commit `913a746201eb6`. Its SHA-256 is
 `91ceeae99968df742e7e141467e3bab321394a0512328be7df9be0f5b86d559a`.
+The new view keeps that campaign's scientific evidence and adds a separately
+bound `entry-latch-cache-guard-1` supplement: nine closed cases and 54 lanes,
+with both n4 cases pending in its explicit snapshot. QCD n3's `1e-8` target
+misses and accepted DP/QP counts remain visible. The guard-only cache experiment
+is descriptive shared-host evidence; precise local acceptance is still TODO.
+The current PDF has 33 pages: the historical raw figures remain on pages
+27–30, and current-source progress and cache-guard scope are on pages 32–33.
 
-Rebuild and verify the explicitly selected view:
+A new old-source selection/dossier binds the preceding precision TODO through
+its exact archived path; the published selection/dossier remain immutable.
+Rebuild and verify this explicitly selected two-source view:
 
 ```sh
 source tools/tirust_env.sh
-current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-raw-dp-pilot-1.json
+current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-entry-cache-supplement-1.json
+current_report_supplement=campaigns/entry-latch-cache-guard-1/report-supplements/progress-1/selection.json
 python3 -B docs/benchmarkfolder/build_report.py --campaign invariant-symmetry-1 \
-  --campaign-report "$current_report_dossier"
+  --campaign-report "$current_report_dossier" --supplement "$current_report_supplement"
 python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign invariant-symmetry-1 \
-  --campaign-report "$current_report_dossier"
+  --campaign-report "$current_report_dossier" --supplement "$current_report_supplement"
 ```
 
 Dossier creation and report building never launch new numerical measurements.

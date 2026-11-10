@@ -1,0 +1,49 @@
+{
+  "README_patch_before_sha256": "5ef0b790970e536380bde022a99eb04ce3a1154b0c9b399235b990bd603acd6b",
+  "README_patch_proposed_sha256": "03ddc18849c2d52f35981967b4a7d884b4c7a6381eabd6f483f86a4b96c6c99b",
+  "canonical_unchanged": {
+    "benchmark.pdf": {
+      "bytes": 2147348,
+      "sha256": "91ceeae99968df742e7e141467e3bab321394a0512328be7df9be0f5b86d559a"
+    },
+    "benchmark.typ": {
+      "bytes": 27236,
+      "sha256": "f4c00908f0d398990b12669c593d9763f59878f43b4c138d14cfbf7ec6610b35"
+    },
+    "build_report.py": {
+      "bytes": 22166,
+      "sha256": "0e034e80d688ea8cb2927aafe5040d62808777db10fc41be478ff6f15007c9bd"
+    },
+    "campaign_report_refresh.py": {
+      "bytes": 33644,
+      "sha256": "9a7f221e5c47a36ea2eee6732cc9b3b626b7f9a90685ca5058cf7aff47751254"
+    },
+    "campaigns/invariant-symmetry-1/report-snapshots/closed11-raw-dp-pilot-1.json": {
+      "bytes": 4940803,
+      "sha256": "b03e1b93a08f4de06da7fe9b876de94e0135acd17caf29bdf8fae8175bb5b589"
+    },
+    "campaigns/invariant-symmetry-1/report-snapshots/closed11-raw-dp-pilot-selection-1.json": {
+      "bytes": 7460,
+      "sha256": "7970d67ddf68547612edf6c384d1c4928c84cc695a8b7c3949acdbd1426b178b"
+    },
+    "report-build.json": {
+      "bytes": 2375616,
+      "sha256": "6db4df93072032c89d371acc1cce3c0a4b4a07ba650c5a9a9090ad50241e164f"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "new_report_files": [
+    "current_source_supplement.py",
+    "current-source-supplement.typ"
+  ],
+  "production_or_native_changes": false,
+  "proposed_existing": {
+    "benchmark.typ": "374420fa181ac7123760b3d77dee7c4a72a2205c06d94739238dfcf0edb01dab",
+    "build_report.py": "d7544f47080c3242851ffef385c58c185125dbc3739fed292ccbc6eb588844b8",
+    "campaign_report_refresh.py": "1c590b5d79f415af72061dac2f3e991e2325d9b216d61b1652014cc5d0bb844a"
+  },
+  "schema": "madloop-tirust-source-supplement-proposal-baselines-v1"
+}

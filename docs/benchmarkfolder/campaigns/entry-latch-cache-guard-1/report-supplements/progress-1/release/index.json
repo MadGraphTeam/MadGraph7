@@ -1,0 +1,25 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 2112,
+      "sha256": "e04d684b89dab8d7a26fdb762008957bbe4c5c7d14daafc30ebed7eb8f515066"
+    },
+    "layout.patch": {
+      "bytes": 2314,
+      "sha256": "f1d1069cb3ba76d99adeb6260f01da2f957ea2a44292562eab2b95e28e0ba992"
+    },
+    "root-existing-report-tests.log": {
+      "bytes": 99,
+      "sha256": "ccee02bab2343de9f6c30706d1a0c425fc8976b107dea2f748c98c5c3f8a8591"
+    },
+    "root-post-promotion-focused-tests.log": {
+      "bytes": 3961,
+      "sha256": "0301291a78cc0bf6467b936270af4d036b14a8928b18a5b2551a9cb9e19c95ec"
+    },
+    "verification.json": {
+      "bytes": 1989,
+      "sha256": "cbbb6e7d22a04d5c38318508511b2414637a272a488888bff9a588093b31a3fe"
+    }
+  },
+  "schema": "madloop-report-release-inventory-v1"
+}

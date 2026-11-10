@@ -1,0 +1,36 @@
+test_actual_closed_capsules_only_and_no_process_or_foreign_calls (__main__.TestSupplement.test_actual_closed_capsules_only_and_no_process_or_foreign_calls) ... ok
+test_archived_document_role_has_exact_old_git_bytes (__main__.TestSupplement.test_archived_document_role_has_exact_old_git_bytes) ... ok
+test_changed_cache_pin_is_rejected_before_proof_reads (__main__.TestSupplement.test_changed_cache_pin_is_rejected_before_proof_reads) ... ok
+test_cli_passes_explicit_supplement_without_starting_build (__main__.TestSupplement.test_cli_passes_explicit_supplement_without_starting_build) ... ok
+test_historical_dossier_changes_only_the_explicit_document_role (__main__.TestSupplement.test_historical_dossier_changes_only_the_explicit_document_role) ... ok
+test_historical_role_default_retains_strict_original_path (__main__.TestSupplement.test_historical_role_default_retains_strict_original_path) ... ok
+test_mixed_admitted_and_unknown_list_is_rejected_before_any_read (__main__.TestSupplement.test_mixed_admitted_and_unknown_list_is_rejected_before_any_read) ... ok
+test_synthetic_complete_case_does_not_fill_other_ten (__main__.TestSupplement.test_synthetic_complete_case_does_not_fill_other_ten) ... ok
+test_synthetic_duplicate_cases_are_rejected (__main__.TestSupplement.test_synthetic_duplicate_cases_are_rejected) ... ok
+test_synthetic_incomplete_saved_points_are_rejected (__main__.TestSupplement.test_synthetic_incomplete_saved_points_are_rejected) ... ok
+test_synthetic_indexed_payload_corruption_is_rejected (__main__.TestSupplement.test_synthetic_indexed_payload_corruption_is_rejected) ... ok
+test_synthetic_lane_cannot_promote_performance (__main__.TestSupplement.test_synthetic_lane_cannot_promote_performance) ... ok
+test_synthetic_missing_lane_is_rejected (__main__.TestSupplement.test_synthetic_missing_lane_is_rejected) ... ok
+test_synthetic_precision_count_loss_is_rejected (__main__.TestSupplement.test_synthetic_precision_count_loss_is_rejected) ... ok
+test_synthetic_regression_failure_remains_visible (__main__.TestSupplement.test_synthetic_regression_failure_remains_visible) ... ok
+test_synthetic_reordered_backend_is_rejected (__main__.TestSupplement.test_synthetic_reordered_backend_is_rejected) ... ok
+test_synthetic_replay_pass_cannot_override_failed_lane (__main__.TestSupplement.test_synthetic_replay_pass_cannot_override_failed_lane) ... ok
+test_synthetic_target_miss_retains_regression_qualification (__main__.TestSupplement.test_synthetic_target_miss_retains_regression_qualification) ... ok
+test_typst_scope_panel_and_appendix_preserve_original_body (__main__.TestSupplement.test_typst_scope_panel_and_appendix_preserve_original_body) ... FAIL
+test_unadmitted_checkpoint_is_rejected_before_reads (__main__.TestSupplement.test_unadmitted_checkpoint_is_rejected_before_reads) ... ok
+test_unknown_changed_or_ambiguous_historical_role_is_rejected (__main__.TestSupplement.test_unknown_changed_or_ambiguous_historical_role_is_rejected) ... ok
+test_unsafe_or_old_context_is_rejected_before_proof_reads (__main__.TestSupplement.test_unsafe_or_old_context_is_rejected_before_proof_reads) ... ok
+
+======================================================================
+FAIL: test_typst_scope_panel_and_appendix_preserve_original_body (__main__.TestSupplement.test_typst_scope_panel_and_appendix_preserve_original_body)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/current-source-report-supplement-proposal-1/test_supplement.py", line 296, in test_typst_scope_panel_and_appendix_preserve_original_body
+    self.assertTrue(original_body_and_appendix.startswith(old))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 22 tests in 2.889s
+
+FAILED (failures=1)

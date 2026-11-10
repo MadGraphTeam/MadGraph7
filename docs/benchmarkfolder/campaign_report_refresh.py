@@ -332,11 +332,30 @@ def archive(evidence, pin):
             "pages": 19, "current_performance_eligible": False}
 
 
+HISTORICAL_PRECISION_DOCUMENT = {
+    "path": "history/report-before-entry-latch-cache-guard-1/PRECISION_STREAM_TODO.md",
+    "sha256": "b48071ea8b8c4a1176f88ab78eb5678792748deaecc30c2d4845b37316501c03"}
+
+
+def precision_document(selected):
+    """One explicit archived documentation role; original selections stay strict."""
+    roles = selected.get("historical_documents")
+    if roles is None:
+        return "PRECISION_STREAM_TODO.md"
+    require(roles == {"precision_stream_todo": HISTORICAL_PRECISION_DOCUMENT},
+            "Unknown or changed historical documentation role")
+    document = HISTORICAL_PRECISION_DOCUMENT
+    require("PRECISION_STREAM_TODO.md" not in selected["documents"]
+            and selected["documents"].get(document["path"]) == document["sha256"],
+            "Archived precision TODO must be bound by its actual historical path")
+    return document["path"]
+
+
 def current_selection(evidence, value, manifest, config):
     required = {"schema", "campaign", "numerical_checkpoint", "closed_cases", "documents", "packages",
                 "implementation_packages", "historical_archive", "local_handoff_path", "snapshot_date",
                 "performance_status", "final_performance_accepted", "current_lifecycle"}
-    require(required <= set(value) <= required | {"appendix_c_retrospective", "appendix_c_raw_dp"}
+    require(required <= set(value) <= required | {"appendix_c_retrospective", "appendix_c_raw_dp", "historical_documents"}
             and value["campaign"] == manifest["id"],
             "Current selection requires explicit closed inputs and no old timing or next-campaign join")
     if value.get("appendix_c_raw_dp") is not None:
@@ -354,11 +373,12 @@ def current_selection(evidence, value, manifest, config):
     if value["current_lifecycle"] is not None:
         sibling("campaign_report_current_lifecycle").collect(evidence, manifest, value["current_lifecycle"])
     archive(evidence, value["historical_archive"])
+    precision_path = precision_document(value)
     for name, checksum in value["documents"].items():
         evidence.add(name, checksum)
     require(value["local_handoff_path"] == "campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md"
             and value["local_handoff_path"] in value["documents"]
-            and "PRECISION_STREAM_TODO.md" in value["documents"], "Current handoff4/precision TODO is unbound")
+            and precision_path in value["documents"], "Current handoff4/precision TODO is unbound")
     require(value["packages"] == CURRENT_SUPPORT_PACKAGES,
             "Current report must retain the closed stability and higher-precision disclosures")
     for name, checksum in value["packages"].items():
@@ -400,7 +420,7 @@ def current_supplement(evidence, selected, report):
         "numerical_status": report["numerical"]["status"], "excluded_active_cases": [],
         "performance_status": selected["performance_status"], "final_performance_accepted": False,
         "amendment_path": "PLAN-AMENDMENT-2026-11-10.md", "local_handoff_path": selected["local_handoff_path"],
-        "precision_stream_todo_path": "PRECISION_STREAM_TODO.md",
+        "precision_stream_todo_path": precision_document(selected),
         "historical_report": archive(evidence, selected["historical_archive"]),
         "branch": "madloop_tirust", "future_pr_target": "madloop_ninjars",
         "private_diagnostics": [

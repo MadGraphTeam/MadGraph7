@@ -1,0 +1,46 @@
+--- a/docs/benchmarkfolder/benchmark.typ
++++ b/docs/benchmarkfolder/benchmark.typ
+@@ -62,14 +62,14 @@
+ #v(7pt)
+ #if report.at("source_supplement", default: none) != none {
+   let s = report.source_supplement
+-  note(fill: warm)[*Two separately bound sources.* The main report and plots retain
+-    #raw(s.historical.campaign), revision #raw(s.historical.source_revision.slice(0,12)),
+-    and its 66 historical numerical lanes. Current source
+-    #raw(s.current.revision.slice(0,12)) has #s.numerical.qualified_cases qualified
+-    cases and #s.numerical.closed_lanes selected closed lane slots out of 66.
+-    Its appended progress and guard-only experiment do not transfer the old
+-    matrix or precise timing acceptance to the changed source.]
+-  v(5pt)
++  v(-8pt)
++  block(width: 100%, fill: warm, inset: (x: 9pt, y: 4pt), radius: 3pt,
++    text(8pt)[*Separate sources.* Main report and plots:
++      #raw(s.historical.source_revision.slice(0,12)) (66 lanes). Source
++      #raw(s.current.revision.slice(0,12)): #s.numerical.qualified_cases cases,
++      #s.numerical.closed_lanes selected lanes in the supplement. Historical
++      results and guard-only timings do not qualify the changed source.])
++  v(1pt)
+ }
+ #if campaign != none {
+   text(8pt, fill: ink2)[Selected campaign: #raw(campaign.id). Selected numerical identity:
+@@ -134,7 +134,8 @@
+ #v(5pt)
+ #figure(
+   table-style(table(columns: (1.35fr, .7fr, .85fr, .85fr, 1.05fr, .8fr),
+-    inset: (x: 4pt, y: 7pt), stroke: table-stroke, fill: table-fill,
++    inset: (x: 4pt, y: if report.at("source_supplement", default: none) == none { 7pt } else { 5pt }),
++    stroke: table-stroke, fill: table-fill,
+     table.header([Process · correction], [Physics], [Baseline µs/point], [TIRust chain µs/point], [Ratio · 95% interval], [Existing-backend regressions]),
+     ..main.map(c => {
+       let p = c.performance
+--- a/docs/benchmarkfolder/current-source-supplement.typ
++++ b/docs/benchmarkfolder/current-source-supplement.typ
+@@ -97,7 +97,7 @@
+     text(8pt, fill: ink2, note-text)
+   }
+ 
+-  pagebreak()
++  v(8pt)
+   heading(level: 1)[Cache-guard scope · #raw(s.current.revision.slice(0, 12))]
+   note(fill: warm)[Scope: #s.cache.scope. The following paired observations
+     compare the guarded candidate with the original guard-off code. This

@@ -1,0 +1,38 @@
+--- a/docs/benchmarkfolder/README.md
++++ b/docs/benchmarkfolder/README.md
+@@ -345,20 +345,27 @@
+ failure remain visible. These boundary diagnostics establish neither independent
+ accuracy nor the exact cause of every internal fallback failure.
+ 
+-The current PDF has 31 pages. The raw pilot methodology is on page 26, its four
+-plots on pages 27–30, and complete call/failure accounting on page 31. All six new
+-pages passed visual review. PDF SHA-256:
++The [published 31-page preceding-source PDF](https://github.com/MadGraphTeam/MadGraph7/blob/913a746201eb6ef806ccb219c890a7f3486d6322/docs/benchmarkfolder/benchmark.pdf)
++retains its exact source, ledger and plots at commit `913a746201eb6`. Its SHA-256 is
+ `91ceeae99968df742e7e141467e3bab321394a0512328be7df9be0f5b86d559a`.
+-
+-Rebuild and verify the explicitly selected view:
++The new view keeps that campaign's scientific evidence and adds a separately
++bound `entry-latch-cache-guard-1` supplement: nine closed cases and 54 lanes,
++with both n4 cases pending in its explicit snapshot. QCD n3's `1e-8` target
++misses and accepted DP/QP counts remain visible. The guard-only cache experiment
++is descriptive shared-host evidence; precise local acceptance is still TODO.
++
++A new old-source selection/dossier binds the preceding precision TODO through
++its exact archived path; the published selection/dossier remain immutable.
++Rebuild and verify this explicitly selected two-source view:
+ 
+ ```sh
+ source tools/tirust_env.sh
+-current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-raw-dp-pilot-1.json
++current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-entry-cache-supplement-1.json
++current_report_supplement=campaigns/entry-latch-cache-guard-1/report-supplements/progress-1/selection.json
+ python3 -B docs/benchmarkfolder/build_report.py --campaign invariant-symmetry-1 \
+-  --campaign-report "$current_report_dossier"
++  --campaign-report "$current_report_dossier" --supplement "$current_report_supplement"
+ python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign invariant-symmetry-1 \
+-  --campaign-report "$current_report_dossier"
++  --campaign-report "$current_report_dossier" --supplement "$current_report_supplement"
+ ```
+ 
+ Dossier creation and report building never launch new numerical measurements.

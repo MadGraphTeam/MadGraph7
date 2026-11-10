@@ -185,7 +185,7 @@ def predecessor_history(inputs, manifest, summary, report):
     return [failures[key]["display"] for key in sorted(failures)]
 
 
-def prepare_report(root=ROOT, campaign=None, campaign_report=None):
+def prepare_report(root=ROOT, campaign=None, campaign_report=None, supplement=None):
     helper_path = Path(__file__).with_name("intermediate_report.py")
     if campaign is None and (Path(root) / "intermediate-status.json").exists() and not helper_path.is_file():
         raise ValueError("Intermediate status exists but its validator is missing")
@@ -270,8 +270,20 @@ def prepare_report(root=ROOT, campaign=None, campaign_report=None):
             context["campaign_report_path"] = dossier_path
             context["delivery_complete"] = dossier["delivery_complete"]
             inputs.add("campaign-report.typ")
+    context_name = joined(report, "report-context.json")
+    if supplement is not None:
+        if campaign is None or "campaign_report_path" not in context:
+            raise ValueError("A source supplement requires an explicitly validated historical campaign dossier")
+        spec = importlib.util.spec_from_file_location("current_source_supplement",
+            Path(__file__).with_name("current_source_supplement.py"))
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        context["source_supplement"], context_name = helper.validate(
+            inputs, supplement, campaign, context["campaign_report_path"])
+        inputs.add("current_source_supplement.py")
+        inputs.add("current-source-supplement.typ")
     return summary, inputs, context, {"summary": summary_name, "manifest": manifest_name,
-                                     "context": joined(report, "report-context.json")}
+                                     "context": context_name}
 
 
 def validate_summary(data, registered_identity=None):
@@ -321,10 +333,11 @@ def main():
     parser.add_argument("--font-path", type=Path, action="append", default=[])
     parser.add_argument("--campaign", help="Registered campaign ID; omit for the original campaign")
     parser.add_argument("--campaign-report", help="Explicit frozen docsroot-relative dossier for that campaign")
+    parser.add_argument("--supplement", help="Explicit frozen source-progress selection; does not alter selected campaign gates")
     args = parser.parse_args()
     if args.campaign_report and not args.campaign:
         parser.error("--campaign-report requires --campaign")
-    summary, inventory, context, typst_inputs = prepare_report(ROOT, args.campaign, args.campaign_report)
+    summary, inventory, context, typst_inputs = prepare_report(ROOT, args.campaign, args.campaign_report, args.supplement)
     context_path = inside(ROOT, typst_inputs["context"])
     context_bytes = (json.dumps(context, indent=2, sort_keys=True, allow_nan=False) + "\n").encode()
     # A custom PDF must not overwrite the canonical PDF's reproducibility ledger.
@@ -356,6 +369,7 @@ def main():
     for directory in args.font_path:
         command.extend(["--font-path", str(directory.resolve())])
     environment = dict(os.environ, SOURCE_DATE_EPOCH=str(epoch), RAYON_NUM_THREADS="1")
+    context_path.parent.mkdir(parents=True, exist_ok=True)
     context_path.write_bytes(context_bytes)
     inventory.add(typst_inputs["context"])
     args.output.parent.mkdir(parents=True, exist_ok=True)

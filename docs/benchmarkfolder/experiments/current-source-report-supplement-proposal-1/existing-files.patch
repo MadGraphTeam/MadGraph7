@@ -1,0 +1,140 @@
+--- a/docs/benchmarkfolder/build_report.py
++++ b/docs/benchmarkfolder/build_report.py
+@@ -185,7 +185,7 @@
+     return [failures[key]["display"] for key in sorted(failures)]
+ 
+ 
+-def prepare_report(root=ROOT, campaign=None, campaign_report=None):
++def prepare_report(root=ROOT, campaign=None, campaign_report=None, supplement=None):
+     helper_path = Path(__file__).with_name("intermediate_report.py")
+     if campaign is None and (Path(root) / "intermediate-status.json").exists() and not helper_path.is_file():
+         raise ValueError("Intermediate status exists but its validator is missing")
+@@ -270,8 +270,20 @@
+             context["campaign_report_path"] = dossier_path
+             context["delivery_complete"] = dossier["delivery_complete"]
+             inputs.add("campaign-report.typ")
++    context_name = joined(report, "report-context.json")
++    if supplement is not None:
++        if campaign is None or "campaign_report_path" not in context:
++            raise ValueError("A source supplement requires an explicitly validated historical campaign dossier")
++        spec = importlib.util.spec_from_file_location("current_source_supplement",
++            Path(__file__).with_name("current_source_supplement.py"))
++        helper = importlib.util.module_from_spec(spec)
++        spec.loader.exec_module(helper)
++        context["source_supplement"], context_name = helper.validate(
++            inputs, supplement, campaign, context["campaign_report_path"])
++        inputs.add("current_source_supplement.py")
++        inputs.add("current-source-supplement.typ")
+     return summary, inputs, context, {"summary": summary_name, "manifest": manifest_name,
+-                                     "context": joined(report, "report-context.json")}
++                                     "context": context_name}
+ 
+ 
+ def validate_summary(data, registered_identity=None):
+@@ -321,10 +333,11 @@
+     parser.add_argument("--font-path", type=Path, action="append", default=[])
+     parser.add_argument("--campaign", help="Registered campaign ID; omit for the original campaign")
+     parser.add_argument("--campaign-report", help="Explicit frozen docsroot-relative dossier for that campaign")
++    parser.add_argument("--supplement", help="Explicit frozen source-progress selection; does not alter selected campaign gates")
+     args = parser.parse_args()
+     if args.campaign_report and not args.campaign:
+         parser.error("--campaign-report requires --campaign")
+-    summary, inventory, context, typst_inputs = prepare_report(ROOT, args.campaign, args.campaign_report)
++    summary, inventory, context, typst_inputs = prepare_report(ROOT, args.campaign, args.campaign_report, args.supplement)
+     context_path = inside(ROOT, typst_inputs["context"])
+     context_bytes = (json.dumps(context, indent=2, sort_keys=True, allow_nan=False) + "\n").encode()
+     # A custom PDF must not overwrite the canonical PDF's reproducibility ledger.
+@@ -356,6 +369,7 @@
+     for directory in args.font_path:
+         command.extend(["--font-path", str(directory.resolve())])
+     environment = dict(os.environ, SOURCE_DATE_EPOCH=str(epoch), RAYON_NUM_THREADS="1")
++    context_path.parent.mkdir(parents=True, exist_ok=True)
+     context_path.write_bytes(context_bytes)
+     inventory.add(typst_inputs["context"])
+     args.output.parent.mkdir(parents=True, exist_ok=True)
+--- a/docs/benchmarkfolder/benchmark.typ
++++ b/docs/benchmarkfolder/benchmark.typ
+@@ -60,6 +60,17 @@
+   #text(8pt, fill: luma(110))[Starting MadLoop revision #raw(d.baseline_revision.slice(0,12)) · full helicity/color sums]
+ ]
+ #v(7pt)
++#if report.at("source_supplement", default: none) != none {
++  let s = report.source_supplement
++  note(fill: warm)[*Two separately bound sources.* The main report and plots retain
++    #raw(s.historical.campaign), revision #raw(s.historical.source_revision.slice(0,12)),
++    and its 66 historical numerical lanes. Current source
++    #raw(s.current.revision.slice(0,12)) has #s.numerical.qualified_cases qualified
++    cases and #s.numerical.closed_lanes selected closed lane slots out of 66.
++    Its appended progress and guard-only experiment do not transfer the old
++    matrix or precise timing acceptance to the changed source.]
++  v(5pt)
++}
+ #if campaign != none {
+   text(8pt, fill: ink2)[Selected campaign: #raw(campaign.id). Selected numerical identity:
+     #raw(campaign.candidate.numerical_identity_sha256.slice(0,16)).]
+@@ -372,3 +383,8 @@
+   import "campaign-report.typ": show-campaign-details
+   show-campaign-details(current-dossier, d.cases, process-label)
+ }
++
++#if report.at("source_supplement", default: none) != none {
++  import "current-source-supplement.typ": show-current-source
++  show-current-source(report.source_supplement)
++}
+--- a/docs/benchmarkfolder/campaign_report_refresh.py
++++ b/docs/benchmarkfolder/campaign_report_refresh.py
+@@ -332,11 +332,30 @@
+             "pages": 19, "current_performance_eligible": False}
+ 
+ 
++HISTORICAL_PRECISION_DOCUMENT = {
++    "path": "history/report-before-entry-latch-cache-guard-1/PRECISION_STREAM_TODO.md",
++    "sha256": "b48071ea8b8c4a1176f88ab78eb5678792748deaecc30c2d4845b37316501c03"}
++
++
++def precision_document(selected):
++    """One explicit archived documentation role; original selections stay strict."""
++    roles = selected.get("historical_documents")
++    if roles is None:
++        return "PRECISION_STREAM_TODO.md"
++    require(roles == {"precision_stream_todo": HISTORICAL_PRECISION_DOCUMENT},
++            "Unknown or changed historical documentation role")
++    document = HISTORICAL_PRECISION_DOCUMENT
++    require("PRECISION_STREAM_TODO.md" not in selected["documents"]
++            and selected["documents"].get(document["path"]) == document["sha256"],
++            "Archived precision TODO must be bound by its actual historical path")
++    return document["path"]
++
++
+ def current_selection(evidence, value, manifest, config):
+     required = {"schema", "campaign", "numerical_checkpoint", "closed_cases", "documents", "packages",
+                 "implementation_packages", "historical_archive", "local_handoff_path", "snapshot_date",
+                 "performance_status", "final_performance_accepted", "current_lifecycle"}
+-    require(required <= set(value) <= required | {"appendix_c_retrospective", "appendix_c_raw_dp"}
++    require(required <= set(value) <= required | {"appendix_c_retrospective", "appendix_c_raw_dp", "historical_documents"}
+             and value["campaign"] == manifest["id"],
+             "Current selection requires explicit closed inputs and no old timing or next-campaign join")
+     if value.get("appendix_c_raw_dp") is not None:
+@@ -354,11 +373,12 @@
+     if value["current_lifecycle"] is not None:
+         sibling("campaign_report_current_lifecycle").collect(evidence, manifest, value["current_lifecycle"])
+     archive(evidence, value["historical_archive"])
++    precision_path = precision_document(value)
+     for name, checksum in value["documents"].items():
+         evidence.add(name, checksum)
+     require(value["local_handoff_path"] == "campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md"
+             and value["local_handoff_path"] in value["documents"]
+-            and "PRECISION_STREAM_TODO.md" in value["documents"], "Current handoff4/precision TODO is unbound")
++            and precision_path in value["documents"], "Current handoff4/precision TODO is unbound")
+     require(value["packages"] == CURRENT_SUPPORT_PACKAGES,
+             "Current report must retain the closed stability and higher-precision disclosures")
+     for name, checksum in value["packages"].items():
+@@ -400,7 +420,7 @@
+         "numerical_status": report["numerical"]["status"], "excluded_active_cases": [],
+         "performance_status": selected["performance_status"], "final_performance_accepted": False,
+         "amendment_path": "PLAN-AMENDMENT-2026-11-10.md", "local_handoff_path": selected["local_handoff_path"],
+-        "precision_stream_todo_path": "PRECISION_STREAM_TODO.md",
++        "precision_stream_todo_path": precision_document(selected),
+         "historical_report": archive(evidence, selected["historical_archive"]),
+         "branch": "madloop_tirust", "future_pr_target": "madloop_ninjars",
+         "private_diagnostics": [

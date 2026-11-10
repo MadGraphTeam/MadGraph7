@@ -60,6 +60,17 @@
   #text(8pt, fill: luma(110))[Starting MadLoop revision #raw(d.baseline_revision.slice(0,12)) · full helicity/color sums]
 ]
 #v(7pt)
+#if report.at("source_supplement", default: none) != none {
+  let s = report.source_supplement
+  v(-8pt)
+  block(width: 100%, fill: warm, inset: (x: 9pt, y: 4pt), radius: 3pt,
+    text(8pt)[*Separate sources.* Main report and plots:
+      #raw(s.historical.source_revision.slice(0,12)) (66 lanes). Source
+      #raw(s.current.revision.slice(0,12)): #s.numerical.qualified_cases cases,
+      #s.numerical.closed_lanes selected lanes in the supplement. Historical
+      results and guard-only timings do not qualify the changed source.])
+  v(1pt)
+}
 #if campaign != none {
   text(8pt, fill: ink2)[Selected campaign: #raw(campaign.id). Selected numerical identity:
     #raw(campaign.candidate.numerical_identity_sha256.slice(0,16)).]
@@ -123,7 +134,8 @@ if refresh.at("next_campaign", default: none) != none {
 #v(5pt)
 #figure(
   table-style(table(columns: (1.35fr, .7fr, .85fr, .85fr, 1.05fr, .8fr),
-    inset: (x: 4pt, y: 7pt), stroke: table-stroke, fill: table-fill,
+    inset: (x: 4pt, y: if report.at("source_supplement", default: none) == none { 7pt } else { 5pt }),
+    stroke: table-stroke, fill: table-fill,
     table.header([Process · correction], [Physics], [Baseline µs/point], [TIRust chain µs/point], [Ratio · 95% interval], [Existing-backend regressions]),
     ..main.map(c => {
       let p = c.performance
@@ -371,4 +383,9 @@ The accompanying #raw(report.cases_path) fixes the matrix and thresholds; #raw(s
 #if current-dossier != none {
   import "campaign-report.typ": show-campaign-details
   show-campaign-details(current-dossier, d.cases, process-label)
+}
+
+#if report.at("source_supplement", default: none) != none {
+  import "current-source-supplement.typ": show-current-source
+  show-current-source(report.source_supplement)
 }

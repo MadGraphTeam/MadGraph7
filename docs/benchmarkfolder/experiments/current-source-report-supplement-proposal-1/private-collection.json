@@ -1,0 +1,21 @@
+{
+  "criteria": {
+    "all_eleven_five_backend_numerical": "passed",
+    "eight_main_runtime_gates": "deferred to Hua-Sheng",
+    "existing_backend_regressions": "deferred to Hua-Sheng",
+    "installed_abi_and_fortran_checks": "passed",
+    "installer_metadata_hardening": "passed",
+    "native_dp_and_rescued_cohorts": "pending",
+    "paired_campaign_overall": "deferred to Hua-Sheng",
+    "statistics_roundtrip": "passed",
+    "stress_accuracy": "open",
+    "subprocess_event_cache_lifecycle": "passed"
+  },
+  "delivery_complete": false,
+  "historical_dossier_path": "campaigns/invariant-symmetry-1/report-snapshots/closed11-entry-cache-supplement-1.json",
+  "historical_dossier_sha256": "fa88e07bd94c08dbaafd8e8ad642d82dbbacf1220dea8462145281040543c558",
+  "historical_selection_path": "campaigns/invariant-symmetry-1/report-snapshots/closed11-entry-cache-supplement-selection-1.json",
+  "inputs": 10143,
+  "native_or_typst_execution": false,
+  "stage": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-report-supplement-review-1"
+}
