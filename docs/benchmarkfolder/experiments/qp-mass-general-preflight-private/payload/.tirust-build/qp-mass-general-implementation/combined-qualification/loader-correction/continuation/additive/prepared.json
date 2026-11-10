@@ -1,0 +1,30 @@
+{
+  "affinity_exclusive": false,
+  "automatic_retry": false,
+  "cpu": 8,
+  "inputs": {
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/build.json": "737af11c1c7755cfbe81c31c74521ce809d7181f9c971112c12abe5be562af73",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/control.py": "64c6aa0fe24935dd42d0869d25c0b45c9951d6a9920fa81abac970c835f19953",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/evidence-index.json": "41aaeb9d1f24477a1ecbc86ebb84f8ba6f1736d0cf87958c9de1c33dae078f31",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/prepared.json": "ce6fef5c324a105a103a71fb3b4727218d34569b9d0656ce1bd89a68e86726ee",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/additive/README.md": "b04ff6150e77889519e35ab9c568c6d9f6c785d9d2ad5138682786e7d8b29e01",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/additive/control.py": "568955a3ee1e5b45dea6c9ca0b9fad3d7386d99f316d6a1ccc02d6e53bc0c7a6",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/additive/controller.diff": "65a6290d08f721f227a7db4a7688eaefa98053beef3aea84b1a60b1ae7068f06",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/additive/prepared.json": "a3b693926237450de5a6e8ffa739e00d17a95024c082a9ba002232c29043c71e",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/additive/source-index.json": "7282787773a47bfe2e97890197c423699ccc63b9b375f55f3d3edcd7d155b822",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/continuation/additive/README.md": "194c03c5222d60ed9f902ab9e3edd99e224b99f15a4dcad168e72c8873aca676",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/continuation/additive/control.py": "009e8a90a7cc073c880b3973aab46ecc771e71350db5dc476d2da74f014d09f2",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/continuation/additive/controller.diff": "1fe336feb5b967be998ffe7e51980c75ba8746facd3062e0ed67d9255b661f25",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/continuation/control.py": "e497bba37231d6b41c5c5e8c37be1ad4270d54361e43596a25cb68afdd4c8516",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/continuation/prepared.json": "791b08d73a23292bdb58d63c6da367a4d1126dfc9244ccfb186d1cdc837947b8",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/continuation/source-index.json": "08586d00bc99c66532de6aefb348fd58746e5401b0b4d31974c3c6e688aad044",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/control.py": "9863af1689556cdadf12bc93bd902554ee2bbacd6b6d175b26d41a1a4253377b",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/prepared.json": "3e5efcf19f7b55b5b70ee82862230f71bae4165a5d5e527e1263b7256ab42d40",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/source-index.json": "77f0283dcab3328300e7d779f62909654a8d89429779246f29ca9372f456bde5",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/run.json": "a5d7541c314367999c11dd4335a15f86b9bcf7d44294849b10d6b25558c33b12"
+  },
+  "mass_correction_prepared_sha256": "791b08d73a23292bdb58d63c6da367a4d1126dfc9244ccfb186d1cdc837947b8",
+  "process_launched": false,
+  "schema": "qp-mass-additive-loader-correction-v1",
+  "scientific_scope_unchanged": true
+}

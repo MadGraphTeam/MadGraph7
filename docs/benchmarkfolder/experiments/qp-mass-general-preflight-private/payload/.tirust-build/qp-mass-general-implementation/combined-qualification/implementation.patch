@@ -1,0 +1,885 @@
+--- a/madgraph/iolibs/helas_call_writers.py
++++ b/madgraph/iolibs/helas_call_writers.py
+@@ -1999,27 +1999,36 @@
+                                                                        argument)
+ 
+     def generate_loop_amplitude_call(self, loopamp):
+-        """ Routine for automatic generation of a call to CutTools for loop
+-        amplitudes for the optimized output."""
+-        
+-        call = "LOOP%(numLoopLines)s"
+-        if (len(loopamp.get('pairing')) != len(loopamp.get('mothers'))):
+-            call += "%(numMotherWfs)s("
++        """Generate legacy DP and paired-mass QP calls behind a caller guard."""
++
++        name = "LOOP%(numLoopLines)s"
++        arguments = ""
++        if len(loopamp.get('pairing')) != len(loopamp.get('mothers')):
++            name += "%(numMotherWfs)s"
+             for i in range(len(loopamp.get('pairing'))):
+-                call = call + "%(Pairing{0})d,".format(i)
+-        else:
+-            call += "("            
++                arguments += "%(Pairing{0})d,".format(i)
+         for i in range(len(loopamp.get('mothers'))):
+-            call = call + "%(MotherID{0})d,".format(i+1)
++            arguments += "%(MotherID{0})d,".format(i+1)
++
++        dp_call = name + "(" + arguments
++        qp_call = name + "_QPMASS(" + arguments
+         for i in range(len(loopamp.get('wavefunctions'))-2):
+-            call = call + \
+-            "DCMPLX(%(LoopMass{0})s),".format(i+1)
+-        call = call + "%(LoopRank)d,"
+-        call = call + "I_SO,%(loop_group_id)d)"
+-        
+-        # We add here the placeholder for the proc_prefix
+-        call_function = lambda amp: 'CALL %(proc_prefix)s'+\
+-                            call % amp.get_helas_call_dict(OptimizedOutput=True)
++            dp_call += "DCMPLX(%(LoopMass{0})s),".format(i+1)
++            qp_call += (
++                "DCMPLX(%(LoopMass{0})s),CMPLX({1}%(LoopMass{0})s,KIND=16),"
++                .format(i+1, self.mp_prefix))
++        suffix = "%(LoopRank)d,I_SO,%(loop_group_id)d)"
++        dp_call += suffix
++        qp_call += suffix
++
++        def call_function(amp):
++            arguments = amp.get_helas_call_dict(OptimizedOutput=True)
++            # Keep the complete block in one item: split_HELASCALLS chunks
++            # call-list items. DP must not evaluate any MP actual argument.
++            return ('IF(CTMODE.LT.4) THEN\nCALL %(proc_prefix)s' +
++                    dp_call % arguments + '\nELSE\nCALL %(proc_prefix)s' +
++                    qp_call % arguments + '\nENDIF')
++
+         self.add_amplitude(loopamp.get_call_key(), call_function)
+         return
+ 
+--- a/madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc
++++ b/madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc
+@@ -152,130 +152,4 @@
+      $ NRS_RETRY_HARD_SKIP/0,0,0,0/
+       DATA NRS_NATIVE_ACC,NRS_COMP_ACC/-1D0,-1D0/
+       END
+-## if(ninjars_supports_quad_prec){
+-      SUBROUTINE %(proc_prefix)sMP_NINJARS_LOOP(NLOOPLINE,PL,M2L,RANK,RES,STABLE)
+-      USE MNINJARS
+-      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+-      USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS, ONLY: NCOEF_R,COEFTORANK_MAP
+-      IMPLICIT NONE
+-      INTEGER NLOOPGROUPS,NSQUAREDSO
+-      PARAMETER (NLOOPGROUPS=%(nloop_groups)d,NSQUAREDSO=%(nSquaredSO)d)
+-      INCLUDE 'loop_max_coefs.inc'
+-      INTEGER NLOOPLINE,RANK
+-      %(real_mp_format)s PL(0:3,NLOOPLINE)
+-      %(mass_dp_format)s M2L(NLOOPLINE)
+-      %(complex_dp_format)s RES(3)
+-      LOGICAL STABLE
+-      %(real_dp_format)s NORMALIZATION
+-      PARAMETER (NORMALIZATION=1.D0/(16.D0*3.14159265358979323846D0**2))
+-      %(real_mp_format)s P_TMP(0:3,0:NLOOPLINE-1),ABSP_TMP(0:3),REF_P
+-      %(real_mp_format)s P_NRS(0:3,NLOOPLINE),P_S_MAT(NLOOPLINE,0:3)
+-      %(real_mp_format)s PDEN_DUMMY(0:3,NLOOPLINE-1),REAL_S_MAT(NLOOPLINE,NLOOPLINE)
+-      %(real_mp_format)s NRS_SCALE
+-      %(complex_mp_format)s MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
+-      %(complex_mp_format)s TENSORCOEFS(0:LOOPMAXCOEFS-1),NRS_RES(0:2),R1
+-      INTEGER I,J,K,CURR_MAXCOEF,NRS_STATUS
+-      %(include_vector)s
+-      INCLUDE 'coupl.inc'
+-      INCLUDE 'MadLoopParams.inc'
+-      %(real_dp_format)s LSCALE
+-      INTEGER CTMODE
+-      COMMON/%(proc_prefix)sCT/LSCALE,CTMODE
+-## if(not AmplitudeReduction){
+-      INTEGER ID,SQSOINDEX,R
+-      COMMON/%(proc_prefix)sLOOP/ID,SQSOINDEX,R
+-      %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+-## }else{
+-      INTEGER ID,R
+-      COMMON/%(proc_prefix)sLOOP/ID,R
+-      %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NLOOPGROUPS)
+-## }
+-      COMMON/%(proc_prefix)sMP_LCOEFS/LOOPCOEFS
+-      LOGICAL FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+-      COMMON/%(proc_prefix)sFPE_IN_REDUCTION/FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+-
+-      STABLE=.FALSE.
+-      RES=(0.D0,0.D0)
+-      PDEN_DUMMY=0
+-      MASSES=CMPLX(M2L,KIND=KI_QNRS)
+-C     Preserve MadLoop's loop-direction stability test and mass ordering.
+-      CALL %(proc_prefix)sMP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,MASSES)
+-
+-C     Match the existing Ninja loop momentum convention, including its
+-C     accumulation order and the residual momentum on the first line.
+-      P_TMP=0
+-      ABSP_TMP=0
+-      DO I=0,3
+-        DO J=1,NLOOPLINE
+-          P_TMP(I,0)=P_TMP(I,0)+PL(I,J)
+-          ABSP_TMP(I)=ABSP_TMP(I)+ABS(PL(I,J))
+-        ENDDO
+-      ENDDO
+-      REF_P=MAXVAL(ABSP_TMP)
+-      IF (REF_P.GT.1.D-8) THEN
+-        DO I=0,3
+-          IF (ABS(P_TMP(I,0))/MAX(REF_P*1.D-6,ABSP_TMP(I)).GT.1.D-6) THEN
+-            FPE_IN_QP_REDUCTION=.TRUE.
+-            RETURN
+-          ENDIF
+-        ENDDO
+-      ENDIF
+-      DO I=0,3
+-        DO J=1,NLOOPLINE-1
+-          DO K=1,J
+-            P_TMP(I,J)=P_TMP(I,J)+PL(I,K)
+-          ENDDO
+-        ENDDO
+-      ENDDO
+-      DO J=1,NLOOPLINE
+-        DO I=0,3
+-          P_NRS(I,J)=P_TMP(I,J-1)
+-          P_S_MAT(J,I)=P_NRS(I,J)
+-        ENDDO
+-      ENDDO
+-C     Use MadLoop's thresholded invariants, including complex on-shell masses.
+-      CALL %(proc_prefix)sMP_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES,S_MAT)
+-      DO J=1,NLOOPLINE
+-        DO I=1,NLOOPLINE
+-          REAL_S_MAT(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J),KIND=KI_QNRS)
+-        ENDDO
+-      ENDDO
+-      CURR_MAXCOEF=NCOEF_R(RANK)
+-      DO I=0,CURR_MAXCOEF-1
+-## if(not AmplitudeReduction){
+-        TENSORCOEFS(I)=LOOPCOEFS(I,SQSOINDEX,ID)
+-## }else{
+-        TENSORCOEFS(I)=LOOPCOEFS(I,ID)
+-## }
+-C       q_loop -> -q_loop in NinjaRS's denominator convention.
+-        IF (MOD(COEFTORANK_MAP(I),2).EQ.1) TENSORCOEFS(I)=-TENSORCOEFS(I)
+-      ENDDO
+-      NRS_SCALE=REAL(MU_R**2,KIND=KI_QNRS)
+-      CALL NINJARS_TENSOR_EVALUATE(TENSORCOEFS(0:CURR_MAXCOEF-1),NLOOPLINE,RANK,REAL_S_MAT,P_NRS,MASSES,NRS_SCALE,NRS_RES,R1,NRS_STATUS,MAX(0,LoopPoleMode))
+-      STABLE=NRS_STATUS.EQ.NINJARS_SUCCESS
+-      DO I=0,2
+-        STABLE=STABLE.AND.IEEE_IS_FINITE(REAL(NRS_RES(I),KIND=KI_QNRS))
+-        STABLE=STABLE.AND.IEEE_IS_FINITE(AIMAG(NRS_RES(I)))
+-      ENDDO
+-      IF (.NOT.STABLE) THEN
+-        FPE_IN_QP_REDUCTION=.TRUE.
+-        RETURN
+-      ENDIF
+-      DO I=0,2
+-## if(AmplitudeReduction){
+-        RES(I+1)=NORMALIZATION*CMPLX(NRS_RES(I),KIND=KI_NRS)
+-## }else{
+-        RES(I+1)=NORMALIZATION*2.D0*DBLE(NRS_RES(I))
+-## }
+-      ENDDO
+-      DO I=1,3
+-        STABLE=STABLE.AND.IEEE_IS_FINITE(DBLE(RES(I)))
+-        STABLE=STABLE.AND.IEEE_IS_FINITE(AIMAG(RES(I)))
+-      ENDDO
+-      IF (.NOT.STABLE) THEN
+-        FPE_IN_QP_REDUCTION=.TRUE.
+-        RES=(0.D0,0.D0)
+-      ENDIF
+-      END
+-## }
+-## }
++%(ninjars_qp_interfaces)s## }
+--- /dev/null
++++ b/madgraph/iolibs/template_files/loop_optimized/NINJARS_qp_interface.inc
+@@ -0,0 +1,126 @@
++## if(ninjars_supports_quad_prec){
++      SUBROUTINE %(proc_prefix)sMP_NINJARS_LOOP%(qp_mass_suffix)s(NLOOPLINE,PL,M2L,RANK,RES,STABLE)
++      USE MNINJARS
++      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
++      USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS, ONLY: NCOEF_R,COEFTORANK_MAP
++      IMPLICIT NONE
++      INTEGER NLOOPGROUPS,NSQUAREDSO
++      PARAMETER (NLOOPGROUPS=%(nloop_groups)d,NSQUAREDSO=%(nSquaredSO)d)
++      INCLUDE 'loop_max_coefs.inc'
++      INTEGER NLOOPLINE,RANK
++      %(real_mp_format)s PL(0:3,NLOOPLINE)
++      %(qp_mass_format)s M2L(NLOOPLINE)
++      %(complex_dp_format)s RES(3)
++      LOGICAL STABLE
++      %(real_dp_format)s NORMALIZATION
++      PARAMETER (NORMALIZATION=1.D0/(16.D0*3.14159265358979323846D0**2))
++      %(real_mp_format)s P_TMP(0:3,0:NLOOPLINE-1),ABSP_TMP(0:3),REF_P
++      %(real_mp_format)s P_NRS(0:3,NLOOPLINE),P_S_MAT(NLOOPLINE,0:3)
++      %(real_mp_format)s PDEN_DUMMY(0:3,NLOOPLINE-1),REAL_S_MAT(NLOOPLINE,NLOOPLINE)
++      %(real_mp_format)s NRS_SCALE
++      %(complex_mp_format)s MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
++      %(complex_mp_format)s TENSORCOEFS(0:LOOPMAXCOEFS-1),NRS_RES(0:2),R1
++      INTEGER I,J,K,CURR_MAXCOEF,NRS_STATUS
++      %(include_vector)s
++      INCLUDE 'coupl.inc'
++      INCLUDE 'MadLoopParams.inc'
++      %(real_dp_format)s LSCALE
++      INTEGER CTMODE
++      COMMON/%(proc_prefix)sCT/LSCALE,CTMODE
++## if(not AmplitudeReduction){
++      INTEGER ID,SQSOINDEX,R
++      COMMON/%(proc_prefix)sLOOP/ID,SQSOINDEX,R
++      %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
++## }else{
++      INTEGER ID,R
++      COMMON/%(proc_prefix)sLOOP/ID,R
++      %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NLOOPGROUPS)
++## }
++      COMMON/%(proc_prefix)sMP_LCOEFS/LOOPCOEFS
++      LOGICAL FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
++      COMMON/%(proc_prefix)sFPE_IN_REDUCTION/FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
++
++      STABLE=.FALSE.
++      RES=(0.D0,0.D0)
++      PDEN_DUMMY=0
++      MASSES=CMPLX(M2L,KIND=KI_QNRS)
++C     Preserve MadLoop's loop-direction stability test and mass ordering.
++      CALL %(proc_prefix)sMP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,MASSES)
++
++C     Match the existing Ninja loop momentum convention, including its
++C     accumulation order and the residual momentum on the first line.
++      P_TMP=0
++      ABSP_TMP=0
++      DO I=0,3
++        DO J=1,NLOOPLINE
++          P_TMP(I,0)=P_TMP(I,0)+PL(I,J)
++          ABSP_TMP(I)=ABSP_TMP(I)+ABS(PL(I,J))
++        ENDDO
++      ENDDO
++      REF_P=MAXVAL(ABSP_TMP)
++      IF (REF_P.GT.1.D-8) THEN
++        DO I=0,3
++          IF (ABS(P_TMP(I,0))/MAX(REF_P*1.D-6,ABSP_TMP(I)).GT.1.D-6) THEN
++            FPE_IN_QP_REDUCTION=.TRUE.
++            RETURN
++          ENDIF
++        ENDDO
++      ENDIF
++      DO I=0,3
++        DO J=1,NLOOPLINE-1
++          DO K=1,J
++            P_TMP(I,J)=P_TMP(I,J)+PL(I,K)
++          ENDDO
++        ENDDO
++      ENDDO
++      DO J=1,NLOOPLINE
++        DO I=0,3
++          P_NRS(I,J)=P_TMP(I,J-1)
++          P_S_MAT(J,I)=P_NRS(I,J)
++        ENDDO
++      ENDDO
++C     Use MadLoop's thresholded invariants, including complex on-shell masses.
++      CALL %(proc_prefix)sMP_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES,S_MAT)
++      DO J=1,NLOOPLINE
++        DO I=1,NLOOPLINE
++          REAL_S_MAT(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J),KIND=KI_QNRS)
++        ENDDO
++      ENDDO
++      CURR_MAXCOEF=NCOEF_R(RANK)
++      DO I=0,CURR_MAXCOEF-1
++## if(not AmplitudeReduction){
++        TENSORCOEFS(I)=LOOPCOEFS(I,SQSOINDEX,ID)
++## }else{
++        TENSORCOEFS(I)=LOOPCOEFS(I,ID)
++## }
++C       q_loop -> -q_loop in NinjaRS's denominator convention.
++        IF (MOD(COEFTORANK_MAP(I),2).EQ.1) TENSORCOEFS(I)=-TENSORCOEFS(I)
++      ENDDO
++      NRS_SCALE=REAL(MU_R**2,KIND=KI_QNRS)
++      CALL NINJARS_TENSOR_EVALUATE(TENSORCOEFS(0:CURR_MAXCOEF-1),NLOOPLINE,RANK,REAL_S_MAT,P_NRS,MASSES,NRS_SCALE,NRS_RES,R1,NRS_STATUS,MAX(0,LoopPoleMode))
++      STABLE=NRS_STATUS.EQ.NINJARS_SUCCESS
++      DO I=0,2
++        STABLE=STABLE.AND.IEEE_IS_FINITE(REAL(NRS_RES(I),KIND=KI_QNRS))
++        STABLE=STABLE.AND.IEEE_IS_FINITE(AIMAG(NRS_RES(I)))
++      ENDDO
++      IF (.NOT.STABLE) THEN
++        FPE_IN_QP_REDUCTION=.TRUE.
++        RETURN
++      ENDIF
++      DO I=0,2
++## if(AmplitudeReduction){
++        RES(I+1)=NORMALIZATION*CMPLX(NRS_RES(I),KIND=KI_NRS)
++## }else{
++        RES(I+1)=NORMALIZATION*2.D0*DBLE(NRS_RES(I))
++## }
++      ENDDO
++      DO I=1,3
++        STABLE=STABLE.AND.IEEE_IS_FINITE(DBLE(RES(I)))
++        STABLE=STABLE.AND.IEEE_IS_FINITE(AIMAG(RES(I)))
++      ENDDO
++      IF (.NOT.STABLE) THEN
++        FPE_IN_QP_REDUCTION=.TRUE.
++        RES=(0.D0,0.D0)
++      ENDIF
++      END
++## }
+--- a/madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc
++++ b/madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc
+@@ -94,103 +94,7 @@
+       STABLE=.TRUE.
+       END
+ 
+-## if(tirust_supports_quad_prec){
+-C     TIRust tensor reduction. The public diagnostic returns MadLoop-ordered
+-C     moments, marks an unevaluated finite coefficient with NaN, and performs
+-C     no numerator contraction or counterterm addition.
+-      SUBROUTINE %(proc_prefix)sMP_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK,PL,M2L,TIRCOEFS,STABLE)
+-      USE MTIRUST
+-      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT64_T
+-      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE,IEEE_VALUE,IEEE_QUIET_NAN
+-      USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
+-      IMPLICIT NONE
+-      INCLUDE 'loop_max_coefs.inc'
+-      INTEGER CTMODE,NLOOPLINE,RANK,I,J,K,NC,STATUS
+-      %(real_mp_format)s PL(0:3,NLOOPLINE)
+-      %(mass_dp_format)s M2L(NLOOPLINE)
+-      %(complex_mp_format)s TIRCOEFS(0:LOOPMAXCOEFS-1,3)
+-      LOGICAL STABLE,CACHE_ENABLED,CHECK_PASS
+-      %(real_mp_format)s P_TMP(0:3,0:NLOOPLINE-1),ABSP(0:3),REF_P,PREFIX_SUM
+-      %(real_mp_format)s SHIFTS(0:3,NLOOPLINE),P_S_MAT(NLOOPLINE,0:3)
+-      %(real_mp_format)s PDEN_DUMMY(0:3,NLOOPLINE-1),INVARIANTS(NLOOPLINE,NLOOPLINE),SCALE
+-      %(complex_mp_format)s MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
+-      %(complex_mp_format)s RAW(LOOPMAXCOEFS,4)
+-      INTEGER TIRUST_MAP(0:LOOPMAXCOEFS-1)
+-      %(tirust_coefmap)s
+-      %(include_vector)s
+-      INCLUDE 'coupl.inc'
+-      INCLUDE 'MadLoopParams.inc'
+-      STABLE=.FALSE.
+-      TIRCOEFS=0
+-      IF(RANK.LT.0.OR.RANK.GT.%(maxrank)d) RETURN
+-      IF(.NOT.TIRUST_SUPPORTS(NLOOPLINE,RANK,TIRustComputeFinite)) RETURN
+-      CALL %(proc_prefix)sINITIALIZE_TIRUST(STATUS)
+-      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+-      CALL TIRUST_SET_CACHE_BUDGET(INT(TIRustCacheMaxBytes,C_INT64_T),STATUS)
+-      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+-      PDEN_DUMMY=0
+-      MASSES=CMPLX(M2L,KIND=KI_QTIR)
+-      CALL %(proc_prefix)sMP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,MASSES)
+-C     Preserve the summation and threshold conventions of the Ninja adapter.
+-      P_TMP=0
+-      ABSP=0
+-      DO I=0,3
+-        DO J=1,NLOOPLINE
+-          P_TMP(I,0)=P_TMP(I,0)+PL(I,J)
+-          ABSP(I)=ABSP(I)+ABS(PL(I,J))
+-        ENDDO
+-      ENDDO
+-      REF_P=MAXVAL(ABSP)
+-      IF(REF_P.GT.1D-8) THEN
+-        DO I=0,3
+-          IF(ABS(P_TMP(I,0))/MAX(REF_P*1D-6,ABSP(I)).GT.1D-6) RETURN
+-        ENDDO
+-      ENDIF
+-C     Accumulate ordered prefixes once, preserving the zero-seeded sum.
+-      DO I=0,3
+-        PREFIX_SUM=REAL(0,KIND=KI_QTIR)
+-        DO J=1,NLOOPLINE-1
+-          PREFIX_SUM=PREFIX_SUM+PL(I,J)
+-          P_TMP(I,J)=PREFIX_SUM
+-        ENDDO
+-      ENDDO
+-      DO J=1,NLOOPLINE
+-        DO I=0,3
+-          SHIFTS(I,J)=P_TMP(I,J-1)
+-          P_S_MAT(J,I)=SHIFTS(I,J)
+-        ENDDO
+-      ENDDO
+-      CALL %(proc_prefix)sMP_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES,S_MAT)
+-      DO J=1,NLOOPLINE
+-        DO I=1,NLOOPLINE
+-          INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J),KIND=KI_QTIR)
+-        ENDDO
+-      ENDDO
+-      SCALE=REAL(MU_R,KIND=KI_QTIR)**2
+-      NC=NCOEF_R(RANK)
+-      CACHE_ENABLED=TIRustGlobalCache.EQ.-1.OR.NLOOPLINE.LE.TIRustGlobalCache
+-      CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5
+-      CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS,MASSES,SCALE,RAW(1:NC,1:4),STATUS,MAX(0,LoopPoleMode),TIRustComputeFinite,CHECK_PASS,CACHE_ENABLED)
+-      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+-      DO I=0,NC-1
+-        K=TIRUST_MAP(I)
+-        DO J=1,4
+-          IF(J.EQ.4.AND..NOT.TIRustComputeFinite) CYCLE
+-          IF(.NOT.IEEE_IS_FINITE(REAL(RAW(K,J),KIND=KI_QTIR)).OR..NOT.IEEE_IS_FINITE(AIMAG(RAW(K,J)))) RETURN
+-        ENDDO
+-        IF(TIRustComputeFinite) THEN
+-          TIRCOEFS(I,1)=RAW(K,4)
+-        ELSE
+-          TIRCOEFS(I,1)=CMPLX(IEEE_VALUE(REAL(0,KIND=KI_QTIR),IEEE_QUIET_NAN),REAL(0,KIND=KI_QTIR),KIND=KI_QTIR)
+-        ENDIF
+-        TIRCOEFS(I,2)=RAW(K,1)+RAW(K,2)
+-        TIRCOEFS(I,3)=RAW(K,3)
+-      ENDDO
+-      STABLE=.TRUE.
+-      END
+-
+-## }
+-      SUBROUTINE %(proc_prefix)sTIRUSTLOOP(CTMODE,NLOOPLINE,RANK,PL,M2L,TIRCOEFS,STABLE)
++%(tirust_qp_tensor_interfaces)s      SUBROUTINE %(proc_prefix)sTIRUSTLOOP(CTMODE,NLOOPLINE,RANK,PL,M2L,TIRCOEFS,STABLE)
+       IMPLICIT NONE
+       INCLUDE 'loop_max_coefs.inc'
+       INTEGER CTMODE,NLOOPLINE,RANK
+@@ -201,67 +105,7 @@
+       CALL %(proc_prefix)sTIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK,PL,M2L,TIRCOEFS,STABLE)
+       END
+ 
+-## if(tirust_supports_quad_prec){
+-      SUBROUTINE %(proc_prefix)sMP_TIRUST_LOOP(NLOOPLINE,PL,M2L,RANK,RES,STABLE)
+-      USE MTIRUST, ONLY: KI_QTIR
+-      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+-      USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
+-      IMPLICIT NONE
+-      INTEGER NLOOPGROUPS,NSQUAREDSO
+-      PARAMETER(NLOOPGROUPS=%(nloop_groups)d,NSQUAREDSO=%(nSquaredSO)d)
+-      INCLUDE 'loop_max_coefs.inc'
+-      INTEGER NLOOPLINE,RANK,CTMODE,I,J
+-      %(real_mp_format)s PL(0:3,NLOOPLINE)
+-      %(mass_dp_format)s M2L(NLOOPLINE)
+-      %(complex_dp_format)s RES(3)
+-      %(complex_mp_format)s COEFS(0:LOOPMAXCOEFS-1,3),RESULT(3)
+-      %(real_dp_format)s LSCALE
+-      COMMON/%(proc_prefix)sCT/LSCALE,CTMODE
+-      %(real_mp_format)s NORMALIZATION
+-      PARAMETER(NORMALIZATION=1.0E0_16/(16.0E0_16*3.141592653589793238462643383279502884E0_16**2))
+-      LOGICAL STABLE,FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+-      COMMON/%(proc_prefix)sFPE_IN_REDUCTION/FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+-## if(not AmplitudeReduction){
+-      INTEGER ID,SQSOINDEX,R
+-      COMMON/%(proc_prefix)sLOOP/ID,SQSOINDEX,R
+-      %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+-## }else{
+-      INTEGER ID,R
+-      COMMON/%(proc_prefix)sLOOP/ID,R
+-      %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NLOOPGROUPS)
+-## }
+-      COMMON/%(proc_prefix)sMP_LCOEFS/LOOPCOEFS
+-      RES=0
+-      CALL %(proc_prefix)sMP_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK,PL,M2L,COEFS,STABLE)
+-      IF(.NOT.STABLE) THEN
+-        FPE_IN_QP_REDUCTION=.TRUE.
+-        RETURN
+-      ENDIF
+-      RESULT=0
+-      DO I=1,3
+-        DO J=0,NCOEF_R(RANK)-1
+-## if(not AmplitudeReduction){
+-          RESULT(I)=RESULT(I)+LOOPCOEFS(J,SQSOINDEX,ID)*COEFS(J,I)
+-## }else{
+-          RESULT(I)=RESULT(I)+LOOPCOEFS(J,ID)*COEFS(J,I)
+-## }
+-        ENDDO
+-## if(not AmplitudeReduction){
+-        RESULT(I)=2.0E0_16*NORMALIZATION*REAL(RESULT(I),KIND=KI_QTIR)
+-## }else{
+-        RESULT(I)=NORMALIZATION*RESULT(I)
+-## }
+-        RES(I)=CMPLX(RESULT(I),KIND=KIND(0D0))
+-        STABLE=STABLE.AND.IEEE_IS_FINITE(DBLE(RES(I))).AND.IEEE_IS_FINITE(AIMAG(RES(I)))
+-      ENDDO
+-      IF(.NOT.STABLE) THEN
+-        RES=0
+-        FPE_IN_QP_REDUCTION=.TRUE.
+-      ENDIF
+-      END
+-## }
+-
+-      SUBROUTINE %(proc_prefix)sINITIALIZE_TIRUST(STATUS)
++%(tirust_qp_loop_interfaces)s      SUBROUTINE %(proc_prefix)sINITIALIZE_TIRUST(STATUS)
+       USE MTIRUST
+       IMPLICIT NONE
+       INTEGER STATUS
+--- /dev/null
++++ b/madgraph/iolibs/template_files/loop_optimized/TIRUST_qp_loop_interface.inc
+@@ -0,0 +1,60 @@
++## if(tirust_supports_quad_prec){
++      SUBROUTINE %(proc_prefix)sMP_TIRUST_LOOP%(qp_mass_suffix)s(NLOOPLINE,PL,M2L,RANK,RES,STABLE)
++      USE MTIRUST, ONLY: KI_QTIR
++      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
++      USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
++      IMPLICIT NONE
++      INTEGER NLOOPGROUPS,NSQUAREDSO
++      PARAMETER(NLOOPGROUPS=%(nloop_groups)d,NSQUAREDSO=%(nSquaredSO)d)
++      INCLUDE 'loop_max_coefs.inc'
++      INTEGER NLOOPLINE,RANK,CTMODE,I,J
++      %(real_mp_format)s PL(0:3,NLOOPLINE)
++      %(qp_mass_format)s M2L(NLOOPLINE)
++      %(complex_dp_format)s RES(3)
++      %(complex_mp_format)s COEFS(0:LOOPMAXCOEFS-1,3),RESULT(3)
++      %(real_dp_format)s LSCALE
++      COMMON/%(proc_prefix)sCT/LSCALE,CTMODE
++      %(real_mp_format)s NORMALIZATION
++      PARAMETER(NORMALIZATION=1.0E0_16/(16.0E0_16*3.141592653589793238462643383279502884E0_16**2))
++      LOGICAL STABLE,FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
++      COMMON/%(proc_prefix)sFPE_IN_REDUCTION/FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
++## if(not AmplitudeReduction){
++      INTEGER ID,SQSOINDEX,R
++      COMMON/%(proc_prefix)sLOOP/ID,SQSOINDEX,R
++      %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
++## }else{
++      INTEGER ID,R
++      COMMON/%(proc_prefix)sLOOP/ID,R
++      %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NLOOPGROUPS)
++## }
++      COMMON/%(proc_prefix)sMP_LCOEFS/LOOPCOEFS
++      RES=0
++      CALL %(proc_prefix)sMP_TIRUST_TENSOR_DIAGNOSTIC%(qp_mass_suffix)s(CTMODE,NLOOPLINE,RANK,PL,M2L,COEFS,STABLE)
++      IF(.NOT.STABLE) THEN
++        FPE_IN_QP_REDUCTION=.TRUE.
++        RETURN
++      ENDIF
++      RESULT=0
++      DO I=1,3
++        DO J=0,NCOEF_R(RANK)-1
++## if(not AmplitudeReduction){
++          RESULT(I)=RESULT(I)+LOOPCOEFS(J,SQSOINDEX,ID)*COEFS(J,I)
++## }else{
++          RESULT(I)=RESULT(I)+LOOPCOEFS(J,ID)*COEFS(J,I)
++## }
++        ENDDO
++## if(not AmplitudeReduction){
++        RESULT(I)=2.0E0_16*NORMALIZATION*REAL(RESULT(I),KIND=KI_QTIR)
++## }else{
++        RESULT(I)=NORMALIZATION*RESULT(I)
++## }
++        RES(I)=CMPLX(RESULT(I),KIND=KIND(0D0))
++        STABLE=STABLE.AND.IEEE_IS_FINITE(DBLE(RES(I))).AND.IEEE_IS_FINITE(AIMAG(RES(I)))
++      ENDDO
++      IF(.NOT.STABLE) THEN
++        RES=0
++        FPE_IN_QP_REDUCTION=.TRUE.
++      ENDIF
++      END
++## }
++
+--- /dev/null
++++ b/madgraph/iolibs/template_files/loop_optimized/TIRUST_qp_tensor_interface.inc
+@@ -0,0 +1,96 @@
++## if(tirust_supports_quad_prec){
++C     TIRust tensor reduction. The public diagnostic returns MadLoop-ordered
++C     moments, marks an unevaluated finite coefficient with NaN, and performs
++C     no numerator contraction or counterterm addition.
++      SUBROUTINE %(proc_prefix)sMP_TIRUST_TENSOR_DIAGNOSTIC%(qp_mass_suffix)s(CTMODE,NLOOPLINE,RANK,PL,M2L,TIRCOEFS,STABLE)
++      USE MTIRUST
++      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT64_T
++      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE,IEEE_VALUE,IEEE_QUIET_NAN
++      USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
++      IMPLICIT NONE
++      INCLUDE 'loop_max_coefs.inc'
++      INTEGER CTMODE,NLOOPLINE,RANK,I,J,K,NC,STATUS
++      %(real_mp_format)s PL(0:3,NLOOPLINE)
++      %(qp_mass_format)s M2L(NLOOPLINE)
++      %(complex_mp_format)s TIRCOEFS(0:LOOPMAXCOEFS-1,3)
++      LOGICAL STABLE,CACHE_ENABLED,CHECK_PASS
++      %(real_mp_format)s P_TMP(0:3,0:NLOOPLINE-1),ABSP(0:3),REF_P,PREFIX_SUM
++      %(real_mp_format)s SHIFTS(0:3,NLOOPLINE),P_S_MAT(NLOOPLINE,0:3)
++      %(real_mp_format)s PDEN_DUMMY(0:3,NLOOPLINE-1),INVARIANTS(NLOOPLINE,NLOOPLINE),SCALE
++      %(complex_mp_format)s MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
++      %(complex_mp_format)s RAW(LOOPMAXCOEFS,4)
++      INTEGER TIRUST_MAP(0:LOOPMAXCOEFS-1)
++      %(tirust_coefmap)s
++      %(include_vector)s
++      INCLUDE 'coupl.inc'
++      INCLUDE 'MadLoopParams.inc'
++      STABLE=.FALSE.
++      TIRCOEFS=0
++      IF(RANK.LT.0.OR.RANK.GT.%(maxrank)d) RETURN
++      IF(.NOT.TIRUST_SUPPORTS(NLOOPLINE,RANK,TIRustComputeFinite)) RETURN
++      CALL %(proc_prefix)sINITIALIZE_TIRUST(STATUS)
++      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
++      CALL TIRUST_SET_CACHE_BUDGET(INT(TIRustCacheMaxBytes,C_INT64_T),STATUS)
++      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
++      PDEN_DUMMY=0
++      MASSES=CMPLX(M2L,KIND=KI_QTIR)
++      CALL %(proc_prefix)sMP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,MASSES)
++C     Preserve the summation and threshold conventions of the Ninja adapter.
++      P_TMP=0
++      ABSP=0
++      DO I=0,3
++        DO J=1,NLOOPLINE
++          P_TMP(I,0)=P_TMP(I,0)+PL(I,J)
++          ABSP(I)=ABSP(I)+ABS(PL(I,J))
++        ENDDO
++      ENDDO
++      REF_P=MAXVAL(ABSP)
++      IF(REF_P.GT.1D-8) THEN
++        DO I=0,3
++          IF(ABS(P_TMP(I,0))/MAX(REF_P*1D-6,ABSP(I)).GT.1D-6) RETURN
++        ENDDO
++      ENDIF
++C     Accumulate ordered prefixes once, preserving the zero-seeded sum.
++      DO I=0,3
++        PREFIX_SUM=REAL(0,KIND=KI_QTIR)
++        DO J=1,NLOOPLINE-1
++          PREFIX_SUM=PREFIX_SUM+PL(I,J)
++          P_TMP(I,J)=PREFIX_SUM
++        ENDDO
++      ENDDO
++      DO J=1,NLOOPLINE
++        DO I=0,3
++          SHIFTS(I,J)=P_TMP(I,J-1)
++          P_S_MAT(J,I)=SHIFTS(I,J)
++        ENDDO
++      ENDDO
++      CALL %(proc_prefix)sMP_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES,S_MAT)
++      DO J=1,NLOOPLINE
++        DO I=1,NLOOPLINE
++          INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J),KIND=KI_QTIR)
++        ENDDO
++      ENDDO
++      SCALE=REAL(MU_R,KIND=KI_QTIR)**2
++      NC=NCOEF_R(RANK)
++      CACHE_ENABLED=TIRustGlobalCache.EQ.-1.OR.NLOOPLINE.LE.TIRustGlobalCache
++      CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5
++      CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS,MASSES,SCALE,RAW(1:NC,1:4),STATUS,MAX(0,LoopPoleMode),TIRustComputeFinite,CHECK_PASS,CACHE_ENABLED)
++      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
++      DO I=0,NC-1
++        K=TIRUST_MAP(I)
++        DO J=1,4
++          IF(J.EQ.4.AND..NOT.TIRustComputeFinite) CYCLE
++          IF(.NOT.IEEE_IS_FINITE(REAL(RAW(K,J),KIND=KI_QTIR)).OR..NOT.IEEE_IS_FINITE(AIMAG(RAW(K,J)))) RETURN
++        ENDDO
++        IF(TIRustComputeFinite) THEN
++          TIRCOEFS(I,1)=RAW(K,4)
++        ELSE
++          TIRCOEFS(I,1)=CMPLX(IEEE_VALUE(REAL(0,KIND=KI_QTIR),IEEE_QUIET_NAN),REAL(0,KIND=KI_QTIR),KIND=KI_QTIR)
++        ENDIF
++        TIRCOEFS(I,2)=RAW(K,1)+RAW(K,2)
++        TIRCOEFS(I,3)=RAW(K,3)
++      ENDDO
++      STABLE=.TRUE.
++      END
++
++## }
+--- a/madgraph/iolibs/template_files/loop_optimized/helas_calls_split.inc
++++ b/madgraph/iolibs/template_files/loop_optimized/helas_calls_split.inc
+@@ -53,6 +53,11 @@
+       include 'coupl.inc'
+ 	  include 'mp_coupl.inc'
+ 
++C     The reduction caller selects its mass arguments before entering LOOP_*.
++      %(real_dp_format)s LSCALE
++      INTEGER CTMODE
++      COMMON/%(proc_prefix)sCT/LSCALE,CTMODE
++
+ 	  INTEGER HELOFFSET	  
+ 	  INTEGER GOODHEL(NCOMB)
+ 	  LOGICAL GOODAMP(NSQUAREDSO,NLOOPGROUPS)
+--- a/madgraph/iolibs/template_files/loop_optimized/helas_loop_amplitude.inc
++++ b/madgraph/iolibs/template_files/loop_optimized/helas_loop_amplitude.inc
+@@ -1,4 +1,4 @@
+-      SUBROUTINE %(proc_prefix)sLOOP_%(nloopline)d%(nwfsargs_header)s(%(pairingargs)s%(wfsargs)s%(margs)s RANK, SQUAREDSOINDEX, LOOPNUM)
++      SUBROUTINE %(proc_prefix)sLOOP_%(nloopline)d%(nwfsargs_header)s%(qp_mass_suffix)s(%(pairingargs)s%(wfsargs)s%(margs)s RANK, SQUAREDSOINDEX, LOOPNUM)
+       USE ALOHA_OBJECT
+       INTEGER    NEXTERNAL
+       PARAMETER (NEXTERNAL=%(nexternal)d)
+@@ -23,7 +23,7 @@
+ C ARGUMENTS 
+ C
+       INTEGER %(wfsargsdecl)s
+-      %(mass_dp_format)s %(margsdecl)s
++      %(mass_dp_format)s %(margsdecl)s%(qp_mass_argument_declaration)s
+       %(pairingdecl)s
+       INTEGER RANK, LSYMFACT
+ ## if(AmplitudeReduction){
+@@ -35,7 +35,7 @@
+ C
+       %(real_dp_format)s PL(0:3,NLOOPLINE)
+       %(real_mp_format)s MP_PL(0:3,NLOOPLINE)	  
+-      %(mass_dp_format)s M2L(NLOOPLINE)
++      %(mass_dp_format)s M2L(NLOOPLINE)%(qp_mass_local_declaration)s
+       INTEGER PAIRING(NLOOPLINE),WE(%(nwfsargs)d)
+       INTEGER I, J, K, TEMP,I_LIB
+       LOGICAL complex_mass,doing_qp
+@@ -86,7 +86,7 @@
+ C BEGIN CODE
+ C ----------
+ 
+-C Determine it uses qp or not
++%(qp_mass_dp_delegation)sC Determine it uses qp or not
+       DOING_QP = (CTMODE.GE.4)
+ 
+ ## if(not AmplitudeReduction){
+@@ -136,7 +136,7 @@
+       ENDDO
+ C Choose the correct loop library
+       CALL %(proc_prefix)sCHOOSE_LOOPLIB(LIBINDEX,NLOOPLINE,RANK,complex_mass,ID,doing_qp,I_LIB)
+-      IF(MLReductionLib(I_LIB).EQ.1)THEN
++%(qp_mass_square_assignment)s      IF(MLReductionLib(I_LIB).EQ.1)THEN
+ C CutTools is used
+ ## if(not AmplitudeReduction){
+ 	CALL %(proc_prefix)sCTLOOP(NLOOPLINE,PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+@@ -165,7 +165,7 @@
+           CALL %(proc_prefix)sNINJARS_LOOP(NLOOPLINE,PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+         ELSE
+ ## if(ninjars_supports_quad_prec){
+-          CALL %(proc_prefix)sMP_NINJARS_LOOP(NLOOPLINE,MP_PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
++          CALL %(proc_prefix)sMP_NINJARS_LOOP%(qp_mass_suffix)s(NLOOPLINE,MP_PL,%(qp_mass_array)s,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+ ## } else {
+           STOP 'NinjaRS quadruple precision is unavailable'
+ ## }
+@@ -173,7 +173,7 @@
+ ## }
+ ## if(tirust_supports_quad_prec){
+       ELSEIF(MLReductionLib(I_LIB).EQ.9.AND.DOING_QP) THEN
+-        CALL %(proc_prefix)sMP_TIRUST_LOOP(NLOOPLINE,MP_PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
++        CALL %(proc_prefix)sMP_TIRUST_LOOP%(qp_mass_suffix)s(NLOOPLINE,MP_PL,%(qp_mass_array)s,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+ ## }
+       ELSE
+ C Tensor Integral Reduction is used 
+@@ -204,7 +204,7 @@
+           CALL %(proc_prefix)sNINJARS_LOOP(NLOOPLINE,PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+         ELSE
+ ## if(ninjars_supports_quad_prec){
+-          CALL %(proc_prefix)sMP_NINJARS_LOOP(NLOOPLINE,MP_PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
++          CALL %(proc_prefix)sMP_NINJARS_LOOP%(qp_mass_suffix)s(NLOOPLINE,MP_PL,%(qp_mass_array)s,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+ ## } else {
+           STOP 'NinjaRS quadruple precision is unavailable'
+ ## }
+@@ -212,7 +212,7 @@
+ ## }
+ ## if(tirust_supports_quad_prec){
+       ELSEIF(MLReductionLib(I_LIB).EQ.9.AND.DOING_QP) THEN
+-        CALL %(proc_prefix)sMP_TIRUST_LOOP(NLOOPLINE,MP_PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
++        CALL %(proc_prefix)sMP_TIRUST_LOOP%(qp_mass_suffix)s(NLOOPLINE,MP_PL,%(qp_mass_array)s,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+ ## }
+       ELSE
+ C Tensor Integral Reduction is used 
+--- a/madgraph/loop/loop_exporters.py
++++ b/madgraph/loop/loop_exporters.py
+@@ -1462,6 +1462,22 @@
+         else:
+             return file
+ 
++    def qp_mass_interfaces(self, template_name, replace_dict):
++        """Keep the DP-mass ABI and add an explicit complex-QP-mass entrypoint.
++
++        Both entries share one scientific template; only names and mass formal
++        precision differ. Existing callers retain their original arithmetic.
++        """
++        with open(os.path.join(self.template_dir, template_name)) as stream:
++            template = stream.read()
++        interfaces = []
++        for suffix, mass_format in (('', replace_dict['mass_dp_format']),
++                                    ('_QPMASS', replace_dict['mass_mp_format'])):
++            mapping = dict(replace_dict, qp_mass_suffix=suffix,
++                           qp_mass_format=mass_format)
++            interfaces.append(misc.apply_template(template, mapping))
++        return ''.join(interfaces)
++
+     def write_CT_interface(self, writer, matrix_element, optimized_output=False):
+         """ Create the file CT_interface.f which contains the subroutine defining
+          the loop HELAS-like calls along with the general interfacing subroutine.
+@@ -1491,6 +1507,8 @@
+         files.append(file)
+ 
+         if optimized_output:
++            replace_dict['ninjars_qp_interfaces'] = self.qp_mass_interfaces(
++                'NINJARS_qp_interface.inc', replace_dict)
+             ninjars_template = os.path.join(self.template_dir, 'NINJARS_interface.inc')
+             with open(ninjars_template) as stream:
+                 files.append(stream.read() % replace_dict)
+@@ -1576,8 +1594,39 @@
+             
+             file = open(os.path.join(self.template_dir,\
+                                              'helas_loop_amplitude.inc')).read()
+-            file = misc.apply_template(file, replace_dict)
+-            files.append(file)
++            replace_dict.update(qp_mass_suffix='', qp_mass_array='M2L',
++                qp_mass_argument_declaration='', qp_mass_local_declaration='',
++                qp_mass_dp_delegation='', qp_mass_square_assignment='')
++            files.append(misc.apply_template(file, replace_dict))
++            if optimized_output:
++                # Preserve the legacy helper and delegate DP before any new
++                # QP arithmetic. The selected library, not the requested list
++                # entry, controls which QP mass representation is consumed.
++                qp = dict(replace_dict)
++                legacy_args = (qp['pairingargs'] + qp['wfsargs'] + qp['margs'] +
++                               'RANK,SQUAREDSOINDEX,LOOPNUM')
++                legacy_name = '%sLOOP_%d%s' % (qp['proc_prefix'],
++                                              callkey[0], qp['nwfsargs_header'])
++                qp['margs'] = ''.join('M%d,MP_M%d, ' % (i,i)
++                                     for i in range(1,callkey[0]+1))
++                qp['qp_mass_suffix'] = '_QPMASS'
++                qp['qp_mass_array'] = 'MP_M2L'
++                qp['qp_mass_argument_declaration'] = '\n      %s %s' % (
++                    qp['mass_mp_format'], qp['mp_margsdecl'])
++                qp['qp_mass_local_declaration'] = '\n      %s MP_M2L(NLOOPLINE)' % qp['mass_mp_format']
++                qp['qp_mass_dp_delegation'] = (
++                    '      IF(CTMODE.LT.4) THEN\n'
++                    '        CALL %s(%s)\n'
++                    '        RETURN\n'
++                    '      ENDIF\n') % (legacy_name, legacy_args)
++                squares = ['MP_M2L(1)=MP_M%d**2' % callkey[0]] + [
++                    'MP_M2L(%d)=MP_M%d**2' % (i,i-1)
++                    for i in range(2,callkey[0]+1)]
++                qp['qp_mass_square_assignment'] = (
++                    '      IF(DOING_QP.AND.(MLReductionLib(I_LIB).EQ.8.OR.MLReductionLib(I_LIB).EQ.9)) THEN\n' +
++                    ''.join('        %s\n' % line for line in squares) +
++                    '      ENDIF\n')
++                files.append(misc.apply_template(file, qp))
+         
+         file="\n".join(files)
+         
+@@ -2685,6 +2734,10 @@
+             '      CALL TIRUST_REGISTER_PLAN(%d,%d,STATUS)\n'
+             '      IF(STATUS.NE.TIRUST_SUCCESS) RETURN' % pair
+             for pair in plans if 1 <= pair[0] <= 6 and 0 <= pair[1] <= 6)
++        replace_dict['tirust_qp_tensor_interfaces'] = self.qp_mass_interfaces(
++            'TIRUST_qp_tensor_interface.inc', replace_dict)
++        replace_dict['tirust_qp_loop_interfaces'] = self.qp_mass_interfaces(
++            'TIRUST_qp_loop_interface.inc', replace_dict)
+         with open(os.path.join(self.template_dir, 'TIRUST_interface.inc')) as stream:
+             source = stream.read() % replace_dict
+         if writer:
+--- a/tests/unit_tests/loop/test_ninjars_fortran.py
++++ b/tests/unit_tests/loop/test_ninjars_fortran.py
+@@ -10,6 +10,7 @@
+ from pathlib import Path
+ 
+ from madgraph import MG5DIR
++from madgraph.loop.loop_exporters import LoopProcessExporterFortranSA
+ from madgraph.iolibs.file_writers import FortranWriter
+ 
+ ROOT = Path(MG5DIR)
+@@ -355,6 +356,11 @@
+             'mass_dp_format': 'COMPLEX*16', 'real_mp_format': 'REAL*16',
+             'complex_mp_format': 'COMPLEX*32', 'include_vector': '',
+         }
++        replacements['mass_mp_format'] = 'COMPLEX*32'
++        exporter = object.__new__(LoopProcessExporterFortranSA)
++        exporter.template_dir = str(TEMPLATE)
++        replacements['ninjars_qp_interfaces'] = exporter.qp_mass_interfaces(
++            'NINJARS_qp_interface.inc', replacements)
+         source = (TEMPLATE / 'NINJARS_interface.inc').read_text()
+         # Use the production momentum reversal and on-shell threshold helpers.
+         helpers = (TEMPLATE / 'CT_interface.inc').read_text()
+--- a/tests/unit_tests/loop/test_tirust_fortran.py
++++ b/tests/unit_tests/loop/test_tirust_fortran.py
+@@ -6,6 +6,7 @@
+ from pathlib import Path
+ 
+ from madgraph import MG5DIR
++from madgraph.loop.loop_exporters import LoopProcessExporterFortranSA
+ from madgraph.iolibs.file_writers import FortranWriter
+ from madgraph.various.q_polynomial import FortranPolynomialRoutines
+ 
+@@ -129,6 +130,13 @@
+                                 mass_dp_format='COMPLEX*16', include_vector='',
+                                 tirust_coefmap=mapping,
+                                 tirust_plan_registration='CALL TIRUST_REGISTER_PLAN(3,6,STATUS)')
++            replacements['mass_mp_format'] = 'COMPLEX*32'
++            exporter = object.__new__(LoopProcessExporterFortranSA)
++            exporter.template_dir = str(TEMPLATES)
++            replacements['tirust_qp_tensor_interfaces'] = exporter.qp_mass_interfaces(
++                'TIRUST_qp_tensor_interface.inc', replacements)
++            replacements['tirust_qp_loop_interfaces'] = exporter.qp_mass_interfaces(
++                'TIRUST_qp_loop_interface.inc', replacements)
+             helpers = (TEMPLATES / 'CT_interface.inc').read_text()
+             helpers = helpers[helpers.index('\t  SUBROUTINE %(proc_prefix)sBUILD_KINEMATIC_MATRIX'):]
+             helpers = helpers[:helpers.index('## if(samurai_available)')]

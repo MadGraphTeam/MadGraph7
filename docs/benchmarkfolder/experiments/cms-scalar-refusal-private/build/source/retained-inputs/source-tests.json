@@ -1,0 +1,31 @@
+{
+  "command": [
+    "python",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    ".tirust-build/cms-scalar-refusal-prototype/retained-inputs",
+    "-p",
+    "test_*.py",
+    "-v"
+  ],
+  "exit_code": 0,
+  "native_compiler_or_ffi_launched": false,
+  "reported_test_seconds": 0.185,
+  "schema": "cms-retained-input-source-checks-v1",
+  "scope": "Offline source log parsing and fixture binding only",
+  "source_hashes": {
+    "extract.py": "d38af98e8bcafcf13e9433e8ea9dcafd35ffe455f36a0ac3859c78fad6355ddb",
+    "point20-inputs.json": "9dce4ad886df5d03363c1a7c602a2cd5d183dc003ce0c4d9c9ea4eb0382c1d6b",
+    "test_extract.py": "0e7a55c781856def8f209cdd00a1253f7f8c08cc2a84f2d51e27331cf04f867b"
+  },
+  "test_count": 4,
+  "tests": [
+    "test_all_four_families_and_both_small_input_causes",
+    "test_incomplete_or_misordered_records_are_rejected",
+    "test_representatives_are_exact_source_records",
+    "test_source_hashes_and_counts"
+  ]
+}

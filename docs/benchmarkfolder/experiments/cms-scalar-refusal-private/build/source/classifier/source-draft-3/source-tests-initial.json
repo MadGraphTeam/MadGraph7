@@ -1,0 +1,8 @@
+{
+  "tests": 12,
+  "passed": 11,
+  "failed": 1,
+  "elapsed_seconds": 0.24,
+  "failure": "test_retained_physical_literals_bound compared differently normalized decimal mantissas as substrings; source-only test bug",
+  "compiler_or_native_started": false
+}

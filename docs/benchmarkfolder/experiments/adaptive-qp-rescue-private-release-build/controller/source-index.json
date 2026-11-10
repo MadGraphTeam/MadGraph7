@@ -1,0 +1,22 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 2996,
+      "sha256": "6a7b0371f834eedf1ee7d2984259893f2010b7ba29e5031bbe35e67a326791b0"
+    },
+    "cache-inspection.json": {
+      "bytes": 20520,
+      "sha256": "9d9866ff7809dd3ccbe6671d64e0a385bbeaa77e392f67102bed866cd3cae696"
+    },
+    "run.py": {
+      "bytes": 8719,
+      "sha256": "aff48e9e0504fda0f83efe1774c9d9537bc9e57d3213e6b6a2255c4dccecb343"
+    },
+    "verify.py": {
+      "bytes": 3210,
+      "sha256": "af8259f20822dcec52446d2a0a9ce45aba527cd25736bbe624fba358186da574"
+    }
+  },
+  "schema": 1,
+  "scope": "Proposed compile-only release controller; no compiler or native run authorized by this file."
+}

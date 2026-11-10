@@ -1,0 +1,7 @@
+{
+  "tests_run": 5,
+  "failures": 0,
+  "errors": 0,
+  "scope": "Pure Python mocked prerequisite checks, no native journals or subprocesses",
+  "output": "test_changed_observation_refused (additive_control_tests.PrerequisiteChecks.test_changed_observation_refused) ... ok\ntest_complete_observations_bound (additive_control_tests.PrerequisiteChecks.test_complete_observations_bound) ... ok\ntest_failed_parent_refused (additive_control_tests.PrerequisiteChecks.test_failed_parent_refused) ... ok\ntest_failed_parser_refused (additive_control_tests.PrerequisiteChecks.test_failed_parser_refused) ... ok\ntest_wrong_runtime_command_refused (additive_control_tests.PrerequisiteChecks.test_wrong_runtime_command_refused) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 0.006s\n\nOK\n"
+}

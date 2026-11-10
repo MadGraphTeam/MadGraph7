@@ -1,0 +1,86 @@
+C     Bounded fixed-DP diagnostic. No positive-mode stability claim.
+      PROGRAM EW_DP_MASS_OBSERVED
+      USE EW_MASS_OBSERVER, ONLY: OBS_CLOSE, OBS_R8, OBS_R16, OBS_C16, OBS_C32
+      IMPLICIT NONE
+      INCLUDE 'coupl.inc'
+      INCLUDE 'mp_coupl.inc'
+      INTEGER NDIM,NSO,K,I,CODE,WARM_POINTS,TENS,NPOINTS,IOS
+      REAL*8 POINTS(0:3,5,1),P(0:3,5),TOTAL(0:3)
+      REAL*8 ANS(0:3,0:1),ACC(0:1)
+      CHARACTER*1024 ARG
+      CALL SETPARA('MadLoop5_resources/param_card.dat')
+      CALL ML5_0_GET_ANSWER_DIMENSION(NDIM)
+      CALL ML5_0_GET_NSQSO_LOOP(NSO)
+      IF(NDIM.NE.1.OR.NSO.NE.1) STOP 81
+      CALL GET_COMMAND_ARGUMENT(1,ARG)
+      OPEN(73,FILE=TRIM(ARG),STATUS='OLD',ACTION='READ')
+      READ(73,*) NPOINTS
+      IF(NPOINTS.NE.1) STOP 82
+      DO K=1,1
+        DO I=1,5
+          READ(73,*) POINTS(:,I,K)
+        ENDDO
+      ENDDO
+      CLOSE(73)
+      OPEN(917,FILE='observer-run.log',STATUS='NEW')
+      WRITE(917,'(A)') 'FIXED_DP_OUTPUT_ONLY_UNCHECKED'
+      CALL ML5_0_FORCE_STABILITY_CHECK(.FALSE.)
+C     Preserve historical first call and warmup order on the ordinary point only.
+      P=POINTS(:,:,1)
+      TOTAL=P(:,1)+P(:,2)
+      MU_R=SQRT(ABS(TOTAL(0)**2-SUM(TOTAL(1:3)**2)))
+      CALL UPDATE_AS_PARAM()
+      ANS=0D0
+      CALL ML5_0_SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)
+      WRITE(917,*) 'BOOTSTRAP',CODE
+      FLUSH(917)
+      WARM_POINTS=0
+      DO K=1,1002
+        P=POINTS(:,:,1)
+        TOTAL=P(:,1)+P(:,2)
+        MU_R=SQRT(ABS(TOTAL(0)**2-SUM(TOTAL(1:3)**2)))
+        CALL UPDATE_AS_PARAM()
+        ANS=0D0
+        CALL ML5_0_SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)
+        WRITE(917,*) 'WARMUP',K,1,CODE
+        FLUSH(917)
+        TENS=MOD(CODE,100)/10
+        IF(TENS.EQ.1.OR.TENS.EQ.2) THEN
+          WARM_POINTS=WARM_POINTS+1
+        ELSE
+          WARM_POINTS=0
+        ENDIF
+        IF(WARM_POINTS.GE.2) EXIT
+      ENDDO
+      IF(WARM_POINTS.LT.2) STOP 83
+      WRITE(917,'(A)') 'READY_DIAGNOSTIC_ONLY'
+      FLUSH(917)
+      DO K=1,1
+        P=POINTS(:,:,K)
+        TOTAL=P(:,1)+P(:,2)
+        MU_R=SQRT(ABS(TOTAL(0)**2-SUM(TOTAL(1:3)**2)))
+        CALL UPDATE_AS_PARAM()
+        ANS=0D0
+        CALL EW_MASS_POINT_BEGIN(K,P)
+      CALL OBS_R8('MODEL_MDL_MT',1,(/MDL_MT/))
+      CALL OBS_R16('MODEL_MP__MDL_MT',1,(/MP__MDL_MT/))
+      CALL OBS_R8('MODEL_MDL_MZ',1,(/MDL_MZ/))
+      CALL OBS_R16('MODEL_MP__MDL_MZ',1,(/MP__MDL_MZ/))
+      CALL OBS_R8('MODEL_MDL_MW',1,(/MDL_MW/))
+      CALL OBS_R16('MODEL_MP__MDL_MW',1,(/MP__MDL_MW/))
+      CALL OBS_R8('MODEL_MDL_MH',1,(/MDL_MH/))
+      CALL OBS_R16('MODEL_MP__MDL_MH',1,(/MP__MDL_MH/))
+      CALL OBS_R8('MODEL_MU_R',1,(/MU_R/))
+      CALL OBS_C32('MODEL_MP__MU_R',1,(/MP__MU_R/))
+      CALL OBS_C16('MODEL_GAL',2,GAL(1))
+      CALL OBS_C32('MODEL_MP__GAL',2,MP__GAL(1))
+        CALL ML5_0_SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)
+        CALL EW_MASS_POINT_END(P,ANS,ACC,CODE)
+        WRITE(917,*) 'OBSERVED',K,CODE
+        FLUSH(917)
+      ENDDO
+      CALL OBS_CLOSE()
+      CALL ML5_0_EXIT_MADLOOP()
+      WRITE(917,'(A)') 'COMPLETE_DIAGNOSTIC_ONLY'
+      CLOSE(917)
+      END

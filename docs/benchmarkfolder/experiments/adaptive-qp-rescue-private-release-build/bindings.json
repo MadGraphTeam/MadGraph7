@@ -1,0 +1,106 @@
+{
+  "copies": {
+    "attempt1/build.log": {
+      "bytes": 248783,
+      "path": ".tirust-build/adaptive-qp-rescue-release-build/attempt1/build.log",
+      "sha256": "f478e26233cedd5f3e5b06d18193ba32ede748142df698dd9491cdea253112fd"
+    },
+    "attempt1/cargo-version.log": {
+      "bytes": 36,
+      "path": ".tirust-build/adaptive-qp-rescue-release-build/attempt1/cargo-version.log",
+      "sha256": "f4f564f8936fa8eb53bca8bbe50666489252bbcbeaae0cb0dd54682444697e52"
+    },
+    "attempt1/execution.json": {
+      "bytes": 196617,
+      "path": ".tirust-build/adaptive-qp-rescue-release-build/attempt1/execution.json",
+      "sha256": "171b2e6d972fd24e013c0d5a1edaca346426a4c9df2680209de5733036fbfb14"
+    },
+    "attempt1/rustc-version.log": {
+      "bytes": 66,
+      "path": ".tirust-build/adaptive-qp-rescue-release-build/attempt1/rustc-version.log",
+      "sha256": "9a7bdd50adc0281404c42a934b62dd706a1524407c7b790c95907a55cc000d5a"
+    },
+    "controller/README.md": {
+      "bytes": 2996,
+      "path": ".tirust-build/adaptive-qp-rescue-release-controller/README.md",
+      "sha256": "6a7b0371f834eedf1ee7d2984259893f2010b7ba29e5031bbe35e67a326791b0"
+    },
+    "controller/cache-inspection.json": {
+      "bytes": 20520,
+      "path": ".tirust-build/adaptive-qp-rescue-release-controller/cache-inspection.json",
+      "sha256": "9d9866ff7809dd3ccbe6671d64e0a385bbeaa77e392f67102bed866cd3cae696"
+    },
+    "controller/run.py": {
+      "bytes": 8719,
+      "path": ".tirust-build/adaptive-qp-rescue-release-controller/run.py",
+      "sha256": "aff48e9e0504fda0f83efe1774c9d9537bc9e57d3213e6b6a2255c4dccecb343"
+    },
+    "controller/source-index.json": {
+      "bytes": 672,
+      "path": ".tirust-build/adaptive-qp-rescue-release-controller/source-index.json",
+      "sha256": "22dab40ded40e662aa7fddcee018fa5837a260e2e6a205a1258930e11125def6"
+    },
+    "controller/verify.py": {
+      "bytes": 3210,
+      "path": ".tirust-build/adaptive-qp-rescue-release-controller/verify.py",
+      "sha256": "af8259f20822dcec52446d2a0a9ce45aba527cd25736bbe624fba358186da574"
+    }
+  },
+  "elf_reader_origin": {
+    "index_path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-design/evidence-index.json",
+    "index_sha256": "51f45d9e6f2c13227dc504fa284cba967f947db0f073dfb18bb9bf924c28c298",
+    "reader_sha256": "3327e253c4ea1b581b252fc9547f9b7c3f71f610c131e8c23b0dc1039b26f73a"
+  },
+  "library": {
+    "bytes": 69157632,
+    "cargo_record": {
+      "executable": null,
+      "features": [
+        "default",
+        "poles-only"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/target/release/libmadloop_tirust_adaptive_private.so",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/target/release/libmadloop_tirust_adaptive_private.rlib"
+      ],
+      "fresh": false,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-prototype3/Cargo.toml",
+      "package_id": "path+file:///shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-prototype3#madloop-tirust-adaptive-private@0.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "cdylib",
+          "rlib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "cdylib",
+          "rlib"
+        ],
+        "name": "madloop_tirust_adaptive_private",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-prototype3/src/lib.rs",
+        "test": true
+      }
+    },
+    "isolated_copy": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so",
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/target/release/libmadloop_tirust_adaptive_private.so",
+    "sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7"
+  },
+  "native_loaded": false,
+  "native_tests_executed": false,
+  "production_promoted": false,
+  "schema": 1,
+  "source_build_package": {
+    "path": "docs/benchmarkfolder/experiments/adaptive-qp-rescue-private-build/evidence-index.json",
+    "sha256": "1a4af7f8f8be9ce8880ebc9ce466f66afec961be4c24b6978cdd8fdfa28fc8d8"
+  }
+}

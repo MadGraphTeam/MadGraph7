@@ -1,0 +1,60 @@
+{
+  "bounds": {
+    "cpu": 8,
+    "jobs": 1,
+    "link_jobs": 1,
+    "link_seconds": 30,
+    "loader_jobs": 2,
+    "loader_seconds": 10,
+    "lock_admission_seconds": 7200,
+    "native_jobs": 2,
+    "native_seconds_each": 120,
+    "new_fortran_compiles": 0,
+    "parser_seconds": 30
+  },
+  "not_qualified": [
+    "checked QP rescue",
+    "complete threshold amplitude",
+    "all backends",
+    "performance"
+  ],
+  "parent_build_evidence_sha256": "cdb6d293841d9172c004332841117270b28e5b3ded82d8a40b0ee0d90c8a9fae",
+  "parent_source_index_sha256": "96daffec46bdaa249ee5c595fbd90001434b91126d108192b083f7eeedd3ca5c",
+  "schema": "additive-current-original-qp-source-index-v1",
+  "scope": "Same-current-runtime original versus mass-guarded fixed4 EW transport only",
+  "source_files": {
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/SOURCE.md": "dcdd660eb1c02af478e02ada2b53683ebabb3231e8287b8335c8e727a8364660",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/analyze.py": "6b70695ffd29aeabc174890c72d2bc81339534d240be2112aaabdfb4a048fa4e",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/child-prepared.json": "dc948c280a57ce4555e433efca38d8f5bb625e0dd5640aa0470d7b4e2615c7dd",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/control-tests.json": "66dc36b190c66f227fa53bf545221bf683feb9825fb2cef41a69a6af0104b7fc",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/control.py": "64c6aa0fe24935dd42d0869d25c0b45c9951d6a9920fa81abac970c835f19953",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/freeze_source.py": "4b6cce96581d3543b59f26d523a9f72088d00a71f3889674a7e66b35cbfb7fb4",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/prepare.py": "d7280718fb980e9d7c24c444ffe8c2de8d9ca94f1bc209ddb85aa3759ffe7325",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/prepare_controller.py": "c4f27141b658472a7d068211ee0097189db6adbd34885a1cbfab2edf53c95782",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/prepared.json": "ce6fef5c324a105a103a71fb3b4727218d34569b9d0656ce1bd89a68e86726ee",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-8/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-8/MadLoop5_resources/ML5_0_ColorNumFactors.dat": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-8/MadLoop5_resources/ML5_0_HelConfigs.dat": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-8/MadLoop5_resources/MadLoopParams.dat": "9b186b56d7fa56e6294ea96372ea5b738c03c5087879863628b877ec92d9f60f",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-8/MadLoop5_resources/ident_card.dat": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-8/MadLoop5_resources/param_card.dat": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-8/param_card.dat": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-8/selected.dat": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-9/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-9/MadLoop5_resources/ML5_0_ColorNumFactors.dat": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-9/MadLoop5_resources/ML5_0_HelConfigs.dat": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-9/MadLoop5_resources/MadLoopParams.dat": "0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-9/MadLoop5_resources/ident_card.dat": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-9/MadLoop5_resources/param_card.dat": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-9/param_card.dat": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/runs/current-original-qp-9/selected.dat": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/source-tests.json": "766905ceee6ca83e9132875171a6301a278f90b941605dfe7055f3da75e7e2fc",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/test_control.py": "db3d04f958a68d65ce8fd32c9331ccb4801adc4f1bb34000d6f1f61fd6b5d0bd",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/tests.py": "1481c6599ed91472213eb3a640716be6354990d530350203d9e596ea92b751e2"
+  },
+  "source_tests": {
+    "controller_prerequisites": 5,
+    "scientific_parser": 13
+  },
+  "state": "prepared-not-linked-or-executed"
+}

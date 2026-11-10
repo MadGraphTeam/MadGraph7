@@ -1,0 +1,34 @@
+{
+  "excluded_future_artifact_trees": [
+    "runs",
+    "build"
+  ],
+  "files": {
+    "README.md": "166a8d9641b2319ac7d36d19d3e3081e392cf41d397637932249d64471d604c9",
+    "argument-matrix.json": "a6ebe1c6970e636bb7bbe330bc3acd72e940d76e64cc4183bb87885a4971d2e0",
+    "commands.json": "138b8de86543c74b8310fd6c89ae37023795e87a841740ebda11f7e43a2d1709",
+    "driver-template.f90": "2519788d2295465667af9e5adcee06f48d85708fc0f8d302d6d5426ec6a1996a",
+    "freeze.py": "4a07124012fe3154d277b4cb15f8fd69cd25b4b4acd9a19ba70d2f1a7b915382",
+    "prepare.py": "d43f3492f9a21a4c12442adf1a897768785611fa94a75a6011e88534276febc0",
+    "recording.f90": "92e77bb5317407b415657637e770f8ea7f27a311a50bc9962cf6171ef8f01f1c",
+    "source-tests.json": "c615a9d528c314c1080560b5305c4276e6b72e5ace8e826ac0c9146c175c40cf",
+    "src/aloha_object.f": "d2918338af8be2455f34f46bbcc6170692d1ca843fb5fcf24c96d40d5f045d74",
+    "src/coupl.inc": "0f192a24cefc91e5ec79a043f2cb9fd07e99d50a77f9a8536738d0477c02baff",
+    "src/driver.f90": "160f2837797cdf63156b895c9b4f62149b262de3c49d8374be79f7328806dddb",
+    "src/guarded_grouped.f": "2c627ef50896c00af9f1a8fa197611c72fffb825c24dd399a03cac258a5105db",
+    "src/guarded_loop_induced.f": "c4b069c7f2c818db34f5b8fd63c4f8c21513b842268c41a1bc50950ad52c130d",
+    "src/guarded_ungrouped.f": "1a9c38c74b37a670a381e2e436d1d76325cb575f8e58ca8d32748e9835fba517",
+    "src/helpers.f": "653be705f46b87b780a845bb09787fbe8ab45c1f29537a36b3a6b09e6f454aec",
+    "src/legacy_grouped.f": "b890b2264c249e659cc26530a4b301fb18c62b064af6ff9b24d7efd30ece2a49",
+    "src/legacy_loop_induced.f": "5b1e243240e0443a32a54ad7835e9728d0fb93934547401c272b69e60e815224",
+    "src/legacy_ungrouped.f": "8d4a4d292ac374681dc23fb653ec59b594c874c82f1289a81c437ec1c8164d2a",
+    "src/mp_coupl.inc": "ac7fbe237eb727e8e3c0d0e8392e559f32349c4b9e3c587a55843c3066d8d5e3",
+    "src/polynomial_constants.f90": "e651a691412c678bfd939de022271b694cfae5066b769e6c3275ee2317ba7bbe",
+    "src/recording.f90": "92e77bb5317407b415657637e770f8ea7f27a311a50bc9962cf6171ef8f01f1c",
+    "test_source.py": "971e2ebfa040e879582d52cf7c54b30c2c44bec51e5277decd2a960d42650e83",
+    "validate.py": "c0bf0e8278ee4d873f885cd79f2795463dfc4284cacf142880eca41a090626f1"
+  },
+  "native_compile_performed": false,
+  "native_execution_performed": false,
+  "schema": "qp-mass-caller-fixture-source-index-v1"
+}

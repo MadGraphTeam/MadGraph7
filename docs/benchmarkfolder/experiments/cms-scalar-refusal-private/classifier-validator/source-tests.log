@@ -1,0 +1,12 @@
+test_bad_counts_or_precision (classifier_mock_validator_tests.ValidatorTests.test_bad_counts_or_precision) ... ok
+test_complete (classifier_mock_validator_tests.ValidatorTests.test_complete) ... ok
+test_errors_and_skips (classifier_mock_validator_tests.ValidatorTests.test_errors_and_skips) ... ok
+test_frozen_sources (classifier_mock_validator_tests.ValidatorTests.test_frozen_sources) ... ok
+test_missing_duplicate_reordered (classifier_mock_validator_tests.ValidatorTests.test_missing_duplicate_reordered) ... ok
+test_strict_event_and_closure (classifier_mock_validator_tests.ValidatorTests.test_strict_event_and_closure) ... ok
+test_truncated_and_control (classifier_mock_validator_tests.ValidatorTests.test_truncated_and_control) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.009s
+
+OK

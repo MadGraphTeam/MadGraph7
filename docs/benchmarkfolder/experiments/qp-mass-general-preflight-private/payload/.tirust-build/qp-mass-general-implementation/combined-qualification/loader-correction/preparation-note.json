@@ -1,0 +1,6 @@
+{
+  "first_source_preparation": "FileNotFoundError for guessed source-index.json filename; actual frozen source inventory is evidence-index.json",
+  "prepared_metadata_written": false,
+  "compiler_loader_or_native_process_launched": false,
+  "correction": "Bind actual existing evidence-index.json; all numerical sources and the failed runtime attempt are unchanged"
+}

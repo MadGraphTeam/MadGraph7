@@ -1,0 +1,22 @@
+{
+  "backend": 1,
+  "build_manifest_sha256": "7cc51e611f0a0fb741ce75ddde785aa1dc46627528c2368482951ddf4d5ddf4b",
+  "cuttools_scalar_threshold": 1e-06,
+  "elapsed_seconds_diagnostic_only": 0.6157052209600806,
+  "madloop_onshell_threshold": 1e-14,
+  "mode": 4,
+  "numerical_card_sha256": "59913c496499db496deda4e6080a32a23fe5ac30d2c1f863e378cd41439592a3",
+  "output_sha256": "0d3d91f7f2163ed7afab7c8572fe097c28a5531c4526ceb568208ed2b26954e8",
+  "parent_points_sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60",
+  "performance_eligible": false,
+  "physical_card_sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec",
+  "point_index": 20,
+  "point_input_sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75",
+  "result_sha256": "046c415527c6931246364dcebc23506debf48edfeab2495105c299fc19529d98",
+  "returncode": 0,
+  "runner_sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743",
+  "source": "baseline",
+  "stability_certified": false,
+  "threshold_input_sha256": "4e41a0252d2f09d38540c7969ef790f2f8ef723513d3afe47176c6348f08ce92",
+  "timed_out": false
+}

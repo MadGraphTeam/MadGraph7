@@ -1,0 +1,18 @@
+{
+  "explicit_slot_required_before_native": true,
+  "files": {
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/build-link-current-original-qp.log": "ee240d2dac5614c7c7565cfc000a91825420e5abbf7421a7026e5f02958a6f01",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/build.json": "737af11c1c7755cfbe81c31c74521ce809d7181f9c971112c12abe5be562af73"
+  },
+  "input_hashes_after": "unchanged",
+  "link_child_seconds": 4.437495164573193,
+  "native_artifacts_hash_only": {
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-original-qp/build/current-original-qp": "773be947c3b88a9922109e2debdd38844213605f6a3954c18a7835d755f0e421"
+  },
+  "native_or_loader_executed": false,
+  "prepared_sha256": "ce6fef5c324a105a103a71fb3b4727218d34569b9d0656ce1bd89a68e86726ee",
+  "schema": "additive-current-original-qp-build-evidence-v1",
+  "source_index_sha256": "41aaeb9d1f24477a1ecbc86ebb84f8ba6f1736d0cf87958c9de1c33dae078f31",
+  "state": "link-passed-native-unexecuted",
+  "wall_seconds": 6.662537097930908
+}

@@ -1,0 +1,533 @@
+{
+  "actual_AVH_native_execution_allowed": false,
+  "automatic_retry": false,
+  "compiler": {
+    "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae"
+  },
+  "copied_dependencies": {
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/aa.h": {
+      "sha256": "14e1924840dd12c46533fd0184d87d945832e0ba9a00f351476f820dd2b22fb1",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/aa.h"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools.mod": {
+      "sha256": "a2efd5f8042ff71073dfa53fe5cd9daa89167598cc480a75da3db35489902efa",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp.mod": {
+      "sha256": "c1053098cd1213b4c0f53880b2468ea55e010cc6892636df236e798ba46592a2",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_arrays.mod": {
+      "sha256": "8476add5673ae8523572556650e4f164fa3a55fd49cab3b9d1a4797bbd8587d7",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_arrays.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_auxfun.mod": {
+      "sha256": "a8ed9a76b932a48ee359f433440440b5dd510d7f39f049f3b04c2b00f2761c9e",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_auxfun.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_bnlog.mod": {
+      "sha256": "36e8336b9a289244d5e17c7e1085806c10c0a4a0a917e69ce38c21e59cd7e24b",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_bnlog.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_box.mod": {
+      "sha256": "23f69bc9246b926caa541fe7e0ce4672f3a63a05952889797e7d79b7f9664a62",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_box.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_boxc.mod": {
+      "sha256": "49978e66dfc998b16bc40ceb3c5899e48619f43be0f58fea9f6c38cf9cef3d4f",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_boxc.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_bub.mod": {
+      "sha256": "356e09561df30f44f2ab51d7ce03336ceb92c4b1f29fceb5dd04f55774d24385",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_bub.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_dilog.mod": {
+      "sha256": "46cdb3ac57528123115021b4b0c444a3c11e84305fed505c29a7460db6eb99fe",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_dilog.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_kinds.mod": {
+      "sha256": "d692314a500be759cd2ebef9dbdfdf241e3942288d4c8ada4c48bfda54fc1d35",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_kinds.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_olog.mod": {
+      "sha256": "6175b416c9b5d03ebeed44684299947d9b9adce9a4f19bf36cf4f60751e42362",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_olog.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_prec.mod": {
+      "sha256": "02c30a637c7b95383fe78e1b1fe8d3575296c04cb66dbb8cf043aa8564d96b42",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_prec.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_print.mod": {
+      "sha256": "e3c76c61e65486cfe8fb98d4ed5936d19bf80c1e8eb890d1a36c49b1ed33d769",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_print.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_qmplx.mod": {
+      "sha256": "c2d839ac0f178b1956d029594a557042f09b7fe7ea20663567fb57e399f3121e",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_qmplx.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_dp_tri.mod": {
+      "sha256": "216179104a10e96f328a5dee6e7cea3e9cba96cb8bacae244f73732dc3813007",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_dp_tri.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp.mod": {
+      "sha256": "ce4991110f0703a20a8bbe833d61701e1f5ffafe9aeda92e858e5913c9bf508b",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_arrays.mod": {
+      "sha256": "abc8504365e9080419dd1d6134968132374f01a0f66015983fc604cbef5242ba",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_arrays.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_auxfun.mod": {
+      "sha256": "595f2d3388da2fee330fa873d3ad8f953a0cf0b41da24e7981d29a6989d9f2a6",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_auxfun.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_bnlog.mod": {
+      "sha256": "3447f4b87a33f097a545cc66e5d62e75f0f841411f4fb88a436a54ea4ac2c164",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_bnlog.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_box.mod": {
+      "sha256": "4d3ac36cb7aef87669ec6ee7b3ceaab1000bb6b148839165078169642dd14635",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_box.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_boxc.mod": {
+      "sha256": "f0a1affd70d6f0e354ed81e122e23ec0a9936b10e235854113f1210f47db6641",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_boxc.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_bub.mod": {
+      "sha256": "2e951fa4a4195f9a9c01235bae8ee1300f2a9e63354b1714d89e75d6fb3fb70b",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_bub.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_dilog.mod": {
+      "sha256": "fbdfc4f4d8ddfc2214d3bad09c2e6503e133e2fcd740fdca6589a31d6326521a",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_dilog.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_olog.mod": {
+      "sha256": "c18544258e202831900bd568a69eeceede6d588399f4fea43a712c57d69e5e79",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_olog.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_prec.mod": {
+      "sha256": "465a9499c6347d70be1449060c629f20db3d3f96ab1881da0425e69f87b650ad",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_prec.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_print.mod": {
+      "sha256": "a6e10bd03deb78355f2cb93caa5a1edf3bd71c0b95da0504f3ec90d2f6ce6e20",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_print.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_qmplx.mod": {
+      "sha256": "af1977a78e4ff3ca166fe553ac65f5e204bc8d50a523d6f0a46b87293abb2f44",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_qmplx.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_mp_tri.mod": {
+      "sha256": "a88f491138358acfc4cb52312277ae3732129884105ed70916e0ea99e0105ffc",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_mp_tri.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp.mod": {
+      "sha256": "5d7b5b684ccfa1597c51452ccb0f1b00f808d6f2a753d4af34d9074624fd111b",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_arrays.mod": {
+      "sha256": "d661ebd4ba9cc5c2fbd1b03534289e2b722112a73fc994e0a71d654ac1fa4f00",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_arrays.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_auxfun.mod": {
+      "sha256": "f8f602b814f6e56733ce323ac431cab9579ad27fc3f0d5baadf044c984c12357",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_auxfun.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_bnlog.mod": {
+      "sha256": "8d70ce3bf7f48525ad180fa0d20005abf0503808b7ab0e091f469c59a86a52bc",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_bnlog.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_box.mod": {
+      "sha256": "f9c522ce6b7c918e92d51060d10ab1a51982290ad6563032dec02165f42c5633",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_box.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_boxc.mod": {
+      "sha256": "085ce8d82d404f5aa09c2a2904af10c07cb4bd2de8398544e425978b03647786",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_boxc.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_bub.mod": {
+      "sha256": "63fc19488df8451d1561ecac381e16bb1abf5ea7caec5f49902c9f5698973327",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_bub.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_dilog.mod": {
+      "sha256": "bcfbffc0c3f23129818213817908ded0c57bda010217ecc1f379a483ff7c8eda",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_dilog.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_kinds.mod": {
+      "sha256": "b0d56a5d95a6818460109298bc68d186bb4568b1baf700fc1c647c2981259d0b",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_kinds.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_olog.mod": {
+      "sha256": "c19a7aae02a787556f99c20235811e4aa6a45205201f4cd4c98e8d40486cc263",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_olog.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_prec.mod": {
+      "sha256": "71b761d31af550dc410cb6f164aadd4fbce0951c3bc0ba44dd1a2462cc420756",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_prec.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_print.mod": {
+      "sha256": "618db78c344d1b8963f751514ccb30967c344dbbb7164f03b2d872523c870958",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_print.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_qmplx.mod": {
+      "sha256": "875e1924fbc876c2a18c3553c7277c4b0c6977ebc52cde7df85dbcd9218614d2",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_qmplx.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_qp_tri.mod": {
+      "sha256": "a0478fa62315f0b5afb5f0447a338bc23abf17235ba347266fe6b6482ebe9610",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_qp_tri.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_units.mod": {
+      "sha256": "746de20158abcb53e53221fc61a253e4c8c70cdac9078b88b4b0be52f50632a9",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_units.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/avh_olo_forcuttools_version.mod": {
+      "sha256": "a10dbc4e96d1d4fdaea203f0ace262706812bb87416c004a4284fa72f8879112",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/avh_olo_forcuttools_version.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/coefficients.mod": {
+      "sha256": "f343b8ba127d99b5b111758db5cb38bb9325efd7c4cafb14dc21d04964cf3c52",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/coefficients.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/combinatorics.mod": {
+      "sha256": "f7e46365d2a4ae22da8e44c2db65c356e86ea3120dea68493c8064ac0759cac6",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/combinatorics.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/constants.mod": {
+      "sha256": "8d44246c6a8c7edfb8946dae108365e2b1f228ecfac17394edce56c0815b789c",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/constants.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/countdigits.mod": {
+      "sha256": "6cbdb0aa07d73f366567aa1b5bbfa5d88a6d1aaf58b91972093c51d562ec3dcb",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/countdigits.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_dpc.h": {
+      "sha256": "5c0ae28d6d898487a474350f1ca723e93aa68b710eddb636110f127a65b6b1dc",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_dpc.h"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_dpr.h": {
+      "sha256": "4247138b8125a0af2cabb5034baa66f0a8c4d51c86d51819ddbbe7da71f04749",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_dpr.h"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_mpc.h": {
+      "sha256": "40db20a5df19603ee60df8e0dbb6f477313a907c3255173b53a5dd85b3b5bd25",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_mpc.h"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_mpc.in": {
+      "sha256": "4565a6c21a67a840b5f4d32b8fb5fb362aab645957f0b62ac4f72d1c346cfd4f",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_mpc.in"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_mpinit.h": {
+      "sha256": "c228e4ed4b71b43ecc30c8c3a2bcd780f25932a1e2d9cbcc23407d9028816548",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_mpinit.h"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_mpinit.in": {
+      "sha256": "c228e4ed4b71b43ecc30c8c3a2bcd780f25932a1e2d9cbcc23407d9028816548",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_mpinit.in"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_mpr.h": {
+      "sha256": "82b8e3d1b3e25fec05a8bfefb68b38004fc83d45b1b60197d304e46c7ba0c705",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_mpr.h"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_mpr.in": {
+      "sha256": "1ee4fd2d3d5d75c3e996bd374687da5de3e5fc4b1b24cde90320f2facbd83f1a",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_mpr.in"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_mprec.h": {
+      "sha256": "dc44459a6a7968c912be0b8a52831e085bea2d66c88ded3d0a794b132503b925",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_mprec.h"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_mprec.in": {
+      "sha256": "dc44459a6a7968c912be0b8a52831e085bea2d66c88ded3d0a794b132503b925",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_mprec.in"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_qpc.in": {
+      "sha256": "40db20a5df19603ee60df8e0dbb6f477313a907c3255173b53a5dd85b3b5bd25",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_qpc.in"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_qpinit.in": {
+      "sha256": "c228e4ed4b71b43ecc30c8c3a2bcd780f25932a1e2d9cbcc23407d9028816548",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_qpinit.in"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_qpr.in": {
+      "sha256": "82b8e3d1b3e25fec05a8bfefb68b38004fc83d45b1b60197d304e46c7ba0c705",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_qpr.in"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cts_qprec.in": {
+      "sha256": "dc44459a6a7968c912be0b8a52831e085bea2d66c88ded3d0a794b132503b925",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cts_qprec.in"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/cuttings.mod": {
+      "sha256": "b786dcdc888db2da35682619bf056232d3e6becb47593eff7834762ec90d071a",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/cuttings.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/def_mp_propagator.mod": {
+      "sha256": "0f004f3273aa9bdf01bc0eb1bad1bab7376a8f81261ab44bfcf3ab0fe5a0f8c0",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_mp_propagator.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/def_mp_solcut.mod": {
+      "sha256": "c7c13964bb9fd4eb98f1774b8a656f08fcb09f04eed5d3353acaa7c383dea299",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_mp_solcut.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/def_propagator.mod": {
+      "sha256": "d8eb6ab75eb82eca1a2c414a3814fc7eb6d2181a25d4511ada0722180a5f70e5",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_propagator.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/def_solcut.mod": {
+      "sha256": "2f42b7b2923b31eeb030290f0ca7898fc54d1308c3957a2f856ea9aebe9c8f87",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/def_solcut.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/denominators.mod": {
+      "sha256": "d3d204f5c8cced6e1066e6d15605423006029555e5b8949bf3b4741c46c76d9f",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/denominators.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/dimensions.mod": {
+      "sha256": "04c1ec5ee105770ded7f1ff6467b1f7bdf4eb9e787a47346fcb1bf9aa04754dd",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/dimensions.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/ff.h": {
+      "sha256": "37de572b28b7f5b5a4af86ec99f555c1ededc312d80494dacd70dcb49c76dcd7",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/ff.h"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/ffs.h": {
+      "sha256": "2b1dbfef8e362468e6e2aebc2d3200a419b21e59a1a798a7194d5ce1efb1c409",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/ffs.h"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/inout.mod": {
+      "sha256": "5e3ff2625fed73d81201c613cb407605c90d390b040a8decd25d66de5303b103",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/inout.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/loopfunctions.mod": {
+      "sha256": "3b2bd7bebeca88e3c88a1d4ce64fd4f35ea537a941c8f30b195df8981a36f46e",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/loopfunctions.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/maxnumden.mod": {
+      "sha256": "c117e01dfdc19c3949c9f6bb12f60cf2b89051bf71bdca62fcf79ed393b33ed8",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/maxnumden.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/maxsolutions.mod": {
+      "sha256": "35cd11a4b531c5756bb466ce876077de128524bc2fa5e518ab101cb9b62914ab",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/maxsolutions.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mbnvalues.mod": {
+      "sha256": "e2b06400a173d8bc5516369cf6563208a658266521d841ffeee67d33954f4ed9",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mbnvalues.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mp_loopfunctions.mod": {
+      "sha256": "a550ee8d965c3356e45452eb48faeda89690d9411ce026f9c449df322a229d76",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mp_loopfunctions.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpcmpmod.mod": {
+      "sha256": "439911e61f7b99fedc1ebede986a02b2ce5f4ec3b46ab1804f8871c071248f7d",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpcmpmod.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpdefmod.mod": {
+      "sha256": "da6b02e9b7dc4e43a8f2d27660b8d9e87e6adc6f848eddf852aa0243ef280108",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpdefmod.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfuna.mod": {
+      "sha256": "7a17ca40e689ff5b9d514c1a457168b74e4927c1d3f91761ac7d1f69bda6a483",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfuna.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfunb.mod": {
+      "sha256": "f503bedaf768abdd4eed621dd300ac2938943f91170e45d70f07a5e3fc7e1e98",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunb.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfunc.mod": {
+      "sha256": "2b643077afc741efa1f6782d9c27eb73644abdb367cdd69fd78a7d05922d7946",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunc.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfund.mod": {
+      "sha256": "41585a03e485d40d0771519272ba73b27d92b33c8249c6c4aa8f8479445dd034",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfund.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfune.mod": {
+      "sha256": "2f766cdda7526f441417f58c156d4a55c69905f11cf7b6d4e59398892571e9c5",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfune.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfunf.mod": {
+      "sha256": "2e166569826e52902366719d27e6259fd51bd03eaf8a090486d49b3514394d4a",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunf.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfung.mod": {
+      "sha256": "3c3bc977e577c004a4a732d048421c5d9e6a7af47bd0368d3a90855fb0cd7bcb",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfung.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfunh.mod": {
+      "sha256": "abe62fd8b7727660f270dd04a2266ed0210343772ea1fdfb04c538b1dd2a1288",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunh.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfuni.mod": {
+      "sha256": "513347019790801c869bebe20430aa2146937fd702f7a1e3774cb6d2c74f9901",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfuni.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfunj.mod": {
+      "sha256": "6fb7c9181eb0c97ff9a52ab78e090863cafe4eddb1630b9e79768372df62f6b2",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunj.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfunmod.mod": {
+      "sha256": "450b9f60f8350bd1d90247ea05a5e5e5bc2c29519eecd8ed71ed4cd5258ffb33",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunmod.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpfunsubmod.mod": {
+      "sha256": "726731a5a47d4b4ce713f91e587639b6f3ae8b941b9aac12841709dc11b8c8a4",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpfunsubmod.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpgenmod.mod": {
+      "sha256": "233d9214cce78a63a9801bd8bc68aaff021a6ec99805d1bd6d788e58eceda624",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpgenmod.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpintmod.mod": {
+      "sha256": "7ed8d855d009dde7741ff73e0cd4cbeb519e12085553c4a9df865a35da2bd23f",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpintmod.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpmodule.mod": {
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpmodulem.mod": {
+      "sha256": "b8f4c0c80b27d47fbfa90d75889bae286a73b036181890a3b45541e35b5c8a77",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodulem.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mpmodulex.mod": {
+      "sha256": "d3a7d1cb8ecbe8f74ddb77ce8153c5519a48a94d807ddccc141b40e1b6d76ab2",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodulex.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/mprealmod.mod": {
+      "sha256": "445be487a01175bf7be873316896bd146ae158b93a5aae5d08c7d47208080d1c",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mprealmod.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/qt2value.mod": {
+      "sha256": "c3d3499113cd6a893dceb662f3366f844a6543824e559e87a154a95f263fdefc",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/qt2value.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/scale.mod": {
+      "sha256": "99c2ae079c699e9751145576b2cac1ae56e66f9c89d2f3e7a96ff4d8030aa228",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/scale.mod"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes/tensor_operations.mod": {
+      "sha256": "9d2a600cfdb63f1c352578100d120667c9fceb572f9478fa50b43cf56ce898ae",
+      "source": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/tensor_operations.mod"
+    }
+  },
+  "cpu": 8,
+  "fixture_sha256": {
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/fixture/driver.f90": "7129998ce945189c14f09704daedc77001370be08f782bac17e93294440d51c5",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/fixture/mock_hosts.f90": "46faba494413a88dce9f2aec16663e7a1883ae8c3c8ee8426e3e7b188017b126",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/fixture/tables.f90": "63ca88e1f9dbb9636144b291bbd6a1f7ff2814fc334335491e88c6af0e52d03b"
+  },
+  "global_compile_link_seconds_max": 120,
+  "jobs": [
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-g",
+        "-fcheck=all",
+        "-ffree-line-length-none",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/observer-build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/observer-build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/observer-build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/cms_scalar_observer.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/observer-build/observer.o"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "name": "compile-observer"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-g",
+        "-fcheck=all",
+        "-ffree-line-length-none",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/observer-build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/fixture/tables.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/tables.o"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "name": "compile-tables"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-g",
+        "-fcheck=all",
+        "-ffree-line-length-none",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/observer-build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/fixture/mock_hosts.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/mock_hosts.o"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "name": "compile-mock_hosts"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-g",
+        "-fcheck=all",
+        "-ffree-line-length-none",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/observer-build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/fixture/driver.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/driver.o"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "name": "compile-driver"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/observer-build/observer.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/tables.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/mock_hosts.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/driver.o",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/classifier_mock"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "name": "link-mock"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-ffree-line-length-none",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/actual-build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/actual-build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/observer-build",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/includes",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/generated/avh_olo_checked.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/actual-build/avh_olo_checked.o"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "name": "compile-real-AVH-additions"
+    }
+  ],
+  "jobs_concurrency": 1,
+  "mock_execution_argv": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/classifier_mock"
+  ],
+  "mock_execution_requires_separate_authorization": true,
+  "mock_execution_seconds_max": 15,
+  "schema": "cms-classifier-source-only-compile-plan-v1",
+  "state": "not_authorized_or_executed"
+}

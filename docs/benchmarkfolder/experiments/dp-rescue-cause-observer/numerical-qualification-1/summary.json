@@ -1,0 +1,126 @@
+{
+  "binary_payloads": 0,
+  "cases": {
+    "ew_n3_epem_ttxa": {
+      "bootstrap_separate": [
+        {
+          "contraction_rejections": 0,
+          "finite_host_accuracy_exceeds_threshold": false,
+          "fortran_dp_guard_returns": 0,
+          "host_accuracy_nonfinite": false,
+          "host_rejection_latch": false,
+          "native_dp_failures": 0,
+          "observations": [],
+          "phase": 0,
+          "point": 1,
+          "qp_escalation_branches": 0,
+          "status": 219,
+          "successful_dp_with_finite_host_accuracy_rejection_signature": false,
+          "unstable_dp_groups": 0
+        }
+      ],
+      "cause_attribution_qualified": false,
+      "dp_accepted_points": 82,
+      "host_finite_pre_accuracy_exceed_point_count": 2,
+      "host_finite_pre_accuracy_exceed_points": [
+        17,
+        34
+      ],
+      "immediate_native_dp_error_classes": {
+        "supplied invariant matrix must be symmetric": 531
+      },
+      "native_dp_failure_calls": 531,
+      "native_dp_failure_status_counts": {
+        "2": 531
+      },
+      "observation_point_counts": {
+        "fortran_dp_guard_return": 18,
+        "host_dp_group_final_unstable": 18,
+        "host_dp_post_override_accuracy_exceeds_threshold": 18,
+        "host_dp_pre_override_accuracy_exceeds_threshold": 2,
+        "host_dp_reduction_rejection_latch_set": 18,
+        "host_qp_escalation_branch_taken": 18,
+        "native_dp_status_failure": 18
+      },
+      "performance_eligible": false,
+      "post_stable_contraction_rejection_groups": 0,
+      "public_points": 100,
+      "qp_rescued_points": 18,
+      "scope": "Concurrent observations with independent supplemental joins; no unique-cause or performance claim",
+      "status_counts": {
+        "219": 82,
+        "323": 18
+      }
+    },
+    "qcd_n3_uux_zgg": {
+      "bootstrap_separate": [
+        {
+          "contraction_rejections": 0,
+          "finite_host_accuracy_exceeds_threshold": false,
+          "fortran_dp_guard_returns": 0,
+          "host_accuracy_nonfinite": false,
+          "host_rejection_latch": false,
+          "native_dp_failures": 0,
+          "observations": [],
+          "phase": 0,
+          "point": 1,
+          "qp_escalation_branches": 0,
+          "status": 219,
+          "successful_dp_with_finite_host_accuracy_rejection_signature": false,
+          "unstable_dp_groups": 0
+        }
+      ],
+      "cause_attribution_qualified": false,
+      "dp_accepted_points": 87,
+      "host_finite_pre_accuracy_exceed_point_count": 3,
+      "host_finite_pre_accuracy_exceed_points": [
+        32,
+        39,
+        98
+      ],
+      "immediate_native_dp_error_classes": {
+        "ill-conditioned Gram matrix": 134
+      },
+      "native_dp_failure_calls": 134,
+      "native_dp_failure_status_counts": {
+        "1": 134
+      },
+      "observation_point_counts": {
+        "fortran_dp_guard_return": 13,
+        "host_dp_group_final_unstable": 13,
+        "host_dp_post_override_accuracy_exceeds_threshold": 13,
+        "host_dp_pre_override_accuracy_exceeds_threshold": 3,
+        "host_dp_reduction_rejection_latch_set": 13,
+        "host_qp_escalation_branch_taken": 13,
+        "native_dp_status_failure": 13
+      },
+      "performance_eligible": false,
+      "post_stable_contraction_rejection_groups": 0,
+      "public_points": 100,
+      "qp_rescued_points": 13,
+      "scope": "Concurrent observations with independent supplemental joins; no unique-cause or performance claim",
+      "status_counts": {
+        "219": 87,
+        "323": 13
+      }
+    }
+  },
+  "cause_attribution_qualified": false,
+  "completed_arms": [
+    "qcd_n3_uux_zgg/original",
+    "qcd_n3_uux_zgg/disabled",
+    "qcd_n3_uux_zgg/enabled",
+    "ew_n3_epem_ttxa/original",
+    "ew_n3_epem_ttxa/disabled",
+    "ew_n3_epem_ttxa/enabled"
+  ],
+  "dependency_cache_payloads": 0,
+  "execution_complete": true,
+  "execution_error": null,
+  "numerical_parity_passed": true,
+  "performance_eligible": false,
+  "prior_build_failures": "Preserved in the bound build-qualification package; not duplicated",
+  "runtime_provenance_validated": true,
+  "semantic_parser_replayed_by_packager": false,
+  "supplemental_audit_required_and_retained": true
+}

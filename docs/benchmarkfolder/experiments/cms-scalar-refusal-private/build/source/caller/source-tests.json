@@ -1,0 +1,9 @@
+{
+  "commands_sha256": "7683d7d5368f255236943ac0594653df6d67cd3b360d6f18339a8747dde691e2",
+  "compile_performed": false,
+  "native_performed": false,
+  "prepared_sha256": "a0187fe09ce5c293301b4d088fd25625df818075dd7da7ec9da303efa4d879b2",
+  "scope": "Source/Python only; synthetic parser journal only",
+  "test_sha256": "1641a7bbfe3fc13d02796cfd997d63485fba6c2e1b4039972a580fb308c770eb",
+  "tests": 10
+}

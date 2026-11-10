@@ -1,0 +1,6 @@
+{
+  "audit_index_sha256": "a43855eeb3fcee83c99068258e6f49be86bc352eeb8d37b292a801f4140fed06",
+  "execution_sha256": "c308d6bdf48db24bc428e0c556618e4191fe07535720708f954b62331376f8b4",
+  "packager_sha256": "57df942884630661758b7aac958bc1ba1224949b4b6fbe72aa5e84cad608950e",
+  "scope": "Text packaging only; no numerical execution"
+}

@@ -1,0 +1,578 @@
+{
+  "guarded_grouped": {
+    "expected": [
+      {
+        "group": 4,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,4)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 8,
+        "helper": "FX_LOOP_3",
+        "legacy_call": "CALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,8)",
+        "masses": [
+          "MDL_REAL",
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 3,
+        "nmother": 3,
+        "npair": 3,
+        "pairing": [
+          1,
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 12,
+        "helper": "FX_LOOP_2_3",
+        "legacy_call": "CALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,12)",
+        "masses": [
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 2,
+        "nmother": 3,
+        "npair": 2,
+        "pairing": [
+          1,
+          2
+        ],
+        "rank": 2,
+        "sqso": 1
+      }
+    ],
+    "items": [
+      "# CutTools call for loop numbers 7,9",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,4)\nELSE\nCALL FX_LOOP_2_QPMASS(11,12,DCMPLX(ZERO),CMPLX(MP__ZERO,KIND=16),DCMPLX(MDL_REAL),CMPLX(MP__MDL_REAL,KIND=16),2,I_SO,4)\nENDIF",
+      "# CutTools call for loop numbers 11",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,8)\nELSE\nCALL FX_LOOP_3_QPMASS(11,12,13,DCMPLX(MDL_REAL),CMPLX(MP__MDL_REAL,KIND=16),DCMPLX(MDL_DERIVED),CMPLX(MP__MDL_DERIVED,KIND=16),DCMPLX(CMASS_MDL_CMS),CMPLX(MP__CMASS_MDL_CMS,KIND=16),2,I_SO,8)\nENDIF",
+      "# CutTools call for loop numbers 13",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,12)\nELSE\nCALL FX_LOOP_2_3_QPMASS(1,2,11,12,13,DCMPLX(MDL_DERIVED),CMPLX(MP__MDL_DERIVED,KIND=16),DCMPLX(CMASS_MDL_CMS),CMPLX(MP__CMASS_MDL_CMS,KIND=16),2,I_SO,12)\nENDIF"
+    ]
+  },
+  "guarded_loop_induced": {
+    "expected": [
+      {
+        "group": 7,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,7)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 9,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,9)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 11,
+        "helper": "FX_LOOP_3",
+        "legacy_call": "CALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,11)",
+        "masses": [
+          "MDL_REAL",
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 3,
+        "nmother": 3,
+        "npair": 3,
+        "pairing": [
+          1,
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 13,
+        "helper": "FX_LOOP_2_3",
+        "legacy_call": "CALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,13)",
+        "masses": [
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 2,
+        "nmother": 3,
+        "npair": 2,
+        "pairing": [
+          1,
+          2
+        ],
+        "rank": 2,
+        "sqso": 1
+      }
+    ],
+    "items": [
+      "# CutTools call for loop # 0",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,7)\nELSE\nCALL FX_LOOP_2_QPMASS(11,12,DCMPLX(ZERO),CMPLX(MP__ZERO,KIND=16),DCMPLX(MDL_REAL),CMPLX(MP__MDL_REAL,KIND=16),2,I_SO,7)\nENDIF",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,9)\nELSE\nCALL FX_LOOP_2_QPMASS(11,12,DCMPLX(ZERO),CMPLX(MP__ZERO,KIND=16),DCMPLX(MDL_REAL),CMPLX(MP__MDL_REAL,KIND=16),2,I_SO,9)\nENDIF",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,11)\nELSE\nCALL FX_LOOP_3_QPMASS(11,12,13,DCMPLX(MDL_REAL),CMPLX(MP__MDL_REAL,KIND=16),DCMPLX(MDL_DERIVED),CMPLX(MP__MDL_DERIVED,KIND=16),DCMPLX(CMASS_MDL_CMS),CMPLX(MP__CMASS_MDL_CMS,KIND=16),2,I_SO,11)\nENDIF",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,13)\nELSE\nCALL FX_LOOP_2_3_QPMASS(1,2,11,12,13,DCMPLX(MDL_DERIVED),CMPLX(MP__MDL_DERIVED,KIND=16),DCMPLX(CMASS_MDL_CMS),CMPLX(MP__CMASS_MDL_CMS,KIND=16),2,I_SO,13)\nENDIF"
+    ]
+  },
+  "guarded_ungrouped": {
+    "expected": [
+      {
+        "group": 7,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,7)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 9,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,9)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 11,
+        "helper": "FX_LOOP_3",
+        "legacy_call": "CALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,11)",
+        "masses": [
+          "MDL_REAL",
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 3,
+        "nmother": 3,
+        "npair": 3,
+        "pairing": [
+          1,
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 13,
+        "helper": "FX_LOOP_2_3",
+        "legacy_call": "CALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,13)",
+        "masses": [
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 2,
+        "nmother": 3,
+        "npair": 2,
+        "pairing": [
+          1,
+          2
+        ],
+        "rank": 2,
+        "sqso": 1
+      }
+    ],
+    "items": [
+      "# CutTools call for loop # 0",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,7)\nELSE\nCALL FX_LOOP_2_QPMASS(11,12,DCMPLX(ZERO),CMPLX(MP__ZERO,KIND=16),DCMPLX(MDL_REAL),CMPLX(MP__MDL_REAL,KIND=16),2,I_SO,7)\nENDIF",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,9)\nELSE\nCALL FX_LOOP_2_QPMASS(11,12,DCMPLX(ZERO),CMPLX(MP__ZERO,KIND=16),DCMPLX(MDL_REAL),CMPLX(MP__MDL_REAL,KIND=16),2,I_SO,9)\nENDIF",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,11)\nELSE\nCALL FX_LOOP_3_QPMASS(11,12,13,DCMPLX(MDL_REAL),CMPLX(MP__MDL_REAL,KIND=16),DCMPLX(MDL_DERIVED),CMPLX(MP__MDL_DERIVED,KIND=16),DCMPLX(CMASS_MDL_CMS),CMPLX(MP__CMASS_MDL_CMS,KIND=16),2,I_SO,11)\nENDIF",
+      "IF(CTMODE.LT.4) THEN\nCALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,13)\nELSE\nCALL FX_LOOP_2_3_QPMASS(1,2,11,12,13,DCMPLX(MDL_DERIVED),CMPLX(MP__MDL_DERIVED,KIND=16),DCMPLX(CMASS_MDL_CMS),CMPLX(MP__CMASS_MDL_CMS,KIND=16),2,I_SO,13)\nENDIF"
+    ]
+  },
+  "legacy_grouped": {
+    "expected": [
+      {
+        "group": 4,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,4)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 8,
+        "helper": "FX_LOOP_3",
+        "legacy_call": "CALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,8)",
+        "masses": [
+          "MDL_REAL",
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 3,
+        "nmother": 3,
+        "npair": 3,
+        "pairing": [
+          1,
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 12,
+        "helper": "FX_LOOP_2_3",
+        "legacy_call": "CALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,12)",
+        "masses": [
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 2,
+        "nmother": 3,
+        "npair": 2,
+        "pairing": [
+          1,
+          2
+        ],
+        "rank": 2,
+        "sqso": 1
+      }
+    ],
+    "items": [
+      "# CutTools call for loop numbers 7,9",
+      "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,4)",
+      "# CutTools call for loop numbers 11",
+      "CALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,8)",
+      "# CutTools call for loop numbers 13",
+      "CALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,12)"
+    ]
+  },
+  "legacy_loop_induced": {
+    "expected": [
+      {
+        "group": 7,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,7)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 9,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,9)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 11,
+        "helper": "FX_LOOP_3",
+        "legacy_call": "CALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,11)",
+        "masses": [
+          "MDL_REAL",
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 3,
+        "nmother": 3,
+        "npair": 3,
+        "pairing": [
+          1,
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 13,
+        "helper": "FX_LOOP_2_3",
+        "legacy_call": "CALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,13)",
+        "masses": [
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 2,
+        "nmother": 3,
+        "npair": 2,
+        "pairing": [
+          1,
+          2
+        ],
+        "rank": 2,
+        "sqso": 1
+      }
+    ],
+    "items": [
+      "# CutTools call for loop # 0",
+      "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,7)",
+      "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,9)",
+      "CALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,11)",
+      "CALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,13)"
+    ]
+  },
+  "legacy_ungrouped": {
+    "expected": [
+      {
+        "group": 7,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,7)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 9,
+        "helper": "FX_LOOP_2",
+        "legacy_call": "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,9)",
+        "masses": [
+          "ZERO",
+          "MDL_REAL"
+        ],
+        "mothers": [
+          11,
+          12
+        ],
+        "n": 2,
+        "nmother": 2,
+        "npair": 2,
+        "pairing": [
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 11,
+        "helper": "FX_LOOP_3",
+        "legacy_call": "CALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,11)",
+        "masses": [
+          "MDL_REAL",
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 3,
+        "nmother": 3,
+        "npair": 3,
+        "pairing": [
+          1,
+          1,
+          1
+        ],
+        "rank": 2,
+        "sqso": 1
+      },
+      {
+        "group": 13,
+        "helper": "FX_LOOP_2_3",
+        "legacy_call": "CALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,13)",
+        "masses": [
+          "MDL_DERIVED",
+          "CMASS_MDL_CMS"
+        ],
+        "mothers": [
+          11,
+          12,
+          13
+        ],
+        "n": 2,
+        "nmother": 3,
+        "npair": 2,
+        "pairing": [
+          1,
+          2
+        ],
+        "rank": 2,
+        "sqso": 1
+      }
+    ],
+    "items": [
+      "# CutTools call for loop # 0",
+      "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,7)",
+      "CALL FX_LOOP_2(11,12,DCMPLX(ZERO),DCMPLX(MDL_REAL),2,I_SO,9)",
+      "CALL FX_LOOP_3(11,12,13,DCMPLX(MDL_REAL),DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,11)",
+      "CALL FX_LOOP_2_3(1,2,11,12,13,DCMPLX(MDL_DERIVED),DCMPLX(CMASS_MDL_CMS),2,I_SO,13)"
+    ]
+  }
+}

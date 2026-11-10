@@ -1,0 +1,5106 @@
+{
+  "artifacts": [
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libautocfg-6482272c94dbe29e.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libautocfg-6482272c94dbe29e.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#autocfg@1.5.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "autocfg",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/autocfg-1.5.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/libc-f26329f87be17570/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.191/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#libc@0.2.191",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.191/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "proc-macro"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/proc-macro2-9e111221213d9a19/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-1.0.107/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#proc-macro2@1.0.107",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-1.0.107/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblibc-7e36e2be020f2d63.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblibc-7e36e2be020f2d63.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.191/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#libc@0.2.191",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "libc",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libc-0.2.191/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libunicode_ident-82c529568941253c.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libunicode_ident-82c529568941253c.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/unicode-ident-1.0.27/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#unicode-ident@1.0.27",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "unicode_ident",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/unicode-ident-1.0.27/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "proc-macro"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/quote-5b86985bf3e8ffe9/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.47/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#quote@1.0.47",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.47/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "proc-macro"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libproc_macro2-1e8e0c2fcef5238d.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libproc_macro2-1e8e0c2fcef5238d.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-1.0.107/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#proc-macro2@1.0.107",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "proc_macro2",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/proc-macro2-1.0.107/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "proc-macro"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libquote-61d12d4c6ace3fa8.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libquote-61d12d4c6ace3fa8.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.47/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#quote@1.0.47",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "quote",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/quote-1.0.47/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcfg_if-c69b6e2cd5b3627b.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcfg_if-c69b6e2cd5b3627b.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-if-1.0.5/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#cfg-if@1.0.5",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "cfg_if",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/cfg-if-1.0.5/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "i128",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/num-traits-9b924cd203b5c7da/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-traits-0.2.19/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#num-traits@0.2.19",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-traits-0.2.19/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "result",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/serde_core-caad5b47ca70613a/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_core-1.0.229/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#serde_core@1.0.229",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_core-1.0.229/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "i128",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_traits-645e739df656565c.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_traits-645e739df656565c.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-traits-0.2.19/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#num-traits@0.2.19",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "num_traits",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-traits-0.2.19/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "result",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libserde_core-269dc3323dabeb7d.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libserde_core-269dc3323dabeb7d.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_core-1.0.229/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#serde_core@1.0.229",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "serde_core",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_core-1.0.229/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/getrandom-440eb9eb0b0ec48c/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.3.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#getrandom@0.3.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.3.4/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/crossbeam-utils-ee03f32fcdfdf908/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-utils-0.8.23/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#crossbeam-utils@0.8.23",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-utils-0.8.23/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libversion_check-1f81648c4c0e2e90.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libversion_check-1f81648c4c0e2e90.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#version_check@0.9.5",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "version_check",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "simd"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/zerocopy-2ac377e2d6d98994/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zerocopy-0.8.63/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#zerocopy@0.8.63",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zerocopy-0.8.63/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbytemuck-4c0e998c8f191481.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbytemuck-4c0e998c8f191481.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bytemuck-1.25.2/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#bytemuck@1.25.2",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "bytemuck",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bytemuck-1.25.2/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "clone-impls",
+        "default",
+        "derive",
+        "parsing",
+        "printing",
+        "proc-macro"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsyn-35cf47a99692b833.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsyn-35cf47a99692b833.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/syn-3.0.10/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#syn@3.0.10",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "syn",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/syn-3.0.10/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "default",
+        "race",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libonce_cell-8045f909e643ef89.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libonce_cell-8045f909e643ef89.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#once_cell@1.21.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "once_cell",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.4/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/crossbeam-epoch-87fe76216169d09f/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#crossbeam-epoch@0.9.21",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libgetrandom-4eb99ebd3edbf450.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libgetrandom-4eb99ebd3edbf450.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.3.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#getrandom@0.3.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "getrandom",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/getrandom-0.3.4/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcrossbeam_utils-f27fbf6768f7e921.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcrossbeam_utils-f27fbf6768f7e921.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-utils-0.8.23/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#crossbeam-utils@0.8.23",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "crossbeam_utils",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-utils-0.8.23/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "simd"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libzerocopy-45f37ae213727b66.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libzerocopy-45f37ae213727b66.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zerocopy-0.8.63/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#zerocopy@0.8.63",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "zerocopy",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zerocopy-0.8.63/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/crossbeam-deque-761b097a3c6fd1fe/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.8/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#crossbeam-deque@0.8.8",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.8/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcrossbeam_epoch-f5d17f8a35d03ac1.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcrossbeam_epoch-f5d17f8a35d03ac1.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#crossbeam-epoch@0.9.21",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "crossbeam_epoch",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-epoch-0.9.21/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "clone-impls",
+        "default",
+        "derive",
+        "extra-traits",
+        "full",
+        "parsing",
+        "printing",
+        "proc-macro",
+        "visit-mut"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsyn-92754a006f73c8a9.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsyn-92754a006f73c8a9.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/syn-2.0.119/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#syn@2.0.119",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "syn",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/syn-2.0.119/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/rayon-core-5616375c9546e04d/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#rayon-core@1.13.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "arch",
+        "default"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/libm-1cd1250be4fd9dec/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libm-0.2.16/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#libm@0.2.16",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libm-0.2.16/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "derive",
+        "serde_derive",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/serde-0b3f710abc1858c2/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.229",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libvirtue-0d64f4b57c8a1ab1.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libvirtue-0d64f4b57c8a1ab1.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/virtue-0.0.18/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#virtue@0.0.18",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "virtue",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/virtue-0.0.18/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/paste-e4066c8fee7cc8e4/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/paste-1.0.15/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#paste@1.0.15",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2018",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/paste-1.0.15/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "mpc",
+        "mpfr"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/gmp-mpfr-sys-e100315c1a9259de/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/gmp-mpfr-sys-1.7.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#gmp-mpfr-sys@1.7.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/gmp-mpfr-sys-1.7.1/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbincode_derive-ff885b85fc08cc45.so"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bincode_derive-2.0.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#bincode_derive@2.0.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "proc-macro"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "proc-macro"
+        ],
+        "name": "bincode_derive",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bincode_derive-2.0.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcrossbeam_deque-7ae56abf0d89f215.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcrossbeam_deque-7ae56abf0d89f215.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.8/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#crossbeam-deque@0.8.8",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "crossbeam_deque",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-deque-0.8.8/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "simd",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libppv_lite86-2acacaac88f2030a.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libppv_lite86-2acacaac88f2030a.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#ppv-lite86@0.2.21",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "ppv_lite86",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/ppv-lite86-0.2.21/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "os_rng",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librand_core-70789f69bb7d45d4.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librand_core-70789f69bb7d45d4.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rand_core-0.9.5/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#rand_core@0.9.5",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "rand_core",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rand_core-0.9.5/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libserde_derive-f84800f81583b818.so"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_derive-1.0.229/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#serde_derive@1.0.229",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "proc-macro"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "proc-macro"
+        ],
+        "name": "serde_derive",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_derive-1.0.229/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "bytemuck",
+        "default"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsafe_arch-0e153a69d816dedf.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsafe_arch-0e153a69d816dedf.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/safe_arch-0.7.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#safe_arch@0.7.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "safe_arch",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/safe_arch-0.7.4/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "getrandom",
+        "runtime-rng",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/ahash-1174db4db62d9a9a/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/ahash-0.8.12/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#ahash@0.8.12",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2018",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/ahash-0.8.12/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_complex-f05fae681cedcb45.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_complex-f05fae681cedcb45.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-complex-0.4.6/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#num-complex@0.4.6",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "num_complex",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-complex-0.4.6/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "std",
+        "use_std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libeither-ea1c995b1ae0cd00.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libeither-ea1c995b1ae0cd00.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/either-1.19.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#either@1.19.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "either",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/either-1.19.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libwide-00640bc39eadfb02.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libwide-00640bc39eadfb02.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/wide-0.7.33/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#wide@0.7.33",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "wide",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/wide-0.7.33/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "derive",
+        "serde_derive",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libserde-06ed458856ffa50d.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libserde-06ed458856ffa50d.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.229",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "serde",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librand_chacha-2703d97de2af1c85.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librand_chacha-2703d97de2af1c85.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rand_chacha-0.9.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#rand_chacha@0.9.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "rand_chacha",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rand_chacha-0.9.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librayon_core-afff4e30c97e5be2.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librayon_core-afff4e30c97e5be2.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#rayon-core@1.13.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "rayon_core",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-core-1.13.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "arch",
+        "default"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblibm-9dba15360bbd234d.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblibm-9dba15360bbd234d.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libm-0.2.16/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#libm@0.2.16",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "libm",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libm-0.2.16/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libpaste-90fe978b2d19d9d6.so"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/paste-1.0.15/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#paste@1.0.15",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "proc-macro"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "proc-macro"
+        ],
+        "name": "paste",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/paste-1.0.15/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "bytemuck",
+        "default"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsafe_arch-9ba23e30cdb6ece2.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsafe_arch-9ba23e30cdb6ece2.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/safe_arch-1.2.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#safe_arch@1.2.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "safe_arch",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/safe_arch-1.2.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libapprox-9777b989614d1f25.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libapprox-9777b989614d1f25.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/approx-0.5.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#approx@0.5.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "approx",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/approx-0.5.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/anyhow-26056e0637531f50/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/anyhow-1.0.104/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#anyhow@1.0.104",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/anyhow-1.0.104/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/zmij-be31d3620a8b4ba8/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zmij-1.0.23/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#zmij@1.0.23",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zmij-1.0.23/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libunty-c5875d5a9e501549.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libunty-c5875d5a9e501549.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/unty-0.0.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#unty@0.0.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "unty",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/unty-0.0.4/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "complex",
+        "default",
+        "float",
+        "gmp-mpfr-sys",
+        "integer",
+        "rand",
+        "rational",
+        "serde",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/rug-1444fae0e339bda2/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rug-1.30.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#rug@1.30.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2024",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rug-1.30.0/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "bincode_derive",
+        "default",
+        "derive",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbincode-8895affbe1cac148.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbincode-8895affbe1cac148.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bincode-2.0.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#bincode@2.0.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "bincode",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bincode-2.0.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std",
+        "wide"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsimba-51f3e70dc089fcc2.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsimba-51f3e70dc089fcc2.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/simba-0.9.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#simba@0.9.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "simba",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/simba-0.9.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libwide-6ae4ed5b87676301.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libwide-6ae4ed5b87676301.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/wide-1.7.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#wide@1.7.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "wide",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/wide-1.7.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librayon-acd2463abb511c66.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librayon-acd2463abb511c66.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-1.12.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#rayon@1.12.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "rayon",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rayon-1.12.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "default",
+        "os_rng",
+        "small_rng",
+        "std",
+        "std_rng",
+        "thread_rng"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librand-48236132f997484a.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librand-48236132f997484a.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rand-0.9.5/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#rand@0.9.5",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "rand",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rand-0.9.5/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "getrandom",
+        "runtime-rng",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libahash-0983fb0bfbccf559.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libahash-0983fb0bfbccf559.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/ahash-0.8.12/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#ahash@0.8.12",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "ahash",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/ahash-0.8.12/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "mpc",
+        "mpfr"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libgmp_mpfr_sys-fec1c8af4019cdd8.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libgmp_mpfr_sys-fec1c8af4019cdd8.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/gmp-mpfr-sys-1.7.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#gmp-mpfr-sys@1.7.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "gmp_mpfr_sys",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/gmp-mpfr-sys-1.7.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "once_cell",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtracing_core-fe1e63167003c99a.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtracing_core-fe1e63167003c99a.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-core-0.1.36/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#tracing-core@0.1.36",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "tracing_core",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-core-0.1.36/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "i128",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_integer-190d1236c87b5cb6.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_integer-190d1236c87b5cb6.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.47/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#num-integer@0.1.47",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "num_integer",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.47/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "default-stack",
+        "libc",
+        "unwind",
+        "windows-sys"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/corosensei-7c876046b3dd3431/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/corosensei-0.3.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#corosensei@0.3.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/corosensei-0.3.4/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsmallvec-b51cacf9b86cce35.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsmallvec-b51cacf9b86cce35.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.16.5/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#smallvec@1.16.5",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "smallvec",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/smallvec-1.16.5/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libaz-e79a659c19ce0137.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libaz-e79a659c19ce0137.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/az-1.3.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#az@1.3.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "az",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/az-1.3.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblazy_static-d1429d43b1c95be3.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblazy_static-d1429d43b1c95be3.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/lazy_static-1.5.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#lazy_static@1.5.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "lazy_static",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/lazy_static-1.5.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libregex_syntax-d442aae22dcf74a9.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libregex_syntax-d442aae22dcf74a9.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/regex-syntax-0.8.11/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#regex-syntax@0.8.11",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "regex_syntax",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/regex-syntax-0.8.11/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libunty-920fa4d14693da27.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libunty-920fa4d14693da27.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/unty-0.0.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#unty@0.0.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "unty",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/unty-0.0.4/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liballoc_no_stdlib-ae0d06cd869ff1e9.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liballoc_no_stdlib-ae0d06cd869ff1e9.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/alloc-no-stdlib-2.0.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#alloc-no-stdlib@2.0.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "alloc_no_stdlib",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/alloc-no-stdlib-2.0.4/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/serde_json-48e794fcd88fff26/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.154/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.154",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.154/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libwinnow-640f959a3fcce462.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libwinnow-640f959a3fcce462.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/winnow-1.0.5/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#winnow@1.0.5",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "winnow",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/winnow-1.0.5/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtoml_parser-530e5063a8f76bc5.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtoml_parser-530e5063a8f76bc5.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/toml_parser-1.1.5+spec-1.1.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#toml_parser@1.1.5+spec-1.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "toml_parser",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/toml_parser-1.1.5+spec-1.1.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liballoc_stdlib-c3175d43118626fd.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liballoc_stdlib-c3175d43118626fd.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/alloc-stdlib-0.2.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#alloc-stdlib@0.2.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "alloc_stdlib",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/alloc-stdlib-0.2.4/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "bincode_derive",
+        "default",
+        "derive",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbincode-ef9b3f5a848a932c.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbincode-ef9b3f5a848a932c.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bincode-2.0.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#bincode@2.0.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "bincode",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bincode-2.0.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "dfa-build",
+        "dfa-search",
+        "nfa-thompson",
+        "std",
+        "syntax"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libregex_automata-b812a7f29a982f06.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libregex_automata-b812a7f29a982f06.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/regex-automata-0.4.18/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#regex-automata@0.4.18",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "regex_automata",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/regex-automata-0.4.18/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "complex",
+        "default",
+        "float",
+        "gmp-mpfr-sys",
+        "integer",
+        "rand",
+        "rational",
+        "serde",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librug-325f50eee516f471.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/librug-325f50eee516f471.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rug-1.30.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#rug@1.30.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "rug",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/rug-1.30.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_bigint-d71fa8f58188c281.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_bigint-d71fa8f58188c281.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-bigint-0.4.8/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#num-bigint@0.4.8",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "num_bigint",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-bigint-0.4.8/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libxprec-7e79bd3daf2bf4fc.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libxprec-7e79bd3daf2bf4fc.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/xprec-0.2.3/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#xprec@0.2.3",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "xprec",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/xprec-0.2.3/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libanyhow-d7ad237a630e6bdf.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libanyhow-d7ad237a630e6bdf.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/anyhow-1.0.104/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#anyhow@1.0.104",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "anyhow",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/anyhow-1.0.104/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libzmij-9186daac0077c385.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libzmij-9186daac0077c385.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zmij-1.0.23/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#zmij@1.0.23",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "zmij",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zmij-1.0.23/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbincode_trait_derive-eb109bab31887181.so"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bincode-trait-derive-0.1.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#bincode-trait-derive@0.1.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "proc-macro"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "proc-macro"
+        ],
+        "name": "bincode_trait_derive",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bincode-trait-derive-0.1.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "use_alloc",
+        "use_std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libitertools-4b759bfb7c9b2ffa.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libitertools-4b759bfb7c9b2ffa.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/itertools-0.14.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#itertools@0.14.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "itertools",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/itertools-0.14.0/src/lib.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtracing_attributes-23d5c6b40b3b30be.so"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#tracing-attributes@0.1.31",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "proc-macro"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "proc-macro"
+        ],
+        "name": "tracing_attributes",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/smartstring-1975d2e882ee12b8/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/smartstring-1.0.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#smartstring@1.0.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/smartstring-1.0.1/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "serde",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libserde_spanned-30a1ad1b7eae5307.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libserde_spanned-30a1ad1b7eae5307.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_spanned-1.1.3/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#serde_spanned@1.1.3",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "serde_spanned",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_spanned-1.1.3/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "serde",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtoml_datetime-7c7cb1a144eae1c9.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtoml_datetime-7c7cb1a144eae1c9.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/toml_datetime-1.1.3+spec-1.1.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#toml_datetime@1.1.3+spec-1.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "toml_datetime",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/toml_datetime-1.1.3+spec-1.1.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liballocator_api2-756627c4191e7f2d.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liballocator_api2-756627c4191e7f2d.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/allocator-api2-0.2.21/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#allocator-api2@0.2.21",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "allocator_api2",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/allocator-api2-0.2.21/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libequivalent-2dcf165242b9081d.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libequivalent-2dcf165242b9081d.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/equivalent-1.0.3/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#equivalent@1.0.3",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "equivalent",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/equivalent-1.0.3/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libitoa-c70f1cc3c1427b02.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libitoa-c70f1cc3c1427b02.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/itoa-1.0.19/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#itoa@1.0.19",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "itoa",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/itoa-1.0.19/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbitflags-5487541b8d138737.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbitflags-5487541b8d138737.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bitflags-1.3.2/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#bitflags@1.3.2",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "bitflags",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bitflags-1.3.2/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblog-36074c177b01661e.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblog-36074c177b01661e.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.35/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#log@0.4.35",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "log",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/log-0.4.35/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libdyn_clone-34d1f12cd0576d67.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libdyn_clone-34d1f12cd0576d67.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/dyn-clone-1.0.20/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#dyn-clone@1.0.20",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "dyn_clone",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/dyn-clone-1.0.20/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcolored-5c54d054d2089828.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcolored-5c54d054d2089828.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/colored-3.1.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#colored@3.1.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "colored",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/colored-3.1.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libscopeguard-974a9555d73ecf55.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libscopeguard-974a9555d73ecf55.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/scopeguard-1.2.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#scopeguard@1.2.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "scopeguard",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/scopeguard-1.2.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liboption_ext-651ffd67c06890aa.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liboption_ext-651ffd67c06890aa.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/option-ext-0.2.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#option-ext@0.2.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "option_ext",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/option-ext-0.2.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libpin_project_lite-96e04fe676fd4a39.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libpin_project_lite-96e04fe676fd4a39.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/pin-project-lite-0.2.17/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#pin-project-lite@0.2.17",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "pin_project_lite",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/pin-project-lite-0.2.17/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libmemchr-09a60c3fb80f8438.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libmemchr-09a60c3fb80f8438.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/memchr-2.8.3/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#memchr@2.8.3",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "memchr",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/memchr-2.8.3/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libfoldhash-55354ed1aa53a7c0.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libfoldhash-55354ed1aa53a7c0.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/foldhash-0.2.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#foldhash@0.2.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "foldhash",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/foldhash-0.2.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtoml_writer-b0f5ca698770021c.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtoml_writer-b0f5ca698770021c.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/toml_writer-1.2.0+spec-1.1.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#toml_writer@1.2.0+spec-1.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "toml_writer",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/toml_writer-1.2.0+spec-1.1.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "display",
+        "parse",
+        "serde",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtoml-976929288224e45c.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtoml-976929288224e45c.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/toml-1.2.1+spec-1.1.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#toml@1.2.1+spec-1.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "toml",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/toml-1.2.1+spec-1.1.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "allocator-api2",
+        "default",
+        "default-hasher",
+        "equivalent",
+        "inline-more",
+        "raw-entry"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libhashbrown-69c5fb1af3b7a756.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libhashbrown-69c5fb1af3b7a756.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/hashbrown-0.16.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#hashbrown@0.16.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "hashbrown",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/hashbrown-0.16.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libserde_json-93de1e04f0019bac.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libserde_json-93de1e04f0019bac.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.154/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.154",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "serde_json",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.154/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "attributes",
+        "default",
+        "release_max_level_info",
+        "std",
+        "tracing-attributes"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtracing-7133d26f1efc07e8.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtracing-7133d26f1efc07e8.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#tracing@0.1.44",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "tracing",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-0.1.44/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libdirs_sys-6713d2975f471923.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libdirs_sys-6713d2975f471923.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/dirs-sys-0.5.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#dirs-sys@0.5.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "dirs_sys",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/dirs-sys-0.5.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "default-stack",
+        "libc",
+        "unwind",
+        "windows-sys"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcorosensei-37423467bb0da75a.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libcorosensei-37423467bb0da75a.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/corosensei-0.3.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#corosensei@0.3.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "corosensei",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/corosensei-0.3.4/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "bincode",
+        "float-mpfr",
+        "integer-gmp",
+        "serde"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnumerica-382a22d36f1a8065.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnumerica-382a22d36f1a8065.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/lib/numerica/Cargo.toml",
+      "package_id": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#numerica@3.0.2",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "numerica",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/lib/numerica/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "log-tracer",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtracing_log-8765330f77271e64.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtracing_log-8765330f77271e64.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#tracing-log@0.2.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "tracing_log",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libregion-b112f90a7af891f7.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libregion-b112f90a7af891f7.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/region-3.0.2/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#region@3.0.2",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "region",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/region-3.0.2/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libwasmtime_jit_icache_coherence-f3ecb06ce74df194.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libwasmtime_jit_icache_coherence-f3ecb06ce74df194.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/wasmtime-jit-icache-coherence-34.0.2/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#wasmtime-jit-icache-coherence@34.0.2",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "wasmtime_jit_icache_coherence",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/wasmtime-jit-icache-coherence-34.0.2/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "num-bigint",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_rational-04d4382be46d5342.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnum_rational-04d4382be46d5342.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-rational-0.4.2/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#num-rational@0.4.2",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "num_rational",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/num-rational-0.4.2/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libmatchers-b5441b8ec56d3f83.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libmatchers-b5441b8ec56d3f83.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/matchers-0.2.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#matchers@0.2.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "matchers",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/matchers-0.2.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc-stdlib",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbrotli_decompressor-68b723017757f683.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbrotli_decompressor-68b723017757f683.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/brotli-decompressor-5.0.3/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#brotli-decompressor@5.0.3",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "brotli_decompressor",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/brotli-decompressor-5.0.3/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsharded_slab-9661219cfcead9d3.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsharded_slab-9661219cfcead9d3.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/sharded-slab-0.1.7/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#sharded-slab@0.1.7",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "sharded_slab",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/sharded-slab-0.1.7/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libthread_local-192b151ca489ac53.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libthread_local-192b151ca489ac53.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#thread_local@1.1.10",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "thread_local",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libhugepage_rs-c7182ad5b95f367c.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libhugepage_rs-c7182ad5b95f367c.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/hugepage-rs-0.1.2/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#hugepage-rs@0.1.2",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "hugepage_rs",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/hugepage-rs-0.1.2/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnu_ansi_term-6c8e41dc409dd4ee.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libnu_ansi_term-6c8e41dc409dd4ee.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/nu-ansi-term-0.50.3/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#nu-ansi-term@0.50.3",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "nu_ansi_term",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/nu-ansi-term-0.50.3/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libspec_math-e90ab1a3a1d536f5.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libspec_math-e90ab1a3a1d536f5.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/spec_math-0.1.6/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#spec_math@0.1.6",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "spec_math",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/spec_math-0.1.6/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libstatic_assertions-e39c353841482ac6.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libstatic_assertions-e39c353841482ac6.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/static_assertions-1.1.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#static_assertions@1.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "static_assertions",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/static_assertions-1.1.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "bincode",
+        "float-mpfr",
+        "integer-gmp",
+        "native_code_generation",
+        "serde",
+        "tracing_max_level_info"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/symbolica-cac7ce11ecb2ca93/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/Cargo.toml",
+      "package_id": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#symbolica@3.0.2",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2024",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsmartstring-3e2536144baa9ffb.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsmartstring-3e2536144baa9ffb.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/smartstring-1.0.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#smartstring@1.0.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "smartstring",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/smartstring-1.0.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "async",
+        "default"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsymjit-e890c7c63f52ca13.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsymjit-e890c7c63f52ca13.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/symjit-2.28.3/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#symjit@2.28.3",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "rlib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "rlib"
+        ],
+        "name": "symjit",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/symjit-2.28.3/rust/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "ansi",
+        "default",
+        "env-filter",
+        "fmt",
+        "matchers",
+        "nu-ansi-term",
+        "once_cell",
+        "registry",
+        "sharded-slab",
+        "smallvec",
+        "std",
+        "thread_local",
+        "tracing",
+        "tracing-log"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtracing_subscriber-d6717312c91e06b6.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtracing_subscriber-d6717312c91e06b6.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-subscriber-0.3.23/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#tracing-subscriber@0.3.23",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "tracing_subscriber",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-subscriber-0.3.23/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc-stdlib",
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbrotli-e4f3c8b6ef80f549.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbrotli-e4f3c8b6ef80f549.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/brotli-8.0.4/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#brotli@8.0.4",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "brotli",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/brotli-8.0.4/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libgraphica-dec6b4af745cfd7d.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libgraphica-dec6b4af745cfd7d.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/lib/graphica/Cargo.toml",
+      "package_id": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#graphica@3.0.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "graphica",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/lib/graphica/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libdirectories-d1befdbfa2e0131b.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libdirectories-d1befdbfa2e0131b.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/directories-6.0.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#directories@6.0.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2015",
+        "kind": [
+          "lib"
+        ],
+        "name": "directories",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/directories-6.0.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblibloading-722bc5e832421567.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liblibloading-722bc5e832421567.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libloading-0.9.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#libloading@0.9.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "libloading",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/libloading-0.9.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbyteorder-ea5d99e4c4837c06.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbyteorder-ea5d99e4c4837c06.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/byteorder-1.5.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#byteorder@1.5.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "byteorder",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/byteorder-1.5.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libappend_only_vec-14ca6fd4930c9e09.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libappend_only_vec-14ca6fd4930c9e09.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/append-only-vec-0.1.10/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#append-only-vec@0.1.10",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "append_only_vec",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/append-only-vec-0.1.10/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbytes-2d47405b2b0e36fa.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libbytes-2d47405b2b0e36fa.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bytes-1.12.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#bytes@1.12.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "bytes",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/bytes-1.12.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libself_cell-05b3010d14121661.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libself_cell-05b3010d14121661.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/self_cell-1.3.0/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#self_cell@1.3.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "self_cell",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/self_cell-1.3.0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "alloc",
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libdata_encoding-908c9d93bdc58f3d.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libdata_encoding-908c9d93bdc58f3d.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/data-encoding-2.11.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#data-encoding@2.11.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "data_encoding",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/data-encoding-2.11.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libed25519_compact-f939c86d3da53f67.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libed25519_compact-f939c86d3da53f67.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/ed25519-compact-2.6.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#ed25519-compact@2.6.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "ed25519_compact",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/ed25519-compact-2.6.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtinyjson-9c2453b6b48f8d70.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libtinyjson-9c2453b6b48f8d70.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tinyjson-2.5.1/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#tinyjson@2.5.1",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2018",
+        "kind": [
+          "lib"
+        ],
+        "name": "tinyjson",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tinyjson-2.5.1/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libinventory-af2de02a4a75cc64.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libinventory-af2de02a4a75cc64.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/inventory-0.3.25/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#inventory@0.3.25",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "inventory",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/inventory-0.3.25/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "bincode",
+        "float-mpfr",
+        "integer-gmp",
+        "native_code_generation",
+        "serde",
+        "tracing_max_level_info"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsymbolica-bfa2826cb07859dd.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libsymbolica-bfa2826cb07859dd.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/Cargo.toml",
+      "package_id": "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#symbolica@3.0.2",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "symbolica",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "generated-evaluators",
+        "rust-codegen"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liboneloop-6fdcef74f4f3bbfd.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/liboneloop-6fdcef74f4f3bbfd.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/oneloopmaster-1e046f4c0b16c2f9/bd703d0/Cargo.toml",
+      "package_id": "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#oneloop@0.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "oneloop",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/oneloopmaster-1e046f4c0b16c2f9/bd703d0/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/build/thiserror-8258f5eff4e697ee/build-script-build"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "bin"
+        ],
+        "doc": false,
+        "doctest": false,
+        "edition": "2021",
+        "kind": [
+          "custom-build"
+        ],
+        "name": "build-script-build",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/build.rs",
+        "test": false
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libthiserror_impl-e00bcb0acdec4b83.so"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-impl-2.0.21/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#thiserror-impl@2.0.21",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "0",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "proc-macro"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "proc-macro"
+        ],
+        "name": "thiserror_impl",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-impl-2.0.21/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "std"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libthiserror-1e24fbd8a8764460.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libthiserror-1e24fbd8a8764460.rmeta"
+      ],
+      "fresh": true,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/Cargo.toml",
+      "package_id": "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.21",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2021",
+        "kind": [
+          "lib"
+        ],
+        "name": "thiserror",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.21/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libiregi_masters-ac3eabb5a5c85f25.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libiregi_masters-ac3eabb5a5c85f25.rmeta"
+      ],
+      "fresh": false,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-development/crates/iregi-masters/Cargo.toml",
+      "package_id": "path+file:///shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-development/crates/iregi-masters#0.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "iregi_masters",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-development/crates/iregi-masters/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libmadloop_pole_kernels-68be72d3df035732.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libmadloop_pole_kernels-68be72d3df035732.rmeta"
+      ],
+      "fresh": false,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-development/madloop-pole-kernels/Cargo.toml",
+      "package_id": "path+file:///shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-development/madloop-pole-kernels#0.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "madloop_pole_kernels",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-development/madloop-pole-kernels/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libiregi_rust-9f1f09d97d2a1693.rlib",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-build/release/deps/libiregi_rust-9f1f09d97d2a1693.rmeta"
+      ],
+      "fresh": false,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-development/crates/iregi-rust/Cargo.toml",
+      "package_id": "path+file:///shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-development/crates/iregi-rust#0.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "lib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "lib"
+        ],
+        "name": "iregi_rust",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/pole-development/crates/iregi-rust/src/lib.rs",
+        "test": true
+      }
+    },
+    {
+      "executable": null,
+      "features": [
+        "default",
+        "poles-only"
+      ],
+      "filenames": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/target/release/libmadloop_tirust_adaptive_private.so",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/target/release/libmadloop_tirust_adaptive_private.rlib"
+      ],
+      "fresh": false,
+      "manifest_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-prototype3/Cargo.toml",
+      "package_id": "path+file:///shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-prototype3#madloop-tirust-adaptive-private@0.1.0",
+      "profile": {
+        "debug_assertions": false,
+        "debuginfo": 0,
+        "opt_level": "3",
+        "overflow_checks": false,
+        "test": false
+      },
+      "reason": "compiler-artifact",
+      "target": {
+        "crate_types": [
+          "cdylib",
+          "rlib"
+        ],
+        "doc": true,
+        "doctest": true,
+        "edition": "2024",
+        "kind": [
+          "cdylib",
+          "rlib"
+        ],
+        "name": "madloop_tirust_adaptive_private",
+        "src_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-prototype3/src/lib.rs",
+        "test": true
+      }
+    }
+  ],
+  "fresh_count": 140,
+  "interpretation": "Actual Cargo compiler-artifact records; cache availability was not assumed to imply freshness.",
+  "rebuilt_count": 4,
+  "schema": 1
+}

@@ -1,0 +1,71 @@
+--- current-original-qp/control.py
++++ loader-correction/additive/control.py
+@@ -11,8 +11,9 @@
+ import time
+ 
+ sys.dont_write_bytecode=True
+-HERE=Path(__file__).resolve().parent
+-PARENT=HERE.parent
++RESULTS=Path(__file__).resolve().parent
++PARENT=RESULTS.parents[1]
++HERE=PARENT/'current-original-qp'
+ ROOT=PARENT.parents[2]
+ 
+ def sha(p):
+@@ -28,8 +29,12 @@
+ 
+ def prior_observations(base,spec):
+     """Bind already successful current guarded workers; never run them here."""
+-    path=PARENT/'run.json'
++    path=PARENT/'loader-correction/run.json'
+     report=json.loads(path.read_text())
++    correction=json.loads((RESULTS/'prepared.json').read_text())
++    base.require(report['correction_manifest_sha256']==correction['mass_correction_prepared_sha256'],
++                 'Wrong corrected parent binding')
++    base.require(report['scientific_scope_unchanged'] is True, 'Changed parent scientific scope')
+     base.require(report['state']=='complete' and report['input_hashes_after']=='unchanged',
+                  'Complete frozen guarded qualification is required first')
+     base.require(report['manifest_sha256']==spec['parent_manifest_sha256'],'Wrong parent run')
+@@ -57,11 +62,27 @@
+ def main():
+     cli=argparse.ArgumentParser(description=__doc__);cli.add_argument('action',choices=('verify','build','run'))
+     args=cli.parse_args()
++    assert args.action in ('verify','run'), 'No build is authorized or needed for loader correction'
+     assert Path.cwd().resolve()==ROOT
++    correction=json.loads((RESULTS/'prepared.json').read_text())
++    for name,digest in correction['inputs'].items():
++        assert sha(ROOT/name)==digest, name
+     spec=json.loads((HERE/'prepared.json').read_text())
+     assert sha(PARENT/'control.py')==spec['shared_controller_sha256']
+     base=load('original_qp_shared_controller',PARENT/'control.py')
+     base.HERE=HERE
++    def save_corrected(name,value):
++        target=RESULTS/name; temporary=RESULTS/(name+'.tmp')
++        with temporary.open('x') as stream:
++            json.dump(value,stream,sort_keys=True,indent=2);stream.write('\n')
++        temporary.replace(target)
++    base.save=save_corrected
++    verify_original=base.verify_inputs
++    def verify_corrected(value):
++        verify_original(value)
++        for name,digest in correction['inputs'].items():
++            base.require(sha(ROOT/name)==digest,'Changed additive correction/failure input: '+name)
++    base.verify_inputs=verify_corrected
+     assert sha(base.OLD)==base.OLD_SHA
+     cleanup=load('original_qp_owned_cleanup',base.OLD)
+     base.require(spec['cpu']==8 and spec['jobs']==1 and spec['build_seconds_max']==30,
+@@ -72,11 +93,13 @@
+     base.verify_inputs(spec)
+     if args.action=='verify':
+         print(json.dumps({'verified_inputs':len(spec['inputs']),'native_launched':False}));return
+-    base.require(not (HERE/(args.action+'.json')).exists(),'Stage already attempted; no retry')
++    base.require(not (HERE/(args.action+'.json')).exists(),'Original stage already attempted; no retry')
++    base.require(not (RESULTS/(args.action+'.json')).exists(),'Corrected stage already attempted; no retry')
+     prior=prior_observations(base,spec) if args.action=='run' else {}
+     resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+     report={'state':'running','action':args.action,'manifest_sha256':sha(HERE/'prepared.json'),
+         'controller_sha256':sha(__file__),'shared_controller_sha256':spec['shared_controller_sha256'],
++        'correction_manifest_sha256':sha(RESULTS/'prepared.json'),
+         'prior_observation_sha256':prior,'jobs':[],'started_unix':time.time(),
+         'inherited_affinity':sorted(os.sched_getaffinity(0)),
+         'loadavg_before':Path('/proc/loadavg').read_text().strip(),'automatic_retry':False}

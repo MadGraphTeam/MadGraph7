@@ -1,0 +1,14 @@
+{
+  "build_commands": 17,
+  "compiler_launched": false,
+  "component_evidence": {
+    "caller/source-tests.json": "d5bc5c9d0592dc149d035afda26ebac7ce90c269021f33b920a63d2910003ee8",
+    "classifier/source-tests.json": "7bc9e73e1052cf0e35ad5047579a6507aef2762520af872a022afe73f3bbe4e3",
+    "retained-inputs/source-tests.json": "c766d6b5d5273c2bdd7b9465b92be5ddb2f51b2d8411ebe8e4b19c9ccad7f3eb"
+  },
+  "native_launched": false,
+  "python_source_tests": 26,
+  "schema": "cms-scalar-refusal-source-checks-v1",
+  "scope": "Existing source-only tests and exact shared-type/source binding; no native validation",
+  "shared_report_source_sha256": "1b61c18bbc86d1b5fa25456be73751aaf275789fd043800419614e280db800ac"
+}

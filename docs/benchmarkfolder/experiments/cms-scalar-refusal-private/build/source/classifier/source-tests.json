@@ -1,0 +1,19 @@
+{
+  "compiler_or_native_started": false,
+  "elapsed_seconds": 0.2504440457560122,
+  "errors": 0,
+  "failures": 0,
+  "files": {
+    "README.md": "0e939e2901c6412a199f3a5bf1e027337b68484620906634fc884e567656b5c5",
+    "classification.json": "56cafacc1289137a6d4d32d919e91228e09dd1ff69bab4ed9225534181ac94eb",
+    "cms_scalar_observer.f90": "1b61c18bbc86d1b5fa25456be73751aaf275789fd043800419614e280db800ac",
+    "compile-plan.json": "0f97e07f2a99246b74cf135d5b6346ffcdd7e61a7c83967b409299699b44d07e",
+    "generate.py": "dc18f79cac2c46e96a2b11a24c93acbc7379019a5605044995840be3d38a1552",
+    "generate_fixture.py": "a492a4566d803dc6c944486f024ef0b0f7b93c1e056751c6c45d05907646538d"
+  },
+  "log_sha256": "797a6270fdf125b12b110ba2e84e01de0499140ca4b98f9dfcee6b06ee67be06",
+  "passed": true,
+  "schema": "cms-classifier-source-tests-v1",
+  "test_source_sha256": "92a182424210ddf551baa461bd920fc70b521f0de1feb651ee890561a190e44a",
+  "tests": 12
+}

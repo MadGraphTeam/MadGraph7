@@ -1,0 +1,10 @@
+test_default_and_explicit_verify_are_read_only (cms_attempt2_source_tests.LauncherCorrection.test_default_and_explicit_verify_are_read_only) ... ok
+test_exact_recipe_and_unchanged_runtime (cms_attempt2_source_tests.LauncherCorrection.test_exact_recipe_and_unchanged_runtime) ... ok
+test_execution_helper_unchanged (cms_attempt2_source_tests.LauncherCorrection.test_execution_helper_unchanged) ... ok
+test_guards_reject_recipe_and_environment_drift (cms_attempt2_source_tests.LauncherCorrection.test_guards_reject_recipe_and_environment_drift) ... ok
+test_prior_evidence_exact (cms_attempt2_source_tests.LauncherCorrection.test_prior_evidence_exact) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.261s
+
+OK

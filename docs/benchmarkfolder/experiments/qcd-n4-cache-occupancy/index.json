@@ -1,0 +1,86 @@
+{
+  "artifact_count": 19,
+  "files": {
+    "README.md": {
+      "sha256": "d765ee659fc26739ac3d22fc1ebab01bf1fe14f5fc504b4a7326ff46382d8549",
+      "size_bytes": 4855
+    },
+    "analyze.py": {
+      "sha256": "fbee622c2cee6e0b6ca5f0e86b41b2db2f75c59d9016f9f90d790f4ee1b02089",
+      "size_bytes": 7585
+    },
+    "build-proposal.json": {
+      "sha256": "556c8bc4ef74075578231c13b9749693f6a09d08bb2e305d3d5b55095314c1fc",
+      "size_bytes": 1350
+    },
+    "build.py": {
+      "sha256": "dbf4099342243a0d868b5be451f60123bfcb268fd0f1fe5f0bd012dd7c2acbaf",
+      "size_bytes": 17522
+    },
+    "driver.f.in": {
+      "sha256": "c374081cd444e51a282154a4b32fff473d681beb2a62d4620f7b8cc0b398b49f",
+      "size_bytes": 2487
+    },
+    "independent-source-review.json": {
+      "sha256": "3990d192961d7e2f709cbb18a6061edf91b06ac3910236455caccd64de002f5a",
+      "size_bytes": 2836
+    },
+    "observer.f90": {
+      "sha256": "f31cf3ef61d348048c25bfc7a7fbfaec4ffd047e837ae9bb82a7de5fa3c0fab0",
+      "size_bytes": 3544
+    },
+    "preparation/source-1/common/driver.f": {
+      "sha256": "c374081cd444e51a282154a4b32fff473d681beb2a62d4620f7b8cc0b398b49f",
+      "size_bytes": 2487
+    },
+    "preparation/source-1/common/observer.f90": {
+      "sha256": "f31cf3ef61d348048c25bfc7a7fbfaec4ffd047e837ae9bb82a7de5fa3c0fab0",
+      "size_bytes": 3544
+    },
+    "preparation/source-1/observed/TIRUST_interface.f": {
+      "sha256": "3877e24b449b20036ac6b8af880c9d03b492652c0971d3f20d87c910be153a75",
+      "size_bytes": 14142
+    },
+    "preparation/source-1/observed/TIRUST_interface.patch": {
+      "sha256": "5682b344a1c53a45987441485b3f582d8e1b60fa9837215ac5250f75cfb4e780",
+      "size_bytes": 2245
+    },
+    "preparation/source-1/original/TIRUST_interface.f": {
+      "sha256": "fdb6f639e3a8e17298f10bc1b172bb7a23a1d23111eaa9230b2a38bcffa53cd8",
+      "size_bytes": 13370
+    },
+    "preparation/source-1/points.dat": {
+      "sha256": "c811e4bb36b5f33525157c40ee5487858e1e2d7841c87101b0aab930530a6c3c",
+      "size_bytes": 587
+    },
+    "preparation/source-1/snapshot.json": {
+      "sha256": "c7dba79d4d84e091840a910e079d8a8f48969b4c6a6b98995b966ad4c6b5f7e3",
+      "size_bytes": 772583
+    },
+    "prepare.py": {
+      "sha256": "86c4172aec2203700ea2481f2180de96f4be4265e552eefc2e12ad9ccc5d75c7",
+      "size_bytes": 19380
+    },
+    "source-audit.json": {
+      "sha256": "37c4d4af98a352515eea45e8be1efbd70c29559d2a796a35afa4891068ef3398",
+      "size_bytes": 3778
+    },
+    "synthetic-tests.txt": {
+      "sha256": "99c0da505c93ece9d768e9c59ac20dffb1dd211308116203a59c4e68b4e729eb",
+      "size_bytes": 104
+    },
+    "test_analyze.py": {
+      "sha256": "d83faba6eb500b6f94cdf9023ab1dc5ade06b3a03407fe4a5f265d5de1b44f1a",
+      "size_bytes": 4767
+    },
+    "transform.py": {
+      "sha256": "620fa902f8b6ada92ae60c183eb320fc5215b739f81fcbf822b6250c7cbec3d5",
+      "size_bytes": 2657
+    }
+  },
+  "numerical_execution": false,
+  "payload_bytes": 879823,
+  "performance_eligible": false,
+  "schema": 1,
+  "scope": "Source-only QCD n4 point1 cache-occupancy diagnostic, build proposed not run"
+}

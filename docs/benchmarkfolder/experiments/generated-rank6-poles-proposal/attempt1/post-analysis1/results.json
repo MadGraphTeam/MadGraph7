@@ -1,0 +1,2976 @@
+{
+  "checks": [
+    {
+      "actions": [
+        1,
+        2
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        3,
+        4
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        5,
+        6
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        7,
+        8
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        9,
+        10
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        11,
+        12
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        7,
+        9
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        7,
+        11
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        76,
+        77
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        78,
+        79
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        80,
+        81
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        82,
+        83
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        84,
+        85
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        86,
+        87
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        82,
+        84
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        82,
+        86
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        16,
+        17
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        18,
+        19
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        20,
+        21
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        22,
+        23
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        24,
+        25
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        26,
+        27
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        22,
+        24
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        22,
+        26
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        91,
+        92
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        93,
+        94
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        95,
+        96
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        97,
+        98
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        99,
+        100
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        101,
+        102
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        97,
+        99
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        97,
+        101
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        31,
+        32
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        33,
+        34
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        35,
+        36
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        37,
+        38
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        39,
+        40
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        41,
+        42
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        37,
+        39
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        37,
+        41
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        46,
+        47
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        48,
+        49
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        50,
+        51
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        46,
+        48
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        46,
+        50
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        52,
+        53
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        54,
+        55
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        56,
+        57
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        52,
+        54
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        52,
+        56
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        46,
+        58
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "independent_collier",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        47,
+        58
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "partial_independent_collier",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        52,
+        58
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "qp_independent_collier",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        53,
+        58
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "qp_partial_independent_collier",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        48,
+        59
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "independent_collier",
+      "max_raw_relative": "1.942890293094023676111163204945953537744029328844028483565346981372589712324247344572876138834118729E-16",
+      "max_scaled_residual": "2.77555756156289135105907917022705078125000000000000000000000000000000000000000000000E-17",
+      "max_symmetric": "9.714451465470119324261488774475165431037305637997132752415917006491598888921048811712124121898381325E-17",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        49,
+        59
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "partial_independent_collier",
+      "max_raw_relative": "1.942890293094023676111163204945953537744029328844028483565346981372589712324247344572876138834118729E-16",
+      "max_scaled_residual": "2.77555756156289135105907917022705078125000000000000000000000000000000000000000000000E-17",
+      "max_symmetric": "9.714451465470119324261488774475165431037305637997132752415917006491598888921048811712124121898381325E-17",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        54,
+        59
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "qp_independent_collier",
+      "max_raw_relative": "5.551115123125782697303333479486012197136526152757246085883008176645893654080360844933287301388578732E-17",
+      "max_scaled_residual": "1.85037170770859423243444449316200397662001838117922723455158195982050983730005100369E-17",
+      "max_symmetric": "2.775557561562891425688864515232442225380913348922511649725752827495449600247256907736351134699107636E-17",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        55,
+        59
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "qp_partial_independent_collier",
+      "max_raw_relative": "5.551115123125782697303333479486012197136526152757246085883008176645893654080360844933287301388578732E-17",
+      "max_scaled_residual": "1.85037170770859423243444449316200397662001838117922723455158195982050983730005100369E-17",
+      "max_symmetric": "2.775557561562891425688864515232442225380913348922511649725752827495449600247256907736351134699107636E-17",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        50,
+        60
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "independent_collier",
+      "max_raw_relative": "1.942890293094023676111163204945953537744029328844028483565346981372589712324247344572876138834118729E-16",
+      "max_scaled_residual": "2.77555756156289135105907917022705078125000000000000000000000000000000000000000000000E-17",
+      "max_symmetric": "9.714451465470119324261488774475165431037305637997132752415917006491598888921048811712124121898381325E-17",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        51,
+        60
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "partial_independent_collier",
+      "max_raw_relative": "1.942890293094023676111163204945953537744029328844028483565346981372589712324247344572876138834118729E-16",
+      "max_scaled_residual": "2.77555756156289135105907917022705078125000000000000000000000000000000000000000000000E-17",
+      "max_symmetric": "9.714451465470119324261488774475165431037305637997132752415917006491598888921048811712124121898381325E-17",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        56,
+        60
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "qp_independent_collier",
+      "max_raw_relative": "5.551115123125782697303333479486012197136526152757246085883008176645893654080360844933287301388578732E-17",
+      "max_scaled_residual": "1.85037170770859423243444449316200397662001838117922723455158195982050983730005100369E-17",
+      "max_symmetric": "2.775557561562891425688864515232442225380913348922511649725752827495449600247256907736351134699107636E-17",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        57,
+        60
+      ],
+      "criterion": "abs(a-b)/abs(a+b), with same-coefficient finite-relative small-pole exception",
+      "kind": "qp_partial_independent_collier",
+      "max_raw_relative": "5.551115123125782697303333479486012197136526152757246085883008176645893654080360844933287301388578732E-17",
+      "max_scaled_residual": "1.85037170770859423243444449316200397662001838117922723455158195982050983730005100369E-17",
+      "max_symmetric": "2.775557561562891425688864515232442225380913348922511649725752827495449600247256907736351134699107636E-17",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        61,
+        62
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        63,
+        64
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        65,
+        66
+      ],
+      "kind": "full_partial",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        67,
+        68
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        69,
+        70
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        71,
+        72
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "full_partial",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        67,
+        69
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        67,
+        71
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "selector_finite_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        2010,
+        91
+      ],
+      "kind": "cache_exact",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        2011,
+        91
+      ],
+      "kind": "cache_exact",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        2012,
+        92
+      ],
+      "kind": "cache_exact",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        2013,
+        92
+      ],
+      "kind": "cache_exact",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        2014,
+        94
+      ],
+      "kind": "cache_exact",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        2015,
+        96
+      ],
+      "kind": "cache_exact",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        2016,
+        2017
+      ],
+      "kind": "cache_exact",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        2017,
+        2017
+      ],
+      "kind": "cache_exact",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        2018,
+        92
+      ],
+      "kind": "cache_exact",
+      "status": "refused"
+    },
+    {
+      "actions": [
+        2040,
+        97
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "cache_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        2041,
+        97
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "cache_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        2042,
+        98
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "cache_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        2043,
+        98
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "cache_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        2044,
+        100
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "cache_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        2045,
+        102
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "cache_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        2046,
+        2047
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "cache_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        2047,
+        2047
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "cache_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    },
+    {
+      "actions": [
+        2048,
+        98
+      ],
+      "criterion": "dimensionless max(1,abs(a),abs(b)) floor",
+      "kind": "cache_exact",
+      "max_raw_relative": "0",
+      "max_scaled_residual": "0",
+      "max_symmetric": "0",
+      "status": "passed",
+      "target_1e8_met": true
+    }
+  ],
+  "collier_adapter_calls": 21,
+  "complex_mass_qualification": false,
+  "finite_work_omission": "current finite-mode dispatch plus separately bound core/source instrumentation; no dynamic finite-operation count",
+  "native_tirust_calls": 105,
+  "nonzero_pole_witnesses": {
+    "101": true,
+    "102": true,
+    "103": true,
+    "104": true,
+    "105": true,
+    "106": true,
+    "107": true
+  },
+  "open_items": [
+    {
+      "action": 105,
+      "detail": "Frozen WZ is zero; fixture105 has imaginary mass squared negative zero. Its rows are retained zero-width controls and provide no complex-mass qualification.",
+      "kind": "complex_mass_fixture_uncovered"
+    },
+    {
+      "action": 901,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.891009685627434e-6\")",
+      "kind": "capture_refused"
+    },
+    {
+      "action": 902,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.891009685627434e-6\")",
+      "kind": "capture_refused"
+    },
+    {
+      "action": 903,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "capture_refused"
+    },
+    {
+      "action": 1,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.891009685627434e-6\")",
+      "kind": "refused"
+    },
+    {
+      "action": 1,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.891009685627434e-6\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 3,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.891009685627434e-6\")",
+      "kind": "refused"
+    },
+    {
+      "action": 3,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 4,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.891009685627434e-6\")",
+      "kind": "refused"
+    },
+    {
+      "action": 4,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 5,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.891009685627434e-6\")",
+      "kind": "refused"
+    },
+    {
+      "action": 5,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 6,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.891009685627434e-6\")",
+      "kind": "refused"
+    },
+    {
+      "action": 6,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 7,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 8,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 9,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 10,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 11,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 12,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 13,
+      "detail": [
+        36,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 14,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 15,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 16,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 16,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 17,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 17,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 18,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 18,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 19,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 19,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 20,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 20,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 21,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 21,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 22,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 23,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 24,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 25,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 26,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 27,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 28,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 29,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 30,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 31,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 31,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 32,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 32,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 33,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 33,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 34,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 34,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 35,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 35,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 36,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 36,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 37,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 38,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 39,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 40,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 41,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 42,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 43,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 44,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 45,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 46,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 47,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 48,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 49,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 50,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 51,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 52,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 53,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 54,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 55,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 56,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 57,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 58,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 59,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 60,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 61,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 61,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 62,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 62,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 63,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 63,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 64,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 64,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 65,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 65,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 66,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3]: conditioning 7.502450081478828e-4\")",
+      "kind": "refused"
+    },
+    {
+      "action": 66,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 67,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 68,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 69,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 70,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 71,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 72,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 73,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 74,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 75,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 76,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 76,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 77,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 77,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 78,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 78,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 79,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 79,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 80,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 80,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 81,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 81,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 82,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 83,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 84,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 85,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 86,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 87,
+      "detail": [
+        36,
+        0,
+        36,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 88,
+      "detail": [
+        36,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 89,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 90,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 91,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 91,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 92,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 92,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 93,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 93,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 94,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 94,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 95,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 95,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 96,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 96,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 97,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 98,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 99,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 100,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 101,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 102,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 103,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 104,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 105,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2010,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2010,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2011,
+      "detail": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2011,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2012,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2012,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2013,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2013,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2014,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2014,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2015,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2015,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2016,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 1.2319098745222066e-3\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2016,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2017,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 1.2319098745222066e-3\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2017,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2018,
+      "detail": "TIRust poles DP: Unstable(\"ill-conditioned Gram matrix for [1, 3, 4]: conditioning 2.0956099929454262e-5\")",
+      "kind": "refused"
+    },
+    {
+      "action": 2018,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        0,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2040,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2041,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2042,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2043,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2044,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2045,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2046,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2047,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 2048,
+      "detail": [
+        37,
+        0,
+        37,
+        0,
+        1,
+        0,
+        0
+      ],
+      "kind": "ieee_flags"
+    },
+    {
+      "action": 1,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 3,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 5,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 76,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 78,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 80,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 16,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 18,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 20,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 91,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 93,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 95,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 31,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 33,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 35,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 61,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 63,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 65,
+      "detail": "COLLIER effective inputs differ; coefficients are not counted as independent agreement",
+      "kind": "input_policy_mismatch"
+    },
+    {
+      "action": 901,
+      "detail": "Cannot establish successful actual-group full replay",
+      "kind": "capture_refused"
+    },
+    {
+      "action": 903,
+      "detail": "Cannot establish successful actual-group full replay",
+      "kind": "capture_refused"
+    }
+  ],
+  "post_analysis_scope": "One exact fixture relationship amended to its observed frozen negative-zero value; all remaining protocol/numerical assertions unchanged. No new native execution.",
+  "schema": 1,
+  "scope": "generated tensor diagnostics; synthetic rank-six extension; not physical amplitude or timing qualification",
+  "status": "open_acceptance_items"
+}

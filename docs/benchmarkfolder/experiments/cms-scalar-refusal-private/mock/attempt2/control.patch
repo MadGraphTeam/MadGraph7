@@ -1,0 +1,51 @@
+--- ../control.py
++++ control.py
+@@ -11,7 +11,7 @@
+ 
+ sys.dont_write_bytecode = True
+ HERE = Path(__file__).resolve().parent
+-CMS = HERE.parent
++CMS = HERE.parents[1]
+ ROOT = CMS.parents[1]
+ BASE = ROOT / '.tirust-build/qp-mass-general-implementation/combined-qualification/control.py'
+ BASE_SHA = '57b95030a7b70facc3c276767b4d84596edbf9b692817ef81bd6c20c211d30d3'
+@@ -72,14 +72,18 @@
+ 
+ def main():
+     parser = argparse.ArgumentParser(description=__doc__)
+-    parser.add_argument('action', choices=('verify', 'run'))
++    parser.add_argument('action', nargs='?', default='verify', choices=('verify', 'run'))
+     action = parser.parse_args().action
+     import hashlib
+     if hashlib.sha256(BASE.read_bytes()).hexdigest() != BASE_SHA:
+         raise ValueError('Reviewed process controller changed')
+     base = load('cms_mock_reviewed_base', BASE)
+     base.require(Path.cwd().resolve() == ROOT, 'Run from the MadGraph repository root')
++    index = json.loads((HERE / 'source-index.json').read_text())
++    for name, digest in index['files'].items():
++        base.require(base.sha(HERE/name) == digest, 'Attempt2 source changed: '+name)
+     spec = json.loads((HERE / 'prepared.json').read_text())
++    base.require(spec['schema'] == 'cms-scalar-refusal-mock-attempt2-proposal-v1', 'Wrong attempt2 proposal')
+     base.require(spec['cpu'] == 8 and spec['processes_at_once'] == 1 and spec['execution_seconds_max'] == 35,
+                  'Wrong bounded mock scope')
+     base.verify_inputs(spec)
+@@ -93,14 +97,16 @@
+     base.require(not (HERE/'run.json').exists(), 'Mock qualification already attempted; no retry')
+     cleanup = load('cms_mock_reviewed_cleanup', base.OLD)
+     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+-    env['LD_LIBRARY_PATH'] = ':'.join(spec['runtime_directories'])
+-    report = {'schema': 'cms-scalar-refusal-mock-result-v1', 'state': 'running',
++    report = {'schema': 'cms-scalar-refusal-mock-attempt2-result-v1', 'state': 'running',
++              'prior_failed_run_sha256': spec['prior_failed_run_sha256'],
++              'source_index_sha256': base.sha(HERE/'source-index.json'),
++              'target_runtime_selection': 'Explicit target PT_INTERP --library-path; outer environment unchanged',
+               'prepared_sha256': base.sha(HERE/'prepared.json'), 'controller_sha256': base.sha(__file__),
+               'reviewed_base_sha256': BASE_SHA, 'cleanup_sha256': base.OLD_SHA,
+               'started_unix': time.time(), 'inherited_affinity': sorted(os.sched_getaffinity(0)),
+               'loadavg_before': Path('/proc/loadavg').read_text().strip(), 'jobs': [],
+               'automatic_retry': False, 'shared_reducer_lock_required': False,
+-              'runtime_environment': {k: env[k] for k in ('LD_LIBRARY_PATH', 'OMP_NUM_THREADS',
++              'runtime_environment': {k: env.get(k) for k in ('LD_LIBRARY_PATH', 'OMP_NUM_THREADS',
+                   'OPENBLAS_NUM_THREADS', 'RAYON_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS')},
+               'physical_accuracy_qualified': False, 'full_madloop_host_rescue_qualified': False,
+               'hardware_ieee_flags_traps_rounding_qualified': False}

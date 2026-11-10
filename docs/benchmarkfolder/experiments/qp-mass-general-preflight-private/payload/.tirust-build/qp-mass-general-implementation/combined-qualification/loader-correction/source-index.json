@@ -1,0 +1,10 @@
+{
+  "files": {
+    "README.md": "0334e544792819dfa630b3644c4d27ddc10718798b8ce922fcd997de1bcbdc3e",
+    "control.py": "9863af1689556cdadf12bc93bd902554ee2bbacd6b6d175b26d41a1a4253377b",
+    "preparation-note.json": "f4f00ff8be5c860ed2a9cf776e8e72d4f2c80a9c45b873def1df2946497f5048",
+    "prepare.py": "cc5050210834a75c6bef59102b01027b15ece46675ad488cead2f2f12f29dd26",
+    "prepared.json": "3e5efcf19f7b55b5b70ee82862230f71bae4165a5d5e527e1263b7256ab42d40"
+  },
+  "process_launched": false
+}

@@ -1,0 +1,10 @@
+{
+  "errors": 0,
+  "failures": 0,
+  "native_launched": false,
+  "output": "test_all_fixture_outputs_are_preserved (__main__.Tests.test_all_fixture_outputs_are_preserved) ... ok\ntest_closed_inventory_rejects_extra_missing_changed (__main__.Tests.test_closed_inventory_rejects_extra_missing_changed) ... ok\ntest_complete_replay_and_failure_semantics (__main__.Tests.test_complete_replay_and_failure_semantics) ... ok\ntest_modified_and_truncated_journals_rejected (__main__.Tests.test_modified_and_truncated_journals_rejected) ... ok\n\n----------------------------------------------------------------------\nRan 4 tests in 0.436s\n\nOK\n",
+  "schema": "qp-mass-portable-source-tests-v1",
+  "test_sha256": "730a3445d8861419c09accbdeed9750fb6851cfecd9d388417749a7d40f87591",
+  "tests": 4,
+  "verify_sha256": "bdba1c9ca73f0688aa9cb849c182732d2a7e432177a0e72d5362fef01509382c"
+}

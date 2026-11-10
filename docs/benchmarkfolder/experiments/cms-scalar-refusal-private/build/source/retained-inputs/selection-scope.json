@@ -1,0 +1,19 @@
+{
+  "distinct_scalar_calls": 10,
+  "meaning": "Some source calls satisfy more than one selection label; labels do not represent independent numerical samples",
+  "ordinals": [
+    1,
+    4,
+    7,
+    23,
+    26,
+    29,
+    32,
+    35,
+    40,
+    44
+  ],
+  "point20_inputs_sha256": "9dce4ad886df5d03363c1a7c602a2cd5d183dc003ce0c4d9c9ea4eb0382c1d6b",
+  "schema": "cms-retained-input-selection-scope-v1",
+  "selection_labels": 18
+}

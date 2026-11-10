@@ -1,0 +1,577 @@
+{
+  "affinity_exclusive": false,
+  "cpu": 8,
+  "elf_closures": {
+    "loader-fixture": {
+      "closure": {
+        "ld-linux-x86-64.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+          "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+        },
+        "libc.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "libgcc_s.so.1": {
+          "path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "libgfortran.so.5": {
+          "path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "libm.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        }
+      },
+      "declarations": {
+        "interpreter": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+        "needed": [
+          "libgfortran.so.5",
+          "libm.so.6",
+          "libgcc_s.so.1",
+          "libc.so.6"
+        ]
+      }
+    },
+    "loader-guarded-dp-8": {
+      "closure": {
+        "ld-linux-x86-64.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+          "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+        },
+        "libc.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "libcollier.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libcollier.so",
+          "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+        },
+        "libdl.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+          "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+        },
+        "libgcc_s.so.1": {
+          "path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "libgfortran.so.5": {
+          "path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "libm.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "libmadloop_tirust.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-general-implementation/combined-qualification/current-runtime/libmadloop_tirust.so",
+          "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        },
+        "libmvec.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+          "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+        },
+        "libninja.so.0": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libninja.so.0",
+          "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+        },
+        "libpthread.so.0": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+          "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+        },
+        "libquadmath.so.0": {
+          "path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+          "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+        },
+        "librt.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+          "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+        },
+        "libstdc++.so.6": {
+          "path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+          "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+        },
+        "libutil.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+          "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+        }
+      },
+      "declarations": {
+        "interpreter": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+        "needed": [
+          "libninja.so.0",
+          "libcollier.so",
+          "libgcc_s.so.1",
+          "libdl.so.2",
+          "libutil.so.1",
+          "librt.so.1",
+          "libpthread.so.0",
+          "libgfortran.so.5",
+          "libm.so.6",
+          "libmvec.so.1",
+          "libc.so.6",
+          "ld-linux-x86-64.so.2",
+          "libmadloop_tirust.so",
+          "libstdc++.so.6"
+        ]
+      }
+    },
+    "loader-guarded-dp-9": {
+      "closure": {
+        "ld-linux-x86-64.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+          "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+        },
+        "libc.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "libcollier.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libcollier.so",
+          "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+        },
+        "libdl.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+          "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+        },
+        "libgcc_s.so.1": {
+          "path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "libgfortran.so.5": {
+          "path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "libm.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "libmadloop_tirust.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-general-implementation/combined-qualification/current-runtime/libmadloop_tirust.so",
+          "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        },
+        "libmvec.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+          "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+        },
+        "libninja.so.0": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libninja.so.0",
+          "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+        },
+        "libpthread.so.0": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+          "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+        },
+        "libquadmath.so.0": {
+          "path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+          "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+        },
+        "librt.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+          "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+        },
+        "libstdc++.so.6": {
+          "path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+          "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+        },
+        "libutil.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+          "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+        }
+      },
+      "declarations": {
+        "interpreter": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+        "needed": [
+          "libninja.so.0",
+          "libcollier.so",
+          "libgcc_s.so.1",
+          "libdl.so.2",
+          "libutil.so.1",
+          "librt.so.1",
+          "libpthread.so.0",
+          "libgfortran.so.5",
+          "libm.so.6",
+          "libmvec.so.1",
+          "libc.so.6",
+          "ld-linux-x86-64.so.2",
+          "libmadloop_tirust.so",
+          "libstdc++.so.6"
+        ]
+      }
+    },
+    "loader-guarded-qp-8": {
+      "closure": {
+        "ld-linux-x86-64.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+          "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+        },
+        "libc.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "libcollier.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libcollier.so",
+          "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+        },
+        "libdl.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+          "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+        },
+        "libgcc_s.so.1": {
+          "path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "libgfortran.so.5": {
+          "path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "libm.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "libmadloop_tirust.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-general-implementation/combined-qualification/current-runtime/libmadloop_tirust.so",
+          "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        },
+        "libmvec.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+          "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+        },
+        "libninja.so.0": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libninja.so.0",
+          "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+        },
+        "libpthread.so.0": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+          "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+        },
+        "libquadmath.so.0": {
+          "path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+          "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+        },
+        "librt.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+          "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+        },
+        "libstdc++.so.6": {
+          "path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+          "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+        },
+        "libutil.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+          "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+        }
+      },
+      "declarations": {
+        "interpreter": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+        "needed": [
+          "libninja.so.0",
+          "libcollier.so",
+          "libgcc_s.so.1",
+          "libdl.so.2",
+          "libutil.so.1",
+          "librt.so.1",
+          "libpthread.so.0",
+          "libgfortran.so.5",
+          "libm.so.6",
+          "libmvec.so.1",
+          "libc.so.6",
+          "ld-linux-x86-64.so.2",
+          "libmadloop_tirust.so",
+          "libstdc++.so.6"
+        ]
+      }
+    },
+    "loader-guarded-qp-9": {
+      "closure": {
+        "ld-linux-x86-64.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+          "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+        },
+        "libc.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "libcollier.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libcollier.so",
+          "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+        },
+        "libdl.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+          "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+        },
+        "libgcc_s.so.1": {
+          "path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "libgfortran.so.5": {
+          "path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "libm.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "libmadloop_tirust.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-general-implementation/combined-qualification/current-runtime/libmadloop_tirust.so",
+          "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        },
+        "libmvec.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+          "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+        },
+        "libninja.so.0": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libninja.so.0",
+          "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+        },
+        "libpthread.so.0": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+          "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+        },
+        "libquadmath.so.0": {
+          "path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+          "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+        },
+        "librt.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+          "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+        },
+        "libstdc++.so.6": {
+          "path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+          "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+        },
+        "libutil.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+          "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+        }
+      },
+      "declarations": {
+        "interpreter": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+        "needed": [
+          "libninja.so.0",
+          "libcollier.so",
+          "libgcc_s.so.1",
+          "libdl.so.2",
+          "libutil.so.1",
+          "librt.so.1",
+          "libpthread.so.0",
+          "libgfortran.so.5",
+          "libm.so.6",
+          "libmvec.so.1",
+          "libc.so.6",
+          "ld-linux-x86-64.so.2",
+          "libmadloop_tirust.so",
+          "libstdc++.so.6"
+        ]
+      }
+    },
+    "loader-legacy-dp-8": {
+      "closure": {
+        "ld-linux-x86-64.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+          "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+        },
+        "libc.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "libcollier.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libcollier.so",
+          "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+        },
+        "libdl.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+          "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+        },
+        "libgcc_s.so.1": {
+          "path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "libgfortran.so.5": {
+          "path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "libm.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "libmadloop_tirust.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-general-implementation/combined-qualification/current-runtime/libmadloop_tirust.so",
+          "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        },
+        "libmvec.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+          "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+        },
+        "libninja.so.0": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libninja.so.0",
+          "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+        },
+        "libpthread.so.0": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+          "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+        },
+        "libquadmath.so.0": {
+          "path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+          "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+        },
+        "librt.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+          "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+        },
+        "libstdc++.so.6": {
+          "path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+          "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+        },
+        "libutil.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+          "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+        }
+      },
+      "declarations": {
+        "interpreter": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+        "needed": [
+          "libninja.so.0",
+          "libcollier.so",
+          "libgcc_s.so.1",
+          "libdl.so.2",
+          "libutil.so.1",
+          "librt.so.1",
+          "libpthread.so.0",
+          "libgfortran.so.5",
+          "libm.so.6",
+          "libmvec.so.1",
+          "libc.so.6",
+          "ld-linux-x86-64.so.2",
+          "libmadloop_tirust.so",
+          "libstdc++.so.6"
+        ]
+      }
+    },
+    "loader-legacy-dp-9": {
+      "closure": {
+        "ld-linux-x86-64.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+          "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+        },
+        "libc.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+        },
+        "libcollier.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libcollier.so",
+          "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+        },
+        "libdl.so.2": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+          "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+        },
+        "libgcc_s.so.1": {
+          "path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+        },
+        "libgfortran.so.5": {
+          "path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+        },
+        "libm.so.6": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+        },
+        "libmadloop_tirust.so": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-mass-general-implementation/combined-qualification/current-runtime/libmadloop_tirust.so",
+          "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        },
+        "libmvec.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+          "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+        },
+        "libninja.so.0": {
+          "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libninja.so.0",
+          "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+        },
+        "libpthread.so.0": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+          "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+        },
+        "libquadmath.so.0": {
+          "path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+          "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+        },
+        "librt.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+          "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+        },
+        "libstdc++.so.6": {
+          "path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+          "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+        },
+        "libutil.so.1": {
+          "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+          "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+        }
+      },
+      "declarations": {
+        "interpreter": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+        "needed": [
+          "libninja.so.0",
+          "libcollier.so",
+          "libgcc_s.so.1",
+          "libdl.so.2",
+          "libutil.so.1",
+          "librt.so.1",
+          "libpthread.so.0",
+          "libgfortran.so.5",
+          "libm.so.6",
+          "libmvec.so.1",
+          "libc.so.6",
+          "ld-linux-x86-64.so.2",
+          "libmadloop_tirust.so",
+          "libstdc++.so.6"
+        ]
+      }
+    }
+  },
+  "elf_reader": ".tirust-build/cms-scalar-refusal-prototype/mock-qualification/elf.py",
+  "fixture_expected": {
+    "ld-linux-x86-64.so.2": {
+      "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+    },
+    "libc.so.6": {
+      "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+      "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+    },
+    "libgcc_s.so.1": {
+      "path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+      "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+    },
+    "libgfortran.so.5": {
+      "path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+      "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+    },
+    "libm.so.6": {
+      "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+      "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+    }
+  },
+  "fixture_loader_log": ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/fixture-loader.log",
+  "inputs": {
+    ".tirust-build/cms-scalar-refusal-prototype/mock-qualification/elf.py": "2543956f812f1aca0d629aee42998786c3698152e16f1ef8d990929fab28f1fc",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/build.json": "0f1b01f60d2044271519e97566fb6772c1a66a4f4310edc06b281070b92e497e",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/control.py": "57b95030a7b70facc3c276767b4d84596edbf9b692817ef81bd6c20c211d30d3",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/evidence-index.json": "96daffec46bdaa249ee5c595fbd90001434b91126d108192b083f7eeedd3ca5c",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/fixture/loader-list.txt": "61384a62397275f071b34ac1ea132f251a20b1898bf7c0c9ac24fab5e9b215f0",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/README.md": "0334e544792819dfa630b3644c4d27ddc10718798b8ce922fcd997de1bcbdc3e",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/control.py": "9863af1689556cdadf12bc93bd902554ee2bbacd6b6d175b26d41a1a4253377b",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/loader-correction/prepare.py": "cc5050210834a75c6bef59102b01027b15ece46675ad488cead2f2f12f29dd26",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/prepared.json": "906cc984cc59068b89823ef7108f3f80f28e373e2ee8a15dfe9df7abb86c2a1e",
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/run.json": "a5d7541c314367999c11dd4335a15f86b9bcf7d44294849b10d6b25558c33b12"
+  },
+  "prior_failed_run_sha256": "a5d7541c314367999c11dd4335a15f86b9bcf7d44294849b10d6b25558c33b12",
+  "process_launched": false,
+  "schema": "qp-mass-loader-correction-v1",
+  "scientific_scope_unchanged": true
+}

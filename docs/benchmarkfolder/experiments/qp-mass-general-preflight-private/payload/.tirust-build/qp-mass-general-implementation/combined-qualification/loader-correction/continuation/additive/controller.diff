@@ -1,0 +1,20 @@
+--- loader-correction/additive/control.py
++++ loader-correction/continuation/additive/control.py
+@@ -12,7 +12,7 @@
+ 
+ sys.dont_write_bytecode=True
+ RESULTS=Path(__file__).resolve().parent
+-PARENT=RESULTS.parents[1]
++PARENT=RESULTS.parents[2]
+ HERE=PARENT/'current-original-qp'
+ ROOT=PARENT.parents[2]
+ 
+@@ -29,7 +29,7 @@
+ 
+ def prior_observations(base,spec):
+     """Bind already successful current guarded workers; never run them here."""
+-    path=PARENT/'loader-correction/run.json'
++    path=PARENT/'loader-correction/continuation/run.json'
+     report=json.loads(path.read_text())
+     correction=json.loads((RESULTS/'prepared.json').read_text())
+     base.require(report['correction_manifest_sha256']==correction['mass_correction_prepared_sha256'],

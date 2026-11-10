@@ -1,0 +1,218 @@
+{
+  "additional_success_reset_calls": 182,
+  "build_jobs": [
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-fbacktrace",
+        "-ffree-line-length-none",
+        "-ffixed-line-length-132",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/cms_scalar_observer.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cms_scalar_observer.o"
+      ],
+      "cwd": ".",
+      "name": "caller-mock-cms_scalar_observer"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-fbacktrace",
+        "-ffree-line-length-none",
+        "-ffixed-line-length-132",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/mock_support.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/mock_support.o"
+      ],
+      "cwd": ".",
+      "name": "caller-mock-mock_support"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-fbacktrace",
+        "-ffree-line-length-none",
+        "-ffixed-line-length-132",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/src/cts_checked_protocol.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cts_checked_protocol.o"
+      ],
+      "cwd": ".",
+      "name": "caller-mock-cts_checked_protocol"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-fbacktrace",
+        "-ffree-line-length-none",
+        "-ffixed-line-length-132",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/src/cts_checked_loopfunctions.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cts_checked_loopfunctions.o"
+      ],
+      "cwd": ".",
+      "name": "caller-mock-cts_checked_loopfunctions"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-fbacktrace",
+        "-ffree-line-length-none",
+        "-ffixed-line-length-132",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/cts_checked_reduction_instrumented.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cts_checked_reduction_instrumented.o"
+      ],
+      "cwd": ".",
+      "name": "caller-mock-cts_checked_reduction_instrumented"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-fbacktrace",
+        "-ffree-line-length-none",
+        "-ffixed-line-length-132",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/adapter_instrumented.f",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/adapter_instrumented.o"
+      ],
+      "cwd": ".",
+      "name": "caller-mock-adapter_instrumented"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-fbacktrace",
+        "-ffree-line-length-none",
+        "-ffixed-line-length-132",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/driver.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/driver.o"
+      ],
+      "cwd": ".",
+      "name": "caller-mock-driver"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cms_scalar_observer.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/mock_support.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cts_checked_protocol.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cts_checked_loopfunctions.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cts_checked_reduction_instrumented.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/adapter_instrumented.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/driver.o",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/caller_mock"
+      ],
+      "cwd": ".",
+      "name": "caller-mock-link"
+    }
+  ],
+  "build_outputs": [
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cms_scalar_observer.o",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/mock_support.o",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cts_checked_protocol.o",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cts_checked_loopfunctions.o",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/cts_checked_reduction_instrumented.o",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/adapter_instrumented.o",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/driver.o",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/caller_mock"
+  ],
+  "build_seconds_max": 60,
+  "cases": 182,
+  "compiler": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+  "cpu": 8,
+  "execution_seconds_max": 10,
+  "inputs": {
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/adapter_instrumented.f": "474ad704f7cfdf53acf6dfa3a51f810964f3efe10895ac344fd41b52ab33c66b",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/cases.json": "0c4ba08aa0aef025c94cd970fd7717912cd6ecb926cdd5ec290c888d49f92967",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/cms_scalar_observer.f90": "1b61c18bbc86d1b5fa25456be73751aaf275789fd043800419614e280db800ac",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/coupl.inc": "634183f2a66e867cdfaa8aaa288fe34cd0e8de02d172bf9f15b1e3453c834c9b",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/cts_checked_reduction_instrumented.f90": "e1e874feba6d1583cac339b4d910ea47692f31568fb87763259b578781da5e6b",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/cts_dpc.h": "5c0ae28d6d898487a474350f1ca723e93aa68b710eddb636110f127a65b6b1dc",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/cts_dpr.h": "4247138b8125a0af2cabb5034baa66f0a8c4d51c86d51819ddbbe7da71f04749",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/cts_mpc.h": "40db20a5df19603ee60df8e0dbb6f477313a907c3255173b53a5dd85b3b5bd25",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/cts_mpr.h": "82b8e3d1b3e25fec05a8bfefb68b38004fc83d45b1b60197d304e46c7ba0c705",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/cts_mprec.h": "dc44459a6a7968c912be0b8a52831e085bea2d66c88ded3d0a794b132503b925",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/driver.f90": "edf570370b8df9f3035c9d73be91e37028c35f3fccd9862b9439d178f8cb3966",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/mock_support.f90": "acd03828d27d75f2e72f8272e6e055f9e943dcb51f64ae6b237fcb591b019558",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/prepare_fixture.py": "f3b2ab8a640e742b2774a272cf1dcd3ffc97134fe1209fb2eef65ed4f8ba53e4",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/src/cts_checked_loopfunctions.f90": "14071896f6c8fcd5e8a7ee02ec3f9a84c9cde336b80a26a696224a0be9953e2a",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/src/cts_checked_protocol.f90": "98efb192a813fad5bdc6b221cce63ca39d65f2c8e23a1e658a335c7e12d035b9",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/src/cts_checked_reduction.f90": "1b878c23ac96ed97ac82dd9d41a0513f3b6eba9ae92802b13e2ad5ba81de4e7a",
+    ".tirust-build/cms-scalar-refusal-prototype/caller/validate_fixture.py": "4f4a2d264c6d558d87263708b17dfada978d7a9827811350bfb1c5f9f19f3d0f",
+    ".tirust-build/cms-scalar-refusal-prototype/classifier/cms_scalar_observer.f90": "1b61c18bbc86d1b5fa25456be73751aaf275789fd043800419614e280db800ac"
+  },
+  "native_compile_performed": false,
+  "native_execution_performed": false,
+  "qualification": "Mock only; no AVH analytic call, physical integral, full model, real coefficients, runtime or accuracy claim",
+  "retries": 0,
+  "runs": [
+    {
+      "argv": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/fixture/build/caller_mock"
+      ],
+      "cwd": ".tirust-build/cms-scalar-refusal-prototype/caller/fixture/run",
+      "expected_exit": 0,
+      "expected_outputs": [
+        "caller-mock.log"
+      ],
+      "name": "caller-mock-control-flow",
+      "timeout_seconds": 10
+    }
+  ],
+  "schema": "cts-checked-mock-compile-proposal-v1",
+  "source_only": true,
+  "validation": {
+    "argv": [
+      "/nix/store/463ik27ppxhpbvw7c50s7qcfc7mgfa5x-python3-3.12.12-env/bin/python3.12",
+      "-B",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/caller/validate_fixture.py"
+    ],
+    "cwd": ".",
+    "timeout_seconds": 10
+  }
+}

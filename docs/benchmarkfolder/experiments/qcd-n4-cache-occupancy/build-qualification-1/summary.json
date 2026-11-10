@@ -1,0 +1,34 @@
+{
+  "budget_pressure": "unmeasured",
+  "commands": 7,
+  "common_private_objects": [
+    "observer.o",
+    "driver.o"
+  ],
+  "dependency_libraries_per_arm": 15,
+  "executables": {
+    "observed": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n4-cache-occupancy/attempt1/build/check-observed",
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n4-cache-occupancy/attempt1/build/check-observed",
+      "sha256": "4d4d0be92f0f8a30632ffee9631c0af551edb092dab8148917f7866f148226e2",
+      "size_bytes": 80768656,
+      "symlink": null
+    },
+    "original": {
+      "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n4-cache-occupancy/attempt1/build/check-original",
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n4-cache-occupancy/attempt1/build/check-original",
+      "sha256": "b8bc4adc378025a5f682a79d2e7a7daa698e2afab78308e9ed6f028065eeaa98",
+      "size_bytes": 80768648,
+      "symlink": null
+    }
+  },
+  "native_evaluation": false,
+  "ordinary_numerical_objects_changed": [
+    "TIRUST_interface.o"
+  ],
+  "original_disabled_enabled_parity": "unlaunched",
+  "performance_eligible": false,
+  "protected_inputs_unchanged": true,
+  "status": "compile-and-link-qualified",
+  "verified_link_inputs_per_arm": 59
+}

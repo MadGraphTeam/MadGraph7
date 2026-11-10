@@ -1,0 +1,89 @@
+{
+  "actual_analytic_object_linked": false,
+  "arguments": [],
+  "candidate_resolution": "Object-declared search directories followed by executable search directories; actual loader map requires separate verification",
+  "candidate_runtime_objects": {
+    "ld-linux-x86-64.so.2": {
+      "needed": [],
+      "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "rpath": [],
+      "runpath": [],
+      "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+    },
+    "libc.so.6": {
+      "interpreter": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "needed": [
+        "ld-linux-x86-64.so.2"
+      ],
+      "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+      "rpath": [],
+      "runpath": [],
+      "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+    },
+    "libgcc_s.so.1": {
+      "needed": [
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1",
+      "resolved_path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+      "rpath": [],
+      "runpath": [
+        ""
+      ],
+      "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+    },
+    "libgfortran.so.5": {
+      "needed": [
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5",
+      "resolved_path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+      "rpath": [],
+      "runpath": [
+        "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib:/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib"
+      ],
+      "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+    },
+    "libm.so.6": {
+      "needed": [
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+      "rpath": [],
+      "runpath": [],
+      "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+    }
+  },
+  "executable": {
+    "interpreter": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "needed": [
+      "libgfortran.so.5",
+      "libm.so.6",
+      "libgcc_s.so.1",
+      "libc.so.6"
+    ],
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/classifier_mock",
+    "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cms-scalar-refusal-prototype/classifier/build/classifier_mock",
+    "rpath": [],
+    "runpath": [
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib:/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib"
+    ],
+    "sha256": "00fc030cfffd6fd3afea13e11884e6e76756ed94e41b1ad84f61637ae482943d"
+  },
+  "interpreter": {
+    "path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+  },
+  "observation": "ELF bytes only; no loader or executable run",
+  "runtime_data_files": [],
+  "schema": "classifier-mock-static-elf-dependencies-v1",
+  "unresolved": []
+}

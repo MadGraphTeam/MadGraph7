@@ -1,0 +1,364 @@
+{
+  "affinity_override": null,
+  "cache": [
+    {
+      "features": "[\"bincode\", \"float-mpfr\", \"integer-gmp\", \"native_code_generation\", \"serde\", \"tracing_max_level_info\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/symbolica-7045f5660f38195b/lib-symbolica.json",
+      "fingerprint_sha256": "46c19683ba99da62e73ea315433dcd3eac150f6f3a25b9c9f1d3cbe53e994873",
+      "package": "symbolica",
+      "profile_id": 1783587453833569552,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/src/api.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libsymbolica-7045f5660f38195b.rlib",
+      "rlib_bytes": 125466738,
+      "rlib_sha256": "3913ba72cbbb8c4a51ed6a710bb8e1afc4b756345acf5a605e5872f3c2e5cd59",
+      "rustflags": []
+    },
+    {
+      "features": "[\"bincode\", \"float-mpfr\", \"integer-gmp\", \"native_code_generation\", \"serde\", \"tracing_max_level_info\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/symbolica-bfa2826cb07859dd/lib-symbolica.json",
+      "fingerprint_sha256": "f4d312ff8074555f81403581eecb0135839ec1ea9722f31b4dc7b9554f0ad1c9",
+      "package": "symbolica",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/src/api.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libsymbolica-bfa2826cb07859dd.rlib",
+      "rlib_bytes": 162261706,
+      "rlib_sha256": "372431b6cc8eae82e338b234883f75caac7e11245937c77cebfecbdae072c192",
+      "rustflags": []
+    },
+    {
+      "features": "[\"generated-evaluators\", \"rust-codegen\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/oneloop-6fdcef74f4f3bbfd/lib-oneloop.json",
+      "fingerprint_sha256": "4a23fca42443d1951ffd3fd6b91c49bddf7355def9784a14f7540ebda5c83fcd",
+      "package": "oneloop",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/oneloopmaster-1e046f4c0b16c2f9/bd703d0/src/backend.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/liboneloop-6fdcef74f4f3bbfd.rlib",
+      "rlib_bytes": 109067034,
+      "rlib_sha256": "e38e8f6202a816f3f5db6f7852c88bd6e01a26d5fe4613d93b21e766b45a38b7",
+      "rustflags": []
+    },
+    {
+      "features": "[\"generated-evaluators\", \"rust-codegen\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/oneloop-a28cdb369fcbd5ae/lib-oneloop.json",
+      "fingerprint_sha256": "404b7514857a47b1bbe40b94d37f2acdb09071e19127fa8067b120a60aea22eb",
+      "package": "oneloop",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.tirust-build-vw7ma2n0/sources/oneloopmaster/src/backend.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/liboneloop-a28cdb369fcbd5ae.rlib",
+      "rlib_bytes": 109065970,
+      "rlib_sha256": "e34684650113e54e78a699878ab8ce889e161335584b89697375aa6c3f3476bd",
+      "rustflags": []
+    },
+    {
+      "features": "[\"generated-evaluators\", \"rust-codegen\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/oneloop-fa6b1be2c2910cb5/lib-oneloop.json",
+      "fingerprint_sha256": "019ce0c0fd8474f5a375aa98f3ecf083aa4f5f988e9920b57b60b5dd1530c133",
+      "package": "oneloop",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.tirust-build-we9yxmuw/sources/oneloopmaster/src/backend.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/liboneloop-fa6b1be2c2910cb5.rlib",
+      "rlib_bytes": 109060898,
+      "rlib_sha256": "116d42b7bb33d1d473ffd952f0ae21f0b597dc4d3a75a6c7e3308c1c18cc1c44",
+      "rustflags": []
+    },
+    {
+      "features": "[\"generated-evaluators\", \"rust-codegen\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/oneloop-fec21d2a0aa02497/lib-oneloop.json",
+      "fingerprint_sha256": "582ffb99bb6175f64496bcc667b9a3915023cc44da1adb55a45c813e02864c68",
+      "package": "oneloop",
+      "profile_id": 1783587453833569552,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile/oneloop/src/backend.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/liboneloop-fec21d2a0aa02497.rlib",
+      "rlib_bytes": 81444550,
+      "rlib_sha256": "bfdf2b2f4795d65f3755f6e67779690ebc53f2f534cf26824588020ec877835f",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-masters-49e21127241fa7aa/lib-iregi_masters.json",
+      "fingerprint_sha256": "656eed80e0e214f33c7688f8c9afe6e0ebce1f668afcfab81a6b1225374c1823",
+      "package": "iregi-masters",
+      "profile_id": 1783587453833569552,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile/tirust/crates/iregi-masters/src/bubble_neighborhood.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_masters-49e21127241fa7aa.rlib",
+      "rlib_bytes": 6151002,
+      "rlib_sha256": "3609a98fd3bb7573d44360e184a215ad0e9872935ec0de148657f2917e34cb93",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-masters-4bbc6db5ca5c3825/lib-iregi_masters.json",
+      "fingerprint_sha256": "28d20939a4d2023d9b3125085b7b14d01224a92e84024d88c395de476ecaf54d",
+      "package": "iregi-masters",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/sources/tirust/crates/iregi-masters/src/bubble_neighborhood.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_masters-4bbc6db5ca5c3825.rlib",
+      "rlib_bytes": 8518012,
+      "rlib_sha256": "be1025b22922a31a4aa9f92c102a237f9fdeabf25b09fb7658f9a6d2dca08123",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-masters-54ef1204103d2a49/lib-iregi_masters.json",
+      "fingerprint_sha256": "a6e898c3f19caccd5afba7819ab05391cf037192fa8507bfd7a9724fcfa7afc8",
+      "package": "iregi-masters",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.tirust-build-vw7ma2n0/sources/tirust/crates/iregi-masters/src/bubble_neighborhood.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_masters-54ef1204103d2a49.rlib",
+      "rlib_bytes": 8516404,
+      "rlib_sha256": "c74414fcb67806d80cf9493270d62eb52d56b0c75d66b5487615491401dcdf26",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-masters-6240e05fb4e2069b/lib-iregi_masters.json",
+      "fingerprint_sha256": "58dd81eb93415e1a974874e510d30086174369d41162a077fab94a1553cfc3c6",
+      "package": "iregi-masters",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/.tirust-build-0fxkmk4r/sources/tirust/crates/iregi-masters/src/bubble_neighborhood.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_masters-6240e05fb4e2069b.rlib",
+      "rlib_bytes": 8518300,
+      "rlib_sha256": "0f54bdc0d58e2186c7d23c51f11440203045c6e213abc0651aeb5a3106fa230b",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-masters-c07273fe95da3088/lib-iregi_masters.json",
+      "fingerprint_sha256": "2ee7aae9e21c4f4db4dc753b95891634df05dbb8fc4c7bd16493d5ca1ee6222b",
+      "package": "iregi-masters",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/tirust-b799601ea2755a53/854b79d/crates/iregi-masters/src/bubble_neighborhood.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_masters-c07273fe95da3088.rlib",
+      "rlib_bytes": 8517580,
+      "rlib_sha256": "4e6429dae446cbf1c50ff51bbfed111128659f577016ada776e7896d74374089",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-masters-cb00fc43e8e8d937/lib-iregi_masters.json",
+      "fingerprint_sha256": "ae632b63bf65c1254f5e2583ae10781e5208d7b490dff98bc724fc4e93a031e0",
+      "package": "iregi-masters",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.tirust-build-we9yxmuw/sources/tirust/crates/iregi-masters/src/bubble_neighborhood.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_masters-cb00fc43e8e8d937.rlib",
+      "rlib_bytes": 8516404,
+      "rlib_sha256": "ebb36fc36a94267badf9f963e8d5cafa668094c36231301ef0506c6eb14a6a3c",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-masters-fc1500b31bf97dc7/lib-iregi_masters.json",
+      "fingerprint_sha256": "5584203bbc557063a9b92e072953dd65c36c210653d5f3963466fff2a72cd3b9",
+      "package": "iregi-masters",
+      "profile_id": 1783587453833569552,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/tirust/crates/iregi-masters/src/bubble_neighborhood.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_masters-fc1500b31bf97dc7.rlib",
+      "rlib_bytes": 6151386,
+      "rlib_sha256": "07d107ebe1b977a5268d0eb4c2f06627fc8ddbb4bcfc16b0963788bfd07ece61",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-rust-25645255df087c8b/lib-iregi_rust.json",
+      "fingerprint_sha256": "da2bf0cca2c2ad98b62263d0f6e4a010d23de593ff9e59f58f9dbaba44ed7cb4",
+      "package": "iregi-rust",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/.tirust-build-0fxkmk4r/sources/tirust/crates/iregi-rust/src/affine_descent_guard.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_rust-25645255df087c8b.rlib",
+      "rlib_bytes": 35688040,
+      "rlib_sha256": "8db14c461e8a1e76d7fe8dd36a7ae2d3ea3db1b07a8721a49e78aea32898e100",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-rust-5b4164e24283fddc/lib-iregi_rust.json",
+      "fingerprint_sha256": "e826af53993df473cafc388d5c9b45a06ea3e18f2f276ec7031a1d6b00510387",
+      "package": "iregi-rust",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/sources/tirust/crates/iregi-rust/src/affine_descent_guard.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_rust-5b4164e24283fddc.rlib",
+      "rlib_bytes": 35686960,
+      "rlib_sha256": "df54b1953db83164311f22cab111e10a16b4ea154769b03a078d98c0a0d3d992",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-rust-5db7d88f7f998bcc/lib-iregi_rust.json",
+      "fingerprint_sha256": "39c84587305f744c0ff0c640f8d718c32b049b9473356d3e891a2765a9a8c834",
+      "package": "iregi-rust",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cargo-home/git/checkouts/tirust-b799601ea2755a53/854b79d/crates/iregi-rust/src/affine_descent_guard.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_rust-5db7d88f7f998bcc.rlib",
+      "rlib_bytes": 35550900,
+      "rlib_sha256": "c863f4a9258265b9056cc01f6af3bca85a982f0efb8d5d7f446bcb25760cfb6f",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-rust-c088e408db760e84/lib-iregi_rust.json",
+      "fingerprint_sha256": "30d5b9b8e8ae3e7a638f3a26930ddd7859958c7850bb799bfe2a4633698be2b7",
+      "package": "iregi-rust",
+      "profile_id": 1783587453833569552,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/tirust/crates/iregi-rust/src/affine_descent_guard.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_rust-c088e408db760e84.rlib",
+      "rlib_bytes": 28561160,
+      "rlib_sha256": "501c0dc15c2e836073fa32be9cfa5b86b8a3cad213e9b853afba2a574a462dc8",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-rust-d256505083284e99/lib-iregi_rust.json",
+      "fingerprint_sha256": "69ede5ace10a1c7cee3e34f1771c747fe5061b614c4f44b394d4cb7e3c2639a4",
+      "package": "iregi-rust",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.tirust-build-vw7ma2n0/sources/tirust/crates/iregi-rust/src/affine_descent_guard.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_rust-d256505083284e99.rlib",
+      "rlib_bytes": 35677072,
+      "rlib_sha256": "8b465be336966fb74b7d00d2daa81b47dee54e72df2024bf07c0463fc765dde0",
+      "rustflags": []
+    },
+    {
+      "features": "[\"default\"]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/iregi-rust-f45e9e004f5305f6/lib-iregi_rust.json",
+      "fingerprint_sha256": "e4cd7c4230783c1335d9716e8ce3a32396a677ee28328b226ed10d3e238bb3c5",
+      "package": "iregi-rust",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.tirust-build-we9yxmuw/sources/tirust/crates/iregi-rust/src/affine_descent_guard.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libiregi_rust-f45e9e004f5305f6.rlib",
+      "rlib_bytes": 35660616,
+      "rlib_sha256": "85cf9cce2645b99b320bf1775ff16364522efb0362a71d8462e79572f899c76a",
+      "rustflags": []
+    },
+    {
+      "features": "[]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/madloop-pole-kernels-00a360e39d27b308/lib-madloop_pole_kernels.json",
+      "fingerprint_sha256": "d4b49c22dc6536b39fb0f5e4ab32dee8284b3b190278cee4d936d3f87eccba58",
+      "package": "madloop-pole-kernels",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.tirust-build-vw7ma2n0/sources/tirust/madloop-pole-kernels/src/generated_a0.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libmadloop_pole_kernels-00a360e39d27b308.rlib",
+      "rlib_bytes": 8476910,
+      "rlib_sha256": "8995bf896858154a1291b8e94ae61ce39ad6643b787f01fd50f2da1364988ebc",
+      "rustflags": []
+    },
+    {
+      "features": "[]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/madloop-pole-kernels-4d48f2529a3760d4/lib-madloop_pole_kernels.json",
+      "fingerprint_sha256": "b2aba853a1d4aa26234811cbe0446fd7b33bee665f6049996eae755d07476a9e",
+      "package": "madloop-pole-kernels",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.tirust-build-we9yxmuw/sources/tirust/madloop-pole-kernels/src/generated_a0.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libmadloop_pole_kernels-4d48f2529a3760d4.rlib",
+      "rlib_bytes": 8476910,
+      "rlib_sha256": "0535c8b8f39ef8f233e8124b0ab1004bb837f47b19a3b3a670a8e4a6322044fe",
+      "rustflags": []
+    },
+    {
+      "features": "[]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/madloop-pole-kernels-56f90195c1356bb1/lib-madloop_pole_kernels.json",
+      "fingerprint_sha256": "c94cba1b0e1dd14aa5475807bbd129dc2f422ba44dd2117e69fc35b0e8150b99",
+      "package": "madloop-pole-kernels",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-install/mg/HEPTools/.tirust-build-aii_bv13/sources/tirust/madloop-pole-kernels/src/generated_a0.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libmadloop_pole_kernels-56f90195c1356bb1.rlib",
+      "rlib_bytes": 8477510,
+      "rlib_sha256": "de4cdf4ae06f9272c1e71ca5c8c9e2544a542c0d35611f464ad8d5b03f4a334f",
+      "rustflags": []
+    },
+    {
+      "features": "[]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/madloop-pole-kernels-8bfc8963ee360c83/lib-madloop_pole_kernels.json",
+      "fingerprint_sha256": "efa7ac56ebc393c4ebc90bc582e6ccfd4bfbc4e5765348512c84077a90a141c2",
+      "package": "madloop-pole-kernels",
+      "profile_id": 1783587453833569552,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile/tirust/madloop-pole-kernels/src/generated_a0.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libmadloop_pole_kernels-8bfc8963ee360c83.rlib",
+      "rlib_bytes": 8476078,
+      "rlib_sha256": "9f2621d8e34c786e8f38c81030dcb120ee26c6757a5b63ccd8726bbc9d4c0e0d",
+      "rustflags": []
+    },
+    {
+      "features": "[]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/madloop-pole-kernels-a2581334c8524200/lib-madloop_pole_kernels.json",
+      "fingerprint_sha256": "e2be3bcbd0f50dae480ca3bf8ee1a95a3a0c9c7ead297bdeeef8665e6a427016",
+      "package": "madloop-pole-kernels",
+      "profile_id": 1783587453833569552,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-scalar-shadow-profile-attempt-2/tirust/madloop-pole-kernels/src/generated_a0.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libmadloop_pole_kernels-a2581334c8524200.rlib",
+      "rlib_bytes": 8476262,
+      "rlib_sha256": "3c0995df872d60b1298006c0a09f95265a16a3412ef3807bc98e19b1f3998cb2",
+      "rustflags": []
+    },
+    {
+      "features": "[]",
+      "fingerprint": ".tirust-build/cargo-build/release/.fingerprint/madloop-pole-kernels-d9bd64118f0831b9/lib-madloop_pole_kernels.json",
+      "fingerprint_sha256": "9b2d93f27883b56486b0089bc0e4458dae09a84555d31fe8aac01abcd0a3846a",
+      "package": "madloop-pole-kernels",
+      "profile_id": 11349332380231099618,
+      "representative_source": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/.tirust-build-0fxkmk4r/sources/tirust/madloop-pole-kernels/src/generated_a0.rs"
+      ],
+      "rlib": ".tirust-build/cargo-build/release/deps/libmadloop_pole_kernels-d9bd64118f0831b9.rlib",
+      "rlib_bytes": 8477606,
+      "rlib_sha256": "45ca6eb6616ce70e2a98080d5587a7fe9bf564f99006bf6d752a4681593b0b22",
+      "rustflags": []
+    }
+  ],
+  "cache_availability_only": true,
+  "compiler_executed": false,
+  "conclusion": "Release Symbolica/OneLOop/core/pole artifacts exist. No cached iregi-rust release artifact observed from exact pole-development path; Cargo may rebuild path-dependent core packages. Existing dependency fingerprints alone do not guarantee freshness or final command selection.",
+  "cpu_reservation": false,
+  "exact_reuse_guaranteed": false,
+  "jobs": 1,
+  "native_executed": false,
+  "proposed_cap_seconds": 900,
+  "schema": 1
+}

@@ -1,0 +1,19 @@
+{
+  "parent_files": {
+    ".tirust-build/cms-scalar-policy-audit/README.md": "13df732092d67c30b0aac82026437809b4f621a1eedb39a0d177e171e671c58e",
+    ".tirust-build/cms-scalar-policy-audit/evidence-index.json": "e1099050b74c12f438006609a5775bf85c15cfd4b6f96dc9b7a387d012309ed9",
+    ".tirust-build/cms-scalar-policy-audit/review/independent-review.json": "c462b24c020d6318765f9e473389617aced4187718160ce26a9bbad96cb29aa1",
+    ".tirust-build/cms-scalar-policy-audit/source-bindings.json": "2b43bee7e95a950a3022ec949f556298d6ead1f4943fd6ccea88929e94c41555",
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/README.md": "0b1bdee8003d0fcd11a12a8818c8ec051cca98bd204364914cea892b6f509a7c",
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/README.md": "96010d8e96b9ad213d805bb8d0326058b0dd6f2f616a05101ae0f177bbd57ce5",
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/summary.json": "e38945fcbac8eb92410973dc92f2782ba61f8680c77223a379d5d02a3fed67ad",
+    "madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16",
+    "vendor/CutTools/src/avh/avh_olo.f90": "36bf719ce28a2b3fa15bc6e53a2b9963eb8b48a6c7a27be8be5c246d251e1c9b",
+    "vendor/CutTools/src/cts/cts_cutroutines.f90": "6dd0bb5247616d84114661c71c59e30a555e6c7af67c77b4ca35d3e1062ec49b",
+    "vendor/CutTools/src/cts/cts_cuttools.f90": "7c6cb8d037a93cfacb7ada5d54d078838ae6d26b3ef8ec2af52a00d7de3e8fab",
+    "vendor/CutTools/src/cts/cts_loopfunctions.f90": "6751094ddeed582395754d6a5e3218f64f5d5fbc44b48cdb888b61d190cd14e7",
+    "vendor/CutTools/src/cts/cts_mpr.h": "82b8e3d1b3e25fec05a8bfefb68b38004fc83d45b1b60197d304e46c7ba0c705"
+  },
+  "schema": "cms-scalar-refusal-parent-bindings-v1",
+  "scope": "Frozen source audit, original production scalar/caller inputs and retained causal evidence; read-only verification passed"
+}
