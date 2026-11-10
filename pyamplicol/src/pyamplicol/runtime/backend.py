@@ -751,6 +751,10 @@ class RusticolRuntimeBackend:
             # implementation toward the binary64 masses of its external
             # wavefunctions, no Symbolica operation (the tree C ABI's, so
             # both give one improved point for one binary64 input).
+            # ``Runtime.improve_f64``: ``[point][leg][E, px, py, pz]`` floats
+            # and one JSON record per point.
+            improved_f64: list[list[list[float]]]
+            texts: list[str]
             improved_f64, texts = _invoke(
                 self._native_module, self._runtime.improve_f64, momenta, variant
             )
@@ -795,7 +799,10 @@ class RusticolRuntimeBackend:
             # leg has a bound mass, so each keeps its own p^2 as its target
             # (m-lit lit-psimprove (G6)); conservation is still restored.
             return [None] * len(states), initial
-        legs = metadata["points"][0]["legs"]
+        # The projection's per-point records, each with its ``legs`` records
+        # (``symbolica_exact._diagnostic_project_onshell_points``).
+        point_records = cast(Sequence[Mapping[str, Any]], metadata["points"])
+        legs = point_records[0]["legs"]
         return [Fraction(Decimal(leg["mass"])) ** 2 for leg in legs], initial
 
     def _note_kinematics(
@@ -2195,7 +2202,14 @@ def load_runtime_backend(
         model_parameters=parameters,
         mute_warnings=mute_warnings,
     )
-    backend = RusticolRuntimeBackend(runtime, module, path, manifest, **kinematics)
+    backend = RusticolRuntimeBackend(
+        runtime,
+        module,
+        path,
+        manifest,
+        kinematics_improvement=kinematics_improvement,
+        kinematics_improvement_binary64=kinematics_improvement_binary64,
+    )
     backend._kinematics_muted = mute_warnings
     return backend
 

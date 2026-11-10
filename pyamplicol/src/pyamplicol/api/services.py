@@ -1531,13 +1531,14 @@ class Runtime:
         improve = getattr(self._backend, "_improved", None)
         if improve is None:
             return momenta
-        return improve(
+        improved: Momenta = improve(
             momenta,
             precision,
             options.get("kinematics_improvement"),
             options.get("kinematics_improvement_binary64"),
             arithmetic,
         )
+        return improved
 
     def evaluate_correlated_graded(
         self,

@@ -14,7 +14,7 @@ from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
 from threading import RLock
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeVar, cast
 
 from pyamplicol.api.errors import (
     ArtifactError,
@@ -165,13 +165,16 @@ def _recording_executor(base: type) -> type:
     return recording
 
 
-def with_kinematics(evaluation: Any, records: Sequence[Any]) -> Any:
+_EvaluationT = TypeVar("_EvaluationT")
+
+
+def with_kinematics(evaluation: _EvaluationT, records: Sequence[Any]) -> _EvaluationT:
     """``kinematics.with_kinematics`` (each lane diagnostic's kinematics
-    record)."""
+    record); the evaluation's type is kept (``dataclasses.replace``)."""
 
     from pyamplicol.kinematics import with_kinematics as attach
 
-    return attach(evaluation, records)
+    return cast(_EvaluationT, attach(evaluation, records))
 
 
 def _number(value: object, description: str) -> str:
