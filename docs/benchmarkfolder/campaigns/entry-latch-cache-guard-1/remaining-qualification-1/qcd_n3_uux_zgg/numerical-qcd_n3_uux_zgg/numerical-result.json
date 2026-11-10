@@ -1,0 +1,120 @@
+{
+  "case": "qcd_n3_uux_zgg",
+  "lanes": [
+    {
+      "accepted_backend_precision_counts": {
+        "1:DP": 100
+      },
+      "backend": 1,
+      "error": null,
+      "fpe_flags": null,
+      "internal_retry_counts": null,
+      "matched_saved_points": 100,
+      "numerical_agreement_passed": true,
+      "ordinary_target_passed": true,
+      "performance_acceptance_eligible": false,
+      "source": "baseline",
+      "status": "complete",
+      "status_counts": {
+        "211": 100
+      }
+    },
+    {
+      "accepted_backend_precision_counts": {
+        "1:DP": 100
+      },
+      "backend": 1,
+      "error": null,
+      "fpe_flags": null,
+      "internal_retry_counts": null,
+      "matched_saved_points": 100,
+      "numerical_agreement_passed": true,
+      "ordinary_target_passed": true,
+      "performance_acceptance_eligible": false,
+      "source": "candidate",
+      "status": "complete",
+      "status_counts": {
+        "211": 100
+      }
+    },
+    {
+      "accepted_backend_precision_counts": {
+        "6:DP": 100
+      },
+      "backend": 6,
+      "error": null,
+      "fpe_flags": null,
+      "internal_retry_counts": null,
+      "matched_saved_points": 100,
+      "numerical_agreement_passed": true,
+      "ordinary_target_passed": false,
+      "performance_acceptance_eligible": false,
+      "source": "candidate",
+      "status": "complete",
+      "status_counts": {
+        "216": 100
+      }
+    },
+    {
+      "accepted_backend_precision_counts": {
+        "7:DP": 100
+      },
+      "backend": 7,
+      "error": null,
+      "fpe_flags": null,
+      "internal_retry_counts": null,
+      "matched_saved_points": 100,
+      "numerical_agreement_passed": true,
+      "ordinary_target_passed": false,
+      "performance_acceptance_eligible": false,
+      "source": "candidate",
+      "status": "complete",
+      "status_counts": {
+        "217": 100
+      }
+    },
+    {
+      "accepted_backend_precision_counts": {
+        "8:DP": 100
+      },
+      "backend": 8,
+      "error": null,
+      "fpe_flags": null,
+      "internal_retry_counts": null,
+      "matched_saved_points": 100,
+      "numerical_agreement_passed": true,
+      "ordinary_target_passed": false,
+      "performance_acceptance_eligible": false,
+      "source": "candidate",
+      "status": "complete",
+      "status_counts": {
+        "218": 100
+      }
+    },
+    {
+      "accepted_backend_precision_counts": {
+        "9:DP": 87,
+        "9:QP": 13
+      },
+      "backend": 9,
+      "error": null,
+      "fpe_flags": null,
+      "internal_retry_counts": null,
+      "matched_saved_points": 100,
+      "numerical_agreement_passed": true,
+      "ordinary_target_passed": false,
+      "performance_acceptance_eligible": false,
+      "source": "candidate",
+      "status": "complete",
+      "status_counts": {
+        "219": 87,
+        "323": 13
+      }
+    }
+  ],
+  "raw_replay_passed": true,
+  "results_path": "experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/results.json",
+  "results_sha256": "fac65d0131446cd77b96b74580804b29e1a2263afcaf255f7abbb121d4a6a4f5",
+  "returncode": 0,
+  "status": "passed"
+}

@@ -140,8 +140,10 @@ pass at both `3e-6` and `1e-8`: twelve lanes, 100 saved points each, all accepte
 results in the selected backend's DP mode. Five more successor processes now
 have [independently audited closed checkpoints](campaigns/entry-latch-cache-guard-1/QUALIFICATION_PROGRESS.md):
 the Higgs and Higgs-pair controls, QCD top-pair production, EW muon-pair production,
-and the mixed QCD/QED control. All 42 completed lanes pass both numerical criteria.
-The four three- and four-particle cases and precise timing remain pending.
+and the mixed QCD/QED control. The two three-particle processes have also closed:
+all 54 completed lanes pass `3e-6`; QCD three-particle production retains `1e-8`
+target misses and TIRust uses QP rescue at 13 points. The two four-particle cases
+and precise timing remain pending.
 The published 31-page PDF covers the preceding `invariant-symmetry-1`
 registration, at revision `2c13246ffa63`, with numerical
 identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
@@ -275,6 +277,14 @@ It reproduces supplied-invariant recurrence consistency, while retaining the
 different momentum-derived geometry and missing independent pinch controls.
 Ten pure tests and independent replay pass. This does not resolve the current
 EW threshold refusal or justify relaxing production conditioning guards.
+
+The [invariant-classification audit](experiments/invariant-classification-audit-1/README.md)
+recomputes two saved forward CMS points and the separate EW threshold group.
+The CMS transfers have zero time difference and genuine nonzero spacelike
+squares, but satisfy the existing energy-normalized zeroing test. The EW group
+instead exposes a DP-formed mass-square mismatch after massive-shell snapping.
+Both pure recomputations pass independent replay; no threshold or numerical
+guard change is qualified.
 
 The bounded [closed QCD n3 investigation](experiments/invariant-symmetry-qcd-n3-target-analysis/portable-analysis2/index.json)
 retains the same 1,200 rows and 4,800 coefficient values as its prior closed

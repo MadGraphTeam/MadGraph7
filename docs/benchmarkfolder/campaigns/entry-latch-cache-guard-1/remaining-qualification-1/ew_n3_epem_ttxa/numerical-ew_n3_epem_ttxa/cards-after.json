@@ -1,0 +1,10 @@
+{
+  "baseline/ew_n3_epem_ttxa": {
+    "generation_sha256": "4eee89229fe35871e3ee37f1e9f5799cc7a079fb13f381caa81c54afeec7caf7",
+    "param_card_sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+  },
+  "candidate/ew_n3_epem_ttxa": {
+    "generation_sha256": "2c04d022a9b8f1e7cdca16e57f19a4f78597de2c6eb457673840d5d4fd1e63fe",
+    "param_card_sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+  }
+}

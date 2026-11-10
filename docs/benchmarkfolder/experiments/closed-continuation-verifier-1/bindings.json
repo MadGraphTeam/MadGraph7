@@ -1,0 +1,25 @@
+{
+  "campaign": "entry-latch-cache-guard-1",
+  "campaign_path": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1",
+  "configuration_sha256": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef",
+  "manifest_sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076",
+  "protocols": {
+    "tirust_benchmark.py": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370",
+    "tirust_benchmark_campaign.py": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710",
+    "tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "tirust_benchmark_numerical.py": "1d4ca057aecef040457a46dc06c23185ba31cd53bf67df1c5fa6805c99c0128f",
+    "tirust_benchmark_warmup.py": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d",
+    "tirust_benchmark_worker.f": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9",
+    "tirust_benchmark_worker.py": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+  },
+  "schema": "madloop-tirust-closed-continuation-verifier-bindings-v1",
+  "source_index_sha256": "84d5aa3e611d38809eafb633eccfdca5ae78c0f4e597a3cbb05e063c88787c48",
+  "tested_checkpoints": {
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/ew_n2_epem_mupmum/checkpoint.json": "31a132c08b0874eba7663f5557d7f3ce4f9dba0c0ef2a01f6c32da86afb5fa69",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_h/checkpoint.json": "aafac6b45e83e6c8669179c5d52e4380249020e744c294ec2e5e4a0ed5761419",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/li_gg_hh/checkpoint.json": "de9ccc727f2e4782d02357e5026f7fed2803329d71c1b4d6ae5532c7f59704f2",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/mixed_uux_ga/checkpoint.json": "461bc164f716da9ed0226cab9443357f765659461479959361d5ea96181bcea4",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/qcd_n2_gg_ttx/checkpoint.json": "589cd77e8056e454e0d1405054fc91e1eb5aeccc7db82c21f9914f69c7fa2461",
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/remaining-qualification-1/qcd_n3_uux_zgg/checkpoint.json": "5da76edf538e19fb894bf1f4ba212bf0c0fd984f6e9e4db330035de0d5efdc4d"
+  }
+}
