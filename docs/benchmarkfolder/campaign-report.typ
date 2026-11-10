@@ -38,6 +38,20 @@
 #let show-campaign-details(data, cases, process-label) = {
   pagebreak()
   heading(level: 1)[Timing eligibility and control-process scope]
+  if data.at("refresh", default: none) != none {
+    note(fill: warm)[*TODO — Hua-Sheng, local machine.*
+      Rebuild the delivered candidate and baseline with identical pinned inputs;
+      replay all 100 saved points; then run at least seven alternating single-core
+      pairs with approximately one-second batches. Report initialization and
+      actual backend/precision use separately. The upper 95% ratio bound ≤1.05
+      must be checked for every main chain and existing-backend comparison.
+      Shared-host work is best effort without reserving CPUs; it cannot pass this
+      final performance requirement.]
+    v(5pt)
+    text(7.3pt, fill: ink2)[User amendment: #raw(data.refresh.amendment_path).
+      #if data.refresh.local_handoff_path != none { [Local reproduction: #raw(data.refresh.local_handoff_path).] }]
+    v(7pt)
+  }
   [Formal main-process timing uses a 2 s calibration target and the frozen
   0.95 s minimum observed batch duration. Each batch traverses all 100 saved
   points. All valid attempts remain visible; a qualified poor result cannot be
@@ -116,7 +130,7 @@
 
   pagebreak()
   heading(level: 1)[Registered implementation and delivery status]
-  let criterion-labels = (installed_abi_and_fortran_checks: "Installed ABI and Fortran checks",
+  let criterion-labels = (installed_abi_and_fortran_checks: "Installed ABI / Fortran: recorded test groups",
     subprocess_event_cache_lifecycle: "Subprocess/event cache lifecycle",
     statistics_roundtrip: "Current statistics round trip")
   table-style(table(columns: (2fr, 1fr), inset: 6pt, stroke: table-stroke, fill: table-fill,
@@ -137,6 +151,14 @@
   These checks qualify the recorded interface and tested transport/cache
   rejection behavior; their elapsed times are not physical-amplitude benchmark
   samples.]
+  if data.at("refresh", default: none) != none {
+    v(5pt)
+    note(fill: warm)[*Integration work remains open.* The installer version-type
+      correction is tested only in an isolated module and is not yet applied to
+      production. Adaptive-precision and effective-point changes still need
+      actual backend 8/9 physical qualification. Passed rows describe their
+      recorded test scope; they do not mean all implementation audits are closed.]
+  }
   v(6pt)
   note(fill: if data.subprocess_event_cache_lifecycle.status == "passed" { pale } else { warm })[*Subprocess/event cache lifecycle:
     #status(data.subprocess_event_cache_lifecycle.status).*
@@ -176,4 +198,24 @@
     ancestor result with its original source and interval. New source candidates
     do not erase it. Ordinary-point agreement and a passing eight-process runtime
     gate alone cannot declare the full integration goal complete.]
+  if data.at("refresh", default: none) != none {
+    pagebreak()
+    heading(level: 1)[Experimental adaptive-precision bridge]
+    [The experimental bridge is an isolated development build, whose source and evidence
+    are recorded in this public feature branch. It has not replaced the installed
+    TIRust bridge used for the ordinary campaign. The branch is
+    #raw(data.refresh.branch); the intended future PR target is
+    #raw(data.refresh.future_pr_target).]
+    v(8pt)
+    for row in data.refresh.private_diagnostics {
+      heading(level: 2)[#row.title]
+      [#row.text]
+      v(4pt)
+      text(6.6pt, fill: ink2)[#raw(row.evidence)]
+      v(8pt)
+    }
+    note(fill: warm)[Compilation, mock tests, unchecked fixed-QP calls and
+      a separate all-512-bit experiment each have limited scope. None establishes
+      adaptive-library physical accuracy or final runtime acceptance.]
+  }
 }

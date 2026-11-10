@@ -443,3 +443,24 @@ def test_symlink_raw_input_is_rejected(fixture):
     path.symlink_to(other)
     with pytest.raises(ValueError, match="symlink"):
         fixture.collect()
+
+
+def test_closed_case_allowlist_never_opens_active_run(tmp_path, monkeypatch):
+    fixture = Fixture(tmp_path)
+    fixture.complete_case()
+    active_case = fixture.config['cases'][1]
+    active = fixture.folder(active_case).relative_to(tmp_path).as_posix()
+    fixture.folder(active_case).mkdir(parents=True)
+    (fixture.folder(active_case) / 'results.json').write_text('actively changing invalid data')
+    evidence = Evidence(tmp_path)
+    original_path = evidence.path
+    def guarded(name):
+        assert not name.startswith(active), 'Active numerical run was opened'
+        return original_path(name)
+    monkeypatch.setattr(evidence, 'path', guarded)
+    observed = COLLECTOR.collect_numerical(evidence, fixture.relative, fixture.manifest,
+                                          fixture.config, {fixture.config['cases'][0]['id']})
+    assert observed['cases'][0]['all_six_complete']
+    assert observed['cases'][1]['status'] == 'pending'
+    assert observed['cases'][1]['complete_lanes'] == 0
+    assert all(not name.startswith(active) for name in evidence.files)

@@ -1,0 +1,116 @@
+{
+  "active_ew_n4_inputs_bound": false,
+  "build": {
+    "ledger_input_bytes": 351803434,
+    "ledger_input_count": 3683,
+    "pdf_pages": 14,
+    "text_extraction_checked_for_literal_template_leaks": true,
+    "typst": "typst 0.15.1 (9dfd3a08)",
+    "verify_only_passed": true,
+    "visual_pages_inspected": [
+      1,
+      3,
+      12,
+      13,
+      14
+    ]
+  },
+  "closed_cases": 10,
+  "closed_lanes": 60,
+  "criteria": {
+    "all_eleven_five_backend_numerical": "pending",
+    "eight_main_runtime_gates": "deferred to Hua-Sheng",
+    "existing_backend_regressions": "deferred to Hua-Sheng",
+    "installed_abi_and_fortran_checks": "passed",
+    "installer_metadata_hardening": "open",
+    "native_dp_and_rescued_cohorts": "pending",
+    "paired_campaign_overall": "deferred to Hua-Sheng",
+    "statistics_roundtrip": "passed",
+    "stress_accuracy": "open",
+    "subprocess_event_cache_lifecycle": "passed"
+  },
+  "delivery_complete": false,
+  "discarded_document_drafts": {
+    "location": ".tirust-build/report-refresh-preview/drafts",
+    "scope": "Prepublication report-only drafts retained in ignored directory; no scientific evidence removed"
+  },
+  "files": {
+    "README.md": {
+      "bytes": 15314,
+      "sha256": "e7aedcb147ca389020eaa719b96c6fdc6306a30eb92f74e970cec7686c9c3dab"
+    },
+    "benchmark.pdf": {
+      "bytes": 346997,
+      "sha256": "d3fa4830a892016a757e42b9fb345bea6b974edaf9fd108a7e6b74d331e0818c"
+    },
+    "benchmark.typ": {
+      "bytes": 25275,
+      "sha256": "37a969ce290d59f8f4fb10c01c137be040f64e66f2ffd1d05a0bf420dc9ca7ca"
+    },
+    "campaign-report.typ": {
+      "bytes": 12606,
+      "sha256": "2c0d55b712d7d208e4ff65097c0d0a31c0c65b5f5d859f3935e843ae9a160fb6"
+    },
+    "campaign_report.py": {
+      "bytes": 13744,
+      "sha256": "45666ec29ee09019aea38aad913a3f9569d9c3b86441249e0c13ca91414fcfa3"
+    },
+    "campaign_report_numerical.py": {
+      "bytes": 30466,
+      "sha256": "63ae9db2ef98db7269d7290b68feb5a02ae0c454e88086b0644253ebef8c4192"
+    },
+    "campaign_report_refresh.py": {
+      "bytes": 9545,
+      "sha256": "5a7c30439ffcd695fff91579e1123fbdf0bbb105781b8a0ab72a6333bade15d4"
+    },
+    "campaigns/split-dp-terminal-1/report-context.json": {
+      "bytes": 1096,
+      "sha256": "adb62ec711df4c4d298142baae1ade7afbe0874991ffe9b77b1c423456c02d7e"
+    },
+    "campaigns/split-dp-terminal-1/report-snapshots/closed10-3.json": {
+      "bytes": 1230835,
+      "sha256": "a4a0f4adf3d57983ef45a37c4880f0ac1a986766d004b99cf6c09c414b06cf83"
+    },
+    "campaigns/split-dp-terminal-1/report-snapshots/closed10-selection-2.json": {
+      "bytes": 1939,
+      "sha256": "1433a2d5fd1d3d81e3e3ca5b72c9b5907a3543509b92d096a6ca30c77f2fbbe3"
+    },
+    "campaigns/split-dp-terminal-1/summary.json": {
+      "bytes": 69199,
+      "sha256": "d4427c815df319554e25a453928f6c477281a1beaff573493066090103b275cc"
+    },
+    "report-build.json": {
+      "bytes": 795042,
+      "sha256": "36e2239ea5d7fe9299fd77a3c427fa91c695da1f51d0a856fde7f0db42be5f48"
+    },
+    "test_campaign_report_numerical.py": {
+      "bytes": 25723,
+      "sha256": "6a15a327f845fef77f4537ec02b505394c01a472116691a8872689095ba072f7"
+    },
+    "test_campaign_report_refresh.py": {
+      "bytes": 3083,
+      "sha256": "5de85df58771e731964a04df03f0e6ad4b099f76abb1e0086ea5b475281b30cf"
+    }
+  },
+  "final_performance_acceptance": "deferred to Hua-Sheng",
+  "local_handoff": "Committed PLAN-AMENDMENT-2026-11-10.md supplies TODO; portable final-candidate runner is being prepared separately",
+  "new_numerical_execution": false,
+  "old_report": {
+    "archive": "history/report-before-split-dp-campaign",
+    "canonical_pdf_ledger_context_matched_archive_before_change": true,
+    "commit": "bd8eb72a179a2a6a4385af07d13507f94c52df95",
+    "pdf_sha256": "f5cc86a70738dfc719b34a1e7686b57934fe1b421c7774275f2498ee0044d2df",
+    "required_input_bytes_verified": 287811678,
+    "required_input_files_verified": 4693
+  },
+  "saved_points_per_lane": 100,
+  "schema": "madloop-tirust-report-refresh-verification-v1",
+  "scope": "Documentation-only closed-evidence report refresh; no new compiler, amplitude, or measurement execution",
+  "tests": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider tests/unit_tests/various/test_tirust_report.py docs/benchmarkfolder/test_intermediate_report.py docs/benchmarkfolder/test_campaign_report*.py",
+    "observation": "Summary transcribed from completed tool output; not a raw subprocess log",
+    "passed": 231,
+    "reported_seconds": 15.17,
+    "returncode": 0
+  }
+}

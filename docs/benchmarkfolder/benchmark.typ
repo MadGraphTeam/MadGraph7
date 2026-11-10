@@ -10,6 +10,7 @@
 #let pilots = json("experiments/numerical/completed-pilots-index.json")
 #let intermediate = if report.at("intermediate_path", default: none) == none { none } else { json(report.intermediate_path) }
 #let current-dossier = if report.at("campaign_report_path", default: none) == none { none } else { json(report.campaign_report_path) }
+#let refresh = if current-dossier == none { none } else { current-dossier.at("refresh", default: none) }
 #let env = json("implementation-start.json")
 #show: body => report-style(body, date: d.at("date", default: "9 November 2026"),
   revision: if campaign != none { "registered " + campaign.candidate.exporter_identity.revision.slice(0, 12) } else if d.at("candidate_revision", default: none) == none { "not yet measured" } else {
@@ -56,7 +57,7 @@
   #v(4pt)
   #text(8.5pt, fill: luma(110))[CutTools · Ninja · COLLIER · NinjaRS · TIRust]
   #v(3pt)
-  #text(8pt, fill: luma(110))[Starting MadLoop revision #raw(d.baseline_revision.slice(0,12)) · one pinned CPU · full helicity/color sums]
+  #text(8pt, fill: luma(110))[Starting MadLoop revision #raw(d.baseline_revision.slice(0,12)) · full helicity/color sums]
 ]
 #v(7pt)
 #if campaign != none {
@@ -64,21 +65,26 @@
     #raw(campaign.candidate.numerical_identity_sha256.slice(0,16)).]
   v(4pt)
   text(8pt, fill: ink2)[Registered exporter anchor: #raw(campaign.candidate.exporter_identity.revision.slice(0,12)).
-    Observed export Git revisions: #if report.at("observed_candidate_revisions", default: ()).len() == 0 { [not yet measured] }
-    else { raw(report.observed_candidate_revisions.map(r => r.slice(0,12)).join(", ")) }.
+    Observed paired-timing export revisions: #if report.at("observed_candidate_revisions", default: ()).len() == 0 { [not yet measured] } else { raw(report.observed_candidate_revisions.map(r => r.slice(0,12)).join(", ")) }.
     Documentary revisions can differ while the registered exporter bytes remain identical.]
   v(4pt)
   note(fill: warm)[*Complete delivery qualification:
     #cell-status(if current-dossier != none and current-dossier.delivery_complete { "pass" } else { "incomplete" }).*
-    The eight main runtime gates are one requirement. The eleven-process numerical matrix,
+    #if refresh != none { [#refresh.closed_cases of #refresh.expected_cases physical cases are closed: #refresh.closed_lanes lanes × 100 saved points pass 3e-6. EW n4 remains pending in this frozen snapshot.] }
+    The eleven-process numerical matrix,
     controls, existing-backend regressions, precision cohorts, implementation checks and
     unresolved stress cases retain separate statuses.]
   v(4pt)
 }
-#note(fill: if d.gate.complete and d.gate.passed { pale } else { warm })[
+#if refresh != none {
+note(fill: warm)[*Precise performance acceptance: deferred to Hua-Sheng.*
+  Final timings will run on his local machine. Shared-host timings are provisional,
+  without CPU reservation, and cannot establish the ≤1.05 upper confidence bound.
+  This snapshot contains no new paired timing samples.]
+} else { note(fill: if d.gate.complete and d.gate.passed { pale } else { warm })[
   *Main campaign acceptance: #cell-status(if d.gate.complete and d.gate.passed { "pass" } else if d.gate.complete or known-failures { "fail" } else { "incomplete" }).* #if known-failures and not d.gate.complete { [The remaining campaign is incomplete.] }
   Every main process requires five-backend agreement, an upper 95% paired runtime-ratio bound no greater than 1.05, and passing existing-backend regression checks. Unmeasured cells are shown as —. A failed or incomplete row is not a speedup claim.
-]
+] }
 #if intermediate != none {
   v(5pt)
   text(8pt, fill: ink2)[The main matrix retains the historical measured candidate.
@@ -100,7 +106,10 @@
       (
         [#text(9pt, font: "Libertinus Serif")[#process-label(c)]#linebreak()
          #text(7pt, fill: ink2)[#if c.id.starts-with("qcd") { [QCD] } else { [EW] } · 2→#c.nfinal · #if c.points == none { [unmeasured] } else { [#c.points points] }]],
-        [#cell-status(checks-status(c.correctness))],
+        [#cell-status(if refresh == none { checks-status(c.correctness) } else {
+          let q = current-dossier.numerical.cases.find(q => q.id == c.id)
+          if q.regression_pass == true { "pass" } else { q.status }
+        })],
         [#text(11pt, weight: "bold")[#time-us(p.at("baseline_median_seconds_per_point", default: none))]],
         [#text(11pt, weight: "bold")[#time-us(p.at("candidate_median_seconds_per_point", default: none))]],
         table.cell(fill: ratio-fill(ratio), [
@@ -108,9 +117,9 @@
           #if p.at("lower_95", default: none) != none {
             [#fixed(p.lower_95,3)–#fixed(p.upper_95,3)#linebreak()]
           }
-          #cell-status(if p.passed == none { p.status } else if p.passed { "pass" } else { "fail" })
+          #cell-status(if refresh != none { "deferred" } else if p.passed == none { p.status } else if p.passed { "pass" } else { "fail" })
         ]),
-        [#cell-status(checks-status(regressions))#linebreak()
+        [#cell-status(if refresh != none { "deferred" } else { checks-status(regressions) })#linebreak()
           #if bounds.len() > 0 { [max. upper#linebreak()#ratio-text(calc.max(..bounds))] }],
       )
     }).flatten(),

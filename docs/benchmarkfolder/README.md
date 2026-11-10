@@ -100,14 +100,31 @@ to reproduce that audit. These physics results have a separate report page and
 do not supply the pending runtime-campaign measurements.
 The standalone pole diagnostic is described in `POLES.md`.
 
-The current PDF is an intermediate report. Its main matrix preserves the
-historical c91 campaign, including the qualified n1 runtime failure. The
-separately versioned `intermediate-status.json` describes later implementation
-checks, the actual `095e9579…` installation, late ordinary/stress observations,
-cohort limitations and unpromoted experiments. It does not change the historical
-`summary.json` or declare the optimized candidate accepted. Its qualification
-rows supersede the earlier prose snapshot for display only. Final-candidate
-physics, paired runtime and regression measurements remain pending.
+The current PDF is a closed-evidence intermediate report for
+`split-dp-terminal-1`: ten of eleven processes, all six lanes per process,
+and 100 saved points per lane pass the `3e-6` criterion. The EW four-particle
+case is still active and is excluded entirely from this snapshot. The `1e-8`
+misses in QCD three- and four-particle cases remain visible; accepted precision
+is reported separately from internal retries, which this dataset does not observe.
+
+Final precise timings are **deferred to Hua-Sheng on his local machine**, as
+recorded in [the user amendment](PLAN-AMENDMENT-2026-11-10.md). Shared-host timing
+is provisional and uses no CPU reservation. No new paired timings are included
+in this snapshot and no `≤1.05` performance claim is made. A portable local
+runner/handoff is still being prepared; the historical quiet-window controller
+must not be treated as a local reproduction command unchanged.
+
+The experimental adaptive-precision bridge is an isolated development build,
+not a private repository or the installed backend used in this campaign. It
+tries 256-bit MPFR first and retries an eligible conditioning refusal once at
+512 bits. Its 20 Rust tests pass, but dynamic Fortran/physical qualification
+remains open. The report also distinguishes the completed legacy Born/effective-
+point checks and current synthetic stability replay from physical qualification.
+The installer version-type hardening fix remains unpromoted; earlier passed
+ABI/interface rows describe only their identified test groups.
+
+The feature branch is `madloop_tirust`, based on `madloop_ninjars` at the frozen
+baseline. The intended future PR target is `madloop_ninjars`.
 
 `collect_intermediate.py` has an explicit allowlist of completed evidence; it
 hashes retained files and extracts claim anchors without executing numerical
@@ -120,15 +137,25 @@ are preserved under `history/report-before-status-refresh/` and still support
 
 ## Build the report
 
-After regenerating `summary.json` from retained observations:
+The canonical report uses the explicit immutable closed-evidence selection.
+Its selected dossier binds the checkpoint inventories and excludes active
+numerical directories before opening them. To reproduce or verify this snapshot:
 
 ```sh
 source tools/tirust_env.sh
-python3 docs/benchmarkfolder/build_report.py
-python3 docs/benchmarkfolder/build_report.py --verify-only
-python3 -m pytest -q tests/unit_tests/various/test_tirust_report.py \
-  docs/benchmarkfolder/test_intermediate_report.py
+python3 -B docs/benchmarkfolder/build_report.py --campaign split-dp-terminal-1 \
+  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed10-3.json
+python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign split-dp-terminal-1 \
+  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed10-3.json
+PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider \
+  tests/unit_tests/various/test_tirust_report.py \
+  docs/benchmarkfolder/test_intermediate_report.py \
+  docs/benchmarkfolder/test_campaign_report*.py
 ```
+
+For a future refresh, close the selected runs, create a new selection and dossier
+path, and preserve this report's ledger/PDF before rebuilding. Do not overwrite
+a previous dossier or use current partial EW n4 rows as completed evidence.
 
 The report build does not run numerical measurements. It writes `benchmark.pdf`
 and `report-build.json`, which records input and PDF hashes, the exact Typst
@@ -137,10 +164,9 @@ version, creation timestamp, and font search paths. Typst 0.15.1, Libertinus
 a passing headline with missing main cases, absent backend comparisons,
 insufficient samples/repetitions, or a runtime bound above the agreed limit.
 The build ledger now also binds all frozen dependencies of the intermediate
-supplement. Refresh the supplement only after reviewing newly completed,
-frozen evidence, using `python3 docs/benchmarkfolder/collect_intermediate.py
---refresh`; this does not rerun or overwrite any measurements. Rebuild and
-verify the PDF afterward.
+supplement. The historical intermediate supplement is retained separately. New campaign
+refreshes use `campaign_report.py --selection`; collecting the dossier never
+reruns or overwrites measurements.
 
 `style-provenance.json` pins the requested pyAmpliCol report to commit
 `7266c1600f6ec4e39be39986e6503a515c380c52`, including source/PDF hashes. Its

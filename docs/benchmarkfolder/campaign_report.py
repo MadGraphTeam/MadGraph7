@@ -162,7 +162,7 @@ def stress_acceptance(rows):
     return "passed" if all(row["status"] == "passed" for row in required) else "open"
 
 
-def collect(evidence, campaign_id):
+def collect(evidence, campaign_id, selection_path=None):
     if not campaign_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in campaign_id):
         raise ValueError("Invalid campaign identifier")
     directory = "campaigns/" + campaign_id
@@ -175,7 +175,11 @@ def collect(evidence, campaign_id):
         evidence.add(directory + "/" + name, sha)
     if len(config["cases"]) != 11 or len({c["id"] for c in config["cases"]}) != 11:
         raise ValueError("Report requires all eleven configured physical cases")
-    numerical = document_module("campaign_report_numerical").collect_numerical(evidence, directory, manifest, config)
+    selection = None
+    if selection_path is not None:
+        selection = document_module("campaign_report_refresh").selection(evidence, selection_path, manifest, config)
+    numerical_args = () if selection is None else (set(selection["closed_cases"]),)
+    numerical = document_module("campaign_report_numerical").collect_numerical(evidence, directory, manifest, config, *numerical_args)
     paired = document_module("campaign_report_pairs").collect_pairs(evidence, directory, manifest, config)
     cohorts = document_module("campaign_report_cohorts").collect_cohorts(evidence, directory, manifest, config)
     qualified = implementation(evidence, manifest)
@@ -193,7 +197,7 @@ def collect(evidence, campaign_id):
         "statistics_roundtrip": statistics["status"],
         "stress_accuracy": stress_acceptance(stress),
     }
-    return {"schema": SCHEMA, "campaign_binding": binding,
+    result = {"schema": SCHEMA, "campaign_binding": binding,
         "registered_exporter_revision": manifest["candidate"]["exporter_identity"]["revision"],
         "registered_source_sha256": manifest["candidate"]["exporter_identity"]["files_sha256"],
         "numerical_identity_sha256": manifest["candidate"]["numerical_identity_sha256"],
@@ -203,6 +207,14 @@ def collect(evidence, campaign_id):
         "stress": stress, "criteria": criteria,
         "delivery_complete": all(value == "passed" for value in criteria.values()),
         "new_numerical_execution": False}
+    if selection is not None:
+        result["selection_path"] = selection_path
+        result["refresh"] = document_module("campaign_report_refresh").supplement(evidence, selection, result)
+        for key in ("eight_main_runtime_gates", "existing_backend_regressions", "paired_campaign_overall"):
+            result["criteria"][key] = "deferred to Hua-Sheng"
+        result["criteria"]["installer_metadata_hardening"] = "open"
+        result["delivery_complete"] = False
+    return result
 
 
 def validate(inputs, path, manifest, summary):
@@ -214,7 +226,7 @@ def validate(inputs, path, manifest, summary):
     for name, identity in frozen.items():
         inputs.add(name, identity["sha256"])
         evidence.add(name)
-    actual = collect(evidence, manifest["id"])
+    actual = collect(evidence, manifest["id"], dossier.get("selection_path"))
     if {k: v for k, v in dossier.items() if k != "files"} != actual:
         raise ValueError("Campaign report differs from independently reparsed frozen evidence")
     if actual["campaign_binding"] != summary.get("campaign_binding"):
@@ -222,6 +234,8 @@ def validate(inputs, path, manifest, summary):
     for name in ("campaign_report.py", "campaign_report_numerical.py", "campaign_report_pairs.py",
                  "campaign_report_cohorts.py", "campaign_report_lifecycle.py", "campaign_report_qualification.py"):
         inputs.add(name)
+    if dossier.get("selection_path") is not None:
+        inputs.add("campaign_report_refresh.py")
     return dossier
 
 
@@ -229,9 +243,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign", required=True)
     parser.add_argument("--output", required=True, help="New docsroot-relative immutable dossier path")
+    parser.add_argument("--selection", help="Explicit closed-checkpoint selection; active numerical cases are not opened")
     args = parser.parse_args()
     evidence = Evidence(ROOT)
-    result = collect(evidence, args.campaign)
+    result = collect(evidence, args.campaign, args.selection)
     result["files"] = dict(sorted(evidence.files.items()))
     output = evidence.path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

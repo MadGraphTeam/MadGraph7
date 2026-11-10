@@ -307,7 +307,7 @@ def _empty_lane(source, backend, path):
             "evidence_path": path}
 
 
-def collect_numerical(evidence, campaign_dir, manifest, config):
+def collect_numerical(evidence, campaign_dir, manifest, config, closed_cases=None):
     """Collect all eleven cases and six explicit lanes, preserving missing data.
 
     Integrity failures in a published lane are returned as failed report rows;
@@ -343,6 +343,14 @@ def collect_numerical(evidence, campaign_dir, manifest, config):
     for case in config["cases"]:
         directory = _join(campaign, "experiments/numerical/full100-warmup-" + case["id"] + "-1")
         lanes = [_empty_lane(source, backend, _join(directory, f"{source}-{backend}")) for source, backend in LANES]
+        # A deliberately frozen partial report must never open an active run,
+        # even if that run publishes another complete lane during collection.
+        if closed_cases is not None and case["id"] not in closed_cases:
+            cases.append({**case, "directory": directory, "status": "pending",
+                          "complete_lanes": 0, "all_six_complete": False,
+                          "regression_pass": None, "ordinary_target_pass": None,
+                          "error": None, "lanes": lanes})
+            continue
         parsers = protocols = spec = top = None
         case_error = None
         if _exists(evidence, directory):

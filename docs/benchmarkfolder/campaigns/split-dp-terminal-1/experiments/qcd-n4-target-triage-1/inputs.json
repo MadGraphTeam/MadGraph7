@@ -1,0 +1,68 @@
+{
+  "checkpoint": {
+    "identity": {
+      "bytes": 18391,
+      "sha256": "732168a919463254c4fb7fb101581e2845d9582107f02d4b4c23d324c7ca7b14"
+    },
+    "path": "numerical-checkpoints/qcd-n4-1/index.json"
+  },
+  "normalization_sources": {
+    "TIR_interface.f": {
+      "binding": "compilation",
+      "identity": {
+        "bytes": 37472,
+        "sha256": "05ae4e14af288945845ba259f8f185b7257d113fa5ca8b49e80d8b43c4ef3904"
+      },
+      "source": "SubProcesses/P0_uux_zzgg/TIR_interface.f"
+    },
+    "born_matrix.f": {
+      "binding": "compilation",
+      "identity": {
+        "bytes": 54787,
+        "sha256": "a3521e23fa855bb8e82281c3d7b68ffd5056693213c1b1dcd9ba9ee2ea84b900"
+      },
+      "source": "SubProcesses/P0_uux_zzgg/born_matrix.f"
+    },
+    "couplings.f": {
+      "binding": "compilation",
+      "identity": {
+        "bytes": 3242,
+        "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936"
+      },
+      "source": "Source/MODEL/couplings.f"
+    },
+    "fks_singular.f": {
+      "binding": "generation",
+      "identity": {
+        "bytes": 318675,
+        "sha256": "65c9ba67697b697deac3d626cb425ee0dbc747afba5abefbd0808a0a8fba26a7"
+      },
+      "source": "Template/NLO/SubProcesses/fks_singular.f"
+    },
+    "intparam_definition.inc": {
+      "binding": "compilation",
+      "identity": {
+        "bytes": 5173,
+        "sha256": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084"
+      },
+      "source": "Source/MODEL/intparam_definition.inc"
+    },
+    "loop_matrix.f": {
+      "binding": "compilation",
+      "identity": {
+        "bytes": 134389,
+        "sha256": "a07804ebcb4088c8b82da923b630f845c3d4339d4bacbccdca976308ecdc437a"
+      },
+      "source": "SubProcesses/P0_uux_zzgg/loop_matrix.f"
+    },
+    "param_card.dat": {
+      "binding": "param_card",
+      "identity": {
+        "bytes": 2472,
+        "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+      },
+      "source": "Cards/param_card.dat"
+    }
+  },
+  "schema_version": 1
+}

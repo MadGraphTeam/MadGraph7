@@ -1,0 +1,52 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3384,
+      "sha256": "e15d427011b79391e8db82d8b241c577b2c69cb1587a3ac732d5c7c4931bbd2f"
+    },
+    "analysis.json": {
+      "bytes": 1179095,
+      "sha256": "e58ca583272a0ee524ee81bb3a0708e156b1f3fd3d5f8c79c4c2c5b88f9943b8"
+    },
+    "analyze.py": {
+      "bytes": 15880,
+      "sha256": "db9cc04dd67ce02d49a96edf4e1c8c47155477c2ba0c4fbb68cd840b29e8b2e3"
+    },
+    "inputs.json": {
+      "bytes": 2046,
+      "sha256": "09cbb787ed49a0d9dc1f27d2c59eadbce5b34b4fe8b0eb0046ddcaa6807cc2d1"
+    },
+    "source/TIR_interface.f": {
+      "bytes": 37472,
+      "sha256": "05ae4e14af288945845ba259f8f185b7257d113fa5ca8b49e80d8b43c4ef3904"
+    },
+    "source/born_matrix.f": {
+      "bytes": 54787,
+      "sha256": "a3521e23fa855bb8e82281c3d7b68ffd5056693213c1b1dcd9ba9ee2ea84b900"
+    },
+    "source/couplings.f": {
+      "bytes": 3242,
+      "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936"
+    },
+    "source/fks_singular.f": {
+      "bytes": 318675,
+      "sha256": "65c9ba67697b697deac3d626cb425ee0dbc747afba5abefbd0808a0a8fba26a7"
+    },
+    "source/intparam_definition.inc": {
+      "bytes": 5173,
+      "sha256": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084"
+    },
+    "source/loop_matrix.f": {
+      "bytes": 134389,
+      "sha256": "a07804ebcb4088c8b82da923b630f845c3d4339d4bacbccdca976308ecdc437a"
+    },
+    "source/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    }
+  },
+  "new_native_evaluations": 0,
+  "performance_eligible": false,
+  "schema_version": 1,
+  "scope": "Read-only diagnosis of closed QCD n4 evidence; original comparisons and campaign gates unchanged"
+}
