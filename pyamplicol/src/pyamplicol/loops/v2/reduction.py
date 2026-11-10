@@ -22,7 +22,29 @@ chooses the effective backend once per call and carrier, never per point:
   inputs, at the call's carrier, after the TIRust call (``with_fallback``),
   and the backend that served it and the reason are recorded per point
   (``VirtualLaneDiagnostic.reduction``); a point NinjaRS fails too fails
-  with both reasons;
+  with both reasons. In the extended carriers (double-double, arbitrary
+  precision; ``fallback_guarded``) every point the fallback serves is
+  GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and
+  11:53): NinjaRS before 71eddb15 (pin 5b6a8f57) returned finite, badly wrong values as
+  success at near-planar 2 -> 3 points of rank-n pentagon families, so the
+  fallback's value runs the reduction-direction re-reduction (the
+  cached-master check of ``stability.REDUCTION``, never its rescaled
+  variant) at the call's own carrier, and the point fails typed (one
+  reason, ``text("rejected")``, naming the fallback, TIRust's failure, the
+  carrier, the estimate and the limit) when the check's relative estimate
+  exceeds the guard's limit, the call's target never below 1e-5
+  (``fallback_accepted``: max(target, 1e-5), USER 2026-11-09 ~11:53),
+  decided on the outputs the call returns (the summed value, or each
+  resolved, correlated or selected output against its own magnitude, a
+  vanishing one against the largest returned output: ``fallback_estimate``,
+  DECISIONS 2026-11-09 14:30 Q7); the
+  estimate is in the point's record (``VirtualReduction.guard_estimate``),
+  an accepted point keeps the fallback's value bitwise and its public
+  estimate is the call's checks' own. The call's own cached reduction check
+  is reused; beside other checks the guard's runs in addition, on the
+  served points only (``with_fallback``). A binary64 fallback point is
+  served unguarded (its protection is NinjaRS's own conditioning bound,
+  m-lit lit-ninja-planar). Points TIRust serves run nothing more;
 * an explicit backend that cannot serve the call is refused typed
   (``ReductionUnavailable``): never a silent switch, and it has no
   fallback.
@@ -84,9 +106,11 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 from collections.abc import Callable, Collection, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 
 from pyamplicol.api.errors import CompatibilityError, ReductionUnavailable
@@ -166,15 +190,64 @@ def auto_default(contribution: str, admitted: Collection[str] | None = None) -> 
     return str(found)
 
 
-def text(kind: str, a: str = "", b: str = "", detail: str = "") -> str:
+def text(
+    kind: str,
+    a: str = "",
+    b: str = "",
+    detail: str = "",
+    *,
+    carrier: str = "",
+    estimate: float = math.nan,
+    target: float = math.nan,
+) -> str:
     """A reason text of the native policy (``reduction_text``): ``"served"``
     (a point the fallback ``b`` served after ``a`` refused or failed it,
-    ``detail``), ``"failed"`` (a reason ``detail`` of the fallback ``a``) or
+    ``detail``), ``"failed"`` (a reason ``detail`` of the fallback ``a``),
+    ``"rejected"`` (a point the fallback ``b`` served after ``a`` refused or
+    failed it, ``detail``, whose value the fallback's guard rejected at the
+    call's ``carrier``: its reduction-direction ``estimate`` above the
+    guard's limit at the call's ``target``; m-lit lit-fallback-guard) or
     ``"cross"`` (the cross-backend check's refusal ``detail``)."""
 
     from pyamplicol.loops.native import load_loop_native
 
-    return str(load_loop_native().reduction_text(kind, a, b, detail))
+    native = load_loop_native()
+    if kind != "rejected":
+        return str(native.reduction_text(kind, a, b, detail))
+    return str(
+        native.reduction_text(
+            kind,
+            a,
+            b,
+            detail,
+            carrier=carrier,
+            estimate=float(estimate),
+            target=float(target),
+        )
+    )
+
+
+def fallback_accepted(estimate: float, target: float) -> bool:
+    """Whether the per-point fallback's guard accepts a served point whose
+    reduction-direction estimate is ``estimate`` at the call's ``target``:
+    the native policy's one rule (``reduction_policy::fallback_accepted``: a
+    number at most the guard's limit, max(target, 1e-5), ``FALLBACK_FLOOR``,
+    USER 2026-11-09 ~11:53; a NaN estimate is rejected)."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return bool(load_loop_native().reduction_fallback_accepted(estimate, target))
+
+
+def fallback_guarded(carrier: str) -> bool:
+    """Whether the per-point fallback's guard runs in the carrier
+    ``carrier``: the native policy's rule (``reduction_policy::
+    fallback_guarded``: the extended carriers only, double-double and
+    arbitrary precision; USER 2026-11-09 ~11:53 'Double-double+ only')."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return bool(load_loop_native().reduction_fallback_guarded(carrier))
 
 
 class Route(NamedTuple):
@@ -386,32 +459,174 @@ def resolve(
 _R = TypeVar("_R")
 
 
+def _outputs(result: Any) -> list[Any]:
+    """The point results of one point of a batch: the point's ``PointResult``
+    (the summed route), or every output's (a mapping of them: the resolved
+    and correlated routes, ``runtime.virtual.V2ObservablesRuntime``)."""
+
+    return list(result.values()) if isinstance(result, Mapping) else [result]
+
+
+def _without_checks(result: Any) -> Any:
+    """``result`` as an evaluation without stability checks returns it: no
+    estimate, and no loop-induced finiteness ratio (formed only with the
+    term scale the checks request, ``induced.point_finiteness``)."""
+
+    if isinstance(result, Mapping):
+        return {key: _without_checks(item) for key, item in result.items()}
+    return replace(result, stability=None, finiteness=None)
+
+
+def fallback_estimate(
+    outputs: list[list[tuple[float, float, float]]], roundoff: float
+) -> float:
+    """The per-point fallback guard's estimate of one point from the
+    outputs the call returns: the native policy's one rule
+    (``reduction_policy::fallback_estimate``; m-lit lit-fallback-guard,
+    DECISIONS 2026-11-09 14:30 RULING Q7). ``outputs[o][s]`` is (magnitude,
+    error, scale) of sector s of output o (``_guard_sectors``), ``roundoff``
+    the carrier's unit roundoff: each output against its own magnitude (the
+    ``"relative"`` metric), an output that vanishes (its magnitude within the
+    estimate's rounding floor, ``FLOOR_UNITS`` u S) against the largest
+    returned output of the point; NaN when any input is not a number."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return float(load_loop_native().reduction_fallback_estimate(outputs, roundoff))
+
+
+def _guard_sectors(estimate: Any) -> list[tuple[float, float, float]]:
+    """Per sector of one output's estimate (a ``StabilityEstimate`` of the
+    reduction-direction check alone) its magnitude (the largest |Laurent
+    coefficient|, ``stability.relative``'s scale), its largest absolute
+    estimate E and its largest term scale S (NaN where a value is not a
+    number: a NaN budget is no estimate, and ``max`` would pass over it)."""
+
+    def largest(values: Any) -> float:
+        found = [abs(float(x)) for x in values]
+        return math.nan if any(math.isnan(x) for x in found) else max(found)
+
+    return [
+        (
+            largest(laurent.coefficients),
+            largest(estimate.absolute[sector].coefficients),
+            largest(estimate.scale[sector].coefficients),
+        )
+        for sector, laurent in estimate.reference.items()
+    ]
+
+
+def _guard_estimate(result: Any) -> float:
+    """The guard's estimate of one point (``fallback_estimate``) from the
+    cached reduction-direction check of every output the call returns
+    (``stability.REDUCTION``: alone, ``StabilityEstimate.subset`` of the
+    point's checks when they ran others too): the summed value (one output)
+    or each resolved, correlated or selected output (DECISIONS 2026-11-09
+    14:30 Q7: the guard decides on the returned outputs, never on the
+    point's sum over rows the call does not return). NaN when an output has
+    no such estimate."""
+
+    from .stability import REDUCTION
+
+    outputs = []
+    roundoff = math.nan
+    for output in _outputs(result):
+        estimate = getattr(output, "stability", None)
+        if estimate is None or REDUCTION not in estimate.budgets:
+            return math.nan
+        if set(estimate.budgets) != {REDUCTION}:
+            estimate = estimate.subset([REDUCTION])
+        roundoff = estimate.roundoff
+        outputs.append(_guard_sectors(estimate))
+    return fallback_estimate(outputs, roundoff)
+
+
+def _reduction_check(checks: Any) -> Any:
+    """The fallback guard's checks: the cached reduction-direction check
+    alone, of the caller's checks' type (``VirtualStabilityChecks`` or
+    ``stability.StabilityChecks``; None: the latter)."""
+
+    if checks is None:
+        from .stability import StabilityChecks
+
+        return StabilityChecks(reduction_direction=True)
+    return replace(
+        checks,
+        rotations=(),
+        reduction_direction=True,
+        rescaled=False,
+        cross_backend=False,
+    )
+
+
 def with_fallback(
-    run: Callable[[list[int] | None], tuple[list[_R], dict[int, list[str]]]],
+    run: Callable[[list[int] | None, Any], tuple[list[_R], dict[int, list[str]]]],
     choice: VirtualReduction,
     count: int,
+    checks: Any,
+    carrier: str,
 ) -> tuple[list[_R | None], dict[int, list[str]], dict[int, VirtualReduction]]:
     """``run`` of a batch on the call's effective backend at its target
-    (``running``; ``run(None)``: every point; ``run(indices)``: the points
-    at those batch indices, in that order; each returns its per-point
-    results and failures), then, for a choice with a per-point fallback
+    (``running``; ``run(None, checks)``: every point with the call's
+    stability ``checks``; ``run(indices, checks)``: the points at those
+    batch indices, in that order, with the given checks, a
+    ``VirtualStabilityChecks`` or ``stability.StabilityChecks`` of the
+    caller's type or None; each returns its per-point results and
+    failures), then, for a choice with a per-point fallback
     (``VirtualReduction.fallback``, m-lit F3 (c)), the points it refused or
     failed again on the fallback, from their original exact inputs, at the
-    same carrier, after the primary call. Returns every point's result, the
-    failures (a point the fallback fails too keeps both backends' reasons)
-    and, per point the fallback evaluated again, its record (the backend
-    that served it and the reason; a failed point's: the fallback's
-    failure). A primary backend that refuses the call's plans (TIRust's
-    capability query, ``ReductionUnavailable``) leaves all ``count`` points
-    to the fallback. A choice without a fallback runs ``run`` once (nothing
-    else: Born-interfered, explicit and TIR-only calls)."""
+    same ``carrier`` (the call's: ``CARRIERS``; required, so that no caller
+    skips the guard by default), after the primary call, with the call's
+    checks less the cross-backend check (a fallback point's is not run,
+    m-lit R6).
+
+    In the extended carriers (``fallback_guarded``: double-double and
+    arbitrary precision, USER 2026-11-09 ~11:53; a binary64 fallback point
+    is served unguarded, with no estimate) every point the fallback SERVED
+    is GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and
+    11:53): the cached reduction-direction re-reduction
+    (``stability.REDUCTION``: every loop numerator reduced a second time in
+    the reversed frame, its coefficients and the cached masters reused;
+    never the rescaled variant) runs at the call's carrier (never
+    escalated, USER 2026-11-08 ~20:55) and its relative estimate
+    (``_guard_estimate``) is recorded in the point's record
+    (``VirtualReduction.guard_estimate``). When the call's checks run that
+    cached check they are reused (no second re-reduction); without checks
+    the fallback's evaluation runs it and the public result stays what an
+    evaluation without checks returns; beside other checks (rotations
+    only, or the rescaled variant: ``RECOMMENDED_CHECKS``, every default
+    rescue level) the served points are evaluated once more with the cached
+    check alone. The guard decides on the outputs the call RETURNS
+    (DECISIONS 2026-11-09 14:30, RULING Q7: a point's summed value, or each
+    output of a resolved, correlated or selected call, whose evaluation
+    dresses the selected rows only, USER 2026-11-08 'only the selected
+    helicities are evaluated and nothing more'): each output's cached
+    estimate relative to its own magnitude, an output that vanishes
+    relative to the largest returned output (``fallback_estimate``). A
+    point the guard's check fails is a point the fallback failed. A point
+    whose estimate exceeds
+    the guard's limit (the call's target, ``choice.target`` else the
+    default target, never below 1e-5: ``fallback_accepted``) fails typed
+    with one reason (``text("rejected")``); an accepted point keeps the
+    fallback's value and the call's own estimate. The public estimate is
+    always the call's checks' own.
+
+    Returns every point's result, the failures (a point the fallback fails
+    too keeps both backends' reasons; a guard-rejected point the one
+    rejection reason) and, per point the fallback evaluated again, its
+    record (the backend that served it, the reason and the guard's
+    estimate; a failed point's: the fallback's failure). A primary backend
+    that refuses the call's plans (TIRust's capability query,
+    ``ReductionUnavailable``) leaves all ``count`` points to the fallback. A
+    choice without a fallback runs ``run`` once (nothing else:
+    Born-interfered, explicit and TIR-only calls)."""
 
     from pyamplicol.api.virtual_results import VirtualReduction
 
     fallback = choice.fallback
     try:
         with running(choice.effective, choice.target, choice.unchecked):
-            results, failures = run(None)
+            results, failures = run(None, checks)
     except ReductionUnavailable as error:
         # The primary backend refuses the call's plans (TIRust's capability
         # query of a family): with a fallback, every point is the
@@ -424,8 +639,39 @@ def with_fallback(
     if fallback is None or not failures:
         return results, failures, records
     indices = sorted(failures)
+    # The fallback's checks (a fallback point's cross-backend check is not
+    # run, m-lit R6) and how the guard's cached re-reduction runs beside
+    # them: reused, carried by the fallback's evaluation, or once more.
+    plain = (
+        replace(checks, cross_backend=False)
+        if checks is not None and checks.cross_backend
+        else checks
+    )
+    enabled = plain is not None and bool(plain.rotations or plain.reduction_direction)
+    reused = enabled and plain.reduction_direction and not plain.rescaled
+    target = choice.target if choice.target is not None else default_target()
+    checking = fallback_guarded(carrier)
     with running(fallback, choice.target, choice.unchecked):
-        again, still = run(indices)
+        # Without the call's checks the fallback's evaluation carries the
+        # guard's check.
+        merged = checking and not enabled
+        again, still = run(indices, _reduction_check(plain) if merged else plain)
+        still = dict(still)
+        served = [local for local in range(len(indices)) if local not in still]
+        guarded: dict[int, float] = {}
+        if checking and (reused or merged):
+            guarded = {local: _guard_estimate(again[local]) for local in served}
+        elif checking and served:
+            chosen = [indices[local] for local in served]
+            found, missed = run(chosen, _reduction_check(plain))
+            for k, local in enumerate(served):
+                if k in missed:
+                    # The guard's check fails the point (as the fallback's
+                    # evaluation with the check does without the call's
+                    # checks): the fallback failed it.
+                    still[local] = list(missed[k])
+                else:
+                    guarded[local] = _guard_estimate(found[k])
     results = list(results)
     failures = dict(failures)
     for local, index in enumerate(indices):
@@ -441,7 +687,28 @@ def with_fallback(
                 unchecked=choice.unchecked,
             )
             continue
-        results[index] = again[local]
+        estimate = guarded[local] if checking else None
+        if estimate is not None and not fallback_accepted(estimate, target):
+            reason = text(
+                "rejected",
+                choice.effective,
+                fallback,
+                first,
+                carrier=carrier,
+                estimate=estimate,
+                target=target,
+            )
+            failures[index] = [reason]
+            records[index] = VirtualReduction(
+                choice.requested,
+                fallback,
+                reason,
+                target=choice.target,
+                unchecked=choice.unchecked,
+                guard_estimate=estimate,
+            )
+            continue
+        results[index] = _without_checks(again[local]) if merged else again[local]
         del failures[index]
         records[index] = VirtualReduction(
             choice.requested,
@@ -449,6 +716,7 @@ def with_fallback(
             text("served", choice.effective, fallback, first),
             target=choice.target,
             unchecked=choice.unchecked,
+            guard_estimate=estimate,
         )
     return results, failures, records
 
@@ -467,6 +735,9 @@ __all__ = [
     "default_target",
     "default_unchecked",
     "executor_options",
+    "fallback_accepted",
+    "fallback_estimate",
+    "fallback_guarded",
     "native_backends",
     "policy",
     "prepare",

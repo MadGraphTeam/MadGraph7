@@ -478,6 +478,28 @@ impl V2Precision {
         }
     }
 
+    /// The carrier's name (`reduction_policy::CARRIERS`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Double => "double",
+            Self::DoubleDouble => "double-double",
+            Self::Arbitrary(_) => "arbitrary",
+        }
+    }
+
+    /// `Precision.unit_roundoff`: 2^-53 in binary64, 2^-104 in
+    /// double-double, half a unit of the last of the requested decimal
+    /// digits otherwise (the floor of a stability estimate in the carrier).
+    pub fn unit_roundoff(self) -> f64 {
+        match self {
+            Self::Double => 2.0_f64.powi(-53),
+            Self::DoubleDouble => 2.0_f64.powi(-104),
+            Self::Arbitrary(digits) => {
+                0.5 * crate::v2_stability::py_pow(10.0, 1.0 - f64::from(digits))
+            }
+        }
+    }
+
     /// The native carrier's bits (the executor's `bits`, which its decimal
     /// texts round-trip, `runtime::decimal_complex`).
     pub fn bits(self) -> RusticolResult<u32> {
