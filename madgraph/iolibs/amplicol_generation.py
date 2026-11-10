@@ -60,8 +60,11 @@ def generate_artifact(pyamplicol, artifact, accuracy, process, model):
                     'coupling_order_policy': 'explicit',
                     'max_coupling_orders': process['orders']},
         # pack_payloads: one payloads.pacbin instead of files per process
+        # no numerical check of the generated artifact: its cost grows with the
+        # number of colour orderings (hours for p p > 7j)
         'generation': {'emit_api_bundle': True, 'pack_payloads': True,
-                       'relation_discovery': {'mode': 'off'}},
+                       'relation_discovery': {'mode': 'off'},
+                       'validation': {'enabled': False}},
         'evaluator': {'backend': 'jit', 'execution_mode': 'recurrence',
                       'jit': {'optimization_level': 2}},
     })
