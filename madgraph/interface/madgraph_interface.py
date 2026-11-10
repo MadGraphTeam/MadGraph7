@@ -198,6 +198,16 @@ def check_amplicol_overlap(procdef, others, what):
                 "your processes." % (procdef.nice_string(prefix=False), what(other)))
 
 
+def set_process_gauge(procdef, gauge):
+    """The gauge of a process definition and of its decay chains."""
+
+    if not gauge:
+        return
+    procdef.set('gauge', gauge)
+    for chain in procdef.get('decay_chains'):
+        set_process_gauge(chain, gauge)
+
+
 def iter_tree_amplitudes(amplitudes):
     """The Amplitude objects behind a list of amplitudes: a decay chain is
     unfolded into its core amplitudes and those of every decay, recursively."""
@@ -4275,6 +4285,10 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # models the FD gauge was given up on (import_ufo could not check
         # their goldstone content): not tried again
         self._fd_unverified_models = set()
+        # per-process gauge: the model of each other gauge, and the gauge of
+        # the line being generated ('--gauge=X' of generate/add process)
+        self._gauge_models = {}
+        self._line_gauge = ''
         self._auto_gauge_freeze_logged = False
         self._model_v4_path = None
         self._export_dir = None
@@ -4401,6 +4415,10 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         raw_line = line
         args = self.split_arg(line)
 
+        line_gauge, args = self.split_gauge_option(args)
+        if line_gauge is not None:
+            return self.add_process_in_gauge(raw_line, args, line_gauge, counter)
+
         
         warning_duplicate = True
         if '--no_warning=duplicate' in args:
@@ -4466,6 +4484,7 @@ This implies that with decay chains:
                     raise MadGraph5Error(error_msg)
                 else:
                     myprocdef, line = self.extract_decay_chain_process(line, proc_number=nb_proc)
+                    set_process_gauge(myprocdef, self._line_gauge)
                     # Redundant with above, but not completely as in the future
                     # one might think of allowing the core process to be 
                     # corrected by loops.
@@ -4484,6 +4503,7 @@ This implies that with decay chains:
             else:
                 line, backend = split_backend_line(line)
                 myprocdef = self.extract_process(line, proc_number=nb_proc)
+                set_process_gauge(myprocdef, self._line_gauge)
                 if backend:
                     self.add_backend_process(myprocdef, backend, warning_duplicate)
                     # kept for the replay of an automatic change of gauge,
@@ -4609,6 +4629,129 @@ This implies that with decay chains:
             if not self._auto_gauge_replay:
                 self._process_lines.append((raw_line, nb_proc))
                 self.apply_automatic_gauge()
+
+    # ------------------------------------------------------------------
+    # a gauge per process: 'generate|add process ... --gauge=FD'
+    # ------------------------------------------------------------------
+    @staticmethod
+    def split_gauge_option(args):
+        """(gauge, args without it) for a '--gauge=X' among args, (None,
+        args) without one."""
+
+        options = [a for a in args if a.startswith('--gauge=')]
+        if not options:
+            return None, args
+        if len(options) > 1:
+            raise madgraph.InvalidCmd('Only one --gauge= option per process line.')
+        gauge = options[0].split('=', 1)[1]
+        if gauge not in ['unitary', 'FD']:
+            raise madgraph.InvalidCmd('--gauge= takes unitary or FD, not %s' % gauge)
+        return gauge, [a for a in args if a != options[0]]
+
+    def add_process_in_gauge(self, raw_line, args, gauge, counter):
+        """'generate|add process ... --gauge=X': the process generated with
+        the model of that gauge (model_for_gauge), its process definitions
+        tagged with it.  The line keeps the option in the history."""
+
+        if len(args) < 2 or args[0] != 'process':
+            raise self.InvalidCmd('--gauge= is an option of generate and add process.')
+        if any('[' in a for a in args):
+            raise self.InvalidCmd('--gauge= is for tree-level processes without '
+                                  '[...] (loop, NLO, [amplicol], interference).')
+        nb_proc = len([l for l in self.history
+                       if l.startswith(('generate', 'add process'))]) + counter
+        line = ' '.join(args)
+        if gauge == self.options['gauge']:
+            MadGraphCmd.do_add(self, line, counter=counter)
+        else:
+            if self.postponed_export_pending():
+                raise self.InvalidCmd('An output is waiting for its model '
+                                      '(--postpone_model): --gauge= is not '
+                                      'available until it is written.')
+            model = self.model_for_gauge(gauge)
+            nb_amps = len(self._curr_amps)
+            with misc.TMP_variable(self, '_curr_model', model), \
+                 misc.TMP_variable(self, '_line_gauge', gauge), \
+                 misc.TMP_variable(self, '_auto_gauge_replay', True):
+                MadGraphCmd.do_add(self, line, counter=counter)
+            new = self._curr_amps[nb_amps:]
+            if gauge == 'FD' and (_fd_gauge_excluded(new) or
+                                  self.has_onium_amplitude() or
+                                  any(abs(pol) > 1
+                                      for amp in iter_tree_amplitudes(new)
+                                      for leg in amp.get('process').get('legs')
+                                      for pol in leg.get('polarization'))):
+                del self._curr_amps[nb_amps:]
+                self._curr_proc_defs.pop(-1)
+                raise self.InvalidCmd('--gauge=FD: the FD gauge is not available '
+                    'for this process (spin above one, bound state or '
+                    'propagator polarisation).')
+        if not self._auto_gauge_replay:
+            self._process_lines.append((raw_line, nb_proc))
+            self.apply_automatic_gauge()
+
+    def model_for_gauge(self, gauge):
+        """The session model in another gauge, for the processes of a line
+        with '--gauge=X'.  Imported once per session model (import model and
+        set gauge make a new one)."""
+
+        if gauge == self.options['gauge']:
+            return self._curr_model
+        base = self._curr_model
+        cached = self._gauge_models.get(gauge)
+        if cached and cached[0] is base:
+            return cached[1]
+        if gauge == 'FD' and 1 not in base.get('gauge'):
+            raise self.InvalidCmd('The model %s has no FD gauge (no goldstone '
+                                  'bosons).' % base.get('name'))
+        if isinstance(base, loop_base_objects.LoopModel) and \
+                    base.get('perturbation_couplings') not in [[], ['QCD']]:
+            raise self.InvalidCmd('--gauge= is not available for the model %s.'
+                                  % base.get('name'))
+        with aloha.gauge_scope(gauge):
+            twin = import_ufo.import_model(
+                base.get('modelpath+restriction'),
+                prefix=(aloha.aloha_prefix == 'mdl_'),
+                complex_mass_scheme=self.options['complex_mass_scheme'],
+                options={'apply_flavor_grouping':
+                         self.options.get('apply_flavor_grouping', True)})
+        twin._curr_gauge = gauge
+        if 'modelname' not in self.history.get('full_model_line'):
+            twin.pass_particles_name_in_mg_default()
+        if gauge == 'FD' and not self.fd_gauge_supported_by_model(twin):
+            raise self.InvalidCmd('The goldstone content of the model %s could '
+                'not be checked against the FD gauge: --gauge=FD is refused.'
+                % base.get('name'))
+        conflicts = import_ufo.gauge_model_conflicts(base, twin)
+        if conflicts:
+            raise self.InvalidCmd('The model %s defines %s differently in the two '
+                'gauges: one output cannot hold both. Use "set gauge %s".'
+                % (base.get('name'), ', '.join(conflicts[:5]), gauge))
+        self._gauge_models[gauge] = (base, twin)
+        return twin
+
+    # the outputs that write each subprocess in its own gauge
+    MIXED_GAUGE_FORMATS = []
+
+    def refuse_unsupported_mixed_gauge(self, args):
+        """Refuse an output of processes in two gauges in a format that
+        writes them into one library."""
+
+        if len(self.gauges_in_use()) < 2:
+            return
+        if self._export_format not in self.MIXED_GAUGE_FORMATS:
+            raise self.InvalidCmd('The processes are in two gauges (--gauge=), '
+                'which the output %s does not support (only %s). Use "set gauge" '
+                'for the whole output.' % (self._export_format,
+                ', '.join(self.MIXED_GAUGE_FORMATS) or 'none yet'))
+
+    def gauges_in_use(self):
+        """The gauges of the generated processes, the session one included."""
+
+        gauges = set()
+        for amp in iter_tree_amplitudes(self._curr_amps):
+            gauges.add(amp.get('process').get_gauge(self.options['gauge']))
+        return gauges
 
     # ------------------------------------------------------------------
     # automatic choice of the gauge
@@ -6663,7 +6806,8 @@ This implies that with decay chains:
         """Main commands: Generate an amplitude for a given process"""
 
         self.clean_process()
-        self._generate_info = line
+        self._generate_info = ' '.join(a for a in line.split()
+                                       if not a.startswith('--gauge='))
 
         # reset P-wave onia counter for new process
         aloha.npwave = [0]
@@ -13121,6 +13265,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # of the massless vectors itself) has no room for: an FD gauge chosen
         # automatically steps aside; one asked for with 'set gauge' is kept
         # and the option is dropped with a warning (helas_call_writers)
+        self.refuse_unsupported_mixed_gauge(args)
         if self.automatic_fd_gauge_in_use() and \
                 str(line_options.get('axial_gauge', False)).strip().lower() \
                                           in ('true', 't', '1', 'yes', 'on'):

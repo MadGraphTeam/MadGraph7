@@ -773,6 +773,30 @@ def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
 
 _import_once = []
 
+
+def gauge_model_conflicts(base, twin):
+    """The coupling, parameter and Lorentz names the two models (one model in
+    two gauges) define differently: one output cannot hold both then, since
+    the Fortran/C++ model is written once.  Empty for the sm, heft, loop_sm."""
+
+    def couplings(model):
+        return dict((c.name, c.expr) for lst in model['couplings'].values()
+                    for c in lst)
+
+    def parameters(model):
+        return dict((p.name, getattr(p, 'expr', None))
+                    for lst in model['parameters'].values() for p in lst)
+
+    def lorentz(model):
+        return dict((l.get('name'), (str(l.get('structure')), tuple(l.get('spins'))))
+                    for l in model['lorentz'])
+
+    conflicts = []
+    for get in (couplings, parameters, lorentz):
+        one, two = get(base), get(twin)
+        conflicts.extend(sorted(n for n in one if n in two and one[n] != two[n]))
+    return conflicts
+
 # model['limitations'] tag of a model imported in FD gauge whose goldstone
 # content could not be checked (see UFOMG5Converter.flag_fd_gauge_unverified)
 FD_GAUGE_UNVERIFIED = 'fd_gauge_unverified'
