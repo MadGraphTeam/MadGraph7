@@ -1,0 +1,89 @@
+{
+  "actual_install_or_compilation_or_amplitude_or_timing": false,
+  "before": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/timing-handoff-3/index.json": "b56d5c77631ff30be883c26f1382660b338e9171142f129b670b479e1d30c564",
+    "tests/unit_tests/loop/test_tirust_benchmark_local.py": "13ce5c0d9ab9b016e88eca7d95864f0bb75b12d66eed031f545eb0dc563ff58b",
+    "tools/tirust_benchmark_local.py": "70fd4c19ad6d35f6941b470ec6953068f5626aab5d4f6968e0dfe670d4bc4e9b"
+  },
+  "canonical_manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "files": {
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/README.md": {
+      "bytes": 2670,
+      "sha256": "129a8a3189d21dacb38944f55fbfb75ad80a445991b30bea76effe2b30af1286"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/candidate-timing-handoff-4/LOCAL_TIMING_TODO.md": {
+      "bytes": 11965,
+      "sha256": "83ea3b3ad45d6d25f72734acf72befa0556deae18122e01bdd4ec1ed569614e4"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/candidate-timing-handoff-4/bindings.json": {
+      "bytes": 5078,
+      "sha256": "f56e529537b374df1024e099f5e6bbb095c29adfbceda15a0d337efed2741e1f"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/candidate-timing-handoff-4/index.json": {
+      "bytes": 1362,
+      "sha256": "f218a9fa65b15f79d6ea0444d31a5c16517d0cbb6341fe3c7c4cde4c43ab295a"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/candidate-timing-handoff-4/test_handoff.py": {
+      "bytes": 9033,
+      "sha256": "9ee0bd36249e76ae01c2964ccec1a2f42d78c1ec7f98c4f10ec9ea0c5ea77981"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/candidate-timing-handoff-4/tests.log": {
+      "bytes": 3204,
+      "sha256": "aacee13fd39cc2968bb0625aebda17628ddc72ba886d4e42d2628cddebc4cb9c"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/candidate-timing-handoff-4/validation.json": {
+      "bytes": 3043,
+      "sha256": "d875833be2ca3fbdd023685fd43ceacefed30ca91710c49942bdb478dd8f44c1"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/final-tests.log": {
+      "bytes": 3204,
+      "sha256": "aacee13fd39cc2968bb0625aebda17628ddc72ba886d4e42d2628cddebc4cb9c"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/local-launcher-entrypoint.patch": {
+      "bytes": 7952,
+      "sha256": "639a3f75a01080f571072f368e233ce6538f41e39204258bb25ba6962aabbfe6"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/proposal-tests.log": {
+      "bytes": 3060,
+      "sha256": "6dbd6210bb48438dcafee1c9d790da3593e2b7fd707dd3d9ed77f08af84f3a49"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/proposed/tests/unit_tests/loop/test_tirust_benchmark_local.py": {
+      "bytes": 26344,
+      "sha256": "0e1c03bf2810fab5b78f0ae992f16e50c96a895098a268a19114481da2df86ee"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/proposed/tools/tirust_benchmark_local.py": {
+      "bytes": 40803,
+      "sha256": "f823c614d6e6f171de90e0c38ca2b2014842b0f7b94b04fbbd145b87d0cd95c7"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/review.json": {
+      "bytes": 517,
+      "sha256": "bd1062c9796470b2f6f2296324b27dffd4a806d7e22e1367e9959cad9be10ab8"
+    },
+    "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/run_proposal_tests.py": {
+      "bytes": 4211,
+      "sha256": "41d495c26a0639f44176df9b4d12e6511b3a5cf7b85678c452dc8397621928cb"
+    }
+  },
+  "proposed": {
+    "tests/unit_tests/loop/test_tirust_benchmark_local.py": "0e1c03bf2810fab5b78f0ae992f16e50c96a895098a268a19114481da2df86ee",
+    "tools/tirust_benchmark_local.py": "f823c614d6e6f171de90e0c38ca2b2014842b0f7b94b04fbbd145b87d0cd95c7"
+  },
+  "proposed_handoff4_index_sha256": "f218a9fa65b15f79d6ea0444d31a5c16517d0cbb6341fe3c7c4cde4c43ab295a",
+  "schema": "madloop-tirust-local-launcher-entrypoint-proposal-index-v1",
+  "source_files_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+  "source_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+  "status": "reviewed source-only candidate; production and sealed handoff3 not modified",
+  "target_handoff4": "docs/benchmarkfolder/campaigns/invariant-symmetry-1/timing-handoff-4",
+  "tests": {
+    "baseline_negative_control_detected": true,
+    "focused_installation_tests": 6,
+    "handoff_tests": 10,
+    "result": "OK"
+  },
+  "tracked_entrypoint": {
+    "path": "bin/madgraph",
+    "receipt_schema_unchanged": "madloop-tirust-local-install-v1",
+    "sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0",
+    "source_binding": "candidate.exporter_identity.files.bin/madgraph"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "actual_local_measurements": false,
+  "file_count": 5,
+  "files": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md": {
+      "bytes": 11965,
+      "sha256": "83ea3b3ad45d6d25f72734acf72befa0556deae18122e01bdd4ec1ed569614e4"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/timing-handoff-4/bindings.json": {
+      "bytes": 5078,
+      "sha256": "f56e529537b374df1024e099f5e6bbb095c29adfbceda15a0d337efed2741e1f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/timing-handoff-4/test_handoff.py": {
+      "bytes": 9033,
+      "sha256": "9ee0bd36249e76ae01c2964ccec1a2f42d78c1ec7f98c4f10ec9ea0c5ea77981"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/timing-handoff-4/tests.log": {
+      "bytes": 3204,
+      "sha256": "aacee13fd39cc2968bb0625aebda17628ddc72ba886d4e42d2628cddebc4cb9c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/timing-handoff-4/validation.json": {
+      "bytes": 3043,
+      "sha256": "d875833be2ca3fbdd023685fd43ceacefed30ca91710c49942bdb478dd8f44c1"
+    }
+  },
+  "overall_goal_qualified": false,
+  "root": "../../../../..",
+  "schema": "madloop-tirust-timing-handoff-index-v2",
+  "scope": "Exact owned additive handoff files only; external source/canonical dependencies are in bindings.json",
+  "source_review_only": true
+}

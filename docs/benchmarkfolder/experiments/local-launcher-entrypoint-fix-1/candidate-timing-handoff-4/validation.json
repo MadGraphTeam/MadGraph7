@@ -1,0 +1,49 @@
+{
+  "actual_local_install_performed": false,
+  "actual_local_registry_created": false,
+  "bindings_sha256": "f56e529537b374df1024e099f5e6bbb095c29adfbceda15a0d337efed2741e1f",
+  "campaign": "invariant-symmetry-1",
+  "canonical_manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "created_utc": "2026-11-10T11:01:35.386199+00:00",
+  "entrypoint": {
+    "path": "bin/madgraph",
+    "receipt_schema_unchanged": "madloop-tirust-local-install-v1",
+    "sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0",
+    "source_binding": "candidate.exporter_identity.files.bin/madgraph"
+  },
+  "final_precise_acceptance": "TODO: Hua-Sheng local machine after fresh eleven-case six-lane numerical qualification",
+  "initial_pending_summary_sha256": "02fe70b84fa3512adadf079b276e3b34ee25f9230bc855f21a3d430e6a0c2e3d",
+  "native_reducer_evaluation": false,
+  "numerical_process_compilation": false,
+  "overall_goal_qualified": false,
+  "patch_application_check": {
+    "command": "git apply --check docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/local-launcher-entrypoint.patch",
+    "result": "PASS; patch not applied"
+  },
+  "previous_handoff2_bytes_preserved": true,
+  "previous_handoff3_bytes_preserved": true,
+  "schema": "madloop-tirust-timing-handoff-validation-v2",
+  "scope": "Proposed one-token launcher correction and additive local handoff; source-only pre-promotion verification against exact proposed tool/test bytes",
+  "shared_host_timing_requested": false,
+  "source_files_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+  "source_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+  "tests": {
+    "baseline_negative_control": "Existing production launcher fails the new exact-argv test once as expected; no native process is run",
+    "candidate_mapping": {
+      "tests/unit_tests/loop/test_tirust_benchmark_local.py": "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/proposed/tests/unit_tests/loop/test_tirust_benchmark_local.py",
+      "tools/tirust_benchmark_local.py": "docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/proposed/tools/tirust_benchmark_local.py"
+    },
+    "command": "source tools/tirust_env.sh\npython3 -B docs/benchmarkfolder/experiments/local-launcher-entrypoint-fix-1/run_proposal_tests.py --handoff",
+    "errors": 0,
+    "failures": 0,
+    "focused_installation_tests": 6,
+    "handoff_tests": 10,
+    "log_sha256": "aacee13fd39cc2968bb0625aebda17628ddc72ba886d4e42d2628cddebc4cb9c",
+    "post_promotion_handoff_check": "source tools/tirust_env.sh\npython3 -B docs/benchmarkfolder/campaigns/invariant-symmetry-1/timing-handoff-4/test_handoff.py -v",
+    "result": "OK",
+    "scope": "Actual generated subprocess argv and retained receipts/failures with subprocess mocked; tracked/current-source/canonical launcher binding; all documented CLI parsers mocked; immutable ancestry and old packet checks",
+    "skipped": 0,
+    "tests_run": 16
+  },
+  "typst_invoked": false
+}

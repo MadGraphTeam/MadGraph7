@@ -199,7 +199,7 @@ def install(campaign_id, installation, prefix, jobs=4):
                        + f" --jobs={jobs}\nquit\n")
     value = {"schema": "madloop-tirust-local-install-v1", "status": "running", "source_before": source,
              "canonical_manifest_sha256": bench.digest(bench.ROOT / "docs/benchmarkfolder/campaigns" / campaign_id / "manifest.json"),
-             "command": [sys.executable, "-B", "bin/mg5_aMC", str(command)],
+             "command": [sys.executable, "-B", "bin/madgraph", str(command)],
              "command_file_sha256": bench.digest(command), "started_utc": bench.utc_now()}
     bench.dump(directory / "intent.json", value)
     try:

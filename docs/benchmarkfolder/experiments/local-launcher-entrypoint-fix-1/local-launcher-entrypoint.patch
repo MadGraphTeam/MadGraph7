@@ -1,0 +1,130 @@
+--- a/tools/tirust_benchmark_local.py
++++ b/tools/tirust_benchmark_local.py
+@@ -199,7 +199,7 @@
+                        + f" --jobs={jobs}\nquit\n")
+     value = {"schema": "madloop-tirust-local-install-v1", "status": "running", "source_before": source,
+              "canonical_manifest_sha256": bench.digest(bench.ROOT / "docs/benchmarkfolder/campaigns" / campaign_id / "manifest.json"),
+-             "command": [sys.executable, "-B", "bin/mg5_aMC", str(command)],
++             "command": [sys.executable, "-B", "bin/madgraph", str(command)],
+              "command_file_sha256": bench.digest(command), "started_utc": bench.utc_now()}
+     bench.dump(directory / "intent.json", value)
+     try:
+--- a/tests/unit_tests/loop/test_tirust_benchmark_local.py
++++ b/tests/unit_tests/loop/test_tirust_benchmark_local.py
+@@ -34,7 +34,13 @@
+                        "madloop_parameters": {"CTModeRun": -1},
+                        "candidate_parameters": {"TIRustComputeFinite": True},
+                        "cases": [{"id": "example", "role": "main"}]}
+-        self.source = {"files_sha256": "frozen-exporter", "revision": "frozen", "files": {}}
++        # Use the real tracked launcher bytes, so mocking subprocess.run cannot
++        # conceal a nonexistent entrypoint in the generated installation argv.
++        launcher = self.root / "bin/madgraph"
++        launcher.parent.mkdir(parents=True)
++        shutil.copy2(ROOT / "bin/madgraph", launcher)
++        self.source = {"files_sha256": "frozen-exporter", "revision": "frozen",
++                       "files": {"bin/madgraph": local.bench.digest(launcher)}}
+         self.native = {"native": {"prefix": str(self.root / "HEPTools/tirust"),
+                        "files": {name: "native-" + name for name in local.campaign.NATIVE_NAMES}},
+                        "dependencies": {"HEPTools/ninja/lib/libninja.so": "ninja",
+@@ -161,14 +167,25 @@
+ 
+     def test_install_records_real_cli_command_and_verifiable_source_receipt(self):
+         def fake_run(command, **kwargs):
+-            self.assertEqual(command[1:3], ["-B", "bin/mg5_aMC"])
++            self.assertEqual(command, [sys.executable, "-B", "bin/madgraph",
++                             str(self.report / "local-installations/source-install/commands.mg5")])
+             self.assertEqual(kwargs["cwd"], self.root)
++            launcher = kwargs["cwd"] / command[2]
++            self.assertTrue(launcher.is_file())
++            self.assertFalse(launcher.is_symlink())
++            self.assertEqual(local.bench.digest(launcher), self.source["files"]["bin/madgraph"])
+             self.assertIn("install tirust --prefix=", Path(command[3]).read_text())
+             kwargs["stdout"].write("TIRust successfully installed in local prefix.\n")
+         process = self.mock(local.subprocess, "run", side_effect=fake_run)
+         result = local.install("canonical", "source-install", self.root / "HEPTools/tirust")
+         process.assert_called_once()
+         receipt = Path(result["install_receipt"])
++        value = local.read(receipt)
++        self.assertEqual(value["command"], process.call_args.args[0])
++        self.assertEqual(value["source_before"], self.source)
++        self.assertEqual(value["source_after"], self.source)
++        self.assertEqual(value["native"], self.native["native"])
++        self.assertEqual(value["status"], "complete")
+         bound = local.verify_install_receipt(receipt, self.manifest, self.native["native"])
+         self.assertEqual(bound["sha256"], local.bench.digest(receipt))
+         (receipt.parent / "console.log").write_text("different build log")
+@@ -176,11 +193,56 @@
+             local.verify_install_receipt(receipt, self.manifest, self.native["native"])
+ 
+     def test_failed_cli_install_retains_failure_without_receipt(self):
+-        self.mock(local.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "mg5"))
++        def fail(command, **kwargs):
++            self.assertEqual(command[1:3], ["-B", "bin/madgraph"])
++            raise subprocess.CalledProcessError(1, command)
++        process = self.mock(local.subprocess, "run", side_effect=fail)
+         with self.assertRaises(subprocess.CalledProcessError):
+             local.install("canonical", "failed-install", self.root / "HEPTools/tirust")
+         directory = self.report / "local-installations/failed-install"
+         self.assertTrue((directory / "failure.json").is_file())
++        self.assertFalse((directory / "receipt.json").exists())
++        value = local.read(directory / "failure.json")
++        self.assertEqual(value["command"], process.call_args.args[0])
++        self.assertEqual(value["status"], "failed")
++        self.assertEqual(value["source_before"], self.source)
++        self.assertNotIn("native", value)
++
++    def test_missing_cli_retains_exact_intent_and_failure_without_receipt(self):
++        self.mock(local.subprocess, "run", side_effect=FileNotFoundError("launcher unavailable"))
++        with self.assertRaises(FileNotFoundError):
++            local.install("canonical", "missing-cli", self.root / "HEPTools/tirust")
++        directory = self.report / "local-installations/missing-cli"
++        intent = local.read(directory / "intent.json")
++        failure = local.read(directory / "failure.json")
++        self.assertEqual(intent["command"], [sys.executable, "-B", "bin/madgraph",
++                         str(directory / "commands.mg5")])
++        self.assertEqual(failure["command"], intent["command"])
++        self.assertEqual(failure["status"], "failed")
++        self.assertIn("FileNotFoundError", failure["error"])
++        self.assertTrue((directory / "console.log").is_file())
++        self.assertFalse((directory / "receipt.json").exists())
++
++    def test_cli_exit_zero_without_success_marker_has_no_receipt(self):
++        self.mock(local.subprocess, "run")
++        with self.assertRaisesRegex(ValueError, "did not report a successful"):
++            local.install("canonical", "no-publication", self.root / "HEPTools/tirust")
++        directory = self.report / "local-installations/no-publication"
++        self.assertEqual(local.read(directory / "failure.json")["status"], "failed")
++        self.assertFalse((directory / "receipt.json").exists())
++
++    def test_source_change_during_cli_install_has_no_receipt(self):
++        changed = dict(self.source, files_sha256="changed-exporter")
++        self.mock(local.bench, "source_identity", side_effect=[self.source, changed])
++        def fake_run(command, **kwargs):
++            kwargs["stdout"].write("TIRust successfully installed in local prefix.\n")
++        self.mock(local.subprocess, "run", side_effect=fake_run)
++        with self.assertRaisesRegex(ValueError, "source bytes changed"):
++            local.install("canonical", "changed-source", self.root / "HEPTools/tirust")
++        directory = self.report / "local-installations/changed-source"
++        failure = local.read(directory / "failure.json")
++        self.assertEqual(failure["source_after"], changed)
++        self.assertEqual(failure["status"], "failed")
+         self.assertFalse((directory / "receipt.json").exists())
+ 
+     def test_isolated_adapter_restores_globals_on_exception_and_binds_cards(self):
+@@ -379,5 +441,16 @@
+                 local.verify_recipe(self.prefix, self.canonical)
+ 
+ 
++class TestLocalInstallEntrypoint(unittest.TestCase):
++    def test_real_launcher_is_tracked_and_hash_bound_by_source_inventory(self):
++        tracked = subprocess.check_output(["git", "ls-files", "-z", "--", "bin/madgraph"], cwd=ROOT)
++        self.assertEqual(tracked, b"bin/madgraph\0")
++        launcher = ROOT / "bin/madgraph"
++        self.assertTrue(launcher.is_file())
++        self.assertFalse(launcher.is_symlink())
++        source = local.bench.source_identity(ROOT, persist=False)
++        self.assertEqual(source["files"]["bin/madgraph"], local.bench.digest(launcher))
++
++
+ if __name__ == "__main__":
+     unittest.main()
