@@ -1,0 +1,16 @@
+test_cli_admission_before_any_fixture_evaluation (test_all_components.AnalyticSynthetic.test_cli_admission_before_any_fixture_evaluation) ... ok
+test_completed_raw_order_survives_postprocessing_failure (test_all_components.AnalyticSynthetic.test_completed_raw_order_survives_postprocessing_failure) ... ok
+test_deadline_and_chunk_domain (test_all_components.AnalyticSynthetic.test_deadline_and_chunk_domain) ... ok
+test_extended_precision_and_bounded_work (test_all_components.AnalyticSynthetic.test_extended_precision_and_bounded_work) ... ok
+test_layout_counts_and_exact_sparse_map (test_all_components.AnalyticSynthetic.test_layout_counts_and_exact_sparse_map) ... ok
+test_nonconstant_null_shift_dirichlet_moments_and_partial_chunks (test_all_components.AnalyticSynthetic.test_nonconstant_null_shift_dirichlet_moments_and_partial_chunks) ... ok
+test_nonzero_constant_shift_all296_primitives_and210_components (test_all_components.AnalyticSynthetic.test_nonzero_constant_shift_all296_primitives_and210_components) ... ok
+test_saved_selected_transport_only_no_fixture_integration (test_all_components.AnalyticSynthetic.test_saved_selected_transport_only_no_fixture_integration) ... ok
+test_source_proposal_generates_no_gaussian_nodes_or_integrals (test_all_components.AnalyticSynthetic.test_source_proposal_generates_no_gaussian_nodes_or_integrals) ... ok
+test_spatial_permutation_and_momentum_reflection (test_all_components.AnalyticSynthetic.test_spatial_permutation_and_momentum_reflection) ... ok
+test_zero_shift_odd_zeros_and_all_even_trace_identities (test_all_components.AnalyticSynthetic.test_zero_shift_odd_zeros_and_all_even_trace_identities) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.582s
+
+OK

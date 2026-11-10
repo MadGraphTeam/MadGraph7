@@ -1,0 +1,11 @@
+test_identity_guard_precedes_component_analysis (test_analyze.OfflineBookkeeping.test_identity_guard_precedes_component_analysis) ... ok
+test_native_historical420_part_count (test_analyze.OfflineBookkeeping.test_native_historical420_part_count) ... ok
+test_tensor_and_bound_tampering_rejected (test_analyze.OfflineBookkeeping.test_tensor_and_bound_tampering_rejected) ... ok
+test_terminal_failure_preserves_completed_raw_order (test_analyze.OfflineBookkeeping.test_terminal_failure_preserves_completed_raw_order) ... ok
+test_three_way_conditional_counts_remain_separate (test_analyze.OfflineBookkeeping.test_three_way_conditional_counts_remain_separate) ... ok
+test_zero_diagnostics_do_not_relax_symmetric_failure (test_analyze.OfflineBookkeeping.test_zero_diagnostics_do_not_relax_symmetric_failure) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.318s
+
+OK

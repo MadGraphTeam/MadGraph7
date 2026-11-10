@@ -1,0 +1,129 @@
+{
+  "checks": {
+    "analysis_source_replay": "Current analyzer output, after JSON tuple/list normalization, exactly equals the retained published analysis.",
+    "component_mapping": "Every tensor index0..209 and power tuple joins the historical monomial list; finite slot0 and real/imaginary word offsets0/2 are preserved.",
+    "independent_analytic_bounds": "Every one of210bounds at each order recomputed from Wick even-loop powers, binomial pair multiplicities and exact rational Taylor tails; all match.",
+    "interval_enclosure": "Every displayed outward-rounded analytic-tail-only residual interval encloses the independently computed exact-rational interval.",
+    "native_decoding": "Independent integer-significand/binary-exponent Fraction decoding verifies every retained finite real/imaginary value.",
+    "orders": [
+      8,
+      16,
+      18
+    ],
+    "perpart_backend_comparisons_independently_checked": 2520,
+    "primitive_tensor_consistency": "Independently reconstructed each of210tensors from296serialized primitives using Wick coefficients; observed reconstruction/absolute-term-norm maxima are about1.015e-19 across all orders, consistent with extended-precision arithmetic. This observation is not a formal error certificate.",
+    "rank_scales": "Reference-only maxima among both natives of the same tensor rank match exactly; no floor, clipping, cross-rank scaling or acceptance change.",
+    "real_imaginary_parts_per_backend_per_order": 420,
+    "residuals_and_absolute_errors": "All2520native comparisons checked against independent exact-Fraction differences/residuals; all point and analytic-tail counts and rank counts agree.",
+    "tensor_components_per_order": 210
+  },
+  "closed_result_sha256": "3d1c56b4e3fbecc4aac439714cbbe1dd6d273b6a4a5d03e85984f33477168cee",
+  "closure_authorization": "Parent/root explicitly confirmed session2380 terminal with exit0 before this reviewer read the result. Original raw and packaged decompressed result bytes match.",
+  "endpoint_n18": {
+    "COLLIER": {
+      "analytic_tail_only_1e8": [
+        90,
+        326,
+        4
+      ],
+      "analytic_tail_only_3e6": [
+        298,
+        122,
+        0
+      ],
+      "maximum_symmetric_residual": "0.0013285037839680765229972636473632637939188852694489533075134736837196785065568874",
+      "point_pass_1e8": 92,
+      "point_pass_3e6": 298,
+      "worst_index": 161,
+      "worst_part": "imaginary"
+    },
+    "TIRust_QP": {
+      "analytic_tail_only_1e8": [
+        357,
+        0,
+        63
+      ],
+      "analytic_tail_only_3e6": [
+        420,
+        0,
+        0
+      ],
+      "maximum_symmetric_residual": "9.6244300346991969375885172331939246091539675781895565026710459933512161844843144e-20",
+      "point_pass_1e8": 420,
+      "point_pass_3e6": 420,
+      "worst_index": 43,
+      "worst_part": "imaginary"
+    },
+    "analytic_triplet_order": [
+      "conditional_agreement",
+      "conditional_disagreement",
+      "inconclusive"
+    ],
+    "exact_zero_native_finite_parts": 0,
+    "point_threshold_equality_cases": 0
+  },
+  "failure_path_finding_resolved": {
+    "finding": "A terminal failed run with a completed raw order and pending worker comparison was initially rejected by the offline saved-scalar join.",
+    "resolution": "Current saved_join recomputes a descriptive offline comparison, marks worker_comparison_available=False, preserves the original worker status/failure, and still rejects present-but-altered retained comparison parts. Attempted and unavailable orders remain explicit.",
+    "test_attribution": "Owner reports six pure tests PASS0.318seconds, including terminal-failure partial data, tamper rejection and zero diagnostics. Reviewer did not rerun or overwrite owner logs."
+  },
+  "independent_reproduction": {
+    "actually_executed_in_fresh_temporary_directory": true,
+    "command": "python3 -B docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-qualification-1/independent_fraction_audit.py --result docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-qualification-1/data/vector-result.json.gz --output /absolute/path/to/new-audit.json --admit-closed-result",
+    "result": "Byte-for-byte reproduction of independent-fraction-audit.json SHA cbbf89c1446b5d3648798d38585d909d4bc9600c8b723adf42e4fd5281c618b9; no kernels, NumPy or reducers invoked."
+  },
+  "interpretation": "The defining-integral cross-check corroborates all210finite TIRust components on this fixed synthetic N6/rank6 fixture and supports a COLLIER accuracy limitation consistent with its retained flag\u22121. It does not identify a specific internal COLLIER bug, alter either native answer or qualify arbitrary kinematics.",
+  "native_reducer_calls": 0,
+  "new_quadrature_calls": 0,
+  "precision_limit": "Independent vector arithmetic is64significand-bit NumPy longdouble, not113bitQP. Exact analytic quadrature bounds exclude finite-precision node, weight and arithmetic errors. No formal whole-program floating-point certificate is asserted.",
+  "reference_repositories_modified": false,
+  "remaining_limits": [
+    "At1e-8 the analytic-tail-only enclosure remains inconclusive for63TIRust parts and4COLLIER parts despite point-estimate comparisons.",
+    "The report must retain every raw native value, requested-accuracy miss and IEEE observation.",
+    "No physical-amplitude, complex-mass stress-suite, stability/rescue, poles or runtime-acceptance claim follows from this fixture-only cross-check.",
+    "The known separate COLLIER cache issue remains unmodified and is not established as this uncached1.2.9fixture cause."
+  ],
+  "reviewed_sources": [
+    {
+      "bytes": 14532,
+      "path": "analyze.py",
+      "sha256": "787edc24b619277b172e2f1c6b0738daa3a7b6ee2035c319867750b7b95ff76f"
+    },
+    {
+      "bytes": 4416,
+      "path": "test_analyze.py",
+      "sha256": "7ef88a1902a5a6aab862e3b3895b49b19c0fd40e5fd62b86c203b262cd2f5110"
+    },
+    {
+      "bytes": 4313,
+      "path": "replay.py",
+      "sha256": "ec93cb79e294c5208675a6af2a62d9e403d519399f0fc9b2b1c56e315fa92d61"
+    },
+    {
+      "bytes": 5889,
+      "path": "README.md",
+      "sha256": "cd2464975ba1f7de952e8b2c9db325513db2e015f37ca53576188a6f7f99efa7"
+    }
+  ],
+  "reviewer_owned_evidence": [
+    {
+      "bytes": 8196,
+      "path": "independent_fraction_audit.py",
+      "sha256": "4ead7a81a1171a1a28e0e5d8119e7112fad6bc257e3f290db165ce72799d8ce1"
+    },
+    {
+      "bytes": 10771,
+      "path": "independent-fraction-audit.json",
+      "sha256": "cbbf89c1446b5d3648798d38585d909d4bc9600c8b723adf42e4fd5281c618b9"
+    },
+    {
+      "bytes": 2347,
+      "path": "independent-analysis-crosscheck.json",
+      "sha256": "010b120f2479049e4bf96b3cef44fd702854086ec9f3d306ac3ea6fc906a9c54"
+    }
+  ],
+  "reviewer_owned_file": "code-audit.json",
+  "reviewer_task": "/root/rank6_discrepancy_followup/simplex_discriminator",
+  "schema": 1,
+  "status": "independent full-component closed-data audit PASS; no new quadrature or native reducer execution"
+}

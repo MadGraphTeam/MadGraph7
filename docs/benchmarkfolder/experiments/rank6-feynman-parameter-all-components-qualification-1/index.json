@@ -1,0 +1,304 @@
+{
+  "schema": 1,
+  "scope": "all210finite Cartesian components of the retained synthetic N6/rank6 fixture108 only",
+  "status": "independent numerical cross-check corroborates all sampled TIRust components; original COLLIER misses retained",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 5889,
+      "sha256": "cd2464975ba1f7de952e8b2c9db325513db2e015f37ca53576188a6f7f99efa7"
+    },
+    {
+      "path": "analysis.json.gz",
+      "bytes": 1466926,
+      "sha256": "91fc91e256de956da8fec4330c27bdd8cb5366c2a1caaeb296ede5843965eda8",
+      "uncompressed_bytes": 7074356,
+      "uncompressed_sha256": "98e320d9487b1c52b3e5f43dfb38975ddd17b4c3ae4c7e466c6f06839e9b2e85"
+    },
+    {
+      "path": "analyze.py",
+      "bytes": 14532,
+      "sha256": "787edc24b619277b172e2f1c6b0738daa3a7b6ee2035c319867750b7b95ff76f"
+    },
+    {
+      "path": "code-audit.json",
+      "bytes": 7019,
+      "sha256": "61f471070c42d14d02017e1fda7ef4645b179ee519c976e580fad6cff3203e95"
+    },
+    {
+      "path": "data/controller.py",
+      "bytes": 3029,
+      "sha256": "87cd3506e5041fc6d3cce528f3c66467bfecca8fa60038a8b9d3fb46b93157b7"
+    },
+    {
+      "path": "data/execution.json",
+      "bytes": 11261,
+      "sha256": "ab7b904bc79695f714839e6858fce61aa735ad6606ab5b9479e3436dcf817402"
+    },
+    {
+      "path": "data/stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "data/vector-result.json.gz",
+      "bytes": 116311,
+      "sha256": "317626a6a7e5532d83ae932d5b73e33d0b1d77d73b8a524e29fccf2c7f406103",
+      "uncompressed_bytes": 814764,
+      "uncompressed_sha256": "3d1c56b4e3fbecc4aac439714cbbe1dd6d273b6a4a5d03e85984f33477168cee"
+    },
+    {
+      "path": "independent-analysis-crosscheck.json",
+      "bytes": 2347,
+      "sha256": "010b120f2479049e4bf96b3cef44fd702854086ec9f3d306ac3ea6fc906a9c54"
+    },
+    {
+      "path": "independent-fraction-audit.json",
+      "bytes": 10771,
+      "sha256": "cbbf89c1446b5d3648798d38585d909d4bc9600c8b723adf42e4fd5281c618b9"
+    },
+    {
+      "path": "independent_fraction_audit.py",
+      "bytes": 8196,
+      "sha256": "4ead7a81a1171a1a28e0e5d8119e7112fad6bc257e3f290db165ce72799d8ce1"
+    },
+    {
+      "path": "replay.py",
+      "bytes": 4313,
+      "sha256": "ec93cb79e294c5208675a6af2a62d9e403d519399f0fc9b2b1c56e315fa92d61"
+    },
+    {
+      "path": "summary.json",
+      "bytes": 60738,
+      "sha256": "15fedf233ba8fc2e9710533d2238283e68dbc011d6efb77b0d277b858d33eb00"
+    },
+    {
+      "path": "synthetic-tests.txt",
+      "bytes": 906,
+      "sha256": "c7f7ac5861c03e474d36988bc4c2e0e112700eb4c1e79526744fd1f31c735c2a"
+    },
+    {
+      "path": "test_analyze.py",
+      "bytes": 4416,
+      "sha256": "7ef88a1902a5a6aab862e3b3895b49b19c0fd40e5fd62b86c203b262cd2f5110"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/analysis.json",
+      "bytes": 147713,
+      "sha256": "92b5a3844de7d0a9ffa667aff23039d4d96d48e6ec2adc253cf751b4d143c8b1"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/index.json",
+      "bytes": 955,
+      "sha256": "5c669260ad17e9d1ef2b7991bf90720a7b22190607ea1b82df035da2f6afd3f1"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/rows.json.gz",
+      "bytes": 131918,
+      "sha256": "729abf58745f554684eae4e2020c52280bcb3658becf80f2cec85f3540a3f74a",
+      "uncompressed_bytes": 1554740,
+      "uncompressed_sha256": "0e7b18f3d864155f316085b1666e2b9680058178fb219a6573378869d17079ca"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/fixtures.json",
+      "bytes": 8585,
+      "sha256": "180cb642d3886dab8055a70a7f4fef6586e2b2c635e998aab0066e95886f53f4"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/index.json",
+      "bytes": 11780,
+      "sha256": "b25130768bc8a5f8daabbcfe820160755b41b4dd2e558cd0b1a87aa49e1f6ec7"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/verify_fixture.py",
+      "bytes": 3976,
+      "sha256": "01500d39a6123713bdbd4fa03579d322f28ca28a5c0e91c49b1a1a51318da653"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/qcd/cap_collier.f",
+      "bytes": 31641,
+      "sha256": "26c5a83505d0a564e2ba459a62b4fadf358bc5019e7a512d76e3bd7d628ea756"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-runner2/supervise.py",
+      "bytes": 9125,
+      "sha256": "ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/README.md",
+      "bytes": 5849,
+      "sha256": "54f8286b8abd04acc9d945e31bef783081c0ac5dc44072e93fb93f30d01a5605"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/all_components.py",
+      "bytes": 16994,
+      "sha256": "124a6f09d005f2d01b9a3a292051fdeb2d838684fe04d1b530144daab283b048"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/chunk-index-audit.json",
+      "bytes": 1490,
+      "sha256": "3ec613b8a5cc98f1ab98870d128ed1a07493944090bf26970f92b979dce8e1db"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/code-audit.json",
+      "bytes": 7409,
+      "sha256": "703a67197f16449c9c8d684331be1256a4664f0ac4e83568542b80b6da25f6b5"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/proposal.json",
+      "bytes": 60577,
+      "sha256": "c4d1b01d8351b046ea67257492e0b4e7f8e169bbeea4dd6f3e425486f492bd17"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/source-index.json",
+      "bytes": 4277,
+      "sha256": "128df03a4790e25ea49f7bacee5a0a6d5339035ad5e6b73b62df7a7a2dabef27"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/synthetic-tests.txt",
+      "bytes": 1760,
+      "sha256": "fc0706b1346c4a8032a2c327b6c8a41c7951847e6e04d41a63b0c63db73e37ac"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/test_all_components.py",
+      "bytes": 9685,
+      "sha256": "bac5ffe41f7caae31ddf9ff8db3eda5d92087815a9635f53c8dac96ff00d9bd2"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/toy-benchmark.json",
+      "bytes": 1819,
+      "sha256": "0d103ae1176d69b0ebf3a109f0ab0c383439b88f07649f455728a725c42aa5ad"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/toy_benchmark.py",
+      "bytes": 5450,
+      "sha256": "cb0c845d32e1fea3fcf771a2b7e165bc7ac94effd5b7b9c85e5860649b11462e"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-all-components-proposal-1/verify.py",
+      "bytes": 1778,
+      "sha256": "ea04d8ae0e8662a19d17d00907d0193d6394a08c64b22c4f7d2669cb92667efe"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/README.md",
+      "bytes": 2676,
+      "sha256": "2fdb07163a4737f9c47b84095f7f216be287be8f7377fa51496da5fdecf30271"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/code-audit-2.json",
+      "bytes": 4678,
+      "sha256": "6f4da23cc3647d65e63e1158edc963ae0c3a7e8bf49b755b99dff4577678f1d2"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/code-audit.json",
+      "bytes": 6280,
+      "sha256": "b8da07b6fa5b1eee572cbdaa6cf6a818b116befa2d0269af114aa9f1d2db78eb"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/compare.py",
+      "bytes": 14687,
+      "sha256": "4bd4b5886bc67d9a9615f02246cb8c2ec1b7e8f421f781e6ef3d5967063af554"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/source-index.json",
+      "bytes": 2606,
+      "sha256": "3978c18474e8b5de1b89b60a814479aef062d73ee024e92b2b683008adb11c54"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/synthetic-tests.txt",
+      "bytes": 1511,
+      "sha256": "caacba339ed538bc5a27f472d2733bfe38a767d90ebfa45f4d73e78fa5793606"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/test_compare.py",
+      "bytes": 6383,
+      "sha256": "dc515cb5e97e3d32deaa2539430b054d107d5d280c14440c256e3ebcbc4455a1"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-analysis-proposal-1/verify.py",
+      "bytes": 1432,
+      "sha256": "5aa5688659a00aa2b3755e5acab2c25ea3a6438e939a369802228de6ee68ae14"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/README.md",
+      "bytes": 9654,
+      "sha256": "512cc0f7d1464363d67296899e0e5162e7299d6845d5a1dfea271f41bc5f94e6"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/code-audit.json",
+      "bytes": 6866,
+      "sha256": "8e6920cd621f5794754462835ad7a92ad2cdc88bb51bda5630f91f8e0f474842"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/derivation.json",
+      "bytes": 24004,
+      "sha256": "cb5867c226948809ef335f64a50855f01d76d70b8cda07dd0f2e20b2e70a70af"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/proposal.json",
+      "bytes": 8642,
+      "sha256": "682e02eb2e5dab6e734bb5b24052795a1c189b5972a6e7a04e1ce01795393827"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/quadrature.py",
+      "bytes": 19323,
+      "sha256": "d45f89ef665e82c1b71839414c52b2c8cf73f2c4427689c0e073f8d37c5439f7"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/source-evidence.json",
+      "bytes": 6508,
+      "sha256": "2286c03c7d521994cec62dc7d8fbd1d25d6867f0a8015c4254af9403915ed401"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/source-index.json",
+      "bytes": 4282,
+      "sha256": "03ffcd9f8b88855b59d78387cde255460a36d35cca251fce093741a9c0065db3"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/synthetic-tests.txt",
+      "bytes": 2293,
+      "sha256": "9c2470105aeef777b5d3fb2a87914db68ae1ed39fed679382417152697041b43"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/test_quadrature.py",
+      "bytes": 8583,
+      "sha256": "3d80de6f442c59d790325dc5f5af493d4fde65fcc1ec962c28c135c8d95be876"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-proposal-1/verify.py",
+      "bytes": 2065,
+      "sha256": "fb5da19e7e83c239f9752569bf7949078eb2cf25c05907fbbf2e168147b1b0bb"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-qualification-1/data/float-result.json.gz",
+      "bytes": 28198,
+      "sha256": "3e0986872f7da5facd293d0cb55ba208415e4d21316a6864ae05ac94cb29d299",
+      "uncompressed_bytes": 115083,
+      "uncompressed_sha256": "1ff3a2b9bb019d54efb4c85358d98b6931c7dbb634d49f828fdf7799dd7822ca"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-qualification-1/data/float18-result.json.gz",
+      "bytes": 18361,
+      "sha256": "649695efcc79df5ddb11e708226f3153c637f862cf2f6d0d0d071974c3387523",
+      "uncompressed_bytes": 73485,
+      "uncompressed_sha256": "a42e2bb3631970ab795e03a4abf63efe2b8edf051e0200dfd3f5fa0a02afb6bc"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/rank6-feynman-parameter-qualification-1/index.json",
+      "bytes": 9203,
+      "sha256": "c2fe806d2996e7ee758e2a7894318d04388b640126b9f636fd23be99650b90d7"
+    },
+    {
+      "path": "vendor/tirust/src/lib.rs",
+      "bytes": 46218,
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    }
+  ],
+  "native_reducer_calls_in_experiment": 0,
+  "quadrature_calls_during_replay": 0,
+  "old_evidence_changed": false,
+  "collier_cache_changed": false,
+  "total_floating_point_error_formally_certified": false
+}

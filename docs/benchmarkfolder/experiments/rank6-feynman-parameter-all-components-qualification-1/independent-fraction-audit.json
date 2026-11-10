@@ -1,0 +1,363 @@
+{
+  "all_recomputed_bounds_match": true,
+  "execution_status": "completed estimates; total floating error not formally certified",
+  "native_reducer_calls": 0,
+  "orders": [
+    {
+      "backends": {
+        "COLLIER": {
+          "counts": {
+            "1e-8": {
+              "analytic_tail_only_agree": 0,
+              "analytic_tail_only_disagree": 0,
+              "analytic_tail_only_inconclusive": 420,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 92,
+              "point_disagree": 328
+            },
+            "3e-6": {
+              "analytic_tail_only_agree": 0,
+              "analytic_tail_only_disagree": 0,
+              "analytic_tail_only_inconclusive": 420,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 298,
+              "point_disagree": 122
+            }
+          },
+          "maximum_absolute_difference": "7.6652350809700611542961387385730631649494171142578125E-14",
+          "maximum_symmetric_residual": "0.0013285037845549816982268125843728217433899670040015450813766174819184690100619478",
+          "parts": 420,
+          "rank_point_counts": {
+            "0": {
+              "1e-8": 2,
+              "3e-6": 2
+            },
+            "1": {
+              "1e-8": 6,
+              "3e-6": 8
+            },
+            "2": {
+              "1e-8": 14,
+              "3e-6": 20
+            },
+            "3": {
+              "1e-8": 4,
+              "3e-6": 29
+            },
+            "4": {
+              "1e-8": 11,
+              "3e-6": 45
+            },
+            "5": {
+              "1e-8": 24,
+              "3e-6": 80
+            },
+            "6": {
+              "1e-8": 31,
+              "3e-6": 114
+            }
+          },
+          "reference_zero_parts": 0,
+          "worst_index": 161,
+          "worst_part": "imaginary"
+        },
+        "TIRust_QP": {
+          "counts": {
+            "1e-8": {
+              "analytic_tail_only_agree": 0,
+              "analytic_tail_only_disagree": 0,
+              "analytic_tail_only_inconclusive": 420,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 420,
+              "point_disagree": 0
+            },
+            "3e-6": {
+              "analytic_tail_only_agree": 0,
+              "analytic_tail_only_disagree": 0,
+              "analytic_tail_only_inconclusive": 420,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 420,
+              "point_disagree": 0
+            }
+          },
+          "maximum_absolute_difference": "8.9280247726719389681758609911543331654223869204386895376225272147330258576403139E-20",
+          "maximum_symmetric_residual": "1.7109700425745358730522307310540538974685926419199155282342004562417921602570791E-12",
+          "parts": 420,
+          "rank_point_counts": {
+            "0": {
+              "1e-8": 2,
+              "3e-6": 2
+            },
+            "1": {
+              "1e-8": 8,
+              "3e-6": 8
+            },
+            "2": {
+              "1e-8": 20,
+              "3e-6": 20
+            },
+            "3": {
+              "1e-8": 40,
+              "3e-6": 40
+            },
+            "4": {
+              "1e-8": 70,
+              "3e-6": 70
+            },
+            "5": {
+              "1e-8": 112,
+              "3e-6": 112
+            },
+            "6": {
+              "1e-8": 168,
+              "3e-6": 168
+            }
+          },
+          "reference_zero_parts": 0,
+          "worst_index": 55,
+          "worst_part": "real"
+        }
+      },
+      "n": 8
+    },
+    {
+      "backends": {
+        "COLLIER": {
+          "counts": {
+            "1e-8": {
+              "analytic_tail_only_agree": 81,
+              "analytic_tail_only_disagree": 315,
+              "analytic_tail_only_inconclusive": 24,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 92,
+              "point_disagree": 328
+            },
+            "3e-6": {
+              "analytic_tail_only_agree": 294,
+              "analytic_tail_only_disagree": 120,
+              "analytic_tail_only_inconclusive": 6,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 298,
+              "point_disagree": 122
+            }
+          },
+          "maximum_absolute_difference": "7.6652433957890611542961387385730631649494171142578125E-14",
+          "maximum_symmetric_residual": "0.0013285037839680765229972636473632637939188852694489533075134736837196785065568874",
+          "parts": 420,
+          "rank_point_counts": {
+            "0": {
+              "1e-8": 2,
+              "3e-6": 2
+            },
+            "1": {
+              "1e-8": 6,
+              "3e-6": 8
+            },
+            "2": {
+              "1e-8": 14,
+              "3e-6": 20
+            },
+            "3": {
+              "1e-8": 4,
+              "3e-6": 29
+            },
+            "4": {
+              "1e-8": 11,
+              "3e-6": 45
+            },
+            "5": {
+              "1e-8": 24,
+              "3e-6": 80
+            },
+            "6": {
+              "1e-8": 31,
+              "3e-6": 114
+            }
+          },
+          "reference_zero_parts": 0,
+          "worst_index": 161,
+          "worst_part": "imaginary"
+        },
+        "TIRust_QP": {
+          "counts": {
+            "1e-8": {
+              "analytic_tail_only_agree": 198,
+              "analytic_tail_only_disagree": 0,
+              "analytic_tail_only_inconclusive": 222,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 420,
+              "point_disagree": 0
+            },
+            "3e-6": {
+              "analytic_tail_only_agree": 403,
+              "analytic_tail_only_disagree": 0,
+              "analytic_tail_only_inconclusive": 17,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 420,
+              "point_disagree": 0
+            }
+          },
+          "maximum_absolute_difference": "2.3222732806103182413900884566683457761307956131046237747278526697414235968608409E-24",
+          "maximum_symmetric_residual": "9.1211238756635166671366100110000894107953045993836286837121154761460176430845354E-20",
+          "parts": 420,
+          "rank_point_counts": {
+            "0": {
+              "1e-8": 2,
+              "3e-6": 2
+            },
+            "1": {
+              "1e-8": 8,
+              "3e-6": 8
+            },
+            "2": {
+              "1e-8": 20,
+              "3e-6": 20
+            },
+            "3": {
+              "1e-8": 40,
+              "3e-6": 40
+            },
+            "4": {
+              "1e-8": 70,
+              "3e-6": 70
+            },
+            "5": {
+              "1e-8": 112,
+              "3e-6": 112
+            },
+            "6": {
+              "1e-8": 168,
+              "3e-6": 168
+            }
+          },
+          "reference_zero_parts": 0,
+          "worst_index": 18,
+          "worst_part": "imaginary"
+        }
+      },
+      "n": 16
+    },
+    {
+      "backends": {
+        "COLLIER": {
+          "counts": {
+            "1e-8": {
+              "analytic_tail_only_agree": 90,
+              "analytic_tail_only_disagree": 326,
+              "analytic_tail_only_inconclusive": 4,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 92,
+              "point_disagree": 328
+            },
+            "3e-6": {
+              "analytic_tail_only_agree": 298,
+              "analytic_tail_only_disagree": 122,
+              "analytic_tail_only_inconclusive": 0,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 298,
+              "point_disagree": 122
+            }
+          },
+          "maximum_absolute_difference": "7.6652433957890611542961387385730631649494171142578125E-14",
+          "maximum_symmetric_residual": "0.0013285037839680765229972636473632637939188852694489533075134736837196785065568874",
+          "parts": 420,
+          "rank_point_counts": {
+            "0": {
+              "1e-8": 2,
+              "3e-6": 2
+            },
+            "1": {
+              "1e-8": 6,
+              "3e-6": 8
+            },
+            "2": {
+              "1e-8": 14,
+              "3e-6": 20
+            },
+            "3": {
+              "1e-8": 4,
+              "3e-6": 29
+            },
+            "4": {
+              "1e-8": 11,
+              "3e-6": 45
+            },
+            "5": {
+              "1e-8": 24,
+              "3e-6": 80
+            },
+            "6": {
+              "1e-8": 31,
+              "3e-6": 114
+            }
+          },
+          "reference_zero_parts": 0,
+          "worst_index": 161,
+          "worst_part": "imaginary"
+        },
+        "TIRust_QP": {
+          "counts": {
+            "1e-8": {
+              "analytic_tail_only_agree": 357,
+              "analytic_tail_only_disagree": 0,
+              "analytic_tail_only_inconclusive": 63,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 420,
+              "point_disagree": 0
+            },
+            "3e-6": {
+              "analytic_tail_only_agree": 420,
+              "analytic_tail_only_disagree": 0,
+              "analytic_tail_only_inconclusive": 0,
+              "exact_point_threshold_boundary": 0,
+              "point_agree": 420,
+              "point_disagree": 0
+            }
+          },
+          "maximum_absolute_difference": "2.3222732806103182413900884566683457761307956131046237747278526697414235968608409E-24",
+          "maximum_symmetric_residual": "9.6244300346991969375885172331939246091539675781895565026710459933512161844843144E-20",
+          "parts": 420,
+          "rank_point_counts": {
+            "0": {
+              "1e-8": 2,
+              "3e-6": 2
+            },
+            "1": {
+              "1e-8": 8,
+              "3e-6": 8
+            },
+            "2": {
+              "1e-8": 20,
+              "3e-6": 20
+            },
+            "3": {
+              "1e-8": 40,
+              "3e-6": 40
+            },
+            "4": {
+              "1e-8": 70,
+              "3e-6": 70
+            },
+            "5": {
+              "1e-8": 112,
+              "3e-6": 112
+            },
+            "6": {
+              "1e-8": 168,
+              "3e-6": 168
+            }
+          },
+          "reference_zero_parts": 0,
+          "worst_index": 43,
+          "worst_part": "imaginary"
+        }
+      },
+      "n": 18
+    }
+  ],
+  "quadrature_calls": 0,
+  "result_sha256": "3d1c56b4e3fbecc4aac439714cbbe1dd6d273b6a4a5d03e85984f33477168cee",
+  "retained_rows_sha256": "729abf58745f554684eae4e2020c52280bcb3658becf80f2cec85f3540a3f74a",
+  "schema": 1,
+  "scope": "independent exact-Fraction offline audit of explicitly closed all-component result"
+}

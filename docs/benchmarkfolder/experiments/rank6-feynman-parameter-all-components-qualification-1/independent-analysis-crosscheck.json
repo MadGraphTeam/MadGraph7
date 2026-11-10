@@ -1,0 +1,49 @@
+{
+  "all_displayed_analytic_intervals_enclose_exact_tail_only_intervals": true,
+  "all_point_and_analytic_tail_counts_match_independent_Fractions": true,
+  "all_rank_point_counts_match": true,
+  "analyzer_sha256": "787edc24b619277b172e2f1c6b0738daa3a7b6ee2035c319867750b7b95ff76f",
+  "exact_native_decode_and_absolute_differences": true,
+  "independent_script_sha256": "4ead7a81a1171a1a28e0e5d8119e7112fad6bc257e3f290db165ce72799d8ce1",
+  "native_reducer_calls": 0,
+  "new_quadrature_calls": 0,
+  "perpart_backend_comparisons_checked": 2520,
+  "primitive_to_tensor_reconstruction": [
+    {
+      "components": 210,
+      "maximum_absolute_reconstruction_difference": "2.1817428E-24",
+      "maximum_reconstruction_difference_over_sum_absolute_terms": "1.0147934740942790938078520204480774861004910253855023459128848651570672397703756E-19",
+      "n": 8,
+      "parts": 420,
+      "role": "observed consistency of serialized primitive/tensor arrays; not a formal floating-point certificate",
+      "worst_index": 136,
+      "worst_part": "real"
+    },
+    {
+      "components": 210,
+      "maximum_absolute_reconstruction_difference": "1.95906258E-24",
+      "maximum_reconstruction_difference_over_sum_absolute_terms": "1.0147015389381034432899408273558532693850305388547394804282710293227721687456213E-19",
+      "n": 16,
+      "parts": 420,
+      "role": "observed consistency of serialized primitive/tensor arrays; not a formal floating-point certificate",
+      "worst_index": 133,
+      "worst_part": "real"
+    },
+    {
+      "components": 210,
+      "maximum_absolute_reconstruction_difference": "1.95868545E-24",
+      "maximum_reconstruction_difference_over_sum_absolute_terms": "1.0046153504696077723933322795168887877811005293027992350027915970000228063284258E-19",
+      "n": 18,
+      "parts": 420,
+      "role": "observed consistency of serialized primitive/tensor arrays; not a formal floating-point certificate",
+      "worst_index": 133,
+      "worst_part": "real"
+    }
+  ],
+  "published_analysis_matches_current_source": true,
+  "result_sha256": "3d1c56b4e3fbecc4aac439714cbbe1dd6d273b6a4a5d03e85984f33477168cee",
+  "same_rank_reference_only_scales_match_exactly": true,
+  "schema": 1,
+  "status": "PASS; independent closed-data bookkeeping and source-analysis cross-check",
+  "total_floating_error_formally_certified": false
+}
