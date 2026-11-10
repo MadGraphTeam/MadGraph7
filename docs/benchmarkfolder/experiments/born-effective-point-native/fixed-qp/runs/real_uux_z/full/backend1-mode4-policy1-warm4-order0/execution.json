@@ -1,0 +1,50 @@
+{
+  "command": [
+    "/run/current-system/sw/bin/taskset",
+    "-c",
+    "14",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/real_uux_z/full/runtime_probe"
+  ],
+  "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/real_uux_z/full/backend1-mode4-policy1-warm4-order0",
+  "progress": {
+    "exit_observed_unix": 1794285963.3350544,
+    "mapping_capture": {
+      "complete_snapshot_sha256": "fa135704609a4f83b5dac4f4339476ea88a7568763d04c7c10b98f1735350b0c",
+      "last_incomplete_reason": {
+        "executable_present": false,
+        "missing_expected_paths": [
+          "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+          "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+          "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+        ],
+        "selected_bridge_present": false
+      },
+      "last_read_bytes": 13968,
+      "last_read_sha256": "fa135704609a4f83b5dac4f4339476ea88a7568763d04c7c10b98f1735350b0c",
+      "last_read_unix": 1794285963.3101315,
+      "successful_reads": 2
+    },
+    "pid": 20,
+    "process_reaped": true,
+    "process_spawned": true,
+    "process_wall_seconds": 0.037898124661296606,
+    "returncode": 0,
+    "spawn_unix": 1794285963.2983842
+  },
+  "returncode": 0,
+  "started_unix": 1794285963.2967896,
+  "timed_out": false,
+  "timeout_seconds": 120
+}

@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "repository_head": "5496adef9af77d5cafc21a1a858df2c8083f9cc0",
+  "path": "madgraph/iolibs/file_writers.py",
+  "copy": "inputs/file_writers.py",
+  "sha256": "d77219d0ecb8d7f81a69e8f0eef7a7ebbab2dcb1538f9292ce5fa05d597d5c50",
+  "git_blob_sha1": "0ccbe123c1d68bdeaa47a674549617867b5081f6",
+  "working_bytes_equal_head_blob": true
+}

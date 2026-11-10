@@ -1,0 +1,2350 @@
+{
+  "links": {
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Cards/ident_card.dat",
+      "sha256": "61e7d55aa944a5726ba553dd76786a1e67fb00b283ff69a4808b0432ef2555bd",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Cards/param_card.dat",
+      "sha256": "1f6fa8a4262ba7c67f45ccd6caa9d44f5d759abf66dd77170cd4504ff2fe1958",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/global_specs.inc",
+      "sha256": "483d519ee2e3fd76c2198aaa551ac8b4446d469abf7ae9dff937168d107033a1",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/makefile",
+      "sha256": "316f1b2194b3f952c074bcdf8dc5412e1e0dd58e5aac45235ad9e2014110ca4a",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/MODEL/mp_coupl.inc",
+      "sha256": "f7d5c8c86b00dabfc1a593b938404ac89e7c468f0226fbd7387107c827d6ecb0",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "61232fa428c50418b7c31a1d8d67da948ab92e0ec00177c037442fb3bd1a8e99",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/P0_epem_ttx/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/MODEL/mp_coupl.inc",
+      "sha256": "f7d5c8c86b00dabfc1a593b938404ac89e7c468f0226fbd7387107c827d6ecb0",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "61232fa428c50418b7c31a1d8d67da948ab92e0ec00177c037442fb3bd1a8e99",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/full/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Cards/ident_card.dat",
+      "sha256": "61e7d55aa944a5726ba553dd76786a1e67fb00b283ff69a4808b0432ef2555bd",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Cards/param_card.dat",
+      "sha256": "1f6fa8a4262ba7c67f45ccd6caa9d44f5d759abf66dd77170cd4504ff2fe1958",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/global_specs.inc",
+      "sha256": "483d519ee2e3fd76c2198aaa551ac8b4446d469abf7ae9dff937168d107033a1",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/makefile",
+      "sha256": "9c3ff6b8506ac21398a6f1eddfeafd98b4e9c3d78aa785aca26b89d8033f2207",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/MODEL/mp_coupl.inc",
+      "sha256": "f7d5c8c86b00dabfc1a593b938404ac89e7c468f0226fbd7387107c827d6ecb0",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "61232fa428c50418b7c31a1d8d67da948ab92e0ec00177c037442fb3bd1a8e99",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/P0_epem_ttx/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/MODEL/mp_coupl.inc",
+      "sha256": "f7d5c8c86b00dabfc1a593b938404ac89e7c468f0226fbd7387107c827d6ecb0",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "61232fa428c50418b7c31a1d8d67da948ab92e0ec00177c037442fb3bd1a8e99",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/graph/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Cards/ident_card.dat",
+      "sha256": "61e7d55aa944a5726ba553dd76786a1e67fb00b283ff69a4808b0432ef2555bd",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Cards/param_card.dat",
+      "sha256": "1f6fa8a4262ba7c67f45ccd6caa9d44f5d759abf66dd77170cd4504ff2fe1958",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/global_specs.inc",
+      "sha256": "483d519ee2e3fd76c2198aaa551ac8b4446d469abf7ae9dff937168d107033a1",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/makefile",
+      "sha256": "9c3ff6b8506ac21398a6f1eddfeafd98b4e9c3d78aa785aca26b89d8033f2207",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/MODEL/mp_coupl.inc",
+      "sha256": "f7d5c8c86b00dabfc1a593b938404ac89e7c468f0226fbd7387107c827d6ecb0",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "61232fa428c50418b7c31a1d8d67da948ab92e0ec00177c037442fb3bd1a8e99",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/P0_epem_ttx/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/MODEL/mp_coupl.inc",
+      "sha256": "f7d5c8c86b00dabfc1a593b938404ac89e7c468f0226fbd7387107c827d6ecb0",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "61232fa428c50418b7c31a1d8d67da948ab92e0ec00177c037442fb3bd1a8e99",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/mass/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Cards/ident_card.dat",
+      "sha256": "11f13b43dba0ce50216474f0b2ab9a2c81c62c5365d1b3ae74a07214eec9cb89",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Cards/param_card.dat",
+      "sha256": "1f6fa8a4262ba7c67f45ccd6caa9d44f5d759abf66dd77170cd4504ff2fe1958",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/global_specs.inc",
+      "sha256": "483d519ee2e3fd76c2198aaa551ac8b4446d469abf7ae9dff937168d107033a1",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/makefile",
+      "sha256": "316f1b2194b3f952c074bcdf8dc5412e1e0dd58e5aac45235ad9e2014110ca4a",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/MODEL/mp_coupl.inc",
+      "sha256": "f7d5c8c86b00dabfc1a593b938404ac89e7c468f0226fbd7387107c827d6ecb0",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "61232fa428c50418b7c31a1d8d67da948ab92e0ec00177c037442fb3bd1a8e99",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/P0_epem_ttx/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/MODEL/coupl.inc",
+      "sha256": "f3f556f540e124d521d00c8e2f647d7943858163bf2254febbd0b0012fd4f8a9",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/MODEL/mp_coupl.inc",
+      "sha256": "f7d5c8c86b00dabfc1a593b938404ac89e7c468f0226fbd7387107c827d6ecb0",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "61232fa428c50418b7c31a1d8d67da948ab92e0ec00177c037442fb3bd1a8e99",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/cms_epem_ttx/original/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Cards/ident_card.dat",
+      "sha256": "7f6505c283c4bbcf2bc1ba665520de5309ba72b7624b5d8480f783af833a6b89",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Cards/param_card.dat",
+      "sha256": "1021dca10f11bb82d06080dfd61b8a04e9b9429e75f23d42625a2d741b56d2f8",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/global_specs.inc",
+      "sha256": "483d519ee2e3fd76c2198aaa551ac8b4446d469abf7ae9dff937168d107033a1",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/makefile",
+      "sha256": "b21ad846a7c53054042fd8e35fff0e9658fdb292c689babec00915c4199ad6b9",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/MODEL/mp_coupl.inc",
+      "sha256": "b64c34a4069539d6b1892e416991928f40d013e688ca97165f9ba87f1dc507f8",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "7c61a973fce5e9174cb73889a2589807c6f9270ac94ee5bcb42b7134ced8f1bb",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/P0_epem_mupmum/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/MODEL/mp_coupl.inc",
+      "sha256": "b64c34a4069539d6b1892e416991928f40d013e688ca97165f9ba87f1dc507f8",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "7c61a973fce5e9174cb73889a2589807c6f9270ac94ee5bcb42b7134ced8f1bb",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/full/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Cards/ident_card.dat",
+      "sha256": "7f6505c283c4bbcf2bc1ba665520de5309ba72b7624b5d8480f783af833a6b89",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Cards/param_card.dat",
+      "sha256": "1021dca10f11bb82d06080dfd61b8a04e9b9429e75f23d42625a2d741b56d2f8",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/global_specs.inc",
+      "sha256": "483d519ee2e3fd76c2198aaa551ac8b4446d469abf7ae9dff937168d107033a1",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/makefile",
+      "sha256": "b21ad846a7c53054042fd8e35fff0e9658fdb292c689babec00915c4199ad6b9",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/MODEL/mp_coupl.inc",
+      "sha256": "b64c34a4069539d6b1892e416991928f40d013e688ca97165f9ba87f1dc507f8",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "7c61a973fce5e9174cb73889a2589807c6f9270ac94ee5bcb42b7134ced8f1bb",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/P0_epem_mupmum/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/MODEL/mp_coupl.inc",
+      "sha256": "b64c34a4069539d6b1892e416991928f40d013e688ca97165f9ba87f1dc507f8",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "7c61a973fce5e9174cb73889a2589807c6f9270ac94ee5bcb42b7134ced8f1bb",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/graph/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Cards/ident_card.dat",
+      "sha256": "7f6505c283c4bbcf2bc1ba665520de5309ba72b7624b5d8480f783af833a6b89",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Cards/param_card.dat",
+      "sha256": "1021dca10f11bb82d06080dfd61b8a04e9b9429e75f23d42625a2d741b56d2f8",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/global_specs.inc",
+      "sha256": "483d519ee2e3fd76c2198aaa551ac8b4446d469abf7ae9dff937168d107033a1",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/makefile",
+      "sha256": "4dd35235fb227fdfede6b904d466132f063d0cad5be6031253924b20fe579824",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/MODEL/mp_coupl.inc",
+      "sha256": "b64c34a4069539d6b1892e416991928f40d013e688ca97165f9ba87f1dc507f8",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "7c61a973fce5e9174cb73889a2589807c6f9270ac94ee5bcb42b7134ced8f1bb",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/P0_epem_mupmum/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/MODEL/mp_coupl.inc",
+      "sha256": "b64c34a4069539d6b1892e416991928f40d013e688ca97165f9ba87f1dc507f8",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "7c61a973fce5e9174cb73889a2589807c6f9270ac94ee5bcb42b7134ced8f1bb",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/mass/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Cards/ident_card.dat",
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Cards/param_card.dat",
+      "sha256": "1021dca10f11bb82d06080dfd61b8a04e9b9429e75f23d42625a2d741b56d2f8",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/global_specs.inc",
+      "sha256": "483d519ee2e3fd76c2198aaa551ac8b4446d469abf7ae9dff937168d107033a1",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/makefile",
+      "sha256": "4dd35235fb227fdfede6b904d466132f063d0cad5be6031253924b20fe579824",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/MODEL/mp_coupl.inc",
+      "sha256": "b64c34a4069539d6b1892e416991928f40d013e688ca97165f9ba87f1dc507f8",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "7c61a973fce5e9174cb73889a2589807c6f9270ac94ee5bcb42b7134ced8f1bb",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/P0_epem_mupmum/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/MODEL/coupl.inc",
+      "sha256": "8e5299fed7a1f7b8b91ce4e7c912e056f1603b42456f846f465e6daf089b9d85",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/MODEL/mp_coupl.inc",
+      "sha256": "b64c34a4069539d6b1892e416991928f40d013e688ca97165f9ba87f1dc507f8",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "7c61a973fce5e9174cb73889a2589807c6f9270ac94ee5bcb42b7134ced8f1bb",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/ew_epem_mupmum/original/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Cards/ident_card.dat",
+      "sha256": "5868d9a0a712a423ef3d457f8b09088d01a4cf39cf18f52ba6975a654fdef7df",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Cards/param_card.dat",
+      "sha256": "6f1f578e858e1aa603fbe9445e4a5f425ce69cc677977610ed64535d63fd1c31",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/global_specs.inc",
+      "sha256": "d48fe8ef9a16e1d7f923adbd1b50bc439840c70316bd63009b89d0360ab491d8",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/makefile",
+      "sha256": "cbb86144dafe51742fd30dd645fc4c21e5c3f9f844e6a22977b39f91429b8934",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/MODEL/mp_coupl.inc",
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/P0_uux_zgg/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/MODEL/mp_coupl.inc",
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/full/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Cards/ident_card.dat",
+      "sha256": "5868d9a0a712a423ef3d457f8b09088d01a4cf39cf18f52ba6975a654fdef7df",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Cards/param_card.dat",
+      "sha256": "6f1f578e858e1aa603fbe9445e4a5f425ce69cc677977610ed64535d63fd1c31",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/global_specs.inc",
+      "sha256": "d48fe8ef9a16e1d7f923adbd1b50bc439840c70316bd63009b89d0360ab491d8",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/makefile",
+      "sha256": "cbb86144dafe51742fd30dd645fc4c21e5c3f9f844e6a22977b39f91429b8934",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/MODEL/mp_coupl.inc",
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/P0_uux_zgg/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/MODEL/mp_coupl.inc",
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/graph/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Cards/ident_card.dat",
+      "sha256": "5868d9a0a712a423ef3d457f8b09088d01a4cf39cf18f52ba6975a654fdef7df",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Cards/param_card.dat",
+      "sha256": "6f1f578e858e1aa603fbe9445e4a5f425ce69cc677977610ed64535d63fd1c31",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/global_specs.inc",
+      "sha256": "d48fe8ef9a16e1d7f923adbd1b50bc439840c70316bd63009b89d0360ab491d8",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/makefile",
+      "sha256": "cbb86144dafe51742fd30dd645fc4c21e5c3f9f844e6a22977b39f91429b8934",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/MODEL/mp_coupl.inc",
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/P0_uux_zgg/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/MODEL/mp_coupl.inc",
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/mass/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Cards/ident_card.dat",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Cards/param_card.dat",
+      "sha256": "6f1f578e858e1aa603fbe9445e4a5f425ce69cc677977610ed64535d63fd1c31",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/global_specs.inc",
+      "sha256": "d48fe8ef9a16e1d7f923adbd1b50bc439840c70316bd63009b89d0360ab491d8",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/makefile",
+      "sha256": "cbb86144dafe51742fd30dd645fc4c21e5c3f9f844e6a22977b39f91429b8934",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/MODEL/mp_coupl.inc",
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/P0_uux_zgg/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/MODEL/coupl.inc",
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/MODEL/mp_coupl.inc",
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/qcd_uux_zgg/original/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Cards/ident_card.dat",
+      "sha256": "ee3464519e12abee538b698fc46f81747ac7d6a0562a190fd3e9380446c53552",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Cards/param_card.dat",
+      "sha256": "0051d0c9043a44ee888dd58b732f5c111cbd44f838db658e563ebe8e90ff442f",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/global_specs.inc",
+      "sha256": "d1a87243aa2f6fa6ddd649c6f9e628e1e15af039a9eb72f9a2e2d01b99c2b1e9",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/makefile",
+      "sha256": "6e9df153a21910b6766497eac85ccd4e5e54eb421dd5fcdce21ee8ecb5e607fa",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/MODEL/mp_coupl.inc",
+      "sha256": "7c1ab37562a2a70a6582374a506ac25056a180a65dc6fc8465f6688e7651ecdf",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "56afed98790d6348fe2001d7b2dfdab853f9854003fcd8322e2eb77658eeed0e",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/P0_uux_z/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/MODEL/mp_coupl.inc",
+      "sha256": "7c1ab37562a2a70a6582374a506ac25056a180a65dc6fc8465f6688e7651ecdf",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "56afed98790d6348fe2001d7b2dfdab853f9854003fcd8322e2eb77658eeed0e",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/full/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Cards/ident_card.dat",
+      "sha256": "ee3464519e12abee538b698fc46f81747ac7d6a0562a190fd3e9380446c53552",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Cards/param_card.dat",
+      "sha256": "0051d0c9043a44ee888dd58b732f5c111cbd44f838db658e563ebe8e90ff442f",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/global_specs.inc",
+      "sha256": "d1a87243aa2f6fa6ddd649c6f9e628e1e15af039a9eb72f9a2e2d01b99c2b1e9",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/makefile",
+      "sha256": "9d0f8fd485e3faee568f13e0414ea9a9c0404a949e5ed2e27dbe8376883c039e",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/MODEL/mp_coupl.inc",
+      "sha256": "7c1ab37562a2a70a6582374a506ac25056a180a65dc6fc8465f6688e7651ecdf",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "56afed98790d6348fe2001d7b2dfdab853f9854003fcd8322e2eb77658eeed0e",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/P0_uux_z/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/MODEL/mp_coupl.inc",
+      "sha256": "7c1ab37562a2a70a6582374a506ac25056a180a65dc6fc8465f6688e7651ecdf",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "56afed98790d6348fe2001d7b2dfdab853f9854003fcd8322e2eb77658eeed0e",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/graph/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Cards/ident_card.dat",
+      "sha256": "ee3464519e12abee538b698fc46f81747ac7d6a0562a190fd3e9380446c53552",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Cards/param_card.dat",
+      "sha256": "0051d0c9043a44ee888dd58b732f5c111cbd44f838db658e563ebe8e90ff442f",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/global_specs.inc",
+      "sha256": "d1a87243aa2f6fa6ddd649c6f9e628e1e15af039a9eb72f9a2e2d01b99c2b1e9",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/makefile",
+      "sha256": "6e9df153a21910b6766497eac85ccd4e5e54eb421dd5fcdce21ee8ecb5e607fa",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/MODEL/mp_coupl.inc",
+      "sha256": "7c1ab37562a2a70a6582374a506ac25056a180a65dc6fc8465f6688e7651ecdf",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "56afed98790d6348fe2001d7b2dfdab853f9854003fcd8322e2eb77658eeed0e",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/P0_uux_z/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/MODEL/mp_coupl.inc",
+      "sha256": "7c1ab37562a2a70a6582374a506ac25056a180a65dc6fc8465f6688e7651ecdf",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "56afed98790d6348fe2001d7b2dfdab853f9854003fcd8322e2eb77658eeed0e",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/mass/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/ldme.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/MODEL/ldme.inc",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target": "MODEL/ldme.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/MadLoop5_resources/ident_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Cards/ident_card.dat",
+      "sha256": "35fef5d9ee92068b5ebf368e8e25c45871d9481fb1f84ef3dd3ec4e75cf651fa",
+      "target": "../../Cards/ident_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/MadLoop5_resources/param_card.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Cards/param_card.dat",
+      "sha256": "0051d0c9043a44ee888dd58b732f5c111cbd44f838db658e563ebe8e90ff442f",
+      "target": "../../Cards/param_card.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/MadLoopParams.dat": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Cards/MadLoopParams.dat",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92",
+      "target": "../Cards/MadLoopParams.dat"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/MadLoopCommons.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/MadLoopCommons.f",
+      "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd",
+      "target": "../MadLoopCommons.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/MadLoopParamReader.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/MadLoopParamReader.f",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+      "target": "../MadLoopParamReader.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/MadLoopParams.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/MadLoopParams.inc",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      "target": "../MadLoopParams.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/coef_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/DHELAS/coef_specs.inc",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "target": "../../Source/DHELAS/coef_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "../coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/cts_mpc.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/cts_mpc.h",
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "target": "../cts_mpc.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/cts_mprec.h": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/cts_mprec.h",
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "target": "../cts_mprec.h"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/global_specs.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/global_specs.inc",
+      "sha256": "d1a87243aa2f6fa6ddd649c6f9e628e1e15af039a9eb72f9a2e2d01b99c2b1e9",
+      "target": "../global_specs.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/libcollier.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/lib/collier_lib/libcollier.so"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/makefile": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/makefile",
+      "sha256": "9d0f8fd485e3faee568f13e0414ea9a9c0404a949e5ed2e27dbe8376883c039e",
+      "target": "../makefile"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/mg5_citation.f": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/mg5_citation.f",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "target": "../mg5_citation.f"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/MODEL/mp_coupl.inc",
+      "sha256": "7c1ab37562a2a70a6582374a506ac25056a180a65dc6fc8465f6688e7651ecdf",
+      "target": "../mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "56afed98790d6348fe2001d7b2dfdab853f9854003fcd8322e2eb77658eeed0e",
+      "target": "../mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/P0_uux_z/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "../../lib/mpmodule.mod"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/MODEL/coupl.inc",
+      "sha256": "225128fec09999964dfdc28cf183c90805944c951a098ab74caa2ed4a4efde97",
+      "target": "../Source/MODEL/coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/mp_coupl.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/MODEL/mp_coupl.inc",
+      "sha256": "7c1ab37562a2a70a6582374a506ac25056a180a65dc6fc8465f6688e7651ecdf",
+      "target": "../Source/MODEL/mp_coupl.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/SubProcesses/mp_coupl_same_name.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/Source/MODEL/mp_coupl_same_name.inc",
+      "sha256": "56afed98790d6348fe2001d7b2dfdab853f9854003fcd8322e2eb77658eeed0e",
+      "target": "../Source/MODEL/mp_coupl_same_name.inc"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/lib/libcts.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a",
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a"
+    },
+    ".tirust-build/born-effective-runtime/attempt1/exports/real_uux_z/original/lib/mpmodule.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/mpmodule.mod"
+    },
+    "HEPTools/include/avh_olo.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo.mod",
+      "sha256": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+      "target": "../oneloop/avh_olo.mod"
+    },
+    "HEPTools/include/avh_olo_dp.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp.mod",
+      "sha256": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+      "target": "../oneloop/avh_olo_dp.mod"
+    },
+    "HEPTools/include/avh_olo_dp_arrays.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_arrays.mod",
+      "sha256": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+      "target": "../oneloop/avh_olo_dp_arrays.mod"
+    },
+    "HEPTools/include/avh_olo_dp_auxfun.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_auxfun.mod",
+      "sha256": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+      "target": "../oneloop/avh_olo_dp_auxfun.mod"
+    },
+    "HEPTools/include/avh_olo_dp_bnlog.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_bnlog.mod",
+      "sha256": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+      "target": "../oneloop/avh_olo_dp_bnlog.mod"
+    },
+    "HEPTools/include/avh_olo_dp_box.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_box.mod",
+      "sha256": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+      "target": "../oneloop/avh_olo_dp_box.mod"
+    },
+    "HEPTools/include/avh_olo_dp_boxc.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_boxc.mod",
+      "sha256": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+      "target": "../oneloop/avh_olo_dp_boxc.mod"
+    },
+    "HEPTools/include/avh_olo_dp_bub.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_bub.mod",
+      "sha256": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+      "target": "../oneloop/avh_olo_dp_bub.mod"
+    },
+    "HEPTools/include/avh_olo_dp_dilog.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_dilog.mod",
+      "sha256": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+      "target": "../oneloop/avh_olo_dp_dilog.mod"
+    },
+    "HEPTools/include/avh_olo_dp_kinds.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_kinds.mod",
+      "sha256": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+      "target": "../oneloop/avh_olo_dp_kinds.mod"
+    },
+    "HEPTools/include/avh_olo_dp_olog.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_olog.mod",
+      "sha256": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+      "target": "../oneloop/avh_olo_dp_olog.mod"
+    },
+    "HEPTools/include/avh_olo_dp_prec.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_prec.mod",
+      "sha256": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+      "target": "../oneloop/avh_olo_dp_prec.mod"
+    },
+    "HEPTools/include/avh_olo_dp_print.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_print.mod",
+      "sha256": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+      "target": "../oneloop/avh_olo_dp_print.mod"
+    },
+    "HEPTools/include/avh_olo_dp_qmplx.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_qmplx.mod",
+      "sha256": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+      "target": "../oneloop/avh_olo_dp_qmplx.mod"
+    },
+    "HEPTools/include/avh_olo_dp_tri.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_dp_tri.mod",
+      "sha256": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+      "target": "../oneloop/avh_olo_dp_tri.mod"
+    },
+    "HEPTools/include/avh_olo_qp.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp.mod",
+      "sha256": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+      "target": "../oneloop/avh_olo_qp.mod"
+    },
+    "HEPTools/include/avh_olo_qp_arrays.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_arrays.mod",
+      "sha256": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+      "target": "../oneloop/avh_olo_qp_arrays.mod"
+    },
+    "HEPTools/include/avh_olo_qp_auxfun.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_auxfun.mod",
+      "sha256": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+      "target": "../oneloop/avh_olo_qp_auxfun.mod"
+    },
+    "HEPTools/include/avh_olo_qp_bnlog.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_bnlog.mod",
+      "sha256": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+      "target": "../oneloop/avh_olo_qp_bnlog.mod"
+    },
+    "HEPTools/include/avh_olo_qp_box.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_box.mod",
+      "sha256": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+      "target": "../oneloop/avh_olo_qp_box.mod"
+    },
+    "HEPTools/include/avh_olo_qp_boxc.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_boxc.mod",
+      "sha256": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+      "target": "../oneloop/avh_olo_qp_boxc.mod"
+    },
+    "HEPTools/include/avh_olo_qp_bub.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_bub.mod",
+      "sha256": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+      "target": "../oneloop/avh_olo_qp_bub.mod"
+    },
+    "HEPTools/include/avh_olo_qp_dilog.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_dilog.mod",
+      "sha256": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+      "target": "../oneloop/avh_olo_qp_dilog.mod"
+    },
+    "HEPTools/include/avh_olo_qp_kinds.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_kinds.mod",
+      "sha256": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+      "target": "../oneloop/avh_olo_qp_kinds.mod"
+    },
+    "HEPTools/include/avh_olo_qp_olog.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_olog.mod",
+      "sha256": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+      "target": "../oneloop/avh_olo_qp_olog.mod"
+    },
+    "HEPTools/include/avh_olo_qp_prec.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_prec.mod",
+      "sha256": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+      "target": "../oneloop/avh_olo_qp_prec.mod"
+    },
+    "HEPTools/include/avh_olo_qp_print.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_print.mod",
+      "sha256": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+      "target": "../oneloop/avh_olo_qp_print.mod"
+    },
+    "HEPTools/include/avh_olo_qp_qmplx.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_qmplx.mod",
+      "sha256": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+      "target": "../oneloop/avh_olo_qp_qmplx.mod"
+    },
+    "HEPTools/include/avh_olo_qp_tri.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_qp_tri.mod",
+      "sha256": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+      "target": "../oneloop/avh_olo_qp_tri.mod"
+    },
+    "HEPTools/include/avh_olo_units.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_units.mod",
+      "sha256": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+      "target": "../oneloop/avh_olo_units.mod"
+    },
+    "HEPTools/include/avh_olo_version.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/avh_olo_version.mod",
+      "sha256": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+      "target": "../oneloop/avh_olo_version.mod"
+    },
+    "HEPTools/include/buildtensors.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/buildtensors.mod",
+      "sha256": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+      "target": "../collier/include/buildtensors.mod"
+    },
+    "HEPTools/include/cache.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/cache.mod",
+      "sha256": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+      "target": "../collier/include/cache.mod"
+    },
+    "HEPTools/include/coli_aux2.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/coli_aux2.mod",
+      "sha256": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+      "target": "../collier/include/coli_aux2.mod"
+    },
+    "HEPTools/include/coli_stat.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/coli_stat.mod",
+      "sha256": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+      "target": "../collier/include/coli_stat.mod"
+    },
+    "HEPTools/include/collier.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/collier.mod",
+      "sha256": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+      "target": "../collier/include/collier.mod"
+    },
+    "HEPTools/include/collier_aux.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/collier_aux.mod",
+      "sha256": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+      "target": "../collier/include/collier_aux.mod"
+    },
+    "HEPTools/include/collier_coefs.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/collier_coefs.mod",
+      "sha256": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+      "target": "../collier/include/collier_coefs.mod"
+    },
+    "HEPTools/include/collier_global.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/collier_global.mod",
+      "sha256": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+      "target": "../collier/include/collier_global.mod"
+    },
+    "HEPTools/include/collier_init.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/collier_init.mod",
+      "sha256": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+      "target": "../collier/include/collier_init.mod"
+    },
+    "HEPTools/include/collier_tensors.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/collier_tensors.mod",
+      "sha256": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+      "target": "../collier/include/collier_tensors.mod"
+    },
+    "HEPTools/include/combinatorics.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/combinatorics.mod",
+      "sha256": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+      "target": "../collier/include/combinatorics.mod"
+    },
+    "HEPTools/include/dd_2pt.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/dd_2pt.mod",
+      "sha256": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+      "target": "../collier/include/dd_2pt.mod"
+    },
+    "HEPTools/include/dd_3pt.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/dd_3pt.mod",
+      "sha256": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+      "target": "../collier/include/dd_3pt.mod"
+    },
+    "HEPTools/include/dd_4pt.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/dd_4pt.mod",
+      "sha256": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+      "target": "../collier/include/dd_4pt.mod"
+    },
+    "HEPTools/include/dd_5pt.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/dd_5pt.mod",
+      "sha256": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+      "target": "../collier/include/dd_5pt.mod"
+    },
+    "HEPTools/include/dd_6pt.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/dd_6pt.mod",
+      "sha256": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+      "target": "../collier/include/dd_6pt.mod"
+    },
+    "HEPTools/include/dd_global.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/dd_global.mod",
+      "sha256": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+      "target": "../collier/include/dd_global.mod"
+    },
+    "HEPTools/include/dd_statistics.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/dd_statistics.mod",
+      "sha256": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+      "target": "../collier/include/dd_statistics.mod"
+    },
+    "HEPTools/include/globalc.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/globalc.mod",
+      "sha256": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+      "target": "../collier/include/globalc.mod"
+    },
+    "HEPTools/include/globald.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/globald.mod",
+      "sha256": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+      "target": "../collier/include/globald.mod"
+    },
+    "HEPTools/include/inittensors.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/inittensors.mod",
+      "sha256": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+      "target": "../collier/include/inittensors.mod"
+    },
+    "HEPTools/include/master.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/master.mod",
+      "sha256": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+      "target": "../collier/include/master.mod"
+    },
+    "HEPTools/include/mninja.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include/mninja.mod",
+      "sha256": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+      "target": "../ninja/include/mninja.mod"
+    },
+    "HEPTools/include/ninjago_module.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include/ninjago_module.mod",
+      "sha256": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+      "target": "../ninja/include/ninjago_module.mod"
+    },
+    "HEPTools/include/ninjavholo.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include/ninjavholo.mod",
+      "sha256": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+      "target": "../ninja/include/ninjavholo.mod"
+    },
+    "HEPTools/include/quadninjago_module.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include/quadninjago_module.mod",
+      "sha256": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+      "target": "../ninja/include/quadninjago_module.mod"
+    },
+    "HEPTools/include/reductionab.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/reductionab.mod",
+      "sha256": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+      "target": "../collier/include/reductionab.mod"
+    },
+    "HEPTools/include/reductionc.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/reductionc.mod",
+      "sha256": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+      "target": "../collier/include/reductionc.mod"
+    },
+    "HEPTools/include/reductiond.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/reductiond.mod",
+      "sha256": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+      "target": "../collier/include/reductiond.mod"
+    },
+    "HEPTools/include/reductionefg.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/reductionefg.mod",
+      "sha256": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+      "target": "../collier/include/reductionefg.mod"
+    },
+    "HEPTools/include/reductiontn.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/reductiontn.mod",
+      "sha256": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+      "target": "../collier/include/reductiontn.mod"
+    },
+    "HEPTools/include/tensorreduction.mod": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include/tensorreduction.mod",
+      "sha256": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+      "target": "../collier/include/tensorreduction.mod"
+    },
+    "HEPTools/ninja/lib/libavh_olo.a": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/libavh_olo.a",
+      "sha256": "10acae25536d5f7580d60980290e21033eb7413224554f167f031d2c809bab48",
+      "target": "../../lib/libavh_olo.a"
+    },
+    "HEPTools/ninja/lib/libninja.so": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0",
+      "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d",
+      "target": "libninja.so.0.0.0"
+    },
+    "HEPTools/ninja/lib/libninja.so.0": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0",
+      "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d",
+      "target": "libninja.so.0.0.0"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/check_sa.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/madgraph/iolibs/template_files/loop/check_sa.inc",
+      "sha256": "5af43743e30427ffc25cc3396d931ede251c07c1d4772f5c1296c0e61bd29a68",
+      "target": "../loop/check_sa.inc"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/check_sa_loop_induced.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/madgraph/iolibs/template_files/loop/check_sa_loop_induced.inc",
+      "sha256": "46dcb244b7d870b7dfb9238e80e30b15253d73e8960289d920fee1e996efd051",
+      "target": "../loop/check_sa_loop_induced.inc"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/improve_ps.inc": {
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/madgraph/iolibs/template_files/loop/improve_ps.inc",
+      "sha256": "aa268bdc637a7c9c094ead43cf967614ab2c4fde7f7de03e774ffea6a33da6ae",
+      "target": "../loop/improve_ps.inc"
+    }
+  },
+  "scope": "Original alias/link provenance only; source text was dereferenced and native targets are hash-only. No alias directories copied."
+}

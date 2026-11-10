@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "repository_head": "21621e1a8e390af2b409aca0eca4069c13310681",
+  "head_is_repository_pointer_not_substitute_for_working_hashes": true,
+  "sources": [
+    {
+      "path": "madgraph/iolibs/template_files/matrix_standalone_v4.inc",
+      "copy": "inputs/matrix_standalone_v4.inc",
+      "sha256": "b507c01926876f5cd5b3aebc330932d9423637f977c01565e66970198b9e3c3b",
+      "git_blob_sha1": "8b5ac56d8db2dc2456f0d44fc95f8c78b3b494f1",
+      "working_bytes_equal_head_blob": true
+    },
+    {
+      "path": "madgraph/iolibs/template_files/matrix_standalone_splitOrders_v4.inc",
+      "copy": "inputs/matrix_standalone_splitOrders_v4.inc",
+      "sha256": "ee029533e9ba13dbd6b2a70a1b308ba1e286720aba172fae47bff8762b6d1aa6",
+      "git_blob_sha1": "5ccc0c70108a34d8e17b1b9efcf5913c80b87577",
+      "working_bytes_equal_head_blob": true
+    }
+  ]
+}

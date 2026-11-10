@@ -1,0 +1,494 @@
+{
+  "checks": [
+    {
+      "name": "unique well-formed records",
+      "pass": true
+    },
+    {
+      "name": "four finite nonfailed warmup calls",
+      "pass": true
+    },
+    {
+      "name": "three unique ordered results",
+      "pass": true
+    },
+    {
+      "name": "complete finite coefficients call1",
+      "pass": true
+    },
+    {
+      "name": "finite unchanged-rounding call1",
+      "pass": true
+    },
+    {
+      "name": "complete IEEE records call1",
+      "pass": true
+    },
+    {
+      "name": "reference observations add no IEEE flags call1",
+      "pass": true
+    },
+    {
+      "name": "complete accuracy call1",
+      "pass": true
+    },
+    {
+      "name": "checked selected-backend status call1",
+      "pass": true
+    },
+    {
+      "name": "nonnegative automatic accuracy call1",
+      "pass": true
+    },
+    {
+      "name": "Born reference shape call1",
+      "pass": true
+    },
+    {
+      "name": "unique exact COEFFICIENT_BITS call1",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_USER_BITS call1",
+      "pass": true
+    },
+    {
+      "name": "published Born actual-view call1",
+      "pass": true
+    },
+    {
+      "name": "complete finite coefficients call2",
+      "pass": true
+    },
+    {
+      "name": "finite unchanged-rounding call2",
+      "pass": true
+    },
+    {
+      "name": "complete IEEE records call2",
+      "pass": true
+    },
+    {
+      "name": "reference observations add no IEEE flags call2",
+      "pass": true
+    },
+    {
+      "name": "complete accuracy call2",
+      "pass": true
+    },
+    {
+      "name": "checked selected-backend status call2",
+      "pass": true
+    },
+    {
+      "name": "nonnegative automatic accuracy call2",
+      "pass": true
+    },
+    {
+      "name": "Born reference shape call2",
+      "pass": true
+    },
+    {
+      "name": "unique exact COEFFICIENT_BITS call2",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_USER_BITS call2",
+      "pass": true
+    },
+    {
+      "name": "published Born actual-view call2",
+      "pass": true
+    },
+    {
+      "name": "complete finite coefficients call3",
+      "pass": true
+    },
+    {
+      "name": "finite unchanged-rounding call3",
+      "pass": true
+    },
+    {
+      "name": "complete IEEE records call3",
+      "pass": true
+    },
+    {
+      "name": "reference observations add no IEEE flags call3",
+      "pass": true
+    },
+    {
+      "name": "complete accuracy call3",
+      "pass": true
+    },
+    {
+      "name": "checked selected-backend status call3",
+      "pass": true
+    },
+    {
+      "name": "nonnegative automatic accuracy call3",
+      "pass": true
+    },
+    {
+      "name": "Born reference shape call3",
+      "pass": true
+    },
+    {
+      "name": "unique exact COEFFICIENT_BITS call3",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_USER_BITS call3",
+      "pass": true
+    },
+    {
+      "name": "published Born actual-view call3",
+      "pass": true
+    },
+    {
+      "name": "ordinary repeated point",
+      "pass": true
+    }
+  ],
+  "parse_errors": [],
+  "passed": true,
+  "rows": [
+    {
+      "accuracy": [
+        5.214710821737443e-14,
+        5.214710821737443e-14
+      ],
+      "bits": {
+        "BORN_USER_BITS": [
+          [
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "405BB42F484780A5"
+          ]
+        ],
+        "COEFFICIENT_BITS": [
+          [
+            "0",
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "0",
+            "4014C065ED5A6E20"
+          ],
+          [
+            "2",
+            "0",
+            "C020A62F00DA5CF0"
+          ],
+          [
+            "3",
+            "0",
+            "C01632E956787BF1"
+          ],
+          [
+            "0",
+            "1",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "1",
+            "4014C065ED5A6E20"
+          ],
+          [
+            "2",
+            "1",
+            "C020A62F00DA5CF0"
+          ],
+          [
+            "3",
+            "1",
+            "C01632E956787BF1"
+          ]
+        ]
+      },
+      "born": {
+        "BORN_USER": {
+          "ok": true,
+          "values": [
+            110.81538588507335,
+            110.81538588507335
+          ]
+        }
+      },
+      "call": 1,
+      "coefficients": {
+        "0": [
+          110.81538588507335,
+          5.18788882126276,
+          -8.324577356963772,
+          -5.549718237975854
+        ],
+        "1": [
+          110.81538588507335,
+          5.18788882126276,
+          -8.324577356963772,
+          -5.549718237975854
+        ]
+      },
+      "finite": true,
+      "flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "mp_done": false,
+      "mp_done_once": false,
+      "observation_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "point": 1,
+      "ret": 217,
+      "rounding_unchanged": true
+    },
+    {
+      "accuracy": [
+        0.0,
+        0.0
+      ],
+      "bits": {
+        "BORN_USER_BITS": [
+          [
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "405BB42F484780A5"
+          ]
+        ],
+        "COEFFICIENT_BITS": [
+          [
+            "0",
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "0",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "0",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "0",
+            "0000000000000000"
+          ],
+          [
+            "0",
+            "1",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "1",
+            "0000000000000000"
+          ]
+        ]
+      },
+      "born": {
+        "BORN_USER": {
+          "ok": true,
+          "values": [
+            110.81538588507335,
+            110.81538588507335
+          ]
+        }
+      },
+      "call": 2,
+      "coefficients": {
+        "0": [
+          110.81538588507335,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "1": [
+          110.81538588507335,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "finite": true,
+      "flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "mp_done": false,
+      "mp_done_once": false,
+      "observation_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "point": 2,
+      "ret": 217,
+      "rounding_unchanged": true
+    },
+    {
+      "accuracy": [
+        5.214710821737443e-14,
+        5.214710821737443e-14
+      ],
+      "bits": {
+        "BORN_USER_BITS": [
+          [
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "405BB42F484780A5"
+          ]
+        ],
+        "COEFFICIENT_BITS": [
+          [
+            "0",
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "0",
+            "4014C065ED5A6E20"
+          ],
+          [
+            "2",
+            "0",
+            "C020A62F00DA5CF0"
+          ],
+          [
+            "3",
+            "0",
+            "C01632E956787BF1"
+          ],
+          [
+            "0",
+            "1",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "1",
+            "4014C065ED5A6E20"
+          ],
+          [
+            "2",
+            "1",
+            "C020A62F00DA5CF0"
+          ],
+          [
+            "3",
+            "1",
+            "C01632E956787BF1"
+          ]
+        ]
+      },
+      "born": {
+        "BORN_USER": {
+          "ok": true,
+          "values": [
+            110.81538588507335,
+            110.81538588507335
+          ]
+        }
+      },
+      "call": 3,
+      "coefficients": {
+        "0": [
+          110.81538588507335,
+          5.18788882126276,
+          -8.324577356963772,
+          -5.549718237975854
+        ],
+        "1": [
+          110.81538588507335,
+          5.18788882126276,
+          -8.324577356963772,
+          -5.549718237975854
+        ]
+      },
+      "finite": true,
+      "flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "mp_done": false,
+      "mp_done_once": false,
+      "observation_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "point": 1,
+      "ret": 217,
+      "rounding_unchanged": true
+    }
+  ],
+  "warmup": [
+    {
+      "finite": true,
+      "index": 1,
+      "precision": -1.0,
+      "ret": 130
+    },
+    {
+      "finite": true,
+      "index": 2,
+      "precision": -1.0,
+      "ret": 130
+    },
+    {
+      "finite": true,
+      "index": 3,
+      "precision": 5.214710821737443e-14,
+      "ret": 217
+    },
+    {
+      "finite": true,
+      "index": 4,
+      "precision": 5.214710821737443e-14,
+      "ret": 217
+    }
+  ]
+}

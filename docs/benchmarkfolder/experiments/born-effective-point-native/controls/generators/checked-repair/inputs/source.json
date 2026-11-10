@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "repository_head": "1fe144e865990b398526fdffe5129e2812d44b09",
+  "sources": [
+    {
+      "path": "madgraph/iolibs/template_files/loop/improve_ps.inc",
+      "copy": "inputs/improve_ps.inc",
+      "sha256": "aa268bdc637a7c9c094ead43cf967614ab2c4fde7f7de03e774ffea6a33da6ae",
+      "recorded_head_blob": "0b62f7155711674c43500654a33c20522853661e",
+      "head_blob_sha256": "aa268bdc637a7c9c094ead43cf967614ab2c4fde7f7de03e774ffea6a33da6ae",
+      "differs_from_head": false
+    },
+    {
+      "path": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc",
+      "copy": "inputs/loop_matrix_standalone.inc",
+      "sha256": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+      "recorded_head_blob": "7d22a54d85351275263ed702f351e5ab15d071b9",
+      "head_blob_sha256": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+      "differs_from_head": false
+    }
+  ],
+  "design_inputs": [
+    {
+      "path": "docs/benchmarkfolder/experiments/born-effective-point-design/README.md",
+      "sha256": "96da9e3fb2da1e70c5b887cbaaf1c15797ffddccb57245505805d300912cdd1a"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/born-effective-point-design/hook-plan.json",
+      "sha256": "48cd481406b5f4f40bb9982a98e0b65023a5b5fdbc6ff4c49ddf6b575ba135ba"
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/general-kinematics-rescue-design/README.md",
+      "sha256": "5852baa01668360e5e27fcc96b1b9e7f7d60e3b473eedf3b0da625120fbca1f6"
+    }
+  ],
+  "scope": "Source-only private implementation; complete source copies bind working bytes independently of Git HEAD."
+}

@@ -1,0 +1,29 @@
+
+running 20 tests
+test adaptive_tests::cache_budget_input_mode_and_precision_never_alias ... ok
+test adaptive_tests::native_full_pole_check_tier_workspaces_and_failure_cleanup_are_separate ... ok
+test adaptive_tests::native_ordinary_256_output_matches_direct_workspace_without_retry ... ok
+test adaptive_tests::native_recorded_gram_refusal_retries_once_in_full_and_pole_modes ... ok
+test adaptive_tests::one_retry_preserves_113_bit_inputs_and_never_retries_high_failure ... ok
+test adaptive_tests::only_current_positive_known_gram_refusal_is_eligible ... ok
+test adaptive_tests::ordinary_success_and_all_noneligible_failures_never_retry ... ok
+test adaptive_tests::panic_poison_is_not_a_precision_retry ... 
+thread 'adaptive_tests::panic_poison_is_not_a_precision_retry' (11) panicked at src/adaptive_tests.rs:204:13:
+deliberate private dispatch poison control
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test adaptive_tests::tier_cache_requires_fresh_refusal_and_check_bypasses_both ... ok
+test tests::binary128_last_bit_and_signed_zero_transport ... ok
+test tests::complex_mass_box_converges_between_256_and_384_bits ... ok
+test tests::direction_workspaces_reuse_one_immutable_plan ... ok
+test tests::failed_dp_call_invalidates_both_directions_but_retains_plan ... ok
+test tests::failed_dp_reduction_discards_intermediate_cache_values ... ok
+test tests::full_tadpole_selection_and_cache_lifecycle ... ok
+test tests::invalid_requests_leave_output_untouched ... ok
+test tests::qp_cache_exact_inputs_modes_bypass_and_budget ... ok
+test tests::qp_full_and_pole_only_results_never_alias ... ok
+test tests::rank_six_scaleless_poles_sign_and_packing ... ok
+test tests::tensor_order_and_pole_selection ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+

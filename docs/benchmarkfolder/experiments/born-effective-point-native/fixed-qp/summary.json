@@ -1,0 +1,951 @@
+{
+  "changed_bound_files": {},
+  "comparisons": [],
+  "cpu": 14,
+  "elapsed_seconds": 181.0313431872055,
+  "environment": {
+    "GFORTRAN_UNBUFFERED_ALL": "y",
+    "LD_LIBRARY_PATH": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier:/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PATH": "/home/external/.codex/packages/app-server-daemon/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/external/.codex/tmp/arg0-linux/codex-arg0lRMkvY:/home/external/.codex/tmp/arg0-linux/codex-arg0Q3My4g:/nix/store/qswjy75ymf911zf9pjhqi4w6kmwm3v73-codex-0.163.0/codex-path:/run/wrappers/bin:/home/external/.nix-profile/bin:/nix/profile/bin:/home/external/.local/state/nix/profile/bin:/etc/profiles/per-user/external/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin:/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin:/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin:/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin:/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin:/nix/store/0g4agjda4ihmd291pamwahhy7praa4sn-gnum4-1.4.21/bin:/nix/store/1m0z4ixir10fg7ba7g131js04bxgv265-cmake-4.1.2/bin:/nix/store/0v0raqk1qw5g2a21km4xa1hwhaq4s976-pkg-config-wrapper-0.29.2/bin:/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin:/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin:/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin:/nix/store/8hz0qnr9z5j1w7rjl9qmsb34v2cb4akr-wget-1.25.0/bin",
+    "RAYON_NUM_THREADS": "1"
+  },
+  "native_scope": "legacy1/6/7 only; no8/9 dispatch",
+  "per_case_seconds": 120,
+  "per_stage_seconds": 300,
+  "prepared_sha256": "87658eb310621748116dc7b6fc0f66409a6a15313b3b89afba259bc8d905c9df",
+  "runs": [
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/real_uux_z/original/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/real_uux_z/original/backend1-mode4-policy0-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794285924.6606526,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "2ef7a7f612148d444b8f631afa89ca49952d4cf4f23ac697bbb1d4d0560c3d9b",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13988,
+            "last_read_sha256": "2ef7a7f612148d444b8f631afa89ca49952d4cf4f23ac697bbb1d4d0560c3d9b",
+            "last_read_unix": 1794285924.6351411,
+            "successful_reads": 2
+          },
+          "pid": 14,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.03872078796848655,
+          "returncode": 0,
+          "spawn_unix": 1794285924.6232345
+        },
+        "returncode": 0,
+        "started_unix": 1794285924.6215014,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "real_uux_z/original/backend1-mode4-policy0-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "2ef7a7f612148d444b8f631afa89ca49952d4cf4f23ac697bbb1d4d0560c3d9b",
+      "parsed_sha256": "3da27702888ed9689f8981d6647e66596be31300e0b7a5fa54539f54c31145d6",
+      "passed": true,
+      "runtime_sha256": "0fa4ebe47f35469933c6882a266b11f471eb6451eada2b67e6d1202f65f7fc85"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/real_uux_z/full/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/real_uux_z/full/backend1-mode4-policy0-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794285939.3494728,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "4c69e91fe4ceed19400063e2c4de4d007aa18c15863fe18b40f2a76be2de171e",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13968,
+            "last_read_sha256": "4c69e91fe4ceed19400063e2c4de4d007aa18c15863fe18b40f2a76be2de171e",
+            "last_read_unix": 1794285939.3244698,
+            "successful_reads": 2
+          },
+          "pid": 16,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.03814210696145892,
+          "returncode": 0,
+          "spawn_unix": 1794285939.312672
+        },
+        "returncode": 0,
+        "started_unix": 1794285939.3108928,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "real_uux_z/full/backend1-mode4-policy0-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "4c69e91fe4ceed19400063e2c4de4d007aa18c15863fe18b40f2a76be2de171e",
+      "parsed_sha256": "74af9c03937a1e50d351874d9a7b84a2c9dc62b8d9734744405886102a95a229",
+      "passed": true,
+      "runtime_sha256": "bfc44a96ff22c7f7835772c9ba035741564ad373f65362f929671ff96099624d"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/real_uux_z/original/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/real_uux_z/original/backend1-mode4-policy1-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794285951.1903367,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "c07038cebf19b577b185e1b1339f494dccd6e9bacc9a090c61b06b46ff775260",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13988,
+            "last_read_sha256": "c07038cebf19b577b185e1b1339f494dccd6e9bacc9a090c61b06b46ff775260",
+            "last_read_unix": 1794285951.1552858,
+            "successful_reads": 2
+          },
+          "pid": 18,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.04817362502217293,
+          "returncode": 0,
+          "spawn_unix": 1794285951.1434596
+        },
+        "returncode": 0,
+        "started_unix": 1794285951.1417346,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "real_uux_z/original/backend1-mode4-policy1-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "c07038cebf19b577b185e1b1339f494dccd6e9bacc9a090c61b06b46ff775260",
+      "parsed_sha256": "7b84f01acff712e690b218e5245f6c014ed29d301e9ec98aedee4ea05b325ab3",
+      "passed": true,
+      "runtime_sha256": "0fa4ebe47f35469933c6882a266b11f471eb6451eada2b67e6d1202f65f7fc85"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/real_uux_z/full/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/real_uux_z/full/backend1-mode4-policy1-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794285963.3350544,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "fa135704609a4f83b5dac4f4339476ea88a7568763d04c7c10b98f1735350b0c",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13968,
+            "last_read_sha256": "fa135704609a4f83b5dac4f4339476ea88a7568763d04c7c10b98f1735350b0c",
+            "last_read_unix": 1794285963.3101315,
+            "successful_reads": 2
+          },
+          "pid": 20,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.037898124661296606,
+          "returncode": 0,
+          "spawn_unix": 1794285963.2983842
+        },
+        "returncode": 0,
+        "started_unix": 1794285963.2967896,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "real_uux_z/full/backend1-mode4-policy1-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "fa135704609a4f83b5dac4f4339476ea88a7568763d04c7c10b98f1735350b0c",
+      "parsed_sha256": "602fddb63c785c58dc402aaef2141b87800c5873fedc6f17c16e80fe14055b44",
+      "passed": true,
+      "runtime_sha256": "bfc44a96ff22c7f7835772c9ba035741564ad373f65362f929671ff96099624d"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/real_uux_z/original/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/real_uux_z/original/backend6-mode4-policy0-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794285975.1655872,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "5d25e48631fea25fcd5c38f6a5156c9535475c2d93764a9f7a7e36b182d2cba4",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13988,
+            "last_read_sha256": "5d25e48631fea25fcd5c38f6a5156c9535475c2d93764a9f7a7e36b182d2cba4",
+            "last_read_unix": 1794285975.1404932,
+            "successful_reads": 2
+          },
+          "pid": 22,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.03813892602920532,
+          "returncode": 0,
+          "spawn_unix": 1794285975.1286607
+        },
+        "returncode": 0,
+        "started_unix": 1794285975.1269934,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "real_uux_z/original/backend6-mode4-policy0-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "5d25e48631fea25fcd5c38f6a5156c9535475c2d93764a9f7a7e36b182d2cba4",
+      "parsed_sha256": "631e0dcccd77437b424d6d4f17d5133d80380a10c77c4edc60a5c0a18af0f30a",
+      "passed": true,
+      "runtime_sha256": "0fa4ebe47f35469933c6882a266b11f471eb6451eada2b67e6d1202f65f7fc85"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/real_uux_z/full/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/real_uux_z/full/backend6-mode4-policy0-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794285989.5832148,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "21f54166793ccf09d264273b27d1ce8861422338d0f4d84eb35a5978800fa041",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13968,
+            "last_read_sha256": "21f54166793ccf09d264273b27d1ce8861422338d0f4d84eb35a5978800fa041",
+            "last_read_unix": 1794285989.5579896,
+            "successful_reads": 2
+          },
+          "pid": 24,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.038311148062348366,
+          "returncode": 0,
+          "spawn_unix": 1794285989.5462196
+        },
+        "returncode": 0,
+        "started_unix": 1794285989.5444884,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "real_uux_z/full/backend6-mode4-policy0-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "21f54166793ccf09d264273b27d1ce8861422338d0f4d84eb35a5978800fa041",
+      "parsed_sha256": "2a3c6d563b50c27a06a619cda6c9551ed855231052a31346c0995c9e3e1e0c81",
+      "passed": true,
+      "runtime_sha256": "bfc44a96ff22c7f7835772c9ba035741564ad373f65362f929671ff96099624d"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/real_uux_z/original/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/real_uux_z/original/backend6-mode4-policy1-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286002.7315426,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "7e182016346ff220839802bcf8a39530cee2bef26e0388b0f0d7e3766c2b086e",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13988,
+            "last_read_sha256": "7e182016346ff220839802bcf8a39530cee2bef26e0388b0f0d7e3766c2b086e",
+            "last_read_unix": 1794286002.7066278,
+            "successful_reads": 2
+          },
+          "pid": 26,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.03782215574756265,
+          "returncode": 0,
+          "spawn_unix": 1794286002.694971
+        },
+        "returncode": 0,
+        "started_unix": 1794286002.693339,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "real_uux_z/original/backend6-mode4-policy1-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "7e182016346ff220839802bcf8a39530cee2bef26e0388b0f0d7e3766c2b086e",
+      "parsed_sha256": "3aa7e6fc7cd0cb0eb86daebf04ab2dffc9d2f488a11c620e417a0c3919528e3c",
+      "passed": true,
+      "runtime_sha256": "0fa4ebe47f35469933c6882a266b11f471eb6451eada2b67e6d1202f65f7fc85"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/real_uux_z/full/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/real_uux_z/full/backend6-mode4-policy1-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286014.4558372,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "20eeb20e845766cc74d77e735db6a1b8675393c63d351352107c605095955462",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13968,
+            "last_read_sha256": "20eeb20e845766cc74d77e735db6a1b8675393c63d351352107c605095955462",
+            "last_read_unix": 1794286014.4308822,
+            "successful_reads": 2
+          },
+          "pid": 28,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.03816502681002021,
+          "returncode": 0,
+          "spawn_unix": 1794286014.4191747
+        },
+        "returncode": 0,
+        "started_unix": 1794286014.4172695,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "real_uux_z/full/backend6-mode4-policy1-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "20eeb20e845766cc74d77e735db6a1b8675393c63d351352107c605095955462",
+      "parsed_sha256": "0104e5fb0aa9e8c3ac60c3eb7fc80b5e18d7f0248a331ed5a8c90bdaf667dfe8",
+      "passed": true,
+      "runtime_sha256": "bfc44a96ff22c7f7835772c9ba035741564ad373f65362f929671ff96099624d"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/cms_epem_ttx/original/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/cms_epem_ttx/original/backend1-mode4-policy0-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286023.2254581,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "2daa3bc32ec686a435f5937a915109e4880af0d3555a56285200701b3997a3fb",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13998,
+            "last_read_sha256": "2daa3bc32ec686a435f5937a915109e4880af0d3555a56285200701b3997a3fb",
+            "last_read_unix": 1794286023.2009366,
+            "successful_reads": 2
+          },
+          "pid": 30,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.03733145305886865,
+          "returncode": 0,
+          "spawn_unix": 1794286023.1892734
+        },
+        "returncode": 0,
+        "started_unix": 1794286023.18775,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "cms_epem_ttx/original/backend1-mode4-policy0-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "2daa3bc32ec686a435f5937a915109e4880af0d3555a56285200701b3997a3fb",
+      "parsed_sha256": "97bd50ae7f60a2ff09e8fbdc636a3430f5dff3ad1df2a9efbb80b40dfe1453dc",
+      "passed": true,
+      "runtime_sha256": "b58e80cdd3ae9087443ea17babd8b11854c5bca6910a8b92b83a8c359deded50"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/cms_epem_ttx/full/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/cms_epem_ttx/full/backend1-mode4-policy0-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286027.6615863,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "3bb8d80b554b340d0bb5c2cd6f0d871f6a6761318a853beee9c171ad4d2fcb5d",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13978,
+            "last_read_sha256": "3bb8d80b554b340d0bb5c2cd6f0d871f6a6761318a853beee9c171ad4d2fcb5d",
+            "last_read_unix": 1794286027.6266315,
+            "successful_reads": 2
+          },
+          "pid": 32,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.048227245919406414,
+          "returncode": 0,
+          "spawn_unix": 1794286027.614644
+        },
+        "returncode": 0,
+        "started_unix": 1794286027.6129391,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "cms_epem_ttx/full/backend1-mode4-policy0-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "3bb8d80b554b340d0bb5c2cd6f0d871f6a6761318a853beee9c171ad4d2fcb5d",
+      "parsed_sha256": "a36f3c7b04f7b5e9b5ec06a640a160384bed7cee558b182963220c33bc880912",
+      "passed": true,
+      "runtime_sha256": "92bf64d12237905fd86a4e5a6c75e74f133d12fb1dd73bff33aa90eceba7c2ee"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/cms_epem_ttx/original/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/cms_epem_ttx/original/backend1-mode4-policy1-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286035.8889475,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "6b9712565837abedc4dfed75432576b0071fd03d320aa9c81e66dbe28814c784",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13998,
+            "last_read_sha256": "6b9712565837abedc4dfed75432576b0071fd03d320aa9c81e66dbe28814c784",
+            "last_read_unix": 1794286035.8539026,
+            "successful_reads": 2
+          },
+          "pid": 34,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.04801562614738941,
+          "returncode": 0,
+          "spawn_unix": 1794286035.8422668
+        },
+        "returncode": 0,
+        "started_unix": 1794286035.8405461,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "cms_epem_ttx/original/backend1-mode4-policy1-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "6b9712565837abedc4dfed75432576b0071fd03d320aa9c81e66dbe28814c784",
+      "parsed_sha256": "112fc8fc5d00f5dc4b96c942fc16bb0f9390422394916c85bed06ae3f3a46f64",
+      "passed": true,
+      "runtime_sha256": "b58e80cdd3ae9087443ea17babd8b11854c5bca6910a8b92b83a8c359deded50"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/cms_epem_ttx/full/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/cms_epem_ttx/full/backend1-mode4-policy1-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286047.0606856,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "6582e2102962be0db7391b61148bbb652b908c327433334a405cc8051682582f",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13978,
+            "last_read_sha256": "6582e2102962be0db7391b61148bbb652b908c327433334a405cc8051682582f",
+            "last_read_unix": 1794286047.0158784,
+            "successful_reads": 2
+          },
+          "pid": 36,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.057761982548981905,
+          "returncode": 0,
+          "spawn_unix": 1794286047.0043027
+        },
+        "returncode": 0,
+        "started_unix": 1794286047.0025465,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "cms_epem_ttx/full/backend1-mode4-policy1-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "6582e2102962be0db7391b61148bbb652b908c327433334a405cc8051682582f",
+      "parsed_sha256": "344e4cbd564c1839079b426681e33ad4085d1d4c06fdfe88c7926a70649ed6c2",
+      "passed": true,
+      "runtime_sha256": "92bf64d12237905fd86a4e5a6c75e74f133d12fb1dd73bff33aa90eceba7c2ee"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/cms_epem_ttx/original/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/cms_epem_ttx/original/backend6-mode4-policy0-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286056.0007262,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "870fdb533ff7f3d36d1ebe2188243a214b0c5427bfe355b558dd9158e77cd408",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13998,
+            "last_read_sha256": "870fdb533ff7f3d36d1ebe2188243a214b0c5427bfe355b558dd9158e77cd408",
+            "last_read_unix": 1794286055.9761362,
+            "successful_reads": 2
+          },
+          "pid": 38,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.03768908604979515,
+          "returncode": 0,
+          "spawn_unix": 1794286055.9644778
+        },
+        "returncode": 0,
+        "started_unix": 1794286055.9626398,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "cms_epem_ttx/original/backend6-mode4-policy0-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "870fdb533ff7f3d36d1ebe2188243a214b0c5427bfe355b558dd9158e77cd408",
+      "parsed_sha256": "807f612d9bf00ac17905f8e2337c28e0ed53c973947902921c4eb525bb60b6be",
+      "passed": true,
+      "runtime_sha256": "b58e80cdd3ae9087443ea17babd8b11854c5bca6910a8b92b83a8c359deded50"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/cms_epem_ttx/full/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/cms_epem_ttx/full/backend6-mode4-policy0-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286068.8433394,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "6542f535242a2641f7c21877eef6595c9625f6312b26590b9db056f48e59624e",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13978,
+            "last_read_sha256": "6542f535242a2641f7c21877eef6595c9625f6312b26590b9db056f48e59624e",
+            "last_read_unix": 1794286068.8184156,
+            "successful_reads": 2
+          },
+          "pid": 40,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.03796234680339694,
+          "returncode": 0,
+          "spawn_unix": 1794286068.8067536
+        },
+        "returncode": 0,
+        "started_unix": 1794286068.8049567,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "cms_epem_ttx/full/backend6-mode4-policy0-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "6542f535242a2641f7c21877eef6595c9625f6312b26590b9db056f48e59624e",
+      "parsed_sha256": "33cbe11487463386638a870ad23d1a85a94a273938d6cbd6094fd299b62f5d67",
+      "passed": true,
+      "runtime_sha256": "92bf64d12237905fd86a4e5a6c75e74f133d12fb1dd73bff33aa90eceba7c2ee"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/cms_epem_ttx/original/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/cms_epem_ttx/original/backend6-mode4-policy1-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286080.9507053,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "b181cbca9811c37065d317f0bbc960d097b5a333dbd018a6e7f793f163565387",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13998,
+            "last_read_sha256": "b181cbca9811c37065d317f0bbc960d097b5a333dbd018a6e7f793f163565387",
+            "last_read_unix": 1794286080.925684,
+            "successful_reads": 2
+          },
+          "pid": 42,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.0379452258348465,
+          "returncode": 0,
+          "spawn_unix": 1794286080.9139612
+        },
+        "returncode": 0,
+        "started_unix": 1794286080.912327,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "cms_epem_ttx/original/backend6-mode4-policy1-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "b181cbca9811c37065d317f0bbc960d097b5a333dbd018a6e7f793f163565387",
+      "parsed_sha256": "c416a796515cd92792edf418fc20b76ed2ba72d7773d07b1b3616613ad7399a3",
+      "passed": true,
+      "runtime_sha256": "b58e80cdd3ae9087443ea17babd8b11854c5bca6910a8b92b83a8c359deded50"
+    },
+    {
+      "command": {
+        "command": [
+          "/run/current-system/sw/bin/taskset",
+          "-c",
+          "14",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/born-effective-runtime/legacy-controller3/runtime/cms_epem_ttx/full/runtime_probe"
+        ],
+        "cwd": ".tirust-build/born-effective-runtime/legacy-controller4/execution-fixed-qp/runs/cms_epem_ttx/full/backend6-mode4-policy1-warm4-order0",
+        "progress": {
+          "exit_observed_unix": 1794286092.280783,
+          "mapping_capture": {
+            "complete_snapshot_sha256": "9a5f24c5245130ff80234b0dce3cc78d1c1716bc25ba0db18456fdae6802a0fb",
+            "last_incomplete_reason": {
+              "executable_present": false,
+              "missing_expected_paths": [
+                "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+                "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+                "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+                "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+                "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+                "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0"
+              ],
+              "selected_bridge_present": false
+            },
+            "last_read_bytes": 13978,
+            "last_read_sha256": "9a5f24c5245130ff80234b0dce3cc78d1c1716bc25ba0db18456fdae6802a0fb",
+            "last_read_unix": 1794286092.2458193,
+            "successful_reads": 2
+          },
+          "pid": 44,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.04798369575291872,
+          "returncode": 0,
+          "spawn_unix": 1794286092.2341673
+        },
+        "returncode": 0,
+        "started_unix": 1794286092.2324028,
+        "timed_out": false,
+        "timeout_seconds": 120
+      },
+      "id": "cms_epem_ttx/full/backend6-mode4-policy1-warm4-order0",
+      "maps_passed": true,
+      "maps_sha256": "9a5f24c5245130ff80234b0dce3cc78d1c1716bc25ba0db18456fdae6802a0fb",
+      "parsed_sha256": "4a771fe7adc69f3e4b2203ec0bd112506c8ddf1b23ffbb28a264a22b8ed095ec",
+      "passed": true,
+      "runtime_sha256": "92bf64d12237905fd86a4e5a6c75e74f133d12fb1dd73bff33aa90eceba7c2ee"
+    }
+  ],
+  "stage": "fixed-qp",
+  "state": "complete",
+  "total_seconds": 600
+}

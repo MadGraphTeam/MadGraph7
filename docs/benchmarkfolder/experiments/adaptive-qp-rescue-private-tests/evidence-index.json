@@ -1,0 +1,22 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 2789,
+      "sha256": "07df183423922bfb2417306944ee0cdc2632c30c6d8813cf093c657907d7f21e"
+    },
+    "attempt1/execution.json": {
+      "bytes": 185462,
+      "sha256": "2466082dc157f2e854cef5d3494223ad99e5873413234c130d38653b9d52b850"
+    },
+    "attempt1/tests.log": {
+      "bytes": 1837,
+      "sha256": "cd3677439baa68643a6ab45862b3e91361ec0a55545da9a89322427cb2afab78"
+    },
+    "verify.py": {
+      "bytes": 4204,
+      "sha256": "d65357268d4e554094e9bdd623557998894e63fbdc202ba7d98ac9d452c3e5c2"
+    }
+  },
+  "schema": 1,
+  "scope": "Private qualification evidence; no physics campaign or production promotion."
+}

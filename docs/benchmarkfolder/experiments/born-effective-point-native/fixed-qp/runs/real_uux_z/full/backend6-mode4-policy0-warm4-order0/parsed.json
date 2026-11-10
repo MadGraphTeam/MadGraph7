@@ -1,0 +1,1046 @@
+{
+  "checks": [
+    {
+      "name": "unique well-formed records",
+      "pass": true
+    },
+    {
+      "name": "four finite nonfailed warmup calls",
+      "pass": true
+    },
+    {
+      "name": "three unique ordered results",
+      "pass": true
+    },
+    {
+      "name": "complete finite coefficients call1",
+      "pass": true
+    },
+    {
+      "name": "finite unchanged-rounding call1",
+      "pass": true
+    },
+    {
+      "name": "complete IEEE records call1",
+      "pass": true
+    },
+    {
+      "name": "reference observations add no IEEE flags call1",
+      "pass": true
+    },
+    {
+      "name": "complete accuracy call1",
+      "pass": true
+    },
+    {
+      "name": "unchecked genuineQP protocol call1",
+      "pass": true
+    },
+    {
+      "name": "Born reference shape call1",
+      "pass": true
+    },
+    {
+      "name": "unique exact COEFFICIENT_BITS call1",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_USER_BITS call1",
+      "pass": true
+    },
+    {
+      "name": "unique exact C_BITS call1",
+      "pass": true
+    },
+    {
+      "name": "unique exact DP_VIEW_BITS call1",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_C8_BITS call1",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_C_BITS call1",
+      "pass": true
+    },
+    {
+      "name": "published Born actual-view call1",
+      "pass": true
+    },
+    {
+      "name": "complete finite coefficients call2",
+      "pass": true
+    },
+    {
+      "name": "finite unchanged-rounding call2",
+      "pass": true
+    },
+    {
+      "name": "complete IEEE records call2",
+      "pass": true
+    },
+    {
+      "name": "reference observations add no IEEE flags call2",
+      "pass": true
+    },
+    {
+      "name": "complete accuracy call2",
+      "pass": true
+    },
+    {
+      "name": "unchecked genuineQP protocol call2",
+      "pass": true
+    },
+    {
+      "name": "Born reference shape call2",
+      "pass": true
+    },
+    {
+      "name": "unique exact COEFFICIENT_BITS call2",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_USER_BITS call2",
+      "pass": true
+    },
+    {
+      "name": "unique exact C_BITS call2",
+      "pass": true
+    },
+    {
+      "name": "unique exact DP_VIEW_BITS call2",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_C8_BITS call2",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_C_BITS call2",
+      "pass": true
+    },
+    {
+      "name": "published Born actual-view call2",
+      "pass": true
+    },
+    {
+      "name": "complete finite coefficients call3",
+      "pass": true
+    },
+    {
+      "name": "finite unchanged-rounding call3",
+      "pass": true
+    },
+    {
+      "name": "complete IEEE records call3",
+      "pass": true
+    },
+    {
+      "name": "reference observations add no IEEE flags call3",
+      "pass": true
+    },
+    {
+      "name": "complete accuracy call3",
+      "pass": true
+    },
+    {
+      "name": "unchecked genuineQP protocol call3",
+      "pass": true
+    },
+    {
+      "name": "Born reference shape call3",
+      "pass": true
+    },
+    {
+      "name": "unique exact COEFFICIENT_BITS call3",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_USER_BITS call3",
+      "pass": true
+    },
+    {
+      "name": "unique exact C_BITS call3",
+      "pass": true
+    },
+    {
+      "name": "unique exact DP_VIEW_BITS call3",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_C8_BITS call3",
+      "pass": true
+    },
+    {
+      "name": "unique exact BORN_C_BITS call3",
+      "pass": true
+    },
+    {
+      "name": "published Born actual-view call3",
+      "pass": true
+    },
+    {
+      "name": "ordinary repeated point",
+      "pass": true
+    }
+  ],
+  "parse_errors": [],
+  "passed": true,
+  "rows": [
+    {
+      "accuracy": [
+        -1.0,
+        -1.0
+      ],
+      "bits": {
+        "BORN_C8_BITS": [
+          [
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "405BB42F484780A5"
+          ]
+        ],
+        "BORN_C_BITS": [
+          [
+            "0",
+            "75EA87DD9CCFD385",
+            "4005BB42F484780A"
+          ],
+          [
+            "1",
+            "75EA87DD9CCFD385",
+            "4005BB42F484780A"
+          ]
+        ],
+        "BORN_USER_BITS": [
+          [
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "405BB42F484780A5"
+          ]
+        ],
+        "COEFFICIENT_BITS": [
+          [
+            "0",
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "0",
+            "4014C065ED5A6E24"
+          ],
+          [
+            "2",
+            "0",
+            "C020A62F00DA5CEE"
+          ],
+          [
+            "3",
+            "0",
+            "C01632E956787BE8"
+          ],
+          [
+            "0",
+            "1",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "1",
+            "4014C065ED5A6E24"
+          ],
+          [
+            "2",
+            "1",
+            "C020A62F00DA5CEE"
+          ],
+          [
+            "3",
+            "1",
+            "C01632E956787BE8"
+          ]
+        ],
+        "C_BITS": [
+          [
+            "1",
+            "0",
+            "9000000000000000",
+            "40046CC083126E97"
+          ],
+          [
+            "1",
+            "1",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "2",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "3",
+            "9000000000000000",
+            "40046CC083126E97"
+          ],
+          [
+            "2",
+            "0",
+            "9000000000000000",
+            "40046CC083126E97"
+          ],
+          [
+            "2",
+            "1",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "2",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "3",
+            "9000000000000000",
+            "C0046CC083126E97"
+          ],
+          [
+            "3",
+            "0",
+            "9000000000000000",
+            "40056CC083126E97"
+          ],
+          [
+            "3",
+            "1",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "2",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "3",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        ],
+        "DP_VIEW_BITS": [
+          [
+            "1",
+            "0",
+            "4046CC083126E979"
+          ],
+          [
+            "1",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "2",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "3",
+            "4046CC083126E979"
+          ],
+          [
+            "2",
+            "0",
+            "4046CC083126E979"
+          ],
+          [
+            "2",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "2",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "3",
+            "C046CC083126E979"
+          ],
+          [
+            "3",
+            "0",
+            "4056CC083126E979"
+          ],
+          [
+            "3",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "2",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "3",
+            "0000000000000000"
+          ]
+        ]
+      },
+      "born": {
+        "BORN_C": {
+          "ok": true,
+          "values": [
+            110.81538588507338,
+            110.81538588507338
+          ]
+        },
+        "BORN_C8": {
+          "ok": true,
+          "values": [
+            110.81538588507335,
+            110.81538588507335
+          ]
+        },
+        "BORN_USER": {
+          "ok": true,
+          "values": [
+            110.81538588507335,
+            110.81538588507335
+          ]
+        }
+      },
+      "call": 1,
+      "coefficients": {
+        "0": [
+          110.81538588507335,
+          5.187888821262764,
+          -8.324577356963768,
+          -5.549718237975846
+        ],
+        "1": [
+          110.81538588507335,
+          5.187888821262764,
+          -8.324577356963768,
+          -5.549718237975846
+        ]
+      },
+      "finite": true,
+      "flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "mp_done": true,
+      "mp_done_once": true,
+      "observation_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "point": 1,
+      "ret": 120,
+      "rounding_unchanged": true
+    },
+    {
+      "accuracy": [
+        -1.0,
+        -1.0
+      ],
+      "bits": {
+        "BORN_C8_BITS": [
+          [
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "405BB42F484780A5"
+          ]
+        ],
+        "BORN_C_BITS": [
+          [
+            "0",
+            "75EA87DD9CCFD385",
+            "4005BB42F484780A"
+          ],
+          [
+            "1",
+            "75EA87DD9CCFD385",
+            "4005BB42F484780A"
+          ]
+        ],
+        "BORN_USER_BITS": [
+          [
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "405BB42F484780A5"
+          ]
+        ],
+        "COEFFICIENT_BITS": [
+          [
+            "0",
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "0",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "0",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "0",
+            "0000000000000000"
+          ],
+          [
+            "0",
+            "1",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "1",
+            "0000000000000000"
+          ]
+        ],
+        "C_BITS": [
+          [
+            "1",
+            "0",
+            "2791175E679B7296",
+            "400346B2DDA81188"
+          ],
+          [
+            "1",
+            "1",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "2",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "3",
+            "2791175E679B7296",
+            "400346B2DDA81188"
+          ],
+          [
+            "2",
+            "0",
+            "C61BBA286619235B",
+            "4005973CD933568F"
+          ],
+          [
+            "2",
+            "1",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "2",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "3",
+            "C61BBA286619235A",
+            "C005973CD933568F"
+          ],
+          [
+            "3",
+            "0",
+            "D000000000000000",
+            "4005E8E9909D5AF1"
+          ],
+          [
+            "3",
+            "1",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "2",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "3",
+            "BC377450CC3246B5",
+            "C005459021C9522D"
+          ]
+        ],
+        "DP_VIEW_BITS": [
+          [
+            "1",
+            "0",
+            "40346B2DDA811882"
+          ],
+          [
+            "1",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "2",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "3",
+            "40346B2DDA811882"
+          ],
+          [
+            "2",
+            "0",
+            "405973CD933568FC"
+          ],
+          [
+            "2",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "2",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "3",
+            "C05973CD933568FC"
+          ],
+          [
+            "3",
+            "0",
+            "405E8E9909D5AF1D"
+          ],
+          [
+            "3",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "2",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "3",
+            "C05459021C9522DC"
+          ]
+        ]
+      },
+      "born": {
+        "BORN_C": {
+          "ok": true,
+          "values": [
+            110.81538588507338,
+            110.81538588507338
+          ]
+        },
+        "BORN_C8": {
+          "ok": true,
+          "values": [
+            110.81538588507335,
+            110.81538588507335
+          ]
+        },
+        "BORN_USER": {
+          "ok": true,
+          "values": [
+            110.81538588507335,
+            110.81538588507335
+          ]
+        }
+      },
+      "call": 2,
+      "coefficients": {
+        "0": [
+          110.81538588507335,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "1": [
+          110.81538588507335,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "finite": true,
+      "flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "mp_done": true,
+      "mp_done_once": true,
+      "observation_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "point": 2,
+      "ret": 120,
+      "rounding_unchanged": true
+    },
+    {
+      "accuracy": [
+        -1.0,
+        -1.0
+      ],
+      "bits": {
+        "BORN_C8_BITS": [
+          [
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "405BB42F484780A5"
+          ]
+        ],
+        "BORN_C_BITS": [
+          [
+            "0",
+            "75EA87DD9CCFD385",
+            "4005BB42F484780A"
+          ],
+          [
+            "1",
+            "75EA87DD9CCFD385",
+            "4005BB42F484780A"
+          ]
+        ],
+        "BORN_USER_BITS": [
+          [
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "405BB42F484780A5"
+          ]
+        ],
+        "COEFFICIENT_BITS": [
+          [
+            "0",
+            "0",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "0",
+            "4014C065ED5A6E24"
+          ],
+          [
+            "2",
+            "0",
+            "C020A62F00DA5CEE"
+          ],
+          [
+            "3",
+            "0",
+            "C01632E956787BE8"
+          ],
+          [
+            "0",
+            "1",
+            "405BB42F484780A5"
+          ],
+          [
+            "1",
+            "1",
+            "4014C065ED5A6E24"
+          ],
+          [
+            "2",
+            "1",
+            "C020A62F00DA5CEE"
+          ],
+          [
+            "3",
+            "1",
+            "C01632E956787BE8"
+          ]
+        ],
+        "C_BITS": [
+          [
+            "1",
+            "0",
+            "9000000000000000",
+            "40046CC083126E97"
+          ],
+          [
+            "1",
+            "1",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "2",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "3",
+            "9000000000000000",
+            "40046CC083126E97"
+          ],
+          [
+            "2",
+            "0",
+            "9000000000000000",
+            "40046CC083126E97"
+          ],
+          [
+            "2",
+            "1",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "2",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "3",
+            "9000000000000000",
+            "C0046CC083126E97"
+          ],
+          [
+            "3",
+            "0",
+            "9000000000000000",
+            "40056CC083126E97"
+          ],
+          [
+            "3",
+            "1",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "2",
+            "0000000000000000",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "3",
+            "0000000000000000",
+            "0000000000000000"
+          ]
+        ],
+        "DP_VIEW_BITS": [
+          [
+            "1",
+            "0",
+            "4046CC083126E979"
+          ],
+          [
+            "1",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "2",
+            "0000000000000000"
+          ],
+          [
+            "1",
+            "3",
+            "4046CC083126E979"
+          ],
+          [
+            "2",
+            "0",
+            "4046CC083126E979"
+          ],
+          [
+            "2",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "2",
+            "0000000000000000"
+          ],
+          [
+            "2",
+            "3",
+            "C046CC083126E979"
+          ],
+          [
+            "3",
+            "0",
+            "4056CC083126E979"
+          ],
+          [
+            "3",
+            "1",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "2",
+            "0000000000000000"
+          ],
+          [
+            "3",
+            "3",
+            "0000000000000000"
+          ]
+        ]
+      },
+      "born": {
+        "BORN_C": {
+          "ok": true,
+          "values": [
+            110.81538588507338,
+            110.81538588507338
+          ]
+        },
+        "BORN_C8": {
+          "ok": true,
+          "values": [
+            110.81538588507335,
+            110.81538588507335
+          ]
+        },
+        "BORN_USER": {
+          "ok": true,
+          "values": [
+            110.81538588507335,
+            110.81538588507335
+          ]
+        }
+      },
+      "call": 3,
+      "coefficients": {
+        "0": [
+          110.81538588507335,
+          5.187888821262764,
+          -8.324577356963768,
+          -5.549718237975846
+        ],
+        "1": [
+          110.81538588507335,
+          5.187888821262764,
+          -8.324577356963768,
+          -5.549718237975846
+        ]
+      },
+      "finite": true,
+      "flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "mp_done": true,
+      "mp_done_once": true,
+      "observation_flags": [
+        "F",
+        "F",
+        "F",
+        "F",
+        "T"
+      ],
+      "point": 1,
+      "ret": 120,
+      "rounding_unchanged": true
+    }
+  ],
+  "warmup": [
+    {
+      "finite": true,
+      "index": 1,
+      "precision": -1.0,
+      "ret": 130
+    },
+    {
+      "finite": true,
+      "index": 2,
+      "precision": -1.0,
+      "ret": 130
+    },
+    {
+      "finite": true,
+      "index": 3,
+      "precision": 0.0,
+      "ret": 216
+    },
+    {
+      "finite": true,
+      "index": 4,
+      "precision": 0.0,
+      "ret": 216
+    }
+  ]
+}
