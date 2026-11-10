@@ -535,7 +535,7 @@
   }
  },
  "hh_forward": {
-  "provenance": "g g > h h (li_gg_hh) near-forward stress points of lit-val's li_stress_gg_hh_forward record (transformed_points) rounded to binary64 texts; TIRust refuses points 1, 2 at its gates in double-double and at 16-20 digits",
+  "provenance": "g g > h h (li_gg_hh) near-forward stress points of lit-val's li_stress_gg_hh_forward record (transformed_points) rounded to binary64 texts; TIRust refuses all three points at its gates in double-double (points 1, 2 also at 16-20 digits)",
   "points": [
    [
     [
