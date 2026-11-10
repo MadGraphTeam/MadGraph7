@@ -1,0 +1,33 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1803,
+      "sha256": "cc8a157a1be8df95e01cf15677c71933f715367d57408fd16924b56a619bd54f"
+    },
+    "adaptive.map.gz": {
+      "bytes": 5402,
+      "sha256": "e43dc668d284da8a54c9289222c748585a4bbf342df788d99d8e108e5208663f"
+    },
+    "bindings.json": {
+      "bytes": 2265,
+      "sha256": "08f9074c3dd26da8eacb07b35a73899ab302182877f110b916b567a05889b5bd"
+    },
+    "build.json": {
+      "bytes": 78951,
+      "sha256": "f27a190f04804e8dc13a9d534e8558ac4eab95c2881cf97cf0aaaefb12260005"
+    },
+    "legacy.map.gz": {
+      "bytes": 5395,
+      "sha256": "1ad9a665edbcc681909c74392895410186190b3887f3212ee2c8ad3b5b4b49af"
+    },
+    "link-adaptive.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "verify.py": {
+      "bytes": 3878,
+      "sha256": "be4de2575885171eab2f954a051c9548d4bd15d1021a31aa63a18787dbb2e110"
+    }
+  },
+  "schema": 1
+}

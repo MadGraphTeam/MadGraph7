@@ -1,0 +1,2182 @@
+{
+  "accepted_method_choice_diagnostic_count": 320,
+  "accepted_method_choice_diagnostic_text": "a priori method choice: accepted (unchecked)",
+  "actual_counter_fields": {
+    "expansion_rows": 454,
+    "expansion_successes": 320
+  },
+  "all_exact_upstream_diagnostic_texts": [
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"ill-conditioned Gram matrix for [1, 3]: conditioning 6.841552845949972e-2\\\")\")"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"ill-conditioned Gram matrix for [1, 3]: conditioning 6.841552845950362e-2\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.2058405435164335e-2; with small Cayley determinant 1.273324962766644e-1); alternative PV: modified Cayley determinant cancels (relative rounding 1.8959495635800068e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.3647938950933597e-3; with small Cayley determinant 2.6524050188787975e-4); alternative PV: modified Cayley determinant cancels (relative rounding 1.5075949385553494e-9)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.4811009654729325e-3; with small Cayley determinant 2.4861962938967905e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.5033225420595184e-3; with small Cayley determinant 3.8109047065212166e-4); alternative PV: modified Cayley determinant cancels (relative rounding 1.2631390619583571e-9)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.533853864945283e-3; with small Cayley determinant 1.0364552199097233e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.6327983012011488e-3; with small Cayley determinant 3.642241950748497e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.8305962468814464e-3; with small Cayley determinant 9.704523585255243e-5); alternative PV: modified Cayley determinant cancels (relative rounding 8.483578785288982e-1)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.9180854955996033e-2; with small Cayley determinant 1.1029160263032181e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.1530560405246747e-3; with small Cayley determinant 1.0316125598249255e-3); alternative PV: modified Cayley determinant cancels (relative rounding 2.75565478497954e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.3774001080538072e-3; with small Cayley determinant 1.4742206811806178e-3); alternative PV: modified Cayley determinant cancels (relative rounding 2.7010372688731463e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.936885250469678e-3; with small Cayley determinant 3.1045849754968015e-3); alternative PV: modified Cayley determinant cancels (relative rounding 1.421383056215074e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 3.994854732968658e-3; with small Cayley determinant 7.291814397824427e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.9041868857809925e-3; with small Cayley determinant 3.733843217424249e-2); alternative PV: modified Cayley determinant cancels (relative rounding 3.8704138528354624e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.2058405435164612e-2; with small Cayley determinant 9.303791745178808e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.6327983012016693e-3; with small Cayley determinant 2.2878144012171693e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.377400108053837e-3; with small Cayley determinant 8.639377466311562e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.956376238081587e-3; with small Cayley determinant 1.4658919401616675e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.8341615714779865e-3; with small Cayley determinant 1.8485169430172654e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.904186885780982e-3; with small Cayley determinant 2.327628940170954e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.1495705988915429e-2; with small Cayley determinant 1.1599403112451884e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.2058405435164595e-2; with small Cayley determinant 1.2733249627666424e-1); alternative PV: modified Cayley determinant cancels (relative rounding 2.843924345370008e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.3221051336542588e-2; with small Cayley determinant 1.515036848965401e-1); alternative PV: modified Cayley determinant cancels (relative rounding 2.6631248310422295e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.3647938950934375e-3; with small Cayley determinant 2.6524050188787943e-4); alternative PV: modified Cayley determinant cancels (relative rounding 1.5075949385553496e-9)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.4811009654729299e-3; with small Cayley determinant 2.4861962938967905e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.5033225420557608e-3; with small Cayley determinant 3.810904706521181e-4); alternative PV: modified Cayley determinant cancels (relative rounding 1.2631390608553153e-9)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.5338538649452252e-3; with small Cayley determinant 1.0364552199097168e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.6327983012060347e-3; with small Cayley determinant 3.642241950748473e-4); alternative PV: modified Cayley determinant cancels (relative rounding 1.4464743973809295e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.8305962468807386e-3; with small Cayley determinant 9.704523585255435e-5); alternative PV: modified Cayley determinant cancels (relative rounding 2.545073635586696e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.9055649616178264e-3; with small Cayley determinant 6.566679382262715e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.9180854955996026e-2; with small Cayley determinant 1.1029160263032181e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.9180854955996026e-2; with small Cayley determinant 1.480862553160896e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.1530560405246804e-3; with small Cayley determinant 1.0316125598249265e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.377400108053807e-3; with small Cayley determinant 1.4742206811806178e-3); alternative PV: modified Cayley determinant cancels (relative rounding 2.7010372688731468e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.936885250469124e-3; with small Cayley determinant 3.1045849754968466e-3); alternative PV: modified Cayley determinant cancels (relative rounding 2.842766112430146e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 3.590803068429003e-3; with small Cayley determinant 5.8970158307741416e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 3.783464241780474e-3; with small Cayley determinant 2.2822920889039432e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 3.994854732969099e-3; with small Cayley determinant 7.291814397824423e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 5.47614517726464e-3; with small Cayley determinant 2.0425680474618447e-2); alternative PV: modified Cayley determinant cancels (relative rounding 2.127996760528823e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.251179285445167e-5; with small Cayley determinant 7.853292735689356e-9); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.6714504037851535e-3; with small Cayley determinant 3.427089193451491e-2); alternative PV: modified Cayley determinant cancels (relative rounding 3.9291332952650184e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.904186885781132e-3; with small Cayley determinant 3.7338432174242334e-2); alternative PV: modified Cayley determinant cancels (relative rounding 1.9352069264177316e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 9.454684484585932e-3; with small Cayley determinant 3.0450629892474892e-2); alternative PV: modified Cayley determinant cancels (relative rounding 1.536066985292645e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 9.698490060931779e-5; with small Cayley determinant 1.5399411291704095e-8); alternative PV: modified Cayley determinant cancels (relative rounding 2.545073635586696e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.4381695273791924e-3; with small Cayley determinant 6.0665073368296515e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.1530560405246786e-3; with small Cayley determinant 1.0316125598249265e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.936885250469689e-3; with small Cayley determinant 3.1045849754968106e-3); alternative PV: modified Cayley determinant cancels (relative rounding 1.4213830562150724e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.9368852504702498e-3; with small Cayley determinant 3.1045849754973293e-3); alternative PV: modified Cayley determinant cancels (relative rounding 1.4213830562151057e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 3]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.9368852504703777e-3; with small Cayley determinant 1.691103108840722e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 4]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.213723864570902e-3; with small Cayley determinant 3.0425539379476214e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 4]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.153056040524685e-3; with small Cayley determinant 6.16671008363643e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.059489960486262e-2; with small Cayley determinant 8.078244520850804e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.1127157989138177e-3; with small Cayley determinant 7.796670353580015e-5); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.390685901851602e-2; with small Cayley determinant 1.102916026303215e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 2, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 8.912242343126311e-4; with small Cayley determinant 4.346068864353417e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.2137238645679419e-3; with small Cayley determinant 3.042553937947648e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.2137238645684144e-3; with small Cayley determinant 3.042553937947633e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.1530560405247042e-3; with small Cayley determinant 6.166710083636413e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 3, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.817918428319614e-2; with small Cayley determinant 1.129666042383351e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 3, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.9180854955996033e-2; with small Cayley determinant 1.480862553160896e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 1, 3, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 9.698490060934187e-5; with small Cayley determinant 1.539941129170351e-8); alternative PV: modified Cayley determinant cancels (relative rounding 8.483578785288982e-1)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.007021522107433e-2; with small Cayley determinant 2.513595350894607e-2); alternative PV: modified Cayley determinant cancels (relative rounding 2.6133103756668277e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.0070215221074354e-2; with small Cayley determinant 2.513595350894607e-2); alternative PV: modified Cayley determinant cancels (relative rounding 2.6133103756668277e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.149570598891543e-2; with small Cayley determinant 1.1599403112451884e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.2058405435164335e-2; with small Cayley determinant 1.273324962766644e-1); alternative PV: modified Cayley determinant cancels (relative rounding 1.8959495635800068e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.3221051336542593e-2; with small Cayley determinant 1.515036848965401e-1); alternative PV: modified Cayley determinant cancels (relative rounding 2.663124831042229e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.4811009654729325e-3; with small Cayley determinant 2.4861962938967905e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.6327983012011488e-3; with small Cayley determinant 3.642241950748497e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.9055649616172882e-3; with small Cayley determinant 6.566679382262728e-4); alternative PV: modified Cayley determinant cancels (relative rounding 2.818985476996069e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.9180854955996033e-2; with small Cayley determinant 1.480862553160896e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.1530560405246747e-3; with small Cayley determinant 1.0316125598249255e-3); alternative PV: modified Cayley determinant cancels (relative rounding 2.75565478497954e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.1530560405246804e-3; with small Cayley determinant 1.0316125598249265e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.3774001080538072e-3; with small Cayley determinant 1.4742206811806178e-3); alternative PV: modified Cayley determinant cancels (relative rounding 2.7010372688731463e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 3.590803068429289e-3; with small Cayley determinant 5.897015830774109e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 3.783464241780516e-3; with small Cayley determinant 2.2822920889039432e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 5.47614517726464e-3; with small Cayley determinant 2.0425680474618447e-2); alternative PV: modified Cayley determinant cancels (relative rounding 2.1279967605288235e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 5.47614517726464e-3; with small Cayley determinant 2.0425680474618447e-2); alternative PV: modified Cayley determinant cancels (relative rounding 2.127996760528823e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.251179285423085e-5; with small Cayley determinant 7.853292735689311e-9); alternative PV: modified Cayley determinant cancels (relative rounding 1.5235466816198298e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.251179285445167e-5; with small Cayley determinant 7.853292735689356e-9); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.671450403785155e-3; with small Cayley determinant 3.427089193451491e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.671450403785205e-3; with small Cayley determinant 3.427089193451489e-2); alternative PV: modified Cayley determinant cancels (relative rounding 3.9291332952650193e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.9041868857809925e-3; with small Cayley determinant 3.733843217424249e-2); alternative PV: modified Cayley determinant cancels (relative rounding 3.8704138528354624e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 9.45468448458593e-3; with small Cayley determinant 3.0450629892474892e-2); alternative PV: modified Cayley determinant cancels (relative rounding 1.536066985292645e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 2]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 9.698490060934187e-5; with small Cayley determinant 1.539941129170351e-8); alternative PV: modified Cayley determinant cancels (relative rounding 8.483578785288982e-1)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.2058405435164416e-2; with small Cayley determinant 9.303791745178784e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 1.6327983012063769e-3; with small Cayley determinant 2.287814401217202e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.153056040524685e-3; with small Cayley determinant 6.16671008363643e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.377400108053887e-3; with small Cayley determinant 8.639377466311565e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.9563762380816726e-3; with small Cayley determinant 1.4658919401616798e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.834161571477975e-3; with small Cayley determinant 1.848516943017266e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 6.904186885781094e-3; with small Cayley determinant 2.3276289401709473e-2); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [0, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.936885250469124e-3; with small Cayley determinant 3.1045849754968466e-3); alternative PV: modified Cayley determinant cancels (relative rounding 2.842766112430146e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion did not converge (last relative change 6.513309038094499e-2; with small Cayley determinant 3.658239688735414e-2); alternative PV: modified Cayley determinant cancels (relative rounding 4.3619493822869984e-9)\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion did not converge (last relative change 6.513309038096247e-2; with small Cayley determinant 3.658239684735847e-2); alternative PV: modified Cayley determinant cancels (relative rounding 4.3619493822869984e-9)\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.1767403583023617e-3; with small Cayley determinant 3.6978508841203145e-1); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 1, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 8.912242343126311e-4; with small Cayley determinant 4.346068864353417e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 3.783464241780474e-3; with small Cayley determinant 2.2822920889039432e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 4,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 3.994854732969099e-3; with small Cayley determinant 9.350942299065486e-4); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 4.463788825019281e-3; with small Cayley determinant 1.1134964696758261e-2); alternative PV: modified Cayley determinant cancels (relative rounding 1.3434739020412703e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [0, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 9.883364774968135e-5; with small Cayley determinant 2.2112094191800575e-8); alternative PV: modified Cayley determinant cancels (relative rounding 2.4993695062014267e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.9368852504697766e-3; with small Cayley determinant 1.6911031088404653e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.936885250469837e-3; with small Cayley determinant 3.1045849754969173e-3); alternative PV: modified Cayley determinant cancels (relative rounding 2.8427661124300925e0)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: Unstable(\"small-Gram expansion of [1, 2, 3, 4]: Unstable(\\\"small-Gram expansion of [1, 2, 3]: Unstable(\\\\\\\"small-Gram expansion did not converge (last relative change 2.93688525047098e-3; with small Cayley determinant 1.6911031088406578e-3); alternative PV: modified Cayley determinant cancels (relative rounding inf)\\\\\\\")\\\")\")"
+    },
+    {
+      "count": 320,
+      "phase": "points_1_to_100",
+      "text": "a priori method choice: accepted (unchecked)"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.0589180927417136e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.05891809274175e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.4304690467602628e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.5459046410620005e-5"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.545904641063608e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.6727060080173067e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.6851395626546193e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.6851395626547944e-4"
+    },
+    {
+      "count": 4,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.883480522238896e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 1.8834805222390006e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.0581742749532263e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.058174274953443e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.1066275044821333e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.175717471229911e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.1988450688342504e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.2555277781063855e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.3756417088860327e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.4743091276703224e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.4743091276704834e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.4743091276707203e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.492574097295059e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.492574097295085e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.527194705776357e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.5789528536908843e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.5789528536910178e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.60341796999176e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.617994430311331e-5"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.6179944303122687e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.655726014443422e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.711287110001838e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.7287429715422407e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.9277743738440103e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 2.982933236888558e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.0716912508632946e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.3017467341729374e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.3017467341731495e-5"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.3069271247470494e-4"
+    },
+    {
+      "count": 4,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.306927124747296e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.4380701983281287e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.491838283708937e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.491838283710268e-5"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.575109824634776e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.575109824634868e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.5751098246348796e-4"
+    },
+    {
+      "count": 4,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.642417004351004e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.6424170043513867e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 3.686462586485658e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.1593051859398043e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.2307493078633906e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.2307493078634766e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.2719467893716944e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.43909831787278e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.446319517462271e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.456142757219677e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.4561427572196896e-4"
+    },
+    {
+      "count": 4,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.456142757219722e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.5145179895560703e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.5145179895562335e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.5388248031953205e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.538824803198069e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.5753194048604327e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.617141034250174e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.09795317088088e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.141994440916012e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.154742072570569e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.250003695538733e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.494139847043926e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.552236781329517e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.6583689085097675e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.658368908518653e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.816475345401933e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.862909348651059e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.8629093486516465e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.889954520224866e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.893902694579352e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 5.916827785217623e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 6.151848336704817e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 6.151848336705534e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 6.192892914896026e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 6.319180221770307e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 6.678099097079473e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 6.678099097083905e-5"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.079130893953191e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.07913089395409e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.079130893954397e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.092595178820038e-6"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.092595178831677e-6"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.10934942230774e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.109349422307787e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.127670334361315e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.127670334361897e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.127670334362005e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.153205231203618e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.333449505929248e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.333449505929765e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.375875659626216e-5"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.375875659629853e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.562245718573657e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.562245718573658e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.562245718574198e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.562245718574258e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.579838664871791e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.582909851907137e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.611209645043095e-5"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.611209645043181e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.652327985280851e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.885564464844301e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.974379717161123e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 7.974379717162568e-5"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.005407814055299e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.005407814055533e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.110111941172256e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.167448111642974e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.35829856829829e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.417745615800326e-5"
+    },
+    {
+      "count": 4,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.417745615800697e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.528297242920669e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.540802816220477e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.540802816220677e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.867539096568322e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.951489521260657e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 8.951489521260959e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.161034261328687e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.196959645850456e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.205534415465216e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.205534415468442e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.302466031901002e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.302466031901057e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.302466031901066e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.302466031901248e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.328800274702431e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.548068790353236e-4"
+    },
+    {
+      "count": 4,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.87150586958363e-4"
+    },
+    {
+      "count": 3,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 9.871505869583769e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 1.6869356973224443e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 1.6869356973226818e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 1.9114491184067688e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 2.248665017863481e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 3.035532637845667e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 3.130882863308392e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 3.2417817213718504e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 3.241781721371883e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 4.0997246995646517e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 4.099724699564892e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 4.120621107306037e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 4.4008218970774924e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 5.12970938453529e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 5.129709384535355e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 6.52130184515841e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 6.521301845159203e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 6.778029348316689e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 7.272198677366732e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 8.459101435686938e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 2, 4]: conditioning 8.459101435687525e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 1.686935697322923e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 1.9114491184073117e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 3.130882863307757e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 4.1206211073055346e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 4.1206211073058696e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 4.833292915788007e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 5.129709384535061e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 5.129709384535453e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 6.249202986065403e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 6.521301845158953e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 6.778029348316543e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 7.272198677365949e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 8.459101435686865e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 1, 3, 4]: conditioning 8.459101435687577e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.336561206527415e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.4304690467603704e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.5459046410620005e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.5722714927853042e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.653670758269276e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.67270600801725e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.773979714133621e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.854658684555207e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.928599530977333e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 1.9958943106742046e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.0581742749532263e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.1066275044821553e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.1757174712295688e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.1988450688340788e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.2528621244132443e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.37564170888604e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.4743091276707203e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.492574097295059e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.5271947057764677e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.595729387264523e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.655726014443351e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.7112871100021783e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.842993207756871e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.9051679475552186e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.9099035799971088e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 2.9829332368884624e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.0488698900222976e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.071691250863299e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.1136399211302275e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.3069271247470494e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.323092880255617e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.4380701983280425e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.5368415804448684e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.575109824634776e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.6424170043513867e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.6864625864862924e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.893316158985472e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 3.908162438884718e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.1593051859396655e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.271946789370953e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.4390983178725505e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.446319517461214e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.4561427572196896e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.514517989556037e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.5753194048605336e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.617141034250195e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.7730829623959396e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.097953170880776e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.14199444091616e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.154742072571122e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.250003695538632e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.552236781329321e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.6583689085097675e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.672595499161712e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.807132218125442e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.816475345402016e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.8629093486516465e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.889954520224461e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.893902694579355e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 5.916827785217625e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.19289291489584e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 6.319180221770073e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.079130893953191e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.153205231203733e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.375875659626216e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.459427197551268e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.579838664868569e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.582909851907905e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.611209645043181e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.621944775066438e-6"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.65232798528129e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.879304443258846e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 7.885564464843891e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 8.11011194117219e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 8.167448111642901e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 8.35829856829823e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 8.52829724292077e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 8.540802816220477e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 8.867539096568398e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.161034261328688e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.19695964584999e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.205534415468442e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.302466031901002e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.328800274702445e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.548068790353474e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.750471836747162e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.761450016751043e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.871505869583769e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 9.985292189913751e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 3.750336548487577e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 3.750336548492178e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 5.387226811108138e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 5.387226811120595e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 6.35328642904581e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 6.353286429053197e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 9.00238148301242e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 9.002381483013976e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 9.378979954175856e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 9.37897995417613e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 9.731366251644152e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [0, 2, 3]: conditioning 9.731366251652253e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 1.1238255694206122e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 1.1942028766697602e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 1.2751998012950816e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 1.2751998012951253e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 1.7641760074146512e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 1.7945335801375283e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 1.794533580137603e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 1.8176880284757118e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 2.0438516476513856e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 2.7168113263383454e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 2.716811326338491e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 3.30174673417139e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 3.323092880255973e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 3.349078138383428e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 3.3490781383837897e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 3.4049265912237074e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 3.6980102135625066e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 4.2307493078634766e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 4.699650502882711e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 4.6996505028832166e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.18840354735437e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.188403547354399e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.646025752653745e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.646025752654001e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 5.8105298991675047e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 6.260248978990111e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 6.260248978990117e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 6.678099097083905e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 7.092595178820038e-6"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 7.290816985041717e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 7.290816985041815e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 7.869991626893078e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 7.932572850464335e-6"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 7.993050371854259e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 8.867539096567754e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.548068790353338e-4"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 2, 3, 4]: conditioning 9.968930974631235e-4"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 1.7453848439813123e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 3.750336548493181e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 3.993838561809707e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 4.2243831350243016e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 4.224383135024302e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 4.224383135031762e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 5.387226811108138e-5"
+    },
+    {
+      "count": 2,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 5.8358084862341905e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 6.353286429045809e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 8.616471901114435e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 8.616471901114438e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 9.002381483013976e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 9.378979954176136e-5"
+    },
+    {
+      "count": 1,
+      "phase": "points_1_to_100",
+      "text": "direct engine: ill-conditioned Gram matrix for [1, 3, 4]: conditioning 9.731366251661493e-5"
+    }
+  ],
+  "case": "qcd_n3_uux_zgg",
+  "correction": "454 method-choice/expansion rows with 320 successes and 134 refusals; these counters do not certify arithmetic precision",
+  "derived_unsuccessful_rows": 134,
+  "engine_policy_interpretation": "Pinned method_choice=true retries at the same 53-bit working precision; partial_rescue=false and precision_tiers=false. Direct routes and aggregate master_rows_all_precisions are not pure-precision certificates. Genuine 113-bit-input QP is a separate host rescue path.",
+  "historical_files_modified": false,
+  "native_execution": false,
+  "performance_eligible": false,
+  "phase": "ordinary points 1..100; bootstrap excluded",
+  "schema": "dp-cause-precision-counter-corrigendum-v1",
+  "source_bindings": {
+    "engine_audit_index": {
+      "bytes": 377,
+      "path": "docs/benchmarkfolder/experiments/embedded-dp-rescue-design/index.json",
+      "sha256": "edfd12005a4693e897cff6b706bd04fdf9bb4c2cc6188ffc20cabb0f9bea8593"
+    },
+    "engine_audit_readme": {
+      "bytes": 12088,
+      "path": "docs/benchmarkfolder/experiments/embedded-dp-rescue-design/README.md",
+      "sha256": "fa72abdd036833332d01ae2b0c6e0d56ef5734ec81cb2b2d15375cf47125aea6"
+    },
+    "engine_audit_source": {
+      "bytes": 10788,
+      "path": "docs/benchmarkfolder/experiments/embedded-dp-rescue-design/source-audit.json",
+      "sha256": "b504ae11b20ef31d92b1a6494e86a369cdd1c05b600089abc5e4434842becdeb"
+    },
+    "historical_index": {
+      "bytes": 73151,
+      "path": "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-qualification-1/index.json",
+      "sha256": "9f934ced6cfe06d2f01252b8a86d6c5f50cd7bd29890fd2bf78b9e5db40769e2"
+    },
+    "historical_readme": {
+      "bytes": 5528,
+      "path": "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-qualification-1/README.md",
+      "sha256": "7401c4a0b87cd6265fd920c6c8770600b09831c6f4849b526fd66277519e3622"
+    },
+    "join_index": {
+      "bytes": 1848,
+      "path": "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-audit/index.json",
+      "sha256": "a43855eeb3fcee83c99068258e6f49be86bc352eeb8d37b292a801f4140fed06"
+    },
+    "join_results": {
+      "bytes": 375219,
+      "path": "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-audit/results.json",
+      "sha256": "84201de39b20c7ae7fc6b58806bacd8e0cd04cf177be408b3358db2eb594edd1"
+    }
+  },
+  "superseded_phrase": "454 higher-precision attempts"
+}

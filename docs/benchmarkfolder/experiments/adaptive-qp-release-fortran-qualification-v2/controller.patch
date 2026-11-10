@@ -1,0 +1,180 @@
+--- debug/source/controller.py
++++ release-v2/source/controller.py
+@@ -20,7 +20,13 @@
+ HERE=Path(__file__).resolve().parent
+ PACKAGE=HERE.parent
+ ROOT=PACKAGE.parents[3]
+-WORK=ROOT/'.tirust-build/adaptive-qp-fortran-qualification'
++WORK=ROOT/'.tirust-build/adaptive-qp-release-fortran-qualification'
++ORIGINAL=ROOT/'docs/benchmarkfolder/experiments/adaptive-qp-fortran-qualification'
++ORIGINAL_BUILD=ROOT/'.tirust-build/adaptive-qp-fortran-qualification/build1'
++ORIGINAL_SOURCE_SHA='80f83d5384ada33b609ac94bb9f9be935eb92e56ee706f979494e4d053fcc9b5'
++ORIGINAL_BUILD_INDEX_SHA='7d92500bc6fb518f8904f831f305519b07b6b4c011d3e15785146fffee5923d9'
++ORIGINAL_BUILD_SHA='a213c73aadab7d898e1a3699ab7c1c4ae09dae8afa1c7916a8e6671ebfb14b15'
++LEGACY_MODE=0o700
+ BUILD=WORK/'build1'
+ RUN=WORK/'run1'
+ INDEX=PACKAGE/'source-index.json'
+@@ -32,9 +38,9 @@
+ LIBGCC=Path('/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib')
+ LOADER=LIBC/'ld-linux-x86-64.so.2'
+ BRIDGES={'legacy':ROOT/'.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so',
+-         'adaptive':ROOT/'.tirust-build/adaptive-qp-rescue-cdylib-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so'}
++         'adaptive':ROOT/'.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so'}
+ BRIDGE_SHAS={'legacy':'eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9',
+-             'adaptive':'63298bdd242b99dd46d654debe6304f5b4fdff955d5082d8c50c3b2ff01ae9ea'}
++             'adaptive':'c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7'}
+ 
+ 
+ def sha(path):
+@@ -63,6 +69,25 @@
+         assert (HERE/'fixtures'/('group10-'+name+'.words')).read_text()==exact
+     for arm,path in BRIDGES.items():assert sha(path)==BRIDGE_SHAS[arm]
+     assert sha(SUPERVISOR)==SUPERVISOR_SHA
++    assert sha(ORIGINAL/'source-index.json')==ORIGINAL_SOURCE_SHA
++    original_index=json.loads((ORIGINAL/'source-index.json').read_text())
++    for name,digest in original_index['sources'].items():assert sha(ORIGINAL/name)==digest,name
++    assert sha(ORIGINAL/'build1/evidence-index.json')==ORIGINAL_BUILD_INDEX_SHA
++    frozen=json.loads((ORIGINAL/'build1/evidence-index.json').read_text())['files']
++    for name,digest in frozen.items():
++        assert sha(ORIGINAL/'build1'/name)==digest,name
++    assert sha(ORIGINAL_BUILD/'build.json')==ORIGINAL_BUILD_SHA
++    assert sha(ORIGINAL/'build1/build.json')==ORIGINAL_BUILD_SHA
++    old=json.loads((ORIGINAL_BUILD/'build.json').read_text())
++    assert old['complete'] and len(old['commands'])==7 and all(row['exit_code']==0 for row in old['commands'])
++    for name,digest in old['artifacts'].items():assert sha(ORIGINAL_BUILD/name)==digest,name
++    assert (ORIGINAL_BUILD/'legacy').stat().st_mode & 0o7777 == LEGACY_MODE
++    assert os.access(ORIGINAL_BUILD/'legacy',os.X_OK)
++    for inputs in old['link_inputs'].values():
++        for name,digest in inputs.items():assert sha(name)==digest,name
++    for path in (ORIGINAL/'source').rglob('*'):
++        if path.is_file() and path.name!='controller.py':
++            assert sha(path)==sha(HERE/path.relative_to(ORIGINAL/'source')),str(path)
+     return index
+ 
+ 
+@@ -87,56 +112,93 @@
+     return {signum:signal.signal(signum,interrupt) for signum in (signal.SIGINT,signal.SIGTERM,signal.SIGHUP)}
+ 
+ 
++def link_command():
++    old=json.loads((ORIGINAL_BUILD/'build.json').read_text())
++    argv=list(old['commands'][-1]['argv'])
++    assert argv[0]==str(FC) and argv[1:3]==['-o',str(ORIGINAL_BUILD/'adaptive')]
++    old_bridge=ROOT/'.tirust-build/adaptive-qp-rescue-cdylib-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so'
++    assert argv.count(str(old_bridge))==1
++    replacements={str(ORIGINAL_BUILD/'adaptive'):str(BUILD/'adaptive'),
++                  str(old_bridge):str(BRIDGES['adaptive']),
++                  '-Wl,-rpath,'+str(old_bridge.parent):'-Wl,-rpath,'+str(BRIDGES['adaptive'].parent),
++                  '-Wl,-Map,'+str(ORIGINAL_BUILD/'adaptive.map'):'-Wl,-Map,'+str(BUILD/'adaptive.map')}
++    replacements.update({str(ORIGINAL_BUILD/(name+'.o')):str(BUILD/(name+'.o'))
++                         for name in ('mtirust','qp_tier_records','driver','optional_getter','observer')})
++    assert all(argv.count(key)==1 for key in replacements)
++    return [replacements.get(arg,arg) for arg in argv]
++
++
+ def build():
+-    verify();helper,adapted=supervisor()
++    index=verify();helper,adapted=supervisor()
+     BUILD.mkdir(parents=True,exist_ok=False)
+     os.sched_setaffinity(0,{12})
+     resource.setrlimit(resource.RLIMIT_AS,(4294967296,4294967296))
++    old_build=json.loads((ORIGINAL_BUILD/'build.json').read_text())
++    copied={}
++    # Reuse the five identical numerical/observer objects and legacy control;
++    # there is no Fortran/C recompilation and no new fixture or arithmetic.
++    for name,digest in old_build['artifacts'].items():
++        if name.endswith(('.o','.mod')) or name in ('legacy','legacy.map'):
++            shutil.copyfile(ORIGINAL_BUILD/name,BUILD/name)
++            if name=='legacy':
++                shutil.copymode(ORIGINAL_BUILD/name,BUILD/name)
++                assert (BUILD/name).stat().st_mode & 0o7777 == LEGACY_MODE
++                assert os.access(BUILD/name,os.X_OK)
++            assert sha(BUILD/name)==digest
++            copied[name]=digest
+     common=[str(BUILD/(name+'.o')) for name in ('mtirust','qp_tier_records','driver','optional_getter','observer')]
+-    commands=[]
+-    for name in ('mtirust','qp_tier_records','driver'):
+-        commands.append((name,[str(FC),'-O0','-g','-fcheck=all','-J'+str(BUILD),'-I'+str(BUILD),'-c',str(HERE/(name+'.f90')),'-o',str(BUILD/(name+'.o'))]))
+-    for name in ('optional_getter','observer'):
+-        commands.append((name,[str(CC),'-std=c11','-O0','-g','-Wall','-Wextra','-Werror','-c',str(HERE/(name+'.c')),'-o',str(BUILD/(name+'.o'))]))
+-    for arm,bridge in BRIDGES.items():
+-        commands.append(('link-'+arm,[str(FC),'-o',str(BUILD/arm)]+common+[str(bridge),'-Wl,--wrap=ml_tirust_evaluate_mp',
+-                         '-Wl,--wrap=ml_tirust_private_qp_precision_snapshot','-Wl,--dynamic-linker='+str(LOADER),
+-                         '-Wl,-rpath,'+str(LIBC),'-Wl,-rpath,'+str(LIBGCC),'-Wl,-rpath,'+str(bridge.parent),
+-                         '-Wl,-Map,'+str(BUILD/(arm+'.map'))]))
+-    record={'complete':False,'scope':'compile/link only; no loader/native execution','source_index_sha256':sha(INDEX),
+-            'cpu':12,'jobs':1,'shared_cap_seconds':120,'rlimit_as':list(resource.getrlimit(resource.RLIMIT_AS)),
+-            'supervisor_sha256':SUPERVISOR_SHA,'adapted_supervisor_sha256':adapted,'commands':[],'environment':environment()}
++    assert set(Path(name).name for name in common).issubset(copied)
++    command=link_command()
++    protected={str(PACKAGE/name):digest for name,digest in index['sources'].items()}
++    protected.update({str(ROOT/name if not name.startswith('/') else Path(name)):digest for name,digest in index['dependencies'].items()})
++    protected[str(INDEX)]=sha(INDEX)
++    protected.update({str(BUILD/name):digest for name,digest in copied.items()})
++    record={'complete':False,'scope':'one release relink only; no source compilation/loader/native execution',
++            'source_index_sha256':sha(INDEX),'original_source_index_sha256':ORIGINAL_SOURCE_SHA,
++            'original_build_sha256':ORIGINAL_BUILD_SHA,'cpu':12,'cpu_reservation':False,'jobs':1,
++            'shared_cap_seconds':120,'rlimit_as':list(resource.getrlimit(resource.RLIMIT_AS)),
++            'supervisor_sha256':SUPERVISOR_SHA,'adapted_supervisor_sha256':adapted,'commands':[],
++            'environment':environment(),'reused_artifacts_sha256':copied,'protected_inputs_before':protected,
++            'legacy_executable_mode_before':LEGACY_MODE}
+     old=handlers();start=time.monotonic()
+     try:
+-        for name,argv in commands:
+-            remaining=120-(time.monotonic()-start)
+-            if remaining<=0:raise TimeoutError('Shared compile/link cap expired')
+-            row={'argv':argv,'log':name+'.log','progress':{}};record['commands'].append(row);save(BUILD/'build.json',record)
+-            with (BUILD/row['log']).open('xb') as log:
+-                row['exit_code']=helper['run_plain_capped'](argv,log,cwd=ROOT,env=record['environment'],progress=row['progress'],seconds=remaining)
+-            row['log_sha256']=sha(BUILD/row['log']);save(BUILD/'build.json',record)
+-            if row['exit_code']:raise RuntimeError('Compile/link failed: '+name)
+-        record['link_inputs']={}
+-        for arm in BRIDGES:
+-            names=re.findall(r'^LOAD\s+(.+)$',(BUILD/(arm+'.map')).read_text(),re.M)
+-            paths={str(Path(name).resolve()) for name in names}
+-            assert str(BRIDGES[arm].resolve()) in paths
+-            assert set(common).issubset(paths)
+-            record['link_inputs'][arm]={name:sha(name) for name in sorted(paths)}
+-        verify();record['complete']=True
++        row={'argv':command,'log':'link-adaptive.log','progress':{}};record['commands'].append(row);save(BUILD/'build.json',record)
++        with (BUILD/row['log']).open('xb') as log:
++            row['exit_code']=helper['run_plain_capped'](command,log,cwd=ROOT,env=record['environment'],progress=row['progress'],seconds=120)
++        row['log_sha256']=sha(BUILD/row['log']);save(BUILD/'build.json',record)
++        if row['exit_code']:raise RuntimeError('Release relink failed; no retry')
++        paths={str(Path(name).resolve()) for name in re.findall(r'^LOAD\s+(.+)$',(BUILD/'adaptive.map').read_text(),re.M)}
++        assert str(BRIDGES['adaptive'].resolve()) in paths and set(common).issubset(paths)
++        record['link_inputs']={'legacy':old_build['link_inputs']['legacy'],
++                              'adaptive':{name:sha(name) for name in sorted(paths)}}
++        verify();assert all(sha(BUILD/name)==digest for name,digest in copied.items());record['complete']=True
+     except BaseException as error:
+         record['failure']=repr(error);raise
+     finally:
+         for signum,handler in old.items():signal.signal(signum,handler)
+         record['elapsed_seconds']=time.monotonic()-start
++        record['protected_inputs_after']={name:sha(name) for name in protected}
++        record['legacy_executable_mode_after']=(BUILD/'legacy').stat().st_mode & 0o7777
++        if record['protected_inputs_after']!=protected or record['legacy_executable_mode_after']!=LEGACY_MODE:
++            record['complete']=False
+         record['artifacts']={p.name:sha(p) for p in sorted(BUILD.iterdir()) if p.is_file() and p.name!='build.json'}
+         save(BUILD/'build.json',record)
++    assert record['complete']
+ 
+ 
+ def built():
+     verify();record=json.loads((BUILD/'build.json').read_text())
+     assert record['complete'] and record['source_index_sha256']==sha(INDEX)
+-    assert len(record['commands'])==7 and all(row['exit_code']==0 for row in record['commands'])
++    assert len(record['commands'])==1 and record['commands'][0]['exit_code']==0
++    assert record['commands'][0]['argv']==link_command()
++    assert record['original_build_sha256']==ORIGINAL_BUILD_SHA
++    assert record['protected_inputs_before']==record['protected_inputs_after']
++    assert record['legacy_executable_mode_before']==record['legacy_executable_mode_after']==LEGACY_MODE
++    assert (BUILD/'legacy').stat().st_mode & 0o7777 == LEGACY_MODE
++    assert os.access(BUILD/'legacy',os.X_OK)
++    for name,digest in record['protected_inputs_after'].items():assert sha(name)==digest,name
++    for name,digest in record['reused_artifacts_sha256'].items():
++        assert sha(BUILD/name)==sha(ORIGINAL_BUILD/name)==digest,name
+     for name,digest in record['artifacts'].items():assert sha(BUILD/name)==digest,name
+     for inputs in record['link_inputs'].values():
+         for name,digest in inputs.items():assert sha(name)==digest,name

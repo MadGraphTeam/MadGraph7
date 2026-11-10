@@ -1,0 +1,16 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1644,
+      "sha256": "262b6a797fc416344d1d6986c6dfb7df775d8a15705b1683db9f045f71f0145d"
+    },
+    "observations.json": {
+      "bytes": 105992,
+      "sha256": "114ca63f0c61129d07c34bb1ca0976c6cd4ed9f4959b262d508fa1fca254edf6"
+    }
+  },
+  "frozen_historical_index_sha256": "9f934ced6cfe06d2f01252b8a86d6c5f50cd7bd29890fd2bf78b9e5db40769e2",
+  "native_execution": false,
+  "no_historical_rewrite": true,
+  "schema": "precision-counter-correction-index-v1"
+}
