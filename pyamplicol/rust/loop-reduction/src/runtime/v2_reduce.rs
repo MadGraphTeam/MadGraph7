@@ -651,8 +651,13 @@ impl FastEngine {
             .collect();
         let amplitude = match self.amplitudes.entry((n, rank, self.unchecked)) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-            std::collections::hash_map::Entry::Vacant(entry) => entry
-                .insert(FastAmplitude::new(n, rank, fast_options(self.unchecked)).map_err(error)?),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let mut amplitude =
+                    FastAmplitude::new(n, rank, fast_options(self.unchecked)).map_err(error)?;
+                // NinjaRS's measured decision of flagged lanes, also unchecked.
+                amplitude.set_lane_check(Some(crate::lane_check()));
+                entry.insert(amplitude)
+            }
         };
         let numerator = self
             .numerators

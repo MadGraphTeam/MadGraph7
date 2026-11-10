@@ -1675,7 +1675,7 @@ dependencies = [
 [[package]]
 name = "ninjars"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=1c47878fe78a0a76250572bd5f10e09aa7e03e33#1c47878fe78a0a76250572bd5f10e09aa7e03e33"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=6626a426e3e66ef8fac3fe9ca5835d6fc1d885f5#6626a426e3e66ef8fac3fe9ca5835d6fc1d885f5"
 dependencies = [
  "feynkit-kinematics",
  "symbolica",
@@ -1685,7 +1685,7 @@ dependencies = [
 [[package]]
 name = "ninjars-graph"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=1c47878fe78a0a76250572bd5f10e09aa7e03e33#1c47878fe78a0a76250572bd5f10e09aa7e03e33"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=6626a426e3e66ef8fac3fe9ca5835d6fc1d885f5#6626a426e3e66ef8fac3fe9ca5835d6fc1d885f5"
 dependencies = [
  "feynkit-amplitude",
  "feynkit-generator",
@@ -1704,7 +1704,7 @@ dependencies = [
 [[package]]
 name = "ninjars-positional"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=1c47878fe78a0a76250572bd5f10e09aa7e03e33#1c47878fe78a0a76250572bd5f10e09aa7e03e33"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=6626a426e3e66ef8fac3fe9ca5835d6fc1d885f5#6626a426e3e66ef8fac3fe9ca5835d6fc1d885f5"
 dependencies = [
  "symbolica",
  "thiserror",
@@ -1713,7 +1713,7 @@ dependencies = [
 [[package]]
 name = "ninjars-symbolica"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=1c47878fe78a0a76250572bd5f10e09aa7e03e33#1c47878fe78a0a76250572bd5f10e09aa7e03e33"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=6626a426e3e66ef8fac3fe9ca5835d6fc1d885f5#6626a426e3e66ef8fac3fe9ca5835d6fc1d885f5"
 dependencies = [
  "ninjars",
  "ninjars-positional",

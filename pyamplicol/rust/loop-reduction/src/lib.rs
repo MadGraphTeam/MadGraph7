@@ -36,9 +36,10 @@ pub use ninjars::{
 use ninjars_graph::{CoefficientEvaluator, PolynomialCoefficientPlan, TensorCoefficientPlan};
 pub use ninjars_symbolica::PoleSelection;
 pub use ninjars_symbolica::SymbolicaSamplingScales;
+use ninjars::lane_check::{LaneCheck, LaneReference, ReferenceRequest};
 use ninjars_symbolica::{
-    OneLoopNativeMasters, PolynomialNumerator, SymbolicaAmplitudeKernels, SymbolicaCuts,
-    SymbolicaHighCuts, SymbolicaMasters,
+    HigherPrecisionReference, LiftToFloat, OneLoopNativeMasters, PolynomialNumerator,
+    SymbolicaAmplitudeKernels, SymbolicaCuts, SymbolicaHighCuts, SymbolicaMasters,
 };
 pub use oneloop::NativeFloat;
 use symbolica::{atom::Atom, evaluate::EvaluationDomain};
@@ -113,6 +114,38 @@ impl FastProfile {
     }
 }
 
+/// NinjaRS's measured decision of the lanes its conditioning screen flags
+/// (`ninjars::lane_check`, NinjaRS `docs/lane-conditioning.md`): a flagged
+/// family is evaluated again, whole, at a higher internal precision on
+/// consistent kinematics (`ninjars_symbolica::HigherPrecisionReference`), and
+/// a lane is refused only when its value deviates from that measurement by
+/// more than `2^-17` of its family's scale; served values are the engine's
+/// own. The reference builds and evaluates Symbolica expressions, so it runs
+/// under pyAmpliCol's library key on the calling thread (loop calls may use
+/// the package key, DECISIONS 2026-11-10 10:18 (5)); only flagged families
+/// reach it.
+struct KeyedReference(HigherPrecisionReference);
+
+impl<R: LiftToFloat + Send> LaneReference<Complex<R>> for KeyedReference {
+    fn finite_parts(
+        &mut self,
+        request: &ReferenceRequest<'_, Complex<R>>,
+        bits: u32,
+        out: &mut [Option<[f64; 2]>],
+    ) -> Result<()> {
+        let _unlock = pyamplicol::unlock();
+        self.0.finite_parts(request, bits, out)
+    }
+}
+
+/// The measured decision every NinjaRS engine of pyAmpliCol attaches
+/// ([`KeyedReference`]; `FastAmplitude::set_lane_check`,
+/// `Amplitude::set_lane_check`), in every setting (`reduction_unchecked`
+/// included).
+pub fn lane_check<R: LiftToFloat + Send + 'static>() -> LaneCheck<Complex<R>> {
+    LaneCheck::new(Box::new(KeyedReference(HigherPrecisionReference::new())))
+}
+
 struct ProfiledNumerator<'a, N> {
     inner: &'a mut N,
     profile: &'a mut FastProfile,
@@ -129,6 +162,12 @@ impl<N: FastNumerator> ProfiledNumerator<'_, N> {
 impl<N: FastNumerator> FastNumerator for ProfiledNumerator<'_, N> {
     fn rank(&self) -> usize {
         self.inner.rank()
+    }
+    fn reference_numerator(
+        &self,
+        lanes: &[usize],
+    ) -> Option<ninjars::lane_check::ReferenceNumerator<Complex<f64>>> {
+        self.inner.reference_numerator(lanes)
     }
     fn evaluate(
         &mut self,
@@ -328,9 +367,10 @@ where
     ) -> Result<Self> {
         let numerator =
             PolynomialNumerator::new(expression, variables, parameters, prototype.clone())?;
-        let amplitude =
+        let mut amplitude =
             SymbolicaAmplitudeKernels::new(propagators, numerator.rank(), prototype.clone())?
                 .into_amplitude(0)?;
+        amplitude.set_lane_check(Some(lane_check()));
         Ok(Self {
             numerator,
             amplitude,
@@ -427,7 +467,8 @@ impl<N: FastNumerator> FastReducer<N> {
         Self::with_amplitude(numerator, amplitude)
     }
 
-    fn with_amplitude(numerator: N, amplitude: FastAmplitude) -> Result<Self> {
+    fn with_amplitude(numerator: N, mut amplitude: FastAmplitude) -> Result<Self> {
+        amplitude.set_lane_check(Some(lane_check()));
         Ok(Self {
             amplitude,
             numerator,
