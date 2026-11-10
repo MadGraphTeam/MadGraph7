@@ -83,7 +83,7 @@ fn boost(p: &[f64; 4], beta: [f64; 3]) -> [f64; 4] {
 #[test]
 fn the_default_and_the_carrier_key() {
     assert_eq!(DEFAULT_VARIANT, Variant::ZShift);
-    assert!(!DEFAULT_BINARY64);
+    const { assert!(!DEFAULT_BINARY64) };
     assert_eq!(setting("z-shift"), Ok(Some(Variant::ZShift)));
     assert_eq!(setting("rescaling"), Ok(Some(Variant::Rescaling)));
     assert_eq!(setting("projection"), Ok(Some(Variant::Projection)));
@@ -181,6 +181,62 @@ fn binary64_madloop_variants_and_the_default_chain() {
     );
     assert_eq!(out.legs, legs);
     assert_eq!(out.record.warning_kind(), Some(WARNING_NOT_IMPROVED));
+}
+
+#[test]
+fn the_binary64_entry_of_the_tree_runtimes() {
+    // The tree C ABI's and the Python tree runtime's binary64 switch
+    // (`binary64::improve_point`, masses not squared): an exactly physical
+    // binary64 point passes unchanged; a rounded one is improved; the notes.
+    let tolerances = Tolerances::default();
+    let exact = vec![
+        [500.0, 0.0, 0.0, 500.0],
+        [500.0, 0.0, 0.0, -500.0],
+        [500.0, 300.0, 0.0, 400.0],
+        [500.0, -300.0, 0.0, -400.0],
+    ];
+    let massless = [0.0; 4];
+    assert!(binary64::exactly_physical(&exact, 2, &massless));
+    let out = binary64::improve_point(&exact, 2, &massless, Variant::ZShift, true, &tolerances);
+    assert_eq!(out.record.status, Status::Exact);
+    assert_eq!(out.legs, exact);
+    // Exact on a massive shell: 5^2 - 4^2 = 3^2 (m = 3), with exact sums.
+    let massive = vec![
+        [10.0, 0.0, 0.0, 10.0],
+        [10.0, 0.0, 0.0, -10.0],
+        [10.0, 0.0, 0.0, 8.0],
+        [10.0, 0.0, 0.0, -8.0],
+    ];
+    assert!(binary64::exactly_physical(&massive, 2, &[0.0, 0.0, 6.0, 6.0]));
+    assert!(!binary64::exactly_physical(&massive, 2, &[0.0, 0.0, 6.0, 5.0]));
+    // One ulp off conservation is not exact.
+    let mut off = exact.clone();
+    off[2][1] = f64::from_bits(300.0f64.to_bits() + 1);
+    assert!(!binary64::exactly_physical(&off, 2, &massless));
+    // A rounded massive point in its beam frame: ORIG produces it, exact.
+    let (legs, m2) = binary64_point(2, &[173.0], 0);
+    let masses: Vec<f64> = m2.iter().map(|m2| m2.sqrt()).collect();
+    assert!(!binary64::exactly_physical(&legs, 2, &masses));
+    let out = binary64::improve_point(&legs, 2, &masses, Variant::ZShift, true, &tolerances);
+    assert_eq!(out.record.produced, Some(Variant::ZShift), "{:?}", out.record);
+    assert!(out.record.exactness.as_ref().unwrap().exact, "{:?}", out.record);
+    // The same as `improve` on the rounded squares (one source of targets).
+    let squares: Vec<f64> = masses.iter().map(|m| m * m).collect();
+    let direct = improve(&legs, 2, &squares, Variant::ZShift, true, &tolerances);
+    assert_eq!(out.legs, direct.legs);
+    // The notes: a summary line and every typed warning.
+    let (generic, m2) = binary64_point(2, &[173.0], 1);
+    let masses: Vec<f64> = m2.iter().map(|m2| m2.sqrt()).collect();
+    let forced = binary64::improve_point(&generic, 2, &masses, Variant::ZShift, false, &tolerances);
+    let records = [out.record.clone(), forced.record.clone()];
+    let lines = notes(&records, "double", 16);
+    assert_eq!(
+        lines[0],
+        "kinematics-improvement: double at precision 16 (z-shift): not-improved 1, z-shift 1"
+    );
+    assert_eq!(lines.len(), 2);
+    assert!(lines[1].starts_with("point 1: kinematics-not-improved: "), "{lines:?}");
+    assert!(notes(&[], "double", 16).is_empty());
 }
 
 #[test]
@@ -412,7 +468,10 @@ mod exact_points {
         );
     }
 
-    fn sets() -> Vec<(&'static str, Vec<Leg>, Vec<Rational>, usize, bool)> {
+    /// (name, legs, squared masses, initial states, beams along z).
+    type Set = (&'static str, Vec<Leg>, Vec<Rational>, usize, bool);
+
+    fn sets() -> Vec<Set> {
         let mut out = Vec::new();
         for (name, pairs, massive, along_z) in [
             ("2->2 massless", 1, 0, 0),
@@ -1020,7 +1079,7 @@ mod exact_points {
         let pt = q(1, 4);
         let pz = q(1, 4000);
         let m2 = r(125 * 125);
-        let e3 = (&(&(&m2 + &(&pt * &pt)) + &(&pz * &pz)))
+        let e3 = (&(&m2 + &(&pt * &pt)) + &(&pz * &pz))
             .to_multi_prec_float(400)
             .sqrt()
             .to_rational();

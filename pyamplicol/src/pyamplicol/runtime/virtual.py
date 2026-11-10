@@ -1416,7 +1416,10 @@ class V2ObservablesRuntime:
         self._failed(failures, on_failure)
         return with_kinematics(
             self._evaluation(
-                [None if result is None else result[column.key] for result in per_point],
+                [
+                    None if result is None else result[column.key]
+                    for result in per_point
+                ],
                 failures,
                 arithmetic,
                 carrier,

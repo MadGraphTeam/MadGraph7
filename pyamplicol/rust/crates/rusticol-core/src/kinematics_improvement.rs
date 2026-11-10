@@ -76,6 +76,11 @@
 //! legs roles (particle 1, the last particle, the initial state with
 //! pz > 0), so a permuted leg order is another improvement.
 
+// The negated comparisons are deliberate (a NaN fails every bound test),
+// and the index loops follow improve_ps.inc and the linear algebra's
+// formulas term by term (the order of the roundings is part of the result).
+#![allow(clippy::neg_cmp_op_on_partial_ord, clippy::needless_range_loop)]
+
 use std::fmt::Debug;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
@@ -1016,9 +1021,7 @@ impl<T: PsReal> Ctx<T> {
                 buff[j] = buff[j].clone() - leg[j].clone();
             }
         }
-        for j in 1..4 {
-            new[n - 1][j] = buff[j].clone();
-        }
+        new[n - 1][1..4].clone_from_slice(&buff[1..4]);
         let seeds = [
             self.int(1),
             self.int(11) / self.int(10),
@@ -1317,6 +1320,128 @@ impl<T: PsReal> Ctx<T> {
     }
 }
 
+/// The warnings-channel lines of one call's records (the tree runtimes'
+/// record, m-lit lit-psimprove (G4)): one summary line (the requested
+/// variant and, per producer or status, its count) and every typed warning.
+/// The Python tree runtime writes the same lines (`runtime/backend.py`).
+pub fn notes(records: &[Record], carrier: &str, precision: u32) -> Vec<String> {
+    let Some(first) = records.first() else {
+        return Vec::new();
+    };
+    let mut counts = std::collections::BTreeMap::<&str, usize>::new();
+    for record in records {
+        let key = record
+            .produced
+            .map_or_else(|| record.status.name(), Variant::name);
+        *counts.entry(key).or_default() += 1;
+    }
+    let summary = counts
+        .iter()
+        .map(|(key, count)| format!("{key} {count}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut lines = vec![format!(
+        "kinematics-improvement: {carrier} at precision {precision} ({}): {summary}",
+        first.requested.name()
+    )];
+    lines.extend(
+        records
+            .iter()
+            .enumerate()
+            .filter_map(|(index, record)| record.warning().map(|text| format!("point {index}: {text}"))),
+    );
+    lines
+}
+
+/// The binary64 entry of the tree runtimes (the binary64 switch of the tree
+/// C ABI and of the Python tree runtime): binary64 points toward the
+/// binary64 masses the external wavefunctions use, without Symbolica (the
+/// tree C ABI builds without `symbolica-runtime`). The counterpart of
+/// `improve_exact` in binary64 on binary64 inputs.
+pub mod binary64 {
+    use super::{Improved, Record, Tolerances, Variant, improve};
+
+    /// `a b` as the exact pair `(p, e)` with `p + e = a b` (an FMA
+    /// error-free product; exact unless `a b` underflows).
+    fn two_product(a: f64, b: f64) -> [f64; 2] {
+        let p = a * b;
+        [p, a.mul_add(b, -p)]
+    }
+
+    /// Whether the exact sum of `terms` is zero: Shewchuk's exact partials
+    /// (the algorithm of Python's `math.fsum`) hold the exact sum as
+    /// non-overlapping partials, which sum to zero only if every one is
+    /// zero.
+    fn exact_sum_is_zero(terms: impl IntoIterator<Item = f64>) -> bool {
+        let mut partials: Vec<f64> = Vec::new();
+        for mut x in terms {
+            let mut kept = 0;
+            for index in 0..partials.len() {
+                let mut y = partials[index];
+                if x.abs() < y.abs() {
+                    std::mem::swap(&mut x, &mut y);
+                }
+                let high = x + y;
+                let low = y - (high - x);
+                if low != 0.0 {
+                    partials[kept] = low;
+                    kept += 1;
+                }
+                x = high;
+            }
+            partials.truncate(kept);
+            partials.push(x);
+        }
+        partials.iter().all(|partial| *partial == 0.0)
+    }
+
+    /// Whether a binary64 point is EXACTLY physical: every leg exactly on
+    /// the shell of its binary64 mass (`E² - p² - m² = 0` in exact
+    /// arithmetic on the binary64 values) and every component exactly
+    /// conserved. Exact above binary64's underflow (a defect below the
+    /// square of the smallest normal number is not seen).
+    pub fn exactly_physical(legs: &[[f64; 4]], n_initial: usize, masses: &[f64]) -> bool {
+        let shells = legs.iter().zip(masses).all(|(leg, mass)| {
+            let terms = two_product(leg[0], leg[0])
+                .into_iter()
+                .chain((1..4).flat_map(|i| two_product(leg[i], leg[i]).map(|t| -t)))
+                .chain(two_product(*mass, *mass).map(|t| -t));
+            exact_sum_is_zero(terms)
+        });
+        shells
+            && (0..4).all(|mu| {
+                exact_sum_is_zero(legs.iter().enumerate().map(|(k, leg)| {
+                    if k < n_initial { leg[mu] } else { -leg[mu] }
+                }))
+            })
+    }
+
+    /// Improve one binary64 point toward the binary64 masses `masses` (each
+    /// leg's target the square `m²` rounded once, as `improve_exact` rounds
+    /// an exact target): an exactly physical point is passed unchanged
+    /// (status "exact", as `improve_exact`), otherwise [`improve`] runs in
+    /// binary64 (with MadLoop's chain when `fallback`).
+    pub fn improve_point(
+        legs: &[[f64; 4]],
+        n_initial: usize,
+        masses: &[f64],
+        variant: Variant,
+        fallback: bool,
+        tolerances: &Tolerances,
+    ) -> Improved<f64> {
+        assert_eq!(legs.len(), masses.len(), "one mass per leg");
+        let finite = legs.iter().flatten().chain(masses).all(|x| x.is_finite());
+        if finite && exactly_physical(legs, n_initial, masses) {
+            return Improved {
+                legs: legs.to_vec(),
+                record: Record::exact(variant, fallback),
+            };
+        }
+        let masses2: Vec<f64> = masses.iter().map(|mass| mass * mass).collect();
+        improve(legs, n_initial, &masses2, variant, fallback, tolerances)
+    }
+}
+
 #[cfg(feature = "symbolica-runtime")]
 pub use exact::{Arithmetic, exactly_physical, improve_exact};
 
@@ -1386,6 +1511,7 @@ mod exact {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run<T: PsReal>(
         legs: &[[Rational; 4]],
         n_initial: usize,
@@ -1458,7 +1584,7 @@ mod exact {
                 tolerances,
                 |r: &Rational| -> DoubleFloat { r.into() },
                 |x: &DoubleFloat| {
-                    let parts = x.clone().into_inner();
+                    let parts = (*x).into_inner();
                     &Rational::try_from(parts.hi()).expect("finite")
                         + &Rational::try_from(parts.lo()).expect("finite")
                 },

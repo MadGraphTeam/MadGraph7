@@ -146,7 +146,9 @@ def improve(
     JSON records, ``kinematics_improvement::Record``). ``fallback=False``
     runs the variant alone (a forced variant)."""
 
-    texts = [[[str(Fraction(str(x))) for x in leg] for leg in point] for point in points]
+    texts = [
+        [[str(Fraction(str(x))) for x in leg] for leg in point] for point in points
+    ]
     masses = [None if m is None else str(Fraction(m)) for m in masses2]
     extra = dict(tolerances or {})
     out, records = _native().improve_kinematics(
@@ -313,18 +315,18 @@ def with_kinematics(evaluation: Any, records: Sequence[Any]) -> Any:
 
 __all__ = [
     "BINARY64",
-    "LevelImprover",
-    "MassProvider",
-    "initial_count",
-    "with_kinematics",
     "SETTING",
     "KinematicsSettings",
+    "LevelImprover",
+    "MassProvider",
     "binary64_value",
     "default_binary64",
     "default_setting",
     "improve",
+    "initial_count",
     "off_record",
     "policy",
     "resolve",
     "setting_value",
+    "with_kinematics",
 ]

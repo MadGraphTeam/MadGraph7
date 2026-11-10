@@ -476,6 +476,25 @@ int rusticol_runtime_set_model_parameters_json(
     const char *path
 );
 
+/* Kinematics improvement of later f64 evaluations (m-lit lit-psimprove;
+ * additive, ABI version 1 kept): setting is "z-shift" (MadLoop's
+ * ImprovePSPoint 2 with MadLoop's fallback to 1, the default), "rescaling"
+ * (MadLoop 1), "projection" (the frame-independent minimal-norm projection)
+ * or "off". Every entry of this ABI evaluates in binary64, so the variant
+ * runs only with the binary64 switch on (binary64 = 1; default 0): each
+ * point is then moved onto exact conservation and the external shells in
+ * binary64 before it is evaluated, and the records reach
+ * rusticol_runtime_take_warnings_json. No licence of any kind is needed.
+ */
+int rusticol_runtime_set_kinematics_improvement(
+    RusticolRuntimeHandle *handle,
+    const char *setting
+);
+int rusticol_runtime_set_kinematics_improvement_binary64(
+    RusticolRuntimeHandle *handle,
+    int binary64
+);
+
 int rusticol_runtime_mute_warnings(
     RusticolRuntimeHandle *handle,
     int muted

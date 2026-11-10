@@ -1057,6 +1057,41 @@ impl Runtime {
             .map_err(python_error)
     }
 
+    /// The binary64 kinematics improvement of ``momenta`` with ``variant``
+    /// and MadLoop's chain (m-lit lit-psimprove; the tree runtime's binary64
+    /// switch, the same native implementation as the tree C ABI's): the
+    /// improved points (``[point][leg][E, px, py, pz]`` floats) and one
+    /// record per point as JSON text.
+    fn improve_f64(
+        &self,
+        momenta: &Bound<'_, PyAny>,
+        variant: &str,
+    ) -> PyResult<(Vec<Vec<[f64; 4]>>, Vec<String>)> {
+        let variant = rusticol_core::kinematics_improvement::setting(variant)
+            .map_err(PyValueError::new_err)?
+            .ok_or_else(|| PyValueError::new_err("the binary64 improvement needs a variant"))?;
+        let external_count = self.runtime.external_count();
+        let momenta = parse_f64_momenta(momenta, external_count)?;
+        let (points, records) = self
+            .runtime
+            .improve_f64_points(momenta.as_slice(), momenta.point_count(), variant)
+            .map_err(python_error)?;
+        let points = points
+            .chunks_exact(4 * external_count)
+            .map(|point| {
+                point
+                    .chunks_exact(4)
+                    .map(|leg| [leg[0], leg[1], leg[2], leg[3]])
+                    .collect()
+            })
+            .collect();
+        let records = records
+            .iter()
+            .map(|record| record.to_json().to_string())
+            .collect();
+        Ok((points, records))
+    }
+
     fn mute_warnings(&mut self) {
         self.runtime.mute_warnings();
     }

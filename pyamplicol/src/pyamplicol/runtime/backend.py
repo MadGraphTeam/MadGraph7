@@ -639,7 +639,7 @@ class RusticolRuntimeBackend:
             if kinematics_improvement_binary64 is None
             else kinematics.binary64_value(kinematics_improvement_binary64)
         )
-        # The improvement's records of the calls since the last
+        # The improvement's record of the most recent improved call, read by
         # ``take_warnings`` (the tree runtime's warnings channel, (G4)).
         self._kinematics_notes: list[str] = []
         self._kinematics_muted = False
@@ -720,7 +720,11 @@ class RusticolRuntimeBackend:
         carrier = arithmetic or ("double" if precision == 16 else "arbitrary")
         if not momenta:
             return momenta
-        if carrier == "double" and binary64 is None and self._kinematics_binary64 is None:
+        if (
+            carrier == "double"
+            and binary64 is None
+            and self._kinematics_binary64 is None
+        ):
             # The binary64 default is off (the native policy's
             # ``DEFAULT_BINARY64``, USER ~01:56): the native f64 path runs as
             # before, one branch per call, without consulting the loop
@@ -737,6 +741,18 @@ class RusticolRuntimeBackend:
         variant = settings.variant(carrier)
         if variant is None:
             return momenta
+        if carrier == "double":
+            # Binary64 (the switch): the native tree runtime's binary64
+            # implementation toward the binary64 masses of its external
+            # wavefunctions, no Symbolica operation (the tree C ABI's, so
+            # both give one improved point for one binary64 input).
+            improved_f64, texts = _invoke(
+                self._native_module, self._runtime.improve_f64, momenta, variant
+            )
+            self._note_kinematics(
+                [json.loads(text) for text in texts], carrier, precision
+            )
+            return improved_f64
         from .symbolica_exact import _decimal, _working_precision
 
         points = [
@@ -749,10 +765,6 @@ class RusticolRuntimeBackend:
             points, initial, masses, carrier, digits, variant
         )
         self._note_kinematics(records, carrier, precision)
-        if carrier == "double":
-            return [
-                [[float(Decimal(x)) for x in leg] for leg in point] for point in improved
-            ]
         return improved
 
     def _tree_kinematics_masses(
@@ -791,15 +803,22 @@ class RusticolRuntimeBackend:
             key = record["produced"] or record["status"]
             counts[key] = counts.get(key, 0) + 1
         summary = ", ".join(f"{key} {count}" for key, count in sorted(counts.items()))
-        self._kinematics_notes.append(
-            f"kinematics-improvement: {carrier} at precision {precision} "
-            f"({records[0]['requested']}): {summary}"
-        )
-        self._kinematics_notes.extend(
+        typed = [
             f"point {index}: {record['warning_text']}"
             for index, record in enumerate(records)
             if record["warning_text"]
-        )
+        ]
+        # The record of the most recent improved call (the tree C ABI's
+        # lines, ``kinematics_improvement::notes``), replaced by the next one
+        # so it stays bounded; its typed warnings are also Python warnings,
+        # as the native tree warnings are, so they are never silent.
+        self._kinematics_notes = [
+            f"kinematics-improvement: {carrier} at precision {precision} "
+            f"({records[0]['requested']}): {summary}",
+            *typed,
+        ]
+        for text in typed:
+            warnings.warn(text, stacklevel=4)
 
     def _on_the_fly_runtime_state_census(self) -> Mapping[str, object] | None:
         owns_companion = (

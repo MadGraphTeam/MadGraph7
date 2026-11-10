@@ -153,7 +153,9 @@ def _generation_resource_resolution(
     )
 
 
-def _kinematics_options(setting: str | None, binary64: bool | None) -> dict[str, object]:
+def _kinematics_options(
+    setting: str | None, binary64: bool | None
+) -> dict[str, object]:
     """The kinematics improvement options of a load or a call, validated
     (``pyamplicol.kinematics``: the native policy's values and refusals),
     forwarded only when set."""
@@ -164,9 +166,7 @@ def _kinematics_options(setting: str | None, binary64: bool | None) -> dict[str,
     if setting is not None:
         options["kinematics_improvement"] = kinematics.setting_value(setting)
     if binary64 is not None:
-        options["kinematics_improvement_binary64"] = kinematics.binary64_value(
-            binary64
-        )
+        options["kinematics_improvement_binary64"] = kinematics.binary64_value(binary64)
     return options
 
 
@@ -1737,6 +1737,22 @@ class Runtime:
 
     def set_model_parameter(self, name: str, value: complex | float | int) -> None:
         self.set_model_parameters({name: value})
+
+    def take_warnings(self) -> tuple[str, ...]:
+        """Consume a tree runtime's pending warnings: the native runtime's
+        not yet emitted ones and the kinematics improvement's record of the
+        most recent improved call (m-lit lit-psimprove: a summary line, e.g.
+        ``"kinematics-improvement: arbitrary at precision 32 (z-shift):
+        z-shift 4"``, and every typed warning, which is also issued as a
+        Python warning), the lines the C ABI's
+        ``rusticol_runtime_take_warnings_json`` returns. Nothing while the
+        warnings are muted; ``()`` for a virtual runtime (its records are in
+        its results)."""
+
+        operation = getattr(self._backend, "take_warnings", None)
+        if self._virtual or not callable(operation):
+            return ()
+        return tuple(operation())
 
     def mute_warnings(self) -> None:
         self._backend.mute_warnings()

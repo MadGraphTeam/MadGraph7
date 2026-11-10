@@ -1995,7 +1995,9 @@ def point_probes(
     for carrier in carriers:
         if not pending:
             break
-        rung, improved = (point, None) if improve is None else improve(point, scale, carrier)
+        rung, improved = (
+            (point, None) if improve is None else improve(point, scale, carrier)
+        )
         wards = [None, *(gauge_ward(leg, (1, 0), rung) for leg in legs)]
         if improved is not None:
             for i in pending:

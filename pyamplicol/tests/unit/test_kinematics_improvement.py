@@ -122,9 +122,18 @@ def test_the_projection_is_exact_and_moves_by_the_inputs_defect(loop_native):
 
     for case in _fixture()["cases"]:
         masses = [Fraction(m) ** 2 for m in case["masses"]]
-        for arithmetic, digits in (("double-double", None), ("arbitrary", 50), ("arbitrary", 100)):
-            (out,), (record,) = kinematics.improve(
-                [case["input"]], case["n_initial"], masses, arithmetic, digits, "projection"
+        for arithmetic, digits in (
+            ("double-double", None),
+            ("arbitrary", 50),
+            ("arbitrary", 100),
+        ):
+            (_out,), (record,) = kinematics.improve(
+                [case["input"]],
+                case["n_initial"],
+                masses,
+                arithmetic,
+                digits,
+                "projection",
             )
             assert record["produced"] == "projection", (case["name"], record)
             assert record["exactness"]["exact"], (case["name"], arithmetic, record)
@@ -160,8 +169,7 @@ def _beam_point() -> list[list[str]]:
     p3 = [e, e * s * math.cos(phi), e * s * math.sin(phi), e * c]
     p4 = [e, -p3[1], -p3[2], -p3[3]]
     return [
-        [str(x) for x in leg]
-        for leg in ([e, 0.0, 0.0, e], [e, 0.0, 0.0, -e], p3, p4)
+        [str(x) for x in leg] for leg in ([e, 0.0, 0.0, e], [e, 0.0, 0.0, -e], p3, p4)
     ]
 
 
@@ -177,7 +185,12 @@ def _rotated(point: list[list[str]]) -> list[list[str]]:
     return out
 
 
-EXACT = [["500", "0", "0", "500"], ["500", "0", "0", "-500"], ["500", "300", "0", "400"], ["500", "-300", "0", "-400"]]
+EXACT = [
+    ["500", "0", "0", "500"],
+    ["500", "0", "0", "-500"],
+    ["500", "300", "0", "400"],
+    ["500", "-300", "0", "-400"],
+]
 
 CALL = {"mu_r2": "8315.06", "poles": "none", "on_failure": "return"}
 
@@ -206,7 +219,9 @@ def test_the_summed_route_in_double_double_and_arbitrary_precision(gg):
         assert record.status == "improved" and record.produced == "z-shift", record
         assert record.attempts == (("z-shift", 0),) and record.exact, record
         assert record.warning is None
-        improved, _ = backend.improved_points([point], arithmetic=carrier, **digits, mu_r2=CALL["mu_r2"])
+        improved, _ = backend.improved_points(
+            [point], arithmetic=carrier, **digits, mu_r2=CALL["mu_r2"]
+        )
         _same(found, runtime.evaluate(improved, kinematics_improvement="off", **call))
         off = runtime.evaluate([point], kinematics_improvement="off", **call)
         assert off.diagnostics[0].kinematics.status == "off"
@@ -221,20 +236,32 @@ def test_the_summed_route_in_double_double_and_arbitrary_precision(gg):
     checks = VirtualStabilityChecks(("z:3/5:4/5",), True)
     call = {**CALL, "arithmetic": "double-double", "stability_checks": checks}
     found = runtime.evaluate([point], **call)
-    improved, _ = backend.improved_points([point], arithmetic="double-double", mu_r2=CALL["mu_r2"])
+    improved, _ = backend.improved_points(
+        [point], arithmetic="double-double", mu_r2=CALL["mu_r2"]
+    )
     reference = runtime.evaluate(improved, kinematics_improvement="off", **call)
     assert repr(found.values) == repr(reference.values)
-    assert repr(found.stability) == repr(reference.stability) and found.stability[0] is not None
+    assert (
+        repr(found.stability) == repr(reference.stability)
+        and found.stability[0] is not None
+    )
     # Binary64: off by default (no record), bitwise the unimproved values.
     found = runtime.evaluate([point], arithmetic="double", **CALL)
     assert found.diagnostics[0].kinematics is None
-    _same(found, runtime.evaluate([point], arithmetic="double", kinematics_improvement="off", **CALL))
+    _same(
+        found,
+        runtime.evaluate(
+            [point], arithmetic="double", kinematics_improvement="off", **CALL
+        ),
+    )
     # The binary64 switch.
     switched = runtime.evaluate(
         [point], arithmetic="double", kinematics_improvement_binary64=True, **CALL
     )
     assert switched.diagnostics[0].kinematics.status in ("improved", "exact")
-    improved, _ = backend.improved_points([point], arithmetic="double", mu_r2=CALL["mu_r2"])
+    improved, _ = backend.improved_points(
+        [point], arithmetic="double", mu_r2=CALL["mu_r2"]
+    )
     _same(switched, runtime.evaluate(improved, arithmetic="double", **CALL))
 
 
@@ -281,7 +308,9 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
     backend = runtime._backend
     point = _beam_point()
     call = {**CALL, "arithmetic": "double-double"}
-    improved, _ = backend.improved_points([point], arithmetic="double-double", mu_r2=CALL["mu_r2"])
+    improved, _ = backend.improved_points(
+        [point], arithmetic="double-double", mu_r2=CALL["mu_r2"]
+    )
     found = runtime.evaluate_resolved([point], **call)
     assert found.diagnostics[0].kinematics.produced == "z-shift"
     assert repr(found.values) == repr(
@@ -311,9 +340,15 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
     assert by_carrier["double"] is None
     assert by_carrier["double-double"].produced == "z-shift"
     assert by_carrier["arbitrary"].produced == "z-shift"
-    improved40, _ = backend.improved_points([point], arithmetic="arbitrary", precision=40, mu_r2=CALL["mu_r2"])
+    improved40, _ = backend.improved_points(
+        [point], arithmetic="arbitrary", precision=40, mu_r2=CALL["mu_r2"]
+    )
     direct = runtime.evaluate(
-        improved40, arithmetic="arbitrary", precision=40, kinematics_improvement="off", **{k: v for k, v in CALL.items()}
+        improved40,
+        arithmetic="arbitrary",
+        precision=40,
+        kinematics_improvement="off",
+        **{k: v for k, v in CALL.items()},
     )
     assert repr(rescued.values[0]) == repr(direct.values[0])
 
@@ -326,7 +361,6 @@ def tree(tmp_path_factory):
     """u u~ > t t~ (built-in SM, recurrence) through the public Generator."""
 
     from pyamplicol import ColorCorrelator, CorrelatorConfig, Generator, ModelSource
-
     from tests.integration.test_builtin_sm_normalization import _config
 
     artifact = tmp_path_factory.mktemp("ki-tree") / "artifact"
@@ -367,8 +401,12 @@ def test_the_tree_higher_precision_modes_and_the_binary64_switch(tree):
     texts = [[str(x) for x in leg] for leg in point]
     for precision in (32, 50):
         found = runtime.evaluate([point], precision=precision)
-        notes = runtime.take_warnings() if hasattr(runtime, "take_warnings") else backend.take_warnings()
-        assert any(note.startswith("kinematics-improvement: arbitrary") for note in notes), notes
+        notes = runtime.take_warnings()
+        assert any(
+            note.startswith("kinematics-improvement: arbitrary") for note in notes
+        ), notes
+        # The record of the most recent call only (bounded), consumed.
+        assert len(notes) == 1 and runtime.take_warnings() == (), notes
         from pyamplicol.runtime.symbolica_exact import _working_precision
 
         masses, initial = backend._tree_kinematics_masses(texts, precision)
@@ -381,17 +419,31 @@ def test_the_tree_higher_precision_modes_and_the_binary64_switch(tree):
             [improved], precision=precision, kinematics_improvement="off"
         )
         resolved = runtime.evaluate_resolved([point], precision=precision)
-        assert resolved.values == runtime.evaluate_resolved(
-            [improved], precision=precision, kinematics_improvement="off"
-        ).values
+        assert (
+            resolved.values
+            == runtime.evaluate_resolved(
+                [improved], precision=precision, kinematics_improvement="off"
+            ).values
+        )
     # Binary64: bitwise the unimproved point unless switched on.
     plain = runtime.evaluate([point])
     assert plain == runtime.evaluate([point], kinematics_improvement="off")
     switched = runtime.evaluate([point], kinematics_improvement_binary64=True)
-    (b64,), (record,) = kinematics.improve(
-        [texts], 2, backend._tree_kinematics_masses(texts, 16)[0], "double", None, "z-shift"
+    assert runtime.take_warnings() == (
+        "kinematics-improvement: double at precision 16 (z-shift): z-shift 1",
     )
-    assert switched == runtime.evaluate([[[float(x) for x in leg] for leg in b64]])
+    # The native tree runtime's binary64 implementation (the tree C ABI's),
+    # toward the binary64 masses of its external wavefunctions.
+    (b64,), (text,) = backend._runtime.improve_f64([point], "z-shift")
+    record = json.loads(text)
+    assert record["produced"] == "z-shift" and record["exactness"]["exact"], record
+    assert b64 != point
+    assert switched == runtime.evaluate([b64])
+    # Muted: no record.
+    runtime.mute_warnings()
+    runtime.evaluate([point], kinematics_improvement_binary64=True)
+    runtime.unmute_warnings()
+    assert runtime.take_warnings() == ()
 
 
 def test_the_tree_correlated_default_is_improved_at_16_digits(tree):
@@ -413,7 +465,9 @@ def test_the_tree_correlated_default_is_improved_at_16_digits(tree):
     )
     assert record["produced"] == "z-shift"
     found = runtime.evaluate_correlated([point])
-    assert found == runtime.evaluate_correlated([improved], kinematics_improvement="off")
+    assert found == runtime.evaluate_correlated(
+        [improved], kinematics_improvement="off"
+    )
     assert runtime.evaluate_correlated([point], kinematics_improvement="off") == (
         runtime.evaluate_correlated([texts], kinematics_improvement="off")
     )
@@ -461,15 +515,22 @@ def test_the_loop_sdk_improves_like_the_python_api(gg):
     exact = [[str(Decimal(float(c))) for c in leg] for leg in point]
     runtime = Runtime.load(gg, process="gg")
     python = runtime.evaluate(
-        [exact], arithmetic="double-double", mu_r2=str(Decimal(8315.06)), poles="all"
+        [exact],
+        arithmetic="double-double",
+        # The exact binary64 value of the SDK's mu_R^2 argument.
+        mu_r2=str(Decimal(8315.06)),  # noqa: RUF032
+        poles="all",
     )
 
     def call(setting=None, binary64=None, arithmetic="double-double"):
         handle = _open(sdk, gg, "gg")
         try:
-            assert sdk.rusticol_virtual_set_arithmetic(
-                handle, arithmetic.encode(), ctypes.c_uint32(0)
-            ) == 0, _error(sdk)
+            assert (
+                sdk.rusticol_virtual_set_arithmetic(
+                    handle, arithmetic.encode(), ctypes.c_uint32(0)
+                )
+                == 0
+            ), _error(sdk)
             if setting is not None:
                 status = sdk.rusticol_virtual_set_kinematics_improvement(
                     handle, setting.encode()
@@ -493,8 +554,12 @@ def test_the_loop_sdk_improves_like_the_python_api(gg):
             assert status == 0, _error(sdk)
             try:
                 shape = _ResultShape()
-                assert sdk.rusticol_virtual_result_shape(result, ctypes.byref(shape)) == 0
-                diagnostics = _json_of(sdk.rusticol_virtual_result_diagnostics_json, result)
+                assert (
+                    sdk.rusticol_virtual_result_shape(result, ctypes.byref(shape)) == 0
+                )
+                diagnostics = _json_of(
+                    sdk.rusticol_virtual_result_diagnostics_json, result
+                )
                 decimal = _json_of(sdk.rusticol_virtual_result_decimal_json, result)
             finally:
                 sdk.rusticol_virtual_result_free(result)
@@ -509,9 +574,10 @@ def test_the_loop_sdk_improves_like_the_python_api(gg):
     # exactness number included) and the same values.
     mine = python.diagnostics[0].kinematics
     assert (record["status"], record["produced"]) == (mine.status, mine.produced)
-    assert [tuple(a) for a in (
-        (attempt["step"], attempt["code"]) for attempt in record["attempts"]
-    )] == list(mine.attempts)
+    assert [
+        tuple(a)
+        for a in ((attempt["step"], attempt["code"]) for attempt in record["attempts"])
+    ] == list(mine.attempts)
     assert record["exactness"]["shell"] == mine.shell
     assert record["exactness"]["conservation"] == mine.conservation
     assert record["moved"] == mine.moved
