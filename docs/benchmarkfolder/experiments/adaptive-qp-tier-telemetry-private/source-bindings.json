@@ -1,0 +1,40 @@
+{
+  "abi_words": [
+    "evaluations256",
+    "eligible256_refusals",
+    "evaluations512",
+    "successes512",
+    "failures512",
+    "cache256_hits",
+    "cache512_hits",
+    "check256_evals",
+    "check512_evals",
+    "last_dispatched_output_bits",
+    "last_eligible_powered_condition_f64_raw_bits"
+  ],
+  "accepted_amplitude_tier": "unknown; no return-code or last-dispatch inference",
+  "attribution": "before/after cumulative deltas only in same live context generation; no reset API",
+  "compatibility": "private GNU weak getter symbol; absent released ABI1 symbol returns unsupported without loader calls",
+  "limits": {
+    "cpu": 12,
+    "jobs": 1,
+    "total_seconds": 120
+  },
+  "mock_executables": 2,
+  "mock_results_sha256": "bbcad676398a1d1aa652b21451bc2c96ae7082348ddc01597df415326723da7d",
+  "native_qualification": false,
+  "production_and_adaptive_sources": {
+    "docs/benchmarkfolder/experiments/adaptive-qp-rescue-private-build/revision-3/source/source-index.json": "f5550b8719e76e177ad6b73d456cc655815770eb7092a8fabdc776c415c03213",
+    "docs/benchmarkfolder/experiments/adaptive-qp-rescue-private-build/revision-3/source/src/lib.rs": "23c21927c5c6168f7684d2b58ccfc2bf1fb265b05212a4f5df2c36ccb8847ad9",
+    "docs/benchmarkfolder/experiments/adaptive-qp-rescue-private-build/revision-3/source/tirust.h": "6846ea589efeb288c88c1c4b1a83379456a255954eef6fc9042e88497fbe1584",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-runner2/supervise.py": "ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42",
+    "vendor/tirust/mtirust.f90": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+    "vendor/tirust/tirust.h": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+  },
+  "production_source_modified": false,
+  "real_reducer_linked_or_called": false,
+  "schema": 1,
+  "scope": "Unapplied additive Fortran/C telemetry transport with mocks only; no real adaptive bridge load",
+  "successes256": "unknown; not derivable from this getter",
+  "tests_passed": 24
+}
