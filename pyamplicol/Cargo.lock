@@ -2327,6 +2327,7 @@ dependencies = [
 name = "rusticol-core"
 version = "1.0.2"
 dependencies = [
+ "base64",
  "bincode",
  "brotli",
  "flate2",

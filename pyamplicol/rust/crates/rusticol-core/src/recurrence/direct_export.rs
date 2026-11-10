@@ -79,18 +79,14 @@ pub enum DirectExportKernelInput {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct DirectExportKernelOutput {
-    pub component: u32,
-    pub imaginary: bool,
-    pub amplitude: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DirectExportKernelBinding {
+    pub id: u32,
     pub sha256: String,
-    pub inputs: Vec<DirectExportKernelInput>,
-    /// Real/imaginary output planes in the saved application's output order.
-    pub outputs: Vec<DirectExportKernelOutput>,
+    pub inputs: Vec<RelativeKernelInput>,
+    /// Real/imaginary relative projections in application output order.
+    pub outputs: Vec<RelativeKernelInput>,
+    /// Bypass output scaling; the row's set/add mode still applies.
+    pub direct: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -104,7 +100,7 @@ pub enum DirectExportInstruction {
         amplitude: u32,
     },
     Source {
-        source: DirectExportSource,
+        source: u32,
     },
     Vertex {
         vertex: String,
@@ -152,11 +148,15 @@ pub enum DirectExportInstruction {
         factor: ExportComplex,
     },
     Kernel {
-        binding: DirectExportKernelBinding,
+        binding: u32,
+        destination: u32,
+        amplitude: bool,
+        left: Option<u32>,
+        right: Option<u32>,
+        left_momentum: Option<u32>,
+        right_momentum: Option<u32>,
         mode: DirectExportMode,
         factor: ExportComplex,
-        /// True only when Rusticol bypasses its complex scaling adapter.
-        direct: bool,
     },
 }
 
@@ -175,7 +175,9 @@ pub(crate) enum DirectExportExecutor {
     },
 }
 
-pub(crate) enum RelativeKernelInput {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RelativeKernelInput {
     Parent {
         parent: u8,
         component: u16,
@@ -190,10 +192,56 @@ pub(crate) enum RelativeKernelInput {
         operand: u8,
         component: u16,
     },
-    Literal(f64),
+    Literal {
+        value: f64,
+    },
     Factor {
         imaginary: bool,
     },
+}
+
+impl PartialEq for RelativeKernelInput {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Parent {
+                    parent: a,
+                    component: b,
+                    imaginary: c,
+                },
+                Self::Parent {
+                    parent: x,
+                    component: y,
+                    imaginary: z,
+                },
+            ) => (a, b, c) == (x, y, z),
+            (
+                Self::Destination {
+                    component: a,
+                    imaginary: b,
+                    amplitude: c,
+                },
+                Self::Destination {
+                    component: x,
+                    imaginary: y,
+                    amplitude: z,
+                },
+            ) => (a, b, c) == (x, y, z),
+            (
+                Self::Momentum {
+                    operand: a,
+                    component: b,
+                },
+                Self::Momentum {
+                    operand: x,
+                    component: y,
+                },
+            ) => (a, b) == (x, y),
+            (Self::Literal { value: a }, Self::Literal { value: b }) => a.to_bits() == b.to_bits(),
+            (Self::Factor { imaginary: a }, Self::Factor { imaginary: b }) => a == b,
+            _ => false,
+        }
+    }
 }
 
 fn invalid(message: impl Into<String>) -> RusticolError {
@@ -204,16 +252,16 @@ fn optional(value: u32) -> Option<u32> {
     (value != DIRECT_NONE_U32).then_some(value)
 }
 
-struct Operands {
-    left: u32,
-    right: u32,
-    left_momentum: u32,
-    right_momentum: u32,
-    destination: u32,
+pub(crate) struct Operands {
+    pub(crate) left: u32,
+    pub(crate) right: u32,
+    pub(crate) left_momentum: u32,
+    pub(crate) right_momentum: u32,
+    pub(crate) destination: u32,
 }
 
 impl RelativeKernelInput {
-    fn resolve(
+    pub(crate) fn resolve(
         &self,
         operands: &Operands,
         factor: ExportComplex,
@@ -265,7 +313,7 @@ impl RelativeKernelInput {
                 }
                 DirectExportKernelInput::Momentum { form, component }
             }
-            Self::Literal(value) => DirectExportKernelInput::Literal { value },
+            Self::Literal { value } => DirectExportKernelInput::Literal { value },
             Self::Factor { imaginary } => DirectExportKernelInput::Literal {
                 value: if imaginary { factor.im } else { factor.re },
             },
@@ -279,6 +327,7 @@ fn kernel_instruction(
     factor: ExportComplex,
     mode: DirectExportMode,
     role: DirectExecutorRole,
+    bindings: &mut Vec<DirectExportKernelBinding>,
 ) -> RusticolResult<DirectExportInstruction> {
     let DirectExportExecutor::Kernel {
         sha256,
@@ -288,66 +337,53 @@ fn kernel_instruction(
     else {
         return Err(invalid("expected saved kernel executor"));
     };
-    let inputs = inputs
+    let resolved_inputs = inputs
         .iter()
         .map(|input| input.resolve(&operands, factor))
         .collect::<RusticolResult<Vec<_>>>()?;
-    let outputs = output_projections
+    let resolved_outputs = output_projections
         .iter()
         .map(|output| match output.resolve(&operands, factor)? {
-            DirectExportKernelInput::Current {
-                component,
-                imaginary,
-            } => Ok(DirectExportKernelOutput {
-                component,
-                imaginary,
-                amplitude: false,
-            }),
-            DirectExportKernelInput::Amplitude {
-                amplitude,
-                imaginary,
-            } => Ok(DirectExportKernelOutput {
-                component: amplitude,
-                imaginary,
-                amplitude: true,
-            }),
+            address @ (DirectExportKernelInput::Current { .. }
+            | DirectExportKernelInput::Amplitude { .. }) => Ok(address),
             _ => Err(invalid("kernel output is not an arena plane")),
         })
         .collect::<RusticolResult<Vec<_>>>()?;
     let direct = role == DirectExecutorRole::Finalization
         && factor.re.to_bits() == 1.0_f64.to_bits()
         && factor.im.to_bits() == 0.0_f64.to_bits()
-        && outputs.iter().enumerate().all(|(index, output)| {
-            !outputs[..index].contains(output)
-                && !inputs.iter().any(|input| match input {
-                    DirectExportKernelInput::Current {
-                        component,
-                        imaginary,
-                    } => {
-                        !output.amplitude
-                            && *component == output.component
-                            && *imaginary == output.imaginary
-                    }
-                    DirectExportKernelInput::Amplitude {
-                        amplitude,
-                        imaginary,
-                    } => {
-                        output.amplitude
-                            && *amplitude == output.component
-                            && *imaginary == output.imaginary
-                    }
-                    _ => false,
-                })
+        && resolved_outputs.iter().enumerate().all(|(index, output)| {
+            !resolved_outputs[..index].contains(output) && !resolved_inputs.contains(output)
         });
-    Ok(DirectExportInstruction::Kernel {
-        binding: DirectExportKernelBinding {
+    let id = if let Some(binding) = bindings.iter().find(|binding| {
+        binding.sha256 == *sha256
+            && binding.inputs == *inputs
+            && binding.outputs == *output_projections
+            && binding.direct == direct
+    }) {
+        binding.id
+    } else {
+        let id = u32::try_from(bindings.len())
+            .map_err(|_| invalid("kernel binding count exceeds u32"))?;
+        bindings.push(DirectExportKernelBinding {
+            id,
             sha256: sha256.clone(),
-            inputs,
-            outputs,
-        },
+            inputs: inputs.clone(),
+            outputs: output_projections.clone(),
+            direct,
+        });
+        id
+    };
+    Ok(DirectExportInstruction::Kernel {
+        binding: id,
+        destination: operands.destination,
+        amplitude: role == DirectExecutorRole::Closure,
+        left: optional(operands.left),
+        right: optional(operands.right),
+        left_momentum: optional(operands.left_momentum),
+        right_momentum: optional(operands.right_momentum),
         mode,
         factor,
-        direct,
     })
 }
 
@@ -363,6 +399,7 @@ fn contribution_instruction(
     row: &super::DirectContributionRow,
     executor: &DirectExportExecutor,
     factor: ExportComplex,
+    bindings: &mut Vec<DirectExportKernelBinding>,
 ) -> RusticolResult<DirectExportInstruction> {
     let mode = contribution_mode(row.flags);
     match executor {
@@ -391,6 +428,7 @@ fn contribution_instruction(
             factor,
             mode,
             DirectExecutorRole::Contribution,
+            bindings,
         ),
         _ => Err(invalid("source executor used as contribution")),
     }
@@ -403,9 +441,14 @@ pub(crate) fn export_direct_body(
     groups: &[DirectRowGroupDescriptor],
     clears: &[DirectStageClearRanges],
     executors: &BTreeMap<u32, DirectExportExecutor>,
-    sources: &BTreeMap<u32, DirectExportSource>,
     fanout: Option<&DirectContributionFanoutProgram>,
-) -> RusticolResult<Vec<DirectExportInstruction>> {
+) -> RusticolResult<(
+    Vec<DirectExportInstruction>,
+    Vec<DirectExportKernelBinding>,
+    Vec<u32>,
+)> {
+    let mut bindings = Vec::new();
+    let mut source_rows = Vec::new();
     let factors = plan
         .exact_factors()
         .iter()
@@ -449,12 +492,10 @@ pub(crate) fn export_direct_body(
         match group.role {
             DirectExecutorRole::Source => {
                 for id in start..end {
-                    let source = sources
-                        .get(&(id as u32))
-                        .ok_or_else(|| invalid(format!("source row {id} has no bound template")))?;
                     body.push(DirectExportInstruction::Source {
-                        source: source.clone(),
+                        source: source_rows.len() as u32,
                     });
+                    source_rows.push(id as u32);
                 }
             }
             DirectExecutorRole::Contribution => {
@@ -475,6 +516,7 @@ pub(crate) fn export_direct_body(
                                         row,
                                         executor,
                                         factor(row.exact_factor_id)?,
+                                        &mut bindings,
                                     )?);
                                 }
                             }
@@ -499,6 +541,7 @@ pub(crate) fn export_direct_body(
                                         row,
                                         executor,
                                         resolved_factor,
+                                        &mut bindings,
                                     )?);
                                 }
                                 for run in &fanout.runs
@@ -551,6 +594,7 @@ pub(crate) fn export_direct_body(
                                 executor
                                     .ok_or_else(|| invalid("contribution executor is absent"))?,
                                 factor,
+                                &mut bindings,
                             )?);
                         }
                     }
@@ -596,6 +640,7 @@ pub(crate) fn export_direct_body(
                             factor,
                             DirectExportMode::Set,
                             group.role,
+                            &mut bindings,
                         )?),
                         _ => return Err(invalid("source executor used as finalization")),
                     }
@@ -607,26 +652,21 @@ pub(crate) fn export_direct_body(
                     .get(start..end)
                     .ok_or_else(|| invalid("closure range is absent"))?
                 {
-                    let factor = factor(row.exact_factor_id)?;
+                    let row_factor = factor(row.exact_factor_id)?;
                     let executor = executor.ok_or_else(|| invalid("closure executor is absent"))?;
                     match executor {
                         DirectExportExecutor::Intrinsic { template, .. }
                             if template.starts_with("rusticol.closure-reduce.v1:") =>
                         {
                             let component_factors = (0..u32::from(row.component_count))
-                                .map(|component| {
-                                    self::factor_at(
-                                        &factors,
-                                        row.component_factor_start + component,
-                                    )
-                                })
+                                .map(|component| factor(row.component_factor_start + component))
                                 .collect::<RusticolResult<Vec<_>>>()?;
                             body.push(DirectExportInstruction::Closure {
                                 amplitude: row.amplitude_destination_id,
                                 left: row.parent0_component_base,
                                 right: row.parent1_component_base_or_sentinel,
                                 component_factors,
-                                factor,
+                                factor: row_factor,
                             });
                         }
                         DirectExportExecutor::Kernel { .. } => body.push(kernel_instruction(
@@ -638,9 +678,10 @@ pub(crate) fn export_direct_body(
                                 right_momentum: row.parent1_momentum_form_id_or_sentinel,
                                 destination: row.amplitude_destination_id,
                             },
-                            factor,
+                            row_factor,
                             DirectExportMode::Add,
                             group.role,
+                            &mut bindings,
                         )?),
                         _ => return Err(invalid("unsupported closure executor")),
                     }
@@ -648,36 +689,13 @@ pub(crate) fn export_direct_body(
             }
         }
     }
-    Ok(body)
-}
-
-fn factor_at(factors: &[ExportComplex], id: u32) -> RusticolResult<ExportComplex> {
-    factors
-        .get(id as usize)
-        .copied()
-        .ok_or_else(|| invalid("closure component factor is absent"))
+    Ok((body, bindings, source_rows))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::recurrence::direct_backend::DirectCurrentClearRange;
-
-    fn source() -> DirectExportSource {
-        DirectExportSource {
-            current: 0,
-            component_count: 2,
-            family: "weyl".into(),
-            orientation: "particle".into(),
-            leg: 0,
-            momentum_form: 0,
-            helicity: -1,
-            chirality: -1,
-            mass: ExportComplex { re: 0.0, im: 0.0 },
-            factor: ExportComplex::ONE,
-            embedding: vec![],
-        }
-    }
 
     #[test]
     fn recurrence_export_preserves_bound_stage_clear_and_row_order() {
@@ -707,15 +725,9 @@ mod tests {
             }]
             .into_boxed_slice(),
         }];
-        let body = export_direct_body(
-            &plan,
-            &plan.row_groups()[..3],
-            &clears,
-            &executors,
-            &BTreeMap::from([(0, source())]),
-            None,
-        )
-        .unwrap();
+        let (body, _, source_rows) =
+            export_direct_body(&plan, &plan.row_groups()[..3], &clears, &executors, None).unwrap();
+        assert_eq!(source_rows, [0]);
         assert!(matches!(
             body[0],
             DirectExportInstruction::ClearAmplitude { amplitude: 0 }
@@ -788,23 +800,48 @@ mod tests {
             right_momentum: DIRECT_NONE_U32,
             destination: 8,
         };
+        let mut bindings = Vec::new();
         let instruction = kernel_instruction(
             &executor,
             operands(),
             ExportComplex::ONE,
             DirectExportMode::Set,
             DirectExecutorRole::Finalization,
+            &mut bindings,
         )
         .unwrap();
         let DirectExportInstruction::Kernel {
-            binding, direct, ..
+            binding,
+            destination,
+            left,
+            right,
+            left_momentum,
+            right_momentum,
+            amplitude,
+            ..
         } = instruction
         else {
             panic!("expected kernel")
         };
-        assert!(direct);
         assert_eq!(
-            binding.inputs,
+            (
+                binding,
+                destination,
+                left,
+                right,
+                left_momentum,
+                right_momentum,
+                amplitude
+            ),
+            (0, 8, Some(4), None, Some(2), None, false)
+        );
+        assert!(bindings[0].direct);
+        assert_eq!(
+            bindings[0]
+                .inputs
+                .iter()
+                .map(|input| input.resolve(&operands(), ExportComplex::ONE).unwrap())
+                .collect::<Vec<_>>(),
             vec![
                 DirectExportKernelInput::Current {
                     component: 5,
@@ -814,44 +851,104 @@ mod tests {
                     form: 2,
                     component: 3
                 },
-                DirectExportKernelInput::Literal { value: 0.0 }
+                DirectExportKernelInput::Literal { value: 0.0 },
             ]
         );
+        // A second row with different physical parents/destination reuses the
+        // relative layout, including the ordered parent and momentum operands.
+        let mut second = operands();
+        second.left = 11;
+        second.destination = 15;
+        let _ = kernel_instruction(
+            &executor,
+            second,
+            ExportComplex::ONE,
+            DirectExportMode::Set,
+            DirectExecutorRole::Finalization,
+            &mut bindings,
+        )
+        .unwrap();
+        assert_eq!(bindings.len(), 1);
         let mut aliases = operands();
         aliases.destination = 5;
-        assert!(matches!(
-            kernel_instruction(
-                &executor,
+        for (ops, factor, mode, role) in [
+            (
                 aliases,
                 ExportComplex::ONE,
                 DirectExportMode::Set,
-                DirectExecutorRole::Finalization
-            )
-            .unwrap(),
-            DirectExportInstruction::Kernel { direct: false, .. }
-        ));
-        assert!(matches!(
-            kernel_instruction(
-                &executor,
+                DirectExecutorRole::Finalization,
+            ),
+            (
                 operands(),
                 ExportComplex { re: 1.0, im: -0.0 },
                 DirectExportMode::Set,
-                DirectExecutorRole::Finalization
-            )
-            .unwrap(),
-            DirectExportInstruction::Kernel { direct: false, .. }
-        ));
-        assert!(matches!(
-            kernel_instruction(
-                &executor,
+                DirectExecutorRole::Finalization,
+            ),
+            (
                 operands(),
                 ExportComplex::ONE,
                 DirectExportMode::Add,
-                DirectExecutorRole::Contribution
-            )
-            .unwrap(),
-            DirectExportInstruction::Kernel { direct: false, .. }
-        ));
+                DirectExecutorRole::Contribution,
+            ),
+        ] {
+            let DirectExportInstruction::Kernel { binding, .. } =
+                kernel_instruction(&executor, ops, factor, mode, role, &mut bindings).unwrap()
+            else {
+                panic!("expected kernel")
+            };
+            assert!(!bindings[binding as usize].direct);
+        }
+        assert_eq!(bindings.len(), 2);
+        let roundtrip: Vec<DirectExportKernelBinding> =
+            serde_json::from_str(&serde_json::to_string(&bindings).unwrap()).unwrap();
+        assert_eq!(roundtrip, bindings);
+        assert_ne!(
+            RelativeKernelInput::Literal { value: 0.0 },
+            RelativeKernelInput::Literal { value: -0.0 }
+        );
+    }
+
+    #[test]
+    fn recurrence_export_lowers_certified_reuse_with_zero_and_unit_factors() {
+        for factor in [
+            super::super::ExactComplexRational::ZERO,
+            super::super::ExactComplexRational::ONE,
+        ] {
+            let mut parts = crate::recurrence::valid_direct_plan_parts_fixture();
+            parts.currents[0].component_count = 1;
+            parts.contributions[0].flags = DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE
+                | DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
+            parts.contributions[0].parent0_momentum_form_id = 1;
+            parts.contributions[0].exact_factor_id = parts.exact_factors.len() as u32;
+            parts.exact_factors.push(factor);
+            parts.row_groups[1].direct_executor_id = DIRECT_NONE_U32;
+            let plan = DirectRecurrencePlan::new(parts).unwrap();
+            let (body, bindings, sources) =
+                export_direct_body(&plan, &plan.row_groups()[1..2], &[], &BTreeMap::new(), None)
+                    .unwrap();
+            assert!(bindings.is_empty());
+            assert!(sources.is_empty());
+            assert_eq!(body.len(), 2);
+            let DirectExportInstruction::Copy {
+                current,
+                source,
+                component_count,
+                factor: resolved,
+            } = body[1]
+            else {
+                panic!("expected certified copy")
+            };
+            assert_eq!((current, source, component_count), (2, 0, 1));
+            assert_eq!(
+                resolved.re,
+                if factor == super::super::ExactComplexRational::ZERO {
+                    0.0
+                } else {
+                    1.0
+                }
+            );
+            assert_eq!(resolved.im.to_bits(), 0.0_f64.to_bits());
+        }
     }
 
     #[test]
@@ -917,12 +1014,11 @@ mod tests {
                 coupling: ExportComplex { re: 0.3, im: 0.2 },
             },
         )]);
-        let body = export_direct_body(
+        let (body, _, _) = export_direct_body(
             &plan,
             &plan.row_groups()[1..2],
             &[],
             &executors,
-            &BTreeMap::new(),
             Some(&fanout),
         )
         .unwrap();

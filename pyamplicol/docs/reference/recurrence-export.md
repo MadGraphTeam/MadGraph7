@@ -6,6 +6,10 @@ phase-space point. By default the command exports every stored process,
 alias, and process-group member, with every public colour flow. Select subsets
 with repeated `--process ID` or `--color-flow ID` options.
 
+The CLI writes compact JSON by default. `--indent 2` enables readable output
+for inspection. Schema 2 replaces schema 1 directly: consumers should update
+their reader instead of treating the two layouts as interchangeable.
+
 Use `--model-parameters parameters.json` to supply the same JSON parameter
 mapping accepted by `Runtime.load`. Resolution happens after these values are
 applied. In Python, `runtime.export_recurrence(color_flows=None)` returns a
@@ -21,7 +25,7 @@ colour, loop, and non-recurrence execution modes are outside this format.
 
 ## Identity and numbers
 
-Consumers must check `schema_version` (currently `1`) and
+Consumers must check `schema_version` (currently `2`) and
 `execution_semantics` before interpreting instructions. `rusticol_version`
 identifies the producer. `artifact_id` is the original artifact identity.
 `parameters` records the model values used to resolve the programs. Complex
@@ -29,17 +33,29 @@ numbers are objects with `re` and `im` f64 values. A reader must preserve f64
 round trips, including signed zero.
 
 `kernels` contains each referenced saved `.plane.symjit` application, deduplicated
-by its `sha256`. `application` is a JSON array of byte values, containing the
-original saved application without recompilation or transformation. It can be
-written directly as a binary `.plane.symjit` file. The saved application's
+by its `sha256`. `application_base64` contains the original saved application
+encoded with standard padded base64, without recompilation or transformation.
+Decode it to obtain a binary `.plane.symjit` file. The saved application's
 operations, including its FMA operations, determine kernel arithmetic.
 
 ## Programs and storage
 
 Each element of `programs` identifies a `process_key` and `colour_id`. It also
-records the process expression, its representative, `external_pdgs` in program
-leg order, and `caller_external_pdgs` in caller leg order. `external_count`
-gives the leg count. All array indices and leg indices are zero based.
+records the process expression, its representative, `legs` in program leg
+order, and `caller_legs` in caller leg order. Each leg has `pdg`, `name`, and
+`role` (`initial` or `final`). `external_count` gives the leg count. All array
+indices and leg indices are zero based.
+
+The CLI emits a full program for each needed representative. An alias or
+process-group member instead has `program_reference`, an object with the
+representative program's `process_key` and `colour_id`. Its own identity,
+caller legs, crossing, group factor, and helicity output descriptors remain
+on that entry. Resolve the reference to obtain the body, momentum forms,
+storage layout, kernel bindings, and reductions; use the member entry's
+crossing and group factor and label outputs with its helicity descriptors.
+These replace the representative's corresponding fields. Referenced
+representatives are included even when `--process` selects only a member.
+The Python and Rust per-runtime APIs return a full selected-process program.
 
 `crossing`, when present, maps every `program_leg` to a `caller_leg` and a
 momentum `sign`. Apply it before constructing momentum forms. The forms
@@ -52,56 +68,97 @@ component count, initial state, and lifetime. Physical ranges can overlap
 because the scheduler reuses storage after a current's last use. Instructions
 address physical complex component offsets, not semantic current IDs. Allocate
 `current_component_count` complex components and `amplitude_count` complex
-amplitudes for a run. The body explicitly clears live destinations before
-accumulating into them. `physical_type` is null when the stored binding does
+amplitudes for a run. `current_component_count` includes the fanout scratch
+suffix. Those temporary components are absent from `currents`; vertices or
+kernels write them and subsequent scatters read them. The body explicitly
+clears live destinations before accumulating into them. `physical_type` is
+null when the stored binding does
 not identify it; the component count and instruction operands remain
 authoritative.
+
+`first_use` and `last_use` are inclusive dependency-stage events. Sources
+start at zero; a current supported on `k` external legs starts at `k - 1`.
+Its last use is the latest child stage that reads it, or the final closure
+event, one past the largest current stage. These values describe the stored
+plan's conservative liveness; they do not index plan rows or exported body
+instructions, and fanout expansion does not renumber them.
 
 `scales` and `factors` contain resolved complex values. Instruction operands
 also carry their resolved values, so a consumer never evaluates a model
 expression. `alpha_s` identifies the strong-coupling parameter and its value
-when known. `squared_amplitude_power` is present for a homogeneous QCD order;
-null means no single exponent was established.
+when known. The name comes from the model's explicit alpha_s declaration,
+its external SLHA `SMINPUTS[3]` parameter, or provider metadata, when that
+names a parameter of the runtime. Otherwise, a runtime that defines
+`normalization.alpha_s_me_check` names it: the built-in models, compiled or
+not, apply `(4 pi alpha_s)^p` through that parameter's normalization, which is
+part of every reduction `weight`. `squared_amplitude_power` is
+present for a homogeneous QCD order; null means no single exponent was
+established. The parameter's name and value remain available in that case.
 
 ## Runs and instructions
 
-Initialize every helicity output to positive zero. Execute `runs` in order,
-using a fresh arena lifetime for each run. Execute its `body`, then its
-`reduction`. Outputs are in `helicity_outputs` order; each descriptor includes
-the stable helicity ID and every external leg's helicity. Structural zeros
+Initialize every helicity output to positive zero. `body` is stored once per
+program. For each entry of `runs`, execute that body, using the run's `sources`
+table, then execute its `reduction`. A `source` instruction's `source` index
+selects a complete source descriptor from that run's table. Only the source
+variants and reductions vary between union runs.
+
+Runs may reuse one arena and execute in sequence: the exported clears and
+initializing writes establish every component that a run reads. A consumer
+may concatenate the runs into one execution stream while preserving their
+order and source-table selections. Outputs are in `helicity_outputs` order;
+each descriptor includes the stable helicity ID and every external leg's
+helicity. Structural zeros
 remain in this axis even when they require no instructions.
 
 | Instruction | Operation |
 | --- | --- |
 | `clear` | Write positive complex zero to the specified component range. |
 | `clear_amplitude` | Write positive complex zero to the amplitude. |
-| `source` | Evaluate the named wavefunction family with the resolved orientation, helicity, chirality, mass, and momentum form, then store with the given factor and embedding. |
+| `source` | Read the indexed descriptor from the run's `sources`, evaluate its wavefunction, then store with its factor and embedding. |
 | `vertex` | Evaluate the named versioned intrinsic with its input currents and momenta, coupling, and factor. `mode` specifies set or add. |
 | `propagator` | Apply the named versioned propagator in place. |
 | `scale` | Multiply each component in place by the given complex factor. |
 | `copy` | Multiply the source range by its factor and store in the destination range. |
 | `scatter` | Scale a fanout representative and set or add its result with the runtime's specialized factor arithmetic. |
 | `closure` | Accumulate the ordered component contraction into an amplitude. |
-| `kernel` | Evaluate the saved application using the explicit ordered input and output bindings, then apply its storage adapter. |
+| `kernel` | Read the indexed shared binding, resolve its relative inputs and outputs against the row's operands, evaluate the saved application, then apply its storage adapter. |
 
 Source families are `scalar`, `weyl`, `dirac`, `vector`, and `spin2`.
 Orientations are `particle`, `antiparticle`, and `self_conjugate`. Source
 helicity and chirality have already been crossed. Source formulas use
 `mass.re`; `mass.im` records the parameter's imaginary component but is not
-used by these wavefunctions. A nonempty `embedding`
-scatters the source formula's components into the arena; a null
+used by these wavefunctions. A nonempty `embedding` scatters the source
+formula's components into the arena; a null
 `source_component` writes positive zero. Its factors already include the
 crossing phase. Use the versioned Rusticol wavefunction formulas in
 `rust/crates/rusticol-core/src/wavefunctions.rs` and the source adapter
 `rust/crates/rusticol-core/src/evaluator/recurrence_source_direct.rs`.
 
-Kernel `binding.inputs` is in saved-application input order. Each input reads
-the real or imaginary part of a physical current or amplitude, a Lorentz
-component of a momentum form, or a resolved real `literal`. Outputs specify
-their exact current/amplitude component and real/imaginary plane. Snapshot
-inputs before writing aliased outputs. `direct` records whether Rusticol
-bypasses the complex output-scaling adapter; it is significant even for a
-unit factor because arithmetic on signed zeros can differ.
+Each program's `kernel_bindings` stores every distinct binding once, including
+the saved application's SHA-256, relative `inputs` and `outputs`, and `direct`.
+A kernel instruction names its `binding` ID and explicitly supplies
+`destination`, `amplitude`, `left`, `right`, `left_momentum`,
+`right_momentum`, `mode`, and `factor`. `amplitude` distinguishes an amplitude
+destination from a current component base; null parents and momentum forms
+are absent operands.
+
+Binding inputs are in saved-application input order. A `parent` projection
+selects operand 0 (`left`) or 1 (`right`), plus a component offset and a real
+or imaginary plane. A `destination` projection selects a component offset
+from the row's destination. `momentum` selects operand 0 or 1's momentum
+form and a Lorentz component. `literal` holds a resolved real value; `factor`
+selects the real or imaginary part of the row factor. Outputs use relative
+current/amplitude projections in application output order. Snapshot inputs
+before writing aliased outputs.
+
+With `direct: true`, store the kernel's outputs unscaled, whatever the row's
+factor; `mode` still applies, setting or adding those outputs. Otherwise
+multiply each complex output by the factor before setting or adding it.
+This distinction matters even for unit factors because arithmetic on signed
+zeros can differ. Rusticol sets `direct` only on finalization rows whose
+factor is exactly `(1, +0)` and whose outputs overlap neither the inputs nor
+each other; such rows always use `mode: "set"`.
 
 ## Arithmetic order
 
@@ -151,4 +208,48 @@ arithmetic. Precomputing a ratio would change rounding.
 This export describes batched execution. The one-point path may use different
 native interaction rewrites. Use batched `evaluate_resolved_f64` as the
 reference when comparing consumers. Exporting before or after evaluation does
-not change the program; point counts and tile sizes are not export inputs.
+not change the static program; point counts and tile sizes do not specialize
+its body.
+
+## Optional reference values
+
+`--reference-points FILE` adds reference outputs using caller-order momenta.
+The JSON input is either a shared batch shaped `[point][leg][E,px,py,pz]`, or
+an object mapping exported `process_key` values to such batches, even when
+`--process` selects an expression. Each selected batch must be a nonempty
+JSON array. In Python, pass
+`reference_momenta=batch` to `runtime.export_recurrence()`. Evaluation occurs
+only when these values are requested. A single input point is internally
+duplicated to select batched arithmetic, and only the requested point is
+retained in the export.
+
+Each selected program or member entry gets `reference_values` with `momenta`,
+`helicity_ids`, and `values` shaped `[point][helicity]`. The helicity axis
+matches that entry's `helicity_outputs`. These f64 values let a consumer test
+its implementation on a machine without Rusticol. The field is absent from
+ordinary static exports.
+
+## Consumer parity tests
+
+The Rust export interpreter test covers every stored process, alias, and
+process-group member when `RUSTICOL_RECURRENCE_ARTIFACT` names a generated
+artifact, or a list of artifacts separated like `PATH` (`:` on Unix). It also
+reconstructs member programs from their representative references before
+comparing every colour and helicity bit for bit. Set
+`RUSTICOL_RECURRENCE_PROCESSES` to a JSON array of process IDs to restrict that
+traversal. Without an artifact the test reports that it skipped. CI runs it
+against the topology-replay and all-flow-union artifacts that the export
+integration test generates.
+
+```console
+RUSTICOL_RECURRENCE_ARTIFACT=/path/to/artifact \
+  cargo test -p rusticol-core --lib recurrence_export_generated_artifact_matches_every_helicity_bit -- --test-threads=1
+```
+
+The ordinary focused export tests exercise zero-factor certified copies,
+in-place scaling, spin-2 sources, direct and scaled kernels with both write
+modes, nonunit replay multiplicities, group factors, and imaginary/general
+fanout scatter factors without requiring an external artifact. Their expected
+values come from Rusticol's own source, certified-reuse, identity-finalization,
+closure and fanout-scale executors, its kernel output adapter, and its replay,
+reduction and group-factor arithmetic.

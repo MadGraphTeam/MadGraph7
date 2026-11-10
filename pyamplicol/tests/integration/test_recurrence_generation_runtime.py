@@ -8,6 +8,7 @@ import importlib.util
 import json
 import math
 import os
+import shutil
 from collections.abc import Iterator
 from dataclasses import replace
 from decimal import Decimal
@@ -2468,9 +2469,16 @@ def test_lc_recurrence_export_is_resolved_complete_and_static(
     Generator(_generation_config("recurrence", lc_flow_layout=lc_flow_layout)).generate(
         process, artifact, model=builtin_sm_current_recurrence_jit_o2_model
     )
+    kept = os.environ.get("PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS")
+    if kept:
+        # CI's Rust parity test interprets these artifacts' exports and
+        # compares them with RustiCol bit for bit (see tests.yml).
+        destination = Path(kept) / lc_flow_layout
+        shutil.rmtree(destination, ignore_errors=True)
+        shutil.copytree(artifact, destination)
     runtime = Runtime.load(artifact)
     capture = runtime.export_recurrence()
-    assert capture["schema_version"] == 1
+    assert capture["schema_version"] == 2
     assert capture["execution_semantics"] == "rusticol-batched-f64-v1"
     assert capture["artifact_id"] == load_manifest(artifact).artifact_id
     # JSON rejects non-finite values; the remaining arithmetic fields must be
@@ -2482,11 +2490,27 @@ def test_lc_recurrence_export_is_resolved_complete_and_static(
     assert [program["colour_id"] for program in programs] == [
         flow.id for flow in physics.color_flows
     ]
+    parameters = {
+        parameter["name"]: parameter["value"] for parameter in capture["parameters"]
+    }
     for program in programs:
         assert program["process_key"] == physics.process_id
-        assert program["external_pdgs"] == [
-            particle.pdg_id for particle in physics.external_particles
+        # A compiled built-in model declares no alpha_s; the runtime applies it
+        # through its normalization. d d~ > z g has one strong vertex.
+        assert program["alpha_s"] == {
+            "parameter": "normalization.alpha_s_me_check",
+            "value": parameters["normalization.alpha_s_me_check"],
+            "squared_amplitude_power": 1,
+        }
+        expected_legs = [
+            {
+                "pdg": particle.pdg_id,
+                "name": particle.name,
+                "role": "initial" if particle.state == "incoming" else "final",
+            }
+            for particle in physics.external_particles
         ]
+        assert program["legs"] == program["caller_legs"] == expected_legs
         assert program["helicity_outputs"] == [
             {"id": helicity.id, "helicities": list(helicity.values)}
             for helicity in physics.helicities
@@ -2498,16 +2522,16 @@ def test_lc_recurrence_export_is_resolved_complete_and_static(
             )
         for form in program["momentum_forms"]:
             assert all(isinstance(term["coefficient"], (int, float)) for term in form)
+        assert program["body"]
         assert program["runs"]
         for run in program["runs"]:
-            assert run["body"]
+            assert "body" not in run
             assert all(
                 isinstance(term["weight"], (int, float)) for term in run["reduction"]
             )
-            for instruction in run["body"]:
-                if instruction["kind"] == "source":
-                    assert isinstance(instruction["source"]["mass"]["re"], (int, float))
-                    assert isinstance(instruction["source"]["mass"]["im"], (int, float))
+            for source in run["sources"]:
+                assert isinstance(source["mass"]["re"], (int, float))
+                assert isinstance(source["mass"]["im"], (int, float))
     # Different points and tile lengths cannot specialize the exported program.
     points = _seeded_validation_points(process, 17, 23, 31)
     runtime.evaluate_resolved(points[:2])
@@ -2531,13 +2555,25 @@ def test_lc_recurrence_export_is_resolved_complete_and_static(
         if particle.pdg_id == 23
     )
     z_sources = [
-        instruction["source"]
+        source
         for program in changed["programs"]
         for run in program["runs"]
-        for instruction in run["body"]
-        if instruction["kind"] == "source" and instruction["source"]["leg"] == z_leg
+        for source in run["sources"]
+        if source["leg"] == z_leg
     ]
     assert z_sources
     assert all(source["mass"] == {"re": 100.0, "im": 0.0} for source in z_sources)
     selected = runtime.export_recurrence(color_flows=[physics.color_flows[0].id])
     assert selected["programs"] == [changed["programs"][0]]
+
+    with_references = runtime.export_recurrence(reference_momenta=points[:1])
+    expected = runtime.evaluate_resolved(points[:2])
+    for program in with_references["programs"]:
+        reference = program["reference_values"]
+        assert reference["momenta"] == [list(map(list, points[0]))]
+        assert reference["helicity_ids"] == list(expected.helicity_ids)
+        color = expected.color_ids.index(program["colour_id"])
+        assert reference["values"] == [
+            [complex(helicity[color]).real for helicity in expected.values[0]]
+        ]
+    assert all("reference_values" not in program for program in changed["programs"])

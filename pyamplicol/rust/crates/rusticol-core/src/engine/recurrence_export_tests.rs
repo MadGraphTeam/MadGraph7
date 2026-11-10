@@ -63,7 +63,7 @@ fn recurrence_export_closure_roundtrip_matches_native_bits() {
             coupling: ExportComplex::ONE,
         },
     )]);
-    let body = export_direct_body(&plan, &groups, &[], &executors, &BTreeMap::new(), None).unwrap();
+    let (body, _, _) = export_direct_body(&plan, &groups, &[], &executors, None).unwrap();
     let body: Vec<DirectExportInstruction> =
         serde_json::from_str(&serde_json::to_string(&body).unwrap()).unwrap();
     let points = 5usize;
@@ -199,10 +199,11 @@ fn interpret_recurrence_export(
     let mut ar = vec![f64::NAN; program.amplitude_count as usize * points];
     let mut ai = ar.clone();
     let mut output = vec![0.0; points * program.helicity_outputs.len()];
+    let body: Vec<DirectExportInstruction> =
+        serde_json::from_slice(&serde_json::to_vec(&program.body).unwrap()).unwrap();
+    let mut loaded_kernels = BTreeMap::new();
     for run in &program.runs {
-        let body: Vec<DirectExportInstruction> =
-            serde_json::from_slice(&serde_json::to_vec(&run.body).unwrap()).unwrap();
-        for instruction in body {
+        for instruction in body.iter().cloned() {
             let arena = DirectArenaView {
                 current_re: cr.as_mut_ptr(),
                 current_im: ci.as_mut_ptr(),
@@ -234,6 +235,7 @@ fn interpret_recurrence_export(
                     ai[amplitude as usize * points..(amplitude as usize + 1) * points].fill(0.0);
                 }
                 DirectExportInstruction::Source { source } => {
+                    let source = &run.sources[source as usize];
                     for point in 0..points {
                         let p = std::array::from_fn(|component| {
                             momenta
@@ -490,26 +492,59 @@ fn interpret_recurrence_export(
                 }
                 DirectExportInstruction::Kernel {
                     binding,
+                    destination,
+                    amplitude,
+                    left,
+                    right,
+                    left_momentum,
+                    right_momentum,
                     mode,
                     factor,
-                    direct,
                 } => {
+                    use crate::recurrence::direct_export::Operands;
+                    let binding = &program.kernel_bindings[binding as usize];
+                    let direct = binding.direct;
+                    let operands = Operands {
+                        destination,
+                        left: left.unwrap_or(DIRECT_NONE_U32),
+                        right: right.unwrap_or(DIRECT_NONE_U32),
+                        left_momentum: left_momentum.unwrap_or(DIRECT_NONE_U32),
+                        right_momentum: right_momentum.unwrap_or(DIRECT_NONE_U32),
+                    };
+                    let inputs = binding
+                        .inputs
+                        .iter()
+                        .map(|input| input.resolve(&operands, factor).unwrap())
+                        .collect::<Vec<_>>();
+                    let outputs = binding
+                        .outputs
+                        .iter()
+                        .map(|output| output.resolve(&operands, factor).unwrap())
+                        .collect::<Vec<_>>();
+                    assert!(outputs.iter().all(|output| matches!(
+                        (output, amplitude),
+                        (Input::Current { .. }, false) | (Input::Amplitude { .. }, true)
+                    )));
                     use evaluator::symjit_plane::{SymjitPlaneKernel, SymjitPlaneLayout};
                     let application = kernels
                         .iter()
                         .find(|kernel| kernel.sha256 == binding.sha256)
                         .expect("export contains every referenced kernel");
-                    let kernel = SymjitPlaneKernel::load_bytes(
-                        &application.application,
-                        PathBuf::from("exported.plane.symjit"),
-                        SymjitPlaneLayout::complex(
-                            binding.inputs.len() / 2,
-                            binding.outputs.len() / 2,
-                        ),
-                    )
-                    .unwrap();
-                    let mut planes = binding
-                        .inputs
+                    let kernel =
+                        loaded_kernels
+                            .entry(binding.sha256.clone())
+                            .or_insert_with(|| {
+                                use base64::Engine as _;
+                                SymjitPlaneKernel::load_bytes(
+                                    &base64::engine::general_purpose::STANDARD
+                                        .decode(&application.application_base64)
+                                        .unwrap(),
+                                    PathBuf::from("exported.plane.symjit"),
+                                    SymjitPlaneLayout::complex(inputs.len() / 2, outputs.len() / 2),
+                                )
+                                .unwrap()
+                            });
+                    let mut planes = inputs
                         .iter()
                         .map(|input| {
                             (0..points)
@@ -543,17 +578,17 @@ fn interpret_recurrence_export(
                                 .collect::<Vec<_>>()
                         })
                         .collect::<Vec<_>>();
-                    planes.extend(binding.outputs.iter().map(|_| vec![f64::NAN; points]));
+                    planes.extend(outputs.iter().map(|_| vec![f64::NAN; points]));
                     {
                         let mut table = kernel
                             .build_table(planes.iter_mut().map(Vec::as_mut_slice).collect())
                             .unwrap();
                         kernel.execute_table(&mut table, 0, points).unwrap();
                     }
-                    for (component, outputs) in binding.outputs.chunks_exact(2).enumerate() {
+                    for (component, outputs) in outputs.chunks_exact(2).enumerate() {
                         for point in 0..points {
-                            let re = planes[binding.inputs.len() + component * 2][point];
-                            let im = planes[binding.inputs.len() + component * 2 + 1][point];
+                            let re = planes[inputs.len() + component * 2][point];
+                            let im = planes[inputs.len() + component * 2 + 1][point];
                             let (re, im) = if direct {
                                 (re, im)
                             } else {
@@ -563,14 +598,18 @@ fn interpret_recurrence_export(
                                 )
                             };
                             for (output, value) in outputs.iter().zip([re, im]) {
-                                let target = match (output.amplitude, output.imaginary) {
-                                    (false, false) => &mut cr,
-                                    (false, true) => &mut ci,
-                                    (true, false) => &mut ar,
-                                    (true, true) => &mut ai,
+                                let (target, component) = match *output {
+                                    Input::Current {
+                                        component,
+                                        imaginary,
+                                    } => (if imaginary { &mut ci } else { &mut cr }, component),
+                                    Input::Amplitude {
+                                        amplitude,
+                                        imaginary,
+                                    } => (if imaginary { &mut ai } else { &mut ar }, amplitude),
+                                    _ => unreachable!("validated output arena plane"),
                                 };
-                                let target =
-                                    &mut target[output.component as usize * points + point];
+                                let target = &mut target[component as usize * points + point];
                                 if mode == DirectExportMode::Set {
                                     *target = value;
                                 } else {
@@ -607,59 +646,822 @@ fn interpret_recurrence_export(
 }
 
 #[cfg(feature = "f64-symjit")]
-#[test]
-fn recurrence_export_generated_artifact_matches_every_helicity_bit() {
-    let Some(root) = std::env::var_os("RUSTICOL_RECURRENCE_ARTIFACT") else {
-        return;
+fn arithmetic_program(
+    body: Vec<DirectExportInstruction>,
+    sources: Vec<crate::recurrence::direct_export::DirectExportSource>,
+) -> RecurrenceExportProgram {
+    use super::recurrence_export::{
+        RecurrenceExportHelicity, RecurrenceExportMomentumTerm, RecurrenceExportReduction,
+        RecurrenceExportRun,
     };
-    let mut runtime = NativeRuntime::load(PathBuf::from(root), None, None).unwrap();
-    let validation_path = runtime
-        .root()
-        .join("processes")
-        .join(&runtime.metadata().representative_process_key)
-        .join("validation-momenta.json");
-    let validation: Value = serde_json::from_slice(&fs::read(validation_path).unwrap()).unwrap();
-    let base = validation["points"][0]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|leg| {
-            std::array::from_fn::<_, 4, _>(|component| {
-                leg["momentum"][component]
-                    .as_str()
-                    .unwrap()
-                    .parse::<f64>()
-                    .unwrap()
-            })
-        })
-        .collect::<Vec<_>>();
-    let points = 5;
-    let momenta = (0..points)
-        .flat_map(|point| {
-            base.iter().flat_map(move |leg| {
-                leg.iter()
-                    .map(move |value| value * (1.0 + point as f64 * 0.17))
-            })
-        })
-        .collect::<Vec<_>>();
-    let export = runtime.export_recurrence(None).unwrap();
-    let json = serde_json::to_vec(&export).unwrap();
-    assert!(!json.is_empty());
-    for program in &export.programs {
-        let expected = runtime
-            .evaluate_resolved_f64(&momenta, points, None, Some(&[program.colour_id.clone()]))
+    RecurrenceExportProgram {
+        process_key: "test".into(),
+        process: "test".into(),
+        representative_process_key: "test".into(),
+        representative_colour_id: "flow:0".into(),
+        colour_id: "flow:0".into(),
+        external_count: 1,
+        legs: vec![],
+        caller_legs: vec![],
+        crossing: None,
+        momentum_forms: vec![vec![RecurrenceExportMomentumTerm {
+            leg: 0,
+            coefficient: 1.0,
+        }]],
+        currents: vec![],
+        current_component_count: 64,
+        amplitude_count: 1,
+        scales: vec![],
+        factors: vec![],
+        helicity_outputs: vec![RecurrenceExportHelicity {
+            id: "h:0".into(),
+            helicities: vec![0],
+        }],
+        body,
+        kernel_bindings: vec![],
+        runs: vec![RecurrenceExportRun {
+            sources,
+            reduction: vec![RecurrenceExportReduction {
+                helicity_output: 0,
+                amplitude: 0,
+                amplitude_scale: ExportComplex::ONE,
+                apply_amplitude_scale: false,
+                weight: 1.0,
+            }],
+        }],
+        group_factor: NativeRationalFactor {
+            numerator: 1,
+            denominator: 1,
+        },
+        alpha_s: None,
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+fn scalar_source(
+    current: u32,
+    factor: ExportComplex,
+) -> crate::recurrence::direct_export::DirectExportSource {
+    crate::recurrence::direct_export::DirectExportSource {
+        current,
+        component_count: 1,
+        family: "scalar".into(),
+        orientation: "self_conjugate".into(),
+        leg: 0,
+        momentum_form: 0,
+        helicity: 0,
+        chirality: 0,
+        mass: ExportComplex { re: 0.0, im: 0.0 },
+        factor,
+        embedding: vec![],
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+fn scalar_closure(left: u32, right: u32) -> DirectExportInstruction {
+    DirectExportInstruction::Closure {
+        amplitude: 0,
+        left,
+        right,
+        component_factors: vec![ExportComplex::ONE],
+        factor: ExportComplex::ONE,
+    }
+}
+
+/// A one-point arena driven only by RustiCol's own executors and reduction
+/// helpers. The arithmetic tests take their expectations from it, so they
+/// check the interpreter's documented arithmetic against the runtime rather
+/// than against hand-written formulas.
+#[cfg(feature = "f64-symjit")]
+struct ProductionPoint {
+    current_re: Vec<f64>,
+    current_im: Vec<f64>,
+    amplitude_re: Vec<f64>,
+    amplitude_im: Vec<f64>,
+    momenta: Vec<f64>,
+}
+
+#[cfg(feature = "f64-symjit")]
+impl ProductionPoint {
+    fn new(momentum: [f64; 4]) -> Self {
+        Self {
+            current_re: vec![f64::NAN; 64],
+            current_im: vec![f64::NAN; 64],
+            amplitude_re: vec![0.0],
+            amplitude_im: vec![0.0],
+            momenta: momentum.to_vec(),
+        }
+    }
+
+    fn views(
+        &mut self,
+        factors_re: &[f64],
+        factors_im: &[f64],
+    ) -> (
+        DirectArenaView,
+        DirectMomentumView,
+        DirectParameterView,
+        DirectFactorView,
+    ) {
+        (
+            DirectArenaView {
+                current_re: self.current_re.as_mut_ptr(),
+                current_im: self.current_im.as_mut_ptr(),
+                current_scalar_len: self.current_re.len() as u64,
+                amplitude_re: self.amplitude_re.as_mut_ptr(),
+                amplitude_im: self.amplitude_im.as_mut_ptr(),
+                amplitude_scalar_len: self.amplitude_re.len() as u64,
+                point_stride: 1,
+            },
+            DirectMomentumView {
+                values: self.momenta.as_ptr(),
+                scalar_len: self.momenta.len() as u64,
+                form_count: 1,
+                lorentz_component_count: 4,
+                point_stride: 1,
+            },
+            DirectParameterView {
+                values_re: std::ptr::null(),
+                values_im: std::ptr::null(),
+                value_count: 0,
+            },
+            DirectFactorView {
+                values_re: factors_re.as_ptr(),
+                values_im: factors_im.as_ptr(),
+                value_count: factors_re.len() as u32,
+            },
+        )
+    }
+
+    /// RustiCol's source executor, for a massless source of `family`.
+    fn source(
+        &mut self,
+        current: u32,
+        family: evaluator::recurrence_source_direct::DirectSourceWavefunctionFamily,
+        helicity: i32,
+        factor: ExportComplex,
+    ) {
+        use evaluator::recurrence_source_direct::{
+            DirectSourceDispatchDomainSpec, DirectSourceDispatchKey,
+            DirectSourceDispatchVariantSpec, DirectSourceOrientation, DirectSourceTemplateSpec,
+            LoadedDirectSourceExecutor,
+        };
+        let executor = LoadedDirectSourceExecutor::load(vec![DirectSourceDispatchDomainSpec {
+            variants: vec![DirectSourceDispatchVariantSpec {
+                key: DirectSourceDispatchKey::SpinStateClass(helicity),
+                template: DirectSourceTemplateSpec {
+                    spin_state_class: helicity,
+                    family,
+                    orientation: DirectSourceOrientation::SelfConjugate,
+                    helicity,
+                    chirality: 0,
+                    mass_parameter_index: None,
+                },
+            }],
+        }])
+        .unwrap();
+        let handle = executor.handle();
+        let row = crate::recurrence::DirectSourceRow {
+            source_slot: 0,
+            destination_component_base: current,
+            momentum_form_id: 0,
+            source_template_or_dispatch_domain: 0,
+            spin_state_class: helicity,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+        };
+        let (factor_re, factor_im) = ([factor.re], [factor.im]);
+        let (arena, momenta, parameters, factors) = self.views(&factor_re, &factor_im);
+        let status = unsafe {
+            (handle.call)(
+                handle.context,
+                arena,
+                momenta,
+                parameters,
+                factors,
+                &row,
+                1,
+                1,
+            )
+        };
+        assert_eq!(status, 0);
+    }
+
+    /// RustiCol's identity finalization, which the export writes as `scale`.
+    fn scale(&mut self, current: u32, factor: ExportComplex) {
+        let row = crate::recurrence::DirectFinalizationRow {
+            component_base: current,
+            component_count: 1,
+            momentum_form_id: 0,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        let (factor_re, factor_im) = ([factor.re], [factor.im]);
+        let (arena, momenta, parameters, factors) = self.views(&factor_re, &factor_im);
+        let status = unsafe {
+            evaluator::recurrence_intrinsic_direct::execute_identity_finalization_rows(
+                std::ptr::null(),
+                arena,
+                momenta,
+                parameters,
+                factors,
+                &row,
+                1,
+                1,
+            )
+        };
+        assert_eq!(status, 0);
+    }
+
+    /// RustiCol's certified-reuse executor, which the export writes as `copy`.
+    fn copy(&mut self, destination: u32, source: u32, factor: ExportComplex) {
+        use crate::recurrence::{
+            DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE,
+            DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DIRECT_NONE_U32,
+        };
+        let row = crate::recurrence::DirectContributionRow {
+            parent0_component_base: source,
+            parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+            // Certified-reuse rows store their component count here.
+            parent0_momentum_form_id: 1,
+            parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+            destination_component_base: destination,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE
+                | DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+        };
+        let (factor_re, factor_im) = ([factor.re], [factor.im]);
+        let mut workspace = crate::recurrence::direct_backend::DirectWorkspace {
+            current_re: &mut self.current_re,
+            current_im: &mut self.current_im,
+            amplitude_re: &mut self.amplitude_re,
+            amplitude_im: &mut self.amplitude_im,
+            momenta: &self.momenta,
+            momentum_form_count: 1,
+            lorentz_component_count: 4,
+            parameters_re: &[],
+            parameters_im: &[],
+            factors_re: &factor_re,
+            factors_im: &factor_im,
+            point_stride: 1,
+        };
+        crate::recurrence::direct_backend::execute_certified_reuse_rows(&[row], &mut workspace, 1)
             .unwrap();
-        let actual = interpret_recurrence_export(program, &export.kernels, &momenta, points);
-        assert_eq!(expected.color_ids.len(), 1);
-        assert_eq!(actual.len(), expected.values.len());
-        for (index, (actual, expected)) in actual.iter().zip(&expected.values).enumerate() {
+    }
+
+    /// RustiCol's closure executor, accumulating into amplitude 0.
+    fn closure(
+        &mut self,
+        left: u32,
+        right: u32,
+        component_factors: &[ExportComplex],
+        factor: ExportComplex,
+    ) {
+        let factor_re = std::iter::once(factor.re)
+            .chain(component_factors.iter().map(|value| value.re))
+            .collect::<Vec<_>>();
+        let factor_im = std::iter::once(factor.im)
+            .chain(component_factors.iter().map(|value| value.im))
+            .collect::<Vec<_>>();
+        let row = crate::recurrence::DirectClosureRow {
+            parent0_component_base: left,
+            parent1_component_base_or_sentinel: right,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: 0,
+            amplitude_destination_id: 0,
+            exact_factor_id: 0,
+            component_factor_start: 1,
+            component_count: component_factors.len() as u16,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        let (arena, momenta, parameters, factors) = self.views(&factor_re, &factor_im);
+        let status = unsafe {
+            evaluator::recurrence_closure_direct::execute_closure_reduce_rows(
+                std::ptr::null(),
+                arena,
+                momenta,
+                parameters,
+                factors,
+                &row,
+                1,
+                1,
+            )
+        };
+        assert_eq!(status, 0);
+    }
+
+    /// RustiCol's replay scale, resolved reduction and group factor.
+    fn reduce(
+        &self,
+        amplitude_scale: Option<ExportComplex>,
+        weight: f64,
+        group_factor: NativeRationalFactor,
+    ) -> f64 {
+        let (mut re, mut im) = (self.amplitude_re[0], self.amplitude_im[0]);
+        if let Some(scale) = amplitude_scale {
+            (re, im) =
+                crate::recurrence::direct_runtime::apply_replay_scale(re, im, scale.re, scale.im);
+        }
+        let mut output = [0.0];
+        super::recurrence_lane::accumulate_lc_diagonal_amplitude(
+            1,
+            weight,
+            |_| (re, im),
+            |_, value| output[0] += value,
+        );
+        super::native_runtime::apply_rational_factor(&mut output, group_factor);
+        output[0]
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+const UNIT_GROUP_FACTOR: NativeRationalFactor = NativeRationalFactor {
+    numerator: 1,
+    denominator: 1,
+};
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn recurrence_export_arithmetic_copy_zero_in_place_scale_and_nonunit_copy() {
+    // Read an uninitialized source: certified zero reuse must write +0
+    // directly, rather than propagating NaN through multiplication by zero.
+    let program = arithmetic_program(
+        vec![
+            DirectExportInstruction::ClearAmplitude { amplitude: 0 },
+            DirectExportInstruction::Source { source: 0 },
+            DirectExportInstruction::Copy {
+                current: 1,
+                source: 2,
+                component_count: 1,
+                factor: ExportComplex { re: 0.0, im: 0.0 },
+            },
+            scalar_closure(1, 0),
+        ],
+        vec![scalar_source(0, ExportComplex::ONE)],
+    );
+    let momentum = [3.0, 0.2, 0.3, 0.4];
+    let result = interpret_recurrence_export(&program, &[], &momentum, 1);
+    let mut production = ProductionPoint::new(momentum);
+    production.source(0, scalar_family(), 0, ExportComplex::ONE);
+    // Current 2 is never written, so RustiCol's copy reads NaN as well.
+    production.copy(1, 2, ExportComplex { re: 0.0, im: 0.0 });
+    production.closure(1, 0, &[ExportComplex::ONE], ExportComplex::ONE);
+    let expected = production.reduce(None, 1.0, UNIT_GROUP_FACTOR);
+    assert_eq!(result[0].to_bits(), expected.to_bits());
+    assert_eq!(expected.to_bits(), 0.0_f64.to_bits());
+    let input = ExportComplex { re: 2.0, im: -3.0 };
+    let scale = ExportComplex { re: -0.25, im: 0.5 };
+    let copy = ExportComplex { re: 0.5, im: -0.2 };
+    let program = arithmetic_program(
+        vec![
+            DirectExportInstruction::ClearAmplitude { amplitude: 0 },
+            DirectExportInstruction::Source { source: 0 },
+            DirectExportInstruction::Source { source: 1 },
+            DirectExportInstruction::Scale {
+                current: 0,
+                component_count: 1,
+                factor: scale,
+            },
+            DirectExportInstruction::Copy {
+                current: 1,
+                source: 0,
+                component_count: 1,
+                factor: copy,
+            },
+            scalar_closure(1, 2),
+        ],
+        vec![
+            scalar_source(0, input),
+            scalar_source(2, ExportComplex::ONE),
+        ],
+    );
+    let mut production = ProductionPoint::new(momentum);
+    production.source(0, scalar_family(), 0, input);
+    production.source(2, scalar_family(), 0, ExportComplex::ONE);
+    production.scale(0, scale);
+    production.copy(1, 0, copy);
+    production.closure(1, 2, &[ExportComplex::ONE], ExportComplex::ONE);
+    let expected = production.reduce(None, 1.0, UNIT_GROUP_FACTOR);
+    let result = interpret_recurrence_export(&program, &[], &momentum, 1);
+    assert_eq!(result[0].to_bits(), expected.to_bits());
+}
+
+#[cfg(feature = "f64-symjit")]
+fn scalar_family() -> evaluator::recurrence_source_direct::DirectSourceWavefunctionFamily {
+    evaluator::recurrence_source_direct::DirectSourceWavefunctionFamily::Scalar
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn recurrence_export_arithmetic_imaginary_and_general_scatter_set_add() {
+    use crate::recurrence::direct_backend::DirectContributionFanoutScale;
+    use crate::recurrence::direct_export::DirectExportMode;
+    let input = ExportComplex { re: 2.0, im: -3.0 };
+    let initial = ExportComplex { re: 0.1, im: -0.5 };
+    for factor in [
+        ExportComplex { re: 0.0, im: 0.75 },
+        ExportComplex { re: 0.7, im: -0.2 },
+    ] {
+        for mode in [DirectExportMode::Set, DirectExportMode::Add] {
+            let program = arithmetic_program(
+                vec![
+                    DirectExportInstruction::ClearAmplitude { amplitude: 0 },
+                    DirectExportInstruction::Source { source: 0 },
+                    DirectExportInstruction::Source { source: 1 },
+                    DirectExportInstruction::Source { source: 2 },
+                    DirectExportInstruction::Scatter {
+                        current: 1,
+                        source: 0,
+                        component_count: 1,
+                        mode,
+                        factor,
+                    },
+                    scalar_closure(1, 2),
+                ],
+                vec![
+                    scalar_source(0, input),
+                    scalar_source(1, initial),
+                    scalar_source(2, ExportComplex::ONE),
+                ],
+            );
+            // RustiCol's fanout scale shortcuts, then the set or add that
+            // `scatter_contribution_fanout_run` applies to the destination row.
+            let momentum = [3.0, 0.2, 0.3, 0.4];
+            let mut production = ProductionPoint::new(momentum);
+            production.source(0, scalar_family(), 0, input);
+            production.source(1, scalar_family(), 0, initial);
+            production.source(2, scalar_family(), 0, ExportComplex::ONE);
+            let (re, im) = DirectContributionFanoutScale::new(factor.re, factor.im)
+                .apply(production.current_re[0], production.current_im[0]);
+            if mode == DirectExportMode::Set {
+                (production.current_re[1], production.current_im[1]) = (re, im);
+            } else {
+                production.current_re[1] += re;
+                production.current_im[1] += im;
+            }
+            production.closure(1, 2, &[ExportComplex::ONE], ExportComplex::ONE);
             assert_eq!(
-                actual.to_bits(),
-                expected.to_bits(),
-                "{} {} index {index}: {actual:?} != {expected:?}",
-                program.process_key,
-                program.colour_id
+                interpret_recurrence_export(&program, &[], &momentum, 1)[0].to_bits(),
+                production.reduce(None, 1.0, UNIT_GROUP_FACTOR).to_bits()
             );
         }
     }
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn recurrence_export_arithmetic_spin2_source_and_replay_multiplicity() {
+    let p = [3.0, 0.2, 0.3, 2.9];
+    let mut source = scalar_source(0, ExportComplex::ONE);
+    source.family = "spin2".into();
+    source.component_count = 16;
+    source.helicity = 2;
+    let coefficients = (0..16)
+        .map(|index| ExportComplex {
+            re: (index + 1) as f64,
+            im: 0.0,
+        })
+        .collect::<Vec<_>>();
+    let program = arithmetic_program(
+        vec![
+            DirectExportInstruction::ClearAmplitude { amplitude: 0 },
+            DirectExportInstruction::Source { source: 0 },
+            DirectExportInstruction::Closure {
+                amplitude: 0,
+                left: 0,
+                right: 0,
+                component_factors: coefficients.clone(),
+                factor: ExportComplex::ONE,
+            },
+        ],
+        vec![source],
+    );
+    let mut production = ProductionPoint::new(p);
+    production.source(
+        0,
+        evaluator::recurrence_source_direct::DirectSourceWavefunctionFamily::Spin2,
+        2,
+        ExportComplex::ONE,
+    );
+    production.closure(0, 0, &coefficients, ExportComplex::ONE);
+    assert_eq!(
+        interpret_recurrence_export(&program, &[], &p, 1)[0].to_bits(),
+        production.reduce(None, 1.0, UNIT_GROUP_FACTOR).to_bits()
+    );
+    let mut replay = arithmetic_program(
+        vec![
+            DirectExportInstruction::ClearAmplitude { amplitude: 0 },
+            DirectExportInstruction::Source { source: 0 },
+            DirectExportInstruction::Source { source: 1 },
+            scalar_closure(0, 1),
+        ],
+        vec![
+            scalar_source(0, ExportComplex { re: 2.0, im: -3.0 }),
+            scalar_source(1, ExportComplex::ONE),
+        ],
+    );
+    // Phase i and multiplicity 3, as `DirectReplaySelectorPlan::amplitude_scale`
+    // forms them.
+    let amplitude_scale = ExportComplex { re: 0.0, im: 3.0 };
+    let group_factor = NativeRationalFactor {
+        numerator: 2,
+        denominator: 3,
+    };
+    replay.runs[0].reduction[0].apply_amplitude_scale = true;
+    replay.runs[0].reduction[0].amplitude_scale = amplitude_scale;
+    replay.runs[0].reduction[0].weight = 1.25;
+    replay.group_factor = group_factor;
+    let mut production = ProductionPoint::new(p);
+    production.source(0, scalar_family(), 0, ExportComplex { re: 2.0, im: -3.0 });
+    production.source(1, scalar_family(), 0, ExportComplex::ONE);
+    production.closure(0, 1, &[ExportComplex::ONE], ExportComplex::ONE);
+    let expected = production.reduce(Some(amplitude_scale), 1.25, group_factor);
+    assert_eq!(
+        interpret_recurrence_export(&replay, &[], &p, 1)[0].to_bits(),
+        expected.to_bits()
+    );
+    assert_eq!(expected, 97.5);
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn recurrence_export_direct_kernel_ignores_factor_and_preserves_set_add() {
+    use crate::recurrence::direct_export::{
+        DirectExportKernelBinding, DirectExportMode, RelativeKernelInput,
+    };
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let bytes = evaluator::symjit_plane::compile_symbolica_program_to_plane_application_bytes(
+        "([('assign', ('out', 0), ('param', 0))], 0, [])",
+        1,
+        1,
+        2,
+        false,
+    )
+    .unwrap();
+    let kernels = [RecurrenceExportKernel {
+        sha256: "test".into(),
+        application_base64: STANDARD.encode(bytes),
+    }];
+    for mode in [DirectExportMode::Set, DirectExportMode::Add] {
+        let mut program = arithmetic_program(
+            vec![
+                DirectExportInstruction::ClearAmplitude { amplitude: 0 },
+                DirectExportInstruction::Source { source: 0 },
+                DirectExportInstruction::Source { source: 1 },
+                DirectExportInstruction::Source { source: 2 },
+                DirectExportInstruction::Kernel {
+                    binding: 0,
+                    destination: 1,
+                    amplitude: false,
+                    left: Some(0),
+                    right: None,
+                    left_momentum: None,
+                    right_momentum: None,
+                    mode,
+                    factor: ExportComplex { re: 4.0, im: -7.0 },
+                },
+                scalar_closure(1, 2),
+            ],
+            vec![
+                scalar_source(0, ExportComplex { re: 2.0, im: -3.0 }),
+                scalar_source(1, ExportComplex { re: 0.1, im: -0.5 }),
+                scalar_source(2, ExportComplex::ONE),
+            ],
+        );
+        program.kernel_bindings.push(DirectExportKernelBinding {
+            id: 0,
+            sha256: "test".into(),
+            inputs: vec![
+                RelativeKernelInput::Parent {
+                    parent: 0,
+                    component: 0,
+                    imaginary: false,
+                },
+                RelativeKernelInput::Parent {
+                    parent: 0,
+                    component: 0,
+                    imaginary: true,
+                },
+            ],
+            outputs: vec![
+                RelativeKernelInput::Destination {
+                    component: 0,
+                    imaginary: false,
+                    amplitude: false,
+                },
+                RelativeKernelInput::Destination {
+                    component: 0,
+                    imaginary: true,
+                    amplitude: false,
+                },
+            ],
+            direct: true,
+        });
+        let momentum = [3.0, 0.2, 0.3, 0.4];
+        let accumulate = mode == DirectExportMode::Add;
+        // The saved application copies its input planes, so the kernel's raw
+        // outputs are the parent current's values.
+        let expected = |direct: bool| {
+            let mut production = ProductionPoint::new(momentum);
+            production.source(0, scalar_family(), 0, ExportComplex { re: 2.0, im: -3.0 });
+            production.source(1, scalar_family(), 0, ExportComplex { re: 0.1, im: -0.5 });
+            production.source(2, scalar_family(), 0, ExportComplex::ONE);
+            let (raw_re, raw_im) = ([production.current_re[0]], [production.current_im[0]]);
+            if direct {
+                // RustiCol's direct tables store raw outputs. It marks only
+                // finalization rows direct, and those always set; adding raw
+                // outputs is the documented consumer semantics.
+                if accumulate {
+                    production.current_re[1] += raw_re[0];
+                    production.current_im[1] += raw_im[0];
+                } else {
+                    production.current_re[1] = raw_re[0];
+                    production.current_im[1] = raw_im[0];
+                }
+            } else {
+                evaluator::symjit_direct::apply_complex_scaled(
+                    &mut production.current_re[1..2],
+                    &mut production.current_im[1..2],
+                    &raw_re,
+                    &raw_im,
+                    4.0,
+                    -7.0,
+                    accumulate,
+                );
+            }
+            production.closure(1, 2, &[ExportComplex::ONE], ExportComplex::ONE);
+            production.reduce(None, 1.0, UNIT_GROUP_FACTOR)
+        };
+        assert_eq!(
+            interpret_recurrence_export(&program, &kernels, &momentum, 1)[0].to_bits(),
+            expected(true).to_bits()
+        );
+        // The same row with the adapter enabled must apply its factor.
+        program.kernel_bindings[0].direct = false;
+        assert_eq!(
+            interpret_recurrence_export(&program, &kernels, &momentum, 1)[0].to_bits(),
+            expected(false).to_bits()
+        );
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+fn assert_export_values(program: &RecurrenceExportProgram, actual: &[f64], expected: &[f64]) {
+    assert_eq!(actual.len(), expected.len());
+    for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+        assert_eq!(
+            actual.to_bits(),
+            expected.to_bits(),
+            "{} {} index {index}: {actual:?} != {expected:?}",
+            program.process_key,
+            program.colour_id
+        );
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn recurrence_export_generated_artifact_matches_every_helicity_bit() {
+    // CI generates the artifacts in its integration step and names them here;
+    // see .github/workflows/tests.yml.
+    let Some(roots) = std::env::var_os("RUSTICOL_RECURRENCE_ARTIFACT") else {
+        eprintln!(
+            "skipped: set RUSTICOL_RECURRENCE_ARTIFACT to a generated LC recurrence artifact or a path list"
+        );
+        return;
+    };
+    for root in std::env::split_paths(&roots) {
+        check_every_exported_process(&root);
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+fn check_every_exported_process(root: &Path) {
+    // Match the CLI provider traversal: stored representatives, aliases, then
+    // every process-group member, preserving first occurrence order.
+    let process_ids: Vec<String> = if let Ok(ids) = std::env::var("RUSTICOL_RECURRENCE_PROCESSES") {
+        serde_json::from_str(&ids)
+            .expect("RUSTICOL_RECURRENCE_PROCESSES must be a JSON array of CLI process IDs")
+    } else {
+        let manifest: Value =
+            serde_json::from_slice(&fs::read(root.join("artifact.json")).unwrap()).unwrap();
+        let mut ids = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut add = |id: &Value| {
+            let id = id.as_str().expect("provider process ID").to_owned();
+            if seen.insert(id.clone()) {
+                ids.push(id);
+            }
+        };
+        for process in manifest["processes"].as_array().unwrap() {
+            add(&process["id"]);
+            for alias in process["aliases"].as_array().unwrap() {
+                add(&alias["id"]);
+            }
+        }
+        let groups = root.join("process-groups.json");
+        if groups.exists() {
+            let groups: Value = serde_json::from_slice(&fs::read(groups).unwrap()).unwrap();
+            for group in groups["groups"].as_array().unwrap() {
+                for member in group["members"].as_array().unwrap() {
+                    add(&member["process_id"]);
+                }
+            }
+        }
+        ids
+    };
+    assert!(!process_ids.is_empty());
+    let points = 5;
+    let mut tested_programs = 0;
+    let mut tested_values = 0;
+    let mut representatives = BTreeMap::<String, RecurrenceExport>::new();
+    for process_id in process_ids {
+        let mut runtime = NativeRuntime::load(root, Some(&process_id), None).unwrap();
+        let export = runtime.export_recurrence(None).unwrap();
+        assert_eq!(export.schema_version, 2);
+        let base =
+            super::recurrence_integration_tests::generated_recurrence_validation_point(&runtime);
+        let mut caller = base.clone();
+        if let Some(crossing) = export
+            .programs
+            .first()
+            .and_then(|program| program.crossing.as_ref())
+        {
+            for entry in crossing {
+                caller[entry.caller_leg] = base[entry.program_leg].map(|value| value * entry.sign);
+            }
+        }
+        let momenta = (0..points)
+            .flat_map(|point| {
+                caller.iter().flat_map(move |leg| {
+                    leg.iter()
+                        .map(move |value| value * (1.0 + point as f64 * 0.17))
+                })
+            })
+            .collect::<Vec<_>>();
+        for program in &export.programs {
+            let expected = runtime
+                .evaluate_resolved_f64(
+                    &momenta,
+                    points,
+                    None,
+                    Some(std::slice::from_ref(&program.colour_id)),
+                )
+                .unwrap();
+            let actual = interpret_recurrence_export(program, &export.kernels, &momenta, points);
+            assert_eq!(expected.color_ids.len(), 1);
+            assert_export_values(program, &actual, &expected.values);
+            // Validate the CLI member-reference contract independently: take
+            // executable data exclusively from the named representative and
+            // overlay exactly the metadata fields emitted by the CLI.
+            if program.process_key != program.representative_process_key {
+                if !representatives.contains_key(&program.representative_process_key) {
+                    let mut representative =
+                        NativeRuntime::load(root, Some(&program.representative_process_key), None)
+                            .unwrap();
+                    representatives.insert(
+                        program.representative_process_key.clone(),
+                        representative.export_recurrence(None).unwrap(),
+                    );
+                }
+                let representative = &representatives[&program.representative_process_key];
+                let mut referenced = representative
+                    .programs
+                    .iter()
+                    .find(|candidate| candidate.colour_id == program.representative_colour_id)
+                    .expect("member names an existing representative colour")
+                    .clone();
+                referenced.process_key = program.process_key.clone();
+                referenced.process = program.process.clone();
+                referenced.colour_id = program.colour_id.clone();
+                referenced.representative_process_key = program.representative_process_key.clone();
+                referenced.representative_colour_id = program.representative_colour_id.clone();
+                referenced.caller_legs = program.caller_legs.clone();
+                referenced.crossing = program.crossing.clone();
+                referenced.group_factor = program.group_factor;
+                referenced.helicity_outputs = program.helicity_outputs.clone();
+                let actual = interpret_recurrence_export(
+                    &referenced,
+                    &representative.kernels,
+                    &momenta,
+                    points,
+                );
+                assert_export_values(&referenced, &actual, &expected.values);
+            }
+            tested_programs += 1;
+            tested_values += actual.len();
+        }
+    }
+    assert!(
+        tested_programs > 0,
+        "{} exported no programs",
+        root.display()
+    );
+    eprintln!(
+        "recurrence export parity for {}: {tested_programs} programs, {tested_values} per-helicity values, including all requested provider members",
+        root.display()
+    );
 }

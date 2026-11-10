@@ -64,9 +64,9 @@ pub(super) fn export_executors(
                             Scalar::ExactFactor { imaginary } => RelativeKernelInput::Factor { imaginary },
                             Scalar::Parameter { index, imaginary } => {
                                 let scale = scales.get(index as usize).ok_or_else(|| invalid("kernel parameter index is absent"))?;
-                                RelativeKernelInput::Literal(if imaginary { scale.im } else { scale.re })
+                                RelativeKernelInput::Literal { value: if imaginary { scale.im } else { scale.re } }
                             }
-                            Scalar::Literal { value } => RelativeKernelInput::Literal(value),
+                            Scalar::Literal { value } => RelativeKernelInput::Literal { value },
                             Scalar::IntrinsicScale { .. } => return Err(invalid("intrinsic scale bound to a saved kernel")),
                         },
                     })
@@ -258,5 +258,12 @@ mod tests {
         assert_eq!(source.chirality, 1);
         assert_eq!(source.current, 0);
         assert!(source.embedding.is_empty());
+        domains[7].variants[0].template.family = DirectSourceWavefunctionFamily::Spin2;
+        domains[7].variants[0].template.helicity = 2;
+        domains[7].variants[0].template.chirality = 0;
+        let sources = export_source_templates(&domains, &plan, &[scale], None).unwrap();
+        assert_eq!(sources[&0].family, "spin2");
+        assert_eq!(sources[&0].component_count, 16);
+        assert_eq!(sources[&0].helicity, 2);
     }
 }

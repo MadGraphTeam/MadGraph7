@@ -95,9 +95,9 @@ pub use engine::{
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub use engine::{
     RecurrenceExport, RecurrenceExportAlphaS, RecurrenceExportCrossing, RecurrenceExportCurrent,
-    RecurrenceExportHelicity, RecurrenceExportKernel, RecurrenceExportMomentumTerm,
-    RecurrenceExportParameter, RecurrenceExportProgram, RecurrenceExportReduction,
-    RecurrenceExportRun,
+    RecurrenceExportHelicity, RecurrenceExportKernel, RecurrenceExportLeg,
+    RecurrenceExportMomentumTerm, RecurrenceExportParameter, RecurrenceExportProgram,
+    RecurrenceExportReduction, RecurrenceExportRun,
 };
 pub use error::{RusticolError, RusticolErrorKind, RusticolResult};
 pub use metadata::{

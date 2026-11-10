@@ -657,7 +657,7 @@ Export an LC recurrence artifact without evaluating momenta:
 ```console
 pyamplicol export-recurrence artifacts/gg_ggg -o recurrence.json
 pyamplicol export-recurrence artifacts/gg_ggg -o recurrence.json \
-  --model-parameters parameters.json --process gg_ggg --color-flow flow:0
+  --model-parameters parameters.json --process g_g_to_g_g_g --color-flow flow:1,2,3,4,5
 ```
 
 By default the export includes every stored process, alias and process-group
@@ -668,3 +668,9 @@ versioned JSON and embedded symjit applications, so external runners do not
 need a Rust toolchain or the original artifact. The programs describe the
 batched f64 execution path. See the [export format](../reference/recurrence-export.md)
 for arithmetic and ordering requirements.
+
+Exports use compact JSON, shared kernel bindings and union bodies, and
+representative references for aliases and group members. `--indent 2` enables
+readable JSON. Add `--reference-points momenta.json` to include batched f64
+reference values; this is the only export option that evaluates momenta.
+Kernel applications are embedded as base64.

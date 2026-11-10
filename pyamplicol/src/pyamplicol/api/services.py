@@ -559,6 +559,7 @@ class Runtime:
         self,
         *,
         color_flows: Sequence[str | ColorFlow] | None = None,
+        reference_momenta: Momenta | None = None,
     ) -> dict[str, object]:
         """Export this process's prepared LC recurrence without evaluating it.
 
@@ -566,6 +567,9 @@ class Runtime:
         at the model parameters currently set on this runtime. Omit
         ``color_flows`` to include every provider colour flow. Kernel payloads
         are included, so the result can be consumed without the artifact.
+        Supplying ``reference_momenta`` also evaluates the batched f64 path and
+        attaches its per-helicity values and caller-order momenta to every
+        program. The default export does not execute any phase-space points.
         """
 
         operation = getattr(self._backend, "export_recurrence", None)
@@ -580,7 +584,12 @@ class Runtime:
         )
         if not isinstance(result, Mapping):
             raise EvaluationError("runtime backend returned invalid recurrence export")
-        return dict(result)
+        export = dict(result)
+        if reference_momenta is not None:
+            from .recurrence_export import attach_reference_points
+
+            export = attach_reference_points(export, self, reference_momenta)
+        return export
 
     def save(self, path: os.PathLike[str] | str) -> None:
         """Save the retained on-the-fly recursion after completed evaluations.
