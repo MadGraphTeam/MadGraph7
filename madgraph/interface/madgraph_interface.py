@@ -4048,7 +4048,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     # The three options categories are treated on a different footage when a
     # set/save configuration occur. current value are kept in self.options
     options_configuration = {'pythia8_path': './HEPTools/pythia8',
-                       'hwpp_path': './herwigPP',
+                       'herwig7_path': './herwig7',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
                        'hepmc3_path': './HEPTools/hepmc3',
@@ -9895,10 +9895,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             return self.options # the return is useful for unittest
 
         # Treat each expected input
-        # 1: Pythia8_path and hewrig++ paths
+        # 1: Pythia8_path and herwig7 paths
         # try absolute and relative path
         for key in self.options:
-            if key in ['pythia8_path', 'hwpp_path', 'thepeg_path', 'hepmc_path',
+            if key in ['pythia8_path', 'herwig7_path', 'thepeg_path', 'hepmc_path',
                        'hepmc3_path', 'madanalysis5_path']:
                 if self.options[key] in ['None', None]:
                     self.options[key] = None 
@@ -9922,10 +9922,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                             logger.warning(message)
                             continue
  
-                #this is for hw++
-                if key == 'hwpp_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Herwig++', 'Analysis', 'BasicConsistency.hh')):
-                    if not os.path.isfile(pjoin(path, 'include', 'Herwig++', 'Analysis', 'BasicConsistency.hh')):
-                        self.options['hwpp_path'] = None
+                #this is for hw7
+                if key == 'herwig7_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Herwig', 'Analysis', 'BasicConsistency.h')):
+                    if not os.path.isfile(pjoin(path, 'include', 'Herwig', 'Analysis', 'BasicConsistency.h')):
+                        self.options['herwig7_path'] = None
                     else:
                         continue
                 # this is for thepeg
@@ -12746,7 +12746,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 # not documented options:
 #   	            	contur_path         
 #delphes_path             	eps_viewer               	exrootanalysis_path
-#hepmc_path               	hepmc3_path              	hwpp_path
+#hepmc_path               	hepmc3_path              	herwig7_path
 #pineappl                 	pythia-pgs_path          	pythia8_path
 #rivet_path               	                 	syscalc_path
 #thepeg_path              	yoda_path
@@ -13782,8 +13782,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             ## write fj_lhapdf_opts file
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
-            opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'hwpp_path', 'thepeg_path', 
-                                                     'hepmc_path', 'hepmc3_path', 'eMELA']
+            opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'herwig7_path',
+                            'thepeg_path', 'hepmc_path', 'hepmc3_path', 'eMELA']
             to_keep = {}
             for opt in opts_to_keep:
                 if self.options[opt]:
@@ -14861,6 +14861,8 @@ _launch_usage = "launch [DIRPATH] [options]\n" + \
          "   Example: launch PROC_sm_1 --name=run2 \n" + \
          "   Example: launch ../pythia8 \n"
 _launch_parser = misc.OptionParser(usage=_launch_usage)
+_launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
+                            help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")
 _launch_parser.add_option("-f", "--force", default=False, action='store_true',
                                 help="Use the card present in the directory in order to launch the different program")
 _launch_parser.add_option("-n", "--name", default='', type='str',

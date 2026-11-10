@@ -3338,7 +3338,10 @@ class OrganizeModelExpression:
     
     
     def __init__(self, model):
-    
+
+        # EW schemes and LOOP inputs extend this list while organizing a model.
+        # Keep those additions local to this import, including the first one.
+        self.track_dependant = list(self.track_dependant)
         self.model = model  # UFOMODEL
         # track_dependant is a class attribute, and analyze_parameters() extends
         # it in place ('Gf' for a model without an external aEWM1, then the

@@ -1,19 +1,24 @@
       subroutine add_write_info(p_born,pp,ybst_til_tolab,iconfig,Hevents
-     &     ,putonshell,ndim,x,jpart,npart,pb,shower_scale,shower_scale_a)
+     &     ,putonshell,ndim,x,jpart,npart,pb,shower_scale_a)
+      use fks_phase_space_data, only: p1_cnt
 c Computes all the info needed to write out the events including the
 c intermediate resonances. It also boosts the events to the lab frame
+      use fks_phase_space, only: fks_phase_space_point,generate_born_event,
+     $     generate_momenta
+      use process_module
+      use scale_module
       implicit none
       include "genps.inc"
       include "nexternal.inc"
       include "born_nhel.inc"
       include "born_coloramps.inc"
       include "nFKSconfigs.inc"
-      include "leshouche_decl.inc"
       include "run.inc"
 
 c Arguments
       double precision p_born(0:3,nexternal-1),pp(0:3,nexternal)
-      double precision ybst_til_tolab,shower_scale ,shower_scale_a(
+     $     ,p_lab(0:3,nexternal),p_cms(0:3,nexternal)
+      double precision ybst_til_tolab,shower_scale_a(
      $     -nexternal+3:2*nexternal-3,-nexternal+3:2*nexternal-3)
       integer iconfig
       logical Hevents,putonshell
@@ -21,11 +26,9 @@ c Arguments
       double precision pb(0:4,-nexternal+3:2*nexternal-3)
 
 c Local
-      integer np,i,j,iBornGraph,ida(2),size,nexpart,idum,ires,nres,ns
+      integer i,j,iBornGraph,ida(2),nexpart,idum,ires,nres,ns
       integer icolalt(2,-nexternal+3:2*nexternal-3),ip,iflow
       integer ito(-nexternal+3:nexternal)
-      double precision xtarget,sumborn,jampsum
-      double complex wgt1(2)
       logical firsttime,firsttime2
       data firsttime/.true./
       data firsttime2/.true./
@@ -100,11 +103,6 @@ c For shifting QCD partons from zero to their mass-shell
       double precision x(99),p(0:3,99)
       integer mfail
       double precision xmi,xmj,xm1,xm2,emsum,tmpecm,dot,wgt
-      double precision p1_cnt(0:3,nexternal,-2:2)
-      double precision wgt_cnt(-2:2)
-      double precision pswgt_cnt(-2:2)
-      double precision jac_cnt(-2:2)
-      common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
       double precision xmcmass(nexternal)
       common/cxmcmass/xmcmass
       integer mohdr,izero
@@ -114,8 +112,8 @@ c cFKSprocess
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       integer save_nFKSprocess
-      double precision SCALUP(fks_configs*2)
-      common /cshowerscale/SCALUP
+c$$$      double precision SCALUP(fks_configs*2)
+c$$$      common /cshowerscale/SCALUP
       double precision SCALUP_a(fks_configs*2,nexternal,nexternal)
       common /cshowerscale_a/SCALUP_a
       integer iSorH_lhe,ifks_lhe(fks_configs) ,jfks_lhe(fks_configs)
@@ -128,7 +126,7 @@ c pt_clust string
       integer need_matching(nexternal)
       common /c_need_matching_to_write/ need_matching
       double precision ptclus
-      CHARACTER temp*600,temp0*7,integ*1,float*18
+      CHARACTER temp*600,temp0*7,float*18
       CHARACTER integfour*4      
       CHARACTER(LEN=1000) ptclusstring
       common /c_ptclusstring/ ptclusstring
@@ -137,6 +135,7 @@ c pt_clust string
       common /c_is_aorg/is_aorg
       logical split_type(nsplitorders) 
       common /c_split_type/split_type
+      type(fks_phase_space_point) phase_space
 c
 c Set the leshouche info and fks info
 c
@@ -167,7 +166,7 @@ c
          if (firsttime2) then
 c     For the S-events
             save_nFKSprocess=nFKSprocess
-            do nFKSprocess=1,FKS_configs
+            do nFKSprocess=1,FKS_INTEGRATED
                call fks_inc_chooser()
                call set_itree(iconfig,.false.,itree_S_t,sprop_tree_S_t
      $              ,pmass_tree_S_t,pwidth_tree_S_t)
@@ -186,7 +185,7 @@ c     For the S-events
          if (Hevents) then
 c     For the H-events
             save_nFKSprocess=nFKSprocess
-            do nFKSprocess=1,FKS_configs
+            do nFKSprocess=1,FKS_INTEGRATED
                call fks_inc_chooser()
                call set_itree(iconfig,.true.,itree_H_t,sprop_tree_H_t
      $              ,pmass_tree_H_t,pwidth_tree_H_t)
@@ -225,26 +224,16 @@ c Copy the saved information to the arrays actually used
       endif
 c Set the shower scale
       if (Hevents) then
-         shower_scale=SCALUP(nFKSprocess*2)
-         do i=1,nexternal
-            do j=1,nexternal
-               shower_scale_a(i,j)=SCALUP_a(nFKSprocess*2,i,j)
-            enddo
-         enddo
+         shower_scale_a(1:ndelH,1:ndelH)=showerscaleH(1:ndelH,1:ndelH)
       else
-         shower_scale=SCALUP(nFKSprocess*2-1)
-         do i=1,nexternal
-            do j=1,nexternal
-               shower_scale_a(i,j)=SCALUP_a(nFKSprocess*2-1,i,j)
-            enddo
-         enddo
+         shower_scale_a(1:ndelS,1:ndelS)=showerscaleS(1:ndelS,1:ndelS)
       endif
 
 c This is an (n+1)-body process (see update_unwgt_table in
 c driver_mintMC.f). For S events it corresponds to the underlying Born
 c process chosen
       ip=i_process_addwrite
-      if (ip.lt.1 .or. ip.gt.maxproc_used) then
+      if (ip.lt.1 .or. ip.gt.maxproc) then
          write (*,*)'ERROR #12 in add_write_info,'/
      &        /' not a well-defined process',ip,Hevents
          stop
@@ -271,60 +260,27 @@ c Assume helicity summed
 c Can be filled when doing MC over helicities...
 c$$$   read(hel_buf,'(15i5)') (jpart(7,i),i=1,nexternal)
 
-
-      if (colour_connections(1,1).lt.0) then
-         ! colour not yet set: Get color flow that is consistent with
-         ! iconfig from Born
-         call sborn_frame(p_born,wgt1)
-         sumborn=0.d0
-         do i=1,max_bcol
-            if (icolamp(i,iBornGraph,1)) then
-               sumborn=sumborn+jamp2(i)
-            endif
-         enddo
-         if (sumborn.eq.0d0) then
-            write (*,*) 'Error #1 in add_write_info:'
-            write (*,*) 'in MadFKS, sumborn should always be larger'//
-     $           ' than zero, because always QCD partons around',sumborn
-     $           ,max_bcol
-            do i=1,max_bcol
-               write (*,*) i,iBornGraph,icolamp(i,iBornGraph,1),jamp2(i)
-            enddo
-            stop
-         endif
-         xtarget=ran2()*sumborn
-
-         iflow=1
-         if (icolamp(1,iBornGraph,1)) then
-            jampsum=jamp2(1)
-         else
-            jampsum=0d0
-         endif
-         do while (jampsum .lt. xtarget)
-            iflow=iflow+1
-            if (icolamp(iflow,iBornGraph,1)) then
-               jampsum=jampsum+jamp2(iflow)
-            endif
-         enddo
-         if (iflow.gt.max_bcol) then
-            write (*,*) 'ERROR #2 in add_write_info',iflow,max_bcol
-            stop
-         endif
-         if (Hevents) then
-            call fill_icolor_H(iflow,jpart)
-         else
-            call fill_icolor_S(iflow,jpart,idum)
-         endif
-         do i=1,nexpart
-            icolalt(1,i)=jpart(4,i)
-            icolalt(2,i)=jpart(5,i)
-         enddo
-      else ! colour already determined through a call to complete_xmcsubt
-         do i=1,nexpart
-            icolalt(1,i)=colour_connections(1,i)
-            icolalt(2,i)=colour_connections(2,i)
-         enddo
+      
+      if ( (Hevents .and. (abs(born_flow_picked).eq.0 .or.
+     &                     abs(born_flow_picked).gt.max_bcol)) .or.
+     &     ((.not.Hevents) .and. (born_flow_picked.le.0 .or.
+     &                            born_flow_picked.gt.max_bcol))) then
+         write (*,*) 'No flow picked (or invalid flow)',born_flow_picked
+     $        ,Hevents
+         stop 1
       endif
+      iflow=abs(born_flow_picked)
+      if (Hevents) then
+! Use the selected owner's colours, saved with its dipole scales.
+! A later sector or fold can have changed the colour-insertion variate.
+         jpart(4:5,1:nexternal)=colour_connections
+      else
+         call fill_icolor_S(iflow,jpart,idum)
+      endif
+      do i=1,nexpart
+         icolalt(1,i)=jpart(4,i)
+         icolalt(2,i)=jpart(5,i)
+      enddo
 c
 c Shift particle momenta to put them on the mass shell as given in the
 c subroutine fill_MC_mshell().
@@ -346,8 +302,8 @@ c the cm energy is smaller than sum of masses - keep massless partons
          endif
          wgt=1d0
 c generate a phase-space point with the MC masses
-         call generate_momenta(ndim,iconfig,wgt,x,p)
          if(Hevents)then
+            call generate_momenta(ndim,iconfig,wgt,x,p,p_lab,p_cms)
             call set_cms_stuff(mohdr)
 c special treament here for i_fks and j_fks masses
             call put_on_MC_mshell_Hev(p,xmi,xmj,xm1,xm2,mfail)
@@ -355,6 +311,12 @@ c include initial state masses
             if(j_fks.gt.nincoming.and.mfail.eq.0)
      &           call put_on_MC_mshell_in(p,xm1,xm2,mfail)
          else
+c Regenerate only the Born when shifting an S event's masses.
+            call generate_born_event(ndim,iconfig,wgt,x,
+     $           phase_space)
+            p(:,1:nexternal)=phase_space%p
+            p_lab=phase_space%p_lab
+            p_cms=phase_space%p_cms
 c include initial state masses
             call set_cms_stuff(izero)
             call put_on_MC_mshell_in(p1_cnt(0,1,0),xm1,xm2,mfail)
@@ -377,12 +339,17 @@ c all went fine and we can copy the new momenta onto the old ones.
             enddo
          elseif(mfail.eq.1)then
 c Probably not needed, but just to make sure: fill the momenta common
-c blocks again by call generate momenta again.
+c blocks again using the original MG masses.
             wgt=1d0
-            call generate_momenta(ndim,iconfig,wgt,x,p)
             if(Hevents)then
+              call generate_momenta(ndim,iconfig,wgt,x,p,p_lab,p_cms)
               call set_cms_stuff(mohdr)
             else
+              call generate_born_event(ndim,iconfig,wgt,x,
+     $             phase_space)
+              p(:,1:nexternal)=phase_space%p
+              p_lab=phase_space%p_lab
+              p_cms=phase_space%p_cms
               call set_cms_stuff(izero)
             endif
 c Also, set the masses that need to written in the event file to the MG
@@ -587,7 +554,7 @@ c     Remove non-resonant mothers, set position of particles
             ito(i)=i+nres       ! final state particle
          elseif(i.le.-1.and.jpart(6,i).eq.2) then
             ires=ires+1
-            ito(i)=2+ires       ! s-channel resonances
+            ito(i)=nincoming+ires ! s-channel resonances
          else 
             ito(i)=i
             if(i.eq.0) cycle
@@ -622,26 +589,40 @@ c
 
 ! write the ptclusstring that knows about which partons should be
 ! considered in the MLM-like matching
+
       if (ickkw.eq.3) then
+         if (ndelS.ne.1 .or. ndelH.ne.1) then
+            ! TODO : IMPLEMENT FXFX-DELTA.
+            write (*,*) 'FxFx only implemented for non-Delta matching.'
+            stop 1
+         endif
          if (nincoming.ne.2) then
             write (*,*) 'Need to incoming particles with ickkw=3 '/
      $           /'(add_write_info.f)'
             stop
          endif
-         temp0='<scales '
+         temp0='<scales'
          temp=''
          do i=nincoming+1,nexpart
             integfour=''
             float=''
             if (need_matching(i).ne.-1) then
-               ptclus=shower_scale
+               if (iSorH_lhe.eq.1) then ! S-event
+                  ptclus=showerscaleS(1,1)
+               else
+                  ptclus=showerscaleH(1,1)
+               endif
             else
                if (nincoming.ne.2) then
                   write (*,*) 'need two incoming particles '/
      $                 /'in add_write_info.f'
                   stop 1
                endif
-               ptclus=shower_scale-0.001d0
+               if (iSorH_lhe.eq.1) then ! S-event
+                  ptclus=showerscaleS(1,1)-0.001d0
+               else
+                  ptclus=showerscaleH(1,1)-0.001d0
+               endif
             endif
             Write(float,'(f16.5)') ptclus
             write(integfour,'(i4)') ito(i)
@@ -844,7 +825,7 @@ c                  whichever is closer to mass shell
       end
 
 
-      subroutine fill_icolor_H(iflow,jpart)
+      subroutine fill_icolor_H(iflow,jpart,pick_new_rnd)
       implicit none
       include "nexternal.inc"
 c      include 'fks.inc'
@@ -854,14 +835,19 @@ c      include 'fks.inc'
       integer i
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
-      double precision xtarget,ran2
+      double precision ran2,rrnd
+      save rrnd
       external ran2
       integer jpart(7,-nexternal+3:2*nexternal-3),iflow
       integer i_part,j_part,imother,lc
       include 'orders.inc'
+      logical pick_new_rnd
       logical split_type(nsplitorders) 
       common /c_split_type/split_type
 c
+! Draw even for a non-gg history: another history at the same real point
+! may need this variate. Re-evaluations use pick_new_rnd=.false.
+      if (pick_new_rnd) rrnd=ran2()
       call fill_icolor_S(iflow,jpart,lc)
 c
       j_part = particle_type(j_fks)
@@ -944,8 +930,9 @@ c The following works only if i_fks is always greater than j_fks.
             jpart(5,j_fks)=0
          elseif (j_part.eq.-3.and.i_part.eq.8) then ! qb > qb g
             if (jpart(4,imother).ne.0 .or. jpart(5,imother).eq.0) then
-               write (*,*) 'Error #6 in fill_icolor_H',
-     &              jpart(4,imother),jpart(5,imother)
+               write (*,*) 'Error #6 in fill_icolor_H'
+               write (*,*) jpart(4,:)
+               write (*,*) jpart(5,:)
                stop
             endif
             jpart(4,i_fks)=lc+1
@@ -962,13 +949,23 @@ c The following works only if i_fks is always greater than j_fks.
             jpart(5,i_fks)=0
             jpart(4,j_fks)=0
             jpart(5,j_fks)=jpart(5,imother)
+         elseif (j_part.eq.1.and.i_part.eq.3) then ! q > a q
+            jpart(4,i_fks)=jpart(4,imother)
+            jpart(5,i_fks)=0
+            jpart(4,j_fks)=0
+            jpart(5,j_fks)=0
+         elseif (j_part.eq.1.and.i_part.eq.-3) then ! qb > a qb
+            jpart(4,i_fks)=0
+            jpart(5,i_fks)=jpart(5,imother)
+            jpart(4,j_fks)=0
+            jpart(5,j_fks)=0
          elseif (j_part.eq.8.and.i_part.eq.8) then ! g > g g
             if(jpart(4,imother).eq.0 .or. jpart(5,imother).eq.0)then
                write (*,*) 'Error #7 in fill_icolor_H',
      &              jpart(4,imother),jpart(5,imother)
                stop
             endif
-            if (ran2().gt.0.5d0) then 
+            if (rrnd.gt.0.5d0) then 
                jpart(4,i_fks)=lc+1
                jpart(5,i_fks)=jpart(5,imother)
                jpart(4,j_fks)=jpart(4,imother)
@@ -1091,13 +1088,18 @@ c The following works only if i_fks is always greater than j_fks.
             jpart(5,i_fks)=jpart(4,imother)
             jpart(4,j_fks)=0
             jpart(5,j_fks)=0
+         elseif (j_part.eq.1.and.i_part.eq.1) then ! lepton/photon ISR
+            jpart(4,i_fks)=0
+            jpart(5,i_fks)=0
+            jpart(4,j_fks)=0
+            jpart(5,j_fks)=0
          elseif (j_part.eq.8.and.i_part.eq.8) then
             if(jpart(4,imother).eq.0 .or. jpart(5,imother).eq.0)then
                write (*,*) 'Error #14 in fill_icolor_H',
      &              jpart(4,imother),jpart(5,imother)
                stop
             endif
-            if (ran2().gt.0.5d0) then 
+            if (rrnd.gt.0.5d0) then 
                jpart(4,i_fks)=lc+1
                jpart(5,i_fks)=jpart(4,imother)
                jpart(4,j_fks)=lc+1
@@ -1122,10 +1124,11 @@ c
       implicit none
       include 'genps.inc'
       include 'nexternal.inc'
+      include 'born_nhel.inc'
       integer i
-      integer idup(nexternal,maxproc)
-      integer mothup(2,nexternal,maxproc)
-      integer icolup(2,nexternal,maxflow)
+      integer idup(nexternal-1,maxproc)
+      integer mothup(2,nexternal-1,maxproc)
+      integer icolup(2,nexternal-1,max_bcol)
       include "born_leshouche.inc"
       integer jpart(7,-nexternal+3:2*nexternal-3),lc,iflow
 c
@@ -1151,7 +1154,6 @@ c of multiple possibilities.
 c This routines assumes that the mother of (i_fks,j_fks) has
 c label min(i_fks,j_fks)
       implicit none
-      integer ip
       double precision xmi,xmj,xm1,xm2,emsum
       logical Hevents
 
@@ -1377,15 +1379,13 @@ c
 
 
       subroutine put_on_MC_mshell_in(p,xm1,xm2,mfail)
+      use fks_phase_space_data, only: ybst_til_tolab,shat
       implicit none
       include 'nexternal.inc'
       double precision p(0:3,nexternal),xm1,xm2
       integer mfail
       double precision xm1_r,xm2_r
 
-      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
-      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
-     #                        sqrtshat,shat
       double precision xmcmass(nexternal)
       common/cxmcmass/xmcmass
 c
@@ -1529,12 +1529,12 @@ c and let the Monte Carlo deal with it
 
 
       subroutine put_on_MC_mshell_Hevout(p,xmi,xmj,mfail)
+      use fks_phase_space_helpers, only: getangles
       implicit none
       double precision p(0:3,99),xmi,xmj
       integer mfail
 
-      double precision dirbst(1:3),dirpj(1:3)
-      double precision pipj(0:3),pibst(0:3),pjbst(0:3)
+      double precision pipj(0:3)
 
       double precision p1(0:3),p1R(0:3),pipjR(0:3)
 
@@ -1707,6 +1707,7 @@ c
 
 
       subroutine put_on_MC_mshell_Hevin(p,xmi,xm1,xm2,mfail)
+      use fks_phase_space_data, only: ybst_til_tolab,ybst_til_tocm,shat
       implicit none
       double precision p(0:3,99),xmi,xm1,xm2
       integer mfail
@@ -1720,9 +1721,6 @@ c
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
 
-      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
-      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
-     #                        sqrtshat,shat
 
       double precision xmcmass(nexternal)
       common/cxmcmass/xmcmass
