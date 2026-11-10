@@ -1,0 +1,9 @@
+{
+  "command": "source tools/tirust_env.sh\npython3 -B -m unittest discover -s docs/benchmarkfolder/stability_appendix_c/source4 -p 'test_*.py'",
+  "elapsed_seconds": 0.786,
+  "exit_code": 0,
+  "schema": "madloop-stability-source4-test-result-v1",
+  "scope": "pure/mock/source tests; no native stage",
+  "status": "passed",
+  "test_count": 122
+}

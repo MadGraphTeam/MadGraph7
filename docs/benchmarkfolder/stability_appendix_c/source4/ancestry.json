@@ -1,0 +1,19 @@
+{
+  "allowed_delta": [
+    "exact canonical terminal card footer grammar and endstate checks",
+    "caller-declared exact private-card write intent before mutation",
+    "explicit read-only inheritance of the four passed source3 preparations; no compiler,loader or point generation",
+    "mechanical nonlocking-first schedule; same20requests and frozenstreams",
+    "freshwork4 namespace"
+  ],
+  "closed_preparation_and_failure_capsule_index_sha256": "fd228945474bab62ae800fc1ebbab82588f8aa13de20bf2ebd7265cda3101838",
+  "failed_source3_run_terminal_sha256": "e0ca85280c994257448eee59adc411657b3c521f27c8d022ae7da284a22156c8",
+  "inherited_preparation_checkpoint_sha256": "4d69eebf9fb0f9d2a3cb4108ff6a98dbef5343eb760a3b9a81b066e7f6e2756d",
+  "inherited_protocol_sha256": "77c38366107a955000dd67c2acf89f1e2f683b5155beee83c32ac623f291f9e2",
+  "private_work_directory": ".tirust-build/stability-appendix-c-pilot-4",
+  "schema": "madloop-stability-source4-ancestry-v1",
+  "source3_index_sha256": "1a98e885702ffa1704cf5c8a025d03488e80ae00b590de6ffbfadad8157f8c93",
+  "source3_native_starts": 0,
+  "source4_native_stages_executed": 0,
+  "unchanged_science": "Fortran worker, physical inputs, point generation, consistency formula, backend controls, precision policy, denominators and limits"
+}
