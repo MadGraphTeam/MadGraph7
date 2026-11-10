@@ -2280,6 +2280,132 @@ class TestCmdShell2(unittest.TestCase,
                      'hr_p1n_fold<W_ACCESS, 4, true>'):
             self.assertIn(kind, calls, 'no %s group in the recycled build' % kind)
 
+    # test_madmatrix_hel_recycling_every_flavour: |M|^2 (helicity sum) through
+    # umami for every flavour index of one subprocess library.
+    # usage: <param_card> <library> <momenta (check_sa --dump-momenta)> <npar> <nflavour>
+    # prints [[|M|^2 of each event] for each flavour index] as one JSON list.
+    _UMAMI_FLAVOUR_DRIVER = '''
+import ctypes, json, os, sys
+card, path, momenta = sys.argv[1].encode(), sys.argv[2], sys.argv[3]
+npar, nflavour = int(sys.argv[4]), int(sys.argv[5])
+# madspace loads them with dlopen(RTLD_NOW): RTLD_GLOBAL on macOS
+lib = ctypes.CDLL(path, mode=os.RTLD_NOW)
+handle = ctypes.c_void_p()
+assert lib.umami_initialize(ctypes.byref(handle), card) == 0
+raw = open(momenta, 'rb').read()
+count = len(raw) // (8 * 4 * npar)
+point = (ctypes.c_double * (4 * npar * count)).from_buffer_copy(raw)
+mom = (ctypes.c_double * (4 * npar * count))()
+for ievt in range(count):  # (E,px,py,pz) per leg per event -> momenta[mu][leg][event]
+    for ipart in range(npar):
+        for mu in range(4):
+            mom[count * (npar * mu + ipart) + ievt] = point[(ievt * npar + ipart) * 4 + mu]
+out = []
+for iflavour in range(nflavour):
+    flavour = (ctypes.c_uint * count)(*([iflavour] * count))
+    me = (ctypes.c_double * count)()
+    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_FLAVOR_INDEX = 2, UMAMI_OUT_MATRIX_ELEMENT = 0
+    status = lib.umami_matrix_element(
+        handle, ctypes.c_size_t(count), ctypes.c_size_t(count), ctypes.c_size_t(0),
+        ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 2),
+        (ctypes.c_void_p * 2)(ctypes.addressof(mom), ctypes.addressof(flavour)),
+        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+        (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+    assert status == 0, status
+    out.append(list(me))
+print(json.dumps(out))
+'''
+
+    def test_madmatrix_hel_recycling_every_flavour(self):
+        """--hel_recycling must not change |M|^2 at any flavour index of a
+        subprocess that merges flavours.
+
+        The amplitude split (P1N) evaluates a vertex once with one external
+        leg left off; when that leg is a fermion the current takes its flavour
+        from its fermion input and through the coupling's flavour table. That
+        table is filled with the merged leg as its first fermion (cDPF_partner1/2
+        for a running coupling), while the call can put that leg second: the
+        _0 / _3 routines try both orientations, the P1N currents with a fermion
+        output tried one. In MSSM_SLHA2 p p > go go j the gluino-squark-quark
+        current with the merged (anti)quark as its input then found no partner
+        and was zero, for every flavour but the first, whose table is
+        symmetric: |M|^2 off by up to a factor 2.8 at flavour 1-3 in three of
+        the four subprocesses, and the mg7 run died in its survey.
+
+        check_sa.exe only evaluates flavour 0, which is why the other tests
+        did not see it: here every subprocess is evaluated through umami at
+        every flavour index, plain against recycled, on the same points.
+        """
+        import glob
+        import json
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrflv'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model MSSM_SLHA2')
+        try:
+            self.do('generate p p > go go j')
+            self.do('output standalone %s -f' % dirs['plain'])
+            self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        finally:
+            self.do('import model sm')
+        driver = root + '_umami_flavours.py'
+        with open(driver, 'w') as fsock:
+            fsock.write(self._UMAMI_FLAVOUR_DRIVER)
+        card = pjoin(dirs['plain'], 'Cards', 'param_card.dat')
+        info = json.load(open(pjoin(dirs['plain'], 'SubProcesses',
+                                    'madmatrix_processes.json')))
+        compared, merged, split = 0, 0, 0
+        for sub in info['subprocesses']:
+            proc = sub['path']
+            npar, nflavour = len(sub['legs']), len(sub['flavors'])
+            merged += nflavour > 1
+            values = {}
+            for name, path in dirs.items():
+                proc_dir = pjoin(path, 'SubProcesses', proc)
+                if name == 'recycled':
+                    self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                                    'the --hel_recycling warm-up did not produce '
+                                    'the recycled build of %s' % proc)
+                    # HelRecycling*.inc, and HelRecyclingChunks_*.cc when chunked
+                    calls = ''.join(open(f).read() for f in
+                                    glob.glob(pjoin(proc_dir, 'HelRecycling*')))
+                    # a P1N current with a fermion output and a flavoured coupling
+                    split += bool(re.search(r'MP1N_[12]<', calls))
+                self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'], stdout=devnull,
+                                                    stderr=devnull, cwd=proc_dir))
+                momenta = pjoin(dirs['plain'], 'SubProcesses', proc, 'momenta.bin')
+                if name == 'plain':
+                    subprocess.call(['./check_sa.exe', 'perf', '--dump-momenta', momenta,
+                                     '1', '32', '1'], cwd=proc_dir,
+                                    stdout=devnull, stderr=devnull)
+                    self.assertTrue(os.path.exists(momenta), 'no momenta for %s' % proc)
+                # libmadmatrix_<model>_<Pdir>_<backend>_<fptype>.so
+                lib = glob.glob(pjoin(path, 'lib', 'libmadmatrix_*_%s_*.so' % proc))
+                self.assertEqual(len(lib), 1, lib)
+                # in a child process: the library is loaded RTLD_GLOBAL, as
+                # madspace does on macOS, which must not leak into this one
+                out = subprocess.check_output([sys.executable, driver, card, lib[0],
+                                               momenta, str(npar), str(nflavour)])
+                values[name] = json.loads(out.decode().strip().splitlines()[-1])
+            for iflavour in range(nflavour):
+                plain = values['plain'][iflavour]
+                recycled = values['recycled'][iflavour]
+                self.assertEqual(len(plain), len(recycled))
+                self.assertTrue(any(plain), 'all-zero |M|^2 (%s, flavour %d)'
+                                % (proc, iflavour))
+                for i, (a, b) in enumerate(zip(plain, recycled)):
+                    self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
+                                         '%s flavour %d event %d: plain %r, recycled %r'
+                                         % (proc, iflavour, i, a, b))
+                compared += 1
+        self.assertGreater(merged, 0, 'no subprocess merges flavours')
+        self.assertGreater(split, 0, 'no fermion P1N current with a flavoured '
+                           'coupling in the recycled build: nothing was tested')
+        self.assertGreater(compared, len(info['subprocesses']))
+
     def _hel_recycling_vs_plain(self, process):
         """plain and --hel_recycling standalone outputs of `process`, |M|^2
         compared event by event (see test_madmatrix_hel_recycling_vs_plain);
