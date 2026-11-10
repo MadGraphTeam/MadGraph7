@@ -664,3 +664,26 @@ class TestProcessGaugeOutput(unittest.TestCase):
 
         self.assertRaises(madgraph.InvalidCmd, self.do,
                           'output pythia8 %s -f' % pjoin(self.path, 'PY8'))
+
+
+class TestProcCardOneGauge(unittest.TestCase):
+    """The proc_card of events read back by MadSpin and the reweighting."""
+
+    def test_one_gauge_lines(self):
+        import madgraph.various.banner as banner_mod
+        lines = ['import model sm',
+                 '# --gauge=FD chosen automatically for the processes that need it',
+                 'generate p p > w+ w- --gauge=FD',
+                 'add process p p > t t~',
+                 'output madevent PROC']
+        self.assertEqual(banner_mod.ProcCard.one_gauge_lines(lines),
+                         ['import model sm', lines[1], 'set gauge FD',
+                          'generate p p > w+ w-', 'add process p p > t t~',
+                          'output madevent PROC'])
+        plain = ['import model sm', 'generate p p > t t~', 'output madevent PROC']
+        self.assertEqual(banner_mod.ProcCard.one_gauge_lines(plain), plain)
+        banner = banner_mod.Banner()
+        banner['mg5proccard'] = '\n'.join(lines)
+        card = banner.charge_card('proc_card')
+        self.assertIn('set gauge FD', list(card))
+        self.assertEqual(card.info['generate'], 'p p > w+ w-')

@@ -554,7 +554,7 @@ class Banner(dict):
             return self.run_card
         elif tag == 'mg5proccard':
             proc_card = self[tag].split('\n')
-            self.proc_card = ProcCard(proc_card)
+            self.proc_card = ProcCard(ProcCard.one_gauge_lines(proc_card))
             return self.proc_card
         elif tag =='mgshowercard':
             shower_content = self[tag] 
@@ -933,6 +933,31 @@ class ProcCard(list):
                 self.remove(line)
                 list.append(self, line)
     
+    @staticmethod
+    def one_gauge_lines(lines):
+        """The lines of a proc_card whose processes are in two gauges
+        ('--gauge=FD' on some process lines), for the tools that regenerate
+        them in one library (reweighting, MadSpin): the option dropped, and
+        'set gauge FD' ahead of the processes when a line had it, the FD
+        gauge being correct for all of them."""
+
+        out = []
+        first = None
+        fd = False
+        for line in lines:
+            words = line.split()
+            if line.strip().startswith(('generate', 'add process')):
+                if first is None:
+                    first = len(out)
+                if any(w.startswith('--gauge=') for w in words):
+                    fd = fd or '--gauge=FD' in words
+                    line = ' '.join(w for w in words
+                                    if not w.startswith('--gauge='))
+            out.append(line)
+        if fd:
+            out.insert(first, 'set gauge FD')
+        return out
+
     def append(self, line):
         """"add a line in the proc_card perform automatically cleaning"""
         

@@ -2047,6 +2047,47 @@ class TestCmdShell2(unittest.TestCase,
         self.assertNotAlmostEqual(mixed['uux_wpwm'] / unitary['uux_wpwm'], 1.,
                                   places=6)
 
+    def standalone_cpp_values(self, lines, out_dir):
+        """Matrix element of check_sa.exe at 1 TeV for every P directory of a
+        standalone (madmatrix) output of `lines`."""
+
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        self.cmd = Cmd.MasterCmd()
+        for line in ['set auto_gauge False', 'import model sm'] + lines:
+            self.do(line)
+        self.do('output standalone %s -f' % out_dir)
+        devnull = open(os.devnull, 'w')
+        values = {}
+        me_re = re.compile(r'Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)')
+        for pdir in sorted(glob.glob(pjoin(out_dir, 'SubProcesses', 'P*'))):
+            subprocess.call(['make'], stdout=devnull, stderr=devnull, cwd=pdir)
+            out = subprocess.Popen('./check_sa.exe 1000', stdout=subprocess.PIPE,
+                                   cwd=pdir, shell=True).communicate()[0].decode()
+            values[os.path.basename(pdir).split('_', 1)[1]] = \
+                                        float(me_re.search(out).group('value'))
+        return values
+
+    def test_standalone_cpp_two_gauges(self):
+        """the madmatrix version of test_standalone_fortran_two_gauges: the FD
+        P directory includes HelAmps_sm_fd.h and gives the FD value"""
+
+        mixed = self.standalone_cpp_values(
+            ['generate u u~ > w+ w- --gauge=FD', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'MIXED'))
+        self.assertTrue(os.path.exists(pjoin(self.tmpdir, 'MIXED', 'src',
+                                             'HelAmps_sm_fd.h')))
+        fd = self.standalone_cpp_values(
+            ['set gauge FD', 'generate u u~ > w+ w-'], pjoin(self.tmpdir, 'FD'))
+        unitary = self.standalone_cpp_values(
+            ['generate u u~ > w+ w-', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'UNITARY'))
+        self.assertEqual(sorted(mixed), ['gg_ttx', 'uux_wpwm'])
+        self.assertAlmostEqual(mixed['uux_wpwm'] / fd['uux_wpwm'], 1., places=12)
+        self.assertAlmostEqual(mixed['gg_ttx'] / unitary['gg_ttx'], 1., places=12)
+        self.assertNotAlmostEqual(mixed['uux_wpwm'] / unitary['uux_wpwm'], 1.,
+                                  places=6)
+
     def test_standalone_cpp_fd_output_consistency(self):
         """test the standalone (madmatrix) output in FD gauge against standalone_fortran
 
