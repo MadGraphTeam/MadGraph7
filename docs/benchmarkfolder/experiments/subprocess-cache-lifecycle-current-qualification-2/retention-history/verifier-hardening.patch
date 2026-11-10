@@ -1,0 +1,60 @@
+--- provisional/verify_evidence.py
++++ final/verify_evidence.py
+@@ -71,8 +71,13 @@
+         raise ValueError('Nonfinite JSON value: ' + value)
+     def load(name):
+         return json.loads(read(name), parse_constant=invalid)
++    compressed_paths = [item['path'] for item in packed.values()]
++    require(len(set(compressed_paths)) == len(compressed_paths), 'Aliased compressed payload')
+     for name in index['files']:
+-        physical(name)
++        raw = physical(name)
++        if name not in compressed_paths:
++            require(b'\0' not in raw, 'Binary in portable text packet')
++            raw.decode('utf-8')
+     for name in packed:
+         require(name not in index['files'], 'Compressed/raw path collision')
+         read(name)
+@@ -96,6 +101,32 @@
+     materialized = load('materialized-source.json')
+     generated = load('generated-source-freeze.json')
+     build = load('build.json')
++    retention = load('retention-binding.json')
++    require(retention['schema'] == 1 and retention['no_native_execution'] is True
++            and retention['failed_predecessor_index_sha256'] ==
++                '22deeb09e727fb4f687e3c78c2bc215afd86cca81a933b74cf259597453c296b'
++            and retention['capture_sha256'] == sha(read('retention-capture.py')),
++            'Closed retention provenance differs')
++    for name, checksum in retention['closed_original_files'].items():
++        require(sha(read(safe(name))) == checksum, 'Original closed evidence changed: ' + name)
++    retained_generated = load('retained-generated-index.json')
++    expected_generated = {name: item for name, item in generated['source_inventory'].items()
++                          if 'sha256' in item}
++    require(set(retained_generated) == set(expected_generated), 'Generated retention coverage differs')
++    for name, item in expected_generated.items():
++        retained = retained_generated[name]
++        require(retained['sha256'] == item['sha256'], 'Retained generated inventory differs')
++        if retained['retained'] is True:
++            raw = read('retained-generated/' + safe(name))
++            require(sha(raw) == item['sha256'] and len(raw) == item['size'],
++                    'Retained generated source differs: ' + name)
++            require(b'\0' not in raw, 'Binary in retained generated text')
++            raw.decode('utf-8')
++        else:
++            require(retained['retained'] is False
++                    and retained['reason'] == 'Binary represented by source inventory hash only'
++                    and PurePosixPath(name).suffix not in ('.f', '.f90', '.inc', '.dat', '.py', '.h', '.c'),
++                    'Required generated text was not retained')
+     require(source['source_index_sha256'] == SOURCE_INDEX_SHA
+             and source['campaign_manifest_sha256'] == MANIFEST_SHA
+             and source['implementation_revision'] == materialized['revision'] == REVISION,
+@@ -270,7 +301,8 @@
+         require(data_mappings['files'][locale['path']][key] == locale[key], 'Non-ELF classification differs from independent review')
+     references = ['source-freeze.json', 'materialized-source.json', 'generated-source-freeze.json',
+                   'generation.json', 'build.json', 'linker-prebinding.json', 'card-smoke-result.json',
+-                  'independent-review.json', 'link-map-resolution.json', 'non-elf-map-classification.json'] + ['stage-' + name + '.json' for name in STAGES]
++                  'independent-review.json', 'link-map-resolution.json', 'non-elf-map-classification.json',
++                  'retention-binding.json', 'retained-generated-index.json'] + ['stage-' + name + '.json' for name in STAGES]
+     summary = {'schema_version': 1, 'kind': 'tirust-generated-subprocess-cache-lifecycle', 'passed': True,
+         'implementation_revision': REVISION, 'campaign': 'invariant-symmetry-1', 'campaign_manifest_sha256': MANIFEST_SHA,
+         'source_index_sha256': SOURCE_INDEX_SHA, 'results_sha256': sha(read('results.json')),

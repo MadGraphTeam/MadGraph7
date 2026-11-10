@@ -1,0 +1,15 @@
+{
+  "capture_sha256": "b2a2e2a1030e57ea616e2a516475b2cca2af6a05bd890a12e6a371e5a505e3aa",
+  "checks": [
+    "Unchanged report retained_verifier AST/import allowlist accepts strengthened verifier.",
+    "Unchanged validate_candidate passes all2664 registered source entries and eb3d native identity.",
+    "Generated retained bytes, original closed hashes, capture source binding, UTF8/NUL-free payload and nonaliased gzip rules replay successfully.",
+    "No remaining material source issue found; final summary/index regeneration is retention only."
+  ],
+  "registered_production_entries": 2664,
+  "reviewer": "/root/complex_stress/ct_qp_source_audit",
+  "schema_version": 1,
+  "scope": "Independent read-only source/replay audit; no native, compiler, loader or Git operation.",
+  "status": "PASS",
+  "verifier_sha256": "f972cf33e455df9ca2d2bc24e9bed50c6ba582b59dd41c099c92fa2f4d94122a"
+}

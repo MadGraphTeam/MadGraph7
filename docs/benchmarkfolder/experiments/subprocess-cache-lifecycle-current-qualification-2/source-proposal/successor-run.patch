@@ -1,0 +1,60 @@
+--- proposal1/run.py
++++ proposal2/run.py
+@@ -22,8 +22,8 @@
+ 
+ ROOT = Path('/shared/external/madloop_tirust/madgraph7_madloop_tirust')
+ HERE = Path(__file__).resolve().parent
+-REPORT = ROOT / 'docs/benchmarkfolder/experiments/subprocess-cache-lifecycle-current-qualification-1'
+-WORK = ROOT / '.tirust-build/subprocess-cache-lifecycle-current-1'
++REPORT = ROOT / 'docs/benchmarkfolder/experiments/subprocess-cache-lifecycle-current-qualification-2'
++WORK = ROOT / '.tirust-build/subprocess-cache-lifecycle-current-2'
+ MG, OUTPUT = WORK / 'mg', WORK / 'export'
+ REVISION = '2c13246ffa63aa357ad1e29e5e79aff63d88dc7e'
+ MANIFEST_SHA = 'ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0'
+@@ -53,6 +53,7 @@
+ q = load('current_lifecycle_legacy', HERE / 'legacy_qualify.py')
+ analyzer = load('current_lifecycle_analysis', HERE / 'analyze.py')
+ smoke_parser = load('current_lifecycle_smoke', HERE / 'smoke.py')
++linker = load('current_lifecycle_linker_binding', HERE / 'linker_bind.py')
+ q.ROOT, q.REPORT, q.WORK, q.MG, q.OUTPUT = ROOT, REPORT, WORK, MG, OUTPUT
+ q.REVISION, q.CPU = REVISION, CPU
+ smoke_parser.analyzer = lambda: analyzer
+@@ -418,6 +419,13 @@
+                     for path in directory.iterdir():
+                         if path.is_file() and (path.suffix in ('.a', '.o') or '.so' in path.name):
+                             external[str(path.resolve())] = sha(path)
++    wrapper = linker.wrapper_flags(Path(compilers['FC']['path']), environment(sub))
++    paths = linker.search_paths(info, search, wrapper['flags'], sub)
++    closure = linker.prebind(external, paths, linker.compiler_libraries(info + '\n' + wrapper['flags']))
++    external.update(closure['files'])
++    external.update({name: item['sha256'] for name, item in wrapper['inputs'].items()})
++    save(REPORT / 'linker-prebinding.json', {'wrapper': wrapper, 'closure': closure,
++         'search_paths': [str(p) for p in paths], 'completed_before_any_lifecycle_link': True})
+     bound = {**external, **objects}
+     q.verify_hashes(bound)
+     executables = {}
+@@ -432,7 +440,7 @@
+             if not path.is_absolute():
+                 path = sub / path
+             resolved = str(path.resolve())
+-            require(resolved in bound and sha(path) == bound[resolved], 'Actual linker input absent before link: ' + spelling)
++            linker.require_prebound_load(path, bound)
+             loads[resolved] = bound[resolved]
+         shutil.copy2(map_path, REPORT / 'execution' / map_path.name)
+         executable = sub / target
+@@ -447,6 +455,7 @@
+         'generated_source_freeze_sha256': sha(REPORT / 'generated-source-freeze.json'),
+         'campaign_manifest_sha256': MANIFEST_SHA, 'numerical_objects': objects,
+         'all_link_inputs_before_after': bound, 'executables': executables, 'compilers': compilers,
++        'linker_prebinding_sha256': sha(REPORT / 'linker-prebinding.json'),
+         'fresh_numerical_source_build': True, 'libraries': q.inventory(OUTPUT / 'lib')})
+ 
+ 
+@@ -502,6 +511,7 @@
+     state = json.loads((REPORT / 'build.json').read_text())
+     require(state['source_freeze_sha256'] == sha(REPORT / 'source-freeze.json')
+             and state['generated_source_freeze_sha256'] == sha(REPORT / 'generated-source-freeze.json'), 'Build/source freeze changed')
++    require(state['linker_prebinding_sha256'] == sha(REPORT / 'linker-prebinding.json'), 'Pre-link closure evidence changed')
+     q.verify_hashes(state['all_link_inputs_before_after'])
+     generated = json.loads((REPORT / 'generated-source-freeze.json').read_text())
+     q.verify_paths(generated['source_inventory'], OUTPUT)

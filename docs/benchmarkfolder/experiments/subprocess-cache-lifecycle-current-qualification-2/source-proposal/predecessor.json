@@ -1,0 +1,16 @@
+{
+  "execution_performed": false,
+  "failed_preparation_index_sha256": "22deeb09e727fb4f687e3c78c2bc215afd86cca81a933b74cf259597453c296b",
+  "new_evidence_namespace": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle-current-qualification-2",
+  "new_work_namespace": ".tirust-build/subprocess-cache-lifecycle-current-2",
+  "scientific_files_byte_identical": {
+    "analyze.py": "0014bbf833cce64344ffcf38e2cb8c9a92605eeeb697fcf260553a13e5d1d40b",
+    "campaign-manifest.json": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+    "card_smoke.f.in": "ef4a4f6b23d647d1bc931c51fd33fa624e0db17136533431817490a70b671b1d",
+    "driver.f.in": "3cdc9d1780f92b8a8adeb18ba8b3ae3e70db685908eb5d8a7a923bfac298db84",
+    "generate.mg5.in": "89d2886b11336b4b060ff003035b3ca4abff04479c6dcf901b1a0aa275814023",
+    "observer.c": "9f17df85f04efa2d181100bf4b7326fed6cdf5ef2e5e0c4b13cf773dd638dd3e",
+    "smoke.py": "a651c23461f27acb51e15b8b5fd5c46ab06199b2e76e8fef5aab5dbe047c56de"
+  },
+  "source_proposal_index_sha256": "8fc12d8160810016ed302d28fafe936830a3bd3c12cb00d1d5afdc049af2ebff"
+}

@@ -1,0 +1,12 @@
+{
+  "compressed_text_entries": 13,
+  "index_sha256": "212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964",
+  "indexed_only_relocation_equal": true,
+  "indexed_unique_files_with_index": 502,
+  "native_execution": false,
+  "passed": true,
+  "payload_bytes": 14349878,
+  "payload_files": 501,
+  "summary_sha256": "d6dbe30a177325100ee0eaf526d4dc418a67b7f25739ba2e8da564d8d1360bc5",
+  "verifier_sha256": "f972cf33e455df9ca2d2bc24e9bed50c6ba582b59dd41c099c92fa2f4d94122a"
+}

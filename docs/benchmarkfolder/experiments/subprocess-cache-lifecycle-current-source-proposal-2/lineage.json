@@ -1,0 +1,55 @@
+{
+  "copied_files": {
+    "analyze.py": {
+      "git_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+      "git_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/analyze.py",
+      "sha256": "0014bbf833cce64344ffcf38e2cb8c9a92605eeeb697fcf260553a13e5d1d40b"
+    },
+    "campaign-manifest.json": {
+      "git_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+      "git_path": "docs/benchmarkfolder/campaigns/invariant-symmetry-1/manifest.json",
+      "sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0"
+    },
+    "card_smoke.f.in": {
+      "git_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+      "git_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/attempt4/card_smoke.f.in",
+      "sha256": "ef4a4f6b23d647d1bc931c51fd33fa624e0db17136533431817490a70b671b1d"
+    },
+    "driver.f.in": {
+      "git_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+      "git_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/attempt4/driver.f.in",
+      "sha256": "3cdc9d1780f92b8a8adeb18ba8b3ae3e70db685908eb5d8a7a923bfac298db84"
+    },
+    "generate.mg5.in": {
+      "git_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+      "git_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/generate.mg5.in",
+      "sha256": "89d2886b11336b4b060ff003035b3ca4abff04479c6dcf901b1a0aa275814023"
+    },
+    "legacy_qualify.py": {
+      "git_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+      "git_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/qualify.py",
+      "sha256": "a408dc73d880a9471defaf6cf4fa9b426e616780b4861c595d608826b6b0f89a"
+    },
+    "observer-original.c": {
+      "git_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+      "git_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/observer.c",
+      "sha256": "ed5971b3e186d81df65395355f6a3aa9dfd34336802f4df688004948a973ae34"
+    },
+    "process_cleanup.py": {
+      "git_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+      "git_path": "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/process_cleanup.py",
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "test_analyze.py": {
+      "git_commit": "e32d506941598cee41fba27ff382d2c1773bd532",
+      "git_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/test_analyze.py",
+      "sha256": "68db1e6261b02bdfdfed5814a6015b9dfa67278c6a61c3b734178fcd77384613"
+    }
+  },
+  "observer_change": "Copy /proc/self/maps in lc_open/lc_close only, within existing IEEE invariance witnesses; no wrapper or numerical changes.",
+  "pure_functions": [
+    "attempt4/resume.py::check_smoke",
+    "attempt5/resume.py::numeric_prevalidation"
+  ],
+  "schema": 1
+}

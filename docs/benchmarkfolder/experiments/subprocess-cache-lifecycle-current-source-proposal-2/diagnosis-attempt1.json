@@ -1,0 +1,7 @@
+{
+  "mode": "read-only closed-link reconstruction; no compiler/native execution",
+  "outcome": "failed before diagnosis publication",
+  "reason": "Explicit requested roots alone omitted compiler-implicit libquadmath.so in the wrapper GCC directory.",
+  "correction": "Resolve the inherited prebinding code existing GNU Fortran implicit roots gfortran, quadmath, gcc, gcc_s, m and c against the same explicit/compiler/wrapper search paths.",
+  "scientific_inputs_changed": false
+}

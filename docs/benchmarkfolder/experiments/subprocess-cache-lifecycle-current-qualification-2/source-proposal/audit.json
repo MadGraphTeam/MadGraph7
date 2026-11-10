@@ -1,0 +1,17 @@
+{
+  "findings": [
+    "Pinned wrapper cc-ldflags injects the missing GCC directory. Explicit/known implicit requested roots and relative/named script members are bound before lifecycle links.",
+    "Actual unknown/changed LOAD inputs remain rejected without mutating the inventory.",
+    "Runtime admission verifies linker-prebinding.json digest and all bound inputs.",
+    "Thin archives reject explicitly because their member provenance is outside this narrow parser."
+  ],
+  "reviewed_sources": {
+    "linker_bind.py": "b54528ebf6b9847f134a7d8ad927c7394607e927397e45169cb644479c8452c6",
+    "run.py": "be6212d7e93f698b551eee35ec577132c0ebb6db73d07cc203262be6319ce861"
+  },
+  "reviewer": "/root/complex_stress/ct_qp_source_audit",
+  "schema": 1,
+  "scientific_files_unchanged": true,
+  "scope": "Source-only successor2 closure and unchanged scientific protocol; no compiler/linker/native execution.",
+  "status": "PASS"
+}
