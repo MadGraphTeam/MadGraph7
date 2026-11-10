@@ -1,0 +1,77 @@
+{
+  "files": {
+    "Cargo.lock": {
+      "bytes": 35874,
+      "sha256": "0d09649d4005c3a905dd605407d29e5b2818cd2c574d608d34a7f1dff3d4a2d3"
+    },
+    "Cargo.toml": {
+      "bytes": 1058,
+      "sha256": "a19b74bbbe02530dadee8fc9b61feacdd8e01a8de528a9f3f68a4a78d6e91bcb"
+    },
+    "README.md": {
+      "bytes": 4226,
+      "sha256": "82d6ab0244e0856ddcd376e77819e8fb28440945617ba4f5cd2ee17e6f2d79a3"
+    },
+    "fixtures/group10-m.dat": {
+      "bytes": 512,
+      "sha256": "d2e31016045fa13a4e1f06e36b3a5ba7c5bd1abe4a6b7de7302b84d144341424"
+    },
+    "fixtures/group10-p.dat": {
+      "bytes": 1024,
+      "sha256": "7db623319289b729f708fd703651cc2cbc1e2422c9f732cc46f47719a39594f8"
+    },
+    "fixtures/group10-s.dat": {
+      "bytes": 1024,
+      "sha256": "8851fa58c55a183bcf64b41502f87a79458c2091a7a5391b9c79f8650f70a06e"
+    },
+    "fixtures/group10-scale.dat": {
+      "bytes": 64,
+      "sha256": "e33959904b7139a959ee066da9f270ccde46ebdda550023e9cc3abb6a3d3a6ac"
+    },
+    "fixtures/manifest.json": {
+      "bytes": 4330,
+      "sha256": "97cba7119fe79afe5c9ffea59647a6e223ef2e7f3532bbc9629bd8694c27f9a0"
+    },
+    "header.patch": {
+      "bytes": 1831,
+      "sha256": "b35593207360ca6dde8806b58d773c12f83f530791ee669900f15528a613599d"
+    },
+    "implementation.patch": {
+      "bytes": 17168,
+      "sha256": "aa52ef7174b28b61116b8e24c3c86eea380a00ac49f8b291c570c14662043e9b"
+    },
+    "original-lib.rs": {
+      "bytes": 46218,
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    },
+    "prepare_fixture.py": {
+      "bytes": 4126,
+      "sha256": "7390c9c1af088e73b1ace0897d2bce90daee1af401534634f9cc89da4af31307"
+    },
+    "protocol.json": {
+      "bytes": 2087,
+      "sha256": "e438a5538112643be8343a4e361ca1563ecd856ad8794331df1751afde4722cb"
+    },
+    "source-bindings.json": {
+      "bytes": 44548,
+      "sha256": "0df4ad94c9bf823564a3c28cfd8d1c2b04214ce699955e3d5d88b3af38e16619"
+    },
+    "src/adaptive_tests.rs": {
+      "bytes": 13332,
+      "sha256": "232d534ca2499366ef89e2f78e974c33596ab9b25e097fea9103e6a0cd8943a0"
+    },
+    "src/lib.rs": {
+      "bytes": 54308,
+      "sha256": "bde73de24c83a5679b34a678d5d8f45dd1338ec822b1774a03f1c1c98fcf5696"
+    },
+    "tirust.h": {
+      "bytes": 6620,
+      "sha256": "6846ea589efeb288c88c1c4b1a83379456a255954eef6fc9042e88497fbe1584"
+    },
+    "verify_source.py": {
+      "bytes": 3449,
+      "sha256": "b5cadb4475437df2098ba18ecc1688a2e4537749f71207f2a5ffe83d39f5bef1"
+    }
+  },
+  "schema": 1
+}

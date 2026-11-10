@@ -1,0 +1,1 @@
+Fresh revision3 compile-only controller. Same reviewed supervisor and shared further-build-budget.json900-second deadline. Source f5550b8719e76e177ad6b73d456cc655815770eb7092a8fabdc776c415c03213 adds only a missing test trait import versus revision2; no numerical policy change. Prior attempts/sources retained. No tests/native executed.

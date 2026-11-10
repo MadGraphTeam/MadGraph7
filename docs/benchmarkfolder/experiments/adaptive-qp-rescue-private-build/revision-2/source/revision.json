@@ -1,0 +1,8 @@
+{
+  "failed_execution_sha256": "f41daf7af62ecbdefd1916f3d402db5f2b4b54cb97566bfedfb4beaab2fd0fe7",
+  "functional_change": "Add the missing closing brace to ml_tirust_qp_precision_statistics; no numerical policy or test changes.",
+  "metadata_change": "Protocol manifest path points to this new revision; generated patch and inventories refreshed.",
+  "previous_source_index": "d0d59b7b6e8378d6d8cd22e1e3ea623b11f575c89a18c9e50cbe0b2a313bf24e",
+  "schema": 1,
+  "source_patch": "--- revision1/src/lib.rs\n+++ revision2/src/lib.rs\n@@ -939,6 +939,7 @@\n         unsafe { write(out, &state.qp_precision.statistics()); }\n         Ok(SUCCESS)\n     })\n+}\n \n /// Evaluate binary64 tensor moments. Inputs use Fortran column-major matrices.\n /// # Safety\n"
+}

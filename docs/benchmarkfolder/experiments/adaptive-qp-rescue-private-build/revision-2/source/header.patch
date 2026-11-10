@@ -1,0 +1,27 @@
+--- a/vendor/tirust/tirust.h
++++ b/vendor/tirust/tirust.h
+@@ -34,12 +34,23 @@
+ int32_t ml_tirust_cache_statistics(ml_tirust_context *context, uint64_t *counts, size_t count);
+ /* count must equal six. QP whole-tensor counters, in order:
+  * hits, misses, entries, bytes, not_stored, bypassed.
+- * Hits/misses count tensor requests; a miss may subsequently fail reduction.
++ * In this PRIVATE adaptive prototype, hits/misses count exact tier probes;
++ * one request may miss at 256 and hit or miss at 512 after an eligible refusal.
+  * Bytes account for retained payloads and estimated entry metadata, excluding
+  * plans/workspaces. These are not process resident-memory measurements.
+  * check_pass and cache_enabled=0 bypass this cache without changing hits or
+  * misses. Full/poles-only requests and pole selectors have distinct keys. */
+ int32_t ml_tirust_qp_cache_statistics(ml_tirust_context *context, uint64_t *counts, size_t count);
++/* PRIVATE additive diagnostic, count=11. Context-lifetime counters survive
++ * event/cache clears and budget changes. Order: evaluations256, eligible256,
++ * evaluations512, successes512, failures512, cache256, cache512, check256,
++ * check512, last_dispatched_output_bits, last_eligible_powered_condition_bits.
++ * The final word encodes the f64 condition bit pattern (zero means no eligible
++ * refusal); only the pinned Gram category is currently admitted. Last bits is
++ * 0 for a failed dispatch, 256/512 for success; foreign validation failures
++ * before dispatch leave that field unchanged. Integral working bits do not
++ * imply genuine-QP numerator arithmetic when UseQPIntegrand is false. */
++int32_t ml_tirust_qp_precision_statistics(ml_tirust_context *context, uint64_t *counts, size_t count);
+ 
+ /*
+  * Denominators: (q+p_i)^2 - m_i^2, metric (+,-,-,-). shifts[4*n] stores

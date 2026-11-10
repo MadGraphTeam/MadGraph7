@@ -1,0 +1,8 @@
+{
+  "failed_execution_sha256": "2a3a0243ece627af9870fafa15bd10f97fe143208ab40c5290c1ab6eeb1ba8c8",
+  "functional_change": "Import SelfRing in the new test module so its existing is_zero assertion resolves. Production implementation unchanged from revision2.",
+  "metadata_change": "Protocol manifest path points to this new revision; inventories refreshed.",
+  "previous_source_index": "4655bdd1d12271d65c2bfb10256ed9d52fa28acc1dde048097bb169fca28c829",
+  "schema": 1,
+  "source_patch": "--- revision2/src/adaptive_tests.rs\n+++ revision3/src/adaptive_tests.rs\n@@ -1,6 +1,7 @@\n //! Dispatch tests use an injected outcome, not a fake numerical reference.\n //! Tests whose names start `native_` additionally evaluate real scalar kernels.\n use super::*;\n+use symbolica::domains::SelfRing;\n \n fn inputs(n: usize, mass: &str) -> [Vec<u8>; 4] {\n     fn records(values: &[&str]) -> Vec<u8> {\n"
+}
