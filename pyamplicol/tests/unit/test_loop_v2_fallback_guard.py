@@ -893,13 +893,23 @@ def test_the_guard_at_double_double_and_arbitrary_precision(hh, loop_native):
     digits and the target 1e-6 (estimates 2.3e-6 and 1.9e-2 at pin
     5b6a8f57) the guard's limit is 1e-5, never stricter (USER 2026-11-09
     ~11:53): it accepts the point whose estimate lies between the target and
-    1e-5 and rejects the other typed, naming the arithmetic."""
+    1e-5 and rejects the other typed, naming the arithmetic.
+
+    These decisions were derived on the fixture's binary64 texts as given:
+    they are asserted with the kinematics improvement off (m-lit
+    lit-psimprove (G8), DECISIONS 2026-11-10 01:30 (F)); the improved points
+    are ``test_the_guard_on_improved_near_forward_points``'s."""
 
     from pyamplicol import Runtime
 
     artifact, points, scales = hh
     runtime = Runtime.load(artifact, process="p")
-    options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    options = {
+        "mu_r2": scales,
+        "poles": "none",
+        "on_failure": "return",
+        "kinematics_improvement": "off",
+    }
     if not _tirust(loop_native):
         found = runtime.evaluate(points, arithmetic="double-double", **options)
         assert all(lane.reduction.fallback is None for lane in found.diagnostics)
@@ -923,6 +933,70 @@ def test_the_guard_at_double_double_and_arbitrary_precision(hh, loop_native):
             ), [lane.reduction for lane in found.diagnostics]
         for p in rejected:
             assert found.diagnostics[p].detail.endswith(f"({carrier})")
+
+
+@pytest.mark.loop_physics
+def test_the_guard_on_improved_near_forward_points(hh, loop_native):
+    """The g g > h h near-forward points with the kinematics improvement
+    (m-lit lit-psimprove (G8); DECISIONS 2026-11-10 01:30 (F), 01:56 (4)).
+    The fixture's frame has its beams off the z axis.
+
+    (i) ``kinematics_improvement="projection"``: every point is projected
+    exactly (its record), and every value the double-double / 20- / 32-digit
+    ``"auto"`` call returns lies within max(target, 1e-5) of the consistent
+    truth of the projected point (TIRust at 80 digits, the improvement off,
+    on that exact point), or the point fails typed: no GUARD MISS.
+
+    (ii) the default (MadLoop's dispatch, DECISIONS 2026-11-10 01:56 (1)):
+    ORIG refuses the frame (code 200) and PSMC produces the point, which
+    keeps PSMC's (x^2 - x) p1 conservation residual: the record carries the
+    typed exactness warning naming PSMC and the residual (01:56 (3)). Its
+    values and the guard's decisions there are recorded, not asserted
+    correct: lit-ninja-fwd's input-consistency refusal (E_in) is the pending
+    defence in depth for the default chain in such frames (01:56 (4))."""
+
+    from pyamplicol import Runtime
+
+    artifact, points, scales = hh
+    runtime = Runtime.load(artifact, process="p")
+    backend = runtime._backend
+    options = {"mu_r2": scales, "poles": "none", "on_failure": "return"}
+    for carrier, digits in (
+        ("double-double", {}),
+        ("arbitrary", {"precision": 20}),
+        ("arbitrary", {"precision": 32}),
+    ):
+        call = {**options, "arithmetic": carrier, **digits, "reduction_target": TARGET}
+        projected, records = backend.improved_points(
+            points, variant="projection", mu_r2=scales, arithmetic=carrier, **digits
+        )
+        assert all(r.produced == "projection" and r.exact for r in records), records
+        found = runtime.evaluate(points, kinematics_improvement="projection", **call)
+        if _tirust(loop_native):
+            truth = runtime.evaluate(
+                projected,
+                mu_r2=scales,
+                poles="none",
+                arithmetic="arbitrary",
+                precision=80,
+                reduction="tirust",
+                kinematics_improvement="off",
+            )
+        for p, lane in enumerate(found.diagnostics):
+            assert lane.kinematics.produced == "projection", lane.kinematics
+            if found.values[p] is None:
+                assert lane.status == "failed" and lane.detail, lane
+            elif _tirust(loop_native):
+                exact = str(truth.values[p][0][0].finite)
+                value = ((found.values[p][0][0].finite,),)
+                assert _error(value, exact) <= _limit(TARGET), (carrier, digits, p, lane)
+        found = runtime.evaluate(points, **call)
+        for lane in found.diagnostics:
+            record = lane.kinematics
+            assert record.attempts == (("z-shift", 200), ("rescaling", 0)), record
+            assert record.produced == "rescaling" and not record.exact, record
+            assert record.warning == "kinematics-inexact", record
+            assert "rescaling" in record.warning_text
 
 
 # ------------------------------------------------------------------ the SDKs

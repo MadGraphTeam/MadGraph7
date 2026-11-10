@@ -2388,7 +2388,7 @@ class V2VirtualRuntime:
                     records,
                 )
 
-            return rescue(policy, len(points), level, on_failure=on_failure)
+            return rescue(policy, len(caller), level, on_failure=on_failure)
 
     def _reduction(
         self, requested: str, carrier: str, route: Route

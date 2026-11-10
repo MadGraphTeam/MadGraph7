@@ -1064,6 +1064,100 @@ on a newer glibc is stopped by the dynamic loader on an older one
 (``version `GLIBC_2.38' not found``); see
 [Native libraries and glibc](installation.md#native-libraries-and-glibc).
 
+#### Kinematics improvement of the input points
+
+Evaluating at more digits than binary64 only pays when the input point is
+physical to those digits. A point given in binary64 (or as its decimal text)
+misses its mass shells and energy-momentum conservation by binary64 rounding,
+and near a degenerate configuration (forward, backward, a threshold) a loop
+reduction can amplify that defect far beyond the extra digits. So before
+anything is evaluated in a carrier above binary64 (double-double, and
+arbitrary precision at any requested digit count, 16 included), each point is
+first moved onto exact conservation and the exact external shells in that
+carrier's arithmetic, MadLoop's `ImprovePSPoint` (USER 2026-11-10):
+
+```toml
+[evaluation]
+kinematics_improvement = "z-shift"       # z-shift (default), rescaling, projection, off
+kinematics_improvement_binary64 = false  # true: also improve binary64 evaluations
+```
+
+* `"z-shift"`, the default, is MadLoop's default (`ImprovePSPoint = 2`, the
+  "original" method of `improve_ps.inc`): every final state keeps E, px, py
+  and takes pz on its shell, and the two massless initial states, which must
+  lie along the z axis, take the closed-form E / pz shifts that restore
+  conservation. Where it refuses (beams off the z axis, massive or one
+  initial state, a negative energy) MadLoop's own fallback runs
+  `"rescaling"`, and where that refuses too the point is evaluated as given
+  with a typed warning. Exact on points whose beams are along z. A final
+  state of small |pz| moves by about sqrt(2 E dE) rather than by the input's
+  defect (up to about 1e-8 relative on values; MadLoop behaves so).
+* `"rescaling"` is MadLoop's `ImprovePSPoint = 1` (after PSMC; the fallback
+  is `"z-shift"`): the last particle balances the 3-momentum, every
+  3-momentum is scaled (particle 1 by x^2, the others by x, x from Newton on
+  the energy balance) and every energy is put on its shell. As MadLoop codes
+  it, it leaves the 3-momentum conservation residual (x^2 - x) p1, of the
+  input's own order, wherever x differs from 1: its points are on their
+  shells but not exactly conserving (the record says so, below). It is what
+  the default produces in a frame whose beams are not along z.
+* `"projection"`: the frame-independent minimal-norm projection of the
+  external momenta onto the shells and the four conservation equations
+  (Gauss-Newton `x <- x - J^T (J J^T)^-1 c(x)`, Euclidean on the
+  components), iterated in the carrier until the residual is at the
+  carrier's rounding or stops decreasing (two to three steps from a binary64
+  input). Exact in every frame; not part of MadLoop's chain (on its refusal
+  the point is evaluated as given, typed). Select it for points whose beams
+  are not along the z axis.
+* `"off"`: no improvement in any carrier (each result records `"off"`).
+
+The shells are exactly the masses the evaluation binds for the external
+states (a leg without a bound mass keeps its own p^2). The improvement runs
+once per point and carrier from the caller's exact inputs, in the caller's
+leg order (a permuted process expression is a different order), never on an
+already improved point: every rescue level and the per-point NinjaRS
+fallback start from the original inputs in their own carrier, and the
+stability checks rotate the improved point. An input that is already exactly
+physical (exact rationals on their shells and conserving) is evaluated
+unchanged. MadLoop's input sanity test runs first for the two MadLoop
+variants (`IS_PHYSICAL`: a conservation defect above 1e-6 of the summed
+energies or a shell defect sqrt(|p^2 - m^2|) above 1e-2 of a leg's
+|E| + |px| + |py| + |pz|; the defect's magnitude is tested, where MadLoop's
+own test is signed): an input failing it is evaluated as given with the typed
+warning (code 1). Every variant refuses a move above 1e-2 of the summed
+components (`IS_CLOSE`, code 999), so `"projection"` projects a grossly
+inconsistent input only within that bound. These two bounds concern the
+input, not the carrier, and are MadLoop's; MadLoop's precision literals
+(its Newton convergence, consistency and "beams along z" thresholds,
+quadruple-precision values) are derived from the carrier's unit roundoff.
+
+Every result records the improvement per point
+(`VirtualLaneDiagnostic.kinematics`, a `VirtualKinematics`; the SDKs'
+diagnostics `"kinematics"`): the requested setting, what became of the point
+(`improved` by the variant that produced it, `exact`, `not-improved`, or
+`off`), every step of the chain with its code (MadLoop's: 1 the input test,
+100-999 the z-shift, 1000-9999 the rescaling, 999 the move bound; 10001 a
+singular projection), and the produced point's exactness record: its largest
+shell and conservation defects relative to the point's scale against the
+carrier's rounding bounds. Two typed warnings are records, not failures (the
+value is returned as computed, `on_failure` is unaffected and no rescue
+escalates on them): `kinematics-not-improved` (no variant could; evaluated
+as given) and `kinematics-inexact` (the produced point misses exactness,
+e.g. the rescaling's residual; the point is used).
+
+What counts as a double-precision evaluation is the carrier: binary64
+evaluations are improved only with `kinematics_improvement_binary64 = true`
+(off by default, so binary64 results are bitwise unchanged); double-double
+and every arbitrary-precision call follow `kinematics_improvement`. The
+improvement moves double-double and arbitrary-precision values at the level
+of the input's own defect (about 1e-16 relative at regular points; the
+z-shift's slow-particle move above), the remedy for the near-forward
+amplification. Surfaces: the run card above, the CLI (`--kinematics-
+improvement`, `--[no-]kinematics-improvement-binary64` on `evaluate` and
+`profile`), Python (`Runtime.load(..., kinematics_improvement=,
+kinematics_improvement_binary64=)` and per evaluation), and the native loop
+SDKs (`rusticol_virtual_set_kinematics_improvement`,
+`rusticol_virtual_set_kinematics_improvement_binary64` and their wrappers).
+
 #### Leading-colour helicity and colour-flow selection
 
 At leading colour (`[color] accuracy = "lc"`) a v2 virtual offers the tree

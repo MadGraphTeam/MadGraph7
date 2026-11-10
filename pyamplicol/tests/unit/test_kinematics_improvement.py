@@ -212,7 +212,7 @@ def test_the_summed_route_in_double_double_and_arbitrary_precision(gg):
         assert off.diagnostics[0].kinematics.status == "off"
         # The move is the inputs' own defect (relative ~1e-16): the values
         # move at that level.
-        a, b = found.values[0][0][0].finite, off.values[0][0][0].finite
+        a, b = found.values[0][0].finite, off.values[0][0].finite
         assert abs(Decimal(a) - Decimal(b)) <= Decimal("1e-12") * abs(Decimal(b))
     # Binary64: off by default (no record), bitwise the unimproved values.
     found = runtime.evaluate([point], arithmetic="double", **CALL)
@@ -276,7 +276,7 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
     assert repr(found.values) == repr(
         runtime.evaluate_resolved(improved, kinematics_improvement="off", **call).values
     )
-    from pyamplicol.api import CorrelatedRequest
+    from pyamplicol.correlators import CorrelatedRequest
 
     requests = {"born": CorrelatedRequest("born", {})}
     many = runtime.evaluate_correlated_many([point], requests, **call)
@@ -295,7 +295,7 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
         )
     )
     rescued = runtime.evaluate([point], stability=policy, **CALL)
-    attempts = rescued.diagnostics[0].rescue.attempts
+    attempts = rescued.rescue[0].attempts
     by_carrier = {a.arithmetic: a.kinematics for a in attempts}
     assert by_carrier["double"] is None
     assert by_carrier["double-double"].produced == "z-shift"

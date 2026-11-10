@@ -687,7 +687,13 @@ class Runtime:
         evaluator state. Explicit ``arithmetic`` selects double, DoubleFloat or
         arbitrary precision. Virtual runtimes retain their loaded arithmetic
         and R2 defaults when omitted, and accept scalar or per-point positive
-        ``mu_r2``; exact inputs are forwarded unchanged. ``stability`` (a
+        ``mu_r2``; exact inputs are forwarded unchanged, except that a virtual
+        evaluation above binary64 first improves each point to exact
+        conservation and on-shell externals in its carrier
+        (``kinematics_improvement``, default MadLoop's ``"z-shift"``;
+        ``kinematics_improvement_binary64`` for binary64, default off;
+        docs/user/configuration.md, "Kinematics improvement of the input
+        points") and records it per lane. ``stability`` (a
         ``VirtualRescuePolicy``) runs the built-in stability rescue of a v2
         virtual runtime for this call, replacing a load-time default policy;
         with neither policy there are no hidden precision retries

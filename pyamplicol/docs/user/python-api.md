@@ -1044,6 +1044,38 @@ Decimal input preserves the supplied decimal digits;
 binary64 input cannot gain information merely by requesting more arithmetic
 precision.
 
+**Kinematics improvement (one-loop virtuals).** A one-loop evaluation in
+double-double or arbitrary precision evaluates the value at the *improved*
+point of the given inputs: before anything is evaluated in that carrier,
+each point is moved onto exact energy-momentum conservation and the exact
+external shells in the carrier's arithmetic, by default with MadLoop's
+default (`kinematics_improvement="z-shift"`, MadLoop's `ImprovePSPoint = 2`
+with its own fallback to `ImprovePSPoint = 1`, `"rescaling"`), or with
+`"projection"` (frame-independent) or not at all (`"off"`); binary64
+evaluations only with `kinematics_improvement_binary64=True` (default
+False: binary64 values are unchanged). Both are `Runtime.load` defaults and
+per-call arguments of every `evaluate*` method; the variants, the chain, the
+bounds and the record are described in
+[Configuration](configuration.md#kinematics-improvement-of-the-input-points).
+Each lane diagnostic records it (`VirtualLaneDiagnostic.kinematics`, a
+`VirtualKinematics`; `None` for a binary64 evaluation without the switch), a
+rescue attempt per level (`VirtualRescueAttempt.kinematics`: each level
+improves the original inputs in its own carrier). Its typed warnings
+(`"kinematics-not-improved"`: evaluated as given; `"kinematics-inexact"`: the
+produced point misses exactness, e.g. MadLoop's rescaling in a frame whose
+beams are not along z) are records, not failures. The default is exact
+wherever the beams lie along the z axis; in other frames MadLoop's chain
+produces the rescaling's point, which keeps a conservation residual of the
+input's own order (flagged by `"kinematics-inexact"`): use
+`kinematics_improvement="projection"` there for exact consistency in every
+frame. Near forward, backward and thresholds that residual matters: NinjaRS
+amplifies an input's shell or conservation defect by about the inverse box
+Gram determinant (F-GH), which the improvement removes. Two hazards remain
+after it: binary64 `"auto"` near-forward points served by the NinjaRS
+fallback carry no estimate, and TIRust at 32-40 digits can serve suppressed
+resolved rows of boosted near-forward points badly off (use at least 60
+digits there).
+
 `evaluate_correlated` always uses retained Symbolica evaluator states through
 the separate Python exact executor, including at its default precision 16.
 Its default `arithmetic="arbitrary"` is distinct from the explicit
