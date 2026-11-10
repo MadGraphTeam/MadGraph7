@@ -1,0 +1,179 @@
+{
+  "frozen_evidence_indices": {
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/evidence-index.json": "d7ace06aad2ae7850f2bf97cc9d48001ca9d2f4c1a8a02a349f975a97c7c0137",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-trace/evidence-index.json": "1086c34cdf66a16d9d6ea117613a213829d038b0e7289b12d4573f9a4d142192"
+  },
+  "frozen_param_card_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+  "insertion_blocks": 48,
+  "limits": [
+    "Source equivalence is not native parity; observer compile/output/IEEE validation remains required.",
+    "Fortran public status may include decimal transport failure, not exclusively raw Rust ABI status.",
+    "All group visits are retained; source-target pairs guide analysis without filtering out other failures."
+  ],
+  "native_executed": false,
+  "prepare_sha256": "09703853affd173ea85f47203db5f86bdec30bfd714bec793b19605603a43f5e",
+  "production_modified": false,
+  "protected_historical_inputs": {
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Cards/ident_card.dat": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Cards/param_card.dat": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/MadLoop_makefile_definitions": "e5aa2f9835ea12490960153d871c131e510411f6623e962db1738fa7f62dc5df",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/COLLIER_interface.o": "056931dd2d42da1ce02e12665d766b7ad84b370eba4450282cef649c05e6d819",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.o": "e4bcf06702268da5f0791c88e1ba0319509f73a06b5eec8750d8d11dfac68b19",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/MadLoopCommons.o": "9455afaca44fc0830336fc22a22d905ac5349908a6f4ce3c9739f0d3e33f2053",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/MadLoopParamReader.o": "53518badf58f38dec9f931547da196d2c7b9a893fe526ae74d7bf812a257a7fb",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIRUST_interface.o": "a1e96efbdb9309a28ab76d5df1e2185c7a88b6a9320f83a2506c9eebf3829fd8",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIR_interface.o": "020d71e7289c3640448c7c29e60d769dca8ad8422bfd9145632b1837bae57970",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/born_matrix.f": "c4996302b8b7392a0697da69533b998c0d617e81c53f027e6ae171de3f8a2f0c",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/born_matrix.o": "6a49b3d713b9e208ae1ae20abfe5ece7d161ac0e5a47274c15684d647393330c",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/coef_construction_1.o": "58282e7daf3db2740fd73ff0d57a75b07d0804336026036780c9c76333d0be0b",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/helas_calls_ampb_1.o": "ea92019c4572d2bbd2564edc556f17cd080adff619569f8478306c0e59193002",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/helas_calls_uvct_1.o": "f498b92ac0a4abb70ab498a7bebc2c9d39b7b0e1180351c5cdb6152979db9487",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/improve_ps.o": "f5a9a7a0c8d3edcb1fb517701e715b191228daad926046aba79f275aa5e3d6a5",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_CT_calls_1.o": "077079a48f79c18a7d5aaa61c377b8ccdef84b8d16969c305ed45f0b1584b34d",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.f": "2846f4d35755abfb7a8709a5bb1560983b3676535fd43b39cd62acac1be6185c",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.o": "a8b46bb9f9e358325d08fcec9af162801fc3920dce8295085bd16cea23971a45",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_num.o": "4fc528756b002c50705d7c8b9fc5760f19d7d9852cec811cf03413eee3b03678",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mg5_citation.o": "cb05941f5dbf37c04e97ea8e4f9e702180e141418bc9222faff3f8c49b742e84",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_coef_construction_1.o": "8305941f9e995c2e333bc61eab362fc93197c7f20d6864fb01c4a0615adace32",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.o": "53d090cde1975811375d1bc3bdc0f0a8a43a1e05f4ed8b962f8396eb0631eea6",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_helas_calls_ampb_1.o": "dd362b7ee1e80fd5cf27fa38b2f404d110bdc17797fce21e2fdf102b34d9f653",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_helas_calls_uvct_1.o": "7a0511ec56d3890220fdc65d89a7c8c79775f9b823b40c39c994fe01b836f408",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/polynomial.o": "1281b11b86c2da06bb1a42c74afddd8385d7b154fedb10e8699f30567d73bd9e",
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/compilation.json": "1ca12b2c81f8cebdf4cebdda801401f652c36eedc8247f246a4ffef75f493ad9",
+    "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/candidate/qcd_n3_uux_zgg/lib/libdhelas.a": "461859f8e804fcbc49fa5e5ecde80f95341c9254f19d62ce958c155d8c12f9bb",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/outputs/candidate/qcd_n3_uux_zgg/lib/libmodel.a": "d9bbfa43f9a240cb1779904a32e97b32f75352bf5743b148302cc5cf857496cb",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.a": "70891c9d04fd5e109838a701df1ee616ab2092599c5a615d24b5f9cd33c96a07",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.a": "4d9aa36adc1df40eae062d82d3fb930a5cd64040252df5af68dc1a3e247f8fb9",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-NOTICES.txt": "6d82540c9a7bd21647da949b892f956603bf69f6ec90dca1d390f17e69de2352",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-config.json": "ebb9ebfec9c71041fc3e441e2546524025080a13692b522d5495bef710be8d56",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-dependency-notices.tar.gz": "67696adaa31e58b35ee4404d02d66194a0496f45126651a6a57ad715b2bad6b8",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-dependency-provenance.json": "231dd32ac82cf432835410970024eb48f47023a4709a10b7cadc67720e0dbaae",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-link-before.txt": "ef7dc598f2fee7b363feabeaf30bd352dbc67456f2ba8ea5b176d70ec9ed9abe",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/libavh_olo.a": "10acae25536d5f7580d60980290e21033eb7413224554f167f031d2c809bab48",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/libtirust.a": "04c2b1ac3b8275dd2d0060416c4147bebd5e9bd62b71509e4cb29ce3d5c47d08",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/tirust-NOTICES.txt": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/tirust-config.json": "000ac5255c1ba3fa268f17524b4d30bcd5a231c38f13a10b820d7b4a208711da",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/tirust-dependency-notices.tar.gz": "fd455e7c9ca05ba553f70961b03d3ac6a242a7cfa0639b112e274f2847f1702a",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/tirust-dependency-provenance.json": "394073803fdbedf11bae627709bb9060a8fd156fa3d35816af0cf070d79a7b9f",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/tirust-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/tirust-native-libs.txt": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/CutTools/includects/libcts.a": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/IREGI/src/libiregi.a": "6246428ec9d75ec8d57e0d1dd16efc4525053dc8d49857c6c41366ea14eb4fdf",
+    "HEPTools/tirust/lib/libmadloop_tirust.so": "49af12f0b88252a2d06420a2ea8768529eb5ab51de34e3db2257ee61cd71ca12",
+    "docs/benchmarkfolder/experiments/physical-stress/points/qcd_n3_uux_zgg/selected.dat": "a2d4bb120bf442179ceadd6c3bf8b842732dfa8e3af50f71e30bb7c9948eed9b",
+    "docs/benchmarkfolder/experiments/qcd-born-cancellation-audit/evidence-index.json": "af8e2461c0a284917ceb9de22f85b5fb2c7314745788ed0ac324ad4f5cb9186c",
+    "docs/benchmarkfolder/experiments/qcd-born-cancellation-audit/execution.json": "ff9ea6f8d2ae3c039cd95f0bfdaa9b7b535b2a72f032decd06a884691b586c6a",
+    "docs/benchmarkfolder/experiments/qcd-born-cancellation-audit/qp_born.f": "cb06c3303314eca684583409aa20f8a2f94dd59513b467822cc2eca452e6d73c",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/README.md": "9fa7e1b24c7a7a02a5ce61a50ed1836afc3b86085a9b6dc75096f0c690d1e443",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/aggregate-derivation.patch": "b59a04db4b550011ceb9470e7dc0a51fba16b041ae2e6224896a22e0f998028a",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/amplitude_driver.f": "f2809437044f748f144c886f8ceee860ef41123fa9dedc049f4c69d0538b2c5e",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/born_fallback.f": "d06ec729509c616790d2960fd9d06a54f3aa0e2fc1408011641fd1896e7ba621",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/born_rescue.f": "be514aaffe9e478ce86bbfe1d83f6fdc7f08ff249b66898a7aba4a440787cfb0",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/build_amplitudes.py": "2d56c400cd72a756ffc132ed9dd528f3509fa37782f6fcf8580d3c8466048001",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/host-derivation.patch": "48b4b0702c4161e2457bdb1c20a9a6d5f8453b43c34816ece864913098e39df2",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/loop_matrix.f": "8c09cb06d2d087403ce0603e99dede30f22c4d7f450b5158043a7932047733b0",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/preparation.json": "e4f6235e7c7d3d337c567a0acd248cfa49daaaa4d265f842f4ebf5a54a81602f",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/prepare.py": "b8d838b24fec948cc322ad7037070fa2cadf95008983578f71067d32c4472776"
+  },
+  "protected_source_inputs": {
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.f": {
+      "bytes": 70163,
+      "sha256": "091cd7efe6ab18b2eb8cd5d31c834a48ceee9c69875834eaca9da3d5b3809363"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIRUST_interface.f": {
+      "bytes": 12246,
+      "sha256": "90aa42f27796c7b8762ccfc5c7240a3dc90e21a399078a51031355eda15846d0"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIR_interface.f": {
+      "bytes": 23310,
+      "sha256": "2a1dffb507f359a9e0c0fe5ff4f597aa752306284e027a2d8c6231acb2b15241"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/helas_calls_ampb_1.f": {
+      "bytes": 25821,
+      "sha256": "3eaa865b92e37552e7de056f4b63861c3736b004d9d113e1d40d0b46200e7e92"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/improve_ps.f": {
+      "bytes": 28507,
+      "sha256": "fa190450c53d61bd82f4e9641d3c5898a576642f0d0082a1898df041af4ad8ff"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_CT_calls_1.f": {
+      "bytes": 18872,
+      "sha256": "f49561ab2c444c44eb862cc6a43b9d0e55d79520472d23e727919d81bbf3312f"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.f": {
+      "bytes": 100824,
+      "sha256": "2846f4d35755abfb7a8709a5bb1560983b3676535fd43b39cd62acac1be6185c"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.f": {
+      "bytes": 13490,
+      "sha256": "f1cb3605c429ae40750127660b69f37870f61b40546e9a6389655f338d6b7469"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_helas_calls_ampb_1.f": {
+      "bytes": 26509,
+      "sha256": "138b9f55da144b18572fa102f1d49a9168002a6a91412f392154697f179925b9"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/inputs/candidate/qcd_n3_uux_zgg/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/points/qcd_n3_uux_zgg/selected.dat": {
+      "bytes": 971,
+      "sha256": "a2d4bb120bf442179ceadd6c3bf8b842732dfa8e3af50f71e30bb7c9948eed9b"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-8-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "d266d7f54aaabf22cbbf73a420ea24ba3382080af6bc6fc47a162a27ac5342e3"
+    },
+    "docs/benchmarkfolder/experiments/physical-stress/runs/qcd_n3_uux_zgg/candidate-9-auto/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "docs/benchmarkfolder/experiments/qcd-born-cancellation-audit/evidence-index.json": {
+      "bytes": 4020,
+      "sha256": "af8e2461c0a284917ceb9de22f85b5fb2c7314745788ed0ac324ad4f5cb9186c"
+    },
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/amplitude-native-1/adjudication.json": {
+      "bytes": 25572,
+      "sha256": "ab763a8adbb21c915d0dff3c31aa69a68aa0442fa3f7435e2688c540f722c681"
+    },
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/evidence-index.json": {
+      "bytes": 28585,
+      "sha256": "d7ace06aad2ae7850f2bf97cc9d48001ca9d2f4c1a8a02a349f975a97c7c0137"
+    }
+  },
+  "schema": 1,
+  "scope": "Insertion-only private QP observer preparation; no compile or native evaluation.",
+  "source_transformations": [
+    {
+      "observed_path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/CT_interface.f",
+      "observed_sha256": "58b9ce36633e3812ec694997844034376b50d8fedfa5b45fd36a4cdcaf0919e6",
+      "original_path": ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/CT_interface.f",
+      "original_sha256": "091cd7efe6ab18b2eb8cd5d31c834a48ceee9c69875834eaca9da3d5b3809363",
+      "strip_insertions_exact": true
+    },
+    {
+      "observed_path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/TIRUST_interface.f",
+      "observed_sha256": "29870097e0b62d4fdf06310f46a959a929b51fea5259d2d42b26061cea90511c",
+      "original_path": ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIRUST_interface.f",
+      "original_sha256": "90aa42f27796c7b8762ccfc5c7240a3dc90e21a399078a51031355eda15846d0",
+      "strip_insertions_exact": true
+    },
+    {
+      "observed_path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/loop_matrix.f",
+      "observed_sha256": "5545b6163693344446545e6bde30b16c7aa95bbae80a19ecdc9b696e6af9fb7e",
+      "original_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/loop_matrix.f",
+      "original_sha256": "8c09cb06d2d087403ce0603e99dede30f22c4d7f450b5158043a7932047733b0",
+      "strip_insertions_exact": true
+    },
+    {
+      "observed_path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/amplitude_driver.f",
+      "observed_sha256": "21ab7cf7a9fe610ed7931434726ad0f95c89c10c56239a8c65690b60076537c7",
+      "original_path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/amplitude_driver.f",
+      "original_sha256": "f2809437044f748f144c886f8ceee860ef41123fa9dedc049f4c69d0538b2c5e",
+      "strip_insertions_exact": true
+    }
+  ]
+}

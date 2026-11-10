@@ -1,0 +1,7 @@
+{
+  "stage": "source-only prepare, before compilation/native",
+  "exception": "AssertionError",
+  "anchor": "      RES=0\\n",
+  "matched": 2,
+  "cause": "Unanchored substring search also matched a more deeply indented existing RES=0 line. Partial CT source preparation is preserved. No production modification or native execution."
+}

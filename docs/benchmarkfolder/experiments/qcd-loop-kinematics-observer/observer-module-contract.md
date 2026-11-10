@@ -1,0 +1,35 @@
+# Source-only observer module contract
+
+`observer.f90` defines `qcd_kinematics_observer`. It has not been compiled or executed; this source preparation makes no numerical or IEEE qualification claim. It contains no floating-point data, arithmetic, formatting, library-context operation or backend error query. Its only floating-environment operations are `IEEE_GET_STATUS` and `IEEE_SET_STATUS` around each public mutating helper. Each helper restores its own entry environment, including existing reducer flags. It never disables traps, changes rounding, clears flags, stops the program or modifies physics arguments.
+
+Public arguments are default `INTEGER` except `words(:)` and the two `qo_get_health` outputs, which are `INTEGER(INT64)`, `stable/fpe`, which are `LOGICAL`, and `path/tag/message`, which are `CHARACTER(*)`:
+
+- `qo_open(path)`: open a **new** file, refusing to replace existing evidence. Call once before measured points. Writes a schema/capacity header and integer byte-order marker.
+- `qo_begin_point(seq,point)`: activate recording, reset bounded per-point storage and assign integer sequence/point identifiers. Calls during inactive warmup otherwise do nothing. A nested point is rejected and counted as an observer fault.
+- `qo_begin_call(backend,ctmode,group,sqso,n,rank)`: begin a new call, assigning a monotonically increasing ordinal within the point. An unclosed previous call emits `OBSERVER_ERROR` and `CALL_ABANDONED` before recording the new call.
+- `qo_put(tag,i,j,words)`: copy caller-supplied raw words without interpreting them. The caller uses `TRANSFER` on initialized values only and retains native precision, component order and valid element counts.
+- `qo_mark(tag,i,j,value)`: integer stage/validity metadata. Both `put` and `mark` allow `POINT_`-prefixed tags whenever a point is active; those events always have call ordinal/context zero, even if a call is active. Other tags require a call.
+- `qo_native_status(status)`: record a returned public backend API status and its presence. A second status in the same call invalidates the trace. Pre-backend adapter returns must **not** invent a native status; use stage markers and still end the call.
+- `qo_error(message)`: save a backend error string for the current call, including an empty string. The caller obtains it under its own local IEEE save/restore guard, after checking `qo_is_active()`/`qo_scope_active()`. The module never starts, queries or resets a backend context.
+- `qo_end_call(stable,fpe)`: emit final call stability, the selected existing FPE flag, and whether a native status was observed. This is required for successes and refusals, including early adapter returns. It resets call context immediately.
+- `qo_end_point(code)`: emit a point-end event and dump the bounded buffers using integer/character output only; flush and deactivate. An open call is recorded as abandoned. The file remains open for subsequent points.
+- `qo_is_active()` and `qo_scope_active()`: logical queries for an active point and active point-plus-call respectively; they only read observer logical state.
+- `qo_get_health(faults,io_failures)`: read cumulative INT64 fault and I/O-failure counters without changing state. After **each** `qo_end_point`, the driver must report both counters through its independent integer-only stdout/result channel, preserving the IEEE state around that report. Require a matching `QO_HEALTH` acknowledgement for every expected point and both counters zero. This detects a final flush failure that cannot reliably report itself through the failing trace file.
+
+No call payload should be taken from uninitialized locals or inactive tensor rows. Failed API outputs are absent/invalid payloads, not computed zeros. Record the original numerator separately from any backend sign transformation, and distinguish backend status, tensor validation, contraction, conversion and final host status. The observer does not infer these stages from floating values. Status presence and final `stable/fpe` are separate fields, so inherited FPE flags do not become new native refusals.
+
+Storage is fixed at 200,000 events, 2,000,000 INT64 payload words, and 4,096 error strings of 1,024 characters per point. Tags have 64 characters. Overflow never stops physics: it increments counters and drops the whole affected event/payload. Truncated or nonprintable tags, truncated error strings, invalid nesting/scopes, duplicate status and I/O errors invalidate the trace. A truncated tag is retained after sanitization; original/retained error lengths are both recorded. Overflow and missing records must never be interpreted as successful or absent physics calls.
+
+## Text format, schema 1
+
+`QO_HEADER` gives version, event/word/error limits, error/tag lengths, metadata length, and INT64 bit width. `QO_BYTE_ORDER` gives the eight bytes obtained by transferring integer `0x0102030405060708`; it establishes native word byte order without a floating calibration.
+
+`QO_POINT` gives sequence, point, number of begun calls, event/word/error counts, point observer faults, dropped events/words/errors, truncated errors, cumulative observer faults and cumulative I/O faults. Each `QO_EVENT` gives its one-based ordinal, these **21 integer metadata fields**, then its tag:
+
+`kind seq point call backend ctmode group sqso n rank i j value word_count word_first error_index native_present native_status stable fpe tag_length`
+
+`word_first` and `error_index` are one-based, or zero when absent. `native_status` is meaningful only when `native_present=1`; unavailable `stable/fpe` are `-1`. Point-scope events have zero call/backend/CT/group/sqso/n/rank/status fields. Event kinds are: 1 point begin; 2 point end; 3 call begin; 4 payload; 5 metadata; 6 native status; 7 error text; 8 call end; 9 observer fault; 10 abandoned call. Observer-fault reason values currently are 1 unclosed call, 2 missing call scope, 3 duplicate native status, 5 nested point, 6 repeated/open-during-point file open, 7 unopened output at point begin.
+
+`QO_WORDS event count ...` contains exactly `count` fixed-width 16-digit hexadecimal INT64 words. Error text is emitted as `QO_ERROR index retained_length original_length` followed by `QO_ERROR_BYTES index ...` containing character byte codes; embedded newlines cannot split the protocol. `QO_POINT_END` gives sequence, point, host code, event/word/error counts and the same fault/drop counters, providing a completeness footer. A write/flush failure may leave partial output; every expected point must have a complete matching footer, an independent post-flush health acknowledgement, and zero fault counters. External verification also checks the process/file-completion evidence. No buffer size or successful logger return establishes physics acceptance.
+
+The source-preparation owner must preserve original argument evaluation and branch order. A logger save/restore must never enclose a reducer invocation, because that would discard legitimate reducer flags. Compiler/runtime passivity, unchanged outcomes and complete record coverage remain untested requirements for the later isolated qualification.

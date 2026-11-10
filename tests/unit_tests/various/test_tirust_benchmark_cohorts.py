@@ -50,6 +50,7 @@ class TestCampaignCohorts(unittest.TestCase):
         spec = {"campaign_binding": binding, "case": {"id": "example"},
                 "config": json.loads((report / "cases.json").read_text())}
         generation = {"campaign_binding": binding, "source": "candidate",
+                      **self.campaign.export_environment_binding(),
                       "source_identity": manifest["candidate"]["exporter_identity"]}
         shared = manifest["shared_inputs"]["files"]
         native = manifest["candidate"]["native"]["files"]
