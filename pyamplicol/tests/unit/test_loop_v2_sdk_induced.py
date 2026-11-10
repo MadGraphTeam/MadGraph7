@@ -915,10 +915,11 @@ def test_the_c_abi_falls_back_per_point_at_a_stated_target(artifacts, loop_nativ
 
 
 FALLBACK_CLIENT = r"""
-// ./client artifact process input.txt target arithmetic: one "auto" evaluation
-// of a loop-induced artifact through the C++ wrapper at the target accuracy
-// `target` in `arithmetic` ("double" or "double-double"): the statuses, the
-// virtual values as bit patterns and the diagnostics JSON, one line each.
+// ./client artifact process input.txt target arithmetic [poles]: one "auto"
+// evaluation of a loop-induced artifact through the C++ wrapper at the target
+// accuracy `target` in `arithmetic` ("double" or "double-double"), in the
+// pole selection `poles` when given: the statuses, the virtual values as bit
+// patterns and the diagnostics JSON, one line each.
 #include "rusticol_virtual.hpp"
 #include <cinttypes>
 #include <cstdio>
@@ -947,6 +948,7 @@ int main(int argc, char **argv) {
     rusticol::VirtualRuntime runtime(argv[1], std::string(argv[2]));
     runtime.set_reduction_target(std::strtod(argv[4], nullptr));
     runtime.set_arithmetic(argv[5]);
+    if (argc > 6) runtime.set_poles(argv[6]);
     auto result = runtime.evaluate(momenta, points, scales);
     std::printf("statuses");
     for (auto status : result.statuses()) std::printf(" %u", status);
@@ -1101,7 +1103,10 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
     explicit "tirust" fails the point typed in the Python API and the C ABI;
     "auto" serves it on NinjaRS (its value bitwise the explicit NinjaRS one,
     its record NinjaRS and the fallback's reason), the C ABI's diagnostics
-    naming it under "fallbacks", bitwise the Python API's values."""
+    naming it under "fallbacks", bitwise the Python API's values. A binary64
+    fallback point is served unguarded (m-lit lit-fallback-guard, USER
+    2026-11-09 ~11:53: the guard runs in the extended carriers only), so its
+    record carries no guard estimate in either API."""
 
     from fractions import Fraction
 
@@ -1140,6 +1145,7 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
                 or p not in refused
             )
             assert repr(auto.values[p]) == repr(ninjars.values[p]), p
+            assert lane.reduction.guard_estimate is None, p
         else:
             assert lane.reduction.effective == "tirust", p
             assert repr(auto.values[p]) == repr(tirust.values[p]), p
@@ -1156,6 +1162,7 @@ def test_a_structural_tirust_refusal_falls_back_at_the_default_target(
         assert moved == [p for p, v in enumerate(tirust.values) if v is None]
         for key in record["fallbacks"]:
             assert record["fallbacks"][key]["effective"] == "ninjars"
+            assert record["fallbacks"][key]["guard_estimate"] is None
         assert found["statuses"] == [SUCCESS_STATUS] * count
         assert sdk.rusticol_virtual_set_reduction(handle, b"tirust") == 0
         explicit = _evaluate(sdk, handle, points, scales)

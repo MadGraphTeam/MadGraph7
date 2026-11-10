@@ -993,7 +993,7 @@ impl V2Runtime {
 
     /// The call of the stored column set `kind` (`correlated`, `resolved`:
     /// colour-contracted, every row).
-    fn column_call(kind: &str) -> RusticolResult<InducedCall> {
+    pub(super) fn column_call(kind: &str) -> RusticolResult<InducedCall> {
         match kind {
             "correlated" => Ok(InducedCall::Correlated),
             "resolved" => Ok(InducedCall::Resolved {
@@ -1048,6 +1048,36 @@ impl V2Runtime {
         Complex<T>: Real + EvaluationDomain,
         TreeRuntime<T>: Send,
     {
+        self.induced_call_with(
+            call, momenta, scales, spins, mode, precision, zero, arith, None,
+        )
+    }
+
+    /// [`V2Runtime::induced_call`] that, given `guard`, also collects what
+    /// the per-point fallback's guard reads (m-lit lit-fallback-guard,
+    /// DECISIONS 2026-11-09 14:30 Q7: the guard decides on the outputs the
+    /// call returns, from this run of those outputs' rows alone): the same
+    /// executor run with the reduction-direction re-test and the term scale
+    /// collected (`Monitoring`), and per successful point a [`GuardPoint`]
+    /// (`guard.points`, by batch index) beside each output's form
+    /// (`guard.forms`). The values are those of the run without `guard`.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn induced_call_with<T: Native, A: Lift<T> + Squaring + CarrierPair>(
+        &mut self,
+        call: &InducedCall,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        spins: &[BTreeMap<usize, [(Rational, Rational); 4]>],
+        mode: V2Poles,
+        precision: V2Precision,
+        zero: &T,
+        arith: &A,
+        mut guard: Option<&mut GuardSink<A::N>>,
+    ) -> RusticolResult<Vec<ColumnPoint<A::N>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
         if !spins.is_empty() && spins.len() != momenta.len() {
             return Err(invalid("one spin source assignment per point"));
         }
@@ -1069,11 +1099,29 @@ impl V2Runtime {
         let observables = self.induced_observables.take().expect("the observables");
         let found = (|| -> RusticolResult<_> {
             let forms = Forms::new(arith, &induced, &observables, &outputs)?;
+            if let Some(guard) = guard.as_deref_mut() {
+                guard.forms = outputs
+                    .iter()
+                    .map(|output| guard_form(&induced, &observables, output))
+                    .collect::<RusticolResult<_>>()?;
+            }
             let average = self.record.average;
             let digits = precision.working_digits();
             let plan_rows = induced.plan_rows();
             let sector_index = self.sector_index.clone();
-            self.induced_points_with(
+            let mut collected = Vec::new();
+            let guarded = guard.is_some();
+            let monitoring = if guarded {
+                Monitoring {
+                    check: Some(ReductionCheck::REVERSED),
+                    term_scale: true,
+                    collected: Some(&mut collected),
+                }
+            } else {
+                Monitoring::default()
+            };
+            let mut taken: BTreeMap<usize, GuardPoint<A::N>> = BTreeMap::new();
+            let points = self.induced_points_with(
                 &induced,
                 momenta,
                 scales,
@@ -1081,12 +1129,12 @@ impl V2Runtime {
                 precision,
                 zero,
                 arith,
-                Monitoring::default(),
+                monitoring,
                 mask.as_deref(),
                 &mut |index, vectors, width| {
                     let spin = spins.get(index).filter(|spin| !spin.is_empty());
-                    let (amplitudes, rows) = match spin {
-                        None => (None, plan_rows.clone()),
+                    let (amplitudes, rows, coefficients) = match spin {
+                        None => (None, plan_rows.clone(), None),
                         Some(spin) => {
                             let coefficients = point_coefficients(
                                 arith,
@@ -1103,56 +1151,91 @@ impl V2Runtime {
                                 induced.size(),
                             );
                             let rows = rows_of(&moved);
-                            (Some(moved), rows)
+                            (Some(moved), rows, Some(coefficients))
                         }
                     };
-                    let amplitudes = amplitudes.as_ref().unwrap_or(vectors);
-                    outputs
-                        .iter()
-                        .map(|output| {
-                            let rows: Vec<Row> = match &output.rows {
-                                None => rows.clone(),
-                                Some(kept) => rows
+                    let mut squares = Vec::new();
+                    let values = {
+                        let amplitudes = amplitudes.as_ref().unwrap_or(vectors);
+                        outputs
+                            .iter()
+                            .map(|output| {
+                                let rows: Vec<Row> = match &output.rows {
+                                    None => rows.clone(),
+                                    Some(kept) => rows
+                                        .iter()
+                                        .filter(|row| kept.contains(row))
+                                        .cloned()
+                                        .collect(),
+                                };
+                                let (h, k) = forms.of(&output.metric);
+                                let real = induced
+                                    .square_vectors(arith, amplitudes, &rows, h, width, average)?;
+                                let imaginary = k
+                                    .as_ref()
+                                    .map(|k| {
+                                        induced.square_vectors(
+                                            arith, amplitudes, &rows, k, width, average,
+                                        )
+                                    })
+                                    .transpose()?;
+                                let virtual_values = sector_index
                                     .iter()
-                                    .filter(|row| kept.contains(row))
-                                    .cloned()
-                                    .collect(),
-                            };
-                            let (h, k) = forms.of(&output.metric);
-                            let real = induced
-                                .square_vectors(arith, amplitudes, &rows, h, width, average)?;
-                            let imaginary = k
-                                .as_ref()
-                                .map(|k| {
-                                    induced
-                                        .square_vectors(arith, amplitudes, &rows, k, width, average)
+                                    .map(|&s| {
+                                        (0..width)
+                                            .map(|j| {
+                                                C::new(
+                                                    real[s][j].clone(),
+                                                    imaginary.as_ref().map_or_else(
+                                                        || arith.zero(),
+                                                        |y| y[s][j].clone(),
+                                                    ),
+                                                )
+                                            })
+                                            .collect()
+                                    })
+                                    .collect();
+                                let real_output = imaginary.is_none();
+                                if guarded {
+                                    squares.push(GuardOutput {
+                                        rows,
+                                        real,
+                                        imaginary,
+                                    });
+                                }
+                                Ok(ColumnValues {
+                                    born: Vec::new(),
+                                    virtual_values,
+                                    real: real_output,
                                 })
-                                .transpose()?;
-                            let virtual_values = sector_index
-                                .iter()
-                                .map(|&s| {
-                                    (0..width)
-                                        .map(|j| {
-                                            C::new(
-                                                real[s][j].clone(),
-                                                imaginary.as_ref().map_or_else(
-                                                    || arith.zero(),
-                                                    |y| y[s][j].clone(),
-                                                ),
-                                            )
-                                        })
-                                        .collect()
-                                })
-                                .collect();
-                            Ok(ColumnValues {
-                                born: Vec::new(),
-                                virtual_values,
-                                real: imaginary.is_none(),
                             })
-                        })
-                        .collect::<RusticolResult<Vec<_>>>()
+                            .collect::<RusticolResult<Vec<_>>>()?
+                    };
+                    if guarded {
+                        taken.insert(
+                            index,
+                            GuardPoint {
+                                collected: None,
+                                coefficients,
+                                moved: amplitudes,
+                                outputs: squares,
+                            },
+                        );
+                    }
+                    Ok(values)
                 },
-            )
+            )?;
+            if let Some(guard) = guard.as_deref_mut() {
+                // The run's collected parts of each successful point
+                // (`induced_points_with` collects one entry per point).
+                for (index, found) in collected.into_iter().enumerate() {
+                    if let (Some(found), Some(point)) = (found, taken.get_mut(&index)) {
+                        point.collected = Some(found);
+                    }
+                }
+                guard.points = taken;
+            }
+            Ok(points)
         })();
         self.induced_observables = Some(observables);
         found
@@ -1323,6 +1406,77 @@ impl<N> Default for Monitoring<'_, N> {
             collected: None,
         }
     }
+}
+
+/// What the per-point fallback's guard reads of a loop-induced call
+/// ([`V2Runtime::induced_call_with`]; m-lit lit-fallback-guard): per
+/// output its form (in the call's output order) and per successful point
+/// (by batch index) its [`GuardPoint`].
+pub(super) struct GuardSink<N> {
+    pub(super) forms: Vec<GuardForm>,
+    pub(super) points: BTreeMap<usize, GuardPoint<N>>,
+}
+
+impl<N> Default for GuardSink<N> {
+    fn default() -> Self {
+        Self {
+            forms: Vec::new(),
+            points: BTreeMap::new(),
+        }
+    }
+}
+
+/// One output's form as the guard reads it: its matrix magnitudes |M|
+/// (`Forms`' third member: abs(complex(cell)) of the exact matrix in
+/// binary64, row-major) and whether it is the inclusive |A|^2 of every row
+/// (the Python API's `point_estimate` then estimates it, without a spin
+/// assignment; `InducedColumns.evaluate`).
+pub(super) struct GuardForm {
+    pub(super) magnitude: Vec<f64>,
+    pub(super) inclusive: bool,
+}
+
+/// One successful point of a guarded call: the run's collected parts, the
+/// spin legs' coefficients of its assignment and the amplitudes moved onto
+/// them (None without one: the outputs read the run's vectors), and per
+/// output its rows and its square per record sector (real; imaginary for a
+/// directed history).
+pub(super) struct GuardPoint<N> {
+    pub(super) collected: Option<InducedCollected<N>>,
+    pub(super) coefficients: Option<Coefficients<N>>,
+    pub(super) moved: Option<Vectors<N>>,
+    pub(super) outputs: Vec<GuardOutput<N>>,
+}
+
+/// One output of a guarded point: the rows it reads and its square per
+/// record sector and Laurent coefficient.
+pub(super) struct GuardOutput<N> {
+    pub(super) rows: Vec<Row>,
+    pub(super) real: Vec<Vec<N>>,
+    pub(super) imaginary: Option<Vec<Vec<N>>>,
+}
+
+/// The guard's form of `output` ([`GuardForm`]).
+fn guard_form(
+    induced: &Induced,
+    observables: &Observables,
+    output: &Output,
+) -> RusticolResult<GuardForm> {
+    use crate::v2_decimal::Binary64;
+    let size = induced.size();
+    let exact: Vec<Exact> = match &output.metric {
+        Metric::Inclusive => induced.metric().to_vec(),
+        Metric::History(id) => observables.matrices[id].clone(),
+        Metric::Anchor(t) => anchor_metric(induced.metric(), size, *t),
+    };
+    let magnitude = exact
+        .iter()
+        .map(|(re, im)| Ok(Binary64.rational(re)?.hypot(Binary64.rational(im)?)))
+        .collect::<RusticolResult<Vec<f64>>>()?;
+    Ok(GuardForm {
+        magnitude,
+        inclusive: output.metric == Metric::Inclusive && output.rows.is_none(),
+    })
 }
 
 /// What a monitored loop-induced run collects per successful point: its

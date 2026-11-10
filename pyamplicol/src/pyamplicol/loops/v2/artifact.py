@@ -2430,26 +2430,30 @@ class V2VirtualRuntime:
         one), on the ``reduction`` backend (one the native executor runs,
         ``_reduction_choices`` on ``reduction.SUMMED``) at its target, with
         its per-point fallback (``reduction.with_fallback``: the points it
-        refuses or fails again on NinjaRS, recorded per point; a fallback
-        point's cross-backend check is not run, m-lit R6)."""
+        refuses or fails again on NinjaRS at ``carrier``, each served one
+        guarded by its reduction-direction check against the target,
+        recorded per point; a fallback point's cross-backend check is not
+        run, m-lit R6)."""
 
         from .reduction import with_fallback
 
-        plain = replace(checks, cross_backend=False) if checks.cross_backend else checks
-
-        def run(indices: list[int] | None) -> tuple[list[Any], dict[int, list[str]]]:
+        def run(
+            indices: list[int] | None, own: VirtualStabilityChecks
+        ) -> tuple[list[Any], dict[int, list[str]]]:
             if indices is None:
-                return self._run(points, scales, parameters, setting, selection, checks)
+                return self._run(points, scales, parameters, setting, selection, own)
             return self._run(
                 [points[i] for i in indices],
                 [scales[i] for i in indices],
                 parameters,
                 setting,
                 selection,
-                plain,
+                own,
             )
 
-        results, failures, served = with_fallback(run, reduction, len(points))
+        results, failures, served = with_fallback(
+            run, reduction, len(points), checks, carrier
+        )
         if failures and on_failure == "raise":
             index = min(failures)
             raise EvaluationError(

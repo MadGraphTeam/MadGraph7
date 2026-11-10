@@ -874,9 +874,13 @@ impl V2Reducer {
     /// off by default): the fast engine's zero stability thresholds
     /// ([`fast_options`]; its amplitudes are kept per mode). The generic
     /// engines (double-double, MPFR, and the binary64 lanes routed to them)
-    /// test no stability threshold (no NinjaRS cancellation test is enabled
-    /// here; only exactly singular cuts and non-finite results fail): the
-    /// mode changes nothing there.
+    /// have no stability threshold to zero (no NinjaRS cancellation test is
+    /// enabled here; only exactly singular cuts and non-finite results
+    /// fail): the mode changes nothing there. That is no accuracy statement:
+    /// their values are unverified with or without the mode (NinjaRS's
+    /// near-planar hazard of rank-n pentagon families, docs/user/
+    /// python-api.md); pyAmpliCol's stability checks, its rescue stack and
+    /// the per-point fallback's guard check them.
     pub fn set_unchecked(&mut self, unchecked: bool) {
         self.unchecked = unchecked;
         if let Engines::Fast(engine) = &mut self.engines {
