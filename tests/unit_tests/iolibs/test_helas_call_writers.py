@@ -1357,12 +1357,11 @@ class AxialGaugeReferenceTest(unittest.TestCase):
 
     def test_reference_massive_fermions(self):
         """g g > t t~ g: the top quarks are quantised along the reference of
-        the gluons (the first beam gluon), and that gluon takes the momentum
-        of the top quark instead of the other beam gluon"""
+        the gluons (the first beam gluon); the gluons keep their references"""
 
         me = self.matrix_element('g g > t t~ g')
         refs = helas_call_writers.get_axial_gauge_refs(me)
-        self.assertEqual(refs, {1: 3, 2: 1, 3: 1, 4: 1, 5: 1})
+        self.assertEqual(refs, {1: 2, 2: 1, 3: 1, 4: 1, 5: 1})
         self.assertEqual(helas_call_writers.get_spin_reference_legs(me, refs),
                          [3, 4])
         # without them: the references of the vectors alone, as for massless
@@ -1382,10 +1381,10 @@ class AxialGaugeReferenceTest(unittest.TestCase):
                          {5: 1, 3: 1, 4: 1})
 
     def test_reference_massive_fermions_single_gluon(self):
-        """e+ e- > t t~ g(g): no massless coloured leg but the gluons. The
-        first one is the reference of the top quarks (and of the other gluon)
-        and takes the momentum of the top quark; without the top quarks it
-        could only take a beam lepton, which it does not couple to"""
+        """e+ e- > t t~ g: no massless coloured leg but the gluon. It is the
+        reference of the top quarks and takes the momentum of the top quark;
+        without the top quarks it could only take a beam lepton, which it
+        does not couple to. With two gluons they reference each other"""
 
         me = self.matrix_element('e+ e- > t t~ g')
         self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
@@ -1394,7 +1393,7 @@ class AxialGaugeReferenceTest(unittest.TestCase):
                                       massive_fermions=False), {5: 1})
         me = self.matrix_element('e+ e- > t t~ g g')
         self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
-                         {5: 3, 6: 5, 3: 5, 4: 5})
+                         {5: 6, 6: 5, 3: 5, 4: 5})
 
     def test_reference_massive_fermions_photon(self):
         """a a > t t~: the photons do for the charged top quarks what the
@@ -1402,10 +1401,10 @@ class AxialGaugeReferenceTest(unittest.TestCase):
 
         me = self.matrix_element('a a > t t~')
         self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
-                         {1: 3, 2: 1, 3: 1, 4: 1})
+                         {1: 2, 2: 1, 3: 1, 4: 1})
         me = self.matrix_element('g g > t t~ a')
         self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
-                         {1: 3, 2: 1, 5: 3, 3: 1, 4: 1})
+                         {1: 2, 2: 1, 5: 3, 3: 1, 4: 1})
 
     def test_reference_massive_fermions_no_vector(self):
         """u u~ > t t~ and e+ e- > t t~: no vector to gauge, the top quarks
@@ -1434,7 +1433,7 @@ class AxialGaugeReferenceTest(unittest.TestCase):
         # t g > t g: only the final-state top quark
         me = self.matrix_element('t g > t g')
         refs = helas_call_writers.get_axial_gauge_refs(me)
-        self.assertEqual(refs, {2: 3, 4: 2, 3: 2})
+        self.assertEqual(refs, {2: 4, 4: 2, 3: 2})
         self.assertEqual(helas_call_writers.get_spin_reference_legs(me, refs),
                          [3])
 
@@ -1453,12 +1452,12 @@ class AxialGaugeReferenceTest(unittest.TestCase):
              'CALL OXXXXXR(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))',
              'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))',
              'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
-        # the gluon that is the reference takes the top quark momentum
+        # the gluons keep the references they have without the top quarks
         me = self.matrix_element('g g > t t~')
         writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
         calls = writer.get_matrix_element_calls(me)
         self.assertEqual(calls[:4],
-            ['CALL VXXXXXR(P(0,1),ZERO,NHEL(1),-1,P(0,3),W(1))',
+            ['CALL VXXXXXR(P(0,1),ZERO,NHEL(1),-1,P(0,2),W(1))',
              'CALL VXXXXXR(P(0,2),ZERO,NHEL(2),-1,P(0,1),W(2))',
              'CALL OXXXXXR(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))',
              'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))'])
@@ -1505,7 +1504,7 @@ class AxialGaugeReferenceTest(unittest.TestCase):
 
         me = self.matrix_element('g g > t t~')
         refs = helas_call_writers.get_output_axial_gauge_refs
-        both = {1: 3, 2: 1, 3: 1, 4: 1}
+        both = {1: 2, 2: 1, 3: 1, 4: 1}
         vectors = {1: 2, 2: 1}
         self.assertEqual(refs(me, None), {})
         self.assertEqual(refs(me, {}), {})

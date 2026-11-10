@@ -119,19 +119,27 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
     contracts with R: a chain of same-helicity vectors then vanishes between
     two such fermions, as it does on a massless fermion line carrying R, and
     whole helicity configurations drop out (g g > t t~ g g: 4 of 64, the
-    zeros of the SUSY Ward identities for massive quarks). When R is itself
-    one of the vectors, it takes the momentum p of such a fermion as its own
-    reference rather than the next massless leg. vxxxxxr does not need a
-    lightlike r: for a massive one it is the gauge of the lightlike
-    p - m^2/(2 p.R) R, which is precisely pflat of that fermion, so the
-    coupling of R to that fermion vanishes for one spin state per helicity of
-    R, and with it every diagram where R is attached to this external leg
-    (r.p = p.R also has no collinear zero). Measured on g g > t t~ g g: 9376
-    non vanishing (helicity, amplitude) pairs in the helicity basis, 8784
-    with the references of the vectors only, 7710 with those of the top
-    quarks; this assignment is the best of the 32400 combinations of leg
-    momenta there. Without any external vector the fermions take a massless
-    leg they share a charge with (u u~ > t t~: 6 helicities instead of 8).
+    zeros of the SUSY Ward identities for massive quarks). Measured on
+    g g > t t~ g g: 9376 non vanishing (helicity, amplitude) pairs in the
+    helicity basis, 8784 with the references of the vectors only, 7868 with
+    those of the top quarks. Without any external vector the fermions take a
+    massless leg they share a charge with (u u~ > t t~: 6 helicities instead
+    of 8).
+
+    A vector that is the only massless leg of its gauge group (the gluon of
+    e+ e- > t t~ g) has no lightlike reference it couples to, and takes the
+    momentum p of a massive fermion quantised along its own momentum k.
+    vxxxxxr does not need a lightlike r: for a massive one it is the gauge of
+    the lightlike p - m^2/(2 p.k) k, which is precisely pflat of that
+    fermion, so that the vector does not couple to one spin state of that
+    fermion per helicity (e+ e- > t t~ g: 48 non vanishing pairs instead of
+    64). The same choice for the vector R of g g > t t~ + gluons, instead of
+    the next massless leg, would remove 2 to 3 % more pairs (7710 for
+    g g > t t~ g g) but is not made: unlike the spin axis, which leaves the
+    helicity sum exactly unchanged, it is another gauge, and with a fixed
+    top-quark width (not gauge invariant) it moved the madevent cross
+    section of g g > t t~ g g by +0.4 to +0.7 %, against less than 0.1 % for
+    the references of the gluons among themselves.
 
     The two states of such a fermion are not helicity states, and their sum
     is all that is physical. Hence, with massive_fermions=False (the density
@@ -200,10 +208,12 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
         shared[vector] = order[0]
         if vector != order[0]:
             refs[vector] = order[0]
-        elif fermions:
-            refs[vector] = fermions[0]
         elif len(order) > 1:
             refs[vector] = order[1]
+        elif fermions:
+            # the only massless leg of its gauge group: the momentum of a
+            # massive fermion quantised along it (see the docstring)
+            refs[vector] = fermions[0]
 
     for fermion in heavy:
         # the reference shared by the vectors it couples to, the gluons first

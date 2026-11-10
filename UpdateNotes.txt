@@ -8,12 +8,11 @@ ANNOUNCEMENT:
    OM: output --axial_gauge=True (madevent, standalone_fortran, standalone, mg7) now also
        chooses the spin axis of the massive final-state fermions: their spin is quantised
        along the momentum of a massless leg (the reference shared by the gluons they couple
-       to) instead of along their own momentum (new HELAS routines IXXXXXR/OXXXXXR), and
-       the gluon whose momentum is that reference takes the momentum of such a fermion as
-       its own reference. More helicity configurations and amplitudes then vanish and are
-       removed by the helicity filtering and the helicity recycling: g g > t t~ g g has 60
-       helicity configurations instead of 64 and 7710 non vanishing (helicity, amplitude)
-       pairs instead of 8784 (9376 without the option). The matrix element summed over the
+       to) instead of along their own momentum (new HELAS routines IXXXXXR/OXXXXXR). More
+       helicity configurations and amplitudes then vanish and are removed by the helicity
+       filtering and the helicity recycling: g g > t t~ g g has 60 helicity configurations
+       instead of 64 and 7868 non vanishing (helicity, amplitude) pairs instead of 8784
+       (9376 without the option). The matrix element summed over the
        helicities is unchanged, but the two spin states of such a fermion are not helicity
        states: its helicity is written as 9 (unknown) in the event file. Nothing changes
        for a polarised process, for an initial-state fermion, with --density, or with the
