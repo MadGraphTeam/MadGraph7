@@ -1,0 +1,41 @@
+{
+  "canonical_unchanged": {
+    "benchmark.pdf": {
+      "bytes": 2211532,
+      "sha256": "a77331b17fb4f47460155e59e6a99334ebb4f48ebf2f8f6a0670c400d21b9e5e"
+    },
+    "benchmark.typ": {
+      "bytes": 28034,
+      "sha256": "09171e1071e8f1a9523fc5fc338b934d38eef27bad7010956e93edcd8f2b261e"
+    },
+    "build_report.py": {
+      "bytes": 23131,
+      "sha256": "d7544f47080c3242851ffef385c58c185125dbc3739fed292ccbc6eb588844b8"
+    },
+    "campaigns/entry-latch-cache-guard-1/report-supplements/progress-1/report-context.json": {
+      "bytes": 189995,
+      "sha256": "9e264a303de26cf2a9a5d09d0dc4c893db56d10c882387f9d2ca6490db50c7c3"
+    },
+    "campaigns/entry-latch-cache-guard-1/report-supplements/progress-1/selection.json": {
+      "bytes": 4884,
+      "sha256": "09bb329d7a0cddf228dcefcbdae3198337fe15f4d7c8054d788bf8c4a44fc189"
+    },
+    "current-source-supplement.typ": {
+      "bytes": 7547,
+      "sha256": "21192712eb208ed6b079a8599d52dc60a5eded414027c1dfd864c0fe5815d031"
+    },
+    "current_source_supplement.py": {
+      "bytes": 20645,
+      "sha256": "74c4962b2774b81bce9d6f2823a616a94932cf2e3f1a3b5b8afccb567fcd7593"
+    },
+    "report-build.json": {
+      "bytes": 2743398,
+      "sha256": "2cde1020e8a087279eef33b06f3225481cc293e7f0c3af9ec1a0381ca092f00b"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "source_commit": "48b664a029"
+}

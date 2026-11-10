@@ -1,0 +1,52 @@
+{
+  "authored_existing_paths": {
+    "current-source-supplement.typ": {
+      "after": {
+        "bytes": 9474,
+        "sha256": "eb0b79e8136ec8706e2e735f18b7a6ecf6d72a230483bdf94ec4cbb85db3513b"
+      },
+      "before": {
+        "bytes": 7547,
+        "sha256": "21192712eb208ed6b079a8599d52dc60a5eded414027c1dfd864c0fe5815d031"
+      }
+    },
+    "current_source_supplement.py": {
+      "after": {
+        "bytes": 25980,
+        "sha256": "998a2218be6fca71b3732557caf97fd16e120f1ebd984d8046860853ded802c6"
+      },
+      "before": {
+        "bytes": 20645,
+        "sha256": "74c4962b2774b81bce9d6f2823a616a94932cf2e3f1a3b5b8afccb567fcd7593"
+      }
+    }
+  },
+  "entrypoint": "README.md: Promotion and explicit reproduction",
+  "expected_context": {
+    "bytes": 201500,
+    "sha256": "707754c30e0ab3001a143738e9d9716540ec029abded4542aa6ad4583bbcd920"
+  },
+  "expected_new_page": 34,
+  "generated_by_actual_build_only": [
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/report-supplements/progress-2/report-context.json",
+    "docs/benchmarkfolder/report-build.json",
+    "docs/benchmarkfolder/benchmark.pdf"
+  ],
+  "historical_dossier_unchanged_sha256": "fa88e07bd94c08dbaafd8e8ad642d82dbbacf1220dea8462145281040543c558",
+  "new_canonical_selection": {
+    "bytes": 5672,
+    "destination": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/report-supplements/progress-2/selection.json",
+    "sha256": "17d391c746cb9da5887fbd2558566ccef68c5dda9172a377c5728c7e80754706",
+    "source": "selection.json"
+  },
+  "page_count_not_rendered_or_validated": true,
+  "patch": {
+    "bytes": 10830,
+    "path": "existing-files.patch",
+    "sha256": "1a348c3c0e9f7aa1fb999db68d7f24fa2e155087ffab37b3c23a1aa12a6be813"
+  },
+  "predecessor_report_commit": "48b664a029d35acb2646b8820f9c654cfed6e852",
+  "preserve_progress_1": true,
+  "schema_version": 1,
+  "source_only": true
+}

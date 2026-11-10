@@ -345,8 +345,9 @@ for the successor Fortran source. CutTools, Ninja, COLLIER and NinjaRS each have
 the denominator and give unknown-tail bounds, including [0, 0.05] at 1e-3.
 These three-probe, host forced-DP/card-selected diagnostics measure internal
 consistency; they establish neither true error nor observed internal precision.
-The exact data, failures and independent replay are retained separately. This
-study is not part of the immutable 33-page report's progress-1 selection.
+The exact data, failures and independent replay are retained separately. The
+current PDF adds this study on page 34; the immutable 33-page report's
+progress-1 selection remains a separate reproduction anchor.
 
 The [first-failure capture and standalone replay](experiments/tirust-first-failure-capture/closed-2/COMPACT_README.md)
 retains six exact Zgg tensor inputs. All six reproduce their reported
@@ -371,8 +372,12 @@ bound `entry-latch-cache-guard-1` supplement: nine closed cases and 54 lanes,
 with both n4 cases pending in its explicit snapshot. QCD n3's `1e-8` target
 misses and accepted DP/QP counts remain visible. The guard-only cache experiment
 is descriptive shared-host evidence; precise local acceptance is still TODO.
-The current PDF has 33 pages: the historical raw figures remain on pages
-27–30, and current-source progress and cache-guard scope are on pages 32–33.
+The [33-page milestone](https://github.com/MadGraphTeam/MadGraph7/blob/48b664a029d35acb2646b8820f9c654cfed6e852/docs/benchmarkfolder/benchmark.pdf)
+and its progress-1 selection remain unchanged at that commit. The current PDF
+has 34 pages: historical raw figures remain on pages 27–30, current-source
+progress and cache-guard scope on pages 32–33, and the separately qualified
+current-source raw study on page 34. Its progress-2 selection retains all
+existing numerical gates and the nine-case snapshot.
 
 A new old-source selection/dossier binds the preceding precision TODO through
 its exact archived path; the published selection/dossier remain immutable.
@@ -381,7 +386,7 @@ Rebuild and verify this explicitly selected two-source view:
 ```sh
 source tools/tirust_env.sh
 current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-entry-cache-supplement-1.json
-current_report_supplement=campaigns/entry-latch-cache-guard-1/report-supplements/progress-1/selection.json
+current_report_supplement=campaigns/entry-latch-cache-guard-1/report-supplements/progress-2/selection.json
 python3 -B docs/benchmarkfolder/build_report.py --campaign invariant-symmetry-1 \
   --campaign-report "$current_report_dossier" --supplement "$current_report_supplement"
 python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign invariant-symmetry-1 \

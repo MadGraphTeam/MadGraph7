@@ -13,6 +13,41 @@
 
 #let source-link(path) = "https://github.com/MadGraphTeam/MadGraph7/blob/madloop_tirust/docs/benchmarkfolder/" + path
 
+#let show-current-source-raw(s) = {
+  let r = s.raw_stability
+  pagebreak()
+  heading(level: 1)[Raw stability pilot · #raw(s.current.revision.slice(0, 12))]
+  text(8pt, fill: ink2)[Current-source QCD n3 · 100 cut-qualified physical points ·
+    card-selected reducers 1/6/7/8/9]
+  v(4pt)
+  text(7.5pt, table-style(table(columns: (.55fr, .8fr, .8fr, .8fr, .85fr, 1fr),
+    inset: 3pt, stroke: table-stroke, fill: table-fill,
+    table.header([Tool], [Execution], [Available / 100], [Unavailable], [Rejected probes], [Tail at 1e-3]),
+    ..r.summary.rows.map(row => (
+      [#row.backend], [#row.state], [#row.available_points], [#row.unavailable_points],
+      [#row.primary_outcome_counts.at("rejected", default: 0)],
+      [#fixed(row.tail_at_1e3.lower * 100, 0)% – #fixed(row.tail_at_1e3.upper * 100, 0)%],
+    )).flatten(),
+  )))
+  v(4pt)
+  image(r.figure_path, width: 100%, height: 125mm, fit: "contain")
+  v(3pt)
+  text(8pt)[#r.figure_caption]
+  v(4pt)
+  text(8pt)[The same three-probe finite/Born relative-spread diagnostic covers
+    #r.primary_calls primary and #r.bootstrap_calls separate bootstrap calls.
+    TIRust’s five unavailable points (25, 34, 45, 70, 84) retain 15 rejected probes
+    and 27 failed active-group observations. Five subsequent healthy calls clear
+    incoming software latches under the source-qualified entry reset; this does
+    not qualify the failed calls. Exact legacy annotations remain retained.
+    Hardware IEEE state was not observed. The 1e-3 TIRust fraction is unknown
+    within 0–5%, and its Ninja ratio is masked.]
+  v(3pt)
+  text(7.5pt, fill: ink2)[#link(source-link(r.data_index_path))[Raw data and all outcomes] ·
+    #link(source-link(r.figure_index_path))[Figure and statistical bounds].
+    This selected study adds no ordinary-case, true-error or performance acceptance.]
+}
+
 #let show-current-source(s) = {
   set page(header: context {
     set text(8pt, fill: luma(110))
@@ -141,4 +176,7 @@
     #text(fill: status-ink(if s.delivery_complete { "pass" } else { "incomplete" }),
       weight: "bold", if s.delivery_complete { "pass" } else { "incomplete" }).
     Precise local performance acceptance remains deferred to Hua-Sheng.]
+  if s.at("raw_stability", default: none) != none {
+    show-current-source-raw(s)
+  }
 }

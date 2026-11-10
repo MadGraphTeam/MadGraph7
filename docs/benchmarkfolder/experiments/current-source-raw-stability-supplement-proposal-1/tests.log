@@ -1,0 +1,15 @@
+test_absent_optional_role_does_not_probe_raw_data (__main__.TestRawSlot.test_absent_optional_role_does_not_probe_raw_data) ... ok
+test_actual_context_changes_only_the_optional_raw_slot (__main__.TestRawSlot.test_actual_context_changes_only_the_optional_raw_slot) ... ok
+test_all_five_fixed_populations_and_failure_evidence_retained (__main__.TestRawSlot.test_all_five_fixed_populations_and_failure_evidence_retained) ... ok
+test_corrupt_indexed_payload_is_rejected (__main__.TestRawSlot.test_corrupt_indexed_payload_is_rejected) ... ok
+test_every_declared_package_payload_is_bound (__main__.TestRawSlot.test_every_declared_package_payload_is_bound) ... ok
+test_raw_source_is_current_and_distinct_from_controller_revision (__main__.TestRawSlot.test_raw_source_is_current_and_distinct_from_controller_revision) ... ok
+test_synthetic_lost_unknowns_or_measured_failure_claim_rejected (__main__.TestRawSlot.test_synthetic_lost_unknowns_or_measured_failure_claim_rejected) ... ok
+test_synthetic_wrong_source_rejected (__main__.TestRawSlot.test_synthetic_wrong_source_rejected) ... ok
+test_typst_append_only_preserves_reviewed_layout_and_palette (__main__.TestRawSlot.test_typst_append_only_preserves_reviewed_layout_and_palette) ... ok
+test_unadmitted_role_rejected_before_any_payload_reads (__main__.TestRawSlot.test_unadmitted_role_rejected_before_any_payload_reads) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 8.599s
+
+OK
