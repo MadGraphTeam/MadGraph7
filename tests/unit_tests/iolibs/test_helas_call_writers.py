@@ -1413,6 +1413,78 @@ class CombineNameHashTest(unittest.TestCase):
         self.assertEqual(call % {'tags': '', 'propa': ''}, written)
 
 
+class FDPropagatorComplexMassTest(unittest.TestCase):
+    """The FD gauge propagator projects the off-shell wavefunction with the
+    5-momentum q = (q^mu, -i m): js2 contracts it with +i m, the value of
+    -q(4). The routines used to write the conjugate of q(4), which is the same
+    for a real mass and is not analytic in a complex one, so FD and unitary
+    disagreed in the complex-mass scheme (2e-5 for b b > h b b QCD=0 with the
+    width of the external h set to zero, see docs/auto-fd-gauge.md). Outside
+    the complex-mass scheme the routines are written as before."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
+
+    def routine(self, language, complex_mass):
+        """the FD gauge Z propagator routine FFV2_3 as *language* writes it"""
+        import aloha.create_aloha as create_aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode)
+        aloha.complex_mass, aloha.unitary_gauge = complex_mass, 3
+        try:
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(
+                self.model, explicit_combine=True)
+            aloha_model.add_Lorentz_object(self.model.get('lorentz'))
+            aloha_model.compute_subset([(('FFV2',), [], 3)])
+            text = dict(aloha_model)[('FFV2', 3)].write(
+                output_dir=None, mode='no_include', language=language)
+        finally:
+            aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode = saved
+        return text if isinstance(text, str) else '\n'.join(text)
+
+    def test_fortran(self):
+        text = self.routine('Fortran', complex_mass=True)
+        self.assertIn('FDQ(4) = -CI*M3', text)
+        self.assertIn('+FDQ(4)*V3%W(5))/FDNQ', text)
+        self.assertNotIn('CONJG', text)
+        # real mass: unchanged (the conjugate is the same number there)
+        self.assertIn('-DCONJG(FDQ(4))*V3%W(5))/FDNQ',
+                      self.routine('Fortran', complex_mass=False))
+
+    def test_madmatrix(self):
+        from madmatrix import model_handling
+        text = self.routine(model_handling.MadMatrixALOHAWriter, complex_mass=True)
+        # M3 is a cxtype: -i*M3 = ( Im M3, -Re M3 )
+        self.assertIn('cxmake( M3.imag() + fptype_sv{ 0 }, -M3.real() + fptype_sv{ 0 } )',
+                      text)
+        self.assertIn('+ FDQ[4] * wV3[4] ) / FDNQ', text)
+        self.assertNotIn('cxconj', text)
+        text = self.routine(model_handling.MadMatrixALOHAWriter, complex_mass=False)
+        self.assertIn('cxmake( fptype_sv{ 0 }, -M3 + fptype_sv{ 0 } )', text)
+        self.assertIn('- cxconj( FDQ[4] ) * wV3[4] ) / FDNQ', text)
+
+    def test_python_template(self):
+        """wavefunctions.multiply_propagator_factor (the Python routines and
+        `check`) is analytic in the mass: with m complex it is the continuation
+        of the real-mass projection, not a function of conj(m)."""
+        import aloha.template_files.wavefunctions as wavefunctions
+        win = wavefunctions.WaveFunction(size=7)
+        win.momenta = [500., 120., -80., 300.]
+        win[2:7] = [0.3 + 0.1j, -0.2j, 0.7, 0.1 - 0.4j, 0.25 + 0.5j]
+
+        def project(m):
+            return list(wavefunctions.multiply_propagator_factor(win, m)[2:7])
+
+        # an analytic function of m: the derivative along the real and the
+        # imaginary axis agree (Cauchy-Riemann), d/d(Im m) = i d/d(Re m)
+        m, h = 80.4 - 1.0j, 1e-4
+        along_re = [(a - b) / (2 * h) for a, b in zip(project(m + h), project(m - h))]
+        along_im = [(a - b) / (2 * h) for a, b in zip(project(m + 1j * h), project(m - 1j * h))]
+        for d_re, d_im in zip(along_re, along_im):
+            self.assertAlmostEqual(abs(d_im - 1j * d_re), 0., delta=1e-6 * (1 + abs(d_re)))
+
+
 class TestZeroWidthPdgs(unittest.TestCase):
     """output standalone_fortran --zerowidth_decay=: the HelasCallWriter writes the listed
     propagators with a zero width, and the standalone exporter decides per

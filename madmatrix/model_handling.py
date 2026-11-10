@@ -451,10 +451,15 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         out = StringIO()
         wf = '%s%s' % (self.particles[self.outgoing-1], self.outgoing)
         # the 5th component is -i * m: built from broadcast reals, since a
-        # scalar complex has no conversion to the vector type (cxtype_sv)
-        out.write('    cxtype_sv FDQ[5] = { %s, cxmake( fptype_sv{ 0 }, -M%s + fptype_sv{ 0 } ) };\n' %
+        # scalar complex has no conversion to the vector type (cxtype_sv).
+        # In the complex-mass scheme m is complex: -i * m = ( Im m, -Re m ).
+        if aloha.complex_mass:
+            fdq4 = 'cxmake( M%(i)s.imag() + fptype_sv{ 0 }, -M%(i)s.real() + fptype_sv{ 0 } )'
+        else:
+            fdq4 = 'cxmake( fptype_sv{ 0 }, -M%(i)s + fptype_sv{ 0 } )'
+        out.write('    cxtype_sv FDQ[5] = { %s, %s };\n' %
                   (', '.join('cxmake( fpamp_of_mom( -%s.pvec[%d] ), 0. )' % (wf, i) for i in range(4)),
-                   self.outgoing))
+                   fdq4 % {'i': self.outgoing}))
         out.write('    fptype_sv FDN[5];\n')
         out.write('    define_gauge_dir( FDQ, FDN );\n')
         out.write('    const fptype_sv FDNQ = %s;\n' %
@@ -471,8 +476,12 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         size = self.type_to_size[self.particles[self.outgoing-1]] - 2
         out.write('    const cxtype_sv FDJS1 = ( %s ) / FDNQ;\n' %
                   ' - '.join('FDN[%d] * %s[%d]' % (i, w, i) for i in range(4)))
-        out.write('    const cxtype_sv FDJS2 = ( %s - cxconj( FDQ[4] ) * %s[4] ) / FDNQ;\n' %
-                  (' - '.join('FDQ[%d] * %s[%d]' % (i, w, i) for i in range(4)), w))
+        # FDQ[4] = -i*m enters as +i*m = -FDQ[4]. For a real mass that is also
+        # cxconj( FDQ[4] ), the form kept outside the complex-mass scheme; for
+        # a complex mass the conjugate is wrong (not analytic in m).
+        out.write('    const cxtype_sv FDJS2 = ( %s %s * %s[4] ) / FDNQ;\n' %
+                  (' - '.join('FDQ[%d] * %s[%d]' % (i, w, i) for i in range(4)),
+                   '+ FDQ[4]' if aloha.complex_mass else '- cxconj( FDQ[4] )', w))
         for i in range(size):
             out.write('    %(w)s[%(i)d] = %(w)s[%(i)d] - FDQ[%(i)d] * FDJS1 - FDN[%(i)d] * FDJS2;\n'
                       % {'w': w, 'i': i})

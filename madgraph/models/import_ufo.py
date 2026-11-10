@@ -470,13 +470,20 @@ def goldstone_mass_mismatches(model):
             return None
 
     def mass_of(particle):
+        # In the complex-mass scheme the couplings are built with the complex
+        # mass CMASS_<mass>, so the relations below hold for those (their
+        # moduli); the real mass would report every massive particle as a
+        # mismatch of order (width/mass)**2.
         name = particle.get('mass')
         if name.lower() == 'zero':
             return 0.
-        try:
-            return abs(complex(parameters[name]))
-        except Exception:
-            return None
+        for key in ('CMASS_' + name, name):
+            if key in parameters:
+                try:
+                    return abs(complex(parameters[key]))
+                except Exception:
+                    return None
+        return None
 
     def structure_of(name):
         try:

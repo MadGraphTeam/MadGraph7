@@ -684,11 +684,12 @@ class TestImportUFO(unittest.TestCase):
             'orders': {'QED': 1}})
 
         class Model(object):
-            def __init__(self, couplings):
+            def __init__(self, couplings, parameters=None):
                 self.couplings = couplings
+                self.parameters = parameters or {'MZ': 91.188, 'MB': 4.7}
             def get(self, key):
                 return {'coupling_dict': self.couplings,
-                        'parameter_dict': {'MZ': 91.188, 'MB': 4.7},
+                        'parameter_dict': self.parameters,
                         'particles': [z, b, bbar],
                         'interactions': [inter]}[key]
             def get_lorentz(self, name):
@@ -711,6 +712,24 @@ class TestImportUFO(unittest.TestCase):
         self.assertAlmostEqual(actual, 4.7, places=6)
         self.assertEqual(parameter, 'MB')
         self.assertEqual(source, 'z')
+
+        # complex-mass scheme: the coupling is built with the complex masses
+        # CMASS_*, and the relation holds for those. Read with the real masses
+        # it would flag every massive particle at order (width/mass)**2 (the
+        # b gets a made-up width so that it is complex too).
+        import cmath
+        cmz = cmath.sqrt(91.188**2 - 1j * 91.188 * 2.4414)
+        cmb = cmath.sqrt(4.7**2 - 1j * 4.7 * 0.5)
+        couplings['CS'] = -axial * cmb / cmz
+        parameters = {'MZ': 91.188, 'MB': 4.7, 'CMASS_MZ': cmz, 'CMASS_MB': cmb}
+        self.assertEqual(
+            import_ufo.goldstone_mass_mismatches(Model(couplings, parameters)), [],
+            'a consistent complex-mass model must be left alone')
+        couplings['CS'] = -axial * 4.2 / cmz
+        found = import_ufo.goldstone_mass_mismatches(Model(couplings, parameters))
+        self.assertEqual(len(found), 1)
+        self.assertAlmostEqual(found[0][1], 4.2, places=6)
+        self.assertAlmostEqual(found[0][2], abs(cmb), places=6)
 
 
 class TestImportUFO_fromcmd(unittest.TestCase):
