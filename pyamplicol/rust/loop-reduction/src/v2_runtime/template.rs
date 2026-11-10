@@ -767,14 +767,68 @@ pub fn resolved_subset(
         let swapped = number(&mut used, usize_of(swapped, "a seed column")?);
         lanes.push((output, sector.clone(), direct, swapped));
     }
+    // The plans' seed records, read only where a set stores none of its own.
+    let own_seeds = |overlay: &serde_json::Map<String, Value>| {
+        matches!(
+            (overlay.get("seed_classes"), overlay.get("seeds")),
+            (Some(Value::Array(_)), Some(_))
+        )
+    };
+    let plans = if resolved.overlays.iter().all(own_seeds) {
+        Vec::new()
+    } else {
+        plans(records, resolved.overlays.len())?
+    };
     let mut formed = Vec::new();
-    for (overlay, weights) in resolved.overlays.iter().zip(&resolved.weight_of) {
+    for (p, (overlay, weights)) in resolved
+        .overlays
+        .iter()
+        .zip(&resolved.weight_of)
+        .enumerate()
+    {
         let mut out = serde_json::Map::new();
-        for key in ["seed_classes", "seeds"] {
-            if let Some(value) = overlay.get(key) {
-                out.insert(key.to_owned(), value.clone());
-            }
-        }
+        // The kept seed columns' seed-weight columns, renumbered in their
+        // order of use: each seed class keeps those weight columns only, so
+        // the set's plan reads as many weight columns as it keeps (the
+        // loader's `column_weights` rule).
+        let mut kept_weights: Vec<usize> = Vec::new();
+        let column_weights = used
+            .iter()
+            .map(|&c| {
+                let w = *weights
+                    .get(c)
+                    .ok_or_else(|| invalid("a seed column without its seed-weight column"))?;
+                Ok(number(&mut kept_weights, w))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let (seed_records, keys) = if own_seeds(overlay) {
+            (&overlay["seed_classes"], &overlay["seeds"])
+        } else {
+            (
+                field(&plans[p], "seed_classes")?,
+                field(&plans[p], "seeds")?,
+            )
+        };
+        let classes = array(seed_records, "the seed classes")?
+            .iter()
+            .map(|record| {
+                let columns = array(field(record, "columns")?, "a seed class's columns")?;
+                let picked = kept_weights
+                    .iter()
+                    .map(|&w| {
+                        columns
+                            .get(w)
+                            .cloned()
+                            .ok_or_else(|| invalid("a seed-weight column out of range"))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let mut record = record.clone();
+                record["columns"] = Value::Array(picked);
+                Ok(record)
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        out.insert("seed_classes".to_owned(), Value::Array(classes));
+        out.insert("seeds".to_owned(), keys.clone());
         let column_rows = match overlay.get("column_rows") {
             None | Some(Value::Null) => Value::Null,
             Some(Value::Array(rows)) => Value::Array(
@@ -790,10 +844,7 @@ pub fn resolved_subset(
         };
         out.insert("columns".to_owned(), json!(used.len()));
         out.insert("column_rows".to_owned(), column_rows);
-        out.insert(
-            "column_weights".to_owned(),
-            json!(used.iter().map(|&c| weights[c]).collect::<Vec<_>>()),
-        );
+        out.insert("column_weights".to_owned(), json!(column_weights));
         out.insert(
             "born_components".to_owned(),
             overlay
@@ -940,6 +991,74 @@ mod tests {
             json!([
                 {"program": 0, "cells": 0, "swapped": null, "rows": [1], "basis": null}
             ])
+        );
+    }
+
+    #[test]
+    fn a_leading_colour_subset_keeps_only_its_seed_weight_columns() {
+        // Two Born rows x two basis elements, each resolved column reading
+        // its basis element's seed-weight column (the set's own seed records).
+        let key = |h: i32, b: usize| json!([[[0, h]], [b]]);
+        let mut items = Vec::new();
+        let mut lanes = Vec::new();
+        let mut interference = Vec::new();
+        for (k, (h, b)) in [(-1, 0), (-1, 1), (1, 0), (1, 1)].into_iter().enumerate() {
+            items.push(json!({"key": key(h, b), "rows": [[[0, h]]], "basis": [b]}));
+            lanes.push(json!([key(h, b), [["QCD", 2]], k, k]));
+            interference.push(json!({"program": 0, "cells": 0, "swapped": null,
+                "rows": [usize::from(h > 0)], "basis": [b]}));
+        }
+        let record = json!({
+            "rows": [[[0, -1]], [[0, 1]]],
+            "basis": 2,
+            "sets": {"resolved": {"columns": items, "lanes": lanes}},
+        });
+        let overlay = json!({
+            "columns": 4, "column_rows": [[0], [0], [1], [1]], "column_weights": [0, 1, 0, 1],
+            "seed_classes": [{"columns": [[[0, "1", "0"]], [[1, "3", "0"]]]}],
+            "seeds": [{"classes": [[0, "1", "0"]]}],
+            "born_components": 2,
+        })
+        .to_string();
+        let columns = json!({"cells": [], "programs": [], "columns": interference}).to_string();
+        let records = ResolvedRecords {
+            record: &record,
+            overlay: overlay.as_bytes(),
+            companion_overlay: None,
+            columns: columns.as_bytes(),
+            plan: b"",
+            companion_plan: None,
+        };
+        // Row 1, basis element 1: the last column alone, its seed-weight
+        // column renumbered to the set's only one.
+        let (one, second): (BTreeSet<usize>, BTreeSet<usize>) = ([1].into(), [1].into());
+        let subset = resolved_subset(&records, Some(&one), Some(&second)).unwrap();
+        assert_eq!(subset.outputs.len(), 1);
+        assert_eq!(subset.outputs[0].key, key(1, 1));
+        assert_eq!(subset.outputs[0].basis, Some(vec![1]));
+        let formed: Value = serde_json::from_str(&subset.overlay).unwrap();
+        assert_eq!(formed["columns"], json!(1));
+        assert_eq!(formed["column_rows"], json!([[1]]));
+        assert_eq!(formed["column_weights"], json!([0]));
+        assert_eq!(
+            formed["seed_classes"],
+            json!([{"columns": [[[1, "3", "0"]]]}])
+        );
+        // Both rows of basis element 0: two seed columns, one weight column.
+        let first: BTreeSet<usize> = [0].into();
+        let subset = resolved_subset(&records, None, Some(&first)).unwrap();
+        let formed: Value = serde_json::from_str(&subset.overlay).unwrap();
+        assert_eq!(formed["column_weights"], json!([0, 0]));
+        assert_eq!(
+            formed["seed_classes"],
+            json!([{"columns": [[[0, "1", "0"]]]}])
+        );
+        assert_eq!(
+            subset.lanes,
+            vec![
+                (0, json!([["QCD", 2]]), 0, 0),
+                (1, json!([["QCD", 2]]), 1, 1)
+            ]
         );
     }
 

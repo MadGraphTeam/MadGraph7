@@ -2553,16 +2553,19 @@ fn selection_template(
 }
 
 /// The stored resolved columns of a resolved selection
-/// (`template::resolved_subset`): (overlay, companion overlay, columns,
-/// outputs, lanes).
+/// (`template::resolved_subset`; the process (companion) plan supplies the
+/// seed records a set does not store): (overlay, companion overlay,
+/// columns, outputs, lanes).
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (record, overlay, companion_overlay, columns, rows=None, basis=None))]
+#[pyo3(signature = (record, overlay, companion_overlay, columns, plan, companion_plan=None, rows=None, basis=None))]
 fn resolved_subset(
     record: &str,
     overlay: &str,
     companion_overlay: Option<&str>,
     columns: &str,
+    plan: &str,
+    companion_plan: Option<&str>,
     rows: Option<Vec<usize>>,
     basis: Option<Vec<usize>>,
 ) -> PyResult<(
@@ -2574,7 +2577,14 @@ fn resolved_subset(
 )> {
     let record: serde_json::Value = serde_json::from_str(record)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-    let records = resolved_records(&record, overlay, companion_overlay, columns, "", None);
+    let records = resolved_records(
+        &record,
+        overlay,
+        companion_overlay,
+        columns,
+        plan,
+        companion_plan,
+    );
     let rows: Option<std::collections::BTreeSet<usize>> = rows.map(|r| r.into_iter().collect());
     let basis: Option<std::collections::BTreeSet<usize>> = basis.map(|b| b.into_iter().collect());
     let set = template::resolved_subset(&records, rows.as_ref(), basis.as_ref())

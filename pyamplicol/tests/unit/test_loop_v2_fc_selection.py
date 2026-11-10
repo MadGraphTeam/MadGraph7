@@ -335,8 +335,9 @@ def test_a_selection_forms_only_its_rows(artifacts, monkeypatch, process, points
         assert counts["live-row links"] > 0
         assert counts["row-pruned families"] > 0
     resolved = runtime.evaluate_resolved(pts, mu_r2=scales)
-    selections = backend._selections
     picked = runtime.evaluate_resolved(pts, mu_r2=scales, helicities=[one, hel[0]])
+    # The runtime's evaluation-time selections (formed on its first selection).
+    selections = backend._selections
     (latest,) = [value for key, value in selections.items() if key[0] == "resolved"]
     report = latest.columns.last_report["counts"]
     assert len(latest.columns.plan.columns) == 2

@@ -1219,9 +1219,14 @@ def resolved_parts(
         if rows is None
         else [h for h, row in enumerate(observables.rows) if row in rows]
     )
+    process = observables.process
     overlay, companion, columns_json, outputs, lanes = (
         observables.native.resolved_subset(
             *_stored_records(observables),
+            process.plan_json,
+            None
+            if base.companion_overlay_json is None
+            else process.scaleless.plan_json,
             rows=indices,
             basis=None if basis is None else sorted(basis),
         )
@@ -1293,22 +1298,40 @@ def resolved_parts_oracle(
         overlays.append(json.loads(base.companion_overlay_json))
     if any(overlay is None for overlay in overlays):
         raise ValueError("the resolved set stores no seed records of its own")
+    plans = [observables.process.plan_json]
+    if len(overlays) > 1:
+        plans.append(observables.process.scaleless.plan_json)
     formed = []
-    for overlay in overlays:
+    for overlay, plan_json in zip(overlays, plans, strict=True):
         weights = overlay.get("column_weights") or list(range(int(overlay["columns"])))
         column_rows = overlay.get("column_rows")
-        out = {key: overlay[key] for key in ("seed_classes", "seeds") if key in overlay}
-        out.update(
+        # The kept seed columns' seed-weight columns, renumbered in their
+        # order of use; each seed class keeps those weight columns only.
+        kept_weights: dict[int, int] = {}
+        for c in order:
+            kept_weights.setdefault(int(weights[c]), len(kept_weights))
+        classes, keys = overlay.get("seed_classes"), overlay.get("seeds")
+        if classes is None or keys is None:
+            plan = json.loads(plan_json)
+            classes, keys = plan["seed_classes"], plan["seeds"]
+        formed.append(
             {
+                "seed_classes": [
+                    {
+                        **record,
+                        "columns": [record["columns"][w] for w in kept_weights],
+                    }
+                    for record in classes
+                ],
+                "seeds": keys,
                 "columns": len(order),
                 "column_rows": None
                 if column_rows is None
                 else [column_rows[c] for c in order],
-                "column_weights": [weights[c] for c in order],
+                "column_weights": [kept_weights[int(weights[c])] for c in order],
                 "born_components": overlay["born_components"],
             }
         )
-        formed.append(out)
     records = json.loads(base.columns_json)
     columns_json = json.dumps(
         {**records, "columns": [records["columns"][k] for k in kept]},
