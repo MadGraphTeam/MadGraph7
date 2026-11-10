@@ -1,0 +1,33 @@
+{
+  "additional_file_pins": {
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset": "b5d01660bcca50634a7e046ed5702be5d46417b287dfb4cf642683bd70747a15",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13": "b62e17653c7f9b57b7888b94e7eeaf5bce5bd3538002daff47f17cad1d984799",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/vendor/tirust/src/lib.rs": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/tirust.h": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+  },
+  "existing_cleanup_sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+  "existing_pilot_sha256": "22b06cda2303d9d2fd42aed418aa4518db0d9e834678862330ffa0d6600e9eef",
+  "existing_protocol_sha256": "2a1fbd8a68780742ca7f741a7452f5dfd6c29a8f3a1febae029dc84446bd5dea",
+  "native_execution_started": false,
+  "proposal_only": true,
+  "python": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13",
+  "taskset": "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+  "v3_artifacts": {
+    "capture/capture-replay.o": {
+      "bytes": 11504,
+      "sha256": "523fd07f93470d72711133a253d1025ab29def48d03ecb804d5b5b121434889b"
+    },
+    "capture/link.map": {
+      "bytes": 30401,
+      "sha256": "e8d36e00b050be29c14d97d41d5a2d17ea37addf67b2891e983e769e898f5a4b"
+    },
+    "capture/stability-check": {
+      "bytes": 21272,
+      "sha256": "8b530ead988e77df43b39d83d6a743e1ddad7de26aa77bf51ffbf0ba3a17a71c"
+    },
+    "target/release/libmadloop_tirust_private_diag.so": {
+      "bytes": 69161040,
+      "sha256": "73abcfb34d01afa09c45f1acb612da0a83d05c8961ec07b3cf2f65a02e94c721"
+    }
+  }
+}
