@@ -1,0 +1,31 @@
+--- plotter-source-4/plot_metrics.py
++++ plotter-source-5/plot_metrics.py
+@@ -153,6 +153,19 @@
+     return markers
+ 
+ 
++def threshold_grid(data):
++    """Exact empirical jumps plus labelled targets, within the declared domain."""
++    thresholds = {10 ** (-16 + i / 8) for i in range(129)}
++    thresholds.update(value for value, _, _ in target_markers(data) if 1e-16 <= value <= 1.)
++    for case in data['cases']:
++        for lane in case['lanes']:
++            for raw in lane['values']:
++                value = metric_value(raw)
++                if value is not None and math.isfinite(value) and 1e-16 <= value <= 1.:
++                    thresholds.add(value)
++    return sorted(thresholds)
++
++
+ def summarize(data, thresholds):
+     validate_dataset(data)
+     cases = []
+@@ -178,7 +191,7 @@
+     matplotlib.use('Agg')
+     import matplotlib.pyplot as plt
+ 
+-    thresholds = [10 ** (-16 + i / 8) for i in range(129)]
++    thresholds = threshold_grid(data)
+     summary = summarize(data, thresholds)
+     summary['input_sha256'] = input_sha256
+     fig = plt.figure(figsize=(6.8 * len(data['cases']), 6.5), constrained_layout=True)

@@ -1,0 +1,31 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 2296,
+      "sha256": "6eec6b499a52b851ee4fbed99fcd92fa7bff4c0a8d47e717acdc35c25adafaf3"
+    },
+    "plot_metrics.py": {
+      "bytes": 12884,
+      "sha256": "31b53b6e694f4c7dddbe66c0c988ecb4dc836c96c9e3ec1712284902601062de"
+    },
+    "test_plot_metrics.py": {
+      "bytes": 5794,
+      "sha256": "9a6f508346d8103abc749759b13b7b9b0fcd4e0701e42113a6e53dfdd2c848c3"
+    }
+  },
+  "predecessor": {
+    "path": "../plotter-source-1/index.json",
+    "sha256": "b014a3ec2ebfc7164470a33b05f7db5787575c27697144c49fa9e88c3c458fc3"
+  },
+  "schema": "madloop-stability-plotter-source-v1",
+  "source_origins": {
+    "plot_metrics.py": "docs/benchmarkfolder/stability_appendix_c/plot_metrics.py",
+    "test_plot_metrics.py": "docs/benchmarkfolder/stability_appendix_c/test_plot_metrics.py"
+  },
+  "status": "source-only; no benchmark data rendered",
+  "validation": {
+    "native_commands": 0,
+    "pure_statistical_tests": 19,
+    "result": "passed"
+  }
+}

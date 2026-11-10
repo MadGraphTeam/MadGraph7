@@ -1,0 +1,32 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3493,
+      "sha256": "d4efc909f9a27b4b66e3ab36075972f34206bb7e03a68526cfaccdcb9966ae5a"
+    },
+    "ecdf-grid.patch": {
+      "bytes": 1140,
+      "sha256": "5ff01ca0708f3a37a877108fb53e98eed5a80e1fb6f0ce8e0a9a84ac9b8752ee"
+    },
+    "plot_metrics.py": {
+      "bytes": 14354,
+      "sha256": "52e49e37b66be930a7afa6598f49ce25542fdff9b3281b99bc48bd7aa2997944"
+    },
+    "test_plot_metrics.py": {
+      "bytes": 6982,
+      "sha256": "92f500dca128bb9d58aea12dd8dca5ebe8596910e4977c01a9ecf4e42865d4ce"
+    }
+  },
+  "predecessor": {
+    "path": "../plotter-source-4/index.json",
+    "sha256": "33d0ab0523f3f883a6e12b34c1ab7c8c1f69f3379a4459984cfa3344fbc414dc"
+  },
+  "schema": "madloop-stability-plotter-source-v1",
+  "status": "source-only; exact empirical staircase rendering",
+  "validation": {
+    "metric_tail_ratio_functions_AST_identical_to_source4": true,
+    "pure_statistical_tests": 21,
+    "result": "passed",
+    "unsealed_two_figure_preview": "visually checked before this seal"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "new_native_evaluations": 0,
+  "point_series_unchanged": true,
+  "prior_figures": {
+    "1": {
+      "index_sha256": "27aac7d2f6e0256f47e631e3e1a91c2e03abcd1026284916b427d3f2f81b6528",
+      "same_counts_at_all_previously_plotted_thresholds": true
+    },
+    "2": {
+      "index_sha256": "5ef7e2738dccab948d80aa8899ad0504d50760017d81aa32533a0f6eafbd31cb",
+      "same_counts_at_all_previously_plotted_thresholds": true
+    },
+    "3": {
+      "index_sha256": "98a6d7508f2361f120a4a640f4ee5109c2d5373795b98de4b28583b9332b0d93",
+      "same_counts_at_all_previously_plotted_thresholds": true
+    }
+  },
+  "schema": "madloop-stability-ecdf-display-equivalence-v1"
+}

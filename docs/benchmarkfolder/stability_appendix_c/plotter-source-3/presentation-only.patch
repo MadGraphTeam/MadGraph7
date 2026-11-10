@@ -1,0 +1,63 @@
+--- plotter-source-2/plot_metrics.py
++++ plotter-source-3/plot_metrics.py
+@@ -14,6 +14,7 @@
+ import math
+ from pathlib import Path
+ import sys
++import textwrap
+ 
+ BACKENDS = {1: 'CutTools', 6: 'Ninja', 7: 'COLLIER', 8: 'NinjaRS', 9: 'TIRust'}
+ COLORS = {1: '#c74943', 6: '#3f6ea3', 7: '#8356a3', 8: '#ce8b20', 9: '#188469'}
+@@ -180,8 +181,8 @@
+     thresholds = [10 ** (-16 + i / 8) for i in range(129)]
+     summary = summarize(data, thresholds)
+     summary['input_sha256'] = input_sha256
+-    fig = plt.figure(figsize=(5.1 * len(data['cases']), 5.5), constrained_layout=True)
+-    grid = fig.add_gridspec(2, len(data['cases']), height_ratios=(3.2, 1.25))
++    fig = plt.figure(figsize=(6.8 * len(data['cases']), 6.5), constrained_layout=True)
++    grid = fig.add_gridspec(3, len(data['cases']), height_ratios=(3.2, 1.25, .42))
+     for column, (case, case_summary) in enumerate(zip(data['cases'], summary['cases'])):
+         top, ratio = fig.add_subplot(grid[0, column]), fig.add_subplot(grid[1, column])
+         n = case_summary['n']
+@@ -208,8 +209,6 @@
+         top.set_title(case.get('label', case['id']), color='#173451', fontsize=11)
+         top.set_ylabel('Fraction with metric > target Δ')
+         top.axhline(1 / n, color='#aaa', linewidth=.6, linestyle='--')
+-        top.text(.02, .02, f"N={n}; resolution={1/n:g}\nZero tails omitted on log y; zero metrics counted; missing values bounded",
+-                 transform=top.transAxes, fontsize=7, va='bottom')
+         for target, label, style in target_markers(data):
+             top.axvline(target, color='#777', linewidth=.65, linestyle=style, label=label)
+         top.legend(fontsize=7, loc='upper right')
+@@ -217,17 +216,26 @@
+         # tail panel stays logarithmic; no zero is assigned a fabricated floor.
+         ratio.set_ylim(bottom=0); ratio.axhline(1, color='#777', linewidth=.65)
+         ratio.set_ylabel('Ratio over Ninja'); ratio.set_xlabel('Target relative metric Δ')
+-        ratio.text(.02, .03, 'Masked: missing population or zero Ninja tail',
+-                   transform=ratio.transAxes, fontsize=7)
+-    fig.suptitle(METRICS[data['metric']] + '\n100-point pilot where N=100; not an independent true-error bound',
+-                 color='#173451', fontsize=12)
++        note = fig.add_subplot(grid[2, column])
++        note.axis('off')
++        note.text(0, 1, f'N={n}; empirical resolution={1/n:g}. Zero metrics counted in the legend.\n'
++                  'Zero tails omitted on log y; unavailable points retain tail bounds.\n'
++                  'Ninja ratios masked for incomplete populations or zero Ninja exceedances.',
++                  transform=note.transAxes, fontsize=7.5, va='top')
++    subtitle = {'raw-dp-finite-consistency': 'Forced-DP internal consistency; not a true-error bound',
++                'accepted-composite-internal-estimate': 'Accepted outputs after rescue; not a true-error bound',
++                'accepted-reducer-disagreement': 'Accepted coefficients; disagreement is not true error'}[data['metric']]
++    title = '\n'.join(textwrap.wrap(METRICS[data['metric']], width=68 * len(data['cases']))
++                      + textwrap.wrap(subtitle, width=68 * len(data['cases'])))
++    fig.suptitle(title, color='#173451', fontsize=11)
+     prefix = Path(output_prefix)
+     prefix.parent.mkdir(parents=True, exist_ok=True)
+     for suffix in ('.pdf', '.png', '.json'):
+         if prefix.with_suffix(suffix).exists():
+             raise FileExistsError('Refusing to overwrite an existing stability artifact')
+-    fig.savefig(prefix.with_suffix('.pdf'))
+-    fig.savefig(prefix.with_suffix('.png'), dpi=180)
++    fig.savefig(prefix.with_suffix('.pdf'), bbox_inches='tight',
++                metadata={'CreationDate': None, 'ModDate': None})
++    fig.savefig(prefix.with_suffix('.png'), dpi=180, bbox_inches='tight')
+     plt.close(fig)
+     prefix.with_suffix('.json').write_text(json.dumps(summary, indent=2, allow_nan=False) + '\n')
+     return summary

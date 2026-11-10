@@ -1,0 +1,20 @@
+--- plotter-source-3/plot_metrics.py
++++ plotter-source-4/plot_metrics.py
+@@ -203,6 +203,7 @@
+             ratio.step(thresholds, ratios, where='post', color=COLORS[backend])
+         for axis in (top, ratio):
+             axis.set_xscale('log'); axis.grid(True, which='major', alpha=.18)
++            axis.set_xlim(thresholds[0], thresholds[-1])
+             axis.tick_params(labelsize=8)
+             axis.spines[['top', 'right']].set_visible(False)
+         top.set_yscale('log'); top.set_ylim(.8 / n, 1.1)
+@@ -225,6 +226,9 @@
+     subtitle = {'raw-dp-finite-consistency': 'Forced-DP internal consistency; not a true-error bound',
+                 'accepted-composite-internal-estimate': 'Accepted outputs after rescue; not a true-error bound',
+                 'accepted-reducer-disagreement': 'Accepted coefficients; disagreement is not true error'}[data['metric']]
++    reference = data.get('provenance', {}).get('reference_label')
++    if data['metric'] == 'accepted-reducer-disagreement' and isinstance(reference, str) and reference:
++        subtitle = 'Compared with ' + reference + '; not true error'
+     title = '\n'.join(textwrap.wrap(METRICS[data['metric']], width=68 * len(data['cases']))
+                       + textwrap.wrap(subtitle, width=68 * len(data['cases'])))
+     fig.suptitle(title, color='#173451', fontsize=11)

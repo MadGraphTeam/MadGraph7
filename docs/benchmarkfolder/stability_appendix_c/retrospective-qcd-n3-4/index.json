@@ -1,0 +1,75 @@
+{
+  "closed_capsule_index_sha256": "79f57a8d83ea74249af83d12908de299372714cd7587d59d4ae31cfa9f63e457",
+  "figure_index_sha256": "cf9822818492907699332f64225887f478dd89d9c95a7a9f4159e780ec5130e5",
+  "files": {
+    "README.md": {
+      "bytes": 3615,
+      "sha256": "8e403c57d6398f2df9416a52e72e34cf76132ca425fffc45847426f34b1862f4"
+    },
+    "adapter.py": {
+      "bytes": 13158,
+      "sha256": "2a03050497381d855e6130e340d0d5dd440969b24eca0adfcd6114cc9ac377e0"
+    },
+    "ecdf-equivalence.json": {
+      "bytes": 667,
+      "sha256": "97de8e1ba9ee5724ba32ab769fb4a91e79213273bb9fa58964417b2817f080e3"
+    },
+    "exact-threshold-counts.json": {
+      "bytes": 723,
+      "sha256": "5a2cc401151348ddd978afbe7c35b903343e98f0a47f2e07374da9cb772619d9"
+    },
+    "figures/accepted-internal-estimate-points.json": {
+      "bytes": 22939,
+      "sha256": "f48a39a6674264f705e92cb70c22e5ee8a7a6bd944bbcde085ac007d262612fc"
+    },
+    "figures/accepted-internal-estimate.json": {
+      "bytes": 864928,
+      "sha256": "95b65ce1f7d656f93f6bdde4dd2c3359bbc59a8944782bc4655ed91d3ad4f4ba"
+    },
+    "figures/accepted-internal-estimate.pdf": {
+      "bytes": 32230,
+      "sha256": "d9e59c885f895b18b2736f9c30d1615fa7bed77b733bc005c250f91e68d92c1f"
+    },
+    "figures/accepted-internal-estimate.png": {
+      "bytes": 163493,
+      "sha256": "b47a2bd3ea8d3a7a8f91a6b09d223a886900bb2058e224ce91d5aca7f55f34d8"
+    },
+    "figures/accepted-outcomes.json": {
+      "bytes": 1978,
+      "sha256": "c9fc8bce2cfc9be31ceff7796599d3a3b77f6c1036f86e166dfbc29c876c4b94"
+    },
+    "figures/closed-input-verification.json": {
+      "bytes": 387,
+      "sha256": "049d7933e947f0074c1d4c10143fa7b6ef473ceee35c042ceba00825ad01fbfa"
+    },
+    "figures/finite-disagreement-current-cuttools-points.json": {
+      "bytes": 21324,
+      "sha256": "f5b71a48307189d570cf4f559e60d52aa00bce7a4909b35e2d6767f72a451b50"
+    },
+    "figures/finite-disagreement-current-cuttools.json": {
+      "bytes": 734485,
+      "sha256": "37d67c212ca725d0e25ad51453ee4de1e0ba5a75a8bdbd6b442ed14bd130c46b"
+    },
+    "figures/finite-disagreement-current-cuttools.pdf": {
+      "bytes": 31233,
+      "sha256": "2e181ed12083543262795bf49088a6cbbe7881f793d9939aee2b1c53a3a5c647"
+    },
+    "figures/finite-disagreement-current-cuttools.png": {
+      "bytes": 148006,
+      "sha256": "a28e3a6347acbd0595aa5c4bd9401fcbfa9ead51e9a6ddcdc56f4d8d4fd2f80f"
+    },
+    "figures/index.json": {
+      "bytes": 2198,
+      "sha256": "cf9822818492907699332f64225887f478dd89d9c95a7a9f4159e780ec5130e5"
+    },
+    "test_adapter.py": {
+      "bytes": 3000,
+      "sha256": "12ad5bd2f5428dfef733f282794b44ee6198af86ef2dfd35e68b16791cf78333"
+    }
+  },
+  "new_native_evaluations": 0,
+  "performance_eligible": false,
+  "plotter_source_index_sha256": "fe16afaae081694af3eb3a7e7c8ec9b9d037933b1938e6afa6ba56522c507e41",
+  "schema": "madloop-stability-retrospective-delivery-v1",
+  "scope": "two actual retrospective accepted-output empirical-staircase plots; not raw DP or independent true error"
+}

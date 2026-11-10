@@ -1,0 +1,15 @@
+{
+  "new_native_evaluations": 0,
+  "prior_figures": {
+    "1": {
+      "index_sha256": "27aac7d2f6e0256f47e631e3e1a91c2e03abcd1026284916b427d3f2f81b6528",
+      "point_series_counts_and_tail_summaries_identical": true
+    },
+    "2": {
+      "index_sha256": "5ef7e2738dccab948d80aa8899ad0504d50760017d81aa32533a0f6eafbd31cb",
+      "point_series_counts_and_tail_summaries_identical": true
+    }
+  },
+  "schema": "madloop-stability-presentation-equivalence-v1",
+  "scientific_functions_AST_identical_source2_source4": true
+}

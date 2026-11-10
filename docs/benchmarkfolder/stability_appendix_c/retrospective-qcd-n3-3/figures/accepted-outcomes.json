@@ -1,0 +1,92 @@
+{
+  "1": {
+    "QP_work_indicated_points": [],
+    "accepted_QP_points": [],
+    "accepted_precision_counts": {
+      "DP": 100
+    },
+    "accepted_status_counts": {
+      "211": 100
+    },
+    "exact_zero_internal_estimates": 0,
+    "interpretation": "accepted precision and status, not all internal attempts or certified digits"
+  },
+  "6": {
+    "QP_work_indicated_points": [],
+    "accepted_QP_points": [],
+    "accepted_precision_counts": {
+      "DP": 100
+    },
+    "accepted_status_counts": {
+      "216": 100
+    },
+    "exact_zero_internal_estimates": 0,
+    "interpretation": "accepted precision and status, not all internal attempts or certified digits"
+  },
+  "7": {
+    "QP_work_indicated_points": [],
+    "accepted_QP_points": [],
+    "accepted_precision_counts": {
+      "DP": 100
+    },
+    "accepted_status_counts": {
+      "217": 100
+    },
+    "exact_zero_internal_estimates": 0,
+    "interpretation": "accepted precision and status, not all internal attempts or certified digits"
+  },
+  "8": {
+    "QP_work_indicated_points": [],
+    "accepted_QP_points": [],
+    "accepted_precision_counts": {
+      "DP": 100
+    },
+    "accepted_status_counts": {
+      "218": 100
+    },
+    "exact_zero_internal_estimates": 0,
+    "interpretation": "accepted precision and status, not all internal attempts or certified digits"
+  },
+  "9": {
+    "QP_work_indicated_points": [
+      16,
+      18,
+      21,
+      32,
+      39,
+      52,
+      54,
+      55,
+      65,
+      94,
+      97,
+      98,
+      99
+    ],
+    "accepted_QP_points": [
+      16,
+      18,
+      21,
+      32,
+      39,
+      52,
+      54,
+      55,
+      65,
+      94,
+      97,
+      98,
+      99
+    ],
+    "accepted_precision_counts": {
+      "DP": 87,
+      "QP": 13
+    },
+    "accepted_status_counts": {
+      "219": 87,
+      "323": 13
+    },
+    "exact_zero_internal_estimates": 13,
+    "interpretation": "accepted precision and status, not all internal attempts or certified digits"
+  }
+}

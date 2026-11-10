@@ -1,0 +1,52 @@
+{
+  "adapter_sha256": "044d97a3415ada410b195769245f1e1a046200858d84748cae7c1074a4924c78",
+  "closed_analysis_sha256": "e0dcc8460091021db3089f56b181d4b184b4f11df1302fd14b4a383bd1568778",
+  "closed_capsule_index_sha256": "79f57a8d83ea74249af83d12908de299372714cd7587d59d4ae31cfa9f63e457",
+  "files": {
+    "accepted-internal-estimate-points.json": {
+      "bytes": 22939,
+      "sha256": "ec9a747d5b5d8362bb37985da5c48990d37704957ae9d09557fccf2c9e4f11ed"
+    },
+    "accepted-internal-estimate.json": {
+      "bytes": 178836,
+      "sha256": "32290d5878d51a2595a05bd3122697a7f8391e94d5bd9e89d20bd1b8e578dfe0"
+    },
+    "accepted-internal-estimate.pdf": {
+      "bytes": 25889,
+      "sha256": "8e5cfffdc18437c11788d3b55b1b18353a3eda48889c4999a3607f4be9f35ce6"
+    },
+    "accepted-internal-estimate.png": {
+      "bytes": 143695,
+      "sha256": "7b84088e51235143d700ece0b221f1c6d9acba3929c3c0933e738b0b265dc225"
+    },
+    "accepted-outcomes.json": {
+      "bytes": 1978,
+      "sha256": "c9fc8bce2cfc9be31ceff7796599d3a3b77f6c1036f86e166dfbc29c876c4b94"
+    },
+    "closed-input-verification.json": {
+      "bytes": 387,
+      "sha256": "049d7933e947f0074c1d4c10143fa7b6ef473ceee35c042ceba00825ad01fbfa"
+    },
+    "finite-disagreement-current-cuttools-points.json": {
+      "bytes": 21324,
+      "sha256": "581d72bc30cf12631071b5ed0f996f634b9f754f4920cfdea8f36d0d35186644"
+    },
+    "finite-disagreement-current-cuttools.json": {
+      "bytes": 177654,
+      "sha256": "54b6eea30a946d1c953a531aae0447886c4b9d8cdf7e35790edf513a8cc864a8"
+    },
+    "finite-disagreement-current-cuttools.pdf": {
+      "bytes": 25271,
+      "sha256": "b71039a598aafc786d6806707e91bed7cef5513b8625f871f398e293c590562e"
+    },
+    "finite-disagreement-current-cuttools.png": {
+      "bytes": 141093,
+      "sha256": "b3e8422a9a9ffd048c960761daadcab7245bdd06a31265ca127e7412ba655b99"
+    }
+  },
+  "new_native_evaluations": 0,
+  "performance_eligible": false,
+  "plotter_source_index_sha256": "33d0ab0523f3f883a6e12b34c1ab7c8c1f69f3379a4459984cfa3344fbc414dc",
+  "schema": "madloop-stability-retrospective-qcd-n3-v1",
+  "scope": "two retrospective accepted-output plots; not raw DP or independently known true error"
+}
