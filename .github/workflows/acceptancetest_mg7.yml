@@ -268,6 +268,12 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madmatrix_fd_vs_fortran test_madmatrix_fd_simd_lanes -pA -t0 -l INFO
 
+      - name: "acceptancetest_mg7_running_helas: running propagator parameters"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_running_helas_parameters -pA -t0 -l INFO
+
       # ---- acceptancetest_mg7_hel_recycling ----
       # --hel_recycling: the recycled madmatrix build gives the |M|^2 of the
       # plain one, event by event, summed over the helicities and with one

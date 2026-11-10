@@ -49,6 +49,31 @@ def strip_banner(file_text, banner_mark):
     return '\n'.join(file_lines[start:])
 
 
+def running_propagator_parameters(model):
+    """Running UFO parameters referenced by each custom propagator.
+
+    Use the same ordered arguments in the ALOHA routines and their callers,
+    including parameters that algebraic simplification might cancel out.
+    """
+    dependent = {p.name: p for key, params in model['parameters'].items()
+                 if 'aS' in key for p in params}
+    names = sorted({p.get('propagator') for p in model['particles']
+                    if isinstance(p.get('propagator'), str) and p.get('propagator')})
+    if not dependent or not names:
+        return {}
+    from aloha.create_aloha import AbstractALOHAModel
+    ufo = AbstractALOHAModel.from_model(model).model
+    result = {}
+    for name in names:
+        propagator = getattr(ufo.propagators, name)
+        identifiers = set(re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*\b',
+                                     propagator.numerator + ' ' + propagator.denominator))
+        result['P' + name] = [(name, dependent[aloha.aloha_prefix + name])
+                              for name in sorted(identifiers)
+                              if aloha.aloha_prefix + name in dependent]
+    return result
+
+
 # Emit the MADARITH_DOUBLEEXPANSION (FPTYPE=e) code paths only when explicitly requested
 arith_doubleexpansion = os.environ.get('MADMATRIX_DOUBLEEXPANSION', '').lower() in ('1', 'true', 'yes', 'on')
 
@@ -106,6 +131,15 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         self.combined_needs_tmp = True
         self.outname = 'w%s%s' % (self.particles[self.outgoing-1], self.outgoing)
         self.momentum_size = 0 # for ALOHAOBJ implementation the momentum is separated from the wavefunctions
+
+    propagator_parameters = {}
+
+    def define_argument_list(self, couplings=None):
+        args = super().define_argument_list(couplings)
+        for tag in self.tag:
+            for name, parameter in self.propagator_parameters.get(tag, ()):
+                args.append(('double_v' if parameter.type == 'real' else 'complex_v', name))
+        return args
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     def change_number_format(self, number):
@@ -354,9 +388,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         ###out.write('    // END DECLARATION\n') # FOR DEBUGGING
         return out.getvalue()
 
-    # OM - the names of the aS-dependent parameters, filled by write_aloha_routines.
-    # They are recomputed event by event from G inside computeDependentCouplings_fromG,
-    # so they have no addressable value a HelAmps routine could read.
+    # Running custom-propagator parameters arrive as explicit per-event arguments.
     dependent_params = ()
 
     # OM - the body of a routine may refer to a model parameter: this happens for
@@ -372,12 +404,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # the prefixed one ('mdl_dWT'), exactly as in the fortran writer
         mdlname = '%s%s' % (aloha.aloha_prefix, name)
         if mdlname in self.dependent_params:
-            raise MadGraph5Error(
-                'The custom propagator used by routine %s needs the model parameter %s, '
-                'which depends on alphaS and is therefore recomputed event by event. '
-                'The C++/CUDA backend can only read alphaS-independent parameters inside '
-                'a HelAmps routine, so this process can only be generated with '
-                '"output madevent" or "output standalone_fortran".' % (self.name, mdlname))
+            if any(argname == name for _, argname in self.call_arg):
+                return ''
+            raise MadGraph5Error('Running parameter %s in routine %s has no HELAS argument'
+                                 % (mdlname, self.name))
         return ('#ifdef MGONGPU_HARDCODE_PARAM\n'
                 '    constexpr auto %(var)s = Parameters::%(mdl)s;\n'
                 '#elif !defined MGONGPUCPP_GPUIMPL\n'
@@ -876,8 +906,16 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         if str(self.routine.denominator) == '1':
                             out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
                         else:
+                            # Running custom denominators can contain model
+                            # parameters and complex coefficients: serialize
+                            # them as C++, including parameter declarations.
+                            denominator = str(self.routine.denominator)
+                            if any(self.propagator_parameters.get(tag) for tag in self.tag):
+                                denominator = self.write_obj(self.routine.denominator)
+                                denominator = ('static_cast<cxtype_denom_sv>( '
+                                               'static_cast<cxtype_sv>( %s ) )' % denominator)
                             mydict['denom'] = self.denominator_in_denom_precision(
-                                                   str(self.routine.denominator))
+                                                   denominator)
                             out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
                     else:
                         if arith_doubleexpansion:
@@ -1722,7 +1760,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                         if ' ' + gpar + ' ' in line and not gpar in gparamcoded:
                             gparamcoded.add(gpar)
                             dcoupsetdpar.append('        const fptype_sv ' + gpar + ' = ' + gparameters[gpar] + ';' )
-                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', 'const fptype_sv') )
+                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', 'const fptype_sv')
+                                        .replace('constexpr cxsmpl<double>', 'const cxtype_sv')
+                                        .replace('mdl_complexi', 'cI') )
                 if pdep.name == 'G':
                     foundG = True
                     dcoupsetdpar.append('        // *** NB Compute all dependent parameters, including aS, in terms of G rather than in terms of aS ***')
@@ -1738,7 +1778,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             # Special handling in EFT for fptype=float using SIMD
             dcoupoutfptypev2 = [ '      fptype_v %sr_v;\n      fptype_v %si_v;'%(name,name) for name in self.coups_dep ]
             replace_dict['dcoupoutfptypev2'] = ( '\n' if len(self.coups_dep) > 0 else '' ) + '\n'.join( dcoupoutfptypev2 )
-            replace_dict['dcoupsetdpar2'] = replace_dict['dcoupsetdpar'].replace('fptype_sv','fptype')
+            replace_dict['dcoupsetdpar2'] = replace_dict['dcoupsetdpar'].replace('fptype_sv','fptype').replace('cxtype_sv', 'cxtype')
             dcoupsetdcoup2 = [ '    ' + line.replace('constexpr cxsmpl<double> ','const cxtype ').replace('mdl_complexi', 'cI') for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).split('\n') if line != '' ]
             dcoupsetdcoup2 += [ '        %sr_v[i] = cxreal( %s );\n        %si_v[i] = cximag( %s );'%(name,name,name,name) for name in self.coups_dep ]
             replace_dict['dcoupsetdcoup2'] = '  ' + '\n'.join( dcoupsetdcoup2 )
@@ -1864,9 +1904,6 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # Read in the template .h and .cc files, stripped of compiler commands and namespaces
         template_h_files = self.read_aloha_template_files(ext = 'h')
         template_cc_files = self.read_aloha_template_files(ext = 'cc')
-        # OM - the writer needs to know which parameters are alphaS-dependent (they
-        # cannot be read from the Parameters class inside a routine)
-        self.aloha_writer.dependent_params = frozenset(p.name for p in self.params_dep)
         if(fd_gauge):
             aloha_model = create_aloha.AbstractALOHAModel.from_model(self.model, explicit_combine=False)
         else:
@@ -1928,6 +1965,20 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         running_wanted_couplings = [value for value in all_str(wanted_couplings) if value in self.coups_dep]
         ordered_dict = [(k, self.coups_dep[k]) for k in running_wanted_couplings]
         self.coups_dep = dict((x, y) for x, y in ordered_dict)
+        # Append HELAS inputs after the vertex couplings, preserving their indices.
+        # Reuse the complex per-event coupling buffer for both real and complex
+        # parameters; callers extract the real part for a real UFO parameter.
+        parameters = running_propagator_parameters(self.model)
+        self.aloha_writer = type('ProcessALOHAWriter', (type(self).aloha_writer,), {
+            'dependent_params': frozenset(p.name for p in self.params_dep),
+            'propagator_parameters': parameters})
+        tags = {tag for _, tags, _ in self.wanted_lorentz for tag in tags} \
+               if self.wanted_lorentz else set(parameters)
+        needed = {p.name for tag in tags for _, p in parameters.get(tag, ())}
+        for name in sorted(needed):
+            buffer_name = 'HP_' + name
+            self.coups_dep[buffer_name] = base_objects.ModelVariable(
+                buffer_name, '%s = %s;' % (buffer_name, name), 'complex', ('aS',))
 
     def get_mg5_info_lines(self):
         return super().get_mg5_info_lines().replace('# ', '//')
@@ -3225,6 +3276,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # builds a map FLV_Coupling name : value to be used when writing
         # the HELAS
         model = args[0]
+        self.propagator_parameters = running_propagator_parameters(model)
         self.flv_couplings_map = {}
         for interaction in model.interactions:
             all_couplings = interaction["couplings"]
@@ -3335,7 +3387,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 ###misc.sprint(name, alias[coup])
                 # AV from cIPCs to COUP array (running alphas #373)
                 # OM fix handling of 'unary minus' #628
-                call = call.replace('CI_ACCESS', 'CD_ACCESS')
+                call = call.replace('CI_ACCESS>', 'CD_ACCESS>')
                 call = call.replace('m_pars->%s%s' % (sign, coup),
                                     'COUPs[%s], %s' % (alias[coup], '1.0' if not sign else '-1.0')) 
             elif name == 'flvCOUPs_dep':
@@ -3344,15 +3396,15 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 # flvCOUPs_dep (each backend's SigmaKin.cc defines it: CD_ACCESS on the
                 # CPU, a one-event buffer on the GPU, where a thread is one event), so
                 # get_coupling_def reads them with the right per-flavor stride.
-                call = call.replace('CI_ACCESS', 'CDPF_ACCESS')
+                call = call.replace('CI_ACCESS>', 'CDPF_ACCESS>')
                 call = call.replace('m_pars->%s%s' % (sign, coup),
                                     '%s[%s], %s' % (name, alias[coup], '1.0' if not sign else '-1.0'))
             elif name == 'flvCOUPs':
-                call = call.replace('CD_ACCESS', 'CI_ACCESS')
+                call = call.replace('CD_ACCESS>', 'CI_ACCESS>')
                 call = call.replace('m_pars->%s%s' % (sign, coup),
                                     '%s[%s], %s' % (name, alias[coup], '1.0' if not sign else '-1.0'))
             else:
-                call = call.replace('CD_ACCESS', 'CI_ACCESS')
+                call = call.replace('CD_ACCESS>', 'CI_ACCESS>')
                 call = call.replace('m_pars->%s%s' % (sign, coup),
                                     'COUPs[ndcoup + %s], %s' % (alias[coup]-len(self.couporderdep), '1.0' if not sign else '-1.0'))
 
@@ -3370,6 +3422,23 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     @staticmethod
     def format_call(call):
         return call.replace('(','( ').replace(')',' )').replace(',',', ')
+
+    def running_parameter_arguments(self, wavefunction):
+        """Resolve the propagator on each call, not when caching its HELAS key.
+
+        Different particles can share a call key and use different propagators.
+        """
+        if not isinstance(wavefunction, helas_objects.HelasWavefunction):
+            return ''
+        tag = 'P%s' % wavefunction.get('particle').get('propagator')
+        arguments = []
+        for _, parameter in self.propagator_parameters.get(tag, ()):
+            value = ('CD_ACCESS::kernelAccessConst( COUPs['
+                     'Parameters_dependentCouplings::idcoup_HP_%s] )' % parameter.name)
+            if parameter.type == 'real':
+                value = 'cxreal( %s )' % value
+            arguments.append(value + ', ')
+        return ''.join(arguments)
 
     # --- Color flows through shared sub-expressions --------------------------
     #
@@ -4177,7 +4246,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             ###    call = '%(routine_name)s(%(wf)s%(coup)s%(mass)s%(out)s);'
             ###else: # AV e.g. FFV1_0 (output is amplitude)
             ###    call = '%(routine_name)s(%(wf)s%(coup)s%(mass)s%(out)s);'
-            call = '%(routine_name)s( %(wf)s%(coup)s%(mass)s%(out)s );'
+            call = '%(routine_name)s( %(wf)s%(coup)s%(mass)s%(parameters)s%(out)s );'
             # compute wf
             arg = {'routine_name': aloha_writers.combine_name('%s' % l[0], l[1:], outgoing, flag, True),
                    'wf': ('aloha_obj[%%(%d)d], ' * len(argument.get('mothers'))) % tuple(range(len(argument.get('mothers')))),
@@ -4225,10 +4294,12 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 arg['out'] = '&amp_fp[%(out)d]'
                 arg['out2'] = 'amp_sv[%(out)d]'
                 arg['mass'] = ''
+            arg['parameters'] = '%(helas_parameters)s'
             call = call % arg
             # Now we have a line correctly formatted
             call_function = lambda wf: self.format_coupling(
-                                         call % wf.get_helas_call_dict(index=0))
+                call % dict(wf.get_helas_call_dict(index=0),
+                            helas_parameters=self.running_parameter_arguments(wf)))
         # Add the constructed function to wavefunction or amplitude dictionary
         if isinstance(argument, helas_objects.HelasWavefunction):
             self.add_wavefunction(argument.get_call_key(), call_function)
