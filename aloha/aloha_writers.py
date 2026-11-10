@@ -35,16 +35,19 @@ class WriteALOHA:
     type_to_size = {'S':3, 'T':18, 'V':6, 'F':6,'R':18}
 
 
-    def check_complex_mass_denominator(self):
+    def check_complex_mass_propagator(self):
         """Complex-mass scheme: the mass argument M<i> is complex and carries
-        the width, and the routine has no width argument. A custom denominator
-        is written as it is as long as it does not use the width -- the axial
-        gauge propagator of a massless vector, (P.PBar) P^2, used by `check
-        gauge` and `output --axial_gauge`. One that does (the polarised
-        propagators) would need the width split out of the mass again."""
+        the width, and the routine has no width argument. A propagator is
+        written as it is as long as neither its numerator nor its (custom)
+        denominator uses the width -- the axial gauge propagator of a massless
+        vector, (P.PBar) P^2, used by `check gauge` and `output --axial_gauge`,
+        is fine. One that does (the polarised propagators, a UFO propagator
+        with Width in it) would need the width split out of the mass again."""
 
-        if re.search(r'\bW%d\b' % self.outgoing, str(self.routine.denominator)):
-            raise Exception('The custom propagator of this routine (tag %s) uses the '
+        width = re.compile(r'\bW%d\b' % self.outgoing)
+        if width.search(str(self.routine.denominator)) or \
+                                            width.search(str(self.routine.expr)):
+            raise Exception('The propagator of this routine (tag %s) uses the '
                             'width of the particle, which is not supported in the '
                             'complex mass scheme' % ','.join(self.tag))
 
@@ -1045,10 +1048,10 @@ class ALOHAWriterForFortran(WriteALOHA):
                     
             if not is_loop:
                 coeff = 'denom*'    
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
                 if self.routine.denominator:
                     if 'P1N' not in self.tag:
-                        if aloha.complex_mass:
-                            self.check_complex_mass_denominator()
                         out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
                             'denom':self.write_obj(self.routine.denominator)}) 
                 elif not aloha.complex_mass:
@@ -2367,9 +2370,9 @@ class ALOHAWriterForCPP(WriteALOHA):
                     mydict['post_coup'] = ''
                 mydict['coup'] = coup_name
                 mydict['i'] = self.outgoing
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
                 if self.routine.denominator:
-                    if aloha.complex_mass:
-                        self.check_complex_mass_denominator()
                     if self.routine.denominator == "1":
                         out.write('    denom = %(pre_coup)s%(coup)s%(post_coup)s;\n' % \
                               mydict) 
@@ -2903,9 +2906,9 @@ class ALOHAWriterForPython(WriteALOHA):
 
             if not 'L' in self.tag:
                 coeff = 'denom'
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
                 if self.routine.denominator:
-                    if aloha.complex_mass:
-                        self.check_complex_mass_denominator()
                     out.write('    denom = %(COUP)s/(%(denom)s)\n' % {'COUP': coup_name,\
                             'denom':self.write_obj(self.routine.denominator)}) 
                 elif not aloha.complex_mass:

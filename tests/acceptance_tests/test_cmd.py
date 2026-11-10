@@ -5438,16 +5438,18 @@ C
         self.addCleanup(restore)
 
         self.do('set complex_mass_scheme True')
-        self.do('import model sm')
-        card = pjoin(self.tmpdir, 'param_card_cms.dat')
-        write_param_card.ParamCardWriter(self.cmd._curr_model, card)
-        param_card = check_param_card.ParamCard(card)
-        param_card['decay'].get((24,)).value = 0.
-        param_card.write(card)
+        try:
+            self.do('import model sm')
+            card = pjoin(self.tmpdir, 'param_card_cms.dat')
+            write_param_card.ParamCardWriter(self.cmd._curr_model, card)
+            param_card = check_param_card.ParamCard(card)
+            param_card['decay'].get((24,)).value = 0.
+            param_card.write(card)
 
-        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
-            self.do('check gauge %s w+ w- > w+ w-' % card)
-        self.do('set complex_mass_scheme False')
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check gauge %s w+ w- > w+ w-' % card)
+        finally:
+            self.do('set complex_mass_scheme False')
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)

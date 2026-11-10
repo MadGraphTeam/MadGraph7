@@ -3995,9 +3995,9 @@ def _check_sa_energy(proc, evaluator_obj, energy):
 
     For a 2 -> n process, the Fortran, C++ and madmatrix drivers raise an
     energy at or below twice the sum of the external masses to that value
-    (t t~ > w+ w- asked at 1 TeV runs at 1013.676 GeV). get_momenta has its
-    own, different, threshold rule, so the Python point has to be generated at
-    this energy to be the same point.
+    (t t~ > w+ w- asked at 1 TeV runs at 1013.676 GeV). check_language passes
+    this energy explicitly to every backend, Python included (get_momenta has
+    its own, different, threshold rule), so that none of them adjusts it.
     """
     legs = proc.get('legs')
     if len([l for l in legs if not l.get('state')]) != 2:
@@ -4028,7 +4028,6 @@ def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
     if evaluator_obj is None:
         return None
     try:
-        energy_value = _check_sa_energy(proc, evaluator_obj, float(energy_value))
         with _seeded_rambo_rng(1802, 9373):
             seeded_options = {'energy': float(energy_value),
                               'events': None,
@@ -4302,8 +4301,6 @@ def check_language(process_definition, param_card=None, options=None,
     # Cache of MG7 (standalone / madmatrix) check_sa.exe matrix-mode output text.
     sa_mg7_output_cache = {}
 
-    energy_str = str(energy)
-
     for proc in proc_list:
         try:
             amplitude = diagram_generation.Amplitude(proc)
@@ -4327,6 +4324,19 @@ def check_language(process_definition, param_card=None, options=None,
                     wc.append(c)
 
         sa_key = tuple(leg.get('id') for leg in proc.get('legs'))
+
+        # One energy for every backend, decided here: each driver (and
+        # get_momenta) has its own rule for an energy too close to threshold,
+        # and passing the one they would all reach keeps them on one point.
+        proc_energy = energy
+        if evaluator is not None:
+            try:
+                proc_energy = _check_sa_energy(proc, evaluator, energy)
+            except Exception as err:
+                logger.warning('Language check: could not work out the energy of %s '
+                               '(%s); the backends may compare different points.'
+                               % (proc.nice_string(), err))
+        energy_str = repr(proc_energy)
 
         # ── Fortran SA ───────────────────────────────────────────────────────
         out_f_text = None
@@ -4491,7 +4501,7 @@ def check_language(process_definition, param_card=None, options=None,
 
         # Build the Python phase-space point using the same RAMBO RNG seed as
         # check_sa (Fortran/C++), so all backends compare on the same point.
-        sa_momenta = _get_seeded_python_momenta(proc, evaluator, energy)
+        sa_momenta = _get_seeded_python_momenta(proc, evaluator, proc_energy)
         if not sa_momenta:
             # Fallback to parsing the point printed by SA when seeded generation
             # is unavailable.

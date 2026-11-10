@@ -889,55 +889,55 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 # Qualified: the local variable is also called denom. Without coupling (one): 1 / ( P^2 - m^2 ).
                 coup_args = '%s, %s, ' % (ccoeff, coup_vertex) if has_coup else ''
                 propagator = lambda mass: 'madmatrix::denom( %sdP%s, %s )' % (coup_args, self.outgoing, mass)
-                # a custom denominator is the same with a complex mass, as long
-                # as it does not use the width (check_complex_mass_denominator)
-                if not aloha.complex_mass or self.routine.denominator:
-                    # This affects 'denom = COUP' in HelAmps_sm.cc
-                    if self.routine.denominator:
-                        if aloha.complex_mass:
-                            self.check_complex_mass_denominator()
-                        # the P1N routines of the amplitude split carry the
-                        # identity propagator, as the integer 1
-                        if str(self.routine.denominator) == '1':
-                            out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
-                        else:
-                            mydict['denom'] = self.denominator_in_denom_precision(
-                                                   str(self.routine.denominator))
-                            out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
+                def write_doubleexpansion():
+                    # MADARITH_DOUBLEEXPANSION (FPTYPE=e): P^2 - Re(m^2) in
+                    # double-word arithmetic, the width as the imaginary part.
+                    # With a complex mass (complex-mass scheme) m^2 = M*M is
+                    # complex and carries the width: P^2 - m^2 =
+                    # ( P^2 - Re(m^2) ) - i Im(m^2).
+                    out.write('#endif\n')
+                    out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
+                    wtype = self.particles[self.outgoing - 1]
+                    coeff_vertex = ('%(pre_coup)s%(coup)s%(post_coup)s' % mydict).replace('fptype_denom', 'fptype_amp')
+                    fmt = {'i': self.outgoing, 'w': wtype, 's': denomsuffix}
+                    out.write('    const MG_ARITHM::Double<fptype_amp> P{i}d{s}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{w}{i}.pvec[3]) }};\n'.format(**fmt))
+                    if aloha.complex_mass:
+                        out.write('    const cxtype M2c{i}{s} = M{i} * M{i};\n'.format(**fmt))
+                        out.write('    const MG_ARITHM::Double<fptype_amp> M2d{i}{s} = static_cast<MG_ARITHM::Double<fptype_amp>>(M2c{i}{s}.real());\n'.format(**fmt))
+                        m2 = 'M2d{i}{s}'.format(**fmt)
+                        width = '-M2c{i}{s}.imag()'.format(**fmt)
                     else:
-                        if arith_doubleexpansion:
-                            out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s, W%(i)s' % mydict)))
-                        if arith_doubleexpansion:
-                            out.write('#endif\n')
-                            out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
-                            wtype = self.particles[self.outgoing - 1]
-                            coeff_vertex = '%(pre_coup)s%(coup)s%(post_coup)s' % mydict
-                            coeff_vertex = coeff_vertex.replace('fptype_denom', 'fptype_amp')
-                            out.write('    const MG_ARITHM::Double<fptype_amp> P{0}d{2}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[3]) }};\n'.format(self.outgoing, wtype, denomsuffix))
-                            out.write('    const MG_ARITHM::Double<fptype_amp> Md{0}{1} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{0});\n'.format(self.outgoing, denomsuffix))
-                            out.write('    const fptype_amp_sv PmM2{1} = static_cast<fptype_amp_sv>(( P{0}d{1}[0] * P{0}d{1}[0] ) - ( P{0}d{1}[1] * P{0}d{1}[1] ) - ( P{0}d{1}[2] * P{0}d{1}[2] ) - ( P{0}d{1}[3] * P{0}d{1}[3] ) - ( Md{0}{1} * Md{0}{1} ) );\n'.format(self.outgoing, denomsuffix))
-                            out.write('    const fptype_amp_sv iMW{1} = M{0} * W{0};\n'.format(self.outgoing, denomsuffix))
-                            out.write('    const cxtype_amp_sv denden%s = cxmake( PmM2%s, iMW%s );\n' % (denomsuffix, denomsuffix, denomsuffix))
-                            out.write('    const cxtype_amp_sv %s = %s / denden%s;\n' % (denomname, coeff_vertex, denomsuffix))
-                            out.write('#endif\n')
+                        out.write('    const MG_ARITHM::Double<fptype_amp> Md{i}{s} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{i});\n'.format(**fmt))
+                        m2 = '( Md{i}{s} * Md{i}{s} )'.format(**fmt)
+                        width = 'M{i} * W{i}'.format(**fmt)
+                    out.write('    const fptype_amp_sv PmM2{s} = static_cast<fptype_amp_sv>(( P{i}d{s}[0] * P{i}d{s}[0] ) - ( P{i}d{s}[1] * P{i}d{s}[1] ) - ( P{i}d{s}[2] * P{i}d{s}[2] ) - ( P{i}d{s}[3] * P{i}d{s}[3] ) - {m2} );\n'.format(m2=m2, **fmt))
+                    out.write('    const fptype_amp_sv iMW{s} = {width};\n'.format(width=width, **fmt))
+                    out.write('    const cxtype_amp_sv denden{s} = cxmake( PmM2{s}, iMW{s} );\n'.format(**fmt))
+                    out.write('    const cxtype_amp_sv %s = %s / denden%s;\n' % (denomname, coeff_vertex, denomsuffix))
+                    out.write('#endif\n')
+
+                # a propagator is the same with a complex mass, as long as it
+                # does not use the width
+                if aloha.complex_mass:
+                    self.check_complex_mass_propagator()
+                # This affects 'denom = COUP' in HelAmps_sm.cc
+                if self.routine.denominator:
+                    # the P1N routines of the amplitude split carry the
+                    # identity propagator, as the integer 1
+                    if str(self.routine.denominator) == '1':
+                        out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
+                    else:
+                        mydict['denom'] = self.denominator_in_denom_precision(
+                                               str(self.routine.denominator))
+                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
                 else:
-                    # This affects 'denom = COUP' in HelAmps_sm.cc
                     if arith_doubleexpansion:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                    # Complex mass: M carries the width.
-                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s' % mydict)))
+                    # complex-mass scheme: M is complex and carries the width
+                    mass = 'M%(i)s' % mydict if aloha.complex_mass else 'M%(i)s, W%(i)s' % mydict
+                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator(mass)))
                     if arith_doubleexpansion:
-                        out.write('#endif\n')
-                        out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
-                        wtype = self.particles[self.outgoing - 1]
-                        coeff_vertex = '%(pre_coup)s%(coup)s%(post_coup)s' % mydict
-                        coeff_vertex = coeff_vertex.replace('fptype_denom', 'fptype_amp')
-                        out.write('    const MG_ARITHM::Double<fptype_amp> P{0}d{2}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[3]) }};\n'.format(self.outgoing, wtype, denomsuffix))
-                        out.write('    const MG_ARITHM::Double<fptype_amp> Md{0}{1} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{0});\n'.format(self.outgoing, denomsuffix))
-                        out.write('    const fptype_amp_sv PmM2{1} = static_cast<fptype_amp_sv>(( P{0}d{1}[0] * P{0}d{1}[0] ) - ( P{0}d{1}[1] * P{0}d{1}[1] ) - ( P{0}d{1}[2] * P{0}d{1}[2] ) - ( P{0}d{1}[3] * P{0}d{1}[3] ) - ( Md{0}{1} * Md{0}{1} ) );\n'.format(self.outgoing, denomsuffix))
-                        out.write('    const cxtype_amp_sv %s = %s / PmM2%s;\n' % (denomname, coeff_vertex, denomsuffix))
-                        out.write('#endif\n')
+                        write_doubleexpansion()
                 ###self.declaration.add(('complex','denom')) # AV moved earlier (or simply removed)
                 if aloha.loop_mode: ptype = 'list_complex'
                 else: ptype = 'list_double'

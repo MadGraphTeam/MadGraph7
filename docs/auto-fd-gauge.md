@@ -379,8 +379,22 @@ complex-mass scheme. There were three causes, none in a matrix element:
   longitudinal polarisation and no goldstone component, which equals the FD
   one only at zero width (the external-width limit above).
 
-All three are fixed, and every column of both checks now agrees
+All three are fixed. `check language` now also decides the energy once per
+process and passes that value to every backend, so the drivers' own
+threshold rules no longer matter. Every column of both checks agrees
 (`test_check_language_massive_initial_state_and_fd`).
+
+Review follow-ups:
+- the width check of the complex-mass scheme looks at the numerator of a
+  propagator as well as at a custom denominator, and runs for every
+  off-shell routine (`check_complex_mass_propagator`);
+- the `MADARITH_DOUBLEEXPANSION` (`FPTYPE=e`) variant of the complex-mass
+  propagator in madmatrix cast the complex mass to a real and dropped the
+  width. It now subtracts the complex `M*M`: real part in double-word
+  arithmetic, imaginary part as the width. That build does not compile on
+  this platform even without the complex-mass scheme (C++20 concepts under
+  `-std=c++17`, then `Double<double>` conversions), so the variant is checked
+  on the generated text only, against the real-mass one.
 
 Not addressed here: the madmatrix `HRDCOD=1` build is still broken with
 complex parameters (pre-existing).

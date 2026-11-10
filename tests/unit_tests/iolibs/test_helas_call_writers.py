@@ -1485,6 +1485,67 @@ class FDPropagatorComplexMassTest(unittest.TestCase):
             self.assertAlmostEqual(abs(d_im - 1j * d_re), 0., delta=1e-6 * (1 + abs(d_re)))
 
 
+class ComplexMassCustomPropagatorTest(unittest.TestCase):
+    """Complex-mass scheme: the mass argument is complex and carries the width,
+    and there is no width argument. Every writer used to refuse any custom
+    propagator denominator there, including the axial gauge (P.PBar) P^2 of a
+    massless vector (check gauge). Now a propagator is written as it is unless
+    its numerator or denominator uses the width, which is still refused."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
+
+    def routine(self, request, language, gauge):
+        import aloha.create_aloha as create_aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode)
+        aloha.complex_mass, aloha.unitary_gauge = True, gauge
+        try:
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(
+                self.model, explicit_combine=True)
+            aloha_model.add_Lorentz_object(self.model.get('lorentz'))
+            aloha_model.compute_subset([request])
+            name = (request[0][0] + ''.join(request[1]), request[2])
+            text = dict(aloha_model)[name].write(
+                output_dir=None, mode='no_include', language=language)
+        finally:
+            aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode = saved
+        return text if isinstance(text, str) else '\n'.join(text)
+
+    def languages(self):
+        from madmatrix import model_handling
+        return ['Fortran', 'CPP', 'Python', model_handling.MadMatrixALOHAWriter]
+
+    def test_axial_gauge_denominator_is_written(self):
+        """the photon propagator of the axial gauge, (P.PBar) P^2: two TMPs"""
+        for language in self.languages():
+            text = self.routine((('FFV1',), ['P0'], 3), language, 2)
+            self.assertRegex(text, r'denom = .*TMP\d+ ?\* ?d?TMP\d+', str(language))
+
+    def test_width_in_the_propagator_is_refused(self):
+        """1W, (-g + q q / (M^2 - i M W)): the width is in the numerator and in
+        the denominator"""
+        for language in self.languages():
+            with self.assertRaisesRegex(Exception, 'uses the width', msg=str(language)):
+                self.routine((('FFV2',), ['P1W'], 3), language, True)
+
+    def test_width_in_the_numerator_only_is_refused(self):
+        """the numerator is checked too, not only a custom denominator"""
+        from aloha.aloha_writers import WriteALOHA
+
+        class Stub(object):
+            outgoing = 3
+            tag = ['P1X']
+            class routine(object):
+                denominator = None
+                expr = '( TMP0 * M3 * W3 )'
+        with self.assertRaisesRegex(Exception, 'uses the width'):
+            WriteALOHA.check_complex_mass_propagator(Stub())
+        Stub.routine.expr = '( TMP0 * M3 * OM3 )'
+        WriteALOHA.check_complex_mass_propagator(Stub())    # no width: fine
+
+
 class TestZeroWidthPdgs(unittest.TestCase):
     """output standalone_fortran --zerowidth_decay=: the HelasCallWriter writes the listed
     propagators with a zero width, and the standalone exporter decides per
