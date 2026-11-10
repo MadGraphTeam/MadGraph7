@@ -155,6 +155,76 @@ def test_ratio_matches_native_runtimes(reweight):
         assert library.umami_free(handle) == 0
 
 
+def test_batched_ratios_match_single_events(reweight):
+    lc, _, output, data, library = reweight
+    events = []
+    for channel, description in enumerate(data["channels"]):
+        for flavour, entry in enumerate(description["processes"]):
+            runtime = entry["runtime"]
+            process = data["runtime_processes"][runtime["process_index"]]
+            runtime_point = _runtime_point_of(lc, process["id"])
+            point = [None] * len(runtime_point)
+            for runtime_slot, input_slot in enumerate(runtime["permutation"]):
+                point[input_slot] = runtime_point[runtime_slot]
+            # Ratios of structurally zero helicities are rounding noise.
+            native = Runtime.load(lc, process=process["id"])
+            total = complex(native.evaluate((runtime_point,))[0]).real
+            for runtime_index, exported in enumerate(runtime["helicity_export"]):
+                value = complex(
+                    native.evaluate(
+                        (runtime_point,),
+                        helicities=[process["helicity_ids"][runtime_index]],
+                    )[0]
+                ).real
+                if abs(value) > 1e-12 * abs(total):
+                    events.append((channel, flavour, exported, point))
+    # Interleaved selections, more events than one native batch, behind an offset.
+    events = [events[(i * 7) % len(events)] for i in range(600)]
+    offset, n = 3, len(events[0][3])
+    rows = [events[0]] * offset + events
+    stride = len(rows)
+    momenta = (ct.c_double * (4 * n * stride))(
+        *(
+            float(rows[event][3][leg][component])
+            for component in range(4)
+            for leg in range(n)
+            for event in range(stride)
+        )
+    )
+    inputs = {
+        0: momenta,
+        2: (ct.c_int * stride)(*(row[1] for row in rows)),
+        6: (ct.c_int * stride)(*(row[2] for row in rows)),
+        8: (ct.c_uint * stride)(*(row[0] for row in rows)),
+    }
+    ratios = (ct.c_double * stride)(*[-1.0] * stride)
+    handle = ct.c_void_p()
+    assert library.umami_initialize(ct.byref(handle), os.fsencode(output)) == 0
+    try:
+        status = library.umami_matrix_element(
+            handle,
+            len(events),
+            stride,
+            offset,
+            len(inputs),
+            (ct.c_int * len(inputs))(*inputs),
+            (ct.c_void_p * len(inputs))(
+                *(ct.cast(value, ct.c_void_p) for value in inputs.values())
+            ),
+            1,
+            (ct.c_int * 1)(12),  # UMAMI_OUT_MATRIX_ELEMENT_RATIO
+            (ct.c_void_p * 1)(ct.cast(ratios, ct.c_void_p)),
+        )
+        assert status == 0
+        assert list(ratios[:offset]) == [-1.0] * offset
+        for index, (channel, flavour, helicity, point) in enumerate(events):
+            status, value = _ratio(library, handle, point, channel, flavour, helicity)
+            assert status == 0
+            assert ratios[offset + index] == pytest.approx(value, rel=1e-12, abs=1e-300)
+    finally:
+        assert library.umami_free(handle) == 0
+
+
 def _runtime_point_of(artifact, process_id):
     class _Artifact:
         pass
