@@ -92,6 +92,10 @@ ANNOUNCEMENT:
          onia by the Breit-Wigner truncation of their width (0.979 for BW_cut = 15), although an
          onium decays on its mass shell and no virtuality is drawn: the decayed cross section is
          now the production one times the branching ratio (test_madspin_onium_decay_2to2).
+       - new MadSpin option onia_breit_wigner (default False): draw the mass of a decaying
+         onium from the Breit-Wigner of its DECAY width within BW_cut and reshuffle the
+         production to it, as for an elementary resonance, instead of decaying it on shell
+         (the narrow-width limit of LO NRQCD). The mass of a 2 -> 1 onium stays sqrt(shat).
        - Bug fix: in an ungrouped output (standalone_fortran, or madevent with
          group_subprocesses False), Fock states with the same diagrams but a different
          J, L, S, colour or hadron shared one matrix element, that of the first: e.g.

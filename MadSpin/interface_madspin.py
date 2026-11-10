@@ -270,6 +270,13 @@ class MadSpinOptions(banner.ConfigFile):
         self.add_param('global_order_coupling', '')
         self.add_param('identical_particle_in_prod_and_decay', 'average')
         self.add_param('beampol', [0., 0.], comment='beam polarisation of each beam in percent, -100 .. 100, exactly as the run_card polbeam1/polbeam2 (0 is unpolarised). Taken from the run_card of the production when it has one.')
+        self.add_param('onia_breit_wigner', False,
+                       comment="bound states (onia): draw the mass of a decaying onium from "
+                       "the Breit-Wigner of its total width (the DECAY block of the hadron) "
+                       "within BW_cut, as for an elementary resonance, and reshuffle the "
+                       "production to it, instead of decaying it on its mass shell, the "
+                       "narrow-width limit of LO NRQCD (default). The production of a "
+                       "2 -> 1 onium fixes its mass (sqrt(shat)), which is kept.")
         self.add_param('auto_zero_width_PA', True,
                        comment="spinmode = PA only (ignored otherwise). Set to zero "
                        "the width of every particle MadSpin decays (the particles "
@@ -2966,6 +2973,11 @@ class MadSpinInterface(extended_cmd.Cmd):
                         isinstance(event[0], lhe_parser.Event) else [event]):
                 onia.relabel_octets(one)
 
+    def _onia_breit_wigner(self):
+        """The onia_breit_wigner option (off: a bound state decays on shell)."""
+        options = getattr(self, 'options', None) or {}
+        return bool(options['onia_breit_wigner']) if 'onia_breit_wigner' in options else False
+
     def _bookkeeping_model(self):
         """The model of MadSpin's names and pdg codes: the generator's, or with
         bound states the copy that also knows their pseudo-particles."""
@@ -4044,7 +4056,8 @@ class MadSpinInterface(extended_cmd.Cmd):
                             # there is no Breit-Wigner tail to account for
                             onia = getattr(self, 'onia', None)
                             onium = bool(onia) and (onia.is_onium(particle.pdg) or
-                                                    onia.is_onium(-particle.pdg))
+                                                    onia.is_onium(-particle.pdg)) and \
+                                not self._onia_breit_wigner()
                             bw_trunc_per_pdg[particle.pdg] = (
                                 madspin.bw_retained_fraction(
                                     mass, width, self._resolved_bw_cut())
@@ -10396,9 +10409,11 @@ class MadSpinInterface(extended_cmd.Cmd):
             width = self.banner.get('param', 'decay', key).value
             cache[key] = (pole, width)
         onia = getattr(self, 'onia', None)
-        if onia and (onia.is_onium(key) or onia.is_onium(-key)):
-            # a bound state has no Breit-Wigner (NRQCD/NRQED): it decays at
-            # its onium_mass, the mass it was produced with
+        if onia and (onia.is_onium(key) or onia.is_onium(-key)) and \
+                not self._onia_breit_wigner():
+            # a bound state decays on its mass shell (the narrow-width limit of
+            # NRQCD/NRQED): at its onium_mass, the mass it was produced with;
+            # onia_breit_wigner draws it from the Breit-Wigner of its width
             return pole, width, pole, pole, 1.0
         bw_cut = self._resolved_bw_cut()
         min_mass = pole - bw_cut * width

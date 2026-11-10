@@ -263,6 +263,36 @@ class TestMadSpin(unittest.TestCase):
             self.assertEqual(len([p for p in event if abs(p.pdg) == 13]), 2)
         self.assertEqual(n, 2000)
 
+        # with onia_breit_wigner the J/psi mass follows its Breit-Wigner within BW_cut, and the
+        # cross section keeps the share of the Breit-Wigner inside the window
+        os.rename(out, pjoin(self.path, 'psig_decayed_onshell.lhe.gz'))
+        for d in glob.glob(pjoin(self.path, 'madspin_*')) + glob.glob(pjoin(self.path, 'decay_*')):
+            shutil.rmtree(d)
+        with open(script, 'w') as fsock:
+            fsock.write('import psig.lhe.gz\nset spinmode madspin\nset seed 11\n'
+                        'set onia_breit_wigner True\nset BW_cut 15\n'
+                        'decay Jpsi > mu+ mu-\nlaunch\n')
+        subprocess.call([pjoin(MG5DIR, 'MadSpin', 'madspin'), script], cwd=self.path,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL)
+        self.assertTrue(os.path.exists(out))
+        import MadSpin.decay as madspin_decay
+        keep = madspin_decay.bw_retained_fraction(3.1, 9.26e-05, 15)
+        events = lhe_parser.EventFile(out)
+        self.assertLess(abs(events.cross / production / 5.961e-02 / keep - 1), 1e-6)
+        offsets = []
+        for event in events:
+            psi = [p for p in event if p.pdg == 443][0]
+            mu = [p for p in event if abs(p.pdg) == 13]
+            pair = lhe_parser.FourMomentum(mu[0]) + lhe_parser.FourMomentum(mu[1])
+            if psi.E < 50:      # away from the rounding of very boosted J/psi
+                offsets.append(pair.mass - 3.1)
+        self.assertTrue(offsets)
+        self.assertLess(max(abs(o) for o in offsets), 15 * 9.26e-05 * 1.001)
+        # half of a Breit-Wigner lies within one half-width of the pole
+        inside = sum(1 for o in offsets if abs(o) < 9.26e-05 / 2) / len(offsets)
+        self.assertLess(abs(inside - 0.5 / keep), 0.08)
+
     def _get_single_decayed_lhe_path(self):
         decayed_events = glob.glob(pjoin(self.run_dir, 'Events', '*decayed*', '*.lhe.gz'))
         self.assertTrue(decayed_events)
