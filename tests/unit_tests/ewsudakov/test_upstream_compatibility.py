@@ -449,6 +449,8 @@ class TestOptionalNumpy(unittest.TestCase):
         "        if name == 'numpy' or name.startswith('numpy.'):\n"
         "            raise ImportError('numpy unavailable')\n"
         "sys.meta_path.insert(0, Block())\n"
+        "# As without numpy: import fails, importlib.util.find_spec gives None.\n"
+        "sys.modules['numpy'] = None\n"
         "sys.path.insert(0, sys.argv[1])\n"
         "for name in sys.argv[2:]:\n"
         "    importlib.import_module(name)\n"
