@@ -2409,7 +2409,7 @@ fn square_amplitudes(
 /// The stored records of a Born-interfered process's resolved set
 /// (`native_observables.StoredObservables`) as the formation reads them.
 fn resolved_records<'a>(
-    record: &'a serde_json::Value,
+    record: &'a str,
     overlay: &'a str,
     companion_overlay: Option<&'a str>,
     columns: &'a str,
@@ -2417,7 +2417,7 @@ fn resolved_records<'a>(
     companion_plan: Option<&'a str>,
 ) -> template::ResolvedRecords<'a> {
     template::ResolvedRecords {
-        record,
+        record: record.as_bytes(),
         overlay: overlay.as_bytes(),
         companion_overlay: companion_overlay.map(str::as_bytes),
         columns: columns.as_bytes(),
@@ -2536,10 +2536,8 @@ fn selection_template(
     plan: &str,
     companion_plan: Option<&str>,
 ) -> PyResult<PySelectionTemplate> {
-    let record: serde_json::Value = serde_json::from_str(record)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
     let records = resolved_records(
-        &record,
+        record,
         overlay,
         companion_overlay,
         columns,
@@ -2575,10 +2573,8 @@ fn resolved_subset(
     Vec<(String, Option<Vec<usize>>, Option<Vec<usize>>)>,
     Vec<(usize, String, usize, usize)>,
 )> {
-    let record: serde_json::Value = serde_json::from_str(record)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
     let records = resolved_records(
-        &record,
+        record,
         overlay,
         companion_overlay,
         columns,

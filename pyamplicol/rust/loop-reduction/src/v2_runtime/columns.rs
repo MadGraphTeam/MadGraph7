@@ -448,8 +448,12 @@ impl V2Runtime {
                 twin: None,
             })
         };
+        // The record's JSON text: the formation reads it typed (its bulk
+        // borrowed), not as the held values.
+        let record = serde_json::to_vec(&observables.raw)
+            .map_err(|e| invalid(format!("the observables record: {e}")))?;
         let records = template::ResolvedRecords {
-            record: &observables.raw,
+            record: &record,
             overlay: &base.overlay,
             companion_overlay: base.companion_overlay.as_deref(),
             columns: &base.columns_json,

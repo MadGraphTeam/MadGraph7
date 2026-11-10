@@ -27,6 +27,7 @@
 //! functions, so their binary64 values are bitwise equal by construction.
 
 use super::*;
+use serde_json::value::RawValue;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -38,11 +39,12 @@ type Signature = BTreeMap<(Option<usize>, usize, usize), usize>;
 pub const TEMPLATE: &str = "selection-template";
 
 /// The stored records a formation reads: the observables record
-/// (`observables.json`), the resolved set's seed records (and its
+/// (`observables.json`, its JSON text: read typed, its bulk borrowed rather
+/// than held as JSON values), the resolved set's seed records (and its
 /// companion's), its interference programs, and the process (companion)
 /// plan (JSON or the stored binary plan).
 pub struct ResolvedRecords<'a> {
-    pub record: &'a Value,
+    pub record: &'a [u8],
     pub overlay: &'a [u8],
     pub companion_overlay: Option<&'a [u8]>,
     pub columns: &'a [u8],
@@ -198,10 +200,6 @@ pub struct SelectionTemplate {
     family_classes: Vec<Option<Vec<BTreeSet<usize>>>>,
 }
 
-fn parse(bytes: &[u8], what: &str) -> RusticolResult<Value> {
-    serde_json::from_slice(bytes).map_err(|e| invalid(format!("{what}: {e}")))
-}
-
 /// The records a formation reads of a plan (its seed classes and keys, its
 /// forward or merged program, its families' leaf seeds): typed, so the rest
 /// of the plan (steps, contents, edges, ...) is skipped while reading
@@ -209,9 +207,9 @@ fn parse(bytes: &[u8], what: &str) -> RusticolResult<Value> {
 #[derive(serde::Deserialize)]
 struct PlanView {
     #[serde(default)]
-    seed_classes: Option<Value>,
+    seed_classes: Option<Box<RawValue>>,
     #[serde(default)]
-    seeds: Option<Value>,
+    seeds: Option<Box<RawValue>>,
     #[serde(default)]
     forward: Option<serde::de::IgnoredAny>,
     #[serde(default)]
@@ -231,15 +229,15 @@ struct LeafView {
 }
 
 impl PlanView {
-    fn seed_classes(&self) -> RusticolResult<&Value> {
+    fn seed_classes(&self) -> RusticolResult<&RawValue> {
         self.seed_classes
-            .as_ref()
+            .as_deref()
             .ok_or_else(|| invalid("a stored record lacks \"seed_classes\""))
     }
 
-    fn seeds(&self) -> RusticolResult<&Value> {
+    fn seeds(&self) -> RusticolResult<&RawValue> {
         self.seeds
-            .as_ref()
+            .as_deref()
             .ok_or_else(|| invalid("a stored record lacks \"seeds\""))
     }
 }
@@ -255,149 +253,308 @@ fn plan_view(bytes: &[u8]) -> RusticolResult<PlanView> {
     read(bytes)
 }
 
-fn usize_of(value: &Value, what: &str) -> RusticolResult<usize> {
-    value
-        .as_u64()
-        .map(|v| v as usize)
-        .ok_or_else(|| invalid(format!("{what} is not an index")))
+/// The part of the observables record a formation reads, typed and
+/// borrowed: the Born rows and basis count, and the resolved set's columns
+/// and lanes (their keys, rows and sectors as the stored JSON text).
+#[derive(serde::Deserialize)]
+struct RecordView<'a> {
+    #[serde(borrow)]
+    rows: Vec<&'a RawValue>,
+    basis: usize,
+    #[serde(borrow)]
+    sets: SetsView<'a>,
 }
 
-fn array<'a>(value: &'a Value, what: &str) -> RusticolResult<&'a Vec<Value>> {
-    value
-        .as_array()
-        .ok_or_else(|| invalid(format!("{what} is not a list")))
+#[derive(serde::Deserialize)]
+struct SetsView<'a> {
+    #[serde(borrow)]
+    resolved: ResolvedView<'a>,
 }
 
-fn field<'a>(value: &'a Value, name: &str) -> RusticolResult<&'a Value> {
-    value
-        .get(name)
-        .ok_or_else(|| invalid(format!("a stored record lacks {name:?}")))
+#[derive(serde::Deserialize)]
+struct ResolvedView<'a> {
+    #[serde(borrow)]
+    columns: Vec<ItemView<'a>>,
+    /// (key, sector, direct, swapped seed column).
+    #[serde(borrow)]
+    lanes: Vec<(&'a RawValue, &'a RawValue, usize, usize)>,
 }
 
-/// A resolved column's colour component: its Born basis element at leading
-/// colour, None (the contracted component) otherwise.
-fn basis_of(item: &Value) -> RusticolResult<Option<usize>> {
-    match field(item, "basis")? {
-        Value::Null => Ok(None),
-        basis => {
-            let items = array(basis, "a resolved column's basis")?;
-            match items.as_slice() {
-                [b] => Ok(Some(usize_of(b, "a basis element")?)),
-                _ => Err(invalid("a resolved column has one basis element")),
-            }
+/// One stored resolved column.
+#[derive(serde::Deserialize)]
+struct ItemView<'a> {
+    #[serde(borrow)]
+    key: &'a RawValue,
+    #[serde(borrow)]
+    rows: Vec<&'a RawValue>,
+    basis: Option<Vec<usize>>,
+}
+
+impl ItemView<'_> {
+    /// Its colour component: its Born basis element at leading colour, None
+    /// (the contracted component) otherwise.
+    fn basis(&self) -> RusticolResult<Option<usize>> {
+        match self.basis.as_deref() {
+            None => Ok(None),
+            Some([b]) => Ok(Some(*b)),
+            Some(_) => Err(invalid("a resolved column has one basis element")),
+        }
+    }
+
+    /// Its one Born row (the stored JSON).
+    fn row(&self) -> RusticolResult<&str> {
+        match self.rows.as_slice() {
+            [row] => Ok(row.get()),
+            _ => Err(invalid("a resolved column has one Born row")),
+        }
+    }
+
+    /// Its key as a JSON value.
+    fn key(&self) -> RusticolResult<Value> {
+        value_of(self.key)
+    }
+}
+
+/// A borrowed stored JSON text as a value.
+fn value_of(raw: &RawValue) -> RusticolResult<Value> {
+    serde_json::from_str(raw.get()).map_err(|e| invalid(format!("a stored record: {e}")))
+}
+
+/// One seed-weight term: (plan Born component, real part, imaginary part as
+/// stored).
+type Term<'a> = (usize, &'a RawValue, &'a RawValue);
+
+/// A seed class: per seed-weight column its terms.
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct SeedClassView<'a> {
+    #[serde(borrow)]
+    columns: Vec<Vec<Term<'a>>>,
+}
+
+impl<'a> SeedClassView<'a> {
+    /// Its seed-weight column `w`.
+    fn column(&self, w: usize) -> RusticolResult<&[Term<'a>]> {
+        self.columns
+            .get(w)
+            .map(Vec::as_slice)
+            .ok_or_else(|| invalid("a seed-weight column out of range"))
+    }
+}
+
+/// A seed key's seed classes (the class index of each `[class, re, im]`).
+#[derive(serde::Deserialize)]
+struct SeedKeyView {
+    classes: Vec<(usize, serde::de::IgnoredAny, serde::de::IgnoredAny)>,
+}
+
+/// A column set's seed records (`native_observables.ObservableSet` overlay),
+/// typed and borrowed.
+#[derive(serde::Deserialize)]
+struct OverlayView<'a> {
+    #[serde(borrow, default)]
+    seed_classes: Option<Vec<SeedClassView<'a>>>,
+    #[serde(borrow, default)]
+    seeds: Option<&'a RawValue>,
+    columns: usize,
+    #[serde(borrow, default)]
+    column_rows: Option<Vec<&'a RawValue>>,
+    #[serde(default)]
+    column_weights: Option<Vec<usize>>,
+    born_components: usize,
+}
+
+impl OverlayView<'_> {
+    fn own_seeds(&self) -> bool {
+        self.seed_classes.is_some() && self.seeds.is_some()
+    }
+}
+
+/// A formed set's seed records over a plan, as the loader reads them.
+#[derive(serde::Serialize)]
+struct FormedOverlay<'a> {
+    seed_classes: Vec<SeedClassView<'a>>,
+    seeds: &'a RawValue,
+    columns: usize,
+    column_rows: Value,
+    column_weights: Option<Vec<usize>>,
+    born_components: usize,
+}
+
+/// The seed records a formation reads for one plan: the set's own, else
+/// the plan's.
+fn seed_records<'b, 'a: 'b>(
+    overlay: &'b OverlayView<'a>,
+    plan: Option<&'b PlanSeeds<'b>>,
+) -> RusticolResult<(&'b [SeedClassView<'b>], &'b RawValue)> {
+    match (&overlay.seed_classes, overlay.seeds) {
+        (Some(classes), Some(keys)) => Ok((classes.as_slice(), keys)),
+        _ => {
+            let plan = plan.ok_or_else(|| invalid("a stored record lacks \"seed_classes\""))?;
+            Ok((plan.classes.as_slice(), plan.keys))
         }
     }
 }
 
-/// A resolved column's one Born row.
-fn row_of(item: &Value) -> RusticolResult<&Value> {
-    match array(field(item, "rows")?, "a resolved column's rows")?.as_slice() {
-        [row] => Ok(row),
-        _ => Err(invalid("a resolved column has one Born row")),
+/// A plan's seed records, borrowed from its [`PlanView`].
+struct PlanSeeds<'p> {
+    classes: Vec<SeedClassView<'p>>,
+    keys: &'p RawValue,
+}
+
+impl<'p> PlanSeeds<'p> {
+    fn of(plan: &'p PlanView) -> RusticolResult<Self> {
+        let classes = serde_json::from_str(plan.seed_classes()?.get())
+            .map_err(|e| invalid(format!("a plan's seed classes: {e}")))?;
+        Ok(Self {
+            classes,
+            keys: plan.seeds()?,
+        })
     }
 }
 
-/// A seed class's seed-weight column `w` (its terms `[component, re, im]`).
-fn terms_of(record: &Value, w: usize) -> RusticolResult<&Vec<Value>> {
-    let columns = array(field(record, "columns")?, "a seed class's columns")?;
-    array(
-        columns
-            .get(w)
-            .ok_or_else(|| invalid("a seed-weight column out of range"))?,
-        "a seed-weight column",
-    )
+/// The interference programs of a column set: its records (passed through)
+/// and its columns.
+struct ColumnsView<'a> {
+    top: BTreeMap<&'a str, &'a RawValue>,
+    columns: Vec<&'a RawValue>,
+}
+
+impl<'a> ColumnsView<'a> {
+    fn read(bytes: &'a [u8]) -> RusticolResult<Self> {
+        let what =
+            |e: serde_json::Error| invalid(format!("the resolved interference programs: {e}"));
+        let top: BTreeMap<&'a str, &'a RawValue> = serde_json::from_slice(bytes).map_err(what)?;
+        let columns = top
+            .get("columns")
+            .ok_or_else(|| invalid("the interference programs lack 'columns'"))?;
+        let columns = serde_json::from_str(columns.get()).map_err(what)?;
+        Ok(Self { top, columns })
+    }
+
+    /// The records with these interference columns.
+    fn with_columns(&self, columns: &impl serde::Serialize) -> RusticolResult<String> {
+        let what = |e: serde_json::Error| invalid(format!("the interference programs: {e}"));
+        let columns =
+            RawValue::from_string(serde_json::to_string(columns).map_err(what)?).map_err(what)?;
+        let mut top = self.top.clone();
+        top.insert("columns", &columns);
+        serde_json::to_string(&top).map_err(what)
+    }
+}
+
+/// One interference column record: the fields the template reads.
+#[derive(serde::Deserialize)]
+struct ColumnRecordView<'a> {
+    #[serde(borrow)]
+    program: &'a RawValue,
+    #[serde(borrow)]
+    cells: &'a RawValue,
+    #[serde(borrow)]
+    swapped: &'a RawValue,
+}
+
+/// A template interference column.
+#[derive(serde::Serialize)]
+struct InterferenceColumn<'a> {
+    program: &'a RawValue,
+    cells: &'a RawValue,
+    swapped: &'a RawValue,
+    rows: Option<Vec<usize>>,
+    basis: Option<Vec<usize>>,
 }
 
 /// The stored resolved set's records: its columns, the process rows and
 /// basis count, and per resolved column and sector its seed column.
 struct Resolved<'a> {
-    items: &'a Vec<Value>,
-    rows: &'a Vec<Value>,
+    items: Vec<ItemView<'a>>,
+    /// The resolved lanes: (item, sector as stored, direct, swapped).
+    lanes: Vec<(usize, &'a RawValue, usize, usize)>,
+    rows: usize,
     basis: usize,
     /// Per item, its row index.
     row: Vec<usize>,
     /// The sectors (stored JSON) in their first appearance.
-    sectors: Vec<Value>,
+    sectors: Vec<&'a RawValue>,
     /// Per (item, sector index): its seed column.
     seed_column: BTreeMap<(usize, usize), usize>,
-    overlays: Vec<serde_json::Map<String, Value>>,
+    overlays: Vec<OverlayView<'a>>,
     /// Per plan: each seed column's seed-weight column.
     weight_of: Vec<Vec<usize>>,
 }
 
 impl<'a> Resolved<'a> {
-    fn read(records: &ResolvedRecords<'_>, record: &'a Value) -> RusticolResult<Self> {
-        let meta = field(field(record, "sets")?, "resolved")?;
-        let items = array(field(meta, "columns")?, "the resolved columns")?;
-        let rows = array(field(record, "rows")?, "the Born rows")?;
-        let basis = usize_of(field(record, "basis")?, "the basis count")?;
+    fn read(records: &ResolvedRecords<'a>) -> RusticolResult<Self> {
+        let record: RecordView<'a> = serde_json::from_slice(records.record)
+            .map_err(|e| invalid(format!("the observables record: {e}")))?;
+        let ResolvedView {
+            columns: items,
+            lanes: stored,
+        } = record.sets.resolved;
+        let rows: BTreeMap<&str, usize> = record
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(h, row)| (row.get(), h))
+            .collect();
         let row = items
             .iter()
             .map(|item| {
-                let found = row_of(item)?;
-                rows.iter()
-                    .position(|known| known == found)
+                rows.get(item.row()?)
+                    .copied()
                     .ok_or_else(|| invalid("a resolved column of an unknown Born row"))
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        let by_key: BTreeMap<String, usize> = items
+        let by_key: BTreeMap<&str, usize> = items
             .iter()
             .enumerate()
-            .map(|(k, item)| Ok((field(item, "key")?.to_string(), k)))
-            .collect::<RusticolResult<_>>()?;
-        let mut sectors: Vec<Value> = Vec::new();
+            .map(|(k, item)| (item.key.get(), k))
+            .collect();
+        let mut sectors: Vec<&'a RawValue> = Vec::new();
         let mut seed_column = BTreeMap::new();
-        for lane in array(field(meta, "lanes")?, "the resolved lanes")? {
-            let lane = array(lane, "a lane")?;
-            let [key, sector, direct, swapped] = lane.as_slice() else {
-                return Err(invalid("a lane is (key, sector, direct, swapped)"));
-            };
+        let mut lanes = Vec::with_capacity(stored.len());
+        for (key, sector, direct, swapped) in stored {
+            let k = *by_key
+                .get(key.get())
+                .ok_or_else(|| invalid("a lane of an unknown resolved column"))?;
+            lanes.push((k, sector, direct, swapped));
             if direct != swapped {
                 return Err(invalid(
                     "a resolved column reads one seed column per sector",
                 ));
             }
-            let s = match sectors.iter().position(|known| known == sector) {
+            let s = match sectors.iter().position(|known| known.get() == sector.get()) {
                 Some(s) => s,
                 None => {
-                    sectors.push(sector.clone());
+                    sectors.push(sector);
                     sectors.len() - 1
                 }
             };
-            let k = *by_key
-                .get(&key.to_string())
-                .ok_or_else(|| invalid("a lane of an unknown resolved column"))?;
-            seed_column.insert((k, s), usize_of(direct, "a seed column")?);
+            seed_column.insert((k, s), direct);
         }
+        let basis = record.basis;
+        let rows = record.rows.len();
         let mut overlays = vec![records.overlay];
         overlays.extend(records.companion_overlay);
         let overlays = overlays
             .into_iter()
-            .map(|bytes| match parse(bytes, "the resolved seed records")? {
-                Value::Object(map) => Ok(map),
-                _ => Err(invalid(
-                    "the resolved set stores no seed records of its own",
-                )),
+            .map(|bytes| {
+                serde_json::from_slice::<OverlayView<'a>>(bytes).map_err(|e| {
+                    invalid(format!(
+                        "the resolved set stores no seed records of its own: {e}"
+                    ))
+                })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
         let weight_of = overlays
             .iter()
-            .map(|overlay| match overlay.get("column_weights") {
-                Some(Value::Array(weights)) if !weights.is_empty() => weights
-                    .iter()
-                    .map(|w| usize_of(w, "a column weight"))
-                    .collect::<RusticolResult<Vec<_>>>(),
-                _ => Ok((0..usize_of(
-                    overlay
-                        .get("columns")
-                        .ok_or_else(|| invalid("seed records lack 'columns'"))?,
-                    "the seed column count",
-                )?)
-                    .collect()),
+            .map(|overlay| match &overlay.column_weights {
+                Some(weights) if !weights.is_empty() => weights.clone(),
+                _ => (0..overlay.columns).collect(),
             })
-            .collect::<RusticolResult<Vec<_>>>()?;
+            .collect();
         Ok(Self {
             items,
+            lanes,
             rows,
             basis,
             row,
@@ -432,12 +589,12 @@ impl SelectionTemplate {
     /// Form the template of a stored process (module docs) from its
     /// records: pure JSON, no Symbolica operation.
     pub fn form(records: &ResolvedRecords<'_>) -> RusticolResult<Self> {
-        let resolved = Resolved::read(records, records.record)?;
-        let every = resolved.rows.len();
+        let resolved = Resolved::read(records)?;
+        let every = resolved.rows;
         let found_axis: BTreeSet<Option<usize>> = resolved
             .items
             .iter()
-            .map(basis_of)
+            .map(ItemView::basis)
             .collect::<RusticolResult<_>>()?;
         if found_axis.contains(&None) && found_axis.len() > 1 {
             return Err(invalid(
@@ -455,7 +612,7 @@ impl SelectionTemplate {
         let mut weights: Vec<Signature> = vec![BTreeMap::new(); every];
         let mut seen = vec![false; every];
         for (k, item) in resolved.items.iter().enumerate() {
-            let b = basis_of(item)?;
+            let b = item.basis()?;
             let h = resolved.row[k];
             seen[h] = true;
             for s in 0..resolved.sectors.len() {
@@ -478,35 +635,29 @@ impl SelectionTemplate {
                 None => classes.push((signature, vec![h])),
             }
         }
-        let mut records_json = match parse(records.columns, "the resolved interference programs")? {
-            Value::Object(map) => map,
-            _ => return Err(invalid("the resolved interference programs are no record")),
-        };
-        let programs: BTreeSet<String> = array(
-            records_json
-                .get("columns")
-                .ok_or_else(|| invalid("the interference programs lack 'columns'"))?,
-            "the interference columns",
-        )?
-        .iter()
-        .map(|column| {
-            json!([
-                column.get("program"),
-                column.get("cells"),
-                column.get("swapped")
-            ])
-            .to_string()
-        })
-        .collect();
+        let records_json = ColumnsView::read(records.columns)?;
+        let read = records_json
+            .columns
+            .iter()
+            .map(|column| {
+                serde_json::from_str::<ColumnRecordView<'_>>(column.get())
+                    .map_err(|e| invalid(format!("an interference column: {e}")))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let programs: BTreeSet<(&str, &str, &str)> = read
+            .iter()
+            .map(|column| {
+                (
+                    column.program.get(),
+                    column.cells.get(),
+                    column.swapped.get(),
+                )
+            })
+            .collect();
         if programs.len() != 1 {
             return Err(invalid("the resolved columns read different programs"));
         }
-        let first = &records_json["columns"][0];
-        let (program, cells, swapped) = (
-            first.get("program").cloned().unwrap_or(Value::Null),
-            first.get("cells").cloned().unwrap_or(Value::Null),
-            first.get("swapped").cloned().unwrap_or(Value::Null),
-        );
+        let (program, cells, swapped) = (read[0].program, read[0].cells, read[0].swapped);
         let mut outputs = Vec::new();
         let mut interference = Vec::new();
         let mut lanes = Vec::new();
@@ -520,15 +671,15 @@ impl SelectionTemplate {
                 rows: kept_rows.clone(),
                 basis: None,
             });
-            interference.push(json!({
-                "program": program,
-                "cells": cells,
-                "swapped": swapped,
-                "rows": kept_rows,
-                "basis": Value::Null,
-            }));
+            interference.push(InterferenceColumn {
+                program,
+                cells,
+                swapped,
+                rows: kept_rows.clone(),
+                basis: None,
+            });
             for (s, sector) in resolved.sectors.iter().enumerate() {
-                lanes.push((c, sector.clone(), seed_rows.len(), seed_rows.len()));
+                lanes.push((c, value_of(sector)?, seed_rows.len(), seed_rows.len()));
                 seed_rows.push(kept_rows.clone());
                 for (p, columns) in template_weights.iter_mut().enumerate() {
                     let ws: BTreeSet<usize> = signature
@@ -542,23 +693,23 @@ impl SelectionTemplate {
         }
         let classes: Vec<Vec<usize>> = classes.into_iter().map(|(_, hs)| hs).collect();
         let plans = plans(records, plan_count)?;
+        let plan_seeds = resolved
+            .overlays
+            .iter()
+            .zip(&plans)
+            .map(|(overlay, plan)| {
+                (!overlay.own_seeds())
+                    .then(|| PlanSeeds::of(plan))
+                    .transpose()
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
         let mut basis_components = Vec::new();
         let mut class_components = Vec::new();
         let mut components = Vec::new();
         let mut family_classes = Vec::new();
         let mut formed = Vec::new();
         for (p, (overlay, plan)) in resolved.overlays.iter().zip(&plans).enumerate() {
-            let (seed_records, keys) = match (overlay.get("seed_classes"), overlay.get("seeds")) {
-                (Some(classes @ Value::Array(_)), Some(keys)) => (classes, keys),
-                _ => (plan.seed_classes()?, plan.seeds()?),
-            };
-            let seed_records = array(seed_records, "the seed classes")?;
-            let component_of = |term: &Value| -> RusticolResult<usize> {
-                usize_of(
-                    term.get(0).ok_or_else(|| invalid("a seed weight term"))?,
-                    "a plan Born component",
-                )
-            };
+            let (seed_records, keys) = seed_records(overlay, plan_seeds[p].as_ref())?;
             let mut owner: BTreeMap<usize, Option<usize>> = BTreeMap::new();
             let mut per_basis: BTreeMap<Option<usize>, BTreeSet<usize>> =
                 axis.iter().map(|&b| (b, BTreeSet::new())).collect();
@@ -572,8 +723,7 @@ impl SelectionTemplate {
                 .collect();
             for &(b, w) in &pairs {
                 for record in seed_records {
-                    for term in terms_of(record, w)? {
-                        let component = component_of(term)?;
+                    for &(component, _, _) in record.column(w)? {
                         if *owner.entry(component).or_insert(b) != b {
                             return Err(invalid(
                                 "a plan Born component carries the seed weights of two \
@@ -594,12 +744,9 @@ impl SelectionTemplate {
                 for ws in &template_weights[p] {
                     let mut terms = Vec::new();
                     for &w in ws {
-                        terms.extend(terms_of(record, w)?.iter().cloned());
+                        terms.extend_from_slice(record.column(w)?);
                     }
-                    let distinct: BTreeSet<usize> = terms
-                        .iter()
-                        .map(component_of)
-                        .collect::<RusticolResult<_>>()?;
+                    let distinct: BTreeSet<usize> = terms.iter().map(|term| term.0).collect();
                     if distinct.len() != terms.len() {
                         return Err(invalid(
                             "a seed class repeats a plan Born component across the \
@@ -607,58 +754,60 @@ impl SelectionTemplate {
                         ));
                     }
                     read.extend(distinct);
-                    merged.push(Value::Array(terms));
+                    merged.push(terms);
                 }
-                class_columns.push(json!({ "columns": merged }));
+                class_columns.push(SeedClassView { columns: merged });
                 reads.push(read);
             }
             class_components.push(reads);
-            let born_components = overlay
-                .get("born_components")
-                .cloned()
-                .ok_or_else(|| invalid("seed records lack 'born_components'"))?;
-            components.push(usize_of(&born_components, "the Born component count")?);
+            let born_components = overlay.born_components;
+            components.push(born_components);
             let reads_every = plan.forward.is_some() || plan.merged.is_some();
             if reads_every {
                 family_classes.push(None);
             } else {
-                let keys = array(keys, "the seed keys")?;
+                let keys: Vec<SeedKeyView> = serde_json::from_str(keys.get())
+                    .map_err(|e| invalid(format!("the seed keys: {e}")))?;
                 let mut per_family = Vec::with_capacity(plan.families.len());
                 for family in &plan.families {
                     let mut classes_read = BTreeSet::new();
                     for leaf in &family.leaves {
-                        let seed = leaf.seed;
                         let key = keys
-                            .get(seed)
+                            .get(leaf.seed)
                             .ok_or_else(|| invalid("a leaf of an unknown seed key"))?;
-                        for class in array(field(key, "classes")?, "a seed key's classes")? {
-                            let c = class.get(0).ok_or_else(|| invalid("a seed key's class"))?;
-                            classes_read.insert(usize_of(c, "a seed class")?);
-                        }
+                        classes_read.extend(key.classes.iter().map(|class| class.0));
                     }
                     per_family.push(classes_read);
                 }
                 family_classes.push(Some(per_family));
             }
             let any_rows = seed_rows.iter().any(Option::is_some);
-            formed.push(json!({
-                "seed_classes": class_columns,
-                "seeds": keys,
-                "columns": seed_rows.len(),
-                "column_rows": if any_rows { json!(seed_rows) } else { Value::Null },
-                "column_weights": Value::Null,
-                "born_components": born_components,
-            }));
+            let overlay = FormedOverlay {
+                seed_classes: class_columns,
+                seeds: keys,
+                columns: seed_rows.len(),
+                column_rows: if any_rows {
+                    json!(seed_rows)
+                } else {
+                    Value::Null
+                },
+                column_weights: None,
+                born_components,
+            };
+            formed.push(
+                serde_json::to_string(&overlay)
+                    .map_err(|e| invalid(format!("a formed seed record: {e}")))?,
+            );
         }
-        records_json.insert("columns".to_owned(), Value::Array(interference));
-        let mut formed = formed.into_iter().map(|value| value.to_string());
+        let columns = records_json.with_columns(&interference)?;
+        let mut formed = formed.into_iter();
         let overlay = formed.next().expect("the process plan");
         let companion_overlay = formed.next();
         Ok(Self {
             set: FormedColumns {
                 overlay,
                 companion_overlay,
-                columns: Value::Object(records_json).to_string(),
+                columns,
                 outputs,
                 lanes,
             },
@@ -765,10 +914,10 @@ pub fn resolved_subset(
     rows: Option<&BTreeSet<usize>>,
     basis: Option<&BTreeSet<usize>>,
 ) -> RusticolResult<FormedColumns> {
-    let resolved = Resolved::read(records, records.record)?;
+    let resolved = Resolved::read(records)?;
     let mut kept = Vec::new();
     for (k, item) in resolved.items.iter().enumerate() {
-        let b = basis_of(item)?;
+        let b = item.basis()?;
         let row_kept = rows.is_none_or(|rows| rows.contains(&resolved.row[k]));
         let basis_kept = basis.is_none_or(|basis| b.is_some_and(|b| basis.contains(&b)));
         if row_kept && basis_kept {
@@ -790,41 +939,31 @@ pub fn resolved_subset(
             }
         }
     };
-    let meta = field(field(records.record, "sets")?, "resolved")?;
     let position: BTreeMap<usize, usize> = kept.iter().enumerate().map(|(i, &k)| (k, i)).collect();
-    let by_key: BTreeMap<String, usize> = resolved
-        .items
-        .iter()
-        .enumerate()
-        .map(|(k, item)| Ok((field(item, "key")?.to_string(), k)))
-        .collect::<RusticolResult<_>>()?;
-    for lane in array(field(meta, "lanes")?, "the resolved lanes")? {
-        let lane = array(lane, "a lane")?;
-        let [key, sector, direct, swapped] = lane.as_slice() else {
-            return Err(invalid("a lane is (key, sector, direct, swapped)"));
-        };
-        let k = by_key
-            .get(&key.to_string())
-            .ok_or_else(|| invalid("a lane of an unknown resolved column"))?;
-        let Some(&output) = position.get(k) else {
+    for &(k, sector, direct, swapped) in &resolved.lanes {
+        let Some(&output) = position.get(&k) else {
             continue;
         };
-        let direct = number(&mut used, usize_of(direct, "a seed column")?);
-        let swapped = number(&mut used, usize_of(swapped, "a seed column")?);
-        lanes.push((output, sector.clone(), direct, swapped));
+        let direct = number(&mut used, direct);
+        let swapped = number(&mut used, swapped);
+        lanes.push((output, value_of(sector)?, direct, swapped));
     }
     // The plans' seed records, read only where a set stores none of its own.
-    let own_seeds = |overlay: &serde_json::Map<String, Value>| {
-        matches!(
-            (overlay.get("seed_classes"), overlay.get("seeds")),
-            (Some(Value::Array(_)), Some(_))
-        )
-    };
-    let plans = if resolved.overlays.iter().all(own_seeds) {
+    let plans = if resolved.overlays.iter().all(OverlayView::own_seeds) {
         Vec::new()
     } else {
         plans(records, resolved.overlays.len())?
     };
+    let plan_seeds = resolved
+        .overlays
+        .iter()
+        .enumerate()
+        .map(|(p, overlay)| {
+            (!overlay.own_seeds())
+                .then(|| PlanSeeds::of(&plans[p]))
+                .transpose()
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
     let mut formed = Vec::new();
     for (p, (overlay, weights)) in resolved
         .overlays
@@ -832,7 +971,6 @@ pub fn resolved_subset(
         .zip(&resolved.weight_of)
         .enumerate()
     {
-        let mut out = serde_json::Map::new();
         // The kept seed columns' seed-weight columns, renumbered in their
         // order of use: each seed class keeps those weight columns only, so
         // the set's plan reads as many weight columns as it keeps (the
@@ -847,84 +985,63 @@ pub fn resolved_subset(
                 Ok(number(&mut kept_weights, w))
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        let (seed_records, keys) = if own_seeds(overlay) {
-            (&overlay["seed_classes"], &overlay["seeds"])
-        } else {
-            (plans[p].seed_classes()?, plans[p].seeds()?)
-        };
-        let classes = array(seed_records, "the seed classes")?
+        let (seed_records, keys) = seed_records(overlay, plan_seeds[p].as_ref())?;
+        let classes = seed_records
             .iter()
             .map(|record| {
-                let columns = array(field(record, "columns")?, "a seed class's columns")?;
-                let picked = kept_weights
+                let columns = kept_weights
                     .iter()
-                    .map(|&w| {
-                        columns
-                            .get(w)
-                            .cloned()
-                            .ok_or_else(|| invalid("a seed-weight column out of range"))
-                    })
+                    .map(|&w| record.column(w).map(<[_]>::to_vec))
                     .collect::<RusticolResult<Vec<_>>>()?;
-                let mut record = record.clone();
-                record["columns"] = Value::Array(picked);
-                Ok(record)
+                Ok(SeedClassView { columns })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        out.insert("seed_classes".to_owned(), Value::Array(classes));
-        out.insert("seeds".to_owned(), keys.clone());
-        let column_rows = match overlay.get("column_rows") {
-            None | Some(Value::Null) => Value::Null,
-            Some(Value::Array(rows)) => Value::Array(
+        let column_rows = match &overlay.column_rows {
+            None => Value::Null,
+            Some(rows) => Value::Array(
                 used.iter()
                     .map(|&c| {
-                        rows.get(c)
-                            .cloned()
-                            .ok_or_else(|| invalid("a seed column without its rows"))
+                        value_of(
+                            rows.get(c)
+                                .ok_or_else(|| invalid("a seed column without its rows"))?,
+                        )
                     })
                     .collect::<RusticolResult<_>>()?,
             ),
-            Some(_) => return Err(invalid("column_rows is not a list")),
         };
-        out.insert("columns".to_owned(), json!(used.len()));
-        out.insert("column_rows".to_owned(), column_rows);
-        out.insert("column_weights".to_owned(), json!(column_weights));
-        out.insert(
-            "born_components".to_owned(),
-            overlay
-                .get("born_components")
-                .cloned()
-                .ok_or_else(|| invalid("seed records lack 'born_components'"))?,
+        let formed_overlay = FormedOverlay {
+            seed_classes: classes,
+            seeds: keys,
+            columns: used.len(),
+            column_rows,
+            column_weights: Some(column_weights),
+            born_components: overlay.born_components,
+        };
+        formed.push(
+            serde_json::to_string(&formed_overlay)
+                .map_err(|e| invalid(format!("a formed seed record: {e}")))?,
         );
-        formed.push(Value::Object(out).to_string());
     }
-    let mut columns_json = match parse(records.columns, "the resolved interference programs")? {
-        Value::Object(map) => map,
-        _ => return Err(invalid("the resolved interference programs are no record")),
-    };
-    let all = array(
-        columns_json
-            .get("columns")
-            .ok_or_else(|| invalid("the interference programs lack 'columns'"))?,
-        "the interference columns",
-    )?
-    .clone();
+    let columns_json = ColumnsView::read(records.columns)?;
     let picked = kept
         .iter()
         .map(|&k| {
-            all.get(k)
-                .cloned()
+            columns_json
+                .columns
+                .get(k)
+                .copied()
                 .ok_or_else(|| invalid("a resolved column without its interference"))
         })
         .collect::<RusticolResult<Vec<_>>>()?;
-    columns_json.insert("columns".to_owned(), Value::Array(picked));
+    let columns = columns_json.with_columns(&picked)?;
     let outputs = kept
         .iter()
         .map(|&k| {
             let item = &resolved.items[k];
             Ok(FormedColumn {
-                key: field(item, "key")?.clone(),
+                key: item.key()?,
                 rows: Some(vec![resolved.row[k]]),
-                basis: basis_of(item)?.map(|b| vec![b]),
+                basis: item.basis()?.map(|b| vec![b]),
             })
         })
         .collect::<RusticolResult<Vec<_>>>()?;
@@ -932,7 +1049,7 @@ pub fn resolved_subset(
     Ok(FormedColumns {
         overlay: formed.next().expect("the process plan"),
         companion_overlay: formed.next(),
-        columns: Value::Object(columns_json).to_string(),
+        columns,
         outputs,
         lanes,
     })
@@ -978,8 +1095,9 @@ mod tests {
     fn a_full_colour_template_masks_rows_only_and_a_subset_keeps_its_columns() {
         let (record, overlay, columns, plan) = records();
         let (overlay, columns, plan) = (overlay.to_string(), columns.to_string(), plan.to_string());
+        let record = record.to_string();
         let records = ResolvedRecords {
-            record: &record,
+            record: record.as_bytes(),
             overlay: overlay.as_bytes(),
             companion_overlay: None,
             columns: columns.as_bytes(),
@@ -1064,8 +1182,9 @@ mod tests {
         })
         .to_string();
         let columns = json!({"cells": [], "programs": [], "columns": interference}).to_string();
+        let record = record.to_string();
         let records = ResolvedRecords {
-            record: &record,
+            record: record.as_bytes(),
             overlay: overlay.as_bytes(),
             companion_overlay: None,
             columns: columns.as_bytes(),
