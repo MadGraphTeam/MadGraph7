@@ -14,9 +14,9 @@ s_rec, the luminosity and the flux, must be those of genps_fks.f. The FKS
 mapping of lepton beams must be invertible, with the volume of the real phase
 space, and the Born of its collinear counter-event must be that of the
 collinear limit (p_born_coll). The asymmetric map of an incoming emitter
-(FKSRadiation.InitialMap) maps the Born at s_rec by
-fks_initial_fixed_light_cone_map instead of the boost along i, compared with
-the data of the MCcntRefactor_Sfun branch (test_data/fks_asymmetric).
+(FKSRadiation.InitialMap), the default, maps the Born at s_rec by
+fks_initial_fixed_light_cone_map instead of the boost along i, and the data of
+the symmetric one are in test_data/fks_symmetric.
 """
 
 import math
@@ -25,9 +25,9 @@ import numpy as np
 import pytest
 import torch
 from fks_testing import (
-    FKS_ASYMMETRIC_DATA,
     FKS_DATA,
     FKS_DATA_IDS,
+    FKS_SYMMETRIC_DATA,
     data_id,
     evaluate,
     reference,
@@ -50,8 +50,8 @@ def is_lepton(path):
 
 LEPTON_DATA = [path for path in FKS_DATA if is_lepton(path)]
 LEPTON_IDS = [FKS_DATA_IDS[FKS_DATA.index(path)] for path in LEPTON_DATA]
-# with those of the asymmetric map from the MCcntRefactor_Sfun branch
-EMISSION_DATA = LEPTON_DATA + [p for p in FKS_ASYMMETRIC_DATA if is_lepton(p)]
+# with those of the symmetric map
+EMISSION_DATA = LEPTON_DATA + [p for p in FKS_SYMMETRIC_DATA if is_lepton(p)]
 INITIAL_MAPS = ["symmetric", "asymmetric"]
 
 
@@ -193,9 +193,8 @@ def test_emission_matches_genps_fks(path, nfks):
     generate_noevpr_kinematics: i at fixed sqrt(s), the Born boosted against
     it, xi, xi_max and i per unit xi, and the Jacobians, which with the
     luminosity, the Born at s_rec and the flux at sqrt(s) are those of
-    genps_fks.f. With the asymmetric map of the MCcntRefactor_Sfun branch the
-    Born recoils by fks_initial_fixed_light_cone_map, with the same
-    Jacobians."""
+    genps_fks.f. With the asymmetric map the Born recoils by
+    fks_initial_fixed_light_cone_map, with the same Jacobians."""
     data = reference(path)
     conf = next(c for c in data["configs"] if c["nfks"] == nfks)
     points = [p for p in conf["points"] + conf["limit_points"] if "noevpr" in p]

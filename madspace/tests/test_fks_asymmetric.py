@@ -1,15 +1,15 @@
 """The asymmetric map of an emission off an incoming parton.
 
-FKSRadiation with InitialMap asymmetric is FKSISRMapping 2 of the
-MCcntRefactor_Sfun branch of MadGraph7: only the emitter changes its momentum
-fraction, and the final state of the Born recoils against i by a Lorentz map
-that keeps the direction of the spectator. Its reference data from the branch
-(test_data/fks_asymmetric) are compared with those of the other emitters in
-test_fks_radiation.py and test_fks_counter_events.py, its round trip and
-volume in test_fks_radiation.py, test_fks_mapping.py and test_fks_channels.py.
-Here the Lorentz map (fks_initial_light_cone_map) is compared with the
-formulas of the branch and with 50-digit values, and the counter-events with
-those of the symmetric map, which they are.
+FKSRadiation with InitialMap asymmetric, the default, is FKSISRMapping 0 and
+2 of MadGraph7: only the emitter changes its momentum fraction, and the final
+state of the Born recoils against i by a Lorentz map that keeps the direction
+of the spectator. The reference data of test_data/fks take it and are compared
+with those of the other emitters in test_fks_radiation.py and
+test_fks_counter_events.py, its round trip and volume in test_fks_radiation.py,
+test_fks_mapping.py and test_fks_channels.py. Here the Lorentz map
+(fks_initial_light_cone_map) is compared with the formulas of MadGraph7 and
+with 50-digit values, and the counter-events with those of the symmetric map,
+which they are.
 """
 
 import math
@@ -54,7 +54,7 @@ def light_cone_map(p, masses, xi, y, r_phi, beam_sign, inverse=False, fixed=Fals
 
 
 def branch_map(p, xi, y, r_phi, beam_sign, inverse=False):
-    """prepare_isr_recoil_boost and apply_isr_recoil_boost of the branch (without
+    """prepare_isr_recoil_boost and apply_isr_recoil_boost of MadGraph7 (without
     the mass shell of its inverse)."""
     xi, y, phi = xi[:, None], y[:, None], 2 * math.pi * r_phi[:, None]
     z = 1 - xi
@@ -100,7 +100,7 @@ MASSES = [0.0, 173.0, 0.0, 91.0]
 
 @pytest.mark.parametrize("beam_sign", [1.0, -1.0])
 def test_light_cone_map_matches_branch(beam_sign):
-    """The formulas of the branch, directly without masses and to rounding
+    """The formulas of MadGraph7, directly without masses and to rounding
     with the mass shell, both ways."""
     batch = 2000
     p = random_final_state(MASSES, batch, seed=1)
@@ -303,7 +303,7 @@ def test_fixed_light_cone_map(beam_sign):
     """Without the projection of the event (lepton beams) the Born in its rest
     frame at s_rec = (1 - xi) s goes to the center-of-mass frame of the real
     emission at s: fks_initial_light_cone_map and the boost by sqrt(1 - xi)
-    of the branch, the total momentum to (sqrt(s), 0) - p_i of
+    of MadGraph7, the total momentum to (sqrt(s), 0) - p_i of
     fks_initial_fixed_radiate, and back."""
     batch = 1000
     rng = np.random.default_rng(6)

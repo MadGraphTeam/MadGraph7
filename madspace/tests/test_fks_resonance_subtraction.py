@@ -1,22 +1,21 @@
 """The local FKS counterterms of the resonance-local recoil of an emission off a
 final-state parton: FKSEikonals, FKSSplittingKernels, FKSPrefactors, FKSLimits
-and FKSSubtraction with resonance, as fks_singular.f of the MCcntRefactor_Sfun
-branch of MadGraph7.
+and FKSSubtraction with resonance, as fks_singular.f of MadGraph7.
 
 The reference data of test_data/fks_resonance (see
 fks_reference/make_fks_resonance_reference.py) store, at the points of each
 Born configuration, the factors of eikonal_reduced, sborncol_fsr and
-compute_prefactors_n1body of the branch, the scales of
-resonance_subtraction_scales, sreal at the event and the counter-events and the
-Born and color-linked Borns of MadFKS at the Born. Where a configuration has a
-resonance of momentum K, the branch takes the energies of sborncol_fsr and the
+compute_prefactors_n1body, the scales of resonance_subtraction_scales, sreal at
+the event and the counter-events and the Born and color-linked Borns of MadFKS
+at the Born. Where a configuration has a resonance of momentum K, MadGraph7
+takes the energies of sborncol_fsr and the
 eikonal factors of a massless j in the rest frame of K, and the cuts of the
 plus distributions scaled from those of the partonic center-of-mass frame. With
 K, zero where there is no resonance, the classes with resonance must give the
 same, and the classes without resonance must differ there. The transverse
 direction of the emission is that of the rest frame of K boosted with the
-momenta, as resonance_collinear_phase of the branch transports it for the
-phase of the spin-correlated Born. On events of an FKSMapping with a resonance
+momenta, as resonance_collinear_phase transports it for the phase of the
+spin-correlated Born. On events of an FKSMapping with a resonance
 the cuts follow from its soft counter-event and K.
 """
 
@@ -29,7 +28,6 @@ from fks_testing import (
     configuration,
     data_id,
     evaluate,
-    madfks_pdf_prefactors,
     reference,
     reference_born_mapping,
     resonance_stretch,
@@ -195,7 +193,7 @@ def test_splitting_kernels_match_sborncol_fsr(path):
 
 def collinear_phase(k_perp, emitter):
     """The phase of <ij>/[ij] in the collinear limit from the transverse
-    direction and the Born emitter, as resonance_collinear_phase of the branch
+    direction and the Born emitter, as resonance_collinear_phase
     takes it from the transported vector: k_perp rotated into the frame of the
     emitter (getangles, trp_rotate_invar), -(e^(i phi) (r_1 + i r_2))^2 /
     (r_1^2 + r_2^2) with phi the azimuth of the emitter."""
@@ -214,11 +212,8 @@ def collinear_phase(k_perp, emitter):
 @pytest.mark.parametrize("path", FKS_RESONANCE_DATA, ids=IDS)
 def test_transverse_vector(path):
     """k_perp is orthogonal to the frame (K or the incoming momenta) and to the
-    Born emitter, and gives the phase xij_aor of the spin-correlated Born of the
-    branch at a massless emitter. Without a resonance it is xij_kperp up to its
-    sign. With one the branch keeps in xij_kperp the vector of the inverse of
-    the global map of project_global_fsr_partition, which restores xinorm_ev and
-    xij_aor but not xij_kperp, so there it is not that of the event."""
+    Born emitter, gives the phase xij_aor of the spin-correlated Born at a
+    massless emitter and is xij_kperp up to its sign."""
     data = reference(path)
     rows = rows_of(data, lambda conf, point: point["s_ij_ev"] != -1.0)
     kernels = fks_splitting_kernels(
@@ -248,7 +243,7 @@ def test_transverse_vector(path):
     np.testing.assert_array_less(
         np.abs(dot(k_perp, frame)) / frame[:, 0], 1e-13 * stretch
     )
-    # the branch sets xij_kperp and xij_aor for a massless emitter only
+    # MadGraph7 sets xij_kperp and xij_aor for a massless emitter only
     massless = np.array([conf["masses"][conf["j_fks"] - 1] == 0 for conf, _ in rows])
     kperp = np.array([point["kperp"] for _, point in rows])
     np.testing.assert_array_equal(kperp[~massless], 0.0)
@@ -268,10 +263,7 @@ def test_transverse_vector(path):
     )
     sign = np.sign((k_perp * kperp).sum(1))[:, None]
     deviation = np.abs(sign * k_perp - kperp).max(1)
-    plain = massless & ~flags
-    np.testing.assert_array_less(deviation[plain], tolerance[plain])
-    moved = massless & flags
-    assert (deviation[moved] > 1e-3).all()
+    np.testing.assert_array_less(deviation[massless], tolerance[massless])
 
 
 def resonance_scales(rows):
@@ -352,11 +344,6 @@ def test_prefactors_match_compute_prefactors_n1body(path):
         key: np.array([p["prefactors"][key] for p in points])
         for key in ["f_r", "f_s", "f_c", "f_dc", "f_sc", "f_dsc", "f_pdf_scheme"]
     }
-    fortran["f_pdf_scheme"] = madfks_pdf_prefactors(
-        fortran["f_pdf_scheme"],
-        field("xiimax_cnt", COLLINEAR),
-        data["subtraction"]["xi_s_cut"],
-    )
     sym, sym_deg = field("fks_symmetry_factor"), field("fks_symmetry_factor_deg")
     jac, jac_cnt = field("jac"), field("jac_cnt")
     xinorm, xinorm_c = field("xinorm_ev"), field("xinorm_cnt", COLLINEAR)
@@ -501,7 +488,7 @@ def test_limits_match_sreal(path):
 @pytest.mark.parametrize("path", FKS_RESONANCE_DATA, ids=IDS)
 def test_subtraction_matches_madfks(path):
     """FKSSubtraction with K against the contributions of compute_real_emission
-    and compute_soft_counter_term and its siblings of the branch (as
+    and compute_soft_counter_term and its siblings (as
     test_fks_subtraction.py)."""
     check_against_madfks(reference(path), resonance=True, rounding=soft_rounding)
 

@@ -7,4 +7,4 @@ DUMP = $(subst test_soft_col_limits.o,fks_kinematics_dump.o,$(TEST))
 fks_kinematics_dump: $(DUMP) mint_module.o
 	$(FC) $(LDFLAGS) -o $@ $(DUMP) $(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
 
-fks_kinematics_dump.o: mint_module.o
+fks_kinematics_dump.o: mint_module.o FKSParams.o genps_fks.o fks_phase_space_data.o genps_fks_sampling.o

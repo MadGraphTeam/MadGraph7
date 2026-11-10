@@ -13,15 +13,11 @@ genps_fks.f (the rad_ entries, and the cut_ ones with the lower bound on the
 partonic energy), with their Jacobians in the conventions of
 test_fks_kernels.py and test_fks_radiation.py, and its counter-events must be
 generated exactly where genps_fks.f generates them. Lepton PDFs have their
-own mapping, see test_fks_lepton.py. The data of the asymmetric map of an
-incoming emitter (test_data/fks_asymmetric, from the MCcntRefactor_Sfun branch)
-are compared in the same way, with its conventions: Jacobians with the factors
-1 - stiny and 1 - ctiny of the sampling, and soft counter-events also below the
-lower bound on the partonic energy, which madspace does not generate. So are
-those of its resonance-local recoil of a final-state emitter
-(test_data/fks_resonance), with the members of the resonance of the data,
-where its map of xi is that of main (see same_massive_xi_map in
-fks_testing.py).
+own mapping, see test_fks_lepton.py. The reference data take the asymmetric
+map of an incoming emitter, the default of MadGraph7, and those of the
+symmetric one (test_data/fks_symmetric) are compared in the same way. So are
+those of the resonance-local recoil of a final-state emitter
+(test_data/fks_resonance), with the members of the resonance of the data.
 """
 
 import glob
@@ -33,14 +29,13 @@ import numpy as np
 import pytest
 import torch
 from fks_testing import (
-    FKS_ASYMMETRIC_DATA,
     FKS_RESONANCE_DATA,
+    FKS_SYMMETRIC_DATA,
     data_id,
     fortran_sampling_units,
     massive_fortran_precision,
     resonance_members,
     resonance_stretch,
-    same_massive_xi_map,
 )
 from madspace_testing import default_context
 
@@ -58,7 +53,7 @@ DATA = (
             )
         )
     )
-    + FKS_ASYMMETRIC_DATA
+    + FKS_SYMMETRIC_DATA
     + FKS_RESONANCE_DATA
 )
 # position k + 2 of the counter-events k = 0, 1, 2 of genps_fks.f
@@ -105,13 +100,7 @@ def cases():
             continue
         nin = data["nincoming"]
         for conf in data["configs"]:
-            points = [
-                p
-                for p in conf["points"]
-                if p["jac"] > 0
-                and "rad_jac" in p
-                and same_massive_xi_map(data, conf, p)
-            ]
+            points = [p for p in conf["points"] if p["jac"] > 0 and "rad_jac" in p]
             if not points:
                 continue
             j = conf["j_fks"]
@@ -254,14 +243,11 @@ def test_matches_genps_fks(data, conf, points, prefix):
     expected = fortran * xi_ev * width * units
     assert (np.abs(rad_weight / expected - 1) <= rtol_jac).all()
 
-    # the counter-events, where genps_fks.f generates them: the soft ones not
-    # below the lower bound on the partonic energy (xi_min > 0), which the
-    # MCcntRefactor_Sfun branch generates there anyway
+    # the counter-events, where the Fortran generates them: the soft ones not
+    # below the lower bound on the partonic energy (xi_min > 0)
     jac_cnt = field("rad_jac_cnt")
     for name, pos in POSITIONS.items():
         valid = jac_cnt[:, pos] > 0
-        if name != "collinear":
-            valid &= xi_min <= 0
         if name + "_det" not in out:
             assert not valid.any()
             continue

@@ -58,10 +58,10 @@ namespace madspace {
  * sampling is wasted on the others. @f$\hat\xi@f$ and the variable @f$\hat y@f$
  * that the random number gives are then mapped linearly onto the allowed
  * ranges. This is the symmetric map of genps_fks.f (@p initial_map
- * `symmetric`).
+ * `symmetric`, FKSISRMapping 1).
  *
- * The asymmetric map (`asymmetric`, FKSISRMapping 2 of the MCcntRefactor_Sfun
- * branch of MadGraph7) changes only the momentum fraction of the emitter,
+ * The asymmetric map (`asymmetric`, the default, FKSISRMapping 0 and 2 of
+ * MadGraph7) changes only the momentum fraction of the emitter,
  * @f$x_j = \bar x_j/(1 - \xi)@f$, and keeps that of the spectator. The final
  * state of the Born recoils against @f$i@f$ by a Lorentz map that keeps the
  * direction of the spectator (`fks_initial_light_cone_map`), and
@@ -72,8 +72,8 @@ namespace madspace {
  * frame of the real emission, but another range of @f$\xi@f$ and other
  * momenta in the frame of the Born.
  *
- * With a resonance (@p resonance, the resonance-local recoil of the
- * MCcntRefactor_Sfun branch of MadGraph7 after [4]) a final-state emitter
+ * With a resonance (@p resonance, the resonance-local recoil of MadGraph7
+ * after [4]) a final-state emitter
  * radiates in the rest frame of the momentum @f$K@f$ of a part of the final
  * state, its members, which contain @f$\bar\jmath@f$: they are boosted into
  * that frame, the emission above maps them with @f$\sqrt{s}@f$ replaced by
@@ -158,9 +158,10 @@ public:
      */
     enum InitialMap {
         /// both momentum fractions change, and the final state of the Born
-        /// keeps zero longitudinal momentum (genps_fks.f)
+        /// keeps zero longitudinal momentum (FKSISRMapping 1)
         symmetric,
-        /// only the momentum fraction of the emitter changes (FKSISRMapping 2)
+        /// only the momentum fraction of the emitter changes (FKSISRMapping 0
+        /// and 2, the default of MadGraph7)
         asymmetric,
     };
 
@@ -198,7 +199,7 @@ public:
         bool leptonic = false,
         double s_hat_min = 0.,
         double emitter_mass = 0.,
-        InitialMap initial_map = symmetric,
+        InitialMap initial_map = asymmetric,
         const std::vector<double>& born_masses = {},
         const std::vector<std::size_t>& resonance = {}
     );

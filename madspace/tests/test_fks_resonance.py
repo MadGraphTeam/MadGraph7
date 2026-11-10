@@ -2,13 +2,13 @@
 (FKSRadiation with a resonance), and the resonances of MadGraph
 (madspace.fks.fks_resonances with fks_minimal_masses).
 
-The reference data of test_data/fks_resonance come from the MCcntRefactor_Sfun
-branch of MadGraph7 (see fks_reference/make_fks_resonance_reference.py), one
-file per Born configuration. test_fks_radiation.py and
+The reference data of test_data/fks_resonance come from MadGraph7 (see
+fks_reference/make_fks_resonance_reference.py), one file per Born
+configuration. test_fks_radiation.py and
 test_fks_counter_events.py compare their kinematics, with the members of the
 resonance of the data. Here fks_resonances, from the topology of the Born
-configuration and the cuts of the run_card, must give the resonances that the
-branch installs (set_granny, select_fks_recoil). The map must keep the
+configuration and the cuts of the run_card, must give the resonances that
+MadGraph7 installs (set_granny, select_fks_recoil). The map must keep the
 momentum K of the resonance and every momentum outside it, have xi and y of
 the rest frame of K, be the map of the whole final state where all of it is
 the resonance and cover the phase space of the real emission once, and an

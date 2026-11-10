@@ -114,7 +114,7 @@ public:
         std::size_t i_fks,
         std::size_t j_fks,
         double s_hat_min = 0.,
-        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric,
+        FKSRadiation::InitialMap initial_map = FKSRadiation::asymmetric,
         const std::vector<std::size_t>& resonance = {}
     );
     /// Number of continuous random inputs: those of the Born mapping and 3.
@@ -279,8 +279,8 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  * (`fks_initial_fixed_radiate`, `fks_initial_fixed_boost`). The asymmetric
  * map maps it instead by the Lorentz map of the asymmetric emission followed
  * by the boost into the frame of the real emission
- * (`fks_initial_fixed_light_cone_map`, boost_born_momenta_noevpr of the
- * MCcntRefactor_Sfun branch). Then
+ * (`fks_initial_fixed_light_cone_map`, boost_born_momenta_noevpr of
+ * MadGraph7). Then
  * @f$\xi = \hat\xi \xi_\mathrm{max}@f$ with
  * @f$\xi_\mathrm{max} = 1 - s_\mathrm{min} / s@f$ and the lower end
  * @f$s_\mathrm{min}@f$ of the energy squared of the Born. The event and the
@@ -377,7 +377,7 @@ public:
         double s_hat_min = 0.,
         double sqrt_s_hat_floor = 0.,
         const std::optional<LeptonLuminosity>& luminosity = std::nullopt,
-        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric,
+        FKSRadiation::InitialMap initial_map = FKSRadiation::asymmetric,
         const nested_vector3<std::size_t>& resonances = {}
     );
     /**
@@ -404,7 +404,7 @@ public:
         double s_hat_min = 0.,
         double sqrt_s_hat_floor = 0.,
         const std::optional<LeptonLuminosity>& luminosity = std::nullopt,
-        FKSRadiation::InitialMap initial_map = FKSRadiation::symmetric,
+        FKSRadiation::InitialMap initial_map = FKSRadiation::asymmetric,
         const nested_vector3<std::size_t>& resonances = {}
     );
     /// The Born mapping.

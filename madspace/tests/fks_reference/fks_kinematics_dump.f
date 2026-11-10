@@ -33,7 +33,31 @@ c calls generate_FKS_kinematics again at the same x with xjac0 =
 c xpswgt0 = 1, so that the second set of Jacobians holds the radiation
 c part alone, times compute_flux. Everything is printed with keywords
 c that make_fks_reference.py parses.
+c
+c The dump works on the fks_phase_space modules. It reads a sixth input,
+c FKSISRMapping (0 the default, the asymmetric map, 1 the symmetric one,
+c 2 the asymmetric one), sets VirtTrickSurrogate = 0 and runs at fixed
+c order. It also prints the resonance of the resonance-local recoil: the
+c Born configuration (FOREST, PROPS), per FKS configuration the
+c grandmother of set_granny (GRANNY) and the members of the resonance that
+c select_fks_recoil installs (RESONANCE), and per point its momentum
+c (RESK), the azimuthal phase of the collinear limit (AOR) and the scales
+c of resonance_subtraction_scales (SCALES).
       use mint_module
+      use FKSParams, only: FKSParamReader,paramFileName,FKSISRMapping
+     &     ,VirtTrickSurrogate
+      use fks_phase_space, only: fks_born_point,fks_phase_space_point
+     &     ,initialize_fks_phase_space,generate_prepared_fks_point
+     &     ,generate_fks_radiation
+      use fks_phase_space_data, only: tau_Born_lower_bound
+     &     ,tau_lower_bound,p1_cnt,jac_cnt,p_born,p_born_l,p_ev
+     &     ,xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt,xi_i_fks_cnt
+     &     ,xi_i_hat_ev,xi_i_hat_cnt,xbjrk_ev,xbjrk_cnt,sqrtshat_ev
+     &     ,shat_ev,sqrtshat_cnt,shat_cnt,tau_ev,ycm_ev,tau_cnt,ycm_cnt
+     &     ,xiimax_ev,xiimax_cnt,isolsign,xij_kperp,xinorm_ev,xinorm_cnt
+     &     ,nocntevents,ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+     &     ,p_born_coll,resonance_recoil,resonance_members
+     &     ,resonance_momentum,resonance_mass2,initial_recoil_leg,xij_aor
       implicit none
       include 'genps.inc'
       include 'nexternal.inc'
@@ -48,15 +72,11 @@ c that make_fks_reference.py parses.
       double precision x(99),p(0:3,nexternal),wgt,jac_full
       double precision jac_full_cnt(-2:2)
       double precision stot,shat_born,sqrtshat_born,tau_born
-      double precision ycm_born,ycmhat,xbjrk_born(2),jac_rad
-      double precision m(-max_branch:max_particles),m_born(nexternal-1)
-      double precision pb(0:3),xjac0,xpswgt0,tau_lower_bound_save
-      integer irerun
+      double precision ycm_born,xbjrk_born(2),jac_rad
+      integer irerun,isr_in
       character*3 pre
-      double precision tau_Born_lower_bound,tau_lower_bound_resonance
-     &     ,tau_lower_bound
-      common/ctau_lower_bound/tau_Born_lower_bound
-     &     ,tau_lower_bound_resonance,tau_lower_bound
+      type(fks_phase_space_point) point,point2
+      type(fks_born_point) born,born2
       logical pass
       integer nndim
       common/tosigint/nndim
@@ -71,41 +91,6 @@ c that make_fks_reference.py parses.
       common /c_charges/particle_charge
       double precision emass(nexternal)
       common/to_mass/emass
-      double precision p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
-     &     ,pswgt_cnt(-2:2),jac_cnt(-2:2)
-      common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
-      double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
-      double precision p_born_l(0:3,nexternal-1)
-      common/pborn_l/p_born_l
-      double precision p_ev(0:3,nexternal)
-      common/pev/p_ev
-      double precision xi_i_fks_ev,y_ij_fks_ev
-      double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
-      common/fksvariables/xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev
-     &     ,p_i_fks_cnt
-      double precision xi_i_fks_cnt(-2:2)
-      common /cxiifkscnt/xi_i_fks_cnt
-      double precision xi_i_hat_ev,xi_i_hat_cnt(-2:2)
-      common /cxi_i_hat/xi_i_hat_ev,xi_i_hat_cnt
-      double precision xbjrk_ev(2),xbjrk_cnt(2,-2:2)
-      common/cbjorkenx/xbjrk_ev,xbjrk_cnt
-      double precision sqrtshat_ev,shat_ev
-      common/parton_cms_ev/sqrtshat_ev,shat_ev
-      double precision sqrtshat_cnt(-2:2),shat_cnt(-2:2)
-      common/parton_cms_cnt/sqrtshat_cnt,shat_cnt
-      double precision tau_ev,ycm_ev
-      common/cbjrk12_ev/tau_ev,ycm_ev
-      double precision tau_cnt(-2:2),ycm_cnt(-2:2)
-      common/cbjrk12_cnt/tau_cnt,ycm_cnt
-      double precision xiimax_ev
-      common /cxiimaxev/xiimax_ev
-      double precision xiimax_cnt(-2:2)
-      common /cxiimaxcnt/xiimax_cnt
-      integer isolsign
-      common /c_isolsign/isolsign
-      double precision xij_kperp(0:3)
-      common/cxij_kperp/xij_kperp
       logical softtest,colltest
       common/sctests/softtest,colltest
       double precision ran2,fks_Sij,s_ev,s_cnt(0:2)
@@ -113,10 +98,14 @@ c that make_fks_reference.py parses.
       integer neik,mm,nn,eik_m(nexternal*nexternal)
      &     ,eik_n(nexternal*nexternal)
       double precision eik(nexternal*nexternal)
-      integer i_type,j_type,m_type
+      integer i_type,j_type,m_type,j_pdg
       double precision ch_i,ch_j,ch_m
-      common/cparticle_types/i_type,j_type,m_type,ch_i,ch_j,ch_m
+      common/cparticle_types/ch_i,ch_j,ch_m,i_type,j_type,m_type,j_pdg
       double precision e_i,e_j,zz,tt,ap(2),qq(2),coll(6,2)
+      double precision dot,total(0:3),soft_scale,coll_scale
+     &     ,angular_scale,mismatch_log
+      logical scale_pass
+      external dot
       double precision f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
       common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
       double precision fkssymmetryfactor,fkssymmetryfactorBorn
@@ -130,15 +119,6 @@ c that make_fks_reference.py parses.
       common /cxicut_used/xicut_used
       double precision xiScut_used,xiBSVcut_used
       common /cxiScut_used/xiScut_used,xiBSVcut_used
-      double precision xinorm_ev
-      common /cxinormev/xinorm_ev
-      double precision xinorm_cnt(-2:2)
-      common /cxinormcnt/xinorm_cnt
-      logical nocntevents
-      common/cnocntevents/nocntevents
-      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
-      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,sqrtshat
-     &     ,shat
       include 'orders.inc'
       include 'q_es.inc'
       double precision amp_split_wgtdegrem_xi(amp_split_size),
@@ -161,8 +141,6 @@ c that make_fks_reference.py parses.
       common /to_use_evpr/use_evpr
       double precision omx_ee(2)
       common /to_ee_omx1/omx_ee
-      double precision p_born_coll(0:3,nexternal-1)
-      common/pborn_coll/p_born_coll
       double precision srec_k(4),wrec_k(4),prec_k(0:3,nexternal-1,4)
       double precision amp_split_wgtnstmp(amp_split_size),
      &     amp_split_wgtwnstmpmuf(amp_split_size),
@@ -186,8 +164,8 @@ c the same per split order, for the amp_split arrays of fks_singular.f
       integer iextra_cnt,isplitorder_born,isplitorder_cnt
       common /c_extra_cnt/iextra_cnt,isplitorder_born,isplitorder_cnt
       double precision extra_o(amp_split_size,2)
-      double precision iden_comp
-      common /c_iden_comp/iden_comp
+      double precision iden_comp,iden_comp_FKS(fks_configs)
+      common /c_iden_comp/iden_comp,iden_comp_FKS
       logical need_color_links,need_charge_links
       common /c_need_links/need_color_links,need_charge_links
       double precision fx(4),born_wgt,blink(nexternal*nexternal)
@@ -201,8 +179,14 @@ c the same per split order, for the amp_split arrays of fks_singular.f
       read (*,*) nmassive
       read (*,*) nlimit
       read (*,*) lpp_in
+      read (*,*) isr_in
 
+      fixed_order=.true.
+      nlo_ps=.false.
       call setrun
+      call FKSParamReader(paramFileName,.false.,.false.)
+      FKSISRMapping=isr_in
+      VirtTrickSurrogate=0
       if (lpp_in.ne.0) then
          lpp(1)=lpp_in
          lpp(2)=lpp_in
@@ -234,10 +218,11 @@ c every position of the amp_split arrays; the QED coupling e = gal(1)
      &        ,nsplitorders)
       enddo
       write (*,fmt) 'COUPL',dble(gal(1))
+      call write_born_forest(iconf_in)
 
       do ipass=1,3
       write (*,'(a,1x,i0)') 'PASS',ipass
-      do fks_loop=1,fks_configs
+      do fks_loop=1,fks_integrated
          nFKSprocess=fks_loop
          call fks_inc_chooser()
          call leshouche_inc_chooser()
@@ -280,7 +265,12 @@ c types, charges and FKS pairs of the real process
             endif
             new_point=.true.
             wgt=1d0
-            call generate_momenta(ndim,iconfig,wgt,x,p)
+            point=fks_phase_space_point()
+            call initialize_fks_phase_space(iconfig)
+            call generate_prepared_fks_point(ndim,x,.false.,wgt,point)
+            p=point%p
+            if (ipt.eq.1) call write_resonance(resonance_recoil
+     &           ,resonance_members,initial_recoil_leg)
             jac_full=wgt
             do k=-2,2
                jac_full_cnt(k)=jac_cnt(k)
@@ -328,6 +318,9 @@ c their rest frame.
             write (*,fmt) 'SHAT',shat_ev,(shat_cnt(k),k=-2,2),tau_ev
      &           ,ycm_ev,(tau_cnt(k),k=-2,2),(ycm_cnt(k),k=-2,2)
             write (*,fmt) 'KPERP',(xij_kperp(j),j=0,3)
+            write (*,fmt) 'RESK',resonance_mass2,(resonance_momentum(j)
+     &           ,j=0,3)
+            write (*,fmt) 'AOR',dble(xij_aor),dimag(xij_aor)
             write (*,fmt) 'PIHAT',(p_i_fks_ev(j),j=0,3)
      &           ,((p_i_fks_cnt(j,k),j=0,3),k=-2,2)
 c The sector function S_ij of the configuration (fks_Sij) at the event and
@@ -397,8 +390,18 @@ c is massive
                   if (j_fks.gt.nincoming) then
                      e_i=p1_cnt(0,i_fks,k)
                      e_j=p1_cnt(0,j_fks,k)
+                     tt=shat
+c with the resonance-local recoil, the energies and the energy squared in
+c the rest frame of the resonance, as sborncol_fsr takes them
+                     if (resonance_recoil) then
+                        e_i=dot(resonance_momentum,p1_cnt(0,i_fks,k))
+     &                       /sqrt(resonance_mass2)
+                        e_j=dot(resonance_momentum,p1_cnt(0,j_fks,k))
+     &                       /sqrt(resonance_mass2)
+                        tt=resonance_mass2
+                     endif
                      zz=1d0-e_i/(e_i+e_j)
-                     tt=zz*shat/4d0
+                     tt=zz*tt/4d0
                      call AP_reduced(j_type,i_type,ch_j,ch_i,tt,zz,ap)
                      call Qterms_reduced_timelike(j_type,i_type,ch_j
      &                    ,ch_i,tt,zz,qq)
@@ -439,6 +442,22 @@ c (nocntevents as 1 or 0), where the event is generated
      &              ,(xinorm_cnt(k),k=-2,2),xicut_used,xiScut_used
      &              ,delta_used,deltaS,deltaO,deltaI,s_ev,f_pdfsch_d
      &              ,f_pdfsch_p,f_pdfsch_l
+c the scales of the cuts of the resonance-local recoil, as
+c compute_prefactors_n1body takes them from resonance_subtraction_scales
+c at the soft counter-event (all 1 and mismatch_log 0 without it)
+               soft_scale=1d0
+               coll_scale=1d0
+               angular_scale=1d0
+               mismatch_log=0d0
+               if (resonance_recoil.and..not.nocntevents) then
+                  total=p1_cnt(:,1,0)+p1_cnt(:,2,0)
+                  call resonance_subtraction_scales(total
+     &                 ,resonance_momentum,p1_cnt(:,j_fks,0)
+     &                 ,p_i_fks_cnt(:,0),soft_scale,coll_scale
+     &                 ,angular_scale,mismatch_log,scale_pass)
+               endif
+               write (*,fmt) 'SCALES',soft_scale,coll_scale
+     &              ,angular_scale,mismatch_log
             endif
 c The reduced matrix elements of sreal at the event and at the soft,
 c collinear and soft-collinear counter-events, with the arguments of
@@ -563,11 +582,11 @@ c (sreal_deg reads them), the strong coupling of the Fortran is kept.
                   call set_cms_stuff(k)
                   if (k.eq.1) then
                      if (.not.use_evpr) calculatedBorn=.false.
-                     call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1),1d0
+                     call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1)
      &                    ,deg_xi,deg_lxi)
                   else
                      if (.not.use_evpr) calculatedBorn=.false.
-                     call sreal_deg(p1_cnt(0,1,2),0d0,1d0,deg_xi
+                     call sreal_deg(p1_cnt(0,1,2),0d0,deg_xi
      &                    ,deg_lxi)
                   endif
                   do i=1,amp_split_size
@@ -609,11 +628,11 @@ c of UPC are set here: xiAI = 1 and RAI = 31 and 35 GeV^-1.
                      pdfscheme=isch
                      if (k.eq.1) then
                         if (.not.use_evpr) calculatedBorn=.false.
-                        call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1),1d0
+                        call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1)
      &                       ,deg_xi,deg_lxi)
                      else
                         if (.not.use_evpr) calculatedBorn=.false.
-                        call sreal_deg(p1_cnt(0,1,2),0d0,1d0,deg_xi
+                        call sreal_deg(p1_cnt(0,1,2),0d0,deg_xi
      &                       ,deg_lxi)
                      endif
                      psch_o(:,1,k,isch)=amp_split_wgtpsch_p(:)
@@ -674,55 +693,32 @@ c the CUT entries) and once without it (the FKS map itself; the RAD
 c entries).
             if (jac_full.gt.0d0 .and. p_born_l(0,1).gt.0d0 .and.
      &           use_evpr) then
-               do j=0,3
-                  pb(j)=p_born_l(j,1)+p_born_l(j,2)
-               enddo
-               shat_born=pb(0)**2-pb(1)**2-pb(2)**2-pb(3)**2
-               sqrtshat_born=sqrt(shat_born)
-               stot=4d0*ebeam(1)*ebeam(2)
-c A final-state emitter leaves ycm unchanged. For an initial-state
-c emitter fill_FKS_commons stores ycm_born in ycm_cnt(0), also when the
-c soft counter-event is not generated, while xbjrk_cnt(:,0) is then
-c stale. (ycm_cnt(0) is stale for the second fold of a massive j_fks.)
-               tau_born=shat_born/stot
-               if (lpp(1).eq.0 .and. lpp(2).eq.0) then
-                  ycm_born=0d0
-               elseif (j_fks.gt.nincoming) then
-                  ycm_born=ycm_ev
-               else
-                  ycm_born=ycm_cnt(0)
-               endif
-               xbjrk_born(1)=sqrt(tau_born)*exp(ycm_born)
-               xbjrk_born(2)=sqrt(tau_born)*exp(-ycm_born)
-               if (tau_born.lt.1d0) then
-                  ycmhat=ycm_born/(-0.5d0*log(tau_born))
-               else
-                  ycmhat=0d0
-               endif
-               do i=1,nexternal-1
-                  if (i.lt.i_fks) then
-                     m_born(i)=emass(i)
-                  else
-                     m_born(i)=emass(i+1)
-                  endif
-               enddo
+c The Born point of the staged generation, with unit Born measures:
+c generate_fks_radiation then returns the radiation part times the flux.
+               born=point%born
+               shat_born=born%shat
+               tau_born=born%tau
+               ycm_born=born%ycm
+               xbjrk_born(1)=born%xbjrk(1)
+               xbjrk_born(2)=born%xbjrk(2)
                write (*,fmt) 'BORNX',shat_born,tau_born,ycm_born
      &              ,xbjrk_born(1),xbjrk_born(2)
-               write (*,fmt) 'TAULB',tau_lower_bound
-               tau_lower_bound_save=tau_lower_bound
+               write (*,fmt) 'TAULB',born%bounds(3)
                do irerun=1,2
+                  born2=born
+                  born2%xjac=1d0
+                  born2%xpswgt=1d0
                   if (irerun.eq.1) then
                      pre='CUT'
-                     tau_lower_bound=tau_lower_bound_save
                   else
                      pre='RAD'
-                     tau_lower_bound=0d0
+                     born2%bounds(3)=0d0
                   endif
-                  xjac0=1d0
-                  xpswgt0=1d0
-                  call generate_FKS_kinematics(x,ndim,xjac0,xpswgt0,stot
-     &                 ,shat_born,sqrtshat_born,tau_born,ycm_born,ycmhat
-     &                 ,xbjrk_born,.false.,m,m_born,jac_rad,p,pass)
+                  jac_rad=1d0
+                  point2=fks_phase_space_point()
+                  call generate_fks_radiation(born2,x(ndim-2),.false.
+     &                 ,jac_rad,point2,pass)
+                  p=point2%p
                   write (*,fmt) pre//'JAC',jac_rad,(jac_cnt(k),k=-2,2)
                   write (*,fmt) pre//'PEV',((p(j,i),j=0,3),i=1
      &                 ,nexternal)
@@ -740,7 +736,6 @@ c stale. (ycm_cnt(0) is stale for the second fold of a massive j_fks.)
                   write (*,fmt) pre//'PIHAT',(p_i_fks_ev(j),j=0,3)
      &                 ,((p_i_fks_cnt(j,k),j=0,3),k=-2,2)
                enddo
-               tau_lower_bound=tau_lower_bound_save
             endif
          enddo
       enddo
@@ -751,18 +746,14 @@ c stale. (ycm_cnt(0) is stale for the second fold of a massive j_fks.)
       subroutine born_at_srec(x,srec,wrec,prec)
 c The Born of generate_noevpr_kinematics at each energy squared srec(k):
 c generate_momenta_born with the random numbers x of the point and unit
-c Jacobians, its weight and its momenta in their rest frame. The commons
-c it writes (p_born, p_born_l, p_born_ev) are restored.
+c Jacobians, its weight and its momenta in their rest frame. The module
+c data it writes (p_born, p_born_l, p_born_ev) are restored.
+      use fks_phase_space_data, only: p_born,p_born_l,p_born_ev
+      use fks_born_sampling, only: generate_momenta_born
       implicit none
       include 'genps.inc'
       include 'nexternal.inc'
       double precision x(99),srec(4),wrec(4),prec(0:3,nexternal-1,4)
-      double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
-      double precision p_born_l(0:3,nexternal-1)
-      common/pborn_l/p_born_l
-      double precision p_born_ev(0:3,nexternal-1)
-      common/pborn_ev/p_born_ev
       double precision qmass_common(-nexternal:0),qwidth_common(
      &     -nexternal:0)
       common /c_qmass_qwidth/qmass_common,qwidth_common
@@ -770,16 +761,11 @@ c it writes (p_born, p_born_l, p_born_ev) are restored.
       common /to_mass/pmass
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
-      integer itree_c(2,-max_branch:-1)
-      integer ns_channel,nt_channel,ionebody,nbranch
-      logical one_body
-      common/born_trees/itree_c,ns_channel,nt_channel,ionebody,nbranch
-     &     ,one_body
       double precision save_b(0:3,nexternal-1),save_l(0:3,nexternal-1)
      &     ,save_e(0:3,nexternal-1)
       double precision m(-max_branch:max_particles)
       double precision s(-max_branch:max_particles),m_born(nexternal-1)
-      double precision granny_m2_red(-1:1),totmass,xpswgt,xjac
+      double precision totmass,xpswgt,xjac
       integer i,k
       save_b(:,:)=p_born(:,:)
       save_l(:,:)=p_born_l(:,:)
@@ -798,12 +784,10 @@ c it writes (p_born, p_born_l, p_born_ev) are restored.
          do i=nincoming+1,nexternal-1
             totmass=totmass+m(i)
          enddo
-         granny_m2_red(:)=-99d99
          xpswgt=1d0
          xjac=1d0
          call generate_momenta_born(x,srec(k),sqrt(srec(k)),totmass,m,s
-     &        ,qmass_common,qwidth_common,granny_m2_red,.false.,m_born
-     &        ,xpswgt,xjac)
+     &        ,qmass_common,qwidth_common,m_born,xpswgt,xjac)
          wrec(k)=xpswgt*xjac
          prec(:,:,k)=p_born_l(:,:)
       enddo
@@ -811,4 +795,53 @@ c it writes (p_born, p_born_l, p_born_ev) are restored.
       p_born_l(:,:)=save_l(:,:)
       p_born_ev(:,:)=save_e(:,:)
       return
+      end
+
+
+      subroutine write_born_forest(iconf)
+c The Born configuration iconf: for each propagator (FOREST) its index,
+c its two daughters, sprop and tprid, then (PROPS) the masses and widths
+c of all propagators, as set_granny reads them.
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      integer iconf,i
+      include 'born_conf.inc'
+      double precision pmass(-nexternal:0,lmaxconfigs)
+      double precision pwidth(-nexternal:0,lmaxconfigs)
+      integer pow(-nexternal:0,lmaxconfigs)
+      include 'coupl.inc'
+      pmass=0d0
+      pwidth=0d0
+      include 'born_props.inc'
+      write (*,'(a,1x,*(i0,1x))') 'NCONFIGS',mapconfig(0),iconf
+      do i=-1,-(nexternal-(2+nincoming)),-1
+         write (*,'(a,1x,*(i0,1x))') 'FOREST',i,iforest(1,i,iconf)
+     &        ,iforest(2,i,iconf),sprop(i,iconf),tprid(i,iconf)
+      enddo
+      write (*,'(a,1x,*(es25.17e3,1x))') 'PROPS',(pmass(i,iconf)
+     &     ,pwidth(i,iconf),i=-1,-(nexternal-(2+nincoming)),-1)
+      end
+
+
+      subroutine write_resonance(recoil,members,recoil_leg)
+c The grandmother of the FKS configuration (set_granny): igranny, iaunt,
+c granny_is_res and granny_chain_real_final of the real process, then
+c (RESONANCE) whether select_fks_recoil installs the resonance-local
+c recoil, its incoming recoiler (initial_recoil_leg) and the members of
+c the resonance, i and j included (resonance_members).
+      implicit none
+      include 'nexternal.inc'
+      logical recoil,members(nexternal)
+      integer recoil_leg,i
+      logical granny_is_res,granny_chain(-nexternal:nexternal)
+     &     ,granny_chain_real_final(-nexternal:nexternal)
+      integer igranny,iaunt
+      common /c_granny_res/igranny,iaunt,granny_is_res,granny_chain
+     &     ,granny_chain_real_final
+      write (*,'(a,1x,*(i0,1x))') 'GRANNY',igranny,iaunt
+     &     ,merge(1,0,granny_is_res),(merge(1,0
+     &     ,granny_chain_real_final(i)),i=1,nexternal)
+      write (*,'(a,1x,*(i0,1x))') 'RESONANCE',merge(1,0,recoil)
+     &     ,recoil_leg,(merge(1,0,members(i)),i=1,nexternal)
       end

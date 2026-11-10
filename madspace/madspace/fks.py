@@ -162,7 +162,7 @@ def fks_mappings(
     configurations,
     s_hat_min=0.0,
     cuts=None,
-    initial_map="symmetric",
+    initial_map="asymmetric",
     resonances=None,
 ):
     """The FKSMappings of the FKS configurations of a Born, in their order.
@@ -182,7 +182,8 @@ def fks_mappings(
             for an incoming one. They stay to be applied to the real emission
             and the counter-events.
         initial_map: the map of an emission off an incoming parton,
-            "symmetric" (genps_fks.f) or "asymmetric" (FKSISRMapping 2), see
+            "asymmetric" (the default of MadGraph7, FKSISRMapping 0 and 2) or
+            "symmetric" (FKSISRMapping 1), see
             FKSRadiation.InitialMap.
         resonances: per configuration the resonance of the resonance-local
             recoil, as fks_resonances gives them for a Born mapping with one
@@ -241,7 +242,7 @@ def fks_configuration_mapping(
     s_hat_min=0.0,
     cuts=None,
     luminosity=None,
-    initial_map="symmetric",
+    initial_map="asymmetric",
     resonances=None,
 ):
     """The FKSConfigurationMapping of the FKS configurations of a Born, with
@@ -431,7 +432,7 @@ def fks_minimal_masses(
 def fks_resonances(topology, configurations, minimal_masses, permutations=None):
     """The resonances of the resonance-local recoil (see FKSRadiation) of the
     FKS configurations of a Born, per configuration and per permutation of the
-    Born mapping, as the MCcntRefactor_Sfun branch of MadGraph7 installs them
+    Born mapping, as MadGraph7 installs them
     by default (select_fks_recoil): with a final-state emitter j, the
     grandmother of i and j, the propagator whose decay products contain the
     Born emitter, where it is a resonance, as set_granny of MadFKS decides: a

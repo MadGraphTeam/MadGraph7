@@ -12,8 +12,8 @@ from madspace_testing import default_context
 import madspace as ms
 
 EPS = np.finfo(np.float64).eps
-# the reference data of genps_fks.f and fks_singular.f (see
-# test_fks_reference.py)
+# the reference data of the FKS phase space and fks_singular.f of MadGraph7,
+# with its defaults (fks_reference/make_fks_reference.py)
 FKS_DATA = sorted(
     glob.glob(
         os.path.join(
@@ -22,22 +22,20 @@ FKS_DATA = sorted(
     )
 )
 FKS_DATA_IDS = [os.path.basename(p)[:-5] for p in FKS_DATA]
-# the kinematics of the asymmetric map of an incoming emitter, from the
-# MCcntRefactor_Sfun branch of MadGraph7 (fks_reference/
-# make_fks_asymmetric_reference.py)
-FKS_ASYMMETRIC_DATA = sorted(
+# the kinematics of the symmetric map of an incoming emitter (FKSISRMapping 1,
+# fks_reference/make_fks_symmetric_reference.py)
+FKS_SYMMETRIC_DATA = sorted(
     glob.glob(
         os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             "test_data",
-            "fks_asymmetric",
+            "fks_symmetric",
             "*.json",
         )
     )
 )
 
-# the kinematics of the resonance-local recoil of a final-state emitter, from
-# the MCcntRefactor_Sfun branch of MadGraph7, per Born configuration
+# the resonance-local recoil of a final-state emitter, per Born configuration
 # (fks_reference/make_fks_resonance_reference.py)
 FKS_RESONANCE_DATA = sorted(
     glob.glob(
@@ -53,28 +51,13 @@ FKS_RESONANCE_DATA = sorted(
 
 def data_id(path):
     """The name of reference data in test ids, with the directory of the
-    asymmetric map or of the resonance-local recoil."""
+    symmetric map or of the resonance-local recoil."""
     name = os.path.basename(path)[:-5]
-    if "fks_asymmetric" in path:
-        return f"asymmetric-{name}"
+    if "fks_symmetric" in path:
+        return f"symmetric-{name}"
     if "fks_resonance" in path:
         return f"resonance-{name}"
     return name
-
-
-def same_massive_xi_map(data, conf, point):
-    """Whether a point of reference data has the map of xi of genps_fks.f of
-    main, which madspace has. The map of a massive final-state emitter of the
-    MCcntRefactor_Sfun branch differs from it for y < 0, where r_xi below
-    rat = xi_max / xi_norm gives the first solution: there it takes xi_hat =
-    (stiny + (1 - stiny) r_xi^2) / rat in place of rat (stiny + (1 - stiny)
-    (r_xi / rat)^2), which overshoots xi_max by stiny (1 / rat - rat), and
-    stiny + (1 - stiny) r_xi in place of r_xi for the second solution (reported
-    on PR 397). For y >= 0 rat is 1 and the maps are the same."""
-    j = conf["j_fks"] - 1
-    if not data.get("mg_branch") or j < data["nincoming"] or conf["masses"][j] == 0:
-        return True
-    return point["y_ev"] >= 0
 
 
 def resonance_members(conf):
@@ -130,12 +113,11 @@ def forest_topology(data):
 
 def fortran_sampling_units(data, j_fks, second=False):
     """The factors 1 - stiny and 1 - ctiny of the sampling that the Jacobians of
-    reference data leave out: genps_fks.f of main for every emitter (only
-    1 - ctiny for the second solution of a massive emitter, whose xi is
-    linear), the MCcntRefactor_Sfun branch only for a final-state emitter
-    (jac_sampling_factors)."""
+    reference data leave out: none for MadGraph7 with the exact Jacobians
+    (jac_sampling_factors), all for genps_fks.f before them (only 1 - ctiny
+    for the second solution of a massive emitter, whose xi is linear)."""
     stiny, ctiny = 1e-6, 5e-7
-    if data.get("jac_sampling_factors") and j_fks < 2:
+    if data.get("jac_sampling_factors"):
         return 1.0
     return (1 - np.where(second, 0.0, stiny)) * (1 - ctiny)
 
@@ -387,19 +369,3 @@ def born_inputs(data, rows, k_perp, key="born_blocks"):
 def alpha(data):
     """The QED coupling of the Fortran, gal(1)^2 / (4 pi)."""
     return data["gal"] ** 2 / (4 * np.pi)
-
-
-def madfks_pdf_prefactors(f_pdf, xi_max_c, xi_s_cut):
-    """The prefactors of a change of the PDF scheme of MadFKS (f_pdfsch_d,
-    f_pdfsch_p, f_pdfsch_l, shape (..., 3)) with min(xi_max_c, xiScut) for
-    xiScut, as FKSPrefactors: MadFKS spreads delta(xi) over 0 to xiScut and
-    adds log(xiScut), which misses part of them where xi_max_c of the
-    collinear counter-event is below xiScut. The reference data come from a
-    MadFKS without the fix, so this goes once they are made with it."""
-    f_pdf = np.asarray(f_pdf, dtype=float)
-    lim = np.minimum(np.asarray(xi_max_c, dtype=float), xi_s_cut)[..., None]
-    # points without a collinear counter-event have no prefactors
-    lim = np.where(lim > 0, lim, xi_s_cut)
-    g = f_pdf[..., :1] * xi_s_cut
-    log_lim = np.log(lim)
-    return np.concatenate([g, g * log_lim, g * log_lim**2 / 2], axis=-1) / lim

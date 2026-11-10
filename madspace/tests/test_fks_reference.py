@@ -366,16 +366,23 @@ def test_limit_points(data):
     close to its lower end stiny = 1e-6 (of the range of xi_hat for a
     massive emitter), where sreal and fks_Sij switch to the soft limit below
     xi = 1e-6, and the Born blocks there. They switch where xi_max is enough
-    below 1, which it is not with massless recoils (e+ e- > mu+ mu- a)."""
+    below 1, which it is not with massless recoils (e+ e- > mu+ mu- a). Points
+    whose Born the Fortran rejects (jac = -222) or whose range of xi is empty
+    (-342) have no event."""
     switched = 0
     reachable = False
+    generated = 0
     for conf in data["configs"]:
         points = conf["limit_points"]
         assert len(points) >= 2
         for point in points:
+            if point["jac"] in (-222.0, -342.0):
+                continue
             assert 0 < point["xi_hat_ev"] <= 1.1e-6
             if point["jac"] > 0:
+                generated += 1
                 assert "born_blocks" in point
                 switched += point["xi_ev"] < 1e-6
                 reachable |= point["xiimax_ev"] < 0.99
+    assert generated > 0
     assert switched > 0 or not reachable

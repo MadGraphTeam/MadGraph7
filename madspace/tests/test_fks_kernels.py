@@ -9,7 +9,8 @@ two conventions of the kernels:
 * det_xi includes xi_max (genps_fks.f integrates over xi_hat) and the
   Jacobian of the map is xi det_xi (genps_fks.f leaves out the factor xi),
 * fks_xi_y_sample has the exact Jacobian, with the factors 1 - stiny and
-  1 - ctiny that genps_fks.f drops.
+  1 - ctiny of the sampling, which genps_fks.f has since the exact Jacobians
+  (fortran_sampling_units).
 
 The momenta agree to 1e-12 of sqrt(s) rather than to machine precision because
 genps_fks.f computes the angle of i to i + j with the law of cosines, which
@@ -28,7 +29,13 @@ import os
 import numpy as np
 import pytest
 import torch
-from fks_testing import EPS, massive_fortran_precision, massive_xi_max
+from fks_testing import (
+    EPS,
+    FKS_SYMMETRIC_DATA,
+    fortran_sampling_units,
+    massive_fortran_precision,
+    massive_xi_max,
+)
 from madspace_testing import default_context, generator
 
 import madspace as ms
@@ -174,7 +181,7 @@ def test_final_massless_matches_genps_fks(name, nfks, data, conf, points):
     fortran = np.array([p["rad_jac"] for p in points]) / flux_factor(
         np.array([p["shat_ev"] for p in points]), nex
     )
-    ours = det_xi / xi_max * det_sample / ((1 - STINY) * (1 - CTINY))
+    ours = det_xi / xi_max * det_sample / fortran_sampling_units(data, j_fks)
     np.testing.assert_allclose(ours, fortran, rtol=1e-12)
 
     # counter-events: position k + 2 for k = 0 (soft), 1 (collinear), 2 (both)
@@ -196,7 +203,7 @@ def test_final_massless_matches_genps_fks(name, nfks, data, conf, points):
         fortran_cnt = np.array([p["rad_jac_cnt"][pos] for p in points]) / flux_factor(
             np.array([p["shat_cnt"][pos] for p in points]), nex
         )
-        ours_cnt = det_cnt / xi_max * det_sample / ((1 - STINY) * (1 - CTINY))
+        ours_cnt = det_cnt / xi_max * det_sample / fortran_sampling_units(data, j_fks)
         np.testing.assert_allclose(ours_cnt[valid], fortran_cnt[valid], rtol=1e-12)
 
     # and back: cluster the event onto the Born and the unit-cube numbers
@@ -382,8 +389,10 @@ def initial_real_from_born(
 
 
 def initial_points():
+    """The points of an incoming emitter of the symmetric map, the one of these
+    kernels (the asymmetric one is in test_fks_asymmetric.py)."""
     cases = []
-    for path in DATA:
+    for path in FKS_SYMMETRIC_DATA:
         with open(path) as f:
             data = json.load(f)
         for conf in data["configs"]:
@@ -425,7 +434,7 @@ def test_initial_matches_genps_fks(data, conf, points, prefix):
     x_born = tuple(field("xbjrk_born").T)
     r = field("x")[:, -3:]
     xi_hat, y, det_sample = xi_y_sample(r[:, 0], r[:, 1])
-    det_fortran_units = det_sample / ((1 - STINY) * (1 - CTINY))
+    det_fortran_units = det_sample / fortran_sampling_units(data, conf["j_fks"] - 1)
 
     # event and counter-events: position k + 2 for k = 0 (soft), 1 (collinear),
     # 2 (both); for an incoming emitter only y = 1 is a collinear limit
@@ -500,8 +509,7 @@ def test_initial_limits():
 # Emission off a massive final-state parton. genps_fks.f generates only the soft
 # counter-event, and for y < 0 it uses the second solution for the momentum of
 # the emitter for xi_hat above rat = xi_max / xi_norm (isolsign = -1). It then
-# leaves out xi_norm (xi = xi_norm xi_hat) and, for the first solution, the
-# factor 1 - stiny of the sampling.
+# leaves out xi_norm (xi = xi_norm xi_hat).
 
 
 def massive_sample(r_xi, r_y, sqrt_s, p_jbar, m_j):
@@ -624,7 +632,7 @@ def test_final_massive_matches_genps_fks(name, nfks, data, conf, points):
     diff = np.abs(real - p_ev).max((1, 2)) / sqrt_s
     assert (diff <= 1e-13 + 10 * prec_k).all()
     fortran = field("rad_jac") / flux_factor(field("rad_shat_ev"), nex)
-    units = det_sample / (np.where(second, 1.0, 1 - STINY) * (1 - CTINY))
+    units = det_sample / fortran_sampling_units(data, j_fks, second)
     ours = det_xi / xi_norm * units
     assert (np.abs(ours / fortran - 1) <= 1e-12 + 50 * prec_jac).all()
 

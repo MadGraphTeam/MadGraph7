@@ -2549,7 +2549,7 @@ fks_resonance_frame:
     - name: sqrt_s_frame
       type: [float]
       desc: "the mass sqrt(K^2) of the resonance"
-  desc: "The rest frame of the resonance of the resonance-local recoil of an FKS emission off a final-state parton (prepare_resonance_frame of the MCcntRefactor_Sfun branch of MadGraph7, after Jezo and Nason). The members add up to K and are boosted into its rest frame as boostx does, the other momenta are set to zero, so that the emission at sqrt_s_frame maps the members alone and keeps K. Without members (mask 0 everywhere) the momenta pass through, K = (sqrt_s, 0) and sqrt_s_frame = sqrt_s."
+  desc: "The rest frame of the resonance of the resonance-local recoil of an FKS emission off a final-state parton (prepare_resonance_frame of MadGraph7, after Jezo and Nason). The members add up to K and are boosted into its rest frame as boostx does, the other momenta are set to zero, so that the emission at sqrt_s_frame maps the members alone and keeps K. Without members (mask 0 everywhere) the momenta pass through, K = (sqrt_s, 0) and sqrt_s_frame = sqrt_s."
 
 fks_resonance_frame_inverse:
   inputs:
@@ -2942,7 +2942,7 @@ fks_initial_asymmetric_radiate:
     - name: p_i_hat
       type: [float, 4]
       desc: "momentum of i per unit xi, p_i / xi, which stays finite in the soft limit"
-  desc: "Asymmetric FKS emission off an incoming parton, as generate_momenta_initial_asymmetric of the MCcntRefactor_Sfun branch of MadGraph7 (FKSISRMapping 2). Only the emitter changes its momentum fraction, x_j = xbar_j / (1 - xi), and the spectator keeps its own, so that xi_max = 1 - xbar_j at every y. The real emission has sqrt(s) = sqrt_s / sqrt(1 - xi) and its incoming momenta and i are given in the Born center-of-mass frame, where the final state of the Born is mapped with @ref fks_initial_light_cone_map. With s_hat_min above the Born, xi >= xi_min = 1 - sqrt_s^2 / s_hat_min and y keeps its whole range, and where that leaves no range of xi (xi_max <= xi_min) det_xi is 0 and xi = xi_max. At xi_hat = 0 and y_hat = 1 it gives the soft and collinear counter-events of @ref fks_initial_radiate, the soft one where xi_min = 0. det_xi is that of @ref fks_initial_radiate with the whole range of y, the Jacobian of the map is xi det_xi."
+  desc: "Asymmetric FKS emission off an incoming parton, as generate_momenta_initial_asymmetric of MadGraph7 (FKSISRMapping 0 and 2, its default). Only the emitter changes its momentum fraction, x_j = xbar_j / (1 - xi), and the spectator keeps its own, so that xi_max = 1 - xbar_j at every y. The real emission has sqrt(s) = sqrt_s / sqrt(1 - xi) and its incoming momenta and i are given in the Born center-of-mass frame, where the final state of the Born is mapped with @ref fks_initial_light_cone_map. With s_hat_min above the Born, xi >= xi_min = 1 - sqrt_s^2 / s_hat_min and y keeps its whole range, and where that leaves no range of xi (xi_max <= xi_min) det_xi is 0 and xi = xi_max. At xi_hat = 0 and y_hat = 1 it gives the soft and collinear counter-events of @ref fks_initial_radiate, the soft one where xi_min = 0. det_xi is that of @ref fks_initial_radiate with the whole range of y, the Jacobian of the map is xi det_xi."
 
 fks_initial_asymmetric_cluster:
   inputs:
@@ -3056,7 +3056,7 @@ fks_initial_light_cone_map:
     - name: p_out
       type: [float, n, 4]
       desc: "the mapped momenta"
-  desc: "Lorentz map of the final state of the Born in the asymmetric FKS emission off an incoming parton (@ref fks_initial_asymmetric_radiate), apply_isr_recoil_boost of the MCcntRefactor_Sfun branch of MadGraph7. In light-cone components along the emitter, q^+ -> A q^+, q_T -> q_T + b q^+ and q^- -> (q^- + 2 b.q_T + b^2 q^+) / A, with A = 1 + xi (1 - y) / (2 (1 - xi)) and b = -xi sin(theta) / (2 sqrt(1 - xi)) (cos phi, sin phi). It keeps the direction of the spectator and gives the final state the momentum of the real emission without i. Where the mass is known, the smaller light-cone component on input and q^- on output come from the mass shell, which keeps the relative precision of every momentum."
+  desc: "Lorentz map of the final state of the Born in the asymmetric FKS emission off an incoming parton (@ref fks_initial_asymmetric_radiate), apply_isr_recoil_boost of MadGraph7. In light-cone components along the emitter, q^+ -> A q^+, q_T -> q_T + b q^+ and q^- -> (q^- + 2 b.q_T + b^2 q^+) / A, with A = 1 + xi (1 - y) / (2 (1 - xi)) and b = -xi sin(theta) / (2 sqrt(1 - xi)) (cos phi, sin phi). It keeps the direction of the spectator and gives the final state the momentum of the real emission without i. Where the mass is known, the smaller light-cone component on input and q^- on output come from the mass shell, which keeps the relative precision of every momentum."
 
 fks_initial_light_cone_map_inverse:
   inputs:
@@ -3108,7 +3108,7 @@ fks_initial_fixed_light_cone_map:
     - name: p_out
       type: [float, n, 4]
       desc: "the mapped momenta, in the center-of-mass frame of the real emission"
-  desc: "The asymmetric map of the Born without the projection of the event (lepton beams, @ref fks_initial_fixed_radiate), boost_born_momenta_noevpr of the MCcntRefactor_Sfun branch of MadGraph7 with FKSISRMapping 2: @ref fks_initial_light_cone_map followed by the boost q^+ -> sqrt(1 - xi) q^+, q^- -> q^- / sqrt(1 - xi) into the center-of-mass frame of the real emission. It takes the place of @ref fks_initial_fixed_boost. The final state recoils against the same i, rotated about the momentum of the recoil."
+  desc: "The asymmetric map of the Born without the projection of the event (lepton beams, @ref fks_initial_fixed_radiate), boost_born_momenta_noevpr of MadGraph7 with FKSISRMapping 2: @ref fks_initial_light_cone_map followed by the boost q^+ -> sqrt(1 - xi) q^+, q^- -> q^- / sqrt(1 - xi) into the center-of-mass frame of the real emission. It takes the place of @ref fks_initial_fixed_boost. The final state recoils against the same i, rotated about the momentum of the recoil."
 
 fks_initial_fixed_light_cone_map_inverse:
   inputs:

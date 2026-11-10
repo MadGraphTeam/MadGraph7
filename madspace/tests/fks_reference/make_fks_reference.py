@@ -1,10 +1,14 @@
-"""Reference values of the FKS phase space of MadGraph7's genps_fks.f and of
-the subtraction of fks_singular.f.
+"""Reference values of the FKS phase space of MadGraph7 (genps_fks.f and the
+fks_phase_space modules) and of the subtraction of fks_singular.f.
 
 For every process below, this script generates an
 'output standalone_fortran --fks --limits' directory with MadGraph7, builds
 fks_kinematics_dump.f in its P* directories (linked like test_soft_col_limits)
 and writes the dumped kinematics to madspace/tests/test_data/fks/<name>.json.
+The Fortran runs with its defaults: the asymmetric map of an emission off an
+incoming parton (FKSISRMapping 0, see ISR_MAPPING) and the resonance-local
+recoil of an emission off a final-state parton where the Born configuration
+(iconfig 1) has a resonance (select_fks_recoil).
 At the Born of every point it adds the Born and its color-correlated and
 spin-correlated versions from pyAmpliCol (pip install pyamplicol), in the
 conventions that the madspace FKS limits take. The madspace FKS tests read
@@ -28,6 +32,12 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
 (E, px, py, pz) in the partonic c.m. frame):
 
     process, subprocess, genps_fks_sha (git blob hash of genps_fks.f),
+    mg_commit (the commit of MadGraph7), initial_map (the map of an emission
+    off an incoming parton, "asymmetric" or "symmetric"), jac_sampling_factors
+    (true: the Jacobians include the factors 1 - stiny and 1 - ctiny of the
+    sampling), iconfig, born_forest (per propagator of the Born configuration
+    its index, its two daughters, sprop and tprid), born_props (their masses
+    and widths),
     nexternal, nincoming, ndim, lpp, ebeam, g (the strong coupling of the
     Fortran), born_blocks (source, alpha_s and top width of the Born blocks),
     subtraction (xicut, xi_s_cut, delta_s, delta_o, delta_i of fks_powers.inc,
@@ -45,10 +55,22 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
     into the P* directory, with its own conventions, see madspace/fks.py)
     configs[]: nfks, i_fks, j_fks, pdg, masses, particle_type,
                particle_charge, fks_j_from_i (the common blocks of the
-               configuration after fks_inc_chooser), iden_comp, points[],
+               configuration after fks_inc_chooser), iden_comp,
+               granny (igranny, iaunt, granny_is_res and
+               granny_chain_real_final of set_granny, 1-based, as booleans
+               over the real process), resonance (resonance_recoil,
+               initial_recoil_leg and resonance_members of
+               select_fks_recoil, 1-based, as booleans), points[],
                limit_points[] (the same for the points close to the limits)
     points[]:  x (unit-cube vector, radiation in the last three entries),
                isolsign, jac, jac_cnt (full weight of generate_momenta),
+               resonance_mass2, resonance_momentum (the momentum K of the
+               resonance of the resonance-local recoil, zero without one),
+               xij_aor (the azimuthal phase of the collinear limit, real and
+               imaginary part), resonance_scales (soft, collinear, angular
+               and mismatch_log of resonance_subtraction_scales at the soft
+               counter-event, where the event is generated, 1, 1, 1 and 0
+               without a resonance),
                p_born, p_ev, p_cnt, xi_ev, xi_hat_ev, y_ev, xiimax_ev,
                xi_cnt, xi_hat_cnt, xiimax_cnt, xbjrk_ev, xbjrk_cnt, shat_ev,
                shat_cnt, tau_ev, ycm_ev, tau_cnt, ycm_cnt, kperp,
@@ -63,7 +85,9 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                (at the collinear and soft-collinear counter-events: z, t and
                AP_reduced, Qterms_reduced_timelike/spacelike as
                sborncol_fsr/isr call them, QCD over g^2 and QED over
-               gal(1)^2; z = -1 where not generated or j is massive),
+               gal(1)^2; z = -1 where not generated or j is massive; with a
+               resonance z and t of sborncol_fsr come from the energies in
+               its rest frame and t = z M_K^2 / 4),
                prefactors (f_r, f_s, f_c, f_dc, f_sc, f_dsc of
                compute_prefactors_n1body with unit vegas weight),
                fks_symmetry_factor, fks_symmetry_factor_deg, xinorm_ev,
@@ -123,7 +147,9 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
     and y for an initial-state emitter. rad_ is the FKS map itself, cut_
     reproduces the production values.
     Entries of counter-events that genps_fks.f did not generate keep the
-    values it leaves behind (jac_cnt <= 0 marks them).
+    values it leaves behind (jac_cnt <= 0 marks them). A point whose Born the
+    phase space rejects has jac = -222 and the momenta it leaves behind, one
+    with an empty range of xi jac = -342.
 """
 
 import argparse
@@ -196,6 +222,10 @@ MODELS = {
 # the processes with lepton PDFs, lpp of both beams: the Source of an NLO
 # output takes no run_card with them, so the dump sets it
 LEPTON_PDFS = {"epem_uuxg_mix": 3, "epem_mumu_qed": 3}
+# FKSISRMapping of the Fortran: 0 its default, the asymmetric map (= 2), 1
+# the symmetric one
+ISR_MAPPING = 0
+INITIAL_MAPS = {0: "asymmetric", 1: "symmetric", 2: "asymmetric"}
 FKS_POWERS = {
     "pp_epemj_params": dict(xicut=0.3, xiScut=0.25, deltaO=0.8, deltaI=0.7, deltaS=0.6),
 }
@@ -271,19 +301,29 @@ def set_fks_powers(out, values):
         f.write(text)
 
 
-def dump(pdir, points, massive, limit, log, lpp=0):
+def dump(pdir, points, massive, limit, log, lpp=0, iconfig=1, isr=ISR_MAPPING):
     for f in ["fks_kinematics_dump.f", "makefile_dump"]:
         shutil.copy(os.path.join(HERE, f), pdir)
     run(["make", "-j8", "-f", "makefile_dump", "fks_kinematics_dump"], pdir, log)
     result = subprocess.run(
         ["./fks_kinematics_dump"],
         cwd=pdir,
-        input=f"{points}\n1\n{massive}\n{limit}\n{lpp}\n",
+        input=f"{points}\n{iconfig}\n{massive}\n{limit}\n{lpp}\n{isr}\n",
         capture_output=True,
         text=True,
         check=True,
     )
     return result.stdout
+
+
+def commit(root):
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
 
 
 def floats(fields):
@@ -521,7 +561,66 @@ def parse(text):
             point["tau_lower_bound"] = float(rest[0])
         elif key[:3] in ("RAD", "CUT") and key[3:] in RERUN_KEYS:
             parse_rerun(point, key[:3].lower(), key[3:], rest)
+    parse_resonance(text, data)
     return data
+
+
+def parse_resonance(text, data):
+    """The entries of the resonance (NCONFIGS, FOREST, PROPS, GRANNY,
+    RESONANCE, RESK, AOR, SCALES), added to the configurations and points that
+    parse made of the same text."""
+    configs = {conf["nfks"]: conf for conf in data["configs"]}
+    forest, props = [], []
+    conf, limit, counts = None, False, {}
+    for line in text.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        key, rest = fields[0], fields[1:]
+        if key == "NCONFIGS":
+            data["iconfig"] = int(rest[1])
+        elif key == "FOREST":
+            forest.append([int(v) for v in rest])
+        elif key == "PROPS":
+            v = floats(rest)
+            props = [v[k : k + 2] for k in range(0, len(v), 2)]
+        elif key == "CONF":
+            conf = configs[int(rest[0])]
+        elif key == "PASS":
+            limit = int(rest[0]) == 3
+        elif key == "POINT":
+            k = (conf["nfks"], limit)
+            counts[k] = counts.get(k, 0) + 1
+        elif key == "GRANNY":
+            v = [int(f) for f in rest]
+            conf["granny"] = dict(
+                igranny=v[0],
+                iaunt=v[1],
+                granny_is_res=bool(v[2]),
+                granny_chain_real_final=[bool(f) for f in v[3:]],
+            )
+        elif key == "RESONANCE":
+            v = [int(f) for f in rest]
+            conf["resonance"] = dict(
+                resonance_recoil=bool(v[0]),
+                initial_recoil_leg=v[1],
+                resonance_members=[bool(f) for f in v[2:]],
+            )
+        elif key in ("RESK", "AOR", "SCALES"):
+            points = conf["limit_points" if limit else "points"]
+            point = points[counts[conf["nfks"], limit] - 1]
+            v = floats(rest)
+            if key == "RESK":
+                point["resonance_mass2"] = v[0]
+                point["resonance_momentum"] = v[1:5]
+            elif key == "AOR":
+                point["xij_aor"] = v
+            else:
+                point["resonance_scales"] = dict(
+                    soft=v[0], collinear=v[1], angular=v[2], mismatch_log=v[3]
+                )
+    data["born_forest"] = forest
+    data["born_props"] = props
 
 
 # PDG code -> particle of the built-in Standard Model of pyAmpliCol
@@ -890,6 +989,7 @@ def main():
         capture_output=True,
         text=True,
     ).stdout.strip()
+    mg_commit = commit(MG_ROOT)
     os.makedirs(OUT_DIR, exist_ok=True)
     work = args.keep or tempfile.mkdtemp(prefix="fks_reference_")
     os.makedirs(work, exist_ok=True)
@@ -914,7 +1014,14 @@ def main():
                     LEPTON_PDFS.get(name, 0),
                 )
             )
-            data.update(process=process, subprocess=sub, genps_fks_sha=genps_fks_sha)
+            data.update(
+                process=process,
+                subprocess=sub,
+                genps_fks_sha=genps_fks_sha,
+                mg_commit=mg_commit,
+                initial_map=INITIAL_MAPS[ISR_MAPPING],
+                jac_sampling_factors=True,
+            )
             # the FKS configurations as the exporter writes them for madspace
             with open(os.path.join(pdir, "fks_configurations.json")) as f:
                 data["fks_configurations"] = json.load(f)

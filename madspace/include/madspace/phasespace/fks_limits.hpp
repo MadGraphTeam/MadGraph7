@@ -31,8 +31,8 @@ namespace madspace {
  * the resonance-local recoil (@p resonance, see @ref FKSConfigurationMapping)
  * @f$\xi@f$, @f$y@f$ and @f$\hat p_i@f$ are those of the rest frame of the
  * resonance of momentum @f$K@f$, and @f$(p_j \hat p_i) / (1 - y) =
- * (K p_j) / 2@f$ where the event has one, as eikonal_reduced of the
- * MCcntRefactor_Sfun branch of MadGraph7 takes it. The
+ * (K p_j) / 2@f$ where the event has one, as eikonal_reduced of MadGraph7
+ * takes it. The
  * pairs are those of sbornsoft, in its order: every unordered pair of the
  * particles that form an FKS pair with i, a particle with itself only where it
  * is massive. They are evaluated on the momenta of the soft counter-event.
@@ -137,7 +137,7 @@ private:
  * Born momenta, @f$k_\perp^2 = -1@f$. With the resonance-local recoil
  * (@p resonance, see @ref FKSConfigurationMapping) a final-state j takes the
  * rest frame of the resonance of momentum @f$K@f$ where the event has one, as
- * sborncol_fsr of the MCcntRefactor_Sfun branch of MadGraph7: the energies
+ * sborncol_fsr of MadGraph7: the energies
  * there, @f$t = z K^2 / 4@f$ and @f$k_\perp@f$ orthogonal to @f$K@f$ in
  * place of the incoming momenta, the transverse direction in the rest frame of
  * the resonance boosted with the momenta (resonance_collinear_phase of the
@@ -467,8 +467,8 @@ std::size_t check_splitting_configurations(
  * @ref FKSConfigurationMapping) @f$\xi@f$ and @f$y@f$ are those of the rest
  * frame of the resonance of momentum @f$K@f$ where the event has one, while the
  * integrated counterterms stay in the partonic center-of-mass frame. The cuts
- * then follow from those of that frame, as compute_prefactors_n1body of the
- * MCcntRefactor_Sfun branch of MadGraph7 takes them from
+ * then follow from those of that frame, as compute_prefactors_n1body of
+ * MadGraph7 takes them from
  * resonance_subtraction_scales: with @f$P@f$ the sum of the incoming momenta
  * of the soft counter-event, @f$s = P^2@f$ and
  * @f$a(q) = s (K q) / (K^2 (P q))@f$, the ratio of @f$\xi@f$ in the two frames

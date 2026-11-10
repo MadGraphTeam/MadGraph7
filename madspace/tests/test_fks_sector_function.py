@@ -131,8 +131,9 @@ def real_processes():
                 conf["nfks"] - 1
             ]
             key = tuple(configuration["real_pdgs"])
+            # the events that are generated (jac -222 marks a rejected Born)
             seen.setdefault(key, (data, conf["nfks"] - 1, []))[2].extend(
-                point["p_ev"] for point in conf["points"]
+                point["p_ev"] for point in conf["points"] if point["jac"] > 0
             )
         for key, (data, c, momenta) in seen.items():
             cases.append(

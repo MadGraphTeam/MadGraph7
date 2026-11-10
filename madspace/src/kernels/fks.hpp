@@ -247,12 +247,11 @@ KERNELSPEC void kernel_fks_recoil_boost_inverse(
 }
 
 // The momenta of the resonance-local recoil in the rest frame of the resonance
-// (prepare_resonance_frame of the MCcntRefactor_Sfun branch of MadGraph7, after
-// Jezo and Nason): the members (mask 1) add up to K, are boosted into its rest
-// frame like boostx does, and the other momenta are set to zero, so that the FKS
-// emission off a final-state parton at sqrt_s_frame = sqrt(K^2) maps the members
-// alone. Without members the momenta pass through, with K = (sqrt_s, 0) and
-// sqrt_s_frame = sqrt_s.
+// (prepare_resonance_frame of MadGraph7, after Jezo and Nason): the members
+// (mask 1) add up to K, are boosted into its rest frame like boostx does, and
+// the other momenta are set to zero, so that the FKS emission off a final-state
+// parton at sqrt_s_frame = sqrt(K^2) maps the members alone. Without members the
+// momenta pass through, with K = (sqrt_s, 0) and sqrt_s_frame = sqrt_s.
 template <typename T>
 KERNELSPEC void kernel_fks_resonance_frame(
     FIn<T, 2> p,
@@ -897,8 +896,8 @@ KERNELSPEC FVal<T> fks_initial_xi_min(FVal<T> s_born, FVal<T> s_hat_min) {
     return where(active, (s_min - s_born) / s_min, FVal<T>(0.));
 }
 
-// The asymmetric emission off an incoming parton (FKSISRMapping 2 of the
-// MCcntRefactor_Sfun branch of MadGraph7): only the emitter j changes its
+// The asymmetric emission off an incoming parton (FKSISRMapping 0 and 2 of
+// MadGraph7, its default): only the emitter j changes its
 // momentum fraction, x_j = xbar_j / (1 - xi), the spectator keeps its own. In
 // the center-of-mass frame of the Born, the emitter has the energy
 // sqrt(s_born) / (2 (1 - xi)) and the spectator sqrt(s_born) / 2, and i the
@@ -1087,9 +1086,9 @@ KERNELSPEC void kernel_fks_initial_asymmetric_born_fractions(
 }
 
 // The Lorentz map of the final state of the Born in the asymmetric emission off
-// an incoming parton (apply_isr_recoil_boost of the MCcntRefactor_Sfun branch
-// of MadGraph7). With the light-cone components q^+- = E +- beam_sign p_z
-// along the emitter and the transverse momentum q_T,
+// an incoming parton (apply_isr_recoil_boost of MadGraph7). With the
+// light-cone components q^+- = E +- beam_sign p_z along the emitter and the
+// transverse momentum q_T,
 //   q^+ -> A q^+,  q_T -> q_T + b q^+,  q^- -> (q^- + 2 b.q_T + b^2 q^+) / A,
 // A = 1 + xi (1 - y) / (2 (1 - xi)), b = -xi sin(theta) / (2 sqrt(1 - xi))
 // (cos phi, sin phi). It keeps the direction of the spectator and maps the
@@ -1101,7 +1100,7 @@ KERNELSPEC void kernel_fks_initial_asymmetric_born_fractions(
 // direction = -1 gives the inverse. With real_frame the map is followed by the
 // boost into the center-of-mass frame of the real emission,
 // q^+ -> sqrt(1 - xi) q^+ and q^- -> q^- / sqrt(1 - xi), as in
-// boost_born_momenta_noevpr of the branch for lepton beams.
+// boost_born_momenta_noevpr of MadGraph7 for lepton beams.
 template <typename T>
 KERNELSPEC void fks_initial_light_cone_map(
     FIn<T, 2> p,

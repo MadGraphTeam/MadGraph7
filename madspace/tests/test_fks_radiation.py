@@ -8,14 +8,12 @@ cuts put on the partonic energy, for a Born point and the last three entries of
 the unit-cube vector. The mapping must reproduce them, and its inverse the Born
 and the three random numbers. The weight of the mapping is the full Jacobian,
 while genps_fks.f returns the radiation Jacobian times compute_flux without the
-factor xi, in units of xi_max (xi_norm for a massive emitter) and without the
-factors 1 - stiny and 1 - ctiny of the sampling (see test_fks_kernels.py). The
-data of the asymmetric map of an incoming emitter (test_data/fks_asymmetric)
-come from the MCcntRefactor_Sfun branch, whose Jacobians for an incoming
-emitter include those factors. Those of its resonance-local recoil of a
-final-state emitter (test_data/fks_resonance) are compared with the members of
-the resonance of the data, where its map of xi is that of main (see
-same_massive_xi_map in fks_testing.py).
+factor xi and in units of xi_max (xi_norm for a massive emitter), see
+test_fks_kernels.py. The reference data take the asymmetric map of an incoming
+emitter, the default of MadGraph7, and those of the symmetric one are in
+test_data/fks_symmetric. Those of the resonance-local recoil of a final-state
+emitter (test_data/fks_resonance) are compared with the members of the
+resonance of the data.
 """
 
 import glob
@@ -27,14 +25,13 @@ import numpy as np
 import pytest
 import torch
 from fks_testing import (
-    FKS_ASYMMETRIC_DATA,
     FKS_RESONANCE_DATA,
+    FKS_SYMMETRIC_DATA,
     data_id,
     fortran_sampling_units,
     massive_fortran_precision,
     massive_xi_max,
     resonance_members,
-    same_massive_xi_map,
 )
 from madspace_testing import generator
 
@@ -202,7 +199,7 @@ DATA = (
             )
         )
     )
-    + FKS_ASYMMETRIC_DATA
+    + FKS_SYMMETRIC_DATA
     + FKS_RESONANCE_DATA
 )
 
@@ -280,13 +277,7 @@ def reference_cases():
         nin = data["nincoming"]
         for conf in data["configs"]:
             j = conf["j_fks"]
-            points = [
-                p
-                for p in conf["points"]
-                if p["jac"] > 0
-                and "rad_jac" in p
-                and same_massive_xi_map(data, conf, p)
-            ]
+            points = [p for p in conf["points"] if p["jac"] > 0 and "rad_jac" in p]
             if points:
                 name = data_id(path)
                 kind = "initial" if j <= nin else "final"
@@ -674,19 +665,29 @@ def test_volume_massive(masses, i_fks, j_fks):
     assert_same_mean(det_born * det, det_real)
 
 
+@pytest.mark.parametrize("initial_map", ["symmetric", "asymmetric"])
 @pytest.mark.parametrize("s_hat_min", [0.0, 600.0**2], ids=["uncut", "bounded"])
 @pytest.mark.parametrize("j_fks", [0, 1])
-def test_volume_initial(j_fks, s_hat_min):
+def test_volume_initial(j_fks, s_hat_min, initial_map):
     """g g > t t~ at sqrt(s_lab) = SQRT_S times an emission off an incoming
     gluon covers the phase space of g g > t t~ g with s_hat >= s_hat_min,
     momentum fractions included, once. With the bound most Borns lie below it
-    (the threshold is 346 GeV)."""
+    (the threshold is 346 GeV), and the asymmetric map has no emission from
+    some of them (det = 0)."""
     batch = 400000
     born, x_born, det_born = rambo([0.0, 0.0, 173.0, 173.0], batch, 50, False)
     r = np.random.default_rng(51).random((batch, 3))
-    mapping = ms.FKSRadiation(4, 4, j_fks, s_hat_min=s_hat_min)
+    mapping = ms.FKSRadiation(
+        4,
+        4,
+        j_fks,
+        s_hat_min=s_hat_min,
+        initial_map=ms.FKSRadiation.InitialMap(initial_map),
+    )
     _, x, det = forward(mapping, r, born, x_born)
-    assert (x[0] * x[1] * SQRT_S**2 >= s_hat_min * (1 - 1e-12)).all()
+    emitted = det > 0
+    s_hat = x[0][emitted] * x[1][emitted] * SQRT_S**2
+    assert (s_hat >= s_hat_min * (1 - 1e-12)).all()
     _, x_real, det_real = rambo([0.0, 0.0, 173.0, 173.0, 0.0], batch, 52, False)
     above = x_real[0] * x_real[1] * SQRT_S**2 >= s_hat_min
     assert_same_mean(det_born * det, det_real * above)
