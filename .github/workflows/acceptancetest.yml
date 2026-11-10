@@ -807,6 +807,7 @@ jobs:
             ./tests/test_manager.py test_madspin_onium_decay -pA -t0 -l INFO
             ./tests/test_manager.py test_madspin_onium_octet_decay -pA -t0 -l INFO
             ./tests/test_manager.py test_madspin_onium_decay_2to2 -pA -t0 -l INFO
+            ./tests/test_manager.py test_madspin_onium_radiative -pA -t0 -l INFO
 
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()

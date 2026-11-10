@@ -5627,14 +5627,20 @@ class decay_all_events_onshell(decay_all_events):
             commandline_decay = self.get_decay_command()
             commandline_decay = commandline_decay.replace('add process', 'generate',1)
 
-            logger.info(commandline_decay)
-            mgcmd.exec_cmd(commandline_decay, precmd=True)
-            self.output_density_me(pjoin(path_me, ms_me_decay_subdir),
-                                   self.density_backend(commandline_decay, zero_width),
-                                   'd', '--zerowidth_decay=%s' % bool(zero_width))
+            # radiative transitions of bound states only: no decay for the
+            # generator (onia_radiative evaluates them)
+            if commandline_decay.strip():
+                logger.info(commandline_decay)
+                mgcmd.exec_cmd(commandline_decay, precmd=True)
+                self.output_density_me(pjoin(path_me, ms_me_decay_subdir),
+                                       self.density_backend(commandline_decay, zero_width),
+                                       'd', '--zerowidth_decay=%s' % bool(zero_width))
 
-            # store information about the decay matrix elements
-            fill_all_me(self, "decay")
+                # store information about the decay matrix elements
+                fill_all_me(self, "decay")
+            if onia and onia.radiative:
+                # the decay events of the radiative chains
+                self.all_me.update(onia.radiative_tags(self.mscmd))
 
         logger.info('Done %.4g' % (time.time()-start))
 
@@ -5836,6 +5842,10 @@ class decay_all_events_onshell(decay_all_events):
                 # reaching MG5. (madspin_v1 strips it the same way, decay.py
                 # get_all_ME step 6.)
                 proc = self.mscmd._split_group_tag(proc)[0]
+                onia = getattr(self.mscmd, 'onia', None)
+                if onia and proc in onia.radiative:
+                    # a radiative transition of a bound state (onia_radiative)
+                    continue
                 newproc = "add process %s @%i --no_warning=duplicate --standalone;" % (proc,i)
                 commandline += self.adapt_decay(newproc)
                 #commandline+="add process %s @%i --no_warning=duplicate --standalone;" % (proc,i)

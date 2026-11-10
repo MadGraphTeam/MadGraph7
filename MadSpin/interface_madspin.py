@@ -1432,6 +1432,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         if "=" in decaybranch and self.options['spinmode'] in ['full', 'madspin_v1']:
             logger.warning("Note that coupling order restriction are not associated to specific Branching Ratio. The total cross-section might therefore use the wrong branching ratio.")
         if getattr(self, 'onia', None):
+            # a radiative transition between bound states ('decay chic1 > Jpsi
+            # a, Jpsi > mu+ mu-'): an E1 or M1 chain of onia_radiative, kept
+            # out of the generator, which has no such decay
+            radiative = self.onia.parse_radiative(self, decaybranch)
+            if radiative:
+                name, text = radiative
+                self.list_branches.setdefault(name, []).append(text)
+                return
             # a bound state: 'decay Jpsi > mu+ mu-' or 'decay Jpsi(1|3S11) >
             # mu+ mu-' is the decay of the colour-singlet Fock state of the
             # hadron, under its alias (no parentheses for the decay-chain parser)
@@ -3657,9 +3665,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         """
         if not hasattr(self, 'me_int'):
             self.me_int = {}
-            
-        
-        
+
+        onia = getattr(self, 'onia', None)
+        if onia and onia.radiative and onia.radiative_branches(self, pdg):
+            # radiative transitions of a bound state: decay events of their
+            # chains, written by onia_radiative (no generator involved)
+            return onia.radiative_events(self, pdg, nb_event, cumul, output_width,
+                                         run_name, restrict_file)
+
         nb_event = int(nb_event) # in case of hepmc request the nb_event is not an integer
         # Gridpack-based decay generation is only used when we persist a gridpack
         # across runs (ms_dir). Building/packaging a gridpack and then generating
@@ -12295,11 +12308,19 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         # legacy options 'onshell_v1' and 'madspin_v1' store both the production and the decay in a single folder
         if self.options['spinmode'] not in ['onshell_v1', 'madspin_v1']:
-            try:
-                sp_path_decay = pjoin(self.path_me, self.ms_me_decay_subdir, 'SubProcesses')
-                self.create_f2py_module(sp_path_decay, 'decay', all_prefix, all_pdg, all_procid)
-            except:
-                logger.critical("Error while creating the f2py modules for the decay part.")
+            sp_path_decay = pjoin(self.path_me, self.ms_me_decay_subdir, 'SubProcesses')
+            onia = getattr(self, 'onia', None)
+            # with radiative transitions of bound states only, there is no
+            # decay matrix element to load
+            if not (onia and onia.radiative and not os.path.isdir(sp_path_decay)):
+                try:
+                    self.create_f2py_module(sp_path_decay, 'decay', all_prefix, all_pdg, all_procid)
+                except:
+                    logger.critical("Error while creating the f2py modules for the decay part.")
+            if onia and onia.radiative:
+                # the radiative chains (onia_radiative) answer the density
+                # calls of their decay events
+                onia.wrap_decay_library(self)
 
 
     def calculate_matrix_element_from_density(self, production, decays, decay_dict,

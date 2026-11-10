@@ -212,6 +212,95 @@ class TestMadSpin(unittest.TestCase):
         br = 4 * (2. / 3) ** 2 * alpha ** 2 * r2 / M ** 2 / 9.26e-05
         self.assertLess(abs(cross / production / br - 1), 1e-3, (cross, production, br))
 
+    def test_madspin_onium_radiative(self):
+        """Radiative transitions of bound states (MadSpin/onia_radiative.py):
+        q q~ > gamma* > psi(2S), transverse along the beam, decayed through
+        psi(2S) > chi_cJ gamma (E1), chi_cJ > J/psi gamma (E1), J/psi > mu+
+        mu-, for J = 1 and 2 (two decay lines with the same final state). The
+        cross section is the production one times the summed products of the
+        BR lines, every bound state is on its mass shell (those of the model
+        for the daughters), the chain is in the event record, and the first
+        photon goes as 1 + alpha_J cos^2(theta) in the psi(2S) rest frame,
+        alpha_1 = -1/3, alpha_2 = 1/13. spinmode none is refused."""
+
+        if not misc.default_f2py():
+            raise unittest.SkipTest('no f2py')
+
+        def madgraph(name, lines):
+            script = pjoin(self.path, name)
+            with open(script, 'w') as fsock:
+                fsock.write('set automatic_html_opening False\n' + '\n'.join(lines) + '\n')
+            subprocess.call([pjoin(MG5DIR, 'bin', 'madgraph'), script], cwd=self.path,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+
+        madgraph('output.mg', ['import model sm_onia-c_mass',
+                               'generate p p > psi(2|3S11) QCD=0 / z h',
+                               'output madevent %s -f -nojpeg' % self.run_dir])
+        with open(pjoin(self.run_dir, 'Cards', 'param_card.dat'), 'a') as fsock:
+            fsock.write('\nDECAY 100443 2.94e-04\n   9.75e-02  2  20443  22\n   9.36e-02  2  445  22\n'
+                        'DECAY  20443 8.40e-04\n   3.43e-01  2  443  22\n'
+                        'DECAY    445 1.94e-03\n   1.90e-01  2  443  22\n'
+                        'DECAY    443 9.26e-05\n   5.961e-02  2  13  -13\n')
+        madgraph('launch.mg', ['launch %s' % self.run_dir, 'set nevents 2000',
+                               'set pdlabel nn23lo1', 'set iseed 51'])
+        events = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        production = lhe_parser.EventFile(events).cross
+        shutil.copy(events, pjoin(self.path, 'psi2s.lhe.gz'))
+
+        def run(spinmode):
+            script = pjoin(self.path, 'ms_rad')
+            with open(script, 'w') as fsock:
+                fsock.write('import psi2s.lhe.gz\nset spinmode %s\nset seed 13\n'
+                            'decay psi(2S) > chic1 a, chic1 > Jpsi a, Jpsi > mu+ mu-\n'
+                            'decay psi(2S) > chic2 a, chic2 > Jpsi a, Jpsi > mu+ mu-\n'
+                            'launch\n' % spinmode)
+            for d in glob.glob(pjoin(self.path, 'madspin_*')) + glob.glob(pjoin(self.path, 'decay_*')):
+                shutil.rmtree(d)
+            subprocess.call([pjoin(MG5DIR, 'MadSpin', 'madspin'), script], cwd=self.path,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+            return pjoin(self.path, 'psi2s_decayed.lhe.gz')
+
+        out = run('none')
+        self.assertFalse(os.path.exists(out))
+        out = run('madspin')
+        self.assertTrue(os.path.exists(out))
+        events = lhe_parser.EventFile(out)
+        br = 5.961e-02 * (9.75e-02 * 0.343 + 9.36e-02 * 0.19)
+        self.assertLess(abs(events.cross / production / br - 1), 1e-6)
+        masses = {100443: 3.69, 20443: 3.51, 445: 3.56, 443: 3.1}
+        cos = {20443: [], 445: []}
+        for event in events:
+            states = dict((p.pdg, p) for p in event if p.pdg in masses)
+            chi = [pdg for pdg in (20443, 445) if pdg in states]
+            self.assertEqual(len(chi), 1)
+            chi = chi[0]
+            self.assertEqual(sorted(states), sorted([100443, chi, 443]))
+            for pdg, p in states.items():
+                self.assertEqual(p.status, 2)
+                self.assertLess(abs(lhe_parser.FourMomentum(p).mass - masses[pdg]), 1e-3 * (1 + p.E))
+            photons = [p for p in event if p.pdg == 22]
+            self.assertEqual(len(photons), 2)
+            first = [g for g in photons if g.mother1 is states[100443]]
+            self.assertEqual(len(first), 1)
+            self.assertEqual(len([g for g in photons if g.mother1 is states[chi]]), 1)
+            self.assertEqual(len([p for p in event if abs(p.pdg) == 13 and p.mother1 is states[443]]), 2)
+            rest = lhe_parser.FourMomentum(first[0]).boost_to_restframe(
+                lhe_parser.FourMomentum(states[100443]))
+            cos[chi].append(rest.pz / math.sqrt(rest.px ** 2 + rest.py ** 2 + rest.pz ** 2))
+        self.assertEqual(len(cos[20443]) + len(cos[445]), 2000)
+        # the two lines in the ratio of their BR products (binomial, 4 sigma)
+        f = 9.75e-02 * 0.343 / (9.75e-02 * 0.343 + 9.36e-02 * 0.19)
+        self.assertLess(abs(len(cos[20443]) / 2000. - f), 4 * math.sqrt(f * (1 - f) / 2000))
+        # 1 + a cos^2: <cos^2> = (1/3 + a/5) / (1 + a/3)
+        for pdg, a in ((20443, -1. / 3), (445, 1. / 13)):
+            c = cos[pdg]
+            m2 = sum(x * x for x in c) / len(c)
+            m4 = sum(x ** 4 for x in c) / len(c)
+            err = math.sqrt((m4 - m2 * m2) / len(c))
+            self.assertLess(abs(m2 - (1. / 3 + a / 5) / (1 + a / 3)), 4 * err, (pdg, m2, err))
+
     def test_madspin_onium_decay_2to2(self):
         """MadSpin after a 2 -> 2 onium production, g g > J/psi g with a soft
         jet: every event is decayed (the momentum reshuffling of a strongly

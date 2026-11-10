@@ -92,6 +92,16 @@ ANNOUNCEMENT:
          onia by the Breit-Wigner truncation of their width (0.979 for BW_cut = 15), although an
          onium decays on its mass shell and no virtuality is drawn: the decayed cross section is
          now the production one times the branching ratio (test_madspin_onium_decay_2to2).
+       - MadSpin: radiative transitions between bound states, E1 (L changed by one, spin
+         kept) and M1 (spin changed by one, L kept), with their spin correlations, e.g.
+         "decay chic1 > Jpsi a, Jpsi > mu+ mu-" or "decay Upsilon(2S) > chib2 a, chib2 >
+         Upsilon a, Upsilon > mu+ mu-" (MadSpin/onia_radiative.py). The amplitudes are the
+         leading multipoles written with the HELAS polarisation vectors of the bound-state
+         matrix elements (no M2 or E3); the rate is the BR line of the parent's DECAY block
+         (a radiative transition is non-perturbative), times those of the decays that follow;
+         a daughter absent from the production takes the mass of the model unless a MASS line
+         of the param_card sets it. The decays ending a chain come from a density library of
+         their own (madspin_radiative). spinmode madspin/full/onshell/PA only.
        - new MadSpin option onia_breit_wigner (default False): draw the mass of a decaying
          onium from the Breit-Wigner of its DECAY width within BW_cut and reshuffle the
          production to it, as for an elementary resonance, instead of decaying it on shell
