@@ -5,19 +5,17 @@ c**************************************************************************
       use extra_weights
       use mint_module
       use FKSParams
+      use process_module
       implicit none
 C
 C     CONSTANTS
 C
-      double precision zero
-      parameter       (ZERO = 0d0)
       include 'nexternal.inc'
       include 'genps.inc'
 C
 C     LOCAL
 C
-      integer i,j,k,l,l1,l2,kchan
-      character*130 buf
+      integer i,j,kchan
 c
 c     Global
 c
@@ -32,26 +30,19 @@ c     Vegas stuff
       real*8 sigint
       external sigint
 
-      integer irestart
-      logical savegrid
-
       logical            flat_grid
       common/to_readgrid/flat_grid                !Tells if grid read from file
 
-      integer i_momcmp_count
       double precision xratmax
-      common/ccheckcnt/i_momcmp_count,xratmax
+      integer i_momcmp_count
+      common/ccheckcnt/xratmax,i_momcmp_count
 
       character*4      abrv
       common /to_abrv/ abrv
-      integer n_mp, n_disc
-      integer ixi_i,iphi_i,iy_ij,vn
-      logical putonshell
       logical unwgt
       double precision evtsgn
       common /c_unwgt/evtsgn,unwgt
 
-      logical SHsep
       logical Hevents
       common/SHevents/Hevents
       character*10 dum
@@ -64,22 +55,15 @@ c statistics for MadLoop
       include 'orders.inc'
 
 c timing statistics
-      include "timing_variables.inc"
-      real*4 tOther, tTot
+      double precision job_started,job_finished,tTot
 
 c PineAPPL
       logical pineappl
       common /for_pineappl/ pineappl
-c stats for granny_is_res
-      double precision deravg,derstd,dermax,xi_i_fks_ev_der_max
-     &     ,y_ij_fks_ev_der_max
-      integer ntot_granny,derntot,ncase(0:6)
-      common /c_granny_counters/ ntot_granny,ncase,derntot,deravg,derstd
-     &     ,dermax,xi_i_fks_ev_der_max,y_ij_fks_ev_der_max
 
       logical useitmax
       common/cuseitmax/useitmax
-
+      include 'born_nhel.inc'
 C-----
 C  BEGIN CODE
 C-----
@@ -90,7 +74,8 @@ c Write the process PID in the log.txt files (i.e., to the screen)
 c
 c     Setup the timing variable
 c
-      call cpu_time(tBefore)
+      call timing_reset()
+      call cpu_time(job_started)
       fixed_order=.true.
       nlo_ps=.false.
 
@@ -109,11 +94,6 @@ c
 c
 c     Read process number
 c
-      ntot_granny=0
-      derntot=0
-      do i=0,6
-         ncase(i)=0
-      enddo
       ntot=0
       nsun=0
       nsps=0
@@ -129,6 +109,8 @@ c
       enddo
       
       call setrun                !Sets up run parameters
+      call configure_fxfx_sudakov(ickkw,nlo_ps,shower_mc,.true.)
+      call print_fks_isr_mapping(nlo_ps,shower_mc)
       call setpara('param_card.dat')   !Sets up couplings and masses
       call setcuts               !Sets up cuts and particle masses
       call printout              !Prints out a summary of parameters
@@ -187,7 +169,17 @@ c     Prepare the MINT folding
       ifold_energy=ndim-2
       ifold_yij=ndim-1
       ifold_phi=ndim
-c      
+c
+
+      ! initialise the global, but process dependent, information in the process module.
+      call init_process_module_global(shower_mc,abrv,nexternal,nincoming
+     $     ,mcatnlo_delta,ebeam(1)+ebeam(2),max_bcol,maxflow,ickkw)
+      ! Also put all the n-body process dependent stuff here. It does
+      ! not depend on PS point or FKS config, so all global information.
+      call init_process_module_nbody_wrapper()
+
+
+      
       i_momcmp_count=0
       xratmax=0.d0
       unwgt=.false.
@@ -204,12 +196,6 @@ c Don't safe the reweight information when just setting up the grids.
 c
          write (*,*) 'imode is ',imode
 
-         if (ickkw.eq.-1) then
-            min_virt_fraction=1d0
-            do kchan=1,nchans
-               virtual_fraction(kchan)=1d0
-            enddo
-         endif
          call mint(sigint)
          call topout
          call deallocate_weight_lines
@@ -250,45 +236,9 @@ c
          enddo
       endif
 
-      write (*,*) 'counters for the granny resonances'
-      write (*,*) 'ntot     ',ntot_granny
-      if (ntot_granny.gt.0) then
-         do i=0,6
-            write (*,*) '% icase ',i,' : ',ncase(i)/dble(ntot_granny)
-         enddo
-         write (*,*) 'average,std dev. and max of derivative:',deravg
-     &        ,sqrt(abs(derstd-deravg**2)),dermax
-         write (*,*)
-     &        'and xi_i_fks and y_ij_fks corresponding to max of der.',
-     &        xi_i_fks_ev_der_max,y_ij_fks_ev_der_max
-      endif
-      call cpu_time(tAfter)
-      tTot = tAfter-tBefore
-      tOther = tTot - (tBorn+tGenPS+tReal+tCount+tIS+tFxFx+tf_nb+tf_all
-     &     +t_as+tr_s+tr_pdf+t_plot+t_cuts+t_MC_subt+t_isum+t_p_unw
-     $     +t_write+t_ewsud+t_coupl)
-      write(*,*) 'Time spent in Born : ',tBorn
-      write(*,*) 'Time spent in PS_Generation : ',tGenPS
-      write(*,*) 'Time spent in Reals_evaluation: ',tReal
-      write(*,*) 'Time spent in MCsubtraction : ',t_MC_subt
-      write(*,*) 'Time spent in Counter_terms : ',tCount
-      write(*,*) 'Time spent in Integrated_CT : ',tIS-tOLP
-      write(*,*) 'Time spent in Virtuals : ',tOLP      
-      write(*,*) 'Time spent in FxFx_cluster : ',tFxFx
-      write(*,*) 'Time spent in Nbody_prefactor : ',tf_nb
-      write(*,*) 'Time spent in N1body_prefactor : ',tf_all
-      write(*,*) 'Time spent in Adding_alphas_pdf : ',t_as
-      write(*,*) 'Time spent in Reweight_scale : ',tr_s
-      write(*,*) 'Time spent in Reweight_pdf : ',tr_pdf
-      write(*,*) 'Time spent in Filling_plots : ',t_plot
-      write(*,*) 'Time spent in Applying_cuts : ',t_cuts
-      write(*,*) 'Time spent in Sum_ident_contr : ',t_isum
-      write(*,*) 'Time spent in Pick_unwgt : ',t_p_unw
-      write(*,*) 'Time spent in Write_events : ',t_write
-      write(*,*) 'Time spent in EW_sudakov : ',t_ewsud
-      write(*,*) 'Time spent in AlphaS_dependencies : ',t_coupl
-      write(*,*) 'Time spent in Other_tasks : ',tOther
-      write(*,*) 'Time spent in Total : ',tTot
+      call cpu_time(job_finished)
+      tTot=job_finished-job_started
+      call timing_report(tTot)
 
       open (unit=12, file='res.dat',status='unknown')
       do kchan=0,nchans
@@ -307,32 +257,10 @@ c
       end
 
 
-      block data timing
-c timing statistics
-      include "timing_variables.inc"
-      data tOLP/0.0/
-      data tGenPS/0.0/
-      data tBorn/0.0/
-      data tIS/0.0/
-      data tReal/0.0/
-      data tCount/0.0/
-      data tFxFx/0.0/
-      data tf_nb/0.0/
-      data tf_all/0.0/
-      data t_as/0.0/
-      data tr_s/0.0/
-      data tr_pdf/0.0/
-      data t_plot/0.0/
-      data t_cuts/0.0/
-      data t_MC_subt/0.0/
-      data t_isum/0.0/
-      data t_p_unw/0.0/
-      data t_write/0.0/
-      data t_coupl/0.0/
-      end
-
-      
       double precision function sigint(xx,vegas_wgt,ifl,f)
+      use fks_phase_space_data, only: p1_cnt,p_born
+      use fks_phase_space, only: fks_phase_space_point,
+     $     generate_born_contribution,generate_real_phase_space
       use weight_lines
       use extra_weights
       use mint_module
@@ -345,7 +273,7 @@ c timing statistics
       double precision xx(ndimmax),vegas_wgt,f(nintegrals),jac,p(0:3
      $     ,nexternal),rwgt,vol,sig,x(99),MC_int_wgt
       integer ifl,nFKS_born,nFKS_picked,iFKS,nFKS_min,iamp
-     $     ,nFKS_max,izero,ione,itwo,mohdr,i,iran_picked
+     $     ,nFKS_max,izero,ione,itwo,mohdr,i,iran_picked,dum
       parameter (izero=0,ione=1,itwo=2,mohdr=-100)
       logical passcuts,passcuts_nbody,passcuts_n1body,sum,firsttime
       data firsttime/.true./
@@ -359,15 +287,8 @@ c timing statistics
       common/tosigint/nndim
       logical       nbody
       common/cnbody/nbody
-      double precision p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
-     $     ,pswgt_cnt(-2:2),jac_cnt(-2:2)
-      common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
-      double precision p_born(0:3,nexternal-1)
-      common /pborn/   p_born
       double precision virtual_over_born
       common/c_vob/virtual_over_born
-      logical                calculatedBorn
-      common/ccalculatedBorn/calculatedBorn
       character*4      abrv
       common /to_abrv/ abrv
 c PineAPPL
@@ -383,10 +304,14 @@ c PineAPPL
 
       logical use_evpr, passcuts_coll
       common /to_use_evpr/use_evpr
+      type(fks_phase_space_point) phase_space
 
+c Share the sampled Born within this evaluation when sectors permit it.
+      phase_space%born%valid=.false.
       if (new_point .and. ifl.ne.2) then
          pass_cuts_check=.false.
       endif
+      call vs_begin_point
       if (firsttime) then
          firsttime=.false.
          call setup_ini_fin_fks_map(ini_fin_fks_map)
@@ -415,7 +340,6 @@ c PineAPPL
       virtual_over_born=0d0
       wgt_me_born=0d0
       wgt_me_real=0d0
-      if (ickkw.eq.-1) H1_factor_virt=0d0
       if (ickkw.eq.3) call set_FxFx_scale(0,p)
       call update_vegas_x(xx,x)
       if (real_channel_type.eq.1) then
@@ -432,7 +356,6 @@ c sums only the FKS sectors owned by this subprocess and real ME.
 c The nbody contributions
       if (abrv.eq.'real') goto 11
       nbody=.true.
-      calculatedBorn=.false.
       call get_born_nFKSprocess(nFKS_picked,nFKS_born)
       call update_fks_dir(nFKS_born)
       if (ini_fin_fks(ichan).eq.0) then
@@ -440,7 +363,9 @@ c The nbody contributions
       else
          jac=0.5d0
       endif
-      call generate_momenta(nndim,iconfig,jac,x,p)
+      call generate_born_contribution(nndim,iconfig,jac,x,
+     $     phase_space)
+      p=phase_space%p
       if (p_born(0,1).lt.0d0) goto 12
       call compute_prefactors_nbody(vegas_wgt)
       call set_cms_stuff(izero)
@@ -478,7 +403,6 @@ c The n+1-body contributions (including counter terms)
 
       do i=nFKS_min,nFKS_max
          iFKS=ini_fin_fks_map(ini_fin_fks(ichan),i)
-         calculatedBorn=.false. 
          ! MZ this is a temporary fix for processes without
          ! soft singularities associated to the initial state
          ! DO NOT extend this fix to event generation
@@ -486,8 +410,11 @@ c The n+1-body contributions (including counter terms)
          wgt_me_real=0d0
          jac=MC_int_wgt
          call update_fks_dir(iFKS)
-         call generate_momenta(nndim,iconfig,jac,x,p)
+         call generate_real_phase_space(nndim,iconfig,jac,x,
+     $        phase_space)
+         p=phase_space%p
          if (p_born(0,1).lt.0d0) cycle
+         call init_process_module_n1body_wrapper(dum)
          call compute_prefactors_n1body(vegas_wgt,jac)
          call set_cms_stuff(izero)
          if (ickkw.eq.3) call set_FxFx_scale(2,p1_cnt(0,1,0))
@@ -501,6 +428,9 @@ c The n+1-body contributions (including counter terms)
          if (passcuts_nbody .and. abrv.ne.'real') then
             pass_cuts_check=.true.
             call set_cms_stuff(izero)
+c Clustering the real event above overwrites the active FxFx scales.
+c Counterevents keep the scales of their underlying Born state.
+            if (ickkw.eq.3) call set_FxFx_scale(-2,p1_cnt(0,1,0))
             call set_alphaS(p1_cnt(0,1,0))
             call include_multichannel_enhance(3)
             call compute_soft_counter_term(0d0)
@@ -508,6 +438,7 @@ c The n+1-body contributions (including counter terms)
             call compute_soft_collinear_counter_term(0d0)
          endif
          if (passcuts_coll .and. abrv.ne.'real') then
+           if (ickkw.eq.3) call set_FxFx_scale(-2,p1_cnt(0,1,0))
            call set_alphaS(p1_cnt(0,1,1))
            call set_cms_stuff(ione)
            call compute_collinear_counter_term(0d0)
@@ -515,6 +446,7 @@ c The n+1-body contributions (including counter terms)
          if (passcuts_n1body) then
             pass_cuts_check=.true.
             call set_cms_stuff(mohdr)
+            if (ickkw.eq.3) call set_FxFx_scale(-3,p)
             call set_alphaS(p)
             call include_multichannel_enhance(2)
             call compute_real_emission(p,1d0)
@@ -523,15 +455,15 @@ c The n+1-body contributions (including counter terms)
       
  12   continue
 c Include PDFs and alpha_S and reweight to include the uncertainties
-      if (ickkw.eq.-1) call include_veto_multiplier
       call include_PDF_and_alphas
 
 c Include the bias weight specified in the bias_weight_function
       call include_bias_wgt
+c Fit the virtual surrogate after the PDF and bias factors are included.
+      call virt_surrogate_fit_point
 
       if (doreweight) then
-         if (do_rwgt_scale .and. ickkw.ne.-1) call reweight_scale
-         if (do_rwgt_scale .and. ickkw.eq.-1) call reweight_scale_NNLL
+         if (do_rwgt_scale) call reweight_scale
          if (do_rwgt_pdf) call reweight_pdf
       endif
       
@@ -564,19 +496,19 @@ c Finalize PS point
       return
       end
 
-      subroutine update_fks_dir(nFKS)
-      implicit none
-      include 'run.inc'
-      integer nFKS
-      integer              nFKSprocess
-      common/c_nFKSprocess/nFKSprocess
-      nFKSprocess=nFKS
-      call fks_inc_chooser()
-      call leshouche_inc_chooser()
-      call setcuts
-      call setfksfactor(.false.)
-      return
-      end
+c$$$      subroutine update_fks_dir(nFKS)
+c$$$      implicit none
+c$$$      include 'run.inc'
+c$$$      integer nFKS
+c$$$      integer              nFKSprocess
+c$$$      common/c_nFKSprocess/nFKSprocess
+c$$$      nFKSprocess=nFKS
+c$$$      call fks_inc_chooser()
+c$$$      call leshouche_inc_chooser()
+c$$$      call setcuts
+c$$$      call setfksfactor(.false.)
+c$$$      return
+c$$$      end
       
       subroutine setup_ini_fin_FKS_map(ini_fin_FKS_map)
       implicit none
@@ -587,7 +519,7 @@ c Finalize PS point
       ini_fin_FKS_map(0,0)=0
       ini_fin_FKS_map(1,0)=0
       ini_fin_FKS_map(2,0)=0
-      do iFKS=1,fks_configs
+      do iFKS=1,fks_integrated
          ini_fin_FKS_map(0,0)=ini_fin_FKS_map(0,0)+1
          ini_fin_FKS_map(0,ini_fin_FKS_map(0,0))=iFKS
          if (fks_j_d(iFKS).le.nincoming .and.
@@ -619,7 +551,7 @@ c Finalize PS point
 c
       if (firsttime) then
          firsttime=.false.
-         do iFKS=1,fks_configs
+         do iFKS=1,fks_integrated
             nFKSprocessBorn(iFKS)=0
             if ( need_color_links_D(iFKS) .or. 
      &           need_charge_links_D(iFKS) )then
@@ -628,7 +560,7 @@ c
             if (nFKSprocessBorn(iFKS).eq.0) then
 c     try to find the process that has the same j_fks but with i_fks a
 c     gluon
-               do iiFKS=1,fks_configs
+               do iiFKS=1,fks_integrated
                   if ( (need_color_links_D(iiFKS) .or.
      &                  need_charge_links_D(iiFKS)) .and.
      &                 fks_j_D(iFKS).eq.fks_j_D(iiFKS) ) then
@@ -640,7 +572,7 @@ c     gluon
 c     try to find the process that has the j_fks initial state if
 c     current j_fks is initial state (and similar for final state j_fks)
             if (nFKSprocessBorn(iFKS).eq.0) then
-               do iiFKS=1,fks_configs
+               do iiFKS=1,fks_integrated
                   if ( need_color_links_D(iiFKS) .or.
      &                 need_charge_links_D(iiFKS) ) then
                      if ( fks_j_D(iiFKS).le.nincoming .and.
@@ -657,7 +589,7 @@ c     current j_fks is initial state (and similar for final state j_fks)
             endif
 c     If still not found, just pick any one that has a soft singularity
             if (nFKSprocessBorn(iFKS).eq.0) then
-               do iiFKS=1,fks_configs
+               do iiFKS=1,fks_integrated
                   if ( need_color_links_D(iiFKS) .or.
      &                 need_charge_links_D(iiFKS) ) then
                      nFKSprocessBorn(iFKS)=iiFKS
@@ -738,7 +670,7 @@ c
 c
 c     Local
 c
-      integer i, j, kchan
+      integer i,kchan
       double precision dconfig(maxchannels)
 c
 c     Global
@@ -779,9 +711,7 @@ c
 c
 c Vegas stuff
 c
-      integer irestart,itmp
-      character * 70 idstring
-      logical savegrid
+      integer irestart
 
       logical unwgt
       double precision evtsgn
@@ -949,7 +879,7 @@ c-----
          endif
       endif
 
-      if (fks_configs.eq.1) then
+      if (fks_integrated.eq.1) then
          if (pdg_type_d(1,fks_i_d(1)).eq.-21.and.abrv.ne.'born') then
 C Two cases can occur
 C   1) the process has been generated with the LOonly flav
@@ -984,11 +914,62 @@ c
       lbw(0)=0
       end
 c
+      subroutine init_process_module_nbody_wrapper()
+      use process_module
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      include 'born_nhel.inc'
+      integer colour(1:nexternal-1),i,get_color
+      external get_color
+      double precision mass(1:nexternal-1),get_mass_from_id
+      external get_mass_from_id
+      logical valid_dipole(1:nexternal-1,1:nexternal-1,1:max_bcol)
+      integer idup(nexternal-1,maxproc)
+      integer mothup(2,nexternal-1,maxproc)
+      integer icolup(2,nexternal-1,max_bcol)
+      include 'born_leshouche.inc'
+      do i=1,nexternal-1
+         mass(i)=get_mass_from_id(idup(i,1))
+         colour(i)=get_color(idup(i,1))
+      enddo
+      valid_dipole=.false.
+      call init_process_module_nbody(nexternal-1,mass,colour
+     $     ,max_bcol,valid_dipole)
+      
+      end
+
+      
+      subroutine init_process_module_n1body_wrapper(dum)
+c Keep the calling convention of the MC wrapper, which selects a Born flow.
+      use process_module
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      integer colour(1:nexternal),i,get_color,dum
+      double precision mass(1:nexternal),get_mass_from_id
+      external get_color
+      external get_mass_from_id
+      logical valid_dipole(1:nexternal,1:nexternal)
+      integer idup(nexternal,maxproc),mothup(2,nexternal,maxproc),
+     &     dummy(2,nexternal,maxflow),niprocs
+      common /c_leshouche_inc/idup,mothup,dummy,niprocs
+      do i=1,nexternal
+         mass(i)=get_mass_from_id(idup(i,1))
+         colour(i)=get_color(idup(i,1))
+      enddo
+      valid_dipole=.false.
+      call init_process_module_n1body(nexternal,mass,colour
+     $     ,maxflow,valid_dipole)
+      end
 
       subroutine compute_hard_real_channels(ndim,id,x,p,vegas_wgt)
 c Finite real remainder of MadFKS (6.28). The full real phase space is
 c partitioned by real diagram squares. The FKS sum is local to this
 c Born subprocess: the same real process can belong to several Borns.
+      use fks_phase_space, only: generate_momenta_real_channels
+      use fks_phase_space_data, only: xi_i_fks_ev,y_ij_fks_ev,
+     $     p_i_fks_ev,p_i_fks_cnt,sqrtshat,shat
       use extra_weights
       use mint_module, only: pass_cuts_check
       implicit none
@@ -1014,13 +995,6 @@ c Born subprocess: the same real process can belong to several Borns.
       integer fks_j_from_i(nexternal,0:nexternal)
      $     ,particle_type(nexternal),pdg_type(nexternal)
       common /c_fks_inc/ fks_j_from_i,particle_type,pdg_type
-      double precision xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev(0:3)
-     $     ,p_i_fks_cnt(0:3,-2:2)
-      common /fksvariables/ xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,
-     $                      p_i_fks_cnt
-      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
-      common /parton_cms_stuff/ ybst_til_tolab,ybst_til_tocm,
-     $                         sqrtshat,shat
       double precision fkssymmetryfactor,fkssymmetryfactorBorn,
      $                 fkssymmetryfactorDeg
       integer ngluons,nquarks(-6:6),nphotons
@@ -1071,7 +1045,7 @@ c partition also covers nonzero interference with vanishing weights.
          fraction=1d0/dble(ndiagrams)
       endif
       if (fraction.eq.0d0) return
-      do sector=1,fks_configs
+      do sector=1,FKS_INTEGRATED
          if (real_sector_me(sector).ne.ime) cycle
          call update_fks_dir(sector)
          xi_i_fks_ev=2d0*p(0,i_fks)/sqrtshat
