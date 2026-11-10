@@ -1,0 +1,22 @@
+{
+  "amplitude_evaluations": 0,
+  "compiler_launches": 0,
+  "completed_cases": 0,
+  "failure": {
+    "class": "ValueError",
+    "message": "Donor is not the registered full current-source build"
+  },
+  "loader_query_launches": 0,
+  "point_streams_generated": 0,
+  "root_reported_terminal": {
+    "exit_code": 1,
+    "observation": "reported by root after actual tool terminal; not a new execution",
+    "session_id": 15086
+  },
+  "schema": "madloop-stability-failed-preparation-v2",
+  "source2_and_work2": "preserved unchanged; no scientific input changes",
+  "source_index_sha256": "57cda6ceb34620185ea4beaa282f44cd223b98742f4137cd2e711b08093682f3",
+  "stage": "prepare",
+  "status": "failed",
+  "unexecuted_requests": 20
+}

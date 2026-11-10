@@ -1,0 +1,14 @@
+{
+  "allowed_delta": "historical receipt identity join and read-only preflight only; scientific driver, formula, point generator, policy and limits unchanged",
+  "complete_generator_inventory_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+  "failed_preparation2_index_sha256": "0bd035dce3058220f04af0f3024e629bbef2e1af651b0213a70bd9a0b8b90ad8",
+  "manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+  "metadata_roles": "two exact Git metadata revisions, one identical frozen generator content inventory; no generation revision relabeling",
+  "native_stages_executed": 0,
+  "private_work_directory": ".tirust-build/stability-appendix-c-pilot-3",
+  "production_manifest_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+  "recorded_generation_revision": "584dae7875d20e881a4f9dc27bdb67f5e0fa5512",
+  "schema": "madloop-stability-source3-ancestry-v1",
+  "source1_index_sha256": "99a8101b18f511d57490e443069ee58dd4da085bdd9cf741727f69b91066348f",
+  "source2_index_sha256": "57cda6ceb34620185ea4beaa282f44cd223b98742f4137cd2e711b08093682f3"
+}

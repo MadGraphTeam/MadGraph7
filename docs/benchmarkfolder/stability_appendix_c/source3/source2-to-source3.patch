@@ -1,0 +1,350 @@
+--- source2/pilot.py
++++ source3/pilot.py
+@@ -28,11 +28,12 @@
+ HERE = Path(__file__).resolve().parent
+ ROOT = HERE.parents[3]
+ CAMPAIGN = ROOT / 'docs/benchmarkfolder/campaigns/invariant-symmetry-1'
+-WORK = ROOT / '.tirust-build/stability-appendix-c-pilot-2'
++WORK = ROOT / '.tirust-build/stability-appendix-c-pilot-3'
+ REPORT = WORK / 'evidence'
+ CASE_IDS = ('qcd_n2_gg_ttx', 'qcd_n3_uux_zgg', 'ew_n2_epem_mupmum', 'qcd_n4_uux_zzgg')
+ BACKENDS = (1, 6, 7, 8, 9)
+ REVISION = '2c13246ffa63aa357ad1e29e5e79aff63d88dc7e'
++GENERATION_REVISION = '584dae7875d20e881a4f9dc27bdb67f5e0fa5512'
+ MANIFEST_SHA = 'ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0'
+ GENERATOR_SHA = 'a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19'
+ FROZEN_DANGLING_LINKS = {
+@@ -258,9 +259,39 @@
+     return manifest, read(spec_path)
+ 
+ 
+-def donor(value, spec, case_id):
++def verify_generation_identity(generated, compiled, identity, case_id):
++    """Join frozen exporter bytes while preserving distinct Git metadata roles.
++
++    The production source anchor remains 2c13246. The closed CLI receipts were
++    recorded at 584dae7 with the exact same complete exporter file inventory.
++    Neither revision is silently substituted for the other.
++    """
++    require(identity.get('revision') == REVISION and identity.get('files_sha256') == GENERATOR_SHA
++            and isinstance(identity.get('files'), dict), 'Frozen production exporter identity differs')
++    source = generated.get('source_identity', {})
++    binding = {'id': 'invariant-symmetry-1', 'manifest_sha256': MANIFEST_SHA}
++    require(generated.get('source') == 'candidate' and generated.get('case', {}).get('id') == case_id
++            and generated.get('campaign_binding') == compiled.get('campaign_binding') == binding,
++            'Donor case/source/campaign bindings differ')
++    require(source.get('revision') == GENERATION_REVISION
++            and source.get('files_sha256') == GENERATOR_SHA
++            and source.get('files') == identity['files'],
++            'Recorded generation revision or complete exporter inventory differs')
++    require(compiled.get('numerical_build_from_sources') is True
++            and compiled.get('full_numerical_rebuild_this_invocation') is True,
++            'Donor is not the registered full numerical source build')
++    return {'production_source_revision': REVISION, 'generation_receipt_revision': GENERATION_REVISION,
++            'exporter_files_sha256': GENERATOR_SHA, 'exporter_file_count': len(identity['files']),
++            'complete_exporter_inventory_matches': True, 'campaign_binding': binding,
++            'numerical_build_from_sources': True, 'full_numerical_rebuild_this_invocation': True}
++
++
++def donor(value, spec, case_id, identity=None):
+     """Read only one of four explicitly closed exports; EW n4 is forbidden."""
+     require(case_id in CASE_IDS, 'Unregistered or potentially active case')
++    if identity is None:
++        require(digest(CAMPAIGN / 'manifest.json') == MANIFEST_SHA, 'Campaign manifest changed')
++        identity = read(CAMPAIGN / 'manifest.json')['candidate']['exporter_identity']
+     export = ROOT / '.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate' / case_id
+     retained = CAMPAIGN / 'inputs/candidate' / case_id
+     bound = spec['compiled_inputs']['candidate/' + case_id]
+@@ -268,11 +299,7 @@
+         require(digest(export / filename) == digest(retained / filename) == bound[key],
+                 'Donor build receipt differs: ' + case_id + '/' + filename)
+     generated, compiled = read(export / 'generation.json'), read(export / 'compilation.json')
+-    require(generated['source'] == 'candidate'
+-            and generated['source_identity']['files_sha256'] == GENERATOR_SHA
+-            and generated['source_identity']['revision'] == REVISION
+-            and compiled['full_numerical_rebuild_this_invocation'] is True,
+-            'Donor is not the registered full current-source build')
++    generation_binding = verify_generation_identity(generated, compiled, identity, case_id)
+     for name, checksum in compiled['sources'].items():
+         require(digest(export / name) == checksum, 'Generated scientific source differs: ' + name)
+     directories = [path.parent for path in export.glob('SubProcesses/P*/check_sa.f')]
+@@ -302,6 +329,7 @@
+     require(metadata['inputs']['count'] == 100 and len(compiled['masses'])
+             == compiled['worker_render_parameters']['nexternal'], 'Unexpected mass probe dimensions')
+     return {'export': str(export), 'subprocess': str(directory.relative_to(export)),
++            'generation_binding': generation_binding,
+             'compiled': compiled, 'original_points': str(points), 'mass_inputs': metadata['inputs'],
+             'physical_card_sha256': bound['param_card_sha256'], 'runtime': bound['runtime'],
+             'closed_case_receipt': {'path': str(numerical / 'results.json'), 'sha256': digest(numerical / 'results.json')}}
+@@ -630,6 +658,125 @@
+             'include': '\n'.join(lines) + '\n'}
+ 
+ 
++def process_prerequisites(directory, compiled):
++    """Inspect the canonical make prerequisites without invoking GNU make.
++
++    Only the literal PROCESS object names and its frozen patsubst/wildcard
++    idiom are supported. A changed make expression fails rather than causing
++    an implicit numerical rebuild or an unreviewed expression evaluation.
++    """
++    directory = Path(directory)
++    definitions = (directory.parent / 'MadLoop_makefile_definitions').read_text()
++    require(re.search(r'^\s*DOTO\s*=\s*%\.o\s*$', definitions, re.M)
++            and re.search(r'^\s*DOTF\s*=\s*%\.f\s*$', definitions, re.M),
++            'Unsupported canonical make object/source suffixes')
++    text = (directory / 'makefile').read_text().replace('\\\n', ' ')
++    assignments = re.findall(r'^PROCESS\s*=([^\n]*)$', text, re.M)
++    require(len(assignments) == 1, 'Exactly one canonical PROCESS assignment required')
++    wildcard = re.compile(r'\$\(patsubst\s+\$\(DOTF\),\$\(DOTO\),\$\(wildcard\s+([^()]+)\)\)')
++    def expand(match):
++        patterns = match.group(1).split()
++        require(patterns and all(re.fullmatch(r'[A-Za-z0-9_*?.]+\.f', pattern) for pattern in patterns),
++                'Unsupported canonical PROCESS wildcard')
++        return ' '.join(path.with_suffix('.o').name for pattern in patterns
++                        for path in sorted(directory.glob(pattern)) if path.is_file())
++    names = wildcard.sub(expand, assignments[0]).split()
++    require(names and len(names) == len(set(names))
++            and all(re.fullmatch(r'[A-Za-z0-9_]+\.o', name) for name in names),
++            'Unsupported or duplicate PROCESS object expression')
++    objects = {}
++    for name in names:
++        path = directory / name
++        require(path.is_file(), 'Missing frozen numerical object: ' + name)
++        objects[name] = {'sha256': digest(path), 'resolved': str(path.resolve())}
++    require(compiled['link_inputs_before'] == compiled['link_inputs_after'], 'Original link input bindings differ')
++    for records in compiled['link_inputs_before'].values():
++        for name, checksum in records.items():
++            require(Path(name).is_file() and digest(name) == checksum, 'Missing or changed original link input: ' + name)
++    includes = {}
++    for name in ('coupl.inc', 'MadLoopParams.inc', 'loop_max_coefs.inc', 'nsqso_born.inc'):
++        path = directory / name
++        require(path.is_file(), 'Missing private driver include prerequisite: ' + name)
++        includes[name] = {'sha256': digest(path), 'resolved': str(path.resolve())}
++    export = directory.parents[1]
++    settings = compiled['settings']
++    require({'Source/make_opts', 'SubProcesses/MadLoop_makefile_definitions'}.issubset(settings),
++            'Original build settings do not bind the make include files')
++    for name, expected in settings.items():
++        require((export / name).read_text() == expected, 'Frozen make include text differs: ' + name)
++    return {'numerical_objects': objects, 'driver_includes': includes,
++            'original_link_inputs': compiled['link_inputs_before'],
++            'makefile_sha256': digest(directory / 'makefile'),
++            'make_include_sha256': {name: digest(export / name) for name in settings},
++            'scope': 'current read-only prerequisite freeze; original numerical object bytes were not recorded separately'}
++
++
++def readonly_preflight(value, helpers):
++    """Exercise every donor admission path without creating any work namespace.
++
++    Parent orchestration pins and loads this source and the read-only links
++    helper before calling. No CLI, compiler, loader, point generator, native
++    worker, or file-writing helper is invoked. Per-case failures are retained
++    in the returned structure so all four closed donors can be examined.
++    """
++    require(not WORK.exists() and not WORK.is_symlink(), 'Preflight requires a fresh, absent work namespace')
++    manifest, spec = verify_production(value)
++    links = helpers['links']
++    identity = manifest['candidate']['exporter_identity']
++    rows = []; guards = []
++    for case in CASE_IDS:
++        row = {'case': case, 'status': 'failed'}
++        try:
++            data = donor(value, spec, case, identity)
++            export = Path(data['export']); directory = export / data['subprocess']
++            snapshot = links.tree_snapshot(export)
++            audit = link_audit(links, snapshot)
++            links._guard_writes(export, snapshot)
++            inventories, leaves, observations, transitive = links._external_parts(audit)
++            files, directories, nodes = links._allowed_graph(inventories + [snapshot], leaves, observations, transitive)
++            links._admit_links(inventories + [snapshot], files, directories, nodes)
++            guards.append((export, snapshot, audit))
++            layout = group_layout(directory, data['compiled']['worker_render_parameters']['prefix'])
++            template = (HERE / 'stability_worker.f').read_text()
++            rendered = render(template, data['compiled']['worker_render_parameters'])
++            compiler = data['compiled']['effective_compiler_flags']['scopes']['process']['recipes']['check_sa.f']['compiler']
++            require(len(compiler) == 1 and Path(compiler[0]['path']).is_file()
++                    and digest(compiler[0]['path']) == compiler[0]['sha256'], 'Recorded compiler bytes differ')
++            shell = shutil.which('bash', path=environment(directory)['PATH'])
++            require(shell is not None and os.access(shell, os.X_OK), 'Environment Bash is missing or not executable')
++            loader = elf_interpreter(directory / 'check')
++            runtime = {str(Path(path).resolve()): checksum for path, checksum in data['runtime']['libraries'].items()}
++            require(runtime.get(str(loader)) == digest(loader), 'Actual donor PT_INTERP is not in its bound runtime')
++            prerequisites = process_prerequisites(directory, data['compiled'])
++            row.update(status='passed', generation_binding=data['generation_binding'],
++                build_receipts={name: digest(export / name) for name in ('generation.json', 'compilation.json')},
++                source_snapshot={'entry_count': snapshot['entry_count'],
++                                 'canonical_entries_sha256': snapshot['canonical_entries_sha256']},
++                external_graph=links.verify_external_graph(audit), group_layout=layout,
++                worker_template_sha256=digest(HERE / 'stability_worker.f'),
++                rendered_worker_sha256=hashlib.sha256(rendered.encode()).hexdigest(),
++                planned_make_addendum_sha256=hashlib.sha256(MAKEFILE.encode()).hexdigest(),
++                compiler=compiler[0], shell={'path': str(Path(shell).resolve()), 'sha256': digest(shell)},
++                target_interpreter={'path': str(loader), 'sha256': digest(loader), 'executed': False},
++                prerequisites=prerequisites)
++        except Exception as error:
++            row['error'] = {'class': type(error).__name__, 'message': str(error)}
++        rows.append(row)
++    for export, snapshot, audit in guards:
++        links.verify_tree(export, snapshot)
++        links.verify_external_graph(audit)
++    verify_production(value)
++    require(not WORK.exists() and not WORK.is_symlink(), 'Read-only preflight created a work namespace')
++    return {'schema': 'madloop-appendix-c-readonly-donor-preflight-v1',
++        'status': 'passed' if all(row['status'] == 'passed' for row in rows) else 'failed',
++        'production_source_revision': REVISION, 'generation_receipt_revision': GENERATION_REVISION,
++        'manifest_sha256': MANIFEST_SHA, 'exporter_files_sha256': GENERATOR_SHA,
++        'case_count': len(rows), 'cases': rows, 'commands_executed': 0,
++        'compiler_invocations': 0, 'loader_invocations': 0, 'amplitude_evaluations': 0,
++        'point_generation_calls': 0, 'work_namespace_written': False,
++        'read_only_inputs_unchanged_after_all_cases': True}
++
++
+ def private_changes(links, output, context, changed, allowed_additions=()):
+     """Allow only declared local products; no new symlink or external write."""
+     observed = links.tree_snapshot(output)
+@@ -659,7 +806,7 @@
+     try:
+         manifest, spec = verify_production(value)
+         # Admit every donor before point generation, copies, or any child launch.
+-        donors = {case: donor(value, spec, case) for case in CASE_IDS}
++        donors = {case: donor(value, spec, case, manifest['candidate']['exporter_identity']) for case in CASE_IDS}
+         with signal_requests(helpers['cleanup']) as signals:
+             for case, data in donors.items():
+                 inputs = data['mass_inputs']
+--- source2/test_pilot.py
++++ source3/test_pilot.py
+@@ -577,6 +577,123 @@
+                 pilot.runtime_binding(path, executable, {str(shared): pilot.digest(shared)})
+ 
+ 
++class RecordedGenerationIdentity(unittest.TestCase):
++    @staticmethod
++    def fixture():
++        binding = {'id': 'invariant-symmetry-1', 'manifest_sha256': pilot.MANIFEST_SHA}
++        files = {'generator.py': 'a' * 64, 'frozen-link': None}
++        identity = {'revision': pilot.REVISION, 'files_sha256': pilot.GENERATOR_SHA, 'files': files}
++        generated = {'source': 'candidate', 'case': {'id': pilot.CASE_IDS[0]},
++                     'campaign_binding': dict(binding), 'source_identity': {
++                         'revision': pilot.GENERATION_REVISION, 'files_sha256': pilot.GENERATOR_SHA,
++                         'files': dict(files)}}
++        compiled = {'campaign_binding': dict(binding), 'numerical_build_from_sources': True,
++                    'full_numerical_rebuild_this_invocation': True}
++        return generated, compiled, identity
++
++    def test_recorded_generation_revision_and_production_anchor_have_distinct_roles(self):
++        generated, compiled, identity = self.fixture()
++        result = pilot.verify_generation_identity(generated, compiled, identity, pilot.CASE_IDS[0])
++        self.assertNotEqual(result['generation_receipt_revision'], result['production_source_revision'])
++        self.assertEqual(result['production_source_revision'], pilot.REVISION)
++        self.assertEqual(result['generation_receipt_revision'], '584dae7875d20e881a4f9dc27bdb67f5e0fa5512')
++        self.assertTrue(result['complete_exporter_inventory_matches'])
++
++    def test_production_anchor_cannot_substitute_for_generation_receipt_revision(self):
++        generated, compiled, identity = self.fixture()
++        generated['source_identity']['revision'] = pilot.REVISION
++        with self.assertRaisesRegex(ValueError, 'Recorded generation revision'):
++            pilot.verify_generation_identity(generated, compiled, identity, pilot.CASE_IDS[0])
++
++    def test_generation_revision_cannot_replace_production_anchor(self):
++        generated, compiled, identity = self.fixture()
++        identity['revision'] = pilot.GENERATION_REVISION
++        with self.assertRaisesRegex(ValueError, 'production exporter identity'):
++            pilot.verify_generation_identity(generated, compiled, identity, pilot.CASE_IDS[0])
++
++    def test_digest_string_cannot_hide_changed_or_incomplete_exporter_files(self):
++        for change in ('modify', 'remove', 'add'):
++            with self.subTest(change=change):
++                generated, compiled, identity = self.fixture()
++                files = generated['source_identity']['files']
++                if change == 'modify': files['generator.py'] = 'b' * 64
++                elif change == 'remove': del files['frozen-link']
++                else: files['unexpected.py'] = 'c' * 64
++                with self.assertRaisesRegex(ValueError, 'complete exporter inventory'):
++                    pilot.verify_generation_identity(generated, compiled, identity, pilot.CASE_IDS[0])
++
++    def test_both_full_numerical_build_flags_are_required(self):
++        for key in ('numerical_build_from_sources', 'full_numerical_rebuild_this_invocation'):
++            for wrong in (False, 1, None):
++                with self.subTest(key=key, wrong=wrong):
++                    generated, compiled, identity = self.fixture(); compiled[key] = wrong
++                    with self.assertRaisesRegex(ValueError, 'full numerical source build'):
++                        pilot.verify_generation_identity(generated, compiled, identity, pilot.CASE_IDS[0])
++
++    def test_both_campaign_bindings_and_case_source_must_match(self):
++        for field in ('generation_campaign', 'compilation_campaign', 'case', 'source'):
++            with self.subTest(field=field):
++                generated, compiled, identity = self.fixture()
++                if field == 'generation_campaign': generated['campaign_binding']['manifest_sha256'] = '0' * 64
++                elif field == 'compilation_campaign': compiled['campaign_binding']['id'] = 'other'
++                elif field == 'case': generated['case']['id'] = pilot.CASE_IDS[1]
++                else: generated['source'] = 'baseline'
++                with self.assertRaisesRegex(ValueError, 'case/source/campaign bindings'):
++                    pilot.verify_generation_identity(generated, compiled, identity, pilot.CASE_IDS[0])
++
++
++class ReadonlyPrerequisites(unittest.TestCase):
++    @staticmethod
++    def fixture(root):
++        directory = root / 'SubProcesses/P0_test'; directory.mkdir(parents=True)
++        (root / 'Source').mkdir()
++        definitions = 'DOTO = %.o\nDOTF = %.f\n'
++        (root / 'SubProcesses/MadLoop_makefile_definitions').write_text(definitions)
++        (root / 'Source/make_opts').write_text('FFLAGS = -w -fPIC\n')
++        (directory / 'makefile').write_text(
++            'PROCESS= fixed.o ' + chr(92) + chr(10)
++            + ' $(patsubst $(DOTF),$(DOTO),$(wildcard numerical*.f))' + chr(10))
++        (directory / 'fixed.o').write_bytes(b'fixed-object')
++        (directory / 'numerical1.f').write_bytes(b'      END\n')
++        (directory / 'numerical1.o').write_bytes(b'numerical-object')
++        (directory / 'unused.f').write_bytes(b'      END\n')
++        for name in ('coupl.inc', 'MadLoopParams.inc', 'loop_max_coefs.inc', 'nsqso_born.inc'):
++            (directory / name).write_text('C     fixture\n')
++        archive = root / 'frozen.a'; archive.write_bytes(b'archive')
++        inputs = {'archives': {str(archive): pilot.digest(archive)}, 'metadata': {}}
++        compiled = {'link_inputs_before': inputs, 'link_inputs_after': dict(inputs), 'settings': {
++            'Source/make_opts': 'FFLAGS = -w -fPIC\n', 'SubProcesses/MadLoop_makefile_definitions': definitions}}
++        return directory, compiled
++
++    def test_canonical_process_objects_are_expanded_without_make_or_unused_helpers(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            directory, compiled = self.fixture(Path(tmp))
++            with mock.patch.object(pilot.subprocess, 'Popen', side_effect=AssertionError('make invoked')):
++                result = pilot.process_prerequisites(directory, compiled)
++            self.assertEqual(set(result['numerical_objects']), {'fixed.o', 'numerical1.o'})
++            self.assertEqual(len(result['driver_includes']), 4)
++
++    def test_missing_object_or_changed_link_input_fails_before_any_command(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp); directory, compiled = self.fixture(root)
++            (directory / 'fixed.o').unlink()
++            with self.assertRaisesRegex(ValueError, 'Missing frozen numerical object'):
++                pilot.process_prerequisites(directory, compiled)
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp); directory, compiled = self.fixture(root)
++            (root / 'frozen.a').write_bytes(b'changed')
++            with self.assertRaisesRegex(ValueError, 'changed original link input'):
++                pilot.process_prerequisites(directory, compiled)
++
++    def test_new_make_expression_requires_explicit_audit(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            directory, compiled = self.fixture(Path(tmp))
++            (directory / 'makefile').write_text('PROCESS=$(shell unexpected-command)\n')
++            with mock.patch.object(pilot.subprocess, 'Popen', side_effect=AssertionError('shell invoked')):
++                with self.assertRaisesRegex(ValueError, 'PROCESS object expression'):
++                    pilot.process_prerequisites(directory, compiled)
++
++
+ class FrozenSourceInventory(unittest.TestCase):
+     @staticmethod
+     def fixture(root):
+--- source2/protocol.json
++++ source3/protocol.json
+@@ -7,7 +7,7 @@
+   "candidate_source_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+   "candidate_library_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+   "working_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+-  "private_work_directory": ".tirust-build/stability-appendix-c-pilot-2",
++  "private_work_directory": ".tirust-build/stability-appendix-c-pilot-3",
+   "point_count_per_process": 100,
+   "center_of_mass_energy_GeV": 1000,
+   "backends": [
