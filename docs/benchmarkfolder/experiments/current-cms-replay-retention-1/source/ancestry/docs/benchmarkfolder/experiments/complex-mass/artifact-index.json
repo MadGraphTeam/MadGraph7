@@ -1,0 +1,2014 @@
+{
+  "files": [
+    {
+      "bytes": 6277,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/README.md",
+      "sha256": "92dd347a691d9e9ce7bdf4e6b7703a207649672f0174049cb13be9a1ca37ced4"
+    },
+    {
+      "bytes": 718,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/commands/baseline-cms_ew_n2_epem_mupmum.mg5",
+      "sha256": "7396f95a73e409a1a9d26c09367aed3b1c811f15c579ed4ef8bb598fdb496b77"
+    },
+    {
+      "bytes": 807,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/commands/candidate-cms_ew_n2_epem_mupmum.mg5",
+      "sha256": "c04a9108da4fa64568ceb7f5c435c46ec05874bef1e9931e81d9e4627c2ab641"
+    },
+    {
+      "bytes": 14847,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/commands/generate-baseline-cms_ew_n2_epem_mupmum.log",
+      "sha256": "ca4f0277c6ddd44d4d98589dc057d9388d640916808309acc5e3f21cf6af5aea"
+    },
+    {
+      "bytes": 14452,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/commands/generate-candidate-cms_ew_n2_epem_mupmum.log",
+      "sha256": "e7fffcab0ba1f2c035d4fbb2442ad3272d3bbea6b2342e0d1a744e1e649e4cef"
+    },
+    {
+      "bytes": 13911,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/MadLoopParams.dat",
+      "sha256": "2e5155bc1f0315fd8a1b06f0720c245bc5f4db7fe3d52917eac14580ad19ebf4"
+    },
+    {
+      "bytes": 388,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/PS.input",
+      "sha256": "093ccfe4ed301127a13963f562d821ff570f5692a0557ab09452c5a7dd6f87cf"
+    },
+    {
+      "bytes": 5979,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/README.md",
+      "sha256": "0b1bdee8003d0fcd11a12a8818c8ec051cca98bd204364914cea892b6f509a7c"
+    },
+    {
+      "bytes": 14608,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/MadLoopParams.dat",
+      "sha256": "2f9fe94df73513c41b037e3c8ba81a20f91120302dc64a2e7a0abb4edfcedef3"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 4552,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/analyze.py",
+      "sha256": "0a72a505cd7c1e41da2409f2b312732878fa873b44c9bd9ddddda146934ef606"
+    },
+    {
+      "bytes": 2333,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/build.log",
+      "sha256": "929599fd275430a8ef80f89e76047baf50b569ed60d7e8ef7c61084dd957211d"
+    },
+    {
+      "bytes": 192792,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/cms_actual_mp_matrices.dat",
+      "sha256": "1cd23bdb9c4d10ad560a503ff74e215ed0153240b9c93c3d32acdaf9f9b30ea9"
+    },
+    {
+      "bytes": 21187,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/output.log",
+      "sha256": "bbe5edb3d2d4d71885b1171a57afbe689cb94c3da9aeb5990df131cae3e44ddd"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/result.dat",
+      "sha256": "d6465f727ae8978aa39a58077774839c0ccbcd6e52164604c3b9adb51caa411c"
+    },
+    {
+      "bytes": 963,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/specification.json",
+      "sha256": "6fc95a335a41f22f006327857bb5d66c2e5f5de8985798d0b6e499cee7561830"
+    },
+    {
+      "bytes": 1206,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/summary.json",
+      "sha256": "a7d6b63f22c07f53ca3675d4decdb12626b05f24946c6f3bf0fda1a3957acb08"
+    },
+    {
+      "bytes": 561,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/trace-insertion.f",
+      "sha256": "42192f133cd7d83727e9d17b591e5778d78bf02f8d2dad68394272540bc9925b"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-1-point20-osthres-1e-14/MadLoopParams.dat",
+      "sha256": "59913c496499db496deda4e6080a32a23fe5ac30d2c1f863e378cd41439592a3"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-1-point20-osthres-1e-14/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 22849,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-1-point20-osthres-1e-14/output.log",
+      "sha256": "fbace3d167b20b63f44454ea089aa02e5f3af89d5c20d0c6cf9ab6742278aaa5"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-1-point20-osthres-1e-14/result.dat",
+      "sha256": "046c415527c6931246364dcebc23506debf48edfeab2495105c299fc19529d98"
+    },
+    {
+      "bytes": 4851,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-1-point20-osthres-1e-14/run_case.py",
+      "sha256": "9cc5672addb02141a06c467f881d1826c5e0bb1aaf38114c3d2855531c245016"
+    },
+    {
+      "bytes": 783,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-1-point20-osthres-1e-14/status.json",
+      "sha256": "c416d5c460968b6b4c332f3ec54d555a8763d506825904781bccca65b7aed4d6"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point20-osthres-1e-24/MadLoopParams.dat",
+      "sha256": "afc33dba60bf52e880fbf46f1407c523bb5da845a46190f82046d6606b82358a"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point20-osthres-1e-24/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 25404,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point20-osthres-1e-24/output.log",
+      "sha256": "b3b4054d00db8eee0f4f2cb70b668a100765a99b455ba3d847efdb21d92d8ece"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point20-osthres-1e-24/result.dat",
+      "sha256": "7ea4401497b0528462fb83d7861aac52a1593ab4fa1138e6b3b7d37629ecaccb"
+    },
+    {
+      "bytes": 4605,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point20-osthres-1e-24/run_case.py",
+      "sha256": "4796a27f3025b76370ac7a322e3374dd3b8f05028ca6b1f558ade0d3ba722384"
+    },
+    {
+      "bytes": 785,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point20-osthres-1e-24/status.json",
+      "sha256": "4053f17c4c900eb17430ab8cdd21dbd557e36bcaa89b820a235c9e017ff66fd9"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point21-osthres-1e-24/MadLoopParams.dat",
+      "sha256": "afc33dba60bf52e880fbf46f1407c523bb5da845a46190f82046d6606b82358a"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point21-osthres-1e-24/PS.input",
+      "sha256": "c43c8daf2fa81c31f7f72066eeed6d89832ae86556695bc6449b39b2164c472d"
+    },
+    {
+      "bytes": 25404,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point21-osthres-1e-24/output.log",
+      "sha256": "d0bf10cf932c742a6cf3931adf976b6817ebff2c29dcf23fb969ed436db68b35"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point21-osthres-1e-24/result.dat",
+      "sha256": "d84d1f9f5df1b067b782ee866521320a66772378abaf1e615cc5b805e3af213d"
+    },
+    {
+      "bytes": 4851,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point21-osthres-1e-24/run_case.py",
+      "sha256": "9cc5672addb02141a06c467f881d1826c5e0bb1aaf38114c3d2855531c245016"
+    },
+    {
+      "bytes": 785,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-6-point21-osthres-1e-24/status.json",
+      "sha256": "dd7bf1dc2307fd4a2b609dd2fbe6c772284e1a1b7bd6bee96c3b1144334492a7"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point1-osthres-1e-24/MadLoopParams.dat",
+      "sha256": "bd9f2770bcee0e84c1d9ab1e9bfc5785f63bf810bc571a5804fddb2950fea46a"
+    },
+    {
+      "bytes": 388,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point1-osthres-1e-24/PS.input",
+      "sha256": "093ccfe4ed301127a13963f562d821ff570f5692a0557ab09452c5a7dd6f87cf"
+    },
+    {
+      "bytes": 21017,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point1-osthres-1e-24/output.log",
+      "sha256": "ff85078768acd31d8955622e01cb80e61263dcde51588dbebc3b3f20588fc621"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point1-osthres-1e-24/result.dat",
+      "sha256": "e89090298187898c6b9b7dd32a75cae42a8d7bd9a2fbcc3647983c64c5c18f48"
+    },
+    {
+      "bytes": 4605,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point1-osthres-1e-24/run_case.py",
+      "sha256": "4796a27f3025b76370ac7a322e3374dd3b8f05028ca6b1f558ade0d3ba722384"
+    },
+    {
+      "bytes": 783,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point1-osthres-1e-24/status.json",
+      "sha256": "1cfe243096fe25dde7c60e0d6c76e042d7274f7bf869527e4523e4e84bc375f5"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point20-osthres-1e-24/MadLoopParams.dat",
+      "sha256": "bd9f2770bcee0e84c1d9ab1e9bfc5785f63bf810bc571a5804fddb2950fea46a"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point20-osthres-1e-24/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 21017,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point20-osthres-1e-24/output.log",
+      "sha256": "bb89a2c2957d330083085d7eaa76c4f29a458a2a6c33968920b7220beccf3dbd"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point20-osthres-1e-24/result.dat",
+      "sha256": "6a819d944f2e44ae6c6b4521b58e17b4942c63f414c7020d258d55b663218fad"
+    },
+    {
+      "bytes": 4605,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point20-osthres-1e-24/run_case.py",
+      "sha256": "4796a27f3025b76370ac7a322e3374dd3b8f05028ca6b1f558ade0d3ba722384"
+    },
+    {
+      "bytes": 784,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point20-osthres-1e-24/status.json",
+      "sha256": "efb7f63e2bc84775888ada29dd2ebc6b5215339d35f89d30437aa854debd60c7"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point21-osthres-1e-24/MadLoopParams.dat",
+      "sha256": "bd9f2770bcee0e84c1d9ab1e9bfc5785f63bf810bc571a5804fddb2950fea46a"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point21-osthres-1e-24/PS.input",
+      "sha256": "c43c8daf2fa81c31f7f72066eeed6d89832ae86556695bc6449b39b2164c472d"
+    },
+    {
+      "bytes": 21017,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point21-osthres-1e-24/output.log",
+      "sha256": "18958920d22f19a6cbd50b00ff13e98ee73f8f51cd368491ba76989623286bba"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point21-osthres-1e-24/result.dat",
+      "sha256": "9905a6e0a5bcc243cffb8fcbbd2f39c210910b9098d34639fa44792737329d2d"
+    },
+    {
+      "bytes": 4851,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point21-osthres-1e-24/run_case.py",
+      "sha256": "9cc5672addb02141a06c467f881d1826c5e0bb1aaf38114c3d2855531c245016"
+    },
+    {
+      "bytes": 784,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-point21-osthres-1e-24/status.json",
+      "sha256": "86a3a3d20f7bff7f2ca92dd73c39c2bd146d2a86e95a8f0ea902573af90b4d04"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-qp-result.dat",
+      "sha256": "e89090298187898c6b9b7dd32a75cae42a8d7bd9a2fbcc3647983c64c5c18f48"
+    },
+    {
+      "bytes": 222,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-qp-status.json",
+      "sha256": "1678e8ea57fa7e88f9fb4d4c303ac00344fe8eda70fdd5a0a05c1c0e1c3ce7d3"
+    },
+    {
+      "bytes": 21017,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-8-qp.log",
+      "sha256": "cd67a25d06348f283fd2cb0950bbaa3aac23223537c2e90035a7369718c3f203"
+    },
+    {
+      "bytes": 14608,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point1-default/MadLoopParams.dat",
+      "sha256": "7304640645aa534486b3c9b476a936a247314073f2d60a04a6f1a7a29bdb03bd"
+    },
+    {
+      "bytes": 388,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point1-default/PS.input",
+      "sha256": "093ccfe4ed301127a13963f562d821ff570f5692a0557ab09452c5a7dd6f87cf"
+    },
+    {
+      "bytes": 21187,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point1-default/output.log",
+      "sha256": "2fb287143493dfdd651d9f8b56403328b77cfe2aa4a13fd6d4397b4366ae8f92"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point1-default/result.dat",
+      "sha256": "cee48fd5d039e5d9119fb6bd37bc4ec6de35729e80413cfa1773ab91e06da111"
+    },
+    {
+      "bytes": 4851,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point1-default/run_case.py",
+      "sha256": "9cc5672addb02141a06c467f881d1826c5e0bb1aaf38114c3d2855531c245016"
+    },
+    {
+      "bytes": 784,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point1-default/status.json",
+      "sha256": "b78087635fa612ebae9cccb2bcedc155be02b25fb8594f51739fad13fe80bf07"
+    },
+    {
+      "bytes": 14608,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-14/MadLoopParams.dat",
+      "sha256": "f9bd4503722ad77a5524bd21467ff9999ea6eeb69396a6f76eec37a4ccd7bf78"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-14/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 21187,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-14/output.log",
+      "sha256": "0b94578894ad90189f6e67b32da5a62bc9df04bf7ba387bb48c340bf510e4b41"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-14/result.dat",
+      "sha256": "d6465f727ae8978aa39a58077774839c0ccbcd6e52164604c3b9adb51caa411c"
+    },
+    {
+      "bytes": 4851,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-14/run_case.py",
+      "sha256": "9cc5672addb02141a06c467f881d1826c5e0bb1aaf38114c3d2855531c245016"
+    },
+    {
+      "bytes": 786,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-14/status.json",
+      "sha256": "7548d61fe6bda3a17f4542d70ad978f5dc9cea785736a76612cfc74558c9b6cb"
+    },
+    {
+      "bytes": 14608,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-24/MadLoopParams.dat",
+      "sha256": "2f9fe94df73513c41b037e3c8ba81a20f91120302dc64a2e7a0abb4edfcedef3"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-24/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 21187,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-24/output.log",
+      "sha256": "bbe5edb3d2d4d71885b1171a57afbe689cb94c3da9aeb5990df131cae3e44ddd"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-24/result.dat",
+      "sha256": "d6465f727ae8978aa39a58077774839c0ccbcd6e52164604c3b9adb51caa411c"
+    },
+    {
+      "bytes": 4851,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-24/run_case.py",
+      "sha256": "9cc5672addb02141a06c467f881d1826c5e0bb1aaf38114c3d2855531c245016"
+    },
+    {
+      "bytes": 786,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point20-osthres-1e-24/status.json",
+      "sha256": "e0c9d445d0d14a21ca40df575dcf647d11a5e56214b67f0065a441b6851a5817"
+    },
+    {
+      "bytes": 14608,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point21-osthres-1e-24/MadLoopParams.dat",
+      "sha256": "2f9fe94df73513c41b037e3c8ba81a20f91120302dc64a2e7a0abb4edfcedef3"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point21-osthres-1e-24/PS.input",
+      "sha256": "c43c8daf2fa81c31f7f72066eeed6d89832ae86556695bc6449b39b2164c472d"
+    },
+    {
+      "bytes": 21187,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point21-osthres-1e-24/output.log",
+      "sha256": "662b3a9debd50b1c17b3d5fbc8d79260f9f7aabd25ee8cc2f19f87dbb1010b4e"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point21-osthres-1e-24/result.dat",
+      "sha256": "9905a6e0a5bcc243cffb8fcbbd2f39c210910b9098d34639fa44792737329d2d"
+    },
+    {
+      "bytes": 4851,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point21-osthres-1e-24/run_case.py",
+      "sha256": "9cc5672addb02141a06c467f881d1826c5e0bb1aaf38114c3d2855531c245016"
+    },
+    {
+      "bytes": 785,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/backend-9-point21-osthres-1e-24/status.json",
+      "sha256": "19990aa543af84719959de89696ca7610be2e528a197e3d325bc45430ad0d114"
+    },
+    {
+      "bytes": 1992,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/build-formatted.log",
+      "sha256": "6212de2d4e8d465b981d4a15afa929586a71e32ca3d564f01bde236e7fa0992d"
+    },
+    {
+      "bytes": 3901,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/build-shell-override.log",
+      "sha256": "801c3a0b9ec8ec7232ed8e232e1b2ec7308d91d972264d7efa176f5962da457a"
+    },
+    {
+      "bytes": 517,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/build.log",
+      "sha256": "72fc3b87970f4954f8b50704e5dbd85cfbb49ad0d0078bd302147c2a157b9a51"
+    },
+    {
+      "bytes": 14607,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/candidate-MadLoopParams.dat",
+      "sha256": "00b8b6d607a96e876491f5f88a7a66e4a739efa89ffde969d6ba700ec66537c8"
+    },
+    {
+      "bytes": 226,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/candidate-build.json",
+      "sha256": "e62012384ed929317173427fdcaa40924bffa053608f093815b002398281f507"
+    },
+    {
+      "bytes": 3359,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/candidate-build.log",
+      "sha256": "249ba6d4e3a2a2af6bbd087de0aa81337e5aa8fa6cb39d8586113a6c155ca87d"
+    },
+    {
+      "bytes": 22903,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/check_sa.f",
+      "sha256": "71fd705799138e38ab8bb01bdd18da9e13e57875e7c1087b059799aa73d0d712"
+    },
+    {
+      "bytes": 3497,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/check_shell_audit.py",
+      "sha256": "0b4346ae12bf382d13f89ffcff98bb0128dee4ef54bd2d10fa00aa3373a37826"
+    },
+    {
+      "bytes": 363,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_audit-validation.json",
+      "sha256": "d5e8f26cf2f9b95ff48f9afa5cefd6d3895feca5a08ce695bf7d40efab564b25"
+    },
+    {
+      "bytes": 70967,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_audit.json",
+      "sha256": "73774fe4c767f79d99c35e2e238eeccdcdac1a0dee7e3681d9379c9653a7d0c2"
+    },
+    {
+      "bytes": 3587,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_probe-build.json",
+      "sha256": "bdd90772434ad595dc7c92d809aec1f87d59c3b9a6cf016d2fb0fd7595ebda39"
+    },
+    {
+      "bytes": 201684,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_probe.dat",
+      "sha256": "c6fe2063ac98c1dd3b95597e8874ce534ec61271d1b9692dfec69b302c3f12ba"
+    },
+    {
+      "bytes": 1629,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_probe.f",
+      "sha256": "ac3e285fb275da0dfe71042590a152900ff6d850c344341ea5c27e20653ec2e1"
+    },
+    {
+      "bytes": 7046,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/README.md",
+      "sha256": "96010d8e96b9ad213d805bb8d0326058b0dd6f2f616a05101ae0f177bbd57ce5"
+    },
+    {
+      "bytes": 11619,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/analyze.py",
+      "sha256": "0acb7b3ca480c060980f3d6ed0d011da0544e81995780753196c397f4815d49e"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-original-threshold/MadLoopParams.dat",
+      "sha256": "59913c496499db496deda4e6080a32a23fe5ac30d2c1f863e378cd41439592a3"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-original-threshold/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-original-threshold/cuttools_onshell.input",
+      "sha256": "4e41a0252d2f09d38540c7969ef790f2f8ef723513d3afe47176c6348f08ce92"
+    },
+    {
+      "bytes": 862404,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-original-threshold/output.log",
+      "sha256": "0d3d91f7f2163ed7afab7c8572fe097c28a5531c4526ceb568208ed2b26954e8"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-original-threshold/result.dat",
+      "sha256": "046c415527c6931246364dcebc23506debf48edfeab2495105c299fc19529d98"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-original-threshold/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 1143,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-original-threshold/status.json",
+      "sha256": "2af92bf52cde968b406d5bb3963938ea91bb68dca8315319bdb5334e7fe6941b"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10/MadLoopParams.dat",
+      "sha256": "59913c496499db496deda4e6080a32a23fe5ac30d2c1f863e378cd41439592a3"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10/cuttools_onshell.input",
+      "sha256": "36bfb7bc83a0fc36d15c9890244b1d1b880acf8da39549fbdf89d0b65f1d33bb"
+    },
+    {
+      "bytes": 858020,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10/output.log",
+      "sha256": "7e7d630841d92acdb96f7087ce33b9d6ee036d00ba0c834aba8d59dd6b4a17be"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10/result.dat",
+      "sha256": "d4e5cd7034fc991c387e7af3dd838be1491f1ff7fd55b55b03b0be746334cdfd"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 1142,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10/status.json",
+      "sha256": "2c47cee7a10f7f88a31c549def66ce6f7385c933a4d7eb9ed84af68068add85c"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-both/MadLoopParams.dat",
+      "sha256": "a99e487f5ef27caabf9961af3ccf3eabe9eb75cbc23627726eddbe790195a0f0"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-both/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-both/cuttools_onshell.input",
+      "sha256": "36bfb7bc83a0fc36d15c9890244b1d1b880acf8da39549fbdf89d0b65f1d33bb"
+    },
+    {
+      "bytes": 1693084,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-both/output.log",
+      "sha256": "e6cde3beec2e56c3574ae71421a0bdcd0e2c88ffc7a7991da5ef5ddcecd90bc0"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-both/result.dat",
+      "sha256": "d4e5cd7034fc991c387e7af3dd838be1491f1ff7fd55b55b03b0be746334cdfd"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-both/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 1143,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-both/status.json",
+      "sha256": "5a64d76f70da8a2bf01dfa1ab9edb93d9b16113cd9b4c022f6f0f8d90641b6ac"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-reverse/MadLoopParams.dat",
+      "sha256": "4dd76b9cc014abd258e606305a9dfbc264b8bd3286d85352bf515ad8cde54dbd"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-reverse/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-reverse/cuttools_onshell.input",
+      "sha256": "36bfb7bc83a0fc36d15c9890244b1d1b880acf8da39549fbdf89d0b65f1d33bb"
+    },
+    {
+      "bytes": 858020,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-reverse/output.log",
+      "sha256": "2d1f08491739a5f16591eab2bef0117019c92d13bb563de146532c883a37daca"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-reverse/result.dat",
+      "sha256": "68c192bb9fd63a8c1842eac944bad66df7000f35a59f90b5cc791167517aff94"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-reverse/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 1142,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-10-reverse/status.json",
+      "sha256": "95395cfa408832ed778e4cfb3763cfdfe49d4a3c667a6df18a658288bcb14cf9"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-9/MadLoopParams.dat",
+      "sha256": "59913c496499db496deda4e6080a32a23fe5ac30d2c1f863e378cd41439592a3"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-9/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-9/cuttools_onshell.input",
+      "sha256": "27301042ff462aec27fbbe3cc9eb47effb62336ebacffed356e5bbcb9959e030"
+    },
+    {
+      "bytes": 858020,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-9/output.log",
+      "sha256": "9e4043767b1b363a300f5501ce69c7ecb56a129c5f7534df410675c324981555"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-9/result.dat",
+      "sha256": "d4e5cd7034fc991c387e7af3dd838be1491f1ff7fd55b55b03b0be746334cdfd"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-9/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 1143,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/baseline-threshold-1e-9/status.json",
+      "sha256": "66c78b60b99a2c603faa6d087a9df186a9d5fd4e067b137d32f45af2a6fd161c"
+    },
+    {
+      "bytes": 54848,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-baseline/CT_interface.instrumented.f",
+      "sha256": "27f99f98678945093b8c97eca5239d67ed14d588a5aff9bd3ec62f8dda8e36aa"
+    },
+    {
+      "bytes": 54392,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-baseline/CT_interface.original.f",
+      "sha256": "368392c1ba9544d93dc56463a3bf6a155cc10f8d280c763f02d24395390e2c96"
+    },
+    {
+      "bytes": 46128,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-baseline/build.json",
+      "sha256": "7cc51e611f0a0fb741ce75ddde785aa1dc46627528c2368482951ddf4d5ddf4b"
+    },
+    {
+      "bytes": 1581,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-baseline/build.log",
+      "sha256": "b0081c6033b0470124fb7f16e837554f6bb29c77f5ad524f8aa9d1e7c100388c"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-baseline/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 54848,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-baseline-missing-include-failure/CT_interface.instrumented.f",
+      "sha256": "27f99f98678945093b8c97eca5239d67ed14d588a5aff9bd3ec62f8dda8e36aa"
+    },
+    {
+      "bytes": 54392,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-baseline-missing-include-failure/CT_interface.original.f",
+      "sha256": "368392c1ba9544d93dc56463a3bf6a155cc10f8d280c763f02d24395390e2c96"
+    },
+    {
+      "bytes": 192,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-baseline-missing-include-failure/build.log",
+      "sha256": "0441b2de8ae4b044e1afc81dfbbf5e6354864d69b0b9e86406d208517776365e"
+    },
+    {
+      "bytes": 55628,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-candidate/CT_interface.instrumented.f",
+      "sha256": "542fcbd0c6c908c1de6b673d3db6348cf4bdfd0b13b35adfd269bf74edd8afe6"
+    },
+    {
+      "bytes": 55172,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-candidate/CT_interface.original.f",
+      "sha256": "c785122bf5fb865b6e489026430922ad8af950147c306c3ce7aa5c1bc02d5138"
+    },
+    {
+      "bytes": 46234,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-candidate/build.json",
+      "sha256": "7042cdff0e8c82a3bc6e25785b092013cc3bbb22911ccd881e1b6fb72975da22"
+    },
+    {
+      "bytes": 1804,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-candidate/build.log",
+      "sha256": "93f6bdee2e9fec3eb13bc63292bf440890d80cbe247c8650a0830be08dee4d0d"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/build-candidate/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 14608,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-original-threshold/MadLoopParams.dat",
+      "sha256": "82c702f2f1a002766916bf23eba5b6b3f456fe9f8993b3192775c23b8e5ec85e"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-original-threshold/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-original-threshold/cuttools_onshell.input",
+      "sha256": "4e41a0252d2f09d38540c7969ef790f2f8ef723513d3afe47176c6348f08ce92"
+    },
+    {
+      "bytes": 862574,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-original-threshold/output.log",
+      "sha256": "fbfa3532c1e29be0176f34f676949b61712f7bb229a6e2b5caf1f31eaf706ab1"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-original-threshold/result.dat",
+      "sha256": "046c415527c6931246364dcebc23506debf48edfeab2495105c299fc19529d98"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-original-threshold/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 1144,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-original-threshold/status.json",
+      "sha256": "d21c0d1f719dd854b1edd0ffae7e47b6ef1e40d0c4e2b3dcecf0400eb9ea2d74"
+    },
+    {
+      "bytes": 14608,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-threshold-1e-10/MadLoopParams.dat",
+      "sha256": "82c702f2f1a002766916bf23eba5b6b3f456fe9f8993b3192775c23b8e5ec85e"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-threshold-1e-10/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-threshold-1e-10/cuttools_onshell.input",
+      "sha256": "36bfb7bc83a0fc36d15c9890244b1d1b880acf8da39549fbdf89d0b65f1d33bb"
+    },
+    {
+      "bytes": 858190,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-threshold-1e-10/output.log",
+      "sha256": "2759e55405a306f74f6edacdcb9d2a075a0c2bb124b10e6e81ae2a3a84b04de2"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-threshold-1e-10/result.dat",
+      "sha256": "d4e5cd7034fc991c387e7af3dd838be1491f1ff7fd55b55b03b0be746334cdfd"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-threshold-1e-10/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 1144,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/candidate-threshold-1e-10/status.json",
+      "sha256": "362d1941a138471281d2d16f57940261f2255acb9b3e30965f2d91156e635ffb"
+    },
+    {
+      "bytes": 5269,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/README.md",
+      "sha256": "789ee3887a2f1739701cbde3ee2f97883b403599a46bdf5f48b6d9157cf950a9"
+    },
+    {
+      "bytes": 11379,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/analyze.py",
+      "sha256": "3621d79b9b73c2248978286eebf4850bc880b1bc4747a97789c1e3a0558bc777"
+    },
+    {
+      "bytes": 54973,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/CT_interface.instrumented.f",
+      "sha256": "2e798445fa900389bc8c69ec0c6a67321ebec7721cdc6c48136f19189315dba4"
+    },
+    {
+      "bytes": 54848,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/CT_interface.original.f",
+      "sha256": "27f99f98678945093b8c97eca5239d67ed14d588a5aff9bd3ec62f8dda8e36aa"
+    },
+    {
+      "bytes": 2567,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/CT_interface.patch",
+      "sha256": "e7a0945da6ff86b66c910dbfe8fc8c85ac6502f6166325bee3837b19b717ccb8"
+    },
+    {
+      "bytes": 57019,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/build.json",
+      "sha256": "c6c1564917fb5669381dc14fbb4cf1f6357891bac18c178dc59334ab52883722"
+    },
+    {
+      "bytes": 1615,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/build.log",
+      "sha256": "58b1a5f76f67f9cd6575f992f0ac56d02521f298bbd075f177d8afb02e785d13"
+    },
+    {
+      "bytes": 19436,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/cts_cutroutines.instrumented.f",
+      "sha256": "32bb7912c18887591c8007a0163fe83fd07ee6205bf7c62fb9a51231b5f39a1d"
+    },
+    {
+      "bytes": 19407,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/cts_cutroutines.original.f",
+      "sha256": "6dd0bb5247616d84114661c71c59e30a555e6c7af67c77b4ca35d3e1062ec49b"
+    },
+    {
+      "bytes": 1464,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/cts_cutroutines.patch",
+      "sha256": "82411d1023a29de5a673c015d9d95460017a6479da0d901e85557fec8803749a"
+    },
+    {
+      "bytes": 67,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/qp_transport.mk",
+      "sha256": "f66178f564711b0398f59327c3f038aaaca589bf523f3533c5c3f898847d0ec2"
+    },
+    {
+      "bytes": 13516,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build/run.py",
+      "sha256": "5c871545c0a6159b72d5a3faf826bc9221e16a4dba660354a11913ae54ed1eda"
+    },
+    {
+      "bytes": 54973,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/CT_interface.instrumented.f",
+      "sha256": "2e798445fa900389bc8c69ec0c6a67321ebec7721cdc6c48136f19189315dba4"
+    },
+    {
+      "bytes": 54848,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/CT_interface.original.f",
+      "sha256": "27f99f98678945093b8c97eca5239d67ed14d588a5aff9bd3ec62f8dda8e36aa"
+    },
+    {
+      "bytes": 2567,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/CT_interface.patch",
+      "sha256": "e7a0945da6ff86b66c910dbfe8fc8c85ac6502f6166325bee3837b19b717ccb8"
+    },
+    {
+      "bytes": 4418,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/build.log",
+      "sha256": "5cc76a7bb26b722ec9a40dddf1ab7bb281ca7500271919aa8b32d1712fb19916"
+    },
+    {
+      "bytes": 19436,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/cts_cutroutines.instrumented.f",
+      "sha256": "32bb7912c18887591c8007a0163fe83fd07ee6205bf7c62fb9a51231b5f39a1d"
+    },
+    {
+      "bytes": 19407,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/cts_cutroutines.original.f",
+      "sha256": "6dd0bb5247616d84114661c71c59e30a555e6c7af67c77b4ca35d3e1062ec49b"
+    },
+    {
+      "bytes": 1464,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/cts_cutroutines.patch",
+      "sha256": "82411d1023a29de5a673c015d9d95460017a6479da0d901e85557fec8803749a"
+    },
+    {
+      "bytes": 282,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/failure.json",
+      "sha256": "203c265c26d62a0ee8e06b7b7b1fd52f0b572378729f8949dac20c12c3e5522c"
+    },
+    {
+      "bytes": 67,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/qp_transport.mk",
+      "sha256": "f66178f564711b0398f59327c3f038aaaca589bf523f3533c5c3f898847d0ec2"
+    },
+    {
+      "bytes": 13041,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/build-include-failure/run.py",
+      "sha256": "72e143d3b8c613a584e875aeb73cb650c2654a808dfc3cb1dd05740e4b90a67f"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/original-threshold/MadLoopParams.dat",
+      "sha256": "59913c496499db496deda4e6080a32a23fe5ac30d2c1f863e378cd41439592a3"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/original-threshold/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/original-threshold/cuttools_onshell.input",
+      "sha256": "4e41a0252d2f09d38540c7969ef790f2f8ef723513d3afe47176c6348f08ce92"
+    },
+    {
+      "bytes": 862404,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/original-threshold/output.log",
+      "sha256": "3e2a4ccb35347adda68df1a4b975bd0c7c85227bb0bac9fed06bc4f245133326"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/original-threshold/result.dat",
+      "sha256": "0a33d036ec1edb9f1a36d2ce89827ce4a2bc7eaa68c960f853e6087ed69652a4"
+    },
+    {
+      "bytes": 13516,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/original-threshold/run.py",
+      "sha256": "5c871545c0a6159b72d5a3faf826bc9221e16a4dba660354a11913ae54ed1eda"
+    },
+    {
+      "bytes": 1138,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/original-threshold/status.json",
+      "sha256": "7be1d05c33758610880a6eac5a1a33e05700afe582a358accf0c82e416914ebb"
+    },
+    {
+      "bytes": 13516,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/run.py",
+      "sha256": "5c871545c0a6159b72d5a3faf826bc9221e16a4dba660354a11913ae54ed1eda"
+    },
+    {
+      "bytes": 9943,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/summary.json",
+      "sha256": "b1d5249cb9556bb1c632867bfbe0d92afb0147f3f7bbe8144b2893362a013b71"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10/MadLoopParams.dat",
+      "sha256": "59913c496499db496deda4e6080a32a23fe5ac30d2c1f863e378cd41439592a3"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10/cuttools_onshell.input",
+      "sha256": "36bfb7bc83a0fc36d15c9890244b1d1b880acf8da39549fbdf89d0b65f1d33bb"
+    },
+    {
+      "bytes": 858020,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10/output.log",
+      "sha256": "970c1322bee06ba4fb14721a481bca7c1ea885c1d3ce5135a79f05983d94a634"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10/result.dat",
+      "sha256": "0d6aa7d9e9f102a3c28b845a3bcb497bcc5c5af8140a2b064a6fc36bfd914dd7"
+    },
+    {
+      "bytes": 13516,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10/run.py",
+      "sha256": "5c871545c0a6159b72d5a3faf826bc9221e16a4dba660354a11913ae54ed1eda"
+    },
+    {
+      "bytes": 1138,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10/status.json",
+      "sha256": "826fae303abb53ccdd8e100096ee77d1e855a758e50fe91600a89688c981c30d"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-both/MadLoopParams.dat",
+      "sha256": "a99e487f5ef27caabf9961af3ccf3eabe9eb75cbc23627726eddbe790195a0f0"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-both/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-both/cuttools_onshell.input",
+      "sha256": "36bfb7bc83a0fc36d15c9890244b1d1b880acf8da39549fbdf89d0b65f1d33bb"
+    },
+    {
+      "bytes": 1693084,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-both/output.log",
+      "sha256": "f7ac8af8a575659c101e58b8700469440a56b0df98e20181d3cb044875e25ea9"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-both/result.dat",
+      "sha256": "9373aee51ce88edf2412bca2dad01f632482a4986c9b6f55a6be0e33212514eb"
+    },
+    {
+      "bytes": 13516,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-both/run.py",
+      "sha256": "5c871545c0a6159b72d5a3faf826bc9221e16a4dba660354a11913ae54ed1eda"
+    },
+    {
+      "bytes": 1138,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-both/status.json",
+      "sha256": "4381cade52082f0008f2fbc9aef33fa1c2115a93a62ffe88829e2967b22ad86c"
+    },
+    {
+      "bytes": 13912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-reverse/MadLoopParams.dat",
+      "sha256": "4dd76b9cc014abd258e606305a9dfbc264b8bd3286d85352bf515ad8cde54dbd"
+    },
+    {
+      "bytes": 387,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-reverse/PS.input",
+      "sha256": "0875f8efa523449df4e43852ab329846aba9338ebec0f1837b4d19017d172b75"
+    },
+    {
+      "bytes": 24,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-reverse/cuttools_onshell.input",
+      "sha256": "36bfb7bc83a0fc36d15c9890244b1d1b880acf8da39549fbdf89d0b65f1d33bb"
+    },
+    {
+      "bytes": 858020,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-reverse/output.log",
+      "sha256": "e5e3b1545aabaa027ed8135ab09899f7095da2ae778f89d5689cb6e13e39f642"
+    },
+    {
+      "bytes": 761,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-reverse/result.dat",
+      "sha256": "9373aee51ce88edf2412bca2dad01f632482a4986c9b6f55a6be0e33212514eb"
+    },
+    {
+      "bytes": 13516,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-reverse/run.py",
+      "sha256": "5c871545c0a6159b72d5a3faf826bc9221e16a4dba660354a11913ae54ed1eda"
+    },
+    {
+      "bytes": 1138,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/qp-transport/threshold-1e-10-reverse/status.json",
+      "sha256": "a9181c86c0a501997d8040646d6ce5de3187f10f5f21c09f0076db217dd9fdfe"
+    },
+    {
+      "bytes": 9947,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/run.py",
+      "sha256": "b4af037b1a0bf707cdf7ed5aaecac7adf0f1ed3486dbd32e8fc3dbf064c3a743"
+    },
+    {
+      "bytes": 25715,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cuttools-adjudication/summary.json",
+      "sha256": "e38945fcbac8eb92410973dc92f2782ba61f8680c77223a379d5d02a3fed67ad"
+    },
+    {
+      "bytes": 14622,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/invalid-candidate-card-MadLoopParams.dat",
+      "sha256": "ba65df5b2298e27030ece89823c7bac337ec2bea605828c88cf5703014a26bb4"
+    },
+    {
+      "bytes": 193,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/invalid-candidate-card-backend-8-qp-status.json",
+      "sha256": "be7558a85137cbabefddeb496d752de4970a6550319ddc11bc17083dc0135822"
+    },
+    {
+      "bytes": 18114,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/invalid-candidate-card-backend-8-qp.log",
+      "sha256": "1562e3116b8b18631977e27c5d595d7ae235141df3a31e6dfd108514639a8511"
+    },
+    {
+      "bytes": 194,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/invalid-local-resource-path-backend-8-qp-status.json",
+      "sha256": "a5fc761bb1b69233daabb35dbac259a98c8b3daa3fc2b21c44454367a76915ff"
+    },
+    {
+      "bytes": 19818,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/invalid-local-resource-path-backend-8-qp.log",
+      "sha256": "4cc1bd193c66f96a1e59d70e7814d0ee085a3fb48ba29b027aacb6bca61fa7c8"
+    },
+    {
+      "bytes": 359,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/release-dependency-check.json",
+      "sha256": "54250cbdaa5743ba6076797f8d7e90fc31e281bf19a806eb2297977d5a1a2e86"
+    },
+    {
+      "bytes": 4851,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/run_case.py",
+      "sha256": "9cc5672addb02141a06c467f881d1826c5e0bb1aaf38114c3d2855531c245016"
+    },
+    {
+      "bytes": 703,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/specification.json",
+      "sha256": "90fc1cc216f8bb55177e622c671a10576966ca1fabc8200974f9214aa2f03ae7"
+    },
+    {
+      "bytes": 5177,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/summarize.py",
+      "sha256": "a4ec796dc43e1a4666dab75af4967b0556438acfecee7f84f569a21a8215e549"
+    },
+    {
+      "bytes": 47142,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/direct-qp/summary.json",
+      "sha256": "df3eec80c2adf692c3048a4d1dc7ae19d137c6f27a9501e40e0a4e18860b0b7f"
+    },
+    {
+      "bytes": 1943,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/freeze_artifacts.py",
+      "sha256": "4739bcd4992011222d029c049f2729da4f677936ad8c637232e53d8793cccba8"
+    },
+    {
+      "bytes": 33776,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/build-history/20261109T200802481181Z/compilation.json",
+      "sha256": "d82644f3e3fadcaa48206bca937de3567061b6823d05ab2633cca394dc2d7404"
+    },
+    {
+      "bytes": 237686,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/build-history/20261109T201338746792Z/compilation.json",
+      "sha256": "bb4b8b0de2131bd820ac828731f5b053a5ac51869bea864c28c20179f04af617"
+    },
+    {
+      "bytes": 237,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_masses.dat",
+      "sha256": "14b249e80a755c48ba1935d61e18aa675f93dee348d30a3db097ff46a96d2773"
+    },
+    {
+      "bytes": 585,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_onshell_probe.dat",
+      "sha256": "bd4ee84764a69fe15501fe877205cb8d008ee364cf577059b6b34919b8e44a6f"
+    },
+    {
+      "bytes": 7251,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_onshell_probe.f",
+      "sha256": "d2c6ed193369662555a12c38a6cfb506bd95449220bc31aa906b7bab759b8f19"
+    },
+    {
+      "bytes": 927,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_onshell_probe.json",
+      "sha256": "328c42c7aefce8c11590477e133db97a7a1ab9672d9a44e723ca1811b4692026"
+    },
+    {
+      "bytes": 378,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_probe.f",
+      "sha256": "29252543f5fab9a228a253b1f66957d774d42c7fca01bb0c58c0bcbef77c0312"
+    },
+    {
+      "bytes": 32816,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/compilation-DHELAS.log",
+      "sha256": "6bb25ccbc51602f7684d190f567810a01a8fadc3d81faead8a5ac11fb20ace54"
+    },
+    {
+      "bytes": 2547,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/compilation-MODEL.log",
+      "sha256": "57b320a4e4d29ef074d87db71ae3bc0a1cc9ca5deee851282ec7c7e80e367955"
+    },
+    {
+      "bytes": 9816,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/compilation-process.log",
+      "sha256": "4a7f3645319f93d96c25dc2fc1cfe2e93df1baad47a3c4b9e05b2545ad2c892d"
+    },
+    {
+      "bytes": 238327,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/compilation.json",
+      "sha256": "f7334e1e4895f8559c913197e979619dd17bbfd39fb398a55d1e932e595b7bac"
+    },
+    {
+      "bytes": 735,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/complex-model-proof.json",
+      "sha256": "d5c11376f8ecb23d50aeda9311cc196b1de9e5f58b40bb0eae35415586322cc4"
+    },
+    {
+      "bytes": 827,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/generation.json",
+      "sha256": "1f30517b15fd5d16fbb97107ef22aee4da578dc5f7a70bf5bf3708cf4d4d3907"
+    },
+    {
+      "bytes": 4397,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/param_card.dat",
+      "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+    },
+    {
+      "bytes": 6090,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/source-rebuild-equivalence.json",
+      "sha256": "36cc2e59e97231e1720fdc1b9868c7bd10ac4b98e360ae4221e8fcd589a4dc99"
+    },
+    {
+      "bytes": 237,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/candidate/cms_ew_n2_epem_mupmum/cms_masses.dat",
+      "sha256": "14b249e80a755c48ba1935d61e18aa675f93dee348d30a3db097ff46a96d2773"
+    },
+    {
+      "bytes": 378,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/candidate/cms_ew_n2_epem_mupmum/cms_probe.f",
+      "sha256": "29252543f5fab9a228a253b1f66957d774d42c7fca01bb0c58c0bcbef77c0312"
+    },
+    {
+      "bytes": 32816,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/candidate/cms_ew_n2_epem_mupmum/compilation-DHELAS.log",
+      "sha256": "6bb25ccbc51602f7684d190f567810a01a8fadc3d81faead8a5ac11fb20ace54"
+    },
+    {
+      "bytes": 2547,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/candidate/cms_ew_n2_epem_mupmum/compilation-MODEL.log",
+      "sha256": "57b320a4e4d29ef074d87db71ae3bc0a1cc9ca5deee851282ec7c7e80e367955"
+    },
+    {
+      "bytes": 11912,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/candidate/cms_ew_n2_epem_mupmum/compilation-process.log",
+      "sha256": "5739ea37e8ab058ab2e5e92e1c01fd3f04d592c6114cb706ca3f3770f5a1d202"
+    },
+    {
+      "bytes": 244088,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/candidate/cms_ew_n2_epem_mupmum/compilation.json",
+      "sha256": "287f871fd1966ed3b0a702e7176913512906a898af7ca0681d99876d2b03e753"
+    },
+    {
+      "bytes": 735,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/candidate/cms_ew_n2_epem_mupmum/complex-model-proof.json",
+      "sha256": "d5c11376f8ecb23d50aeda9311cc196b1de9e5f58b40bb0eae35415586322cc4"
+    },
+    {
+      "bytes": 318369,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/candidate/cms_ew_n2_epem_mupmum/generation.json",
+      "sha256": "7d72a55f8aa90487fa0bceea2bc82fd910a8ab87d77fb18472cf5675beb3f0a1"
+    },
+    {
+      "bytes": 4397,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/candidate/cms_ew_n2_epem_mupmum/param_card.dat",
+      "sha256": "96158fedb398f3a7957bff10db0a7101281eb57ef0e9973e9c6e43c727efb8ec"
+    },
+    {
+      "bytes": 18974,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/loop_qcd_qed_sm_Gmu.json",
+      "sha256": "c3138d449033233a59db761e708014e4af94383cad932f36169a4fc43d019829"
+    },
+    {
+      "bytes": 312464,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/inputs/source-identities/c4b000ee6c3df065695ddebc3c41f9bb2df5479906b7d2ae273d45d53cda4527.json",
+      "sha256": "8ac4022749e6d39808b7acbeebd0b3e1f45ba7ccf17a33cb93354a53c844a679"
+    },
+    {
+      "bytes": 7368,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum-moderate.dat",
+      "sha256": "74905c3ee6874a8efa76c407e8ab778c7ac4cf2f06dc7b9f02426327a0257c67"
+    },
+    {
+      "bytes": 20992,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum-moderate.json",
+      "sha256": "1565879567da8979fe2b2bf6a213f2b5e0bdf345bd3b1fb83af51537fa668df6"
+    },
+    {
+      "bytes": 4659,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum-ordinary.dat",
+      "sha256": "9c9ada5fd1b6004dd56801322c4e9942346c5a84ad278627e6cc79b8327f1c7e"
+    },
+    {
+      "bytes": 13192,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum-ordinary.json",
+      "sha256": "dc39a77fbb1c9858d03dc24614cbf3f3900072084776e413dcf0419e2e295f55"
+    },
+    {
+      "bytes": 8142,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum.dat",
+      "sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60"
+    },
+    {
+      "bytes": 22713,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum.json",
+      "sha256": "e27239fb2ef0e8b136a4c5f9b6d60aa5c6cf58bdd9cbf88a6da68b9b6d69f042"
+    },
+    {
+      "bytes": 40884,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto/baseline-inputs.json",
+      "sha256": "638366f2eb2f5cbae6c60464409103ba1cbd7939ea0d66924023871fed49edbb"
+    },
+    {
+      "bytes": 5716,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto/baseline-output.txt",
+      "sha256": "116fb2e6734fcb92c00330c78249711b8a2a5a1b79ce762aebad28658f2e4c19"
+    },
+    {
+      "bytes": 541,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto/failure.json",
+      "sha256": "a8ba09f99c1d564e77c30bdeec0041e937873ef584883deb0937fcfd9707b25c"
+    },
+    {
+      "bytes": 498,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto/interruption-reason.json",
+      "sha256": "381428c5b92c0d7daf523f0e936774a7d842ab7c19fa46458b06497ad3b40d34"
+    },
+    {
+      "bytes": 485,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto/specification.json",
+      "sha256": "4e532dd16adfe247f2e07fd15ec16683ba75ce1e1e6a90627b657bab55ef71d8"
+    },
+    {
+      "bytes": 14347,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto/tirust_complex_stress.py",
+      "sha256": "8fcc0412f02fed49a0129642c094588f3b08c81673f380c1713aa07540e7cf32"
+    },
+    {
+      "bytes": 254378,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/baseline-inputs.json",
+      "sha256": "64caa74a5cdc3aea830fa42ad8d90de9c4bb6baf2f103fb1e1a6f8c6ba47da66"
+    },
+    {
+      "bytes": 5716,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/baseline-output.txt",
+      "sha256": "116fb2e6734fcb92c00330c78249711b8a2a5a1b79ce762aebad28658f2e4c19"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 12536,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/raw/observation.json",
+      "sha256": "05705947cba394b4d023d96eccb2599f1b21f7183f48376cf0d59897424218c3"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/raw/timed_status.dat",
+      "sha256": "6f58742e03294e9b36059a03da694b4ff9243a85883797f885abecbb82e29d76"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/raw/timing.dat",
+      "sha256": "828566f885a480e70439be7fb67051d0ef622f175ef271f287cdfe870871fb6f"
+    },
+    {
+      "bytes": 5890,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/raw/values.dat",
+      "sha256": "c51ba8ab9d21e77c487ecd07d428b6d294f077dd6c8868946758a2cb6141d87d"
+    },
+    {
+      "bytes": 1586,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/specification.json",
+      "sha256": "fed947786cfd622170813022e1bcb716578bf9aac392d74a4473864e33a84aed"
+    },
+    {
+      "bytes": 16376,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/summary.json",
+      "sha256": "2107f924c13b605a76148461d0c0e0caa26f248c6d70dff0be04fa58cf9964fc"
+    },
+    {
+      "bytes": 20610,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-moderate/tirust_complex_stress.py",
+      "sha256": "89e0fa99bd353999e8b59d2b36631e46c550345391426259c1167d189d78c007"
+    },
+    {
+      "bytes": 254378,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/baseline-inputs.json",
+      "sha256": "4367cc6cd758e70850ae8466f8160a7fb19a8389e480657b384cf096925f31e2"
+    },
+    {
+      "bytes": 5716,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/baseline-output.txt",
+      "sha256": "116fb2e6734fcb92c00330c78249711b8a2a5a1b79ce762aebad28658f2e4c19"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 8073,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/raw/observation.json",
+      "sha256": "b4b48ed0a961b50407636ffb46a8b9ea15915bfcd7767fd954aa6826312f1138"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/raw/timed_status.dat",
+      "sha256": "4fba80e5b9858c8b90992b8721dcb15f80f86b59ea4a45cd5988fd99d1e75820"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/raw/timing.dat",
+      "sha256": "61389d69ecf3b87313cb79380c89feb786c2c7924b36cd43b4fd3db6e14c894c"
+    },
+    {
+      "bytes": 3720,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/raw/values.dat",
+      "sha256": "91a2ee9419031a09ea5d10138caa1f5abd493211099f187d752ea48470c7a0bf"
+    },
+    {
+      "bytes": 1530,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/specification.json",
+      "sha256": "fc4ce15c4183d3c77998aebf73e0dfa8d104aa1d40ef7c83b91449f813a89c5f"
+    },
+    {
+      "bytes": 11465,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/summary.json",
+      "sha256": "9662144e671299ef2ac5418d662d25d521efe2573abbcc0c74b724963c532b88"
+    },
+    {
+      "bytes": 20610,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-1-auto-ordinary/tirust_complex_stress.py",
+      "sha256": "89e0fa99bd353999e8b59d2b36631e46c550345391426259c1167d189d78c007"
+    },
+    {
+      "bytes": 43466,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto/baseline-inputs.json",
+      "sha256": "328159048aea3eb297ea4f351e9690ca699bdb68ebbd82dfac9ed838e1081d60"
+    },
+    {
+      "bytes": 12573,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto/baseline-output.txt",
+      "sha256": "4dbbb32a1773e54e8d818c39c07fcf594a2ad6912bc7186bb73abcb1da32458d"
+    },
+    {
+      "bytes": 1469,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto/failure.json",
+      "sha256": "53ba233e49b89ecac282a75d4b16e09643a17566637ddd05811992d4097b18a5"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 54,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto/raw/timed_status.dat",
+      "sha256": "f061ab3d898ec92a0d76e7cb602fc99121283810187597e242746bfba1789bbd"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto/raw/timing.dat",
+      "sha256": "1cea7038ca6f43e879f0621c6bd4d5d82d0e7b64686315e2cfa97727b82179a0"
+    },
+    {
+      "bytes": 6510,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto/raw/values.dat",
+      "sha256": "482d319226de09bf64f8004c269151832e678fef3edc15b609b40ff22679ee24"
+    },
+    {
+      "bytes": 1320,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto/specification.json",
+      "sha256": "7efa75a1fc1194ad4dfb7ef6d425d680eff27902e21dd694845fbd47a7d43544"
+    },
+    {
+      "bytes": 15390,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto/tirust_complex_stress.py",
+      "sha256": "75536eff6a288094e8d8d3d4a1818cfacc36f86e6e99411c5dcf3f68b9a9d1ea"
+    },
+    {
+      "bytes": 254378,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/baseline-inputs.json",
+      "sha256": "e8dbc84eadd80fa7e1c3efaaad1cf4f0459b52df28bf16f7d38b0f4412f060eb"
+    },
+    {
+      "bytes": 8271,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/baseline-output.txt",
+      "sha256": "64dc311d499cf5ea8c46bc0bb4d659c703b53ef6504a9fe25254ca68f285a06a"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 12511,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/raw/observation.json",
+      "sha256": "c769181803f3e0aa74489b105bec66f9b88c0e3e9adb567c14791a50fbe151cb"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/raw/timed_status.dat",
+      "sha256": "f9030c7bb8f46fbff79ec1e00a3081ddbf87b712dc94d21c834259d9c8ae9a76"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/raw/timing.dat",
+      "sha256": "f8c4febf53385ba295d275747e44186c4a41666284bede65f1adda2c28e55559"
+    },
+    {
+      "bytes": 5890,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/raw/values.dat",
+      "sha256": "00277c2927f88a84dbbafe39a55d63b0d39710f2e3e56268d1cee2127d2c8f55"
+    },
+    {
+      "bytes": 1586,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/specification.json",
+      "sha256": "b52b34100ffd17fd05deb2caebf0e58b58c7ecdc30940241b41e83d3b1d2dc12"
+    },
+    {
+      "bytes": 16351,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/summary.json",
+      "sha256": "c848e0655f71a6c65962544b7afd56f916fe0e7713e53843066453453425b455"
+    },
+    {
+      "bytes": 20610,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-auto-moderate/tirust_complex_stress.py",
+      "sha256": "89e0fa99bd353999e8b59d2b36631e46c550345391426259c1167d189d78c007"
+    },
+    {
+      "bytes": 13926,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-qp-osthres-1e-24/MadLoopParams.dat",
+      "sha256": "513aa59b7e14e0a31ce707dafc41fe1e391e7087c1347675c05cf6aece70f3b3"
+    },
+    {
+      "bytes": 255056,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-qp-osthres-1e-24/baseline-inputs.json",
+      "sha256": "bbc9a44fc26f480dc85d51078664a31db7c422a4f79f66ebbe80df7a25f8c3a3"
+    },
+    {
+      "bytes": 8271,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-qp-osthres-1e-24/baseline-output.txt",
+      "sha256": "8c12ae320f6c6c5d5c7a31afa7763bd42e8defffb58289169babeea46f4958ab"
+    },
+    {
+      "bytes": 75,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-qp-osthres-1e-24/diagnostics.json",
+      "sha256": "251c06237206ece06a59c72538f3fb2fa27f7c5ed318f1fc1398204e0d50eecd"
+    },
+    {
+      "bytes": 1872,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-qp-osthres-1e-24/failure.json",
+      "sha256": "0a66abf0c9db75515610f41d0db957c8d67dae7f68efe96118ecd25ad7929e89"
+    },
+    {
+      "bytes": 930,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-qp-osthres-1e-24/protocol-erratum.json",
+      "sha256": "34a1134026909ac7082a7e113aecedbe1d18c93815a1c975ae7c55e6ec175762"
+    },
+    {
+      "bytes": 1626,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-qp-osthres-1e-24/specification.json",
+      "sha256": "245d00fbeedda52eb1d44399a8b284e564a99c2b71017e7bfd4251350f8a3c81"
+    },
+    {
+      "bytes": 22008,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-6-qp-osthres-1e-24/tirust_complex_stress.py",
+      "sha256": "c61d4427b81fea8d2705b253b7ea4a41873f8df43260780d37f1e6451b0ed10f"
+    },
+    {
+      "bytes": 43466,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto/baseline-inputs.json",
+      "sha256": "0352d409dbe86cb93d9da093235aaab68d22d9217e2f57cb4f2c483764f74296"
+    },
+    {
+      "bytes": 7428,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto/baseline-output.txt",
+      "sha256": "5bae57e8e7a009b9c913dbfea32eed1baed0c500b87d8bd709a17bd05aac68c7"
+    },
+    {
+      "bytes": 1469,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto/failure.json",
+      "sha256": "81e5268b64e9c868907dede1e2c6084e6254cb3ca239dd6f8ef75a8d70c4de99"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 54,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto/raw/timed_status.dat",
+      "sha256": "11417908b3402e5c56f91c490ee06ef33186747efb910df2cf0725f14d896777"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto/raw/timing.dat",
+      "sha256": "0f800710d1d61d8d628e858f5208944063d0b80644038f89ecf4d91dabbc73ed"
+    },
+    {
+      "bytes": 6510,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto/raw/values.dat",
+      "sha256": "bdbf9bb4ea2a2a4ce851317634ae256f81392ee7f3ac622fa84282494a413bfc"
+    },
+    {
+      "bytes": 1320,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto/specification.json",
+      "sha256": "eb04da6e993a6409c20196f49b3818eb2da94ad37769183cfca0fb10e5f1bfa4"
+    },
+    {
+      "bytes": 15390,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto/tirust_complex_stress.py",
+      "sha256": "75536eff6a288094e8d8d3d4a1818cfacc36f86e6e99411c5dcf3f68b9a9d1ea"
+    },
+    {
+      "bytes": 254378,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/baseline-inputs.json",
+      "sha256": "cb06448000463ec00daead0c1643d23f483e66eed6c70b46fb2e346f3b63d572"
+    },
+    {
+      "bytes": 6509,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/baseline-output.txt",
+      "sha256": "f4c36c3931970f13efb997eff48949e60a64c80e36b454a7324870fea048d0b3"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 12526,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/raw/observation.json",
+      "sha256": "838ccbe3abc25898d8bd814edd32673b81fe6aeb5e1542e8f5f7e8a01e13bc93"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/raw/timed_status.dat",
+      "sha256": "ce7bacb13c1950d2689e3e4ee1cfcd33b2b26501f69bd29092e66057aa4a8b27"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/raw/timing.dat",
+      "sha256": "9ae1afcbf6db24719ba23f734a46edac49acb8f21ab4199a546fdb256235134a"
+    },
+    {
+      "bytes": 5890,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/raw/values.dat",
+      "sha256": "29dea1c68500374a863b3fdf159cbfbfa3da8cfbe306ecd908860ab9644c656d"
+    },
+    {
+      "bytes": 1586,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/specification.json",
+      "sha256": "cd7d518345edabbf0d554661bd267ef85f50251d25a438b3dee1bc709fc48a48"
+    },
+    {
+      "bytes": 16366,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/summary.json",
+      "sha256": "84b78228a19937a772fff1a979e3929d4d30a1d75e50882c32df0240447bbc49"
+    },
+    {
+      "bytes": 20610,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-7-auto-moderate/tirust_complex_stress.py",
+      "sha256": "89e0fa99bd353999e8b59d2b36631e46c550345391426259c1167d189d78c007"
+    },
+    {
+      "bytes": 43466,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/baseline-inputs.json",
+      "sha256": "af45f3a5ddc2d36703bda6d6b6d6a9a94a1a581ac26c956e1b26b4acb8d04f90"
+    },
+    {
+      "bytes": 6086,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/baseline-output.txt",
+      "sha256": "244886f476cbb2fece131051c5019851dff6412d11d2734cbf0b8894dec0d505"
+    },
+    {
+      "bytes": 13756,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/diagnostics.json",
+      "sha256": "03f1192a753388421055fe1ca4c74e34d413158a54e2bcbcf412c3af67623a42"
+    },
+    {
+      "bytes": 1469,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/failure.json",
+      "sha256": "4172c431d4f5165a9b73a1d92d7c40f6cbc0d0305bf460984e3ba9243978d58d"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 81,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/raw/timed_status.dat",
+      "sha256": "3613e4459151202a1def08231a812737c14395e4f53e2783c8eddf46ca9f6718"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/raw/timing.dat",
+      "sha256": "4af596d3162423005c9e53a941701ec18943ebb0370bed7208c637c3785f4d18"
+    },
+    {
+      "bytes": 6510,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/raw/values.dat",
+      "sha256": "b17afa5e5b69a29d94cdf15f95512ec47ec5639d849a48fac9f4daa1c49181cb"
+    },
+    {
+      "bytes": 1320,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/specification.json",
+      "sha256": "43bf2c40aabca12a6a7ad2f9e2be9174a97ae363d74a9d6ab4c13c2e45c8daed"
+    },
+    {
+      "bytes": 18216,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto/tirust_complex_stress.py",
+      "sha256": "194d81984b73465a450a4f696537424b903fc7767867910031e9504f5a61e26c"
+    },
+    {
+      "bytes": 254378,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/baseline-inputs.json",
+      "sha256": "6ad03726cbb4da3845060be36128ebf08e4653dd9b3e40a2bf68dbeb09a5c6bd"
+    },
+    {
+      "bytes": 3884,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/baseline-output.txt",
+      "sha256": "c760a6b60129c221edb38feff4a6adc355d05f49691070c2064433abc3812f99"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 12525,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/raw/observation.json",
+      "sha256": "f2a37a90ecfb92bb9c2280f78a6388894b342c1daaf1b79fd195f6d8cc44f8a1"
+    },
+    {
+      "bytes": 54,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/raw/timed_status.dat",
+      "sha256": "4b3b0dd1ad0eedd2d5de2a31552235d96f4f6f309725a7ccc9b5a33c3c9ec570"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/raw/timing.dat",
+      "sha256": "9fa4ca1c8d7929f7d0eb81420c46c417f528659722a9962f66abea8cc43fa9c1"
+    },
+    {
+      "bytes": 5890,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/raw/values.dat",
+      "sha256": "b41849cd5fc989730a520027693a00d931cfb83cc4a28e014fea1ca8354b238c"
+    },
+    {
+      "bytes": 1586,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/specification.json",
+      "sha256": "f30d4db3ae04ad58cc09c25f952341a6961c475ace36f0195b5d59d127678482"
+    },
+    {
+      "bytes": 16371,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/summary.json",
+      "sha256": "67931716c0597fbb5d79f5921ceb675911a8ecd2006acfb89b687140b3bcd5af"
+    },
+    {
+      "bytes": 20610,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-auto-moderate/tirust_complex_stress.py",
+      "sha256": "89e0fa99bd353999e8b59d2b36631e46c550345391426259c1167d189d78c007"
+    },
+    {
+      "bytes": 13926,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-ordinary-fixed-qp/MadLoopParams.dat",
+      "sha256": "afce019316e801dd182466fdc3cc87481c5a08505a716cd36fd2c782b6947a3d"
+    },
+    {
+      "bytes": 255056,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-ordinary-fixed-qp/baseline-inputs.json",
+      "sha256": "3ac58744e83c84032ac9be19f2d8de44a3ce976f3df386e3ad52a54883b6ca8b"
+    },
+    {
+      "bytes": 3884,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-ordinary-fixed-qp/baseline-output.txt",
+      "sha256": "7b5b9cf1537329676c27e5c33a811b5b772e61dcdf2907a5f2affb979556ca8e"
+    },
+    {
+      "bytes": 99,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-ordinary-fixed-qp/diagnostics.json",
+      "sha256": "47688eff656fd1d9403332e1b14541de5c848b0ce8077f7c047840da15b0cfb9"
+    },
+    {
+      "bytes": 1816,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-ordinary-fixed-qp/failure.json",
+      "sha256": "a9e64ddc4c4f45a59ec05f00a14c0b1192b1d8f0fef2e518fde476d97abb78b5"
+    },
+    {
+      "bytes": 838,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-ordinary-fixed-qp/policy-erratum.json",
+      "sha256": "3dee9ccb685094b2f8a5f1bdd53b91cbc95c80ee08014de1b9d6400116c7adbb"
+    },
+    {
+      "bytes": 930,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-ordinary-fixed-qp/protocol-erratum.json",
+      "sha256": "34a1134026909ac7082a7e113aecedbe1d18c93815a1c975ae7c55e6ec175762"
+    },
+    {
+      "bytes": 1566,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-ordinary-fixed-qp/specification.json",
+      "sha256": "81ca583b7dba635aa95bba9da90da35f1f19256ee444d608d71db8805ad700e8"
+    },
+    {
+      "bytes": 25110,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-ordinary-fixed-qp/tirust_complex_stress.py",
+      "sha256": "11cb730be1219aca6a4d89abd92ba0e728221ecb33eefc42a6e1758b682a21ba"
+    },
+    {
+      "bytes": 13926,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-osthres-1e-24/MadLoopParams.dat",
+      "sha256": "afce019316e801dd182466fdc3cc87481c5a08505a716cd36fd2c782b6947a3d"
+    },
+    {
+      "bytes": 255056,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-osthres-1e-24/baseline-inputs.json",
+      "sha256": "b55bf440933b2a3634a66a4b6434ec8b3e14e8a53349b276e70e6e7d4523cc7c"
+    },
+    {
+      "bytes": 3884,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-osthres-1e-24/baseline-output.txt",
+      "sha256": "7b5b9cf1537329676c27e5c33a811b5b772e61dcdf2907a5f2affb979556ca8e"
+    },
+    {
+      "bytes": 75,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-osthres-1e-24/diagnostics.json",
+      "sha256": "251c06237206ece06a59c72538f3fb2fa27f7c5ed318f1fc1398204e0d50eecd"
+    },
+    {
+      "bytes": 1872,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-osthres-1e-24/failure.json",
+      "sha256": "eed9b92604b43fbd4b67511cb11222c56b8e9f84e92aeebfaac79f2b3025a336"
+    },
+    {
+      "bytes": 930,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-osthres-1e-24/protocol-erratum.json",
+      "sha256": "34a1134026909ac7082a7e113aecedbe1d18c93815a1c975ae7c55e6ec175762"
+    },
+    {
+      "bytes": 1626,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-osthres-1e-24/specification.json",
+      "sha256": "7554300afec517a3399d86646571771ded8491a44eeaf2271ac3739f53bc15f6"
+    },
+    {
+      "bytes": 22156,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/baseline/backend-8-qp-osthres-1e-24/tirust_complex_stress.py",
+      "sha256": "8e14c583316e0293c9f9c355addff332a5fee244fd5012db32857b4588ca87b0"
+    },
+    {
+      "bytes": 14623,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/MadLoopParams.dat",
+      "sha256": "0130897072e2303882fb4e0c18affdf2d03e89357a6f6fbe9240d3cd162a7e69"
+    },
+    {
+      "bytes": 585283,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/candidate-inputs.json",
+      "sha256": "830bcefc6d49578833709fa2c2b381af2bf0155c93e2410a9709ad3ad5d38037"
+    },
+    {
+      "bytes": 6256,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/candidate-output.txt",
+      "sha256": "861be94d71eb4cd3cb6dd0a7976d35e4f11efc245d0832c1748bb6869c23d3b3"
+    },
+    {
+      "bytes": 13834,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/diagnostics.json",
+      "sha256": "f0e52183c978126b10941864844abba50f3666bd9853d99329fcedb8bfdb3317"
+    },
+    {
+      "bytes": 1776,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/failure.json",
+      "sha256": "9d21426daea1142abf4d5a39738a89b6b1444846e4d9c0463fb8482d8b7fa10b"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 54,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/raw/timed_status.dat",
+      "sha256": "7d0874304b92fd5e94b12a97417c07580d771702d6a2e4fe0a80b301f0b34797"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/raw/timing.dat",
+      "sha256": "a28c66ee2ac2beac7b588a7324e9107ca0cdf05cadde7188ebd0430ac4091bfb"
+    },
+    {
+      "bytes": 6510,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/raw/values.dat",
+      "sha256": "29c157768f76ec0faca96ad6bc92b54fa0f540343a8da4aaea5b7a16210dbdf1"
+    },
+    {
+      "bytes": 1627,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/specification.json",
+      "sha256": "dbd0e71624c8d2ae446ea449ae2c9c70b7b4f76ad1e5c4a49e02dca3a3a1cc48"
+    },
+    {
+      "bytes": 25324,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-final-source/tirust_complex_stress.py",
+      "sha256": "237fbd18578263a1d814ceda55cdcfa609c09802f1fd70ea9f185a42f4640699"
+    },
+    {
+      "bytes": 14623,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/MadLoopParams.dat",
+      "sha256": "0130897072e2303882fb4e0c18affdf2d03e89357a6f6fbe9240d3cd162a7e69"
+    },
+    {
+      "bytes": 585283,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/candidate-inputs.json",
+      "sha256": "33f7b13052835935e207c995032744d5dfb7a9c5cf3339218236ce8a0b064165"
+    },
+    {
+      "bytes": 4054,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/candidate-output.txt",
+      "sha256": "61132b4d13b56dd0803dc0e49b76bb15a76044f09233a479b5fb8ec47990e1e7"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 12536,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/raw/observation.json",
+      "sha256": "e67701b66984a0ef39a546094289174d633b5133f9440cc8c783f81f813b4c74"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/raw/timed_status.dat",
+      "sha256": "c645d2c44e2004aa0188af978bc5a17247d6e46e715e9da1c90fb3eda0c21326"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/raw/timing.dat",
+      "sha256": "13f8f5e42dd326a9cecbb2f568340890821fa155309605bc9d651adea5258740"
+    },
+    {
+      "bytes": 5890,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/raw/values.dat",
+      "sha256": "a4fdd59ec29914d9d9b38e9025a067bc35a848f38d18ec55a07dca56c0601b8f"
+    },
+    {
+      "bytes": 1626,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/specification.json",
+      "sha256": "cdd8f6dbca325f4c8df85437b08a3b12c5d081bd2346dae8e62ad8335e634bfa"
+    },
+    {
+      "bytes": 16416,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/summary.json",
+      "sha256": "8bf3d73aec0ffad53d57b2cf444f28690cd901cdc5d99a2976f3f7a17310fac4"
+    },
+    {
+      "bytes": 25110,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-moderate-final-source/tirust_complex_stress.py",
+      "sha256": "11cb730be1219aca6a4d89abd92ba0e728221ecb33eefc42a6e1758b682a21ba"
+    },
+    {
+      "bytes": 14623,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/MadLoopParams.dat",
+      "sha256": "0130897072e2303882fb4e0c18affdf2d03e89357a6f6fbe9240d3cd162a7e69"
+    },
+    {
+      "bytes": 585283,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/candidate-inputs.json",
+      "sha256": "e9854de1673b5c7badf90a2a045e1810c11da69be626e8c95c9c33d4b84b5178"
+    },
+    {
+      "bytes": 4054,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/candidate-output.txt",
+      "sha256": "61132b4d13b56dd0803dc0e49b76bb15a76044f09233a479b5fb8ec47990e1e7"
+    },
+    {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/raw/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    {
+      "bytes": 8079,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/raw/observation.json",
+      "sha256": "2469d9b9ba53bc0975d8263f92e49ea3db46e55d8aa55b7e931a562496fff03e"
+    },
+    {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/raw/timed_status.dat",
+      "sha256": "3243021fff4a4bf8d67f6572f30fa88d7e889062db770009743b0fab1e4462dd"
+    },
+    {
+      "bytes": 53,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/raw/timing.dat",
+      "sha256": "3561ff32c46f3d54f0cbc32d6cb4cf6fc2c7476f67d75421918eae503104d96c"
+    },
+    {
+      "bytes": 3720,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/raw/values.dat",
+      "sha256": "131a50ce7392e8218e0e6319e530a4b599051edea5925b62a857c5fa721c49c5"
+    },
+    {
+      "bytes": 1570,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/specification.json",
+      "sha256": "b9e602e0cf5afd8a06d2c1d65dfc77abeb5572e17e30d1b484a934112e49d45d"
+    },
+    {
+      "bytes": 11511,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/summary.json",
+      "sha256": "6d4a97964aefe26885aabf43ae30878c695306150b6340aadb470035bb3ef630"
+    },
+    {
+      "bytes": 22156,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/runs/candidate/backend-9-auto-ordinary-final-source/tirust_complex_stress.py",
+      "sha256": "8e14c583316e0293c9f9c355addff332a5fee244fd5012db32857b4588ca87b0"
+    },
+    {
+      "bytes": 5319295,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/summary.json",
+      "sha256": "96ef160484e1869aaa657fa6ee09d54a43b06a8f7691ce7edb4cd7dabb1899a9"
+    },
+    {
+      "bytes": 7213,
+      "path": "docs/benchmarkfolder/experiments/complex-mass/verification.log",
+      "sha256": "8a1a13aa11df474bdda3cf678c2af5e23f2d1ee68c4549a6a77d5d4f9ad40e27"
+    },
+    {
+      "bytes": 5279,
+      "path": "tests/unit_tests/various/test_tirust_complex_stress.py",
+      "sha256": "2f4f306dcc92276fe0c4cf1882e2d1c1f277b69868287d3a5d0ce1fd30a50de8"
+    },
+    {
+      "bytes": 29089,
+      "path": "tools/tirust_complex_stress.py",
+      "sha256": "9426f8ada21dc0ee6142b557611576039c98e640a59ed4a82d24962b6ae1bdc0"
+    }
+  ],
+  "point20_cuttools_disagreement_cause": "Legacy scalar cutoff and DP denominator transport",
+  "primary_extreme_points_qualified": false,
+  "production_cuttools_changed": false,
+  "schema": 1,
+  "scope": "CMS primary observations and separately labeled causal diagnostics"
+}

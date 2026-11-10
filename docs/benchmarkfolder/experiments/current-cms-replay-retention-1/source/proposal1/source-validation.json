@@ -1,0 +1,71 @@
+{
+  "CLI_entrypoints_verified": {
+    "baseline": {
+      "bin_mg5_aMC_absent": true,
+      "exists_in_exact_git_revision": true,
+      "path": "bin/madgraph",
+      "revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+      "sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0"
+    },
+    "candidate": {
+      "bin_mg5_aMC_absent": true,
+      "exists_in_exact_git_revision": true,
+      "path": "bin/madgraph",
+      "revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+      "sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0"
+    }
+  },
+  "baseline_manifest_record_sha256_verified": "d674fbb51dab8b7d008bd7c7c0fab7e4b74960618af87a8eaef9b01d25c97ff4",
+  "baseline_source_record_revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+  "both_historical_parameter_cards_equal": true,
+  "branch": "madloop_tirust",
+  "checkout_HEAD": "a190f0910601a32f67212558d35f4df70bb734f8",
+  "current9_numeric_card_byte_equal_historical": true,
+  "current9_numeric_card_sha256": "0130897072e2303882fb4e0c18affdf2d03e89357a6f6fbe9240d3cd162a7e69",
+  "current_worker_sha256": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9",
+  "diagnostic_worker_sha256": "1f71c880e1ced0f46dc43386e2b9eba2d6e503e752834a46e447808a3e17ea38",
+  "driver_delta": "one stdout redirection replaced by comment",
+  "environment_contract_includes_private_history": true,
+  "expected_histogram_evaluations": 21,
+  "expected_rows": 42,
+  "fresh_CLI_exports_proposed": 2,
+  "future_report_exists_now": false,
+  "future_work_exists_now": false,
+  "historical_and_current_model_hash_maps_equal": true,
+  "historical_worker_sha256": "02a5115406ec38dafb307bdf82879e26f363a5957cfe794121520cfe36b4d678",
+  "installed_dependency_files_verified": 27,
+  "model_files_verified": 175,
+  "native_or_build_commands_executed": 0,
+  "passed": true,
+  "point_count": 21,
+  "point_metadata_declared_sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60",
+  "point_sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60",
+  "registered_current_source_files_verified": 2664,
+  "registered_source_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+  "requests": 6,
+  "serialized_rows_verified": 84,
+  "source_mismatches": [],
+  "source_only": true,
+  "strict_host_accuracy_limit": 0.001,
+  "template_serialization": {
+    "baseline": {
+      "ignored_TIRust_only_fields": {
+        "tirustcachemaxbytes": 268435456,
+        "tirustcomputefinite": true,
+        "tirustglobalcache": -1,
+        "useqpintegrandfortirust": true
+      },
+      "rendered_requests": 1,
+      "source_template_sha256": "0e2dc5cb17e844e5e871afbd50eb604a389ba585c10b3cc471f752e509b52f61",
+      "supported_field_count": 33,
+      "uncontrolled_template_fields": []
+    },
+    "candidate": {
+      "ignored_TIRust_only_fields": {},
+      "rendered_requests": 5,
+      "source_template_sha256": "3583415d485e9d212ff40f5da5e16749c0cb8473582966ea038af426ce08dec6",
+      "supported_field_count": 37,
+      "uncontrolled_template_fields": []
+    }
+  }
+}

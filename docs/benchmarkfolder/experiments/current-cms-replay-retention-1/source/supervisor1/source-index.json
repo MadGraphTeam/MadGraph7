@@ -1,0 +1,114 @@
+{
+  "build_or_native_physics_commands_executed": 0,
+  "files": {
+    "README.md": {
+      "sha256": "f7e19efa73d2ab26a3d9616cd9ea0752d38080add3eef476cfa718dfcac412e2",
+      "size": 9522
+    },
+    "helper-lineage.json": {
+      "sha256": "3094fc580340c99e83b3d78ed8337a7a94734fecfb8671821b9effe327b61132",
+      "size": 3685
+    },
+    "independent-review.json": {
+      "sha256": "7786d96a5d85318d176ae615edcdd21b5378505dd6527fb3f0aba2f9a56d4575",
+      "size": 1152
+    },
+    "native_job.py": {
+      "sha256": "cfc1b5fe54461a4fba320f2c82c904d20bb38e84ee939fc37cc1a28fbf6adaf5",
+      "size": 16955
+    },
+    "ownership/analyze.py": {
+      "sha256": "0014bbf833cce64344ffcf38e2cb8c9a92605eeeb697fcf260553a13e5d1d40b",
+      "size": 42482
+    },
+    "ownership/legacy_qualify.py": {
+      "sha256": "a408dc73d880a9471defaf6cf4fa9b426e616780b4861c595d608826b6b0f89a",
+      "size": 31845
+    },
+    "ownership/linker_bind.py": {
+      "sha256": "b54528ebf6b9847f134a7d8ad927c7394607e927397e45169cb644479c8452c6",
+      "size": 8865
+    },
+    "ownership/process_cleanup.py": {
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+      "size": 5554
+    },
+    "ownership/run.py": {
+      "sha256": "be6212d7e93f698b551eee35ec577132c0ebb6db73d07cc203262be6319ce861",
+      "size": 32408
+    },
+    "ownership/smoke.py": {
+      "sha256": "a651c23461f27acb51e15b8b5fd5c46ab06199b2e76e8fef5aab5dbe047c56de",
+      "size": 2692
+    },
+    "prerequisites.json": {
+      "sha256": "301f6ddf143e15de184a236b27aad971d7adaeabed795b551e8342189d0e3e24",
+      "size": 123705
+    },
+    "prerequisites.py": {
+      "sha256": "11fac77b292668ce32c0304c082bc59eb2128edbd669fd097e0d435c04b58b79",
+      "size": 5868
+    },
+    "protocol/process_cleanup.py": {
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+      "size": 5554
+    },
+    "protocol/tirust_benchmark.py": {
+      "sha256": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370",
+      "size": 96661
+    },
+    "protocol/tirust_benchmark_campaign.py": {
+      "sha256": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710",
+      "size": 41779
+    },
+    "protocol/tirust_benchmark_compiler.py": {
+      "sha256": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+      "size": 8272
+    },
+    "protocol/tirust_benchmark_worker.py": {
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57",
+      "size": 18869
+    },
+    "run.py": {
+      "sha256": "90299a509a12b1216af129e90b09fca7d5e40986fab49c964dcf3376acd0c871",
+      "size": 36551
+    },
+    "source-validation.json": {
+      "sha256": "f625df9991a0b96e168367fdf1b8a84606210bcf5e533ffbd774937b386b5c36",
+      "size": 1144
+    },
+    "test-receipt.json": {
+      "sha256": "787f3e8b3b0cfcdb27e76bffbac294c1ee69cc8c063a63ae8f11772ae80e04c7",
+      "size": 1408
+    },
+    "test_native_job.py": {
+      "sha256": "6b1a2ec2ea677c26b81481124d558d392dc84ddc0b5778111a157eb70b4ed474",
+      "size": 20979
+    },
+    "test_preparation.py": {
+      "sha256": "3bf08c1291c8d69260d2a434f0137ee96a5eedfc929977a8df7733304b65af27",
+      "size": 24195
+    },
+    "test_supervisor.py": {
+      "sha256": "8ac4b63b65da235048c9588f17b27d803cb4027178b5c458046f998bf459c53b",
+      "size": 13345
+    },
+    "tests-native.log": {
+      "sha256": "b378e59b30500b2f760746e47b58ad7c0879e0c2a6ed6f2267226cb0ad401051",
+      "size": 123
+    },
+    "tests-preparation.log": {
+      "sha256": "662853b88d188aabbfef2d9339178ba32fc7143a0b3e11d5617cbdaa0e30d6a5",
+      "size": 126
+    },
+    "tests-supervisor.log": {
+      "sha256": "eb99538ce7a3d46f529baabf49b9c3eacae0f8fd2da1dc57440e80b7aca63dfb",
+      "size": 2767
+    }
+  },
+  "physical_supervisor4_source_index_sha256": "c192146977008a7dec8c3d1dce479eeaaf53e382ab4aad5599db6665dfe42f25",
+  "proposal_index_sha256": "9c1703b96ec3933b9f8644a4850db2d9742579a109d4fdb7e72d3d776f0eba2e",
+  "schema_version": 1,
+  "scope": "Sealed executing CMS supervisor source; source checks/mocks only; actual stages separately admitted",
+  "tests_passed": 71
+}

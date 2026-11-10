@@ -1,0 +1,33 @@
+{
+  "compiler_make_loader_physics_commands_executed": 0,
+  "external_processes_launched_by_tests": 0,
+  "fixtures": "temporary files and mocked Popen only; source4 real donor/config checks are read-only",
+  "passed": true,
+  "tested_sources": {
+    "native_job.py": "cfc1b5fe54461a4fba320f2c82c904d20bb38e84ee939fc37cc1a28fbf6adaf5",
+    "prerequisites.json": "301f6ddf143e15de184a236b27aad971d7adaeabed795b551e8342189d0e3e24",
+    "prerequisites.py": "11fac77b292668ce32c0304c082bc59eb2128edbd669fd097e0d435c04b58b79",
+    "run.py": "90299a509a12b1216af129e90b09fca7d5e40986fab49c964dcf3376acd0c871",
+    "test_native_job.py": "6b1a2ec2ea677c26b81481124d558d392dc84ddc0b5778111a157eb70b4ed474",
+    "test_preparation.py": "3bf08c1291c8d69260d2a434f0137ee96a5eedfc929977a8df7733304b65af27",
+    "test_supervisor.py": "8ac4b63b65da235048c9588f17b27d803cb4027178b5c458046f998bf459c53b"
+  },
+  "tests": {
+    "tests-native.log": {
+      "passed": true,
+      "sha256": "b378e59b30500b2f760746e47b58ad7c0879e0c2a6ed6f2267226cb0ad401051",
+      "tests": 24
+    },
+    "tests-preparation.log": {
+      "passed": true,
+      "sha256": "662853b88d188aabbfef2d9339178ba32fc7143a0b3e11d5617cbdaa0e30d6a5",
+      "tests": 27
+    },
+    "tests-supervisor.log": {
+      "passed": true,
+      "sha256": "eb99538ce7a3d46f529baabf49b9c3eacae0f8fd2da1dc57440e80b7aca63dfb",
+      "tests": 20
+    }
+  },
+  "total_tests": 71
+}

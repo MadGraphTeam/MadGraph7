@@ -1,0 +1,30 @@
+{
+  "amplitude_launch_count": 0,
+  "closure_basis": "Root explicitly observed all three terminal results and inspected the failure before runtime()/native_job launch; exact closed stage/accounting/abort files are retained",
+  "completed_requests": 0,
+  "counter_scope": "native-run stage only; preflight includes separately admitted loader/mass/model setup",
+  "physics_loader_launch_count": 0,
+  "preflight_counts": {
+    "CMS_model_probes": 2,
+    "loader_listings": 4,
+    "mass_probes": 2
+  },
+  "qualification": "orchestrator failure before amplitude launch; no numerical result",
+  "root_observed_terminal": true,
+  "schema_version": 1,
+  "sessions": {
+    "preflight": {
+      "exit_code": 0,
+      "session_id": 11912
+    },
+    "prepare": {
+      "exit_code": 0,
+      "session_id": 85858
+    },
+    "run": {
+      "exit_code": 1,
+      "session_id": 63712
+    }
+  },
+  "worker_launch_count": 0
+}

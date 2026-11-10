@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "kind": "pure-retention-source-tests",
+  "reported_by": "/root/current_cms_replay/cms_policy_audit",
+  "test_file": "test_verify_evidence.py",
+  "tests_run": 22,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 1,
+  "skip_reason": "Delivered evidence-index.json was not yet written; the final delivered-seal check is run separately after sealing.",
+  "elapsed_seconds": 51.241,
+  "scope": "In-memory and temporary-directory callback integrity and semantic mutation tests; no driver, binary, or native execution",
+  "verifier_sha256": "520c9b075a0b54530bd681510a1e0849c76a81091860b413fcf68c65a100e7e8",
+  "test_sha256": "0f389e45078beeb2122cf50a70f8fb2fb0c411a401fd8567c96e464035d8caf9"
+}
