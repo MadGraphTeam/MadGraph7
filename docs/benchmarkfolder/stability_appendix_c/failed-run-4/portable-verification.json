@@ -1,0 +1,17 @@
+{
+  "copied_capsule_only": true,
+  "denied_attempts": [],
+  "distinct_local_read_paths": 48,
+  "original_recorded_paths_never_opened": true,
+  "schema": "madloop-failed4-portable-verification-v1",
+  "subprocess_or_dynamic_load_calls": 0,
+  "verification": {
+    "inherited_new_compiler_loader_point_amplitude_calls": 0,
+    "native_starts": 0,
+    "readonly_guards_passed": 20,
+    "requests": 20,
+    "unexecuted_primary_calls": 6000,
+    "verified": true
+  },
+  "verified": true
+}

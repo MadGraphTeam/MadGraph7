@@ -1,0 +1,12 @@
+{
+  "amplitude_evaluations": 0,
+  "commands_executed": 0,
+  "compiler_invocations": 0,
+  "error": null,
+  "loader_invocations": 0,
+  "point_generation_calls": 0,
+  "preparation_sha256": "cea9798b3127023153d19f6533931ae26acd786a02c290e264ca9f576eba07ad",
+  "protocol_sha256": "54eb3b1ab43aead6a5d7011bd86c68426b851eaabaf29946680ba66e4c2d558d",
+  "source_index_sha256": "bbdb3d82350f79eeccc421bf1ca1fa143957fd466f7d101cf3ba33daa34b7c4d",
+  "status": "passed"
+}

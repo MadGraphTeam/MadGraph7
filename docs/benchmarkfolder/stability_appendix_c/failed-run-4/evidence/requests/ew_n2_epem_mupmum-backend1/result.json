@@ -1,0 +1,1590 @@
+{
+  "card_write_intent": [
+    "Cards/MadLoopParams.dat",
+    "SubProcesses/MadLoop5_resources/MadLoopParams.dat",
+    "SubProcesses/MadLoopParams.dat"
+  ],
+  "effective_card": {
+    "files": {
+      "Cards/MadLoopParams.dat": "dfd5903a176dd24c3c20a0bcb70f543c0a552557da855285ef673dbf9ffe01d4",
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": "dfd5903a176dd24c3c20a0bcb70f543c0a552557da855285ef673dbf9ffe01d4",
+      "SubProcesses/MadLoopParams.dat": "dfd5903a176dd24c3c20a0bcb70f543c0a552557da855285ef673dbf9ffe01d4"
+    },
+    "readback": {
+      "Cards/MadLoopParams.dat": {
+        "COLLIERComputeIRpoles": true,
+        "COLLIERComputeUVpoles": true,
+        "COLLIERGlobalCache": 0,
+        "COLLIERRequiredAccuracy": 1e-13,
+        "COLLIERUseInternalStabilityTest": false,
+        "CTModeInit": 1,
+        "CTModeRun": 1,
+        "LoopPoleMode": -1,
+        "MLReductionLib": "1",
+        "TIRustComputeFinite": true,
+        "TIRustGlobalCache": 0,
+        "UseQPIntegrandForTIRust": true
+      },
+      "SubProcesses/MadLoop5_resources/MadLoopParams.dat": {
+        "COLLIERComputeIRpoles": true,
+        "COLLIERComputeUVpoles": true,
+        "COLLIERGlobalCache": 0,
+        "COLLIERRequiredAccuracy": 1e-13,
+        "COLLIERUseInternalStabilityTest": false,
+        "CTModeInit": 1,
+        "CTModeRun": 1,
+        "LoopPoleMode": -1,
+        "MLReductionLib": "1",
+        "TIRustComputeFinite": true,
+        "TIRustGlobalCache": 0,
+        "UseQPIntegrandForTIRust": true
+      },
+      "SubProcesses/MadLoopParams.dat": {
+        "COLLIERComputeIRpoles": true,
+        "COLLIERComputeUVpoles": true,
+        "COLLIERGlobalCache": 0,
+        "COLLIERRequiredAccuracy": 1e-13,
+        "COLLIERUseInternalStabilityTest": false,
+        "CTModeInit": 1,
+        "CTModeRun": 1,
+        "LoopPoleMode": -1,
+        "MLReductionLib": "1",
+        "TIRustComputeFinite": true,
+        "TIRustGlobalCache": 0,
+        "UseQPIntegrandForTIRust": true
+      }
+    },
+    "settings": {
+      "COLLIERComputeIRpoles": true,
+      "COLLIERComputeUVpoles": true,
+      "COLLIERGlobalCache": 0,
+      "COLLIERRequiredAccuracy": 1e-13,
+      "COLLIERUseInternalStabilityTest": false,
+      "CTModeInit": 1,
+      "CTModeRun": 1,
+      "LoopPoleMode": -1,
+      "MLReductionLib": "1",
+      "TIRustComputeFinite": true,
+      "TIRustGlobalCache": 0,
+      "UseQPIntegrandForTIRust": true
+    }
+  },
+  "error": {
+    "class": "FileNotFoundError",
+    "message": "[Errno 2] No such file or directory: '/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-4/workers/ew_n2_epem_mupmum-backend1/SubProcesses/P0_epem_mupmum/param_card.dat'"
+  },
+  "host_accuracy_qualified": false,
+  "native_started": false,
+  "primary_call_outcomes": [
+    {
+      "method": 1,
+      "point": 1,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 1,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 1,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 2,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 2,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 2,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 3,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 3,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 3,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 4,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 4,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 4,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 5,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 5,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 5,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 6,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 6,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 6,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 7,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 7,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 7,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 8,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 8,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 8,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 9,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 9,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 9,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 10,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 10,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 10,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 11,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 11,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 11,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 12,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 12,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 12,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 13,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 13,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 13,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 14,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 14,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 14,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 15,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 15,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 15,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 16,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 16,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 16,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 17,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 17,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 17,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 18,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 18,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 18,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 19,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 19,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 19,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 20,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 20,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 20,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 21,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 21,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 21,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 22,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 22,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 22,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 23,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 23,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 23,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 24,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 24,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 24,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 25,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 25,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 25,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 26,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 26,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 26,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 27,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 27,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 27,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 28,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 28,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 28,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 29,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 29,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 29,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 30,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 30,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 30,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 31,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 31,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 31,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 32,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 32,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 32,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 33,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 33,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 33,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 34,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 34,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 34,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 35,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 35,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 35,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 36,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 36,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 36,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 37,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 37,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 37,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 38,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 38,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 38,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 39,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 39,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 39,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 40,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 40,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 40,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 41,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 41,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 41,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 42,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 42,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 42,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 43,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 43,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 43,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 44,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 44,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 44,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 45,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 45,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 45,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 46,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 46,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 46,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 47,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 47,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 47,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 48,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 48,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 48,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 49,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 49,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 49,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 50,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 50,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 50,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 51,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 51,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 51,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 52,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 52,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 52,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 53,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 53,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 53,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 54,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 54,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 54,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 55,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 55,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 55,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 56,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 56,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 56,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 57,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 57,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 57,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 58,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 58,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 58,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 59,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 59,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 59,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 60,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 60,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 60,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 61,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 61,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 61,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 62,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 62,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 62,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 63,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 63,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 63,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 64,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 64,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 64,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 65,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 65,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 65,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 66,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 66,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 66,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 67,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 67,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 67,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 68,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 68,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 68,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 69,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 69,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 69,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 70,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 70,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 70,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 71,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 71,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 71,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 72,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 72,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 72,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 73,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 73,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 73,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 74,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 74,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 74,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 75,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 75,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 75,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 76,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 76,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 76,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 77,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 77,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 77,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 78,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 78,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 78,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 79,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 79,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 79,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 80,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 80,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 80,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 81,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 81,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 81,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 82,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 82,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 82,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 83,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 83,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 83,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 84,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 84,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 84,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 85,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 85,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 85,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 86,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 86,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 86,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 87,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 87,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 87,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 88,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 88,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 88,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 89,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 89,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 89,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 90,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 90,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 90,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 91,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 91,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 91,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 92,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 92,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 92,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 93,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 93,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 93,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 94,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 94,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 94,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 95,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 95,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 95,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 96,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 96,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 96,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 97,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 97,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 97,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 98,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 98,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 98,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 99,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 99,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 99,
+      "state": "unexecuted"
+    },
+    {
+      "method": 1,
+      "point": 100,
+      "state": "unexecuted"
+    },
+    {
+      "method": 2,
+      "point": 100,
+      "state": "unexecuted"
+    },
+    {
+      "method": 3,
+      "point": 100,
+      "state": "unexecuted"
+    }
+  ],
+  "primary_calls_expected": 300,
+  "readonly_guard_passed": true,
+  "request": {
+    "backend": 1,
+    "case": "ew_n2_epem_mupmum",
+    "id": "ew_n2_epem_mupmum-backend1",
+    "lock_required": false,
+    "primary_calls_expected": 300
+  },
+  "state": "unexecuted"
+}
