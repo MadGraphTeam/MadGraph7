@@ -1,0 +1,18 @@
+{
+  "files": {
+    "review.json": {
+      "bytes": 160298,
+      "sha256": "c5fb545218e469c32b1466fc99b3655b9d01714afa6b71a25bf14350ce96117a"
+    },
+    "review.py": {
+      "bytes": 18438,
+      "sha256": "ae3b356873ed25d7f9d79dd986de2fc3eea68e3a95b2ab6326c2670199059d87"
+    },
+    "test.log": {
+      "bytes": 8823,
+      "sha256": "f49d0c8a8dad9edcf17b3c97745b9b699eddb128b7b35acc5b125c0dfe3aab1d"
+    }
+  },
+  "schema": "source4-independent-input-gate-review-index-1",
+  "scope": "Pure source/gate audit, retained two-worker replay and focused tamper controls; no native or scientific-acceptance claim."
+}

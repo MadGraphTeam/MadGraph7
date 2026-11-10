@@ -1,0 +1,54 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1013,
+      "sha256": "173965e895e54b33980e4ed73d1cf1d641f77323a616adc62555edea21f1d3ee"
+    },
+    "actual-run2/loader.json": {
+      "bytes": 2571,
+      "sha256": "0c690ec1289c7ab6601b0883eb1905f1f652714b35673ef1652bd99681d9bef3"
+    },
+    "actual-run2/loader.log": {
+      "bytes": 1856,
+      "sha256": "946bf0c73488093c760ada9dfce4fe59b904694cb07b7f4341eb790dbbfe8ed1"
+    },
+    "actual-run2/result.json": {
+      "bytes": 907,
+      "sha256": "7eb7b1e9f46dc15b77eb1f1b24ab3e31819ee9d17266f3e8dbc791d68d55fa57"
+    },
+    "collect.py": {
+      "bytes": 3453,
+      "sha256": "93b50c25e14790ae5d96fc6c8327ada84f333f88dc2a17dc0c3c11fed3498467"
+    },
+    "inherited-build2-static-index.json": {
+      "bytes": 3563,
+      "sha256": "446ba17811c642753901b867fa86efd962b82511594cfd92adb5cb8b394f618f"
+    },
+    "inherited-build2.json": {
+      "bytes": 8815,
+      "sha256": "c3d2d2568814b0f0efef8a8d465db561e129473eefe55e3fbaa4b785a1ded322"
+    },
+    "inherited-source2-bindings.json": {
+      "bytes": 77388,
+      "sha256": "81f995352ddaad1cfa0595d79ad170ecf89a178923c92041071801a1aa48067e"
+    },
+    "inherited-source2-index.json": {
+      "bytes": 4492,
+      "sha256": "44039ba25e451910d1ab7c264ac1f397437ce41f965d8e381b539dd9baf44046"
+    },
+    "retention-inventory.json": {
+      "bytes": 5086,
+      "sha256": "5962a778a8224a4ce4d1fef17ca352ebe03197c11227ba171149ced8d7fad335"
+    },
+    "summary.json": {
+      "bytes": 991,
+      "sha256": "0545d331a705aceb7d0b6b76c572e6e76a6eac7fceb05588111063b70cb4f179"
+    },
+    "verify.py": {
+      "bytes": 4910,
+      "sha256": "e4766e5e27e476b644470d2b5c8440977df5d0fcd94230d2578404d11c932adb"
+    }
+  },
+  "schema": "qcd-n3-genuine-qp-failed-run2-retention-v1",
+  "scope": "complete closed loader-only failure; zero amplitudes"
+}

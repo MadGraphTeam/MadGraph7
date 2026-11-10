@@ -1,0 +1,188 @@
+{
+  "donor": {
+    "metadata": {
+      "elf_class": 64,
+      "elf_type": "ET_DYN",
+      "endianness": "little",
+      "exported_ml_tirust_symbols": [],
+      "machine": "x86_64",
+      "needed": [
+        "libninja.so.0",
+        "libcollier.so",
+        "libgcc_s.so.1",
+        "libdl.so.2",
+        "libutil.so.1",
+        "librt.so.1",
+        "libpthread.so.0",
+        "libgfortran.so.5",
+        "libm.so.6",
+        "libmvec.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2",
+        "libmadloop_tirust.so",
+        "libstdc++.so.6"
+      ],
+      "rpath": null,
+      "runpath": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/:/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/:/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib:/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib:/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib",
+      "soname": null,
+      "version_requirements": {
+        "ld-linux-x86-64.so.2": [
+          "GLIBC_2.3"
+        ],
+        "libc.so.6": [
+          "GLIBC_2.10",
+          "GLIBC_2.14",
+          "GLIBC_2.15",
+          "GLIBC_2.16",
+          "GLIBC_2.17",
+          "GLIBC_2.18",
+          "GLIBC_2.2.5",
+          "GLIBC_2.25",
+          "GLIBC_2.27",
+          "GLIBC_2.28",
+          "GLIBC_2.29",
+          "GLIBC_2.3",
+          "GLIBC_2.3.4",
+          "GLIBC_2.30",
+          "GLIBC_2.32",
+          "GLIBC_2.33",
+          "GLIBC_2.34",
+          "GLIBC_2.38",
+          "GLIBC_2.39",
+          "GLIBC_2.4",
+          "GLIBC_2.5",
+          "GLIBC_2.6",
+          "GLIBC_2.9"
+        ],
+        "libgcc_s.so.1": [
+          "GCC_3.0",
+          "GCC_3.3",
+          "GCC_4.2.0"
+        ],
+        "libgfortran.so.5": [
+          "GFORTRAN_10",
+          "GFORTRAN_8"
+        ],
+        "libm.so.6": [
+          "GLIBC_2.2.5",
+          "GLIBC_2.26",
+          "GLIBC_2.27",
+          "GLIBC_2.29",
+          "GLIBC_2.35"
+        ],
+        "libmvec.so.1": [
+          "GLIBC_2.22"
+        ]
+      }
+    },
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/check",
+    "pt_interp": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "sha256": "c18c9dbdea3fe11e16c693d6cd2712090259139ad4fa25a2663bb6b7988536ca"
+  },
+  "failed_stage": {
+    "build": "prior-build1/build.json",
+    "command": "prior-build1/command-1.json",
+    "empty_diagnostic": "prior-build1/command-1.log",
+    "first_libc_from_injected_ld_path": "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/libc.so.6",
+    "interpretation": "A host2.42-loader/target2.40-libc environment mismatch is supported by static bytes. No actual crash-site map exists; the precise crash location remains inferred."
+  },
+  "prlimit": {
+    "metadata": {
+      "elf_class": 64,
+      "elf_type": "ET_DYN",
+      "endianness": "little",
+      "exported_ml_tirust_symbols": [],
+      "machine": "x86_64",
+      "needed": [
+        "libsmartcols.so.1",
+        "libc.so.6"
+      ],
+      "rpath": null,
+      "runpath": "/nix/store/4rrm5m2k220dg9nmdd4sr9ih3w5l08rn-util-linux-2.42.2-lib/lib:/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib",
+      "soname": null,
+      "version_requirements": {
+        "libc.so.6": [
+          "GLIBC_2.13",
+          "GLIBC_2.14",
+          "GLIBC_2.16",
+          "GLIBC_2.2.5",
+          "GLIBC_2.25",
+          "GLIBC_2.28",
+          "GLIBC_2.3",
+          "GLIBC_2.3.4",
+          "GLIBC_2.33",
+          "GLIBC_2.34",
+          "GLIBC_2.38",
+          "GLIBC_2.4",
+          "GLIBC_2.7",
+          "GLIBC_2.8"
+        ],
+        "libsmartcols.so.1": [
+          "SMARTCOLS_2.25"
+        ]
+      }
+    },
+    "path": "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/prlimit",
+    "pt_interp": "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2",
+    "sha256": "0b352b56a76a2f55653f7da2b9d1d540d7280c08718608f4349f2c95ef9a0964"
+  },
+  "python": {
+    "metadata": {
+      "elf_class": 64,
+      "elf_type": "ET_DYN",
+      "endianness": "little",
+      "exported_ml_tirust_symbols": [],
+      "machine": "x86_64",
+      "needed": [
+        "libc.so.6"
+      ],
+      "rpath": null,
+      "runpath": "/nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib:/nix/store/ihpdbhy4rfxaixiamyb588zfc3vj19al-gcc-15.2.0-lib/lib",
+      "soname": null,
+      "version_requirements": {
+        "libc.so.6": [
+          "GLIBC_2.2.5",
+          "GLIBC_2.34"
+        ]
+      }
+    },
+    "path": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13",
+    "pt_interp": "/nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2",
+    "sha256": "b62e17653c7f9b57b7888b94e7eeaf5bce5bd3538002daff47f17cad1d984799"
+  },
+  "taskset": {
+    "metadata": {
+      "elf_class": 64,
+      "elf_type": "ET_DYN",
+      "endianness": "little",
+      "exported_ml_tirust_symbols": [],
+      "machine": "x86_64",
+      "needed": [
+        "libc.so.6"
+      ],
+      "rpath": null,
+      "runpath": "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib",
+      "soname": null,
+      "version_requirements": {
+        "libc.so.6": [
+          "GLIBC_2.14",
+          "GLIBC_2.16",
+          "GLIBC_2.2.5",
+          "GLIBC_2.25",
+          "GLIBC_2.28",
+          "GLIBC_2.3",
+          "GLIBC_2.3.4",
+          "GLIBC_2.33",
+          "GLIBC_2.34",
+          "GLIBC_2.38",
+          "GLIBC_2.4",
+          "GLIBC_2.7",
+          "GLIBC_2.8"
+        ]
+      }
+    },
+    "path": "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "pt_interp": "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2",
+    "sha256": "b5d01660bcca50634a7e046ed5702be5d46417b287dfb4cf642683bd70747a15"
+  }
+}

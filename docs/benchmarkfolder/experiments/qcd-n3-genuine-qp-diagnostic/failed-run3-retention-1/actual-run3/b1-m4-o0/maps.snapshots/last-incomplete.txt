@@ -1,0 +1,14 @@
+64b23d44b000-64b23d518000 r--p 00000000 00:2c 214248309                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic
+64b23d518000-64b241113000 r-xp 000cd000 00:2c 214248309                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic
+64b241113000-64b241864000 r--p 03cc8000 00:2c 214248309                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic
+64b241864000-64b24190c000 rw-p 04419000 00:2c 214248309                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic
+64b24190c000-64b243614000 rw-p 00000000 00:00 0 
+745017b00000-745017b04000 r--p 00000000 00:00 0                          [vvar]
+745017b04000-745017b06000 r--p 00000000 00:00 0                          [vvar_vclock]
+745017b06000-745017b08000 r-xp 00000000 00:00 0                          [vdso]
+745017b08000-745017b09000 r--p 00000000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+745017b09000-745017b33000 r-xp 00001000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+745017b33000-745017b3d000 r--p 0002b000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+745017b3d000-745017b41000 rw-p 00035000 00:21 196667                     /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2
+7ffeb79d5000-7ffeb79f8000 rwxp 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]
