@@ -40,7 +40,8 @@ binary64 fallback point is served unguarded, as before the guard.
   57-digit level takes minutes).
 
 The fixture ``tests/fixtures/loop/fallback_guard_zzz.json`` holds the
-binary64 texts, mu_R^2 and truths (its ``provenance``).
+binary64 texts, mu_R^2 and truths (its ``provenance``). The module's
+artifacts are generated each in a fresh interpreter (``_generated``).
 """
 
 from __future__ import annotations
@@ -49,6 +50,8 @@ import ctypes
 import json
 import math
 import re
+import subprocess
+import sys
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
@@ -56,8 +59,7 @@ from typing import Any
 
 import pytest
 
-from tests.unit.loop_v2_induced_observables_rows import generate
-
+ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "loop" / "fallback_guard_zzz.json"
 TARGET = 1e-5
 # The guard's limit is the call's target, never below 1e-5 (USER 2026-11-09
@@ -572,12 +574,69 @@ def test_the_guard_stays_on_under_the_unchecked_setting(loop_native):
 
 # ------------------------------------------- g g > z z z through the public API
 
+# ``generate`` (tests/unit/loop_v2_induced_observables_rows.py) in a fresh
+# interpreter on this process's import path: argv = the path (JSON), root,
+# fixture name, process; the last line of its output is the artifact's path.
+_GENERATE = r"""
+import json
+import sys
+from pathlib import Path
+
+sys.path[:] = json.loads(sys.argv[1])
+from tests.unit.loop_v2_induced_observables_rows import generate
+
+artifact = generate(Path(sys.argv[2]), sys.argv[3], sys.argv[4])
+print(json.dumps(str(artifact)))
+"""
+
+
+def _generated(root: Path, name: str, expression: str) -> Path:
+    """Fixture row ``name``'s artifact of ``expression``, generated through
+    the public Generator (``generate``, the same helper and options) in a
+    fresh interpreter, one per artifact; the test process only loads it.
+
+    With PyPI symbolica 3.0.3 (the CI release lane) the Python API's results
+    depend on what the same process generated before (the process-history
+    defect fixed by symbolica-dev/symbolica#163, not in 3.0.3; ~1e-30
+    relative normally): g g > z z z generated and then g g > h h in one
+    process (29 "Imported symbol ... was previously defined with
+    user-defined functions" warnings) moves the Python API's guard
+    estimates at the near-forward g g > h h points (NinjaRS amplifies the
+    difference ~1/Gram there) from the SDK's, which only loads the artifact,
+    by 8 % at point 0 (CI run 42758711721, shard 6) up to a factor 19, and
+    one resolved-route estimate across the guard's limit (4.4e-5 against
+    the SDK's 1.5e-7). A fresh process per artifact gives the SDK's
+    estimates bitwise, as the Community build does in one process; the test
+    process loading both artifacts is clean (no such warning), so every
+    comparison below stays strict."""
+
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _GENERATE,
+            json.dumps(sys.path),
+            str(root),
+            name,
+            expression,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=3600,
+        check=False,
+        cwd=ROOT,
+    )
+    assert done.returncode == 0, done.stdout[-2000:] + done.stderr[-4000:]
+    artifact = Path(json.loads(done.stdout.strip().splitlines()[-1]))
+    assert artifact == root / "artifact" and artifact.is_dir(), artifact
+    return artifact
+
 
 @pytest.fixture(scope="module")
 def zzz(loop_sm_ufo, loop_native, tmp_path_factory):
     """g g > z z z (LI-34) through the public Generator (process ``p``)."""
 
-    return generate(tmp_path_factory.mktemp("zzz"), "li_gg_zzz", "g g > z z z")
+    return _generated(tmp_path_factory.mktemp("zzz"), "li_gg_zzz", "g g > z z z")
 
 
 def _stream(keys=("44", "57")):
@@ -853,7 +912,7 @@ def hh(loop_sm_ufo, loop_native, tmp_path_factory):
     """g g > h h through the public Generator (process ``p``) and its
     near-forward stress points (the fixture's ``hh_forward``)."""
 
-    artifact = generate(tmp_path_factory.mktemp("hh"), "li_gg_hh", "g g > h h")
+    artifact = _generated(tmp_path_factory.mktemp("hh"), "li_gg_hh", "g g > h h")
     found = _fixture()["hh_forward"]
     return artifact, found["points"], [found["mu_r2"]] * len(found["points"])
 
