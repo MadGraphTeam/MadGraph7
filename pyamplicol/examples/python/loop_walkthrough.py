@@ -283,7 +283,7 @@ def _orders(runtime: Any, points: Any, scales: Any, color: bool) -> None:
     if runtime.contribution_kind == "loop-induced":
         oracle = "the per-helicity calls summed"
         calls = [
-            runtime.evaluate(points, mu_r2=scales, helicities=[h])
+            runtime.evaluate(points, helicities=[h], **options)
             for h in runtime.physics.helicity_ids
         ]
 

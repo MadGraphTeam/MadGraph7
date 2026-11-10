@@ -15,6 +15,10 @@ and Ward checks of a one-loop request regenerated in memory
   R2 vertex of its external particles (``loop_r2_dropped``) fails the Ward
   check in binary64 far beyond ten times its estimate and again after the
   double-double fallback; the CLI exits 1.
+* **Complex-mass scheme, untagged photons** (u u~ > a a with QED
+  corrections, WT != 0): the QED pole prediction's gamma_gamma counts the
+  massless charged fermions; the top's complex pole mass is a massive
+  internal species, not the cms-external-width refusal of an unstable leg.
 * **Exit codes and statuses** of the report (pure records), and a process
   with nothing to check (an exact colour zero, h > g a) exits 3.
 * **Rows without a criterion** (pure records): a binary64 pole or Ward row
@@ -912,3 +916,44 @@ def test_nothing_to_check_exits_with_its_own_code(tmp_path):
     (entry,) = payload["processes"]
     assert entry["status"] == "nothing checked"
     assert {row["verdict"] for row in entry["rows"]} == {"not applicable"}
+
+
+@pytest.mark.loop_physics
+def test_an_untagged_photon_under_the_complex_mass_scheme_with_a_top_width(tmp_path):
+    """u u~ > a a with QED corrections, complex-mass scheme, WT != 0, the
+    photons untagged: the QED pole prediction's gamma_gamma counts the
+    massless charged fermions only; the top's complex pole mass makes it a
+    massive internal species (it raised the untyped cms-external-width
+    ValueError before, DECISIONS 2026-11-09 22:40 side item (b)). Both poles
+    pass at both points, so the top is not counted."""
+
+    from pyamplicol.api.services import check
+    from pyamplicol.loops.v2 import checks
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    card = tmp_path / "card.toml"
+    card.write_text(
+        """action = "check"
+[model]
+source = "loop_qcd_qed_sm_Gmu"
+restriction = "default"
+[process]
+entries = [{expression = "u u~ > a a", name = "p"}]
+loop_coupling_orders = ["QED"]
+coupling_order_policy = "explicit"
+max_coupling_orders = { QCD = 0, QED = 2 }
+[loop]
+external_photons = "none"
+[loop.preparation]
+fixed_parameters = { MB = "0", MTA = "0", WT = "1.37758", WZ = "2.49877", \
+WW = "2.09291", WH = "0.00407468" }
+[loop.model.scheme]
+mass_scheme = "complex-mass"
+[check]
+points = 2
+"""
+    )
+    report = check(card)
+    assert report.exit_code == checks.EXIT_PASSED
+    poles = _rows(report, "poles")
+    assert len(poles) == 2 * 2 and all(row.verdict == checks.PASS for row in poles)

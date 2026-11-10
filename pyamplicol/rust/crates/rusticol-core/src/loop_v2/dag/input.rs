@@ -619,3 +619,107 @@ impl DagInput {
         })
     }
 }
+
+#[cfg(test)]
+impl Particle {
+    /// A particle with only the colour fields the colour rules read.
+    pub(crate) fn for_colour_tests(pdg: i64, rep: i32, u1_singlet: bool, fla: bool) -> Self {
+        Particle {
+            pdg,
+            rep: Some(rep),
+            has_colour: rep != 1,
+            fla,
+            loop_rep: Some(rep),
+            physical_adjoint: rep == 8,
+            u1_singlet,
+            auxiliary: None,
+            quantum_numbers: Vec::new(),
+            dimension: [0; 3],
+            allowed: [true; 3],
+            sign_contract: Err(String::new()),
+            block_rep: Some(rep),
+            block_fermion: Some(rep == 3 || rep == -3),
+        }
+    }
+}
+
+#[cfg(test)]
+impl Vertex {
+    /// A vertex with only the particle rows and the absorbing sides the
+    /// colour rules read.
+    pub(crate) fn for_colour_tests(particles: [u32; 3], absorbing: Option<[bool; 2]>) -> Self {
+        Vertex {
+            kind: 0,
+            particles,
+            pdgs: [0; 3],
+            usable: true,
+            orders: Vec::new(),
+            colour_weight: Ok([1.0, 0.0]),
+            absorbing,
+            backend: String::new(),
+            full_tensor_network_ready: true,
+            class: 0,
+            factor: [1.0, 0.0],
+            swap: false,
+            exchange: None,
+            flows: FxMap::default(),
+            flavour: FlavourOp::Constant,
+        }
+    }
+}
+
+#[cfg(test)]
+impl DagInput {
+    /// A builder input with only particles and the legs' representations
+    /// (`(label, rep)`), the tables the colour rules read.
+    pub(crate) fn for_colour_tests(particles: Vec<Particle>, label_reps: &[(u8, i32)]) -> Self {
+        let mut label_rep = [None; 256];
+        let (mut coloured, mut singlet, mut fundamental, mut antifundamental) = (0, 0, 0, 0);
+        for &(label, rep) in label_reps {
+            label_rep[label as usize] = Some(rep);
+            let bit = label_bit(label);
+            if rep == 1 {
+                singlet |= bit;
+            } else {
+                coloured |= bit;
+                if rep == 3 {
+                    fundamental |= bit;
+                } else if rep == -3 {
+                    antifundamental |= bit;
+                }
+            }
+        }
+        DagInput {
+            accuracy: "full".into(),
+            legs: Vec::new(),
+            full_mask: label_reps
+                .iter()
+                .fold(0, |mask, &(label, _)| mask | label_bit(label)),
+            by_pdg: particles
+                .iter()
+                .enumerate()
+                .map(|(id, particle)| (particle.pdg, id as u32))
+                .collect(),
+            particles,
+            vertices: Vec::new(),
+            classes: Vec::new(),
+            by_input: FxMap::default(),
+            right_particles: FxMap::default(),
+            order_limits: Vec::new(),
+            ignored_particles: Vec::new(),
+            sources: Vec::new(),
+            admitted_masks: std::collections::HashSet::new(),
+            block_rule: BlockRule::Mask,
+            early_sources_only: false,
+            identity_ranks: Vec::new(),
+            sectors: HashMap::new(),
+            label_rep,
+            coloured_labels: coloured,
+            singlet_labels: singlet,
+            fundamental_labels: fundamental,
+            antifundamental_labels: antifundamental,
+            u1_subtraction_kind: String::new(),
+            u1_grades: false,
+        }
+    }
+}
