@@ -1,0 +1,7 @@
+TwoToTwoParticleScattering
+==========================
+
+.. autoclass:: madspace.TwoToTwoParticleScattering
+   :members:
+   :undoc-members:
+   :show-inheritance:

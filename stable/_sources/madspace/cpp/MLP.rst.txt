@@ -1,0 +1,6 @@
+MLP
+===
+
+.. doxygenclass:: madspace::MLP
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+FunctionBuilder
+===============
+
+.. doxygenclass:: madspace::FunctionBuilder
+   :members:
+   :undoc-members:

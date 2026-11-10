@@ -1,0 +1,6 @@
+LHEMeta
+=======
+
+.. doxygenstruct:: madspace::LHEMeta
+   :members:
+   :undoc-members:

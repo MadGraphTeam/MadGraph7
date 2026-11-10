@@ -1,0 +1,4 @@
+format_progress
+===============
+
+.. autofunction:: madspace.format_progress

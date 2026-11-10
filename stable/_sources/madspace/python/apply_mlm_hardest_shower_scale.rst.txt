@@ -1,0 +1,4 @@
+apply_mlm_hardest_shower_scale
+==============================
+
+.. autofunction:: madspace.apply_mlm_hardest_shower_scale

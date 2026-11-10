@@ -1,0 +1,7 @@
+PartonDensity
+=============
+
+.. autoclass:: madspace.PartonDensity
+   :members:
+   :undoc-members:
+   :show-inheritance:

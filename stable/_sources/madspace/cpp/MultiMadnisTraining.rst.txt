@@ -1,0 +1,6 @@
+MultiMadnisTraining
+===================
+
+.. doxygenclass:: madspace::MultiMadnisTraining
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+StepChainResult
+===============
+
+.. doxygenstruct:: madspace::StepChainResult
+   :members:
+   :undoc-members:

@@ -1,0 +1,7 @@
+GeneratorStatus
+===============
+
+.. autoclass:: madspace.GeneratorStatus
+   :members:
+   :undoc-members:
+   :show-inheritance:

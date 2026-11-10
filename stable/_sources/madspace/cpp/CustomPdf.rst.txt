@@ -1,0 +1,6 @@
+CustomPdf
+=========
+
+.. doxygenstruct:: madspace::CustomPdf
+   :members:
+   :undoc-members:

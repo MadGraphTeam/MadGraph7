@@ -1,0 +1,6 @@
+WeightingGroup
+==============
+
+.. doxygenstruct:: madspace::WeightingGroup
+   :members:
+   :undoc-members:

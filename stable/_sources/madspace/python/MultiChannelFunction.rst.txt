@@ -1,0 +1,7 @@
+MultiChannelFunction
+====================
+
+.. autoclass:: madspace.MultiChannelFunction
+   :members:
+   :undoc-members:
+   :show-inheritance:

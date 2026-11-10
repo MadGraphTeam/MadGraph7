@@ -1,0 +1,4 @@
+cuda_device
+===========
+
+.. autofunction:: madspace.cuda_device

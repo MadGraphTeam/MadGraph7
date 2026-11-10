@@ -1,0 +1,6 @@
+PdfGroupInfo
+============
+
+.. doxygenstruct:: madspace::PdfGroupInfo
+   :members:
+   :undoc-members:

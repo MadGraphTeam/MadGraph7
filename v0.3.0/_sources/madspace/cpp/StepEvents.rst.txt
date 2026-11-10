@@ -1,0 +1,6 @@
+StepEvents
+==========
+
+.. doxygenstruct:: madspace::StepEvents
+   :members:
+   :undoc-members:

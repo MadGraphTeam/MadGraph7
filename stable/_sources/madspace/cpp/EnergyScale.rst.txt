@@ -1,0 +1,6 @@
+EnergyScale
+===========
+
+.. doxygenclass:: madspace::EnergyScale
+   :members:
+   :undoc-members:

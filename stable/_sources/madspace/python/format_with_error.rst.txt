@@ -1,0 +1,4 @@
+format_with_error
+=================
+
+.. autofunction:: madspace.format_with_error

@@ -1,0 +1,6 @@
+IntegrandConcatenator
+=====================
+
+.. doxygenclass:: madspace::IntegrandConcatenator
+   :members:
+   :undoc-members:

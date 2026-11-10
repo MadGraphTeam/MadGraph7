@@ -1,0 +1,7 @@
+MadnisLoss
+==========
+
+.. autoclass:: madspace.MadnisLoss
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,4 @@
+initialize_vegas_grid
+=====================
+
+.. autofunction:: madspace.initialize_vegas_grid

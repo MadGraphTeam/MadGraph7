@@ -1,0 +1,7 @@
+Decay
+=====
+
+.. autoclass:: madspace.Decay
+   :members:
+   :undoc-members:
+   :show-inheritance:

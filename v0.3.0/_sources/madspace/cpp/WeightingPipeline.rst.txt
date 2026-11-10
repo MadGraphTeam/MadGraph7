@@ -1,0 +1,6 @@
+WeightingPipeline
+=================
+
+.. doxygenclass:: madspace::WeightingPipeline
+   :members:
+   :undoc-members:

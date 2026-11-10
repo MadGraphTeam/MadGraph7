@@ -1,0 +1,4 @@
+batch_four_vec_array
+====================
+
+.. doxygenfunction:: madspace::batch_four_vec_array

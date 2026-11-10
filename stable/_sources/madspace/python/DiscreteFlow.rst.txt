@@ -1,0 +1,7 @@
+DiscreteFlow
+============
+
+.. autoclass:: madspace.DiscreteFlow
+   :members:
+   :undoc-members:
+   :show-inheritance:

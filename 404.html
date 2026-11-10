@@ -6,7 +6,7 @@ var m = location.pathname.match(/^\/(?:en|[a-z]{2})\/(latest|stable|v[\d.]+(?:-[
 if (m) {
   location.replace("/" + m[1] + "/" + m[2] + location.hash);
 } else {
-  location.replace("/latest/" + location.hash);
+  location.replace("/stable/" + location.hash);
 }
 </script>
 <p>Redirecting&hellip;</p>

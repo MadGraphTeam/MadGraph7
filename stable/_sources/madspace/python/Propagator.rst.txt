@@ -1,0 +1,7 @@
+Propagator
+==========
+
+.. autoclass:: madspace.Propagator
+   :members:
+   :undoc-members:
+   :show-inheritance:

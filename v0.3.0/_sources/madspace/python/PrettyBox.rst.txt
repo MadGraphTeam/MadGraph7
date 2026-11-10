@@ -1,0 +1,7 @@
+PrettyBox
+=========
+
+.. autoclass:: madspace.PrettyBox
+   :members:
+   :undoc-members:
+   :show-inheritance:

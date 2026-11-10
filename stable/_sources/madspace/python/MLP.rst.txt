@@ -1,0 +1,7 @@
+MLP
+===
+
+.. autoclass:: madspace.MLP
+   :members:
+   :undoc-members:
+   :show-inheritance:

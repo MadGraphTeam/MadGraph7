@@ -1,0 +1,6 @@
+IntegrandProbability
+====================
+
+.. doxygenclass:: madspace::IntegrandProbability
+   :members:
+   :undoc-members:

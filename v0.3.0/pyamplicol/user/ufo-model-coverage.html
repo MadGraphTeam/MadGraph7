@@ -1,0 +1,1574 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Process Selection and Permutations" href="process-selection-and-permutations.html"><link rel="prev" title="Models and Processes" href="models-and-processes.html">
+        <link rel="canonical" href="https://docs.madgraph.org/v0.3.0/pyamplicol/user/ufo-model-coverage.html">
+        <link rel="prefetch" href="../../_static/logo-light.png" as="image">
+        <link rel="prefetch" href="../../_static/logo-dark.png" as="image">
+
+    <!-- Generated with Sphinx 9.0.4 and Furo 2025.12.19 -->
+        <title>UFO Model Coverage - MadGraph7 0.2.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=acfd86a5" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">MadGraph7 0.2.1 documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../../_static/logo-light.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../../_static/logo-dark.png" alt="Dark Logo"/>
+  </div>
+  
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div>
+<div class="mg7-versions" id="mg7-versions" hidden>
+  <label class="mg7-versions__label" for="mg7-version-select">Version</label>
+  <select id="mg7-version-select" aria-label="Documentation version"></select>
+</div>
+<style>
+  .mg7-versions {
+    margin: 0 var(--sidebar-item-spacing-horizontal, 1rem) .75rem;
+  }
+  .mg7-versions__label {
+    display: block;
+    margin-bottom: .2rem;
+    font-size: var(--font-size--small--2, .75rem);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--color-foreground-muted);
+  }
+  .mg7-versions select {
+    width: 100%;
+    padding: .3rem .4rem;
+    border-radius: .25rem;
+    font-size: var(--font-size--small, .875rem);
+    color: var(--color-foreground-primary);
+    background: var(--color-background-primary);
+    border: 1px solid var(--color-background-border);
+  }
+</style>
+<script>
+(function () {
+  var current = "v0.3.0";
+  var versionRoot = new URL("../../" || "./", window.location.href);
+  var siteRoot = new URL("../", versionRoot);
+
+  fetch(new URL("versions.json", siteRoot).href, { cache: "no-cache" })
+    .then(function (r) {
+      if (!r.ok) throw new Error("status " + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      var sel = document.getElementById("mg7-version-select");
+      var seen = false;
+
+      (data.versions || []).forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = new URL(v.url, siteRoot).href;
+        opt.textContent = v.title || v.name;
+        if (v.name === current) {
+          opt.selected = true;
+          seen = true;
+        }
+        sel.appendChild(opt);
+      });
+
+      if (!seen) {
+        // The build running this page isn't in versions.json (e.g. a
+        // workflow_dispatch dry run). Label it rather than silently
+        // selecting the wrong entry, and don't navigate away from it.
+        var opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = current + " (this build)";
+        opt.selected = true;
+        sel.insertBefore(opt, sel.firstChild);
+      }
+
+      sel.addEventListener("change", function () {
+        // Navigate to the other version's root, not the current page path:
+        // this exact page may not exist in that version.
+        if (sel.value) {
+          window.location.assign(sel.value);
+        }
+      });
+
+      document.getElementById("mg7-versions").hidden = false;
+    })
+    .catch(function () {
+      // No versions.json reachable (local build, or served off-site):
+      // leave the switcher hidden rather than show a broken control.
+    });
+})();
+</script><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../custom_functions.html">Custom functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../diagram_filters.html">Diagram filters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../gridpacks.html">Gridpacks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../event_stream.html">Streaming events from Python</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../madevent_to_mg7.html">Coming from MadEvent</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">MadSpace</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../madspace/installation.html">Installation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../madspace/examples.html">Examples</a><input aria-label="Toggle navigation of Examples" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/simple-mappings.html">Constructing and calling a phase-space mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/cuts.html">Defining fiducial cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/diagram-mapping.html">Building a mapping for a Feynman diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/integration-order.html">Multiple on-shell configurations and integration order</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/matrix-element.html">Calling a MadGraph-generated matrix element</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/gpu.html">Running on a GPU</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/pdf.html">The built-in PDF interpolator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/integrator.html">Building a simple integrator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/integrator-madnis.html">Neural importance sampling with MadNIS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/examples/flow-training.html">Fusing RNG, flow, mapping and matrix element into one graph</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../madspace/umami-api.html">UMAMI API</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../madspace/python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ChiliMapping.html">ChiliMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DiscreteFlow.html">DiscreteFlow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DiscreteSampler.html">DiscreteSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DoubleT.html">DoubleT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/FastRamboMapping.html">FastRamboMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Flow.html">Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Invariant.html">Invariant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Luminosity.html">Luminosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Mapping.html">Mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MultiChannelMapping.html">MultiChannelMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TPropagatorMapping.html">TPropagatorMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TwoBodyDecay.html">TwoBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/BufferUnweighter.html">BufferUnweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CachedPdf.html">CachedPdf</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CachedScale.html">CachedScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CustomFunction.html">CustomFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CutItem.html">CutItem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Cuts.html">Cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DiscreteHistogram.html">DiscreteHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/EnergyScale.html">EnergyScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/FunctionGenerator.html">FunctionGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/HistItem.html">HistItem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Integrand.html">Integrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MLP.html">MLP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MappingChannelWeights.html">MappingChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MultiChannelFunction.html">MultiChannelFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Observable.html">Observable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ObservableHistograms.html">ObservableHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ObservableValues.html">ObservableValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PartonDensity.html">PartonDensity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/RunningCoupling.html">RunningCoupling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Unweighter.html">Unweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/CustomPdf.html">CustomPdf</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Decay.html">Decay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LineRef.html">LineRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PdfGrid.html">PdfGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Propagator.html">Propagator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/WeightingStep.html">WeightingStep</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DataType.html">DataType</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Function.html">Function</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/FunctionRuntime.html">FunctionRuntime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Instruction.html">Instruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/InstructionCall.html">InstructionCall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Type.html">Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Value.html">Value</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/batch_float_array.html">batch_float_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/fuse_instructions.html">fuse_instructions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/multichannel_batch_size.html">multichannel_batch_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/AdamOptimizer.html">AdamOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Context.html">Context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Device.html">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/EventGenerator.html">EventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/EventHistogramSpec.html">EventHistogramSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/EventStream.html">EventStream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/GeneratorConfig.html">GeneratorConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Histogram.html">Histogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHECompleter.html">LHECompleter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEEvent.html">LHEEvent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEFileWriter.html">LHEFileWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEHeader.html">LHEHeader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEMeta.html">LHEMeta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEParticle.html">LHEParticle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/LHEProcess.html">LHEProcess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MadnisConfig.html">MadnisConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MadnisTraining.html">MadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MatrixElementApi.html">MatrixElementApi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MixMaxRandom.html">MixMaxRandom</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PdfGroupInfo.html">PdfGroupInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PdfMemberSpec.html">PdfMemberSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PrettyBox.html">PrettyBox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SubprocArgs.html">SubprocArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SubprocessObservables.html">SubprocessObservables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SystematicsCalculator.html">SystematicsCalculator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Tensor.html">Tensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/TrainingArgs.html">TrainingArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Variation.html">Variation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/Verbosity.html">Verbosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/apply_mlm_collider_shower_scale.html">apply_mlm_collider_shower_scale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/available_backends.html">available_backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/cpu_device.html">cpu_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/cuda_device.html">cuda_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/default_context.html">default_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/default_cuda_context.html">default_cuda_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/default_hip_context.html">default_hip_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/format_progress.html">format_progress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/format_si_prefix.html">format_si_prefix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/format_with_error.html">format_with_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/hip_device.html">hip_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/select_combine_channel_index.html">select_combine_channel_index</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/set_lib_path.html">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/supported_simd_modes.html">supported_simd_modes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/weighting_groups_from_json.html">weighting_groups_from_json</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/weighting_groups_to_json.html">weighting_groups_to_json</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/NamedTypes.html">NamedTypes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/PythonFunction.html">PythonFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/get_stream.html">get_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/set_stream.html">set_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/python/stream.html">stream</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../madspace/cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ChiliMapping.html">ChiliMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DiscreteFlow.html">DiscreteFlow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DiscreteSampler.html">DiscreteSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DoubleT.html">DoubleT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/FastRamboMapping.html">FastRamboMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Flow.html">Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Invariant.html">Invariant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Luminosity.html">Luminosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Mapping.html">Mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MultiChannelMapping.html">MultiChannelMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TPropagatorMapping.html">TPropagatorMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TwoBodyDecay.html">TwoBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/BatchSampler.html">BatchSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/BufferUnweighter.html">BufferUnweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/CustomFunction.html">CustomFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Cuts.html">Cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EnergyScale.html">EnergyScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/FunctionGenerator.html">FunctionGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/GradientClipper.html">GradientClipper</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Integrand.html">Integrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/IntegrandChannelPart.html">IntegrandChannelPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/IntegrandCommonPart.html">IntegrandCommonPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/IntegrandConcatenator.html">IntegrandConcatenator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MLP.html">MLP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MappingChannelWeights.html">MappingChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MultiChannelFunction.html">MultiChannelFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Observable.html">Observable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ObservableHistograms.html">ObservableHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ObservableValues.html">ObservableValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PartonDensity.html">PartonDensity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/RunningCoupling.html">RunningCoupling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Unweighter.html">Unweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/WeightingStepFunction.html">WeightingStepFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/CustomPdf.html">CustomPdf</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PdfGrid.html">PdfGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Propagator.html">Propagator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/WeightingStep.html">WeightingStep</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Function.html">Function</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Instruction.html">Instruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/InstructionCall.html">InstructionCall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Type.html">Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Value.html">Value</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/batch_float_array.html">batch_float_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/fuse_instructions.html">fuse_instructions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/multichannel_batch_size.html">multichannel_batch_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/AdamOptimizer.html">AdamOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Context.html">Context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DataLayout.html">DataLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DerivedSeed.html">DerivedSeed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Device.html">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventBuffer.html">EventBuffer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventFile.html">EventFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventGenerator.html">EventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventHistogramSpec.html">EventHistogramSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventRecord.html">EventRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/EventStream.html">EventStream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/FieldLayout.html">FieldLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/GeneratorBatchJob.html">GeneratorBatchJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/GeneratorConfig.html">GeneratorConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Histogram.html">Histogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHECompleter.html">LHECompleter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEEvent.html">LHEEvent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEFileWriter.html">LHEFileWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEHeader.html">LHEHeader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEMeta.html">LHEMeta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEParticle.html">LHEParticle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LHEProcess.html">LHEProcess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/LOReweightInfo.html">LOReweightInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MadnisTraining.html">MadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MatrixElementApi.html">MatrixElementApi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MixMaxRandom.html">MixMaxRandom</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PackedTensorView.html">PackedTensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ParticleRecord.html">ParticleRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PdfGroupInfo.html">PdfGroupInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PdfMemberSpec.html">PdfMemberSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/PrettyBox.html">PrettyBox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ReadyJob.html">ReadyJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ResultQueue.html">ResultQueue</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/RunSeedSkip.html">RunSeedSkip</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/RunningIntegral.html">RunningIntegral</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Runtime.html">Runtime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Sizes.html">Sizes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/StepChainResult.html">StepChainResult</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/StepEvents.html">StepEvents</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/StepIntegral.html">StepIntegral</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SubprocessObservables.html">SubprocessObservables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TarWriter.html">TarWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Tensor.html">Tensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/TensorView.html">TensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ThreadPool.html">ThreadPool</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/UmamiFunctions.html">UmamiFunctions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/UnalignedRef.html">UnalignedRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Variation.html">Variation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/WeightingGroup.html">WeightingGroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/WeightingPipeline.html">WeightingPipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/apply_mlm_collider_shower_scale.html">apply_mlm_collider_shower_scale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/apply_mlm_hardest_shower_scale.html">apply_mlm_hardest_shower_scale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/available_backends.html">available_backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/cpu_device.html">cpu_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/cuda_device.html">cuda_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/default_context.html">default_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/default_cuda_context.html">default_cuda_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/default_hip_context.html">default_hip_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/format_progress.html">format_progress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/format_si_prefix.html">format_si_prefix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/format_with_error.html">format_with_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/hip_device.html">hip_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/select_combine_channel_index.html">select_combine_channel_index</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/set_lib_path.html">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/supported_simd_modes.html">supported_simd_modes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/weighting_groups_from_json.html">weighting_groups_from_json</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/weighting_groups_to_json.html">weighting_groups_to_json</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/NamedVector.html">NamedVector</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../madspace/cpp/Overloaded.html">Overloaded</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">pyAmpliCol</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../README.html">Start here</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../README.html#install-and-try-it">Install and try it</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../README.html#one-artifact-several-interfaces">One artifact, several interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../README.html#explore-the-documentation">Explore the documentation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="installation.html">Installation</a><input aria-label="Toggle navigation of Installation" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html">Quick Start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples-gallery.html">Examples Gallery</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="gentle-walkthrough.html">Get started: a gentle walkthrough</a><input aria-label="Toggle navigation of Get started: a gentle walkthrough" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="lc-workloads-and-execution-modes.html">LC workloads and execution modes</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="configuration.html">Configuration</a><input aria-label="Toggle navigation of Configuration" checked="" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="models-and-processes.html">Models and Processes</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">UFO Model Coverage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="process-selection-and-permutations.html">Process Selection and Permutations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="process-grouping.html">Process grouping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generation-modes-and-evaluators.html">Generation Modes and Evaluators</a></li>
+<li class="toctree-l2"><a class="reference internal" href="command-line-interface.html">Command-Line Interface</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="runtime-and-selectors.html">Runtime and Selectors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="native-apis.html">Native APIs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="artifacts-and-portability.html">Artifacts and Portability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="umami-api.html">UMAMI and MadSpace</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../correlators.html">Tree-level spin and colour correlations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../correlator-conventions.html">Conventions for spin- and colour-correlated Born quantities</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="profiling-and-benchmarking.html">Profiling and Benchmarking</a><input aria-label="Toggle navigation of Profiling and Benchmarking" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="release-and-support.html">Release and Support</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="architecture-overview.html">Architecture Overview</a><input aria-label="Toggle navigation of Architecture Overview" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="symbolica-and-licensing.html">Symbolica and Licensing</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../development/README.html">Development Documentation</a><input aria-label="Toggle navigation of Development Documentation" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../development/API_CONTRACT.html">Public API Contract</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/CONFIG_CONTRACT.html">Configuration Contract</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/ARCHITECTURE_DECISIONS.html">Architecture Decisions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/PACKAGING_CONTRACT.html">Packaging And Release Contract</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/PHYSICS_EXTRACTION_CONTRACT.html">Physics Extraction Contract</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../development/MODEL_ASSET_PROVENANCE.html">Model Asset Provenance</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../development/model-assets/README.html">Packaged Model Assets</a><input aria-label="Toggle navigation of Packaged Model Assets" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../development/model-assets/TRANSFORMATIONS.html">Model Asset Transformations</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../development/ON_THE_FLY_MODE_ARCHITECTURE.html">On-the-fly Mode Architecture and Implementation Record</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../../_sources/pyamplicol/user/ufo-model-coverage.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <!-- SPDX-License-Identifier: 0BSD -->
+<section class="tex2jax_ignore mathjax_ignore" id="ufo-model-coverage">
+<h1>UFO Model Coverage<a class="headerlink" href="#ufo-model-coverage" title="Link to this heading">¶</a></h1>
+<p>This page is the exact reference of what a generic UFO (or serialized JSON)
+model may contain for pyAmpliCol, what is accepted only under a condition, and
+what is rejected or ignored. Every row was derived from the code of
+pyAmpliCol 1.0.0 with ufo-model-loader 1.0.0 and Symbolica 3.0.0; the paper
+summarises it in one table. Read
+<a class="reference internal" href="models-and-processes.html"><span class="std std-doc">Models and Processes</span></a> first for the workflow, and
+use <code class="docutils literal notranslate"><span class="pre">pyamplicol</span> <span class="pre">model</span> <span class="pre">inspect</span> <span class="pre">&lt;source&gt;</span></code> to see the issues reported for your
+own model.</p>
+<p>Status words used below:</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Status</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>supported</p></td>
+<td><p>accepted without further condition</p></td>
+</tr>
+<tr class="row-odd"><td><p>conditional</p></td>
+<td><p>accepted when the stated condition holds, otherwise the stated diagnostic</p></td>
+</tr>
+<tr class="row-even"><td><p>experimental</p></td>
+<td><p>accepted, but the path is not validated against a reference</p></td>
+</tr>
+<tr class="row-odd"><td><p>rejected</p></td>
+<td><p>refused with the stated diagnostic</p></td>
+</tr>
+<tr class="row-even"><td><p>ignored</p></td>
+<td><p>loads without error but never affects generated amplitudes</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="summary">
+<h2>Summary<a class="headerlink" href="#summary" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Area</p></th>
+<th class="head"><p>Supported</p></th>
+<th class="head"><p>Rejected or restricted</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Input</p></td>
+<td><p>UFO directories (trusted Python), serialized JSON, compiled IR files, prepared kernel bundles</p></td>
+<td><p>anything else; ufo-model-loader older than 1.0.0</p></td>
+</tr>
+<tr class="row-odd"><td><p>Fields</p></td>
+<td><p>scalars, Dirac fermions, vectors, massless spin-2 (validated); massive spin-2 (experimental)</p></td>
+<td><p>Majorana and fermion-number-violating fermions, spin 3/2, higher spins; ghosts and Goldstones only internally</p></td>
+</tr>
+<tr class="row-even"><td><p>Colour</p></td>
+<td><p>one SU(3) with 1, 3, 3̄, 8; external coloured legs are triplet fermions or octet vectors</p></td>
+<td><p>sextets, other groups, N_c other than 3, d^abc, epsilon and sextet tensors</p></td>
+</tr>
+<tr class="row-odd"><td><p>Lorentz</p></td>
+<td><p>Identity, Gamma, Gamma5, ProjM, ProjP, Sigma, Metric, P; PSlash in propagators</p></td>
+<td><p>Epsilon, C, IdentityL, form factors, functions outside the registry</p></td>
+</tr>
+<tr class="row-even"><td><p>Three-point vertices</p></td>
+<td><p>any spins with colour 1, delta, T^a, f^abc</p></td>
+<td><p>d^abc; one- and two-point terms are ignored</p></td>
+</tr>
+<tr class="row-odd"><td><p>Four-point vertices</p></td>
+<td><p>colour-singlet (any Lorentz structure); the two-f gauge contact; HEFT Hggg</p></td>
+<td><p>other coloured contacts (four-fermion operators, delta couplings, d^abc)</p></td>
+</tr>
+<tr class="row-even"><td><p>Five-point and higher</p></td>
+<td><p>colour-singlet contacts of any valence (tested to ten scalars); HEFT Hgggg</p></td>
+<td><p>every other coloured contact</p></td>
+</tr>
+<tr class="row-odd"><td><p>Propagators</p></td>
+<td><p>standard scalar, Dirac, vector and spin-2 kernels with fixed widths; custom UFO propagators that lower exactly</p></td>
+<td><p>complex-mass scheme; gauge choices other than Feynman (massless) and unitary (massive)</p></td>
+</tr>
+<tr class="row-even"><td><p>Parameters</p></td>
+<td><p>external and internal, real or complex, the fixed function registry, restriction cards, runtime cards for external parameters</p></td>
+<td><p>custom function bodies, epsilon-expanded values (finite part kept), counterterm vertices (dropped)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Processes</p></td>
+<td><p>2 to N tree level, LC, NLC and full colour, FFT contraction in the trace or adjoint basis</p></td>
+<td><p>loop-induced channels (omitted)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="preflight-diagnostic-codes">
+<h2>Preflight diagnostic codes<a class="headerlink" href="#preflight-diagnostic-codes" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">pyamplicol</span> <span class="pre">model</span> <span class="pre">inspect</span></code> lists these codes; any error code makes the model
+unsupported for generation, warnings do not.</p>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Code</p></th>
+<th class="head"><p>Severity</p></th>
+<th class="head"><p>Trigger</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unsupported-spin</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a particle spin code outside -1, 1, 2, 3, 5</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unsupported-color-representation</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a particle colour code outside 1, 3, -3, 8</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">majorana-fermion</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a spin-1/2 particle whose name equals its antiname</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">form-factors</span></code></p></td>
+<td><p>error</p></td>
+<td><p>the model declares any form factor</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">function-arity</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a declared function with a registry name but a different argument count</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unknown-functions</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a function name outside the registry and the UFO tensor heads in any parameter, coupling, propagator, Lorentz or colour expression</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unsupported-contact-color-lowering</span></code></p></td>
+<td><p>error</p></td>
+<td><p>a vertex with more than three legs whose colour structure could not be decomposed into contact kernels (reported after tensor lowering)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">experimental-massive-spin-2</span></code></p></td>
+<td><p>warning</p></td>
+<td><p>a spin-2 particle whose mass is not <code class="docutils literal notranslate"><span class="pre">ZERO</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Some rejections happen at model compilation rather than at preflight and
+carry a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> message instead of a code; they are marked below.</p>
+</section>
+<section id="sources-and-loading">
+<h2>Sources and loading<a class="headerlink" href="#sources-and-loading" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
+<th class="head"><p>Status</p></th>
+<th class="head"><p>Condition and consequence</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Source kinds</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">built-in-sm</span></code>, <code class="docutils literal notranslate"><span class="pre">built-in-sm-heft</span></code>, a UFO directory containing <code class="docutils literal notranslate"><span class="pre">__init__.py</span></code>, a <code class="docutils literal notranslate"><span class="pre">.json</span></code> model in ufo-model-loader’s schema, a compiled IR file <code class="docutils literal notranslate"><span class="pre">*.pyAmplicol-model.json</span></code>, or a prepared bundle <code class="docutils literal notranslate"><span class="pre">*.pyamplicol-model</span></code>. A directory without <code class="docutils literal notranslate"><span class="pre">__init__.py</span></code>, a missing path or unreadable JSON is a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Built-in selector spelling</p></td>
+<td><p>conditional</p></td>
+<td><p>Use <code class="docutils literal notranslate"><span class="pre">built-in-sm</span></code>; the <code class="docutils literal notranslate"><span class="pre">builtin_sm</span></code> spelling is accepted by the config resolver but not by the typed model layer.</p></td>
+</tr>
+<tr class="row-even"><td><p>UFO Python execution</p></td>
+<td><p>supported</p></td>
+<td><p>A UFO directory is imported as Python with your privileges; only load trusted models and prefer the JSON form for automation. During the import the <code class="docutils literal notranslate"><span class="pre">UFO_SCALARS_MODEL_*</span></code> and <code class="docutils literal notranslate"><span class="pre">UFO_GRAVITY_MODEL_*</span></code> environment variables are hidden and no <code class="docutils literal notranslate"><span class="pre">.pyc</span></code> files are written.</p></td>
+</tr>
+<tr class="row-odd"><td><p>ufo-model-loader version</p></td>
+<td><p>conditional</p></td>
+<td><p>External UFO and JSON models require an installed release 1.0.0 or newer (development builds are refused with a <code class="docutils literal notranslate"><span class="pre">RuntimeError</span></code>); built-in models do not need it.</p></td>
+</tr>
+<tr class="row-even"><td><p>Required UFO attributes</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">all_orders</span></code>, <code class="docutils literal notranslate"><span class="pre">all_parameters</span></code>, <code class="docutils literal notranslate"><span class="pre">all_particles</span></code>, <code class="docutils literal notranslate"><span class="pre">all_lorentz</span></code>, <code class="docutils literal notranslate"><span class="pre">all_couplings</span></code> and <code class="docutils literal notranslate"><span class="pre">all_vertices</span></code> must exist; <code class="docutils literal notranslate"><span class="pre">all_propagators</span></code>, <code class="docutils literal notranslate"><span class="pre">all_functions</span></code>, <code class="docutils literal notranslate"><span class="pre">all_form_factors</span></code> and <code class="docutils literal notranslate"><span class="pre">all_CTparameters</span></code> are optional; objects of class <code class="docutils literal notranslate"><span class="pre">CTVertex</span></code> are dropped silently.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Serialized JSON schema</p></td>
+<td><p>conditional</p></td>
+<td><p>The file must end in <code class="docutils literal notranslate"><span class="pre">.json</span></code> and provide <code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">restriction</span></code>, <code class="docutils literal notranslate"><span class="pre">orders</span></code>, <code class="docutils literal notranslate"><span class="pre">parameters</span></code>, <code class="docutils literal notranslate"><span class="pre">particles</span></code>, <code class="docutils literal notranslate"><span class="pre">propagators</span></code>, <code class="docutils literal notranslate"><span class="pre">lorentz_structures</span></code>, <code class="docutils literal notranslate"><span class="pre">couplings</span></code> and <code class="docutils literal notranslate"><span class="pre">vertex_rules</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Loader errors</p></td>
+<td><p>conditional</p></td>
+<td><p>Errors raised inside ufo-model-loader (missing restriction file, external parameter without default, malformed JSON) surface as raw Python tracebacks, not as pyAmpliCol <code class="docutils literal notranslate"><span class="pre">ModelError</span></code> messages.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Restriction selector</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">default</span></code> applies <code class="docutils literal notranslate"><span class="pre">restrict_default.dat</span></code> (UFO) or <code class="docutils literal notranslate"><span class="pre">restrict_default.json</span></code> (JSON) when present, otherwise the model defaults without zero-pruning; <code class="docutils literal notranslate"><span class="pre">none</span></code> applies no card; any other name needs <code class="docutils literal notranslate"><span class="pre">restrict_&lt;name&gt;.dat</span></code> or <code class="docutils literal notranslate"><span class="pre">.json</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Restriction file location</p></td>
+<td><p>conditional</p></td>
+<td><p>A restriction given as a path must be named <code class="docutils literal notranslate"><span class="pre">restrict_&lt;name&gt;.dat</span></code> (UFO, inside the model directory) or <code class="docutils literal notranslate"><span class="pre">restrict_&lt;name&gt;.json</span></code> (JSON, beside the model file); other names or locations are a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>What a restriction changes</p></td>
+<td><p>supported</p></td>
+<td><p>A card sets external parameter values only; <code class="docutils literal notranslate"><span class="pre">.dat</span></code> cards are SLHA parameter cards, <code class="docutils literal notranslate"><span class="pre">.json</span></code> cards map names to <code class="docutils literal notranslate"><span class="pre">[re,</span> <span class="pre">im]</span></code>. With <code class="docutils literal notranslate"><span class="pre">simplify=true</span></code> (default) parameters set to zero become constants and the couplings and vertices they kill are pruned.</p></td>
+</tr>
+<tr class="row-even"><td><p>Restrictions on built-in and precompiled sources</p></td>
+<td><p>rejected</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">restriction</span></code> and <code class="docutils literal notranslate"><span class="pre">simplify=false</span></code> apply only to UFO and JSON sources; built-in, compiled and prepared models refuse them.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Compilation cache</p></td>
+<td><p>conditional</p></td>
+<td><p>Compiled models are cached under <code class="docutils literal notranslate"><span class="pre">$PYAMPLICOL_CACHE_DIR/models</span></code> (or the platform cache) keyed by source contents, options and toolchain. Editing a <code class="docutils literal notranslate"><span class="pre">restrict_*.json</span></code> beside a JSON model does not change the key: pass <code class="docutils literal notranslate"><span class="pre">--no-model-cache</span></code> or the file path after editing it.</p></td>
+</tr>
+<tr class="row-even"><td><p>Dry run</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--dry-run</span></code> never compiles a UFO or JSON model; compile it or run <code class="docutils literal notranslate"><span class="pre">model</span> <span class="pre">inspect</span></code> first so the cache is populated.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Compiled IR files</p></td>
+<td><p>conditional</p></td>
+<td><p>Tied to the exact pyAmpliCol, Symbolica and ufo-model-loader versions that wrote them; regenerate after any upgrade.</p></td>
+</tr>
+<tr class="row-even"><td><p>Prepared bundles</p></td>
+<td><p>conditional</p></td>
+<td><p>Verified member by member (sizes and SHA-256) on every load; must match the current bundle schema and model-compiler version.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Parameter card</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">CompiledModel.write_parameter_card()</span></code> writes the runtime-adjustable external parameters after the restriction as <code class="docutils literal notranslate"><span class="pre">{name:</span> <span class="pre">[re,</span> <span class="pre">im]}</span></code>; parameters fixed to zero by the restriction are absent and immutable.</p></td>
+</tr>
+<tr class="row-even"><td><p>Model CLI</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pyamplicol</span> <span class="pre">model</span> <span class="pre">inspect</span></code> loads even unsupported models and lists every issue; <code class="docutils literal notranslate"><span class="pre">model</span> <span class="pre">compile</span></code> and <code class="docutils literal notranslate"><span class="pre">model</span> <span class="pre">processes</span></code> refuse unsupported models. There is no separate preflight subcommand.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="particles">
+<h2>Particles<a class="headerlink" href="#particles" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
+<th class="head"><p>Status</p></th>
+<th class="head"><p>Condition and consequence</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Spin codes</p></td>
+<td><p>supported</p></td>
+<td><p>-1 (ghost), 1 (scalar), 2 (Dirac fermion), 3 (vector), 5 (spin-2); any other code is <code class="docutils literal notranslate"><span class="pre">unsupported-spin</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Spin 3/2 and higher</p></td>
+<td><p>rejected</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">unsupported-spin</span></code>; no downstream path exists.</p></td>
+</tr>
+<tr class="row-even"><td><p>Scalars</p></td>
+<td><p>supported</p></td>
+<td><p>standard propagator i/(p^2 - m^2 + i m Gamma).</p></td>
+</tr>
+<tr class="row-odd"><td><p>Dirac fermions</p></td>
+<td><p>supported</p></td>
+<td><p>particle and antiparticle must be distinct; standard massive or massless Dirac propagator.</p></td>
+</tr>
+<tr class="row-even"><td><p>Massless fermions</p></td>
+<td><p>conditional</p></td>
+<td><p>Treated as two-component Weyl spinors when the mass is literally <code class="docutils literal notranslate"><span class="pre">ZERO</span></code> or an internal parameter equal to zero and the propagator is the loader default; an external mass parameter that merely defaults to zero keeps four-component currents.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Majorana fermions</p></td>
+<td><p>rejected</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">majorana-fermion</span></code> when name equals antiname; fermion-number-violating flow is not implemented.</p></td>
+</tr>
+<tr class="row-even"><td><p>Vectors</p></td>
+<td><p>supported</p></td>
+<td><p>massless vectors get helicities -1, +1 and Feynman gauge; massive vectors get -1, 0, +1 and unitary gauge, decided from the restricted default mass at compile time.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Massless spin-2</p></td>
+<td><p>supported</p></td>
+<td><p>16-component tensor, helicities -2 and +2 only, de Donder propagator; validated by the packaged scalar-gravity model. A model without its own spin-2 propagator must define the <code class="docutils literal notranslate"><span class="pre">dim</span></code> parameter used by the loader default.</p></td>
+</tr>
+<tr class="row-even"><td><p>Massive spin-2</p></td>
+<td><p>experimental</p></td>
+<td><p>accepted with <code class="docutils literal notranslate"><span class="pre">experimental-massive-spin-2</span></code>; the Fierz-Pauli propagator and five helicities are implemented but only the propagator projector is unit-tested; such a model must declare its own propagator because the loader has no default.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Ghosts</p></td>
+<td><p>ignored</p></td>
+<td><p>any particle with a nonzero ghost number loads, but it can never be external, is excluded from every current, and has no propagator kernel.</p></td>
+</tr>
+<tr class="row-even"><td><p>Spin -1 without ghost number</p></td>
+<td><p>rejected</p></td>
+<td><p>classified as a non-external auxiliary whose propagator has no contract; model preparation fails when it is needed.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Colour codes</p></td>
+<td><p>supported</p></td>
+<td><p>1, 3, -3, 8; anything else is <code class="docutils literal notranslate"><span class="pre">unsupported-color-representation</span></code>. Colour always means SU(3) with N_c = 3.</p></td>
+</tr>
+<tr class="row-even"><td><p>Coloured external states</p></td>
+<td><p>conditional</p></td>
+<td><p>an external coloured leg must be a triplet or antitriplet fermion or an octet vector; coloured scalars, octet fermions and coloured tensors are refused when a process names them (<code class="docutils literal notranslate"><span class="pre">ValueError</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p>External-state eligibility</p></td>
+<td><p>supported</p></td>
+<td><p>a particle can be named in a process only if it has positive spin, zero ghost number, is not a Goldstone, is propagating and is not a compiler auxiliary; names resolve exactly, then case-insensitively when unique.</p></td>
+</tr>
+<tr class="row-even"><td><p>Particle identity</p></td>
+<td><p>supported</p></td>
+<td><p>antiname must exist and be involutive, non-self-conjugate pairs use opposite-signed PDG codes, names and PDG codes are unique, self-conjugate particles are neutral.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Mass</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ZERO</span></code> or a model parameter; the massless or massive class (helicities, gauge, Weyl projection) is fixed once at compile time from the restricted default and cannot be changed by a runtime card.</p></td>
+</tr>
+<tr class="row-even"><td><p>Complex masses and widths</p></td>
+<td><p>rejected</p></td>
+<td><p>mass and width values must be real; there is no complex-mass scheme.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Width</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ZERO</span></code> or a parameter; enters only the fixed-width denominator of massive propagators and can be overridden at runtime.</p></td>
+</tr>
+<tr class="row-even"><td><p>Goldstone bosons</p></td>
+<td><p>conditional</p></td>
+<td><p>must be propagating scalars; matched to the unique massive vector with identical colour, quantum numbers and mass and then absorbed into its unitary-gauge propagator; an ambiguous match is an error, an unmatched Goldstone stays an internal scalar.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Propagating flag</p></td>
+<td><p>supported</p></td>
+<td><p>non-propagating particles cannot be external but are compiled normally.</p></td>
+</tr>
+<tr class="row-even"><td><p>Electric charge</p></td>
+<td><p>supported</p></td>
+<td><p>recorded as a bookkeeping quantum number only; not used to check charge conservation.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Other attributes</p></td>
+<td><p>ignored</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">texname</span></code>, <code class="docutils literal notranslate"><span class="pre">antitexname</span></code>, <code class="docutils literal notranslate"><span class="pre">line</span></code>, <code class="docutils literal notranslate"><span class="pre">counterterm</span></code>, <code class="docutils literal notranslate"><span class="pre">LeptonNumber</span></code> and <code class="docutils literal notranslate"><span class="pre">Y</span></code> never affect amplitudes.</p></td>
+</tr>
+<tr class="row-even"><td><p>Custom propagator attribute</p></td>
+<td><p>conditional</p></td>
+<td><p>a particle whose propagator differs from the loader’s Feynman default is used as written and loses the Weyl projection and Goldstone absorption.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="parameters-couplings-and-functions">
+<h2>Parameters, couplings and functions<a class="headerlink" href="#parameters-couplings-and-functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
+<th class="head"><p>Status</p></th>
+<th class="head"><p>Condition and consequence</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Parameter nature</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">external</span></code> (runtime input) or <code class="docutils literal notranslate"><span class="pre">internal</span></code> (substituted symbolically); the common <code class="docutils literal notranslate"><span class="pre">interal</span></code> typo is corrected; anything else fails in the loader.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Parameter type</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">real</span></code> or <code class="docutils literal notranslate"><span class="pre">complex</span></code>; complex external parameters are set as <code class="docutils literal notranslate"><span class="pre">[re,</span> <span class="pre">im]</span></code>; a real parameter can never receive an imaginary part.</p></td>
+</tr>
+<tr class="row-even"><td><p>External defaults</p></td>
+<td><p>conditional</p></td>
+<td><p>every external parameter needs a value in the UFO or in the selected restriction card.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Expression syntax</p></td>
+<td><p>conditional</p></td>
+<td><p>standard UFO spellings only: <code class="docutils literal notranslate"><span class="pre">cmath.sqrt</span></code>, <code class="docutils literal notranslate"><span class="pre">cmath.pi</span></code> or <code class="docutils literal notranslate"><span class="pre">pi</span></code>, <code class="docutils literal notranslate"><span class="pre">cmath.sin/cos/asin/acos</span></code>, <code class="docutils literal notranslate"><span class="pre">complex(x,</span> <span class="pre">y)</span></code>, <code class="docutils literal notranslate"><span class="pre">complexconjugate</span></code>, <code class="docutils literal notranslate"><span class="pre">cond</span></code>, <code class="docutils literal notranslate"><span class="pre">Theta</span></code>, <code class="docutils literal notranslate"><span class="pre">reglog</span></code>, bare <code class="docutils literal notranslate"><span class="pre">exp</span></code>, <code class="docutils literal notranslate"><span class="pre">log</span></code>, <code class="docutils literal notranslate"><span class="pre">tan</span></code>, <code class="docutils literal notranslate"><span class="pre">atan</span></code>, and <code class="docutils literal notranslate"><span class="pre">**</span></code>; other <code class="docutils literal notranslate"><span class="pre">cmath.</span></code>, <code class="docutils literal notranslate"><span class="pre">math.</span></code> or <code class="docutils literal notranslate"><span class="pre">numpy.</span></code> calls fail to load.</p></td>
+</tr>
+<tr class="row-even"><td><p>Scientific notation</p></td>
+<td><p>rejected</p></td>
+<td><p>a decimal mantissa with an exponent such as <code class="docutils literal notranslate"><span class="pre">1.5e-3</span></code> is mis-parsed by the loader; write <code class="docutils literal notranslate"><span class="pre">0.0015</span></code>, <code class="docutils literal notranslate"><span class="pre">15e-4</span></code> or a fraction.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Rational exponents</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x**0.5</span></code> is evaluated exactly as <code class="docutils literal notranslate"><span class="pre">x^(1/2)</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Parameter dependencies</p></td>
+<td><p>supported</p></td>
+<td><p>internal parameters may reference each other in any order; cycles are rejected.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Function registry</p></td>
+<td><p>conditional</p></td>
+<td><p>one-argument <code class="docutils literal notranslate"><span class="pre">Theta</span></code>, <code class="docutils literal notranslate"><span class="pre">abs</span></code>, <code class="docutils literal notranslate"><span class="pre">acos</span></code>, <code class="docutils literal notranslate"><span class="pre">acosh</span></code>, <code class="docutils literal notranslate"><span class="pre">acsc</span></code>, <code class="docutils literal notranslate"><span class="pre">asec</span></code>, <code class="docutils literal notranslate"><span class="pre">asin</span></code>, <code class="docutils literal notranslate"><span class="pre">asinh</span></code>, <code class="docutils literal notranslate"><span class="pre">atan</span></code>, <code class="docutils literal notranslate"><span class="pre">atanh</span></code>, <code class="docutils literal notranslate"><span class="pre">complexconjugate</span></code>, <code class="docutils literal notranslate"><span class="pre">conj</span></code>, <code class="docutils literal notranslate"><span class="pre">cos</span></code>, <code class="docutils literal notranslate"><span class="pre">cosh</span></code>, <code class="docutils literal notranslate"><span class="pre">csc</span></code>, <code class="docutils literal notranslate"><span class="pre">exp</span></code>, <code class="docutils literal notranslate"><span class="pre">im</span></code>, <code class="docutils literal notranslate"><span class="pre">log</span></code>, <code class="docutils literal notranslate"><span class="pre">log10</span></code>, <code class="docutils literal notranslate"><span class="pre">re</span></code>, <code class="docutils literal notranslate"><span class="pre">reglog</span></code>, <code class="docutils literal notranslate"><span class="pre">reglogm</span></code>, <code class="docutils literal notranslate"><span class="pre">reglogp</span></code>, <code class="docutils literal notranslate"><span class="pre">sec</span></code>, <code class="docutils literal notranslate"><span class="pre">sin</span></code>, <code class="docutils literal notranslate"><span class="pre">sinh</span></code>, <code class="docutils literal notranslate"><span class="pre">sqrt</span></code>, <code class="docutils literal notranslate"><span class="pre">tan</span></code>, <code class="docutils literal notranslate"><span class="pre">tanh</span></code>; two-argument <code class="docutils literal notranslate"><span class="pre">complex</span></code>, <code class="docutils literal notranslate"><span class="pre">pow</span></code>; three-argument <code class="docutils literal notranslate"><span class="pre">cond</span></code>, <code class="docutils literal notranslate"><span class="pre">if</span></code>. Anything else is <code class="docutils literal notranslate"><span class="pre">unknown-functions</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Evaluable subset</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">re</span></code>, <code class="docutils literal notranslate"><span class="pre">im</span></code>, <code class="docutils literal notranslate"><span class="pre">log10</span></code>, <code class="docutils literal notranslate"><span class="pre">pow</span></code>, <code class="docutils literal notranslate"><span class="pre">reglogp</span></code> and <code class="docutils literal notranslate"><span class="pre">reglogm</span></code> pass preflight but have no runtime evaluator and fail when a parameter that uses them is evaluated; all other registry functions compute.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Declared functions</p></td>
+<td><p>conditional</p></td>
+<td><p>a declared <code class="docutils literal notranslate"><span class="pre">Function</span></code> is accepted only if it is a registry name with the registry arity; its body is ignored in favour of the built-in meaning (<code class="docutils literal notranslate"><span class="pre">function-arity</span></code> otherwise).</p></td>
+</tr>
+<tr class="row-even"><td><p>Constants</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pi</span></code> stays exact until numerical evaluation and <code class="docutils literal notranslate"><span class="pre">complex(0,</span> <span class="pre">1)</span></code> is the exact imaginary unit; a bare <code class="docutils literal notranslate"><span class="pre">I</span></code> symbol is not supported.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Epsilon-expanded values</p></td>
+<td><p>ignored</p></td>
+<td><p>dictionary-valued parameters and couplings keep only the order-0 entry, with one loader warning.</p></td>
+</tr>
+<tr class="row-even"><td><p>Counterterms and decays</p></td>
+<td><p>ignored</p></td>
+<td><p>counterterm parameters are ordinary parameters, <code class="docutils literal notranslate"><span class="pre">CTVertex</span></code> objects are dropped, the decays block is never read.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Coupling records</p></td>
+<td><p>supported</p></td>
+<td><p>any expression in the parameters, any number of coupling-order names per coupling.</p></td>
+</tr>
+<tr class="row-even"><td><p>Coupling matrix</p></td>
+<td><p>supported</p></td>
+<td><p>one row per colour structure and one column per Lorentz structure; <code class="docutils literal notranslate"><span class="pre">None</span></code> entries are skipped; each cell becomes its own term and pieces with different orders are counted separately.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Coupling orders</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hierarchy</span></code> weights the minimal coupling-order policy; <code class="docutils literal notranslate"><span class="pre">expansion_order</span></code> is stored but has no effect; undeclared order names default to weight 1.</p></td>
+</tr>
+<tr class="row-even"><td><p>Coupling-order policies</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">minimal</span></code> (default) keeps the lowest hierarchy-weighted order; <code class="docutils literal notranslate"><span class="pre">explicit</span></code> applies only <code class="docutils literal notranslate"><span class="pre">--max-coupling-order</span> <span class="pre">NAME=N</span></code>, and misspelled names are not detected.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Runtime parameter cards</p></td>
+<td><p>supported</p></td>
+<td><p>flat JSON objects of finite real or <code class="docutils literal notranslate"><span class="pre">[re,</span> <span class="pre">im]</span></code> values via <code class="docutils literal notranslate"><span class="pre">--model-parameters</span></code>, <code class="docutils literal notranslate"><span class="pre">Runtime.load(model_parameters=...)</span></code> or <code class="docutils literal notranslate"><span class="pre">set_model_parameters</span></code>; an invalid batch leaves the runtime unchanged.</p></td>
+</tr>
+<tr class="row-even"><td><p>Runtime mutability</p></td>
+<td><p>conditional</p></td>
+<td><p>only surviving external parameters are mutable; derived parameters and couplings are recomputed and read-only. In recurrence mode an external parameter that the process never uses may be rejected as not used.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Masses and widths at runtime</p></td>
+<td><p>conditional</p></td>
+<td><p>external mass and width parameters can be varied, but a particle cannot switch between the massless and massive class without regenerating.</p></td>
+</tr>
+<tr class="row-even"><td><p>Numerical precision</p></td>
+<td><p>supported</p></td>
+<td><p>model constants are kept exact in the compiled model; only user-supplied values are binary64.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="lorentz-structures-and-vertices">
+<h2>Lorentz structures and vertices<a class="headerlink" href="#lorentz-structures-and-vertices" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
+<th class="head"><p>Status</p></th>
+<th class="head"><p>Condition and consequence</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Normalized tensor heads</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Identity(i,</span> <span class="pre">j)</span></code>, <code class="docutils literal notranslate"><span class="pre">Gamma(mu,</span> <span class="pre">i,</span> <span class="pre">j)</span></code>, <code class="docutils literal notranslate"><span class="pre">Gamma5(i,</span> <span class="pre">j)</span></code>, <code class="docutils literal notranslate"><span class="pre">ProjM(i,</span> <span class="pre">j)</span></code>, <code class="docutils literal notranslate"><span class="pre">ProjP(i,</span> <span class="pre">j)</span></code>, <code class="docutils literal notranslate"><span class="pre">Sigma(mu,</span> <span class="pre">nu,</span> <span class="pre">i,</span> <span class="pre">j)</span></code>, <code class="docutils literal notranslate"><span class="pre">Metric(mu,</span> <span class="pre">nu)</span></code>, <code class="docutils literal notranslate"><span class="pre">P(mu,</span> <span class="pre">k)</span></code> with the standard UFO argument conventions; <code class="docutils literal notranslate"><span class="pre">PSlash(i,</span> <span class="pre">j)</span></code> only in its two-argument propagator form.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Other tensor heads</p></td>
+<td><p>rejected</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Epsilon</span></code>, <code class="docutils literal notranslate"><span class="pre">EpsilonBar</span></code>, <code class="docutils literal notranslate"><span class="pre">C</span></code>, <code class="docutils literal notranslate"><span class="pre">IdentityL</span></code>, three-argument <code class="docutils literal notranslate"><span class="pre">PSlash</span></code> and any accepted head with a wrong arity fail model compilation with <code class="docutils literal notranslate"><span class="pre">ValueError:</span> <span class="pre">...</span> <span class="pre">contains</span> <span class="pre">unsupported</span> <span class="pre">UFO</span> <span class="pre">tensors</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Form factors</p></td>
+<td><p>rejected</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">form-factors</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Sigma normalisation</p></td>
+<td><p>experimental</p></td>
+<td><p>expanded as (i/2)(gamma^mu gamma^nu - gamma^nu gamma^mu); vertices using <code class="docutils literal notranslate"><span class="pre">Sigma</span></code> have not been validated against a reference implementation.</p></td>
+</tr>
+<tr class="row-even"><td><p>Chiral structures</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ProjM</span></code>, <code class="docutils literal notranslate"><span class="pre">ProjP</span></code> and <code class="docutils literal notranslate"><span class="pre">Gamma5</span></code> are validated through the packaged Standard Model.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Index conventions</p></td>
+<td><p>conditional</p></td>
+<td><p>1-based leg indices, the <code class="docutils literal notranslate"><span class="pre">1000*component</span> <span class="pre">+</span> <span class="pre">leg</span></code> notation for spin-2 fields and negative dummy indices are supported; inconsistent indices are a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Several structures per vertex</p></td>
+<td><p>supported</p></td>
+<td><p>any number of colour and Lorentz structures through the coupling matrix.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Three-point vertices</p></td>
+<td><p>supported</p></td>
+<td><p>any combination of scalars, Dirac fermions, vectors and spin-2 fields, momentum-dependent or not, with colour 1, delta, T^a or f^abc.</p></td>
+</tr>
+<tr class="row-even"><td><p>One- and two-point terms</p></td>
+<td><p>ignored</p></td>
+<td><p>tadpole and two-point mixing vertices are dropped without a warning.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Four-point colour-singlet contacts</p></td>
+<td><p>supported</p></td>
+<td><p>momentum-independent ones through the exact component-basis split; momentum-dependent ones through balanced contact trees.</p></td>
+</tr>
+<tr class="row-even"><td><p>Four-point two-f gauge contacts</p></td>
+<td><p>conditional</p></td>
+<td><p>accepted when written as a numeric factor times <code class="docutils literal notranslate"><span class="pre">f(a,</span> <span class="pre">b,</span> <span class="pre">x)</span> <span class="pre">*</span> <span class="pre">f(x,</span> <span class="pre">c,</span> <span class="pre">d)</span></code> with one shared adjoint index and no momentum dependence; otherwise <code class="docutils literal notranslate"><span class="pre">unsupported-contact-color-lowering</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Other coloured four-point contacts</p></td>
+<td><p>rejected</p></td>
+<td><p>four-fermion operators, delta couplings to singlets, <code class="docutils literal notranslate"><span class="pre">d^abc</span></code> and single-f shapes outside the HEFT family give <code class="docutils literal notranslate"><span class="pre">unsupported-contact-color-lowering</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Higher-point colour-singlet contacts</p></td>
+<td><p>supported</p></td>
+<td><p>any valence, momentum-dependent or not, tested up to ten scalars and five-point spin-2 vertices.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Scalar-HEFT contacts</p></td>
+<td><p>conditional</p></td>
+<td><p>four-point (8, 8, 8, 1) with colour exactly <code class="docutils literal notranslate"><span class="pre">f(i,</span> <span class="pre">j,</span> <span class="pre">k)</span></code> and five-point (8, 8, 8, 8, 1) with colour exactly <code class="docutils literal notranslate"><span class="pre">f(...)</span> <span class="pre">*</span> <span class="pre">f(...)</span></code> sharing one index, without a numeric prefactor in the colour string.</p></td>
+</tr>
+<tr class="row-even"><td><p>Other coloured contacts with five or more legs</p></td>
+<td><p>rejected</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">unsupported-contact-color-lowering</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Four-fermion contacts</p></td>
+<td><p>experimental</p></td>
+<td><p>not gated at compile time but not validated; treat as unsupported.</p></td>
+</tr>
+<tr class="row-even"><td><p>Counterterm and loop vertices</p></td>
+<td><p>ignored</p></td>
+<td><p>only tree vertices are used; <code class="docutils literal notranslate"><span class="pre">type</span></code> and <code class="docutils literal notranslate"><span class="pre">loop_particles</span></code> attributes are never read.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Ghost vertices</p></td>
+<td><p>ignored</p></td>
+<td><p>compiled but never used.</p></td>
+</tr>
+<tr class="row-even"><td><p>Custom propagator tensors</p></td>
+<td><p>conditional</p></td>
+<td><p>the vertex tensor heads plus <code class="docutils literal notranslate"><span class="pre">PSlash(i,</span> <span class="pre">j)</span></code>, <code class="docutils literal notranslate"><span class="pre">P(1)</span></code> and <code class="docutils literal notranslate"><span class="pre">P(1)^2</span></code> for the propagating momentum.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="colour-structures-and-colour-accuracy">
+<h2>Colour structures and colour accuracy<a class="headerlink" href="#colour-structures-and-colour-accuracy" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
+<th class="head"><p>Status</p></th>
+<th class="head"><p>Condition and consequence</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Colour group</p></td>
+<td><p>rejected</p></td>
+<td><p>one SU(3) with N_c = 3 only; a second group or SU(N) with N other than 3 is not representable.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>conditional</p></td>
+<td><p>accepted for any valence when every leg is colour-neutral; on a vertex with coloured legs it is rejected.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Identity(i,</span> <span class="pre">j)</span></code></p></td>
+<td><p>conditional</p></td>
+<td><p>both indices must point at coloured legs of dual (or equal adjoint) representations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">T(a,</span> <span class="pre">i,</span> <span class="pre">j)</span></code></p></td>
+<td><p>supported</p></td>
+<td><p>adjoint, fundamental, antifundamental index order.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">f(a,</span> <span class="pre">b,</span> <span class="pre">c)</span></code></p></td>
+<td><p>supported</p></td>
+<td><p>three adjoint legs or dummies; a product of two <code class="docutils literal notranslate"><span class="pre">f</span></code> is the only coloured four-point structure.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">d(a,</span> <span class="pre">b,</span> <span class="pre">c)</span></code></p></td>
+<td><p>rejected</p></td>
+<td><p>recognised, then refused at compilation as an unsupported trilinear tensor or contact lowering.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Epsilon</span></code>, <code class="docutils literal notranslate"><span class="pre">EpsilonBar</span></code>, <code class="docutils literal notranslate"><span class="pre">K6</span></code>, <code class="docutils literal notranslate"><span class="pre">K6Bar</span></code>, <code class="docutils literal notranslate"><span class="pre">T6</span></code></p></td>
+<td><p>rejected</p></td>
+<td><p>pass the preflight name check but fail model compilation with <code class="docutils literal notranslate"><span class="pre">ValueError:</span> <span class="pre">color</span> <span class="pre">expression</span> <span class="pre">contains</span> <span class="pre">unsupported</span> <span class="pre">UFO</span> <span class="pre">tensors</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Three-point projection</p></td>
+<td><p>conditional</p></td>
+<td><p>every three-point colour structure must be exactly proportional to 1, delta, T^a or f^abc with matching leg representations; the constant may be any number.</p></td>
+</tr>
+<tr class="row-even"><td><p>Colour accuracies</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">lc</span></code>, <code class="docutils literal notranslate"><span class="pre">nlc</span></code> and <code class="docutils literal notranslate"><span class="pre">full</span></code> for any accepted model; the choice is a run-card setting.</p></td>
+</tr>
+<tr class="row-odd"><td><p>NLC and full colour weights</p></td>
+<td><p>supported</p></td>
+<td><p>exact for any number of quark lines; pure-gluon processes are exact up to 40 gluons.</p></td>
+</tr>
+<tr class="row-even"><td><p>Colour-charge balance</p></td>
+<td><p>conditional</p></td>
+<td><p>after crossing, fundamental and antifundamental legs must balance; otherwise the process has no colour plan.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Sector truncation</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">process.max_color_sectors</span></code> produces a partial sum marked <code class="docutils literal notranslate"><span class="pre">selected</span></code> with direct contraction and is refused by on-the-fly, FFT and correlators.</p></td>
+</tr>
+<tr class="row-even"><td><p>Colour-flow selectors</p></td>
+<td><p>conditional</p></td>
+<td><p>LC outputs only; NLC and full outputs return one contracted entry per helicity.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">all-flow-union</span></code> layout</p></td>
+<td><p>conditional</p></td>
+<td><p>LC only, with complete coverage.</p></td>
+</tr>
+<tr class="row-even"><td><p>FFT contraction</p></td>
+<td><p>conditional</p></td>
+<td><p>Default <code class="docutils literal notranslate"><span class="pre">contraction=&quot;auto&quot;</span></code> tries FFT for <code class="docutils literal notranslate"><span class="pre">nlc</span></code> or <code class="docutils literal notranslate"><span class="pre">full</span></code> with <code class="docutils literal notranslate"><span class="pre">recurrence</span></code> or <code class="docutils literal notranslate"><span class="pre">on-the-fly</span></code>, falling back to direct contraction for unsupported plans. FFT needs at most ten permutable gluons whose colour sectors form complete permutation orbits. LC, compiled/eager execution, and correlators retain direct/trace; <code class="docutils literal notranslate"><span class="pre">--color-contraction</span> <span class="pre">direct</span></code> opts out. Explicit <code class="docutils literal notranslate"><span class="pre">--fft</span> <span class="pre">trace</span></code> or <code class="docutils literal notranslate"><span class="pre">--fft</span> <span class="pre">adjoint</span></code> forces FFT and retains unsupported-plan errors.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Adjoint FFT selection</p></td>
+<td><p>conditional</p></td>
+<td><p>Default <code class="docutils literal notranslate"><span class="pre">fft_basis=&quot;adjoint&quot;</span></code> adaptively uses DDM for certified Yang–Mills or single-insertion scalar HEFT (<code class="docutils literal notranslate"><span class="pre">HIG</span> <span class="pre">=</span> <span class="pre">1</span></code>), fundamental chains/products for quarks, and trace tensors otherwise. Saved <code class="docutils literal notranslate"><span class="pre">fft_basis_selection</span></code> reports the actual representation; no universal DDM or speedup claim. Forced adjoint FFT with correlators is rejected; direct contraction ignores the FFT basis.</p></td>
+</tr>
+<tr class="row-even"><td><p>Shared-trace optimisation</p></td>
+<td><p>conditional</p></td>
+<td><p>applied only to pure gauge-boson processes whose Yang-Mills structure the model certificate proves; results are exact either way.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Correlators</p></td>
+<td><p>conditional</p></td>
+<td><p>representations 1, 3, -3, 8 from complete full-colour plans in compiled execution.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="propagators-and-gauge">
+<h2>Propagators and gauge<a class="headerlink" href="#propagators-and-gauge" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
+<th class="head"><p>Status</p></th>
+<th class="head"><p>Condition and consequence</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Default versus custom</p></td>
+<td><p>supported</p></td>
+<td><p>a UFO propagator counts as custom only if its expression differs from the loader’s Feynman default for that particle.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Massless vectors</p></td>
+<td><p>supported</p></td>
+<td><p>Feynman gauge -i g/p^2, fixed.</p></td>
+</tr>
+<tr class="row-even"><td><p>Massive vectors</p></td>
+<td><p>supported</p></td>
+<td><p>unitary gauge with a fixed-width denominator; matched Goldstones are absorbed.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Feynman-gauge massive vectors</p></td>
+<td><p>not applicable</p></td>
+<td><p>no such kernel exists; Goldstone exchange appears only if the UFO supplies a custom massive-vector propagator, which is then used verbatim.</p></td>
+</tr>
+<tr class="row-even"><td><p>Massless spin-2</p></td>
+<td><p>supported</p></td>
+<td><p>de Donder propagator with dimension parameter <code class="docutils literal notranslate"><span class="pre">dim</span></code> (default 4).</p></td>
+</tr>
+<tr class="row-odd"><td><p>Massive spin-2</p></td>
+<td><p>experimental</p></td>
+<td><p>Fierz-Pauli propagator behind <code class="docutils literal notranslate"><span class="pre">experimental-massive-spin-2</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Widths</p></td>
+<td><p>supported</p></td>
+<td><p>fixed-width Breit-Wigner denominators only; zero widths are fine; complex masses are rejected.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Mass class</p></td>
+<td><p>conditional</p></td>
+<td><p>fixed by the restriction used at generation; runtime cards change values within that form, and setting a massive particle’s mass to zero at runtime is not guarded.</p></td>
+</tr>
+<tr class="row-even"><td><p>Custom propagators</p></td>
+<td><p>conditional</p></td>
+<td><p>numerator and denominator must both be defined, use only the accepted tensors and registered functions, and lower exactly to the particle’s component count; no gauge conversion is applied.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Disabled shortcuts</p></td>
+<td><p>conditional</p></td>
+<td><p>a custom propagator switches off the Weyl projection, transverse Yang-Mills lowering, Fierz auxiliary currents, reflection certificates and Goldstone removal for that particle.</p></td>
+</tr>
+<tr class="row-even"><td><p>Custom propagator coverage</p></td>
+<td><p>conditional</p></td>
+<td><p>plumbed through all execution modes but not exercised end to end by the test suite.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Ghost propagators</p></td>
+<td><p>ignored</p></td>
+<td><p>none; ghosts never propagate in tree amplitudes.</p></td>
+</tr>
+<tr class="row-even"><td><p>Non-propagating particles</p></td>
+<td><p>conditional</p></td>
+<td><p>excluded from external states but not from internal lines.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Gauge selection</p></td>
+<td><p>not applicable</p></td>
+<td><p>no option selects a gauge; the UFO must supply its own propagator for another choice.</p></td>
+</tr>
+<tr class="row-even"><td><p>Contact auxiliaries</p></td>
+<td><p>supported</p></td>
+<td><p>synthesized auxiliary currents carry no propagator and introduce no pole.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="process-level-scope-with-a-generic-model">
+<h2>Process-level scope with a generic model<a class="headerlink" href="#process-level-scope-with-a-generic-model" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
+<th class="head"><p>Status</p></th>
+<th class="head"><p>Condition and consequence</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Model inputs at generation</p></td>
+<td><p>supported</p></td>
+<td><p>any accepted source kind; restriction and simplification choices apply only when compiling from UFO or JSON.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Preflight gate</p></td>
+<td><p>rejected</p></td>
+<td><p>a model with any error code cannot generate or enumerate processes.</p></td>
+</tr>
+<tr class="row-even"><td><p>Process shape</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">b</span> <span class="pre">&gt;</span> <span class="pre">c</span> <span class="pre">d</span> <span class="pre">...</span></code> with exactly two incoming and at least one outgoing particle; several requests may be joined with <code class="docutils literal notranslate"><span class="pre">|</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Loop-induced channels</p></td>
+<td><p>rejected</p></td>
+<td><p>tree level only; a channel without tree amplitudes is skipped with a warning inside a multiparticle request and is an error when requested alone.</p></td>
+</tr>
+<tr class="row-even"><td><p>Multiparticle labels</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">all</span></code> always exists; <code class="docutils literal notranslate"><span class="pre">p</span></code> and <code class="docutils literal notranslate"><span class="pre">j</span></code> exist only when the model has massless triplet fermions or octet vectors; define your own labels otherwise.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Repetition syntax</p></td>
+<td><p>conditional</p></td>
+<td><p>write <code class="docutils literal notranslate"><span class="pre">3*g</span></code>; the built-in shorthands <code class="docutils literal notranslate"><span class="pre">3g</span></code> and <code class="docutils literal notranslate"><span class="pre">[d</span> <span class="pre">g]</span></code> are not understood by generic expansion.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">flavor_scheme</span></code></p></td>
+<td><p>ignored</p></td>
+<td><p>no effect on generic models; use multiparticle labels instead.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_quark_lines</span></code></p></td>
+<td><p>conditional</p></td>
+<td><p>bounds the number of external quark-antiquark pairs per subprocess; channels above it are dropped like loop-induced ones.</p></td>
+</tr>
+<tr class="row-even"><td><p>Permutation representatives</p></td>
+<td><p>supported</p></td>
+<td><p>one generated representative serves every reordering within the incoming and within the outgoing side.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Basis reductions</p></td>
+<td><p>conditional</p></td>
+<td><p>trace-reflection folding and the shared single-trace basis are applied only to certified pure Yang-Mills gluon processes; the unreduced exact basis is used otherwise.</p></td>
+</tr>
+<tr class="row-even"><td><p>Execution modes</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">compiled</span></code> works from a raw UFO or JSON model; <code class="docutils literal notranslate"><span class="pre">recurrence</span></code> (default), <code class="docutils literal notranslate"><span class="pre">eager</span></code> and <code class="docutils literal notranslate"><span class="pre">on-the-fly</span></code> need a prepared bundle: <code class="docutils literal notranslate"><span class="pre">pyamplicol</span> <span class="pre">model</span> <span class="pre">compile</span> <span class="pre">MODEL</span> <span class="pre">out.pyamplicol-model</span> <span class="pre">--backend</span> <span class="pre">jit</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Prepared-bundle clamps</p></td>
+<td><p>conditional</p></td>
+<td><p>the bundle fixes the backend and code-shaping settings; differing run-card values are overridden with a warning.</p></td>
+</tr>
+<tr class="row-even"><td><p>Backends</p></td>
+<td><p>supported</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">jit</span></code>, <code class="docutils literal notranslate"><span class="pre">asm</span></code>, <code class="docutils literal notranslate"><span class="pre">cpp</span></code> for compiled mode; only JIT artifacts support arbitrary precision.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Precision</p></td>
+<td><p>conditional</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">precision=16</span></code> needs no Symbolica; higher precision needs the Symbolica package and a JIT-backed recurrence, compiled or eager artifact, never on-the-fly.</p></td>
+</tr>
+<tr class="row-even"><td><p>Symbolica at generation</p></td>
+<td><p>supported</p></td>
+<td><p>generation from any model needs Symbolica; double-precision evaluation of a finished artifact does not.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Helicity selectors</p></td>
+<td><p>supported</p></td>
+<td><p>any generated helicity, by stable ID, for every accuracy and mode.</p></td>
+</tr>
+<tr class="row-even"><td><p>On-the-fly</p></td>
+<td><p>conditional</p></td>
+<td><p>keeps every selector for runtime, double precision only, one-point warm-up required.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Correlated Born evaluations</p></td>
+<td><p>conditional</p></td>
+<td><p>compiled full-colour generation with complete coverage; spin replacements on vector legs only.</p></td>
+</tr>
+<tr class="row-even"><td><p>Numerical current reuse</p></td>
+<td><p>conditional</p></td>
+<td><p>off by default; <code class="docutils literal notranslate"><span class="pre">--numerical-current-reuse</span></code> enables the certified search for compiled, eager and recurrence generation.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="related-pages">
+<h2>Related pages<a class="headerlink" href="#related-pages" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="models-and-processes.html"><span class="std std-doc">Models and Processes</span></a> for the model workflow and
+the <code class="docutils literal notranslate"><span class="pre">model</span></code> commands.</p></li>
+<li><p><a class="reference internal" href="configuration.html"><span class="std std-doc">Configuration</span></a> for the run-card fields referenced above.</p></li>
+<li><p><a class="reference internal" href="release-and-support.html"><span class="std std-doc">Release and Support</span></a> for the validated release
+boundary.</p></li>
+</ul>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="process-selection-and-permutations.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Process Selection and Permutations</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="models-and-processes.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Models and Processes</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025-2026, The MadGraph7 Development Team
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">UFO Model Coverage</a><ul>
+<li><a class="reference internal" href="#summary">Summary</a></li>
+<li><a class="reference internal" href="#preflight-diagnostic-codes">Preflight diagnostic codes</a></li>
+<li><a class="reference internal" href="#sources-and-loading">Sources and loading</a></li>
+<li><a class="reference internal" href="#particles">Particles</a></li>
+<li><a class="reference internal" href="#parameters-couplings-and-functions">Parameters, couplings and functions</a></li>
+<li><a class="reference internal" href="#lorentz-structures-and-vertices">Lorentz structures and vertices</a></li>
+<li><a class="reference internal" href="#colour-structures-and-colour-accuracy">Colour structures and colour accuracy</a></li>
+<li><a class="reference internal" href="#propagators-and-gauge">Propagators and gauge</a></li>
+<li><a class="reference internal" href="#process-level-scope-with-a-generic-model">Process-level scope with a generic model</a></li>
+<li><a class="reference internal" href="#related-pages">Related pages</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../_static/documentation_options.js?v=37f418d5"></script>
+    <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/scripts/furo.js?v=46bd48cc"></script>
+    </body>
+</html>

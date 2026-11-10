@@ -1,0 +1,7 @@
+Cuts
+====
+
+.. autoclass:: madspace.Cuts
+   :members:
+   :undoc-members:
+   :show-inheritance:

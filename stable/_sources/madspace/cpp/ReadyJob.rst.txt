@@ -1,0 +1,6 @@
+ReadyJob
+========
+
+.. doxygenstruct:: madspace::ReadyJob
+   :members:
+   :undoc-members:

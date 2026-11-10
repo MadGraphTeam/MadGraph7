@@ -1,0 +1,6 @@
+Histogram
+=========
+
+.. doxygenstruct:: madspace::Histogram
+   :members:
+   :undoc-members:

@@ -1,0 +1,7 @@
+Unweighter
+==========
+
+.. autoclass:: madspace.Unweighter
+   :members:
+   :undoc-members:
+   :show-inheritance:

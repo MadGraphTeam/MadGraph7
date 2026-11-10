@@ -1,0 +1,7 @@
+MadnisTraining
+==============
+
+.. autoclass:: madspace.MadnisTraining
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,6 @@
+Function
+========
+
+.. doxygenclass:: madspace::Function
+   :members:
+   :undoc-members:

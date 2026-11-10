@@ -1,10 +1,16 @@
 {
-  "default": "latest",
+  "default": "stable",
   "versions": [
     {
       "name": "latest",
       "title": "latest (main)",
       "url": "latest/"
+    },
+    {
+      "name": "v0.3.0",
+      "title": "v0.3.0 (stable)",
+      "url": "v0.3.0/",
+      "prerelease": false
     }
   ]
 }

@@ -1,0 +1,6 @@
+MappingChannelWeights
+=====================
+
+.. doxygenclass:: madspace::MappingChannelWeights
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+EventFile
+=========
+
+.. doxygenclass:: madspace::EventFile
+   :members:
+   :undoc-members:

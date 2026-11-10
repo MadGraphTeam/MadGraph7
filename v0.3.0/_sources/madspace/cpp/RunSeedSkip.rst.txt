@@ -1,0 +1,6 @@
+RunSeedSkip
+===========
+
+.. doxygenstruct:: madspace::RunSeedSkip
+   :members:
+   :undoc-members:

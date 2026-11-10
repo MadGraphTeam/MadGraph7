@@ -1,0 +1,6 @@
+StepSettings
+============
+
+.. doxygenstruct:: madspace::StepSettings
+   :members:
+   :undoc-members:

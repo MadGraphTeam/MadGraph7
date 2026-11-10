@@ -1,0 +1,4 @@
+apply_mlm_collider_shower_scale
+===============================
+
+.. doxygenfunction:: madspace::apply_mlm_collider_shower_scale

@@ -1,0 +1,7 @@
+FastRamboMapping
+================
+
+.. autoclass:: madspace.FastRamboMapping
+   :members:
+   :undoc-members:
+   :show-inheritance:

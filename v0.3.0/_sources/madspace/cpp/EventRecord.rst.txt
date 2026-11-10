@@ -1,0 +1,6 @@
+EventRecord
+===========
+
+.. doxygenclass:: madspace::EventRecord
+   :members:
+   :undoc-members:

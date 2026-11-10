@@ -1,0 +1,6 @@
+DiscreteOptimizer
+=================
+
+.. doxygenclass:: madspace::DiscreteOptimizer
+   :members:
+   :undoc-members:

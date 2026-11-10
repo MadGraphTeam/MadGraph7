@@ -1,0 +1,6 @@
+ChannelWeightNetwork
+====================
+
+.. doxygenclass:: madspace::ChannelWeightNetwork
+   :members:
+   :undoc-members:

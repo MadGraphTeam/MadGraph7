@@ -1,0 +1,6 @@
+EventHistogramSpec
+==================
+
+.. doxygenstruct:: madspace::EventHistogramSpec
+   :members:
+   :undoc-members:

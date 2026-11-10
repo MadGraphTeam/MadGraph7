@@ -1,0 +1,6 @@
+FunctionGenerator
+=================
+
+.. doxygenclass:: madspace::FunctionGenerator
+   :members:
+   :undoc-members:

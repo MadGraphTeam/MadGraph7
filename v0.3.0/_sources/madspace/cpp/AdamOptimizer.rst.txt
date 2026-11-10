@@ -1,0 +1,6 @@
+AdamOptimizer
+=============
+
+.. doxygenclass:: madspace::AdamOptimizer
+   :members:
+   :undoc-members:

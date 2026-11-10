@@ -1,0 +1,4 @@
+fuse_instructions
+=================
+
+.. autofunction:: madspace.fuse_instructions

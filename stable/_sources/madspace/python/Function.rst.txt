@@ -1,0 +1,7 @@
+Function
+========
+
+.. autoclass:: madspace.Function
+   :members:
+   :undoc-members:
+   :show-inheritance:

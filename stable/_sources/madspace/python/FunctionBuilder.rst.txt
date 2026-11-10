@@ -1,0 +1,7 @@
+FunctionBuilder
+===============
+
+.. autoclass:: madspace.FunctionBuilder
+   :members:
+   :undoc-members:
+   :show-inheritance:

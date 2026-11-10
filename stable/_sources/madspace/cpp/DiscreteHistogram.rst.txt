@@ -1,0 +1,6 @@
+DiscreteHistogram
+=================
+
+.. doxygenclass:: madspace::DiscreteHistogram
+   :members:
+   :undoc-members:

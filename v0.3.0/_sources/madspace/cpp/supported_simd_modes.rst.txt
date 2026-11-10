@@ -1,0 +1,4 @@
+supported_simd_modes
+====================
+
+.. doxygenfunction:: madspace::supported_simd_modes

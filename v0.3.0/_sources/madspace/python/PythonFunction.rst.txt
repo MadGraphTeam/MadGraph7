@@ -1,0 +1,7 @@
+PythonFunction
+==============
+
+.. autoclass:: madspace.PythonFunction
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+EnergyScale
+===========
+
+.. autoclass:: madspace.EnergyScale
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+SubprocArgs
+===========
+
+.. autoclass:: madspace.SubprocArgs
+   :members:
+   :undoc-members:
+   :show-inheritance:

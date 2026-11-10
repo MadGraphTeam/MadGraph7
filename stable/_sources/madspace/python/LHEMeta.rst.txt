@@ -1,0 +1,7 @@
+LHEMeta
+=======
+
+.. autoclass:: madspace.LHEMeta
+   :members:
+   :undoc-members:
+   :show-inheritance:

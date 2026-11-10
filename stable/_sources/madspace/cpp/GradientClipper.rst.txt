@@ -1,0 +1,6 @@
+GradientClipper
+===============
+
+.. doxygenclass:: madspace::GradientClipper
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+EventStream
+===========
+
+.. doxygenclass:: madspace::EventStream
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+Mapping
+=======
+
+.. doxygenclass:: madspace::Mapping
+   :members:
+   :undoc-members:

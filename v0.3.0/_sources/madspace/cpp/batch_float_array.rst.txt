@@ -1,0 +1,4 @@
+batch_float_array
+=================
+
+.. doxygenfunction:: madspace::batch_float_array

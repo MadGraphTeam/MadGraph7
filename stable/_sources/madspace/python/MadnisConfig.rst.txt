@@ -1,0 +1,7 @@
+MadnisConfig
+============
+
+.. autoclass:: madspace.MadnisConfig
+   :members:
+   :undoc-members:
+   :show-inheritance:

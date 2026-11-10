@@ -1,0 +1,6 @@
+TwoToTwoParticleScattering
+==========================
+
+.. doxygenclass:: madspace::TwoToTwoParticleScattering
+   :members:
+   :undoc-members:

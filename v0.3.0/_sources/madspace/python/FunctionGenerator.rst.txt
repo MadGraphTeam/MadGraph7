@@ -1,0 +1,7 @@
+FunctionGenerator
+=================
+
+.. autoclass:: madspace.FunctionGenerator
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+DifferentialCrossSection
+========================
+
+.. autoclass:: madspace.DifferentialCrossSection
+   :members:
+   :undoc-members:
+   :show-inheritance:

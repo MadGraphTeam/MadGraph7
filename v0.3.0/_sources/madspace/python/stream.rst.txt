@@ -1,0 +1,4 @@
+stream
+======
+
+.. autofunction:: madspace.stream

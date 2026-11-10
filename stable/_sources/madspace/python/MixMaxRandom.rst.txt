@@ -1,0 +1,7 @@
+MixMaxRandom
+============
+
+.. autoclass:: madspace.MixMaxRandom
+   :members:
+   :undoc-members:
+   :show-inheritance:

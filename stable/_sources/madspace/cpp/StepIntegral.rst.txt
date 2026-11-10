@@ -1,0 +1,6 @@
+StepIntegral
+============
+
+.. doxygenstruct:: madspace::StepIntegral
+   :members:
+   :undoc-members:

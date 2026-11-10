@@ -1,0 +1,7 @@
+MomentumPreprocessing
+=====================
+
+.. autoclass:: madspace.MomentumPreprocessing
+   :members:
+   :undoc-members:
+   :show-inheritance:

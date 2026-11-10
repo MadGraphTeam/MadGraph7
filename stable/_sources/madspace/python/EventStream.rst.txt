@@ -1,0 +1,7 @@
+EventStream
+===========
+
+.. autoclass:: madspace.EventStream
+   :members:
+   :undoc-members:
+   :show-inheritance:

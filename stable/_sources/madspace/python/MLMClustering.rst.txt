@@ -1,0 +1,7 @@
+MLMClustering
+=============
+
+.. autoclass:: madspace.MLMClustering
+   :members:
+   :undoc-members:
+   :show-inheritance:

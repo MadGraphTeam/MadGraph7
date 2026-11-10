@@ -1,0 +1,7 @@
+BatchSize
+=========
+
+.. autoclass:: madspace.BatchSize
+   :members:
+   :undoc-members:
+   :show-inheritance:

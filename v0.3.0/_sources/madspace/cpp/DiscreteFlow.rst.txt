@@ -1,0 +1,6 @@
+DiscreteFlow
+============
+
+.. doxygenclass:: madspace::DiscreteFlow
+   :members:
+   :undoc-members:

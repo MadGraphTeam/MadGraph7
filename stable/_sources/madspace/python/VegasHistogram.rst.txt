@@ -1,0 +1,7 @@
+VegasHistogram
+==============
+
+.. autoclass:: madspace.VegasHistogram
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+LineRef
+=======
+
+.. autoclass:: madspace.LineRef
+   :members:
+   :undoc-members:
+   :show-inheritance:

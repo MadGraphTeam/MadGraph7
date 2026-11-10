@@ -1,0 +1,7 @@
+HistItem
+========
+
+.. autoclass:: madspace.HistItem
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,6 @@
+IntegrandChannelPart
+====================
+
+.. doxygenclass:: madspace::IntegrandChannelPart
+   :members:
+   :undoc-members:

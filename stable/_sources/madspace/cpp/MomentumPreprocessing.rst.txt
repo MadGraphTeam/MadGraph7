@@ -1,0 +1,6 @@
+MomentumPreprocessing
+=====================
+
+.. doxygenclass:: madspace::MomentumPreprocessing
+   :members:
+   :undoc-members:

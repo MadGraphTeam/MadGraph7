@@ -1,0 +1,7 @@
+LHEFileWriter
+=============
+
+.. autoclass:: madspace.LHEFileWriter
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,6 @@
+Variation
+=========
+
+.. doxygenstruct:: madspace::Variation
+   :members:
+   :undoc-members:

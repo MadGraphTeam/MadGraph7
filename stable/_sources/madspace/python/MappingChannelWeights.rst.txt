@@ -1,0 +1,7 @@
+MappingChannelWeights
+=====================
+
+.. autoclass:: madspace.MappingChannelWeights
+   :members:
+   :undoc-members:
+   :show-inheritance:

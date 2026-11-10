@@ -1,0 +1,7 @@
+VegasMapping
+============
+
+.. autoclass:: madspace.VegasMapping
+   :members:
+   :undoc-members:
+   :show-inheritance:

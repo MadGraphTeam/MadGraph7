@@ -1,0 +1,7 @@
+LHECompleter
+============
+
+.. autoclass:: madspace.LHECompleter
+   :members:
+   :undoc-members:
+   :show-inheritance:

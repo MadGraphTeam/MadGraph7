@@ -1,0 +1,6 @@
+WeightingStep
+=============
+
+.. doxygenstruct:: madspace::WeightingStep
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+DataLayout
+==========
+
+.. doxygenclass:: madspace::DataLayout
+   :members:
+   :undoc-members:

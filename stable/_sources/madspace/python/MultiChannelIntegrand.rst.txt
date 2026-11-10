@@ -1,0 +1,7 @@
+MultiChannelIntegrand
+=====================
+
+.. autoclass:: madspace.MultiChannelIntegrand
+   :members:
+   :undoc-members:
+   :show-inheritance:

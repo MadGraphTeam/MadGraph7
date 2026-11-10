@@ -1,0 +1,4 @@
+default_cuda_context
+====================
+
+.. autofunction:: madspace.default_cuda_context

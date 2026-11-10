@@ -1,0 +1,6 @@
+ChannelEventGenerator
+=====================
+
+.. doxygenclass:: madspace::ChannelEventGenerator
+   :members:
+   :undoc-members:

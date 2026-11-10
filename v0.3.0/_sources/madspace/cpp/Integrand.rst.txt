@@ -1,0 +1,6 @@
+Integrand
+=========
+
+.. doxygenclass:: madspace::Integrand
+   :members:
+   :undoc-members:
