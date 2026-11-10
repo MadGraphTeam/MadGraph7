@@ -622,6 +622,68 @@ class VirtualRescuePolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class VirtualKinematics:
+    """The kinematics improvement of one point in one carrier (m-lit
+    lit-psimprove; ``pyamplicol.kinematics``): the requested setting
+    (``"z-shift"``, ``"rescaling"``, ``"projection"`` or ``"off"``), what
+    became of the point (``status``: ``"improved"`` by the variant
+    ``produced``; ``"exact"``, already exactly physical and passed
+    unchanged; ``"not-improved"``, evaluated as given; ``"off"``), every step
+    of the chain with its code (``attempts``: MadLoop's codes, ``1`` the
+    input test IS_PHYSICAL, 100-999 ORIG, 1000-9999 PSMC, 999 IS_CLOSE;
+    10001 the projection's singular system), the produced point's exactness
+    record (its largest shell and conservation defects relative to the
+    point's scale, against the carrier's rounding bounds), the projection's
+    steps, PSMC's scale factor, the largest move, and the typed warning:
+    ``"kinematics-not-improved"`` (evaluated as given) or
+    ``"kinematics-inexact"`` (the produced point misses exactness; it is
+    used). The warnings are records, not failures: the value is returned as
+    computed and they trigger no rescue escalation."""
+
+    requested: str
+    status: Literal["improved", "exact", "not-improved", "off"]
+    produced: str | None = None
+    fallback: bool = True
+    attempts: tuple[tuple[str, int], ...] = ()
+    shell: float | None = None
+    conservation: float | None = None
+    shell_bound: float | None = None
+    conservation_bound: float | None = None
+    exact: bool | None = None
+    iterations: int | None = None
+    scale: float | None = None
+    moved: float = 0.0
+    warning: str | None = None
+    warning_text: str | None = None
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any]) -> VirtualKinematics:
+        """From the native record (``kinematics_improvement::Record::to_json``)."""
+
+        exactness = record.get("exactness") or {}
+        return cls(
+            requested=record["requested"],
+            status=record["status"],
+            produced=record.get("produced"),
+            fallback=bool(record.get("fallback", True)),
+            attempts=tuple(
+                (attempt["step"], int(attempt["code"]))
+                for attempt in record.get("attempts", ())
+            ),
+            shell=exactness.get("shell"),
+            conservation=exactness.get("conservation"),
+            shell_bound=exactness.get("shell_bound"),
+            conservation_bound=exactness.get("conservation_bound"),
+            exact=exactness.get("exact"),
+            iterations=record.get("iterations"),
+            scale=record.get("scale"),
+            moved=float(record.get("moved", 0.0)),
+            warning=record.get("warning"),
+            warning_text=record.get("warning_text"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class VirtualRescueAttempt:
     """One level's evaluation of one point: its carrier, the value of the
     level's metric (``None`` when the point failed or the level runs no
@@ -634,6 +696,9 @@ class VirtualRescueAttempt:
     estimate: float | None
     failure: str | None = None
     reduction: VirtualReduction | None = None
+    # The level's kinematics improvement of the point (m-lit lit-psimprove;
+    # every level improves the original exact inputs in its own carrier).
+    kinematics: VirtualKinematics | None = None
 
     def __post_init__(self) -> None:
         if self.reduction is not None and not isinstance(
@@ -781,6 +846,11 @@ class VirtualLaneDiagnostic:
     # family monomial and point on NinjaRS); the checks form it anyway, a call
     # without them pays nothing for it.
     finiteness: float | None = None
+    # The kinematics improvement of the point in this carrier (m-lit
+    # lit-psimprove; ``VirtualKinematics``): absent for a binary64
+    # evaluation without the binary64 switch (no improvement, values bitwise
+    # as before), else the record (``"off"`` under the setting "off").
+    kinematics: VirtualKinematics | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {

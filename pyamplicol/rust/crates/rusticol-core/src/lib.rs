@@ -21,6 +21,7 @@ mod eager_runtime;
 mod eager_tables;
 mod engine;
 mod error;
+pub mod kinematics_improvement;
 #[cfg(feature = "symbolica-runtime")]
 mod licence;
 #[cfg(feature = "symbolica-runtime")]

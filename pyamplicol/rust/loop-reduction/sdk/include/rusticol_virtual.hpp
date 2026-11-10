@@ -107,8 +107,11 @@ public:
 // The selectors of VirtualRuntime::evaluate_selected (rusticol_virtual_selection):
 // global helicity IDs (h<i> or h:<helicities in leg order>), per-point
 // zero-based helicity rows (one per point), colour flows (refused for
-// loop-induced processes: full colour only) and a resolved evaluation's
-// colour resolution ("contracted", the default, or "amplitude-basis").
+// loop-induced processes: full colour only; for Born-interfered processes
+// served by the Python API's color_flows=) and a resolved evaluation's
+// colour resolution of a loop-induced process ("contracted", the default, or
+// "amplitude-basis"). Helicity rows are selected for loop-induced and, at
+// every colour accuracy, Born-interfered processes (lit-fc-hel).
 struct VirtualSelection {
     std::vector<std::string> helicity_ids;
     std::vector<std::string> color_ids;
@@ -273,6 +276,20 @@ public:
     void set_reduction_unchecked(bool unchecked) {
         virtual_detail::check(
             rusticol_virtual_set_reduction_unchecked(handle_.get(), unchecked ? 1 : 0));
+    }
+    // Kinematics improvement of later evaluations (the Python API's
+    // kinematics_improvement=): "z-shift" (MadLoop's default), "rescaling",
+    // "projection" or "off"; recorded per point in the diagnostics
+    // ("kinematics"). A refused value throws VirtualError.
+    void set_kinematics_improvement(const std::string &setting) {
+        virtual_detail::check(
+            rusticol_virtual_set_kinematics_improvement(handle_.get(), setting.c_str()));
+    }
+    // Whether later binary64 evaluations are improved too (the Python API's
+    // kinematics_improvement_binary64=; default false).
+    void set_kinematics_improvement_binary64(bool binary64) {
+        virtual_detail::check(rusticol_virtual_set_kinematics_improvement_binary64(
+            handle_.get(), binary64 ? 1 : 0));
     }
     // Stability checks of later evaluations (the Python API's stability_checks=):
     // rotation_count default rotations, or the rotation specifications of

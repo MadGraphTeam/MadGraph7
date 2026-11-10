@@ -43,7 +43,7 @@ vectors. Binary64 values are bitwise the Python API's (the same Rust code:
 binary64 outputs call), double-double and arbitrary precision equal `Decimal`
 values.
 
-**Selections (loop-induced, F1).** `rusticol_virtual_evaluate_selected(handle,
+**Selections (loop-induced, F1; Born-interfered, lit-fc-hel).** `rusticol_virtual_evaluate_selected(handle,
 request, selection, &result)` (C++ `evaluate_selected` with a
 `VirtualSelection`, Fortran `evaluate_selected`, the packaged Rust wrapper's
 `evaluate_selected` with a `Selection`, the safe Rust `Runtime::
@@ -70,13 +70,30 @@ exclusive per axis, validated before evaluation, output only on success):
   reduction backend apply as to every call (the stability monitoring returns
   `{"estimates": null, "reason": ...}`: the Python API estimates selections);
 - colour flows are refused (full colour only, RULED Q8), and so are an unknown
-  colour resolution or helicity ID, in the Python API's words. A
-  Born-interfered process's leading-colour selection stays the Python API's
-  (refused typed here; its NLC and full-colour refusals in the Python API's
-  words).
+  colour resolution or helicity ID, in the Python API's words.
 
-The capabilities list the selection (`"helicity_selection"`) and the colour
-axes (`"color_resolutions"`: the contracted ID and the anchors' IDs).
+A Born-interfered process selects its Born helicity rows at every colour
+accuracy (lit-fc-hel; the Python API's `evaluate(helicities=...)` and
+`evaluate_resolved(helicities=...)`): an ordinary call returns per point the
+selected rows' value (`helicity_by_point`: each point's own row, points
+sharing a row in one batch), a resolved call the selected rows in the
+accuracy's resolved layout (one contracted component at NLC and full colour,
+one `basis-<b>` component per Born basis element at leading colour). Both run
+the one Rust formation of the Python API's stored path
+(`rusticol_loop_reduction::v2_runtime::template`: the selection template's
+masks, the resolved selection's own columns), so only the selected rows'
+trees, loop links, reduction lanes and resolved columns are formed and
+binary64 values are bitwise the Python API's; double-double and arbitrary
+precision are its `Decimal` values. A colour resolution is refused in the
+Python API's words, colour flows at NLC and full colour in its words, and a
+leading-colour colour-flow selection is the Python API's (`color_flows=`;
+refused typed here, `RUSTICOL_VIRTUAL_RUNTIME_ERROR`). The stability
+monitoring of a selected call returns `{"estimates": null, "reason": ...}` as
+for a loop-induced selection.
+
+The capabilities list the selection (`"helicity_selection"`, true wherever
+the stored observables serve it) and a loop-induced process's colour axes
+(`"color_resolutions"`: the contracted ID and the anchors' IDs).
 
 | Tree-level SDK feature (`rusticol.h`, tree UMAMI) | Loop-induced virtual SDK |
 | --- | --- |
@@ -141,6 +158,16 @@ relative accuracy of each point's result) sets the calibrated acceptance of
 TIRust's checked method choice, as the Python API's `reduction_target=`, and
 in double-double and arbitrary precision is the fallback guard's threshold,
 never below 1e-5.
+`rusticol_virtual_set_kinematics_improvement(handle, setting)` (C++ / Fortran
+/ Rust `set_kinematics_improvement`; `"z-shift"` by default, MadLoop's
+default; `"rescaling"`, `"projection"`, `"off"`) and
+`rusticol_virtual_set_kinematics_improvement_binary64(handle, on)` (0 by
+default) improve each call's points to exact conservation and on-shell
+externals in the call's carrier above binary64 (binary64 only with the
+switch) before anything is evaluated, as the Python API's
+`kinematics_improvement=` / `kinematics_improvement_binary64=`; the
+diagnostics record it per point (`"kinematics"`); any other value is an
+invalid argument.
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++ / Fortran
 / Rust `set_reduction_unchecked`; 0 by default, 1 on) reduces without the
 backends' own acceptance and refusal checks, as the Python API's

@@ -115,6 +115,8 @@ module rusticol_virtual
     procedure :: set_reduction
     procedure :: set_reduction_target
     procedure :: set_reduction_unchecked
+    procedure :: set_kinematics_improvement
+    procedure :: set_kinematics_improvement_binary64
     procedure :: set_stability_checks
     procedure :: evaluate
     procedure :: evaluate_selected
@@ -229,6 +231,19 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle
       integer(c_int), value :: unchecked
+      integer(c_int) :: value
+    end function
+    function c_set_kinematics_improvement(handle, setting) &
+        bind(C, name="rusticol_virtual_set_kinematics_improvement") result(value)
+      import
+      type(c_ptr), value :: handle, setting
+      integer(c_int) :: value
+    end function
+    function c_set_kinematics_improvement_binary64(handle, binary64) &
+        bind(C, name="rusticol_virtual_set_kinematics_improvement_binary64") result(value)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: binary64
       integer(c_int) :: value
     end function
     function c_set_stability_checks(handle, rotation_count, rotations, reduction_direction, rescaled, &
@@ -739,6 +754,35 @@ contains
       error_message=error_message)
   end subroutine
 
+  ! Kinematics improvement of later evaluations (the Python API's
+  ! kinematics_improvement=): "z-shift" (MadLoop's default), "rescaling",
+  ! "projection" or "off"; recorded per point in the diagnostics
+  ! ("kinematics"); another value is refused with an invalid-argument status.
+  subroutine set_kinematics_improvement(self,setting,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: setting
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(setting)
+    call finish(c_set_kinematics_improvement(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Whether later binary64 evaluations are improved too (the Python API's
+  ! kinematics_improvement_binary64=; default .false.).
+  subroutine set_kinematics_improvement_binary64(self,binary64,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    logical, intent(in) :: binary64
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    integer(c_int) :: flag
+    flag = 0_c_int
+    if (binary64) flag = 1_c_int
+    call finish(c_set_kinematics_improvement_binary64(handle_of(self),flag),ierr, &
+      error_message=error_message)
+  end subroutine
+
   ! Stability checks of later evaluations (the Python API's stability_checks=):
   ! rotation_count default rotations, or the rotation specifications of
   ! rotations (a JSON array; rotation_count then 0); all off, the default,
@@ -886,12 +930,15 @@ contains
   end subroutine
 
   ! rusticol_virtual_evaluate_selected: the selected helicity rows of a
-  ! loop-induced process (resolved absent/false: their sum per point, RULED
-  ! Q39; resolved: per selected row its colour components). helicity_ids are
+  ! loop-induced process or, at every colour accuracy, of a Born-interfered
+  ! one (lit-fc-hel) (resolved absent/false: their sum per point, RULED Q39;
+  ! resolved: per selected row its colour components). helicity_ids are
   ! global IDs (trailing blanks ignored), helicity_by_point zero-based rows
   ! (one per point; exclusive with helicity_ids), color_ids /
-  ! color_flow_by_point colour flows (refused for loop-induced processes),
-  ! color_resolution "contracted" (absent) or "amplitude-basis" (resolved).
+  ! color_flow_by_point colour flows (refused: loop-induced processes have
+  ! none, a Born-interfered one's are the Python API's color_flows=),
+  ! color_resolution "contracted" (absent) or "amplitude-basis" (resolved,
+  ! loop-induced).
   subroutine evaluate_selected(self,momenta,mu_r2,output,helicity_ids,helicity_by_point, &
       color_ids,color_flow_by_point,color_resolution,resolved,point_ids,r2_strategy,ierr,error_message)
     class(virtual_runtime), intent(inout) :: self

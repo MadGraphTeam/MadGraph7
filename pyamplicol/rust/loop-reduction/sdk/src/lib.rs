@@ -18,11 +18,12 @@ use rusticol_loop_reduction::runtime::{Batch, Data};
 use rusticol_loop_reduction::v2_runtime::induced_outputs::{
     AMPLITUDE_BASIS, CONTRACTED, InducedCall, Resolution, anchor_id,
 };
+use rusticol_loop_reduction::v2_runtime::kinematics_improvement;
 use rusticol_loop_reduction::v2_runtime::{
     C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
     is_v2_artifact, named_parameters,
 };
-use rusticol_loop_reduction::v2_runtime::{Monitored, cross_reduction};
+use rusticol_loop_reduction::v2_runtime::{Monitored, ResolvedPoints, cross_reduction};
 use rusticol_loop_reduction::v2_stability::CROSS;
 pub use rusticol_loop_reduction::v2_stability::{
     Estimate, Rotation, StabilityChecks, default_rotation,
@@ -300,13 +301,27 @@ const NO_COLOUR_FLOWS: &str = "a loop-induced process is evaluated at full colou
 const BORN_RESOLUTION: &str = "color_resolution selects the colour axis of a loop-induced \
     process's resolved output; a Born-interfered virtual resolves its colour by its accuracy";
 
-/// A Born-interfered process's leading-colour selection is the Python
-/// API's (the native SDKs serve the loop-induced selections; m-lit
-/// lit-sdk-b).
-const BORN_SELECTION: &str = "the native SDKs select helicity rows of loop-induced \
-    processes; a Born-interfered process's leading-colour helicity and colour-flow \
-    selection is served by the Python API (Runtime.evaluate(helicities=..., \
-    color_flows=...))";
+/// A Born-interfered process's leading-colour colour-flow selection is the
+/// Python API's: the native SDKs select its helicity rows at every colour
+/// accuracy (lit-fc-hel), not its colour flows.
+const BORN_FLOWS: &str = "the native SDKs select helicity rows of Born-interfered \
+    processes at every colour accuracy; a leading-colour colour-flow selection is \
+    served by the Python API (Runtime.evaluate(color_flows=...))";
+
+/// The Python API's refusal of colour flows below leading colour
+/// (`selection.require_colour_flows`).
+fn no_flows(accuracy: &str) -> String {
+    let name = match accuracy {
+        "nlc" => "next-to-leading",
+        other => other,
+    };
+    format!(
+        "v2 virtual runtimes contract the colour at {name} colour, which has no colour \
+         flows to select; colour-flow selection is available at leading colour \
+         (color.accuracy='lc'); helicities=... selects Born helicity rows at every \
+         colour accuracy"
+    )
+}
 
 /// Python's `repr` of a string (the quotes of its messages).
 fn python_repr(text: &str) -> String {
@@ -387,6 +402,13 @@ pub struct Runtime {
     /// The stability checks of later binary64 evaluations (none by default:
     /// no estimate, no extra cost; [`Runtime::set_stability_checks`]).
     checks: StabilityChecks,
+    /// The kinematics improvement of later evaluations (m-lit
+    /// lit-psimprove; [`Runtime::set_kinematics_improvement`]): the variant
+    /// (None: "off"), MadLoop's default until set.
+    kinematics: Option<kinematics_improvement::Variant>,
+    /// Whether binary64 evaluations are improved too
+    /// ([`Runtime::set_kinematics_improvement_binary64`]; off by default).
+    kinematics_binary64: bool,
     color_components: Vec<String>,
     history_ids: Vec<String>,
     spin_classes: Vec<Vec<usize>>,
@@ -501,6 +523,8 @@ impl Runtime {
             target,
             unchecked: reduction_policy::DEFAULT_UNCHECKED,
             checks: StabilityChecks::default(),
+            kinematics: Some(kinematics_improvement::DEFAULT_VARIANT),
+            kinematics_binary64: kinematics_improvement::DEFAULT_BINARY64,
             history_ids,
             spin_classes,
             observables,
@@ -625,6 +649,76 @@ impl Runtime {
     /// The stability checks of later evaluations.
     pub fn stability_checks(&self) -> &StabilityChecks {
         &self.checks
+    }
+    /// The kinematics improvement of later evaluations (m-lit
+    /// lit-psimprove; the Python API's `kinematics_improvement=`):
+    /// `"z-shift"` (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to
+    /// 1; the default), `"rescaling"` (ImprovePSPoint 1, with the fallback to
+    /// 2), `"projection"` (the frame-independent minimal-norm projection) or
+    /// `"off"`. Before anything is evaluated in a carrier above binary64
+    /// (double-double, arbitrary precision), each point's momenta are moved
+    /// onto exact energy-momentum conservation and the external shells in
+    /// that carrier's arithmetic, from the caller's exact inputs, in the
+    /// caller's leg order; the per-point fallback and the stability rotations
+    /// act on that point. Each result records it per point (its
+    /// "kinematics" diagnostics). Another value is refused typed with the
+    /// one refusal text (`kinematics_improvement::SETTING_REFUSAL`).
+    pub fn set_kinematics_improvement(&mut self, setting: &str) -> RusticolResult<()> {
+        self.kinematics = kinematics_improvement::setting(setting).map_err(invalid)?;
+        Ok(())
+    }
+    /// The kinematics improvement setting of later evaluations.
+    pub fn kinematics_improvement(&self) -> &'static str {
+        self.kinematics.map_or(
+            kinematics_improvement::OFF,
+            kinematics_improvement::Variant::name,
+        )
+    }
+    /// Whether binary64 evaluations are improved too (the Python API's
+    /// `kinematics_improvement_binary64=`; off by default: a binary64
+    /// evaluation is then bitwise as without the improvement).
+    pub fn set_kinematics_improvement_binary64(&mut self, binary64: bool) {
+        self.kinematics_binary64 = binary64;
+    }
+    /// The binary64 switch of later evaluations.
+    pub fn kinematics_improvement_binary64(&self) -> bool {
+        self.kinematics_binary64
+    }
+    /// The call's points improved in its carrier ([`V2Runtime::
+    /// improve_kinematics`]) and their records, or the inputs unchanged
+    /// with no record (a binary64 call without the binary64 switch); the
+    /// setting "off" records "off" where the settings reach. One branch per
+    /// call when nothing applies.
+    pub(crate) fn improved_inputs(
+        &mut self,
+        mut inputs: LoopInputs,
+    ) -> RusticolResult<(LoopInputs, Option<Vec<serde_json::Value>>)> {
+        let double = self.arithmetic == Arithmetic::Double;
+        if !kinematics_improvement::reaches(self.kinematics_binary64, double) {
+            return Ok((inputs, None));
+        }
+        let Some(variant) =
+            kinematics_improvement::applies(self.kinematics, self.kinematics_binary64, double)
+        else {
+            let off = vec![
+                kinematics_improvement::off_record_json(self.kinematics_improvement());
+                inputs.point_ids.len()
+            ];
+            return Ok((inputs, Some(off)));
+        };
+        let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
+        let arithmetic = self.arithmetic.v2();
+        let Engine::V4(native) = &mut self.engine;
+        let (points, records) =
+            native.improve_kinematics(&momenta, &scales, arithmetic, variant, true)?;
+        inputs.momenta = points
+            .iter()
+            .flat_map(|point| point.iter().map(ToString::to_string))
+            .collect();
+        Ok((
+            inputs,
+            Some(records.iter().map(|record| record.to_json()).collect()),
+        ))
     }
     /// The process type: "virtual" (Born-interfered) or "loop-induced".
     pub fn contribution(&self) -> &str {
@@ -784,7 +878,10 @@ impl Runtime {
             "helicity_ids": (0..rows.len()).map(|i| format!("h{i}")).collect::<Vec<_>>(),
             "resolved_color_ids": colour_ids,
             "color_resolutions": colour_resolutions,
-            "helicity_selection": induced,
+            // Helicity rows are selected wherever the stored observables
+            // serve them: loop-induced (lit-sdk-b) and Born-interfered at
+            // every colour accuracy (lit-fc-hel).
+            "helicity_selection": resolved,
             "observables_unavailable": unavailable,
             "color_accuracy":metadata.color_accuracy,
             "color_contraction":metadata.color_contraction,
@@ -859,8 +956,9 @@ impl Runtime {
             })?;
             let reduction = self.reduce_on(reduction_policy::RESOLVED)?;
             let requested = self.checks.enabled();
+            let (inputs, kinematics) = self.improved_inputs(inputs)?;
             let Engine::V4(native) = &mut self.engine;
-            return Evaluation::resolved_v4(
+            let mut evaluation = Evaluation::resolved_v4(
                 native,
                 inputs,
                 shape,
@@ -872,7 +970,9 @@ impl Runtime {
                     checks: None,
                     requested,
                 },
-            );
+            )?;
+            with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+            return Ok(evaluation);
         }
         let reduction = self.reduce_on(reduction_policy::SUMMED)?;
         // The native monitoring runs in binary64 for the pole selections
@@ -886,8 +986,10 @@ impl Runtime {
             self.cross_available(&reduction)?;
         }
         let checks = monitored.then(|| self.checks.clone());
+        let requested = self.checks.enabled();
+        let (inputs, kinematics) = self.improved_inputs(inputs)?;
         let Engine::V4(native) = &mut self.engine;
-        Evaluation::from_v4(
+        let mut evaluation = Evaluation::from_v4(
             native,
             inputs,
             shape,
@@ -896,9 +998,11 @@ impl Runtime {
             &reduction,
             Monitoring {
                 checks: checks.as_ref(),
-                requested: self.checks.enabled(),
+                requested,
             },
-        )
+        )?;
+        with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+        Ok(evaluation)
     }
     /// Whether the process is loop-induced (|A_loop|^2, no Born).
     pub fn loop_induced(&self) -> bool {
@@ -924,8 +1028,8 @@ impl Runtime {
     /// row index, per-point selectors of a resolved evaluation and the
     /// mutually exclusive axes (typed `Selector` / `InvalidArgument`); a
     /// colour resolution of a Born-interfered process (the Python API's
-    /// words) and its selections (at NLC and full colour the Python API's
-    /// words; its leading-colour selection is the Python API's).
+    /// words). A Born-interfered process's helicity selection is
+    /// [`Runtime::born_selected`]'s (lit-fc-hel).
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate_selected(
         &mut self,
@@ -1017,25 +1121,8 @@ impl Runtime {
                 return Err(RusticolError::compatibility(BORN_RESOLUTION));
             }
             if selection.selects() {
-                let Engine::V4(native) = &self.engine;
-                let accuracy = native.metadata().color_accuracy.clone();
-                if accuracy != "lc" {
-                    let name = match accuracy.as_str() {
-                        "nlc" => "next-to-leading",
-                        other => other,
-                    };
-                    let instead = if resolved {
-                        "evaluate_resolved without selectors returns every helicity row"
-                    } else {
-                        "use evaluate_resolved for per-helicity outputs"
-                    };
-                    return Err(RusticolError::compatibility(format!(
-                        "v2 virtual runtimes evaluate every helicity and colour at {name} \
-                         colour; helicity and colour-flow selection is available at leading \
-                         colour (color.accuracy='lc'); {instead}"
-                    )));
-                }
-                return Err(RusticolError::compatibility(BORN_SELECTION));
+                return self
+                    .born_selected(momenta, point_ids, scales, resolved, strategy, selection);
             }
             return self.evaluate_decimal(momenta, point_ids, scales, resolved, strategy);
         }
@@ -1103,6 +1190,7 @@ impl Runtime {
             checks: None,
             requested: self.checks.enabled(),
         };
+        let (inputs, kinematics) = self.improved_inputs(inputs)?;
         let (shape, poles, arithmetic) = (self.shape, self.poles, self.arithmetic);
         let Engine::V4(native) = &mut self.engine;
         let request = InducedRequest {
@@ -1125,16 +1213,119 @@ impl Runtime {
                 resolution,
                 rows: kept.is_some().then(|| kept_rows.clone()),
             };
-            return Evaluation::induced_resolved(
+            let mut evaluation = Evaluation::induced_resolved(
                 native, inputs, &call, &kept_rows, components, request,
-            );
+            )?;
+            with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+            return Ok(evaluation);
         }
         let by_point: Vec<Vec<usize>> = match (&kept, &selection.helicity_by_point) {
             (Some(kept), _) => vec![kept.clone(); inputs.point_ids.len()],
             (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
             (None, None) => unreachable!("an unselected ordinary evaluation returned above"),
         };
-        Evaluation::induced_selected(native, inputs, &by_point, request)
+        let mut evaluation = Evaluation::induced_selected(native, inputs, &by_point, request)?;
+        with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+        Ok(evaluation)
+    }
+
+    /// A Born-interfered process's helicity selection (lit-fc-hel; USER
+    /// 2026-11-09 ~19:53): the Python API's `evaluate(helicities=...)`
+    /// (`resolved` false: per point the selected rows' value, with
+    /// `helicity_by_point` each point's own row, points sharing a row in one
+    /// batch) and `evaluate_resolved(helicities=...)` (`resolved` true: the
+    /// selected rows in the accuracy's resolved layout) at every colour
+    /// accuracy, through the one Rust formation the Python API's stored
+    /// path runs (`v2_runtime::template`): only the selected rows' trees,
+    /// links, lanes (and resolved columns) are formed. Refused: colour flows
+    /// below leading colour (the Python API's words) and at leading colour
+    /// (served by the Python API: [`BORN_FLOWS`]), per-point selectors of a
+    /// resolved evaluation, an unknown helicity ID or row index.
+    fn born_selected(
+        &mut self,
+        momenta: Vec<String>,
+        point_ids: Vec<u64>,
+        scales: Vec<String>,
+        resolved: bool,
+        strategy: Option<&str>,
+        selection: &Selection,
+    ) -> RusticolResult<Evaluation> {
+        let accuracy = {
+            let Engine::V4(native) = &self.engine;
+            native.metadata().color_accuracy.clone()
+        };
+        if selection.colour_selected() {
+            return Err(RusticolError::compatibility(if accuracy == "lc" {
+                BORN_FLOWS.to_owned()
+            } else {
+                no_flows(&accuracy)
+            }));
+        }
+        if resolved && selection.helicity_by_point.is_some() {
+            return Err(invalid(
+                "helicity_by_point selects ordinary evaluations; a resolved evaluation \
+                 takes global helicity ids",
+            ));
+        }
+        let axes = self.observables.clone().map_err(|reason| {
+            RusticolError::compatibility(format!("{NO_OBSERVABLES}: {reason}"))
+        })?;
+        let rows = axes.rows.len();
+        let kept = match selection.helicities() {
+            Some(ids) => Some(helicity_rows(&axes.rows, ids)?),
+            None => None,
+        };
+        if let Some(by_point) = &selection.helicity_by_point
+            && let Some((point, &row)) = by_point
+                .iter()
+                .enumerate()
+                .find(|(_, row)| **row as usize >= rows)
+        {
+            return Err(RusticolError::selector(format!(
+                "helicity_by_point[{point}] = {row} is out of range; choose a zero-based \
+                 helicity row below {rows}"
+            )));
+        }
+        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
+        if let Some(strategy) = strategy {
+            v4_r2_strategy(strategy)?;
+        }
+        let reduction = self.reduce_on(reduction_policy::RESOLVED)?;
+        if self.checks.enabled() && self.checks.cross_backend() {
+            self.cross_available(&reduction)?;
+        }
+        let monitoring = Monitoring {
+            checks: None,
+            requested: self.checks.enabled(),
+        };
+        // The call's points improved in its carrier (m-lit lit-psimprove),
+        // as on every other route: before the selected rows are formed.
+        let (inputs, kinematics) = self.improved_inputs(inputs)?;
+        let (shape, poles, arithmetic) = (self.shape, self.poles, self.arithmetic);
+        let Engine::V4(native) = &mut self.engine;
+        let request = InducedRequest {
+            shape: Shape {
+                born_orders: axes.born_orders,
+                ..shape
+            },
+            poles,
+            arithmetic,
+            reduction: &reduction,
+            stability: monitoring.not_selected(),
+        };
+        let mut evaluation = if resolved {
+            let kept = kept.expect("a resolved selection names helicity ids");
+            Evaluation::born_resolved_selected(native, inputs, &axes, &kept, request)?
+        } else {
+            let by_point: Vec<Vec<usize>> = match (&kept, &selection.helicity_by_point) {
+                (Some(kept), _) => vec![kept.clone(); inputs.point_ids.len()],
+                (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
+                (None, None) => unreachable!("an unselected evaluation returned before"),
+            };
+            Evaluation::born_selected(native, inputs, &by_point, request)?
+        };
+        with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+        Ok(evaluation)
     }
 
     /// The cross-backend check's backend serves the call (the Python API's
@@ -1871,7 +2062,7 @@ impl Evaluation {
                 )?;
                 Self::resolved(
                     inputs, shape, poles, arithmetic, axes, &keys, points, reduction, &fallbacks,
-                    stability,
+                    stability, None,
                 )
             }
             _ => {
@@ -1905,7 +2096,7 @@ impl Evaluation {
                 let points = points.into_iter().map(|(point, _)| point).collect();
                 Self::resolved(
                     inputs, shape, poles, arithmetic, axes, &keys, points, reduction, &fallbacks,
-                    stability,
+                    stability, None,
                 )
             }
         }
@@ -1923,13 +2114,20 @@ impl Evaluation {
         reduction: &Choice,
         fallbacks: &Fallbacks,
         stability: serde_json::Value,
+        kept: Option<&[usize]>,
     ) -> RusticolResult<Self> {
-        let helicities = axes.rows.len();
+        // The rows of the layout: every row, or a resolved selection's kept
+        // rows (ascending), whose columns alone were formed.
+        let every: Vec<usize> = (0..axes.rows.len()).collect();
+        let kept = kept.unwrap_or(&every);
+        let helicities = kept.len();
         let colours = axes.colour_ids.len();
         // Column index of each (helicity row, colour component).
         let mut index = vec![usize::MAX; helicities * colours];
         for (column, (row, colour)) in keys.iter().enumerate() {
-            index[row * colours + colour] = column;
+            if let Some(position) = kept.iter().position(|r| r == row) {
+                index[position * colours + colour] = column;
+            }
         }
         if index.contains(&usize::MAX) {
             return Err(invalid("the stored resolved columns do not cover the rows"));
@@ -1973,7 +2171,7 @@ impl Evaluation {
                 ..shape
             },
             resolved: true,
-            helicity_ids: (0..helicities).map(|i| format!("h{i}")).collect(),
+            helicity_ids: kept.iter().map(|i| format!("h{i}")).collect(),
             color_ids: axes.colour_ids.clone(),
             diagnostics_json,
             decimal: decimal_values(arithmetic, born, virtual_values),
@@ -2035,6 +2233,7 @@ impl Evaluation {
                     request.reduction,
                     &fallbacks,
                     request.stability,
+                    None,
                 )?
             }
             arithmetic => {
@@ -2079,6 +2278,7 @@ impl Evaluation {
                     request.reduction,
                     &fallbacks,
                     request.stability,
+                    None,
                 )?
             }
         };
@@ -2214,6 +2414,193 @@ impl Evaluation {
     }
 }
 
+impl Evaluation {
+    /// A Born-interfered ordinary selection ([`Runtime::born_selected`]):
+    /// per group of points sharing their kept rows one native call
+    /// (`V2Runtime::evaluate_selection`, the masks of one call on the
+    /// selection template), each point's Born per order and virtual per
+    /// sector in the ordinary layout, the selection's helicity IDs per point
+    /// in the diagnostics.
+    fn born_selected(
+        native: &mut V2Runtime,
+        inputs: LoopInputs,
+        by_point: &[Vec<usize>],
+        request: InducedRequest<'_>,
+    ) -> RusticolResult<Self> {
+        let shape = request.shape;
+        let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
+        let mut groups: Vec<(&Vec<usize>, Vec<usize>)> = Vec::new();
+        for (point, rows) in by_point.iter().enumerate() {
+            match groups.iter_mut().find(|(kept, _)| *kept == rows) {
+                Some((_, points)) => points.push(point),
+                None => groups.push((rows, vec![point])),
+            }
+        }
+        fn one<N: Clone>(point: ColumnPoint<N>) -> V2Point<N> {
+            point.map(|columns| {
+                let column = columns.into_iter().next().expect("one selection output");
+                (
+                    column.born.into_iter().map(|z| z.re).collect(),
+                    column
+                        .virtual_values
+                        .into_iter()
+                        .map(|laurent| laurent.into_iter().map(|z| z.re).collect())
+                        .collect(),
+                )
+            })
+        }
+        let ids =
+            |rows: &[usize]| -> Vec<String> { rows.iter().map(|r| format!("h{r}")).collect() };
+        macro_rules! run {
+            ($evaluate:expr) => {{
+                let mut points: Vec<Option<_>> = (0..by_point.len()).map(|_| None).collect();
+                let mut fallbacks = Fallbacks {
+                    fallback: request.reduction.fallback.clone(),
+                    points: BTreeMap::new(),
+                };
+                for (rows, members) in &groups {
+                    let kept: BTreeSet<usize> = rows.iter().copied().collect();
+                    let part_momenta: Vec<Vec<Rational>> =
+                        members.iter().map(|&p| momenta[p].clone()).collect();
+                    let part_scales: Vec<Rational> =
+                        members.iter().map(|&p| scales[p].clone()).collect();
+                    let (found, part) = with_fallback(
+                        native,
+                        request.reduction,
+                        members.len(),
+                        request.arithmetic,
+                        |native, indices| {
+                            $evaluate(
+                                native,
+                                &kept,
+                                &pick(&part_momenta, indices),
+                                &pick(&part_scales, indices),
+                            )
+                        },
+                    )?;
+                    for (local, record) in part.points {
+                        fallbacks.points.insert(members[local], record);
+                    }
+                    for (&point, value) in members.iter().zip(found) {
+                        points[point] = Some(one(value));
+                    }
+                }
+                let points: Vec<_> = points
+                    .into_iter()
+                    .map(|point| point.expect("every point is in a group"))
+                    .collect();
+                let mut evaluation = Self::ordinary(
+                    inputs,
+                    shape,
+                    request.poles,
+                    request.arithmetic,
+                    points,
+                    request.reduction,
+                    &fallbacks,
+                    request.stability.clone(),
+                )?;
+                evaluation.diagnostics_json = with_selection(
+                    &evaluation.diagnostics_json,
+                    &by_point.iter().map(|rows| ids(rows)).collect::<Vec<_>>(),
+                )?;
+                Ok(evaluation)
+            }};
+        }
+        let poles = request.poles.v2();
+        match request.arithmetic {
+            Arithmetic::Double => {
+                run!(|native: &mut V2Runtime,
+                      kept: &BTreeSet<usize>,
+                      m: &[Vec<Rational>],
+                      sc: &[Rational]| native.evaluate_selection(
+                    Some(kept),
+                    None,
+                    m,
+                    sc,
+                    poles
+                ))
+            }
+            arithmetic => {
+                run!(|native: &mut V2Runtime,
+                      kept: &BTreeSet<usize>,
+                      m: &[Vec<Rational>],
+                      sc: &[Rational]| native.evaluate_selection_extended(
+                    Some(kept),
+                    None,
+                    m,
+                    sc,
+                    poles,
+                    arithmetic.v2()
+                ))
+            }
+        }
+    }
+
+    /// A Born-interfered resolved selection ([`Runtime::born_selected`]):
+    /// the kept rows' resolved columns only (`V2Runtime::
+    /// evaluate_resolved_selection`), in the layout point/order/helicity/
+    /// colour/(epsilon) over the kept rows, with their helicity IDs.
+    fn born_resolved_selected(
+        native: &mut V2Runtime,
+        inputs: LoopInputs,
+        axes: &Observables,
+        kept: &[usize],
+        request: InducedRequest<'_>,
+    ) -> RusticolResult<Self> {
+        let shape = Shape {
+            helicities: kept.len(),
+            ..request.shape
+        };
+        let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
+        let rows: BTreeSet<usize> = kept.iter().copied().collect();
+        let poles = request.poles.v2();
+        let precision = request.arithmetic.v2();
+        let mut keys = Vec::new();
+        macro_rules! run {
+            ($variant:ident) => {{
+                let (points, fallbacks) = with_fallback(
+                    native,
+                    request.reduction,
+                    momenta.len(),
+                    request.arithmetic,
+                    |native, indices| {
+                        let (found, points) = native.evaluate_resolved_selection(
+                            Some(&rows),
+                            None,
+                            &pick(&momenta, indices),
+                            &pick(&scales, indices),
+                            poles,
+                            precision,
+                        )?;
+                        keys = found;
+                        match points {
+                            ResolvedPoints::$variant(points) => Ok(points),
+                            _ => Err(invalid("a resolved selection of another carrier")),
+                        }
+                    },
+                )?;
+                Self::resolved(
+                    inputs,
+                    shape,
+                    request.poles,
+                    request.arithmetic,
+                    axes,
+                    &keys,
+                    points,
+                    request.reduction,
+                    &fallbacks,
+                    request.stability.clone(),
+                    Some(kept),
+                )
+            }};
+        }
+        match request.arithmetic {
+            Arithmetic::Double => run!(Double),
+            _ => run!(Decimal),
+        }
+    }
+}
+
 /// The shared inputs of a loop-induced call's assembly.
 struct InducedRequest<'a> {
     shape: Shape,
@@ -2221,6 +2608,23 @@ struct InducedRequest<'a> {
     arithmetic: Arithmetic,
     reduction: &'a Choice,
     stability: serde_json::Value,
+}
+
+/// The diagnostics record with each point's kinematics improvement record
+/// (m-lit lit-psimprove: `"kinematics"`, by point in input order, the
+/// Python API's `VirtualLaneDiagnostic.kinematics`; absent when no record
+/// applies, a binary64 call without the binary64 switch).
+pub(crate) fn with_kinematics(
+    diagnostics: &mut String,
+    records: Option<Vec<serde_json::Value>>,
+) -> RusticolResult<()> {
+    let Some(records) = records else {
+        return Ok(());
+    };
+    let mut record: serde_json::Value = serde_json::from_str(diagnostics).map_err(serialization)?;
+    record["kinematics"] = serde_json::Value::Array(records);
+    *diagnostics = serde_json::to_string(&record).map_err(serialization)?;
+    Ok(())
 }
 
 /// The diagnostics record with the selection's helicity IDs per point

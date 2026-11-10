@@ -192,7 +192,9 @@ The one-loop example client
 [HELICITY]`) opens a loop artifact through `rusticol_virtual.h`, prints its
 squared-order axes and evaluates it with `reduction = "auto"` and the other
 backend, in the unchecked setting, the declared colour and spin correlations
-and, for a loop-induced process, one helicity against the summed call; it
+and one helicity against the summed call (loop-induced and Born-interfered
+processes alike; the first selected call forms a Born-interfered process's
+selection template and its executor once, so the ratio is taken after it); it
 needs no Symbolica licence. `examples/python/loop_walkthrough.py` writes its
 momenta file and runs it.
 
@@ -778,9 +780,37 @@ Symbolica licensing at all: neither a personal licence nor pyAmpliCol's
 package key. Concurrent unlicensed processes with the key disabled
 (`PYAMPLICOL_NATIVE_LIBRARY_KEY=off`), while another process holds the
 restricted Symbolica permit, return the licensed run's values bit for bit
-(`tests/integration/test_native_sdk_tree_licence_free.py`). On an x86-64 CPU
+(`tests/integration/test_native_sdk_tree_licence_free.py`), also with the
+binary64 kinematics improvement switched on (below). On an x86-64 CPU
 without AVX and FMA3, SymJIT tree artifacts are refused with the reason; they
 are never evaluated through Symbolica.
+
+The binary64 kinematics improvement of the tree calls (m-lit
+lit-psimprove): `rusticol_runtime_set_kinematics_improvement(handle, setting)`
+(`"z-shift"`, MadLoop's default and the default here, `"rescaling"`,
+`"projection"` or `"off"`, as the Python API's `kinematics_improvement=`) and
+`rusticol_runtime_set_kinematics_improvement_binary64(handle, on)` (0 by
+default, 1 on; C++ / packaged Rust `set_kinematics_improvement` and
+`set_kinematics_improvement_binary64(bool)`, Fortran the same with a
+`logical`). Every tree call of this ABI is binary64, so nothing changes
+unless the switch is on (the default: bitwise the values without it); with
+it on, every f64 entry (values, selected, resolved, squared-order partials,
+correlated; not the warm-up's own point) first moves each point onto exact
+energy-momentum conservation and the external shells of the binary64 masses
+its wavefunctions use, in binary64, with the selected variant and MadLoop's
+chain, from the caller's point in the caller's leg order. A point that is
+already exactly physical is evaluated unchanged. The record of the most
+recent improved call (a summary line, e.g. `"kinematics-improvement: double
+at precision 16 (z-shift): z-shift 4"`, and every typed warning,
+`kinematics-not-improved` or `kinematics-inexact` with the point index)
+is returned with the warnings by `rusticol_runtime_take_warnings_json` and
+replaced by the next improved call; nothing is recorded while the warnings
+are muted. The Python tree runtime's `kinematics_improvement_binary64=True`
+runs the same native code, so both give the same values bit for bit. No
+Symbolica operation and no licence of any kind is involved. Additive
+symbols; `RUSTICOL_ABI_VERSION` 1 kept. Another value is an invalid argument
+with the policy's refusal text
+([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
 
 Python is the only standalone driver that can request Symbolica-backed exact
 precision when the artifact retains an exact evaluator. OTF does not retain
@@ -817,12 +847,19 @@ masses or invariants lie strictly between 0 and 1e-9 in the model's units
 engine, and an x86-64 CPU without AVX and FMA3, where SymJIT cannot compile.
 Double-double and arbitrary precision run under the package key too.
 
-The SDK serves the loop-induced selections of the Python API
-(`helicities=`, `color_resolution="amplitude-basis"`) through
+The SDK serves the helicity selections of the Python API through
 `rusticol_virtual_evaluate_selected` and its wrappers (see the SDK README,
-"Selections"): the amplitude-basis anchors are an explicitly basis-dependent
-split, a helicity selection is |A(h)|²/avg with the total's average, only the
-selected rows are evaluated, and colour flows are refused (full colour).
+"Selections"): for a loop-induced process `helicities=` and
+`color_resolution="amplitude-basis"` (an explicitly basis-dependent split; a
+helicity selection is |A(h)|²/avg with the total's average; colour flows are
+refused, full colour); for a Born-interfered process `helicities=` at every
+colour accuracy (lit-fc-hel: ordinary, per point and resolved; at NLC and
+full colour one contracted colour component per row, at leading colour one
+per Born basis element), its leading-colour colour flows refused with a text
+naming the Python API's `color_flows=`. Only the selected rows are evaluated
+(their trees, loop links, reduction lanes and resolved columns), binary64
+bitwise the Python API's values (the one Rust formation of the selection
+both run).
 
 The reduction backend (`rusticol_virtual_set_reduction`; C++ and Fortran
 `set_reduction`, the packaged Rust wrapper's `set_reduction`) is the Python
@@ -883,7 +920,21 @@ calibrated acceptance of TIRust's checked method choice, as the Python API's
 `reduction_target=`, and in double-double and arbitrary precision the
 fallback guard's threshold, never below 1e-5; a value that is not a finite
 positive number is an
-invalid argument. The unchecked setting
+invalid argument. The kinematics improvement
+`rusticol_virtual_set_kinematics_improvement(handle, setting)` (C++ / Fortran /
+packaged Rust `set_kinematics_improvement`; `"z-shift"`, MadLoop's default and
+the default here, `"rescaling"`, `"projection"` or `"off"`, as the Python
+API's `kinematics_improvement=`) and
+`rusticol_virtual_set_kinematics_improvement_binary64(handle, on)` (0 by
+default, 1 on; `set_kinematics_improvement_binary64`) improve each point of a
+double-double or arbitrary-precision call (a binary64 one only with the
+switch) to exact conservation and on-shell externals in that carrier, from
+the caller's inputs in the caller's leg order, before anything is evaluated
+(the per-point fallback and the stability rotations act on that point);
+`diagnostics_json` records it per point (`"kinematics"`: the Python API's
+`VirtualKinematics` fields); another value is an invalid argument
+([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Additive symbols, ABI version 2 kept. The unchecked setting
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
 `set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,
 the packaged Rust wrapper's `set_reduction_unchecked(bool)`; 1 or 0, default

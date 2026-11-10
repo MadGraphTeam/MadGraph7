@@ -32,6 +32,7 @@ import json
 import math
 import random
 import shutil
+import struct
 import subprocess
 import sys
 import textwrap
@@ -46,6 +47,7 @@ from pyamplicol import (
     Generator,
     ModelSource,
     ProcessSet,
+    Runtime,
 )
 from pyamplicol.config import (
     ColorConfig,
@@ -230,6 +232,46 @@ int main(int argc, char **argv) {
         free(first_correlation);
     }
 
+    /* The binary64 kinematics improvement (m-lit lit-psimprove): the switch on,
+     * MadLoop's default variant; one refused setting; then off again. */
+    status = rusticol_runtime_set_kinematics_improvement(runtime, "ORIG");
+    printf("kinematics-refused %d\n", status);
+    status = rusticol_runtime_set_kinematics_improvement(runtime, "z-shift");
+    printf("kinematics-setting %d\n", status);
+    status = rusticol_runtime_set_kinematics_improvement_binary64(runtime, 1);
+    printf("kinematics-binary64 %d\n", status);
+    status = rusticol_runtime_evaluate_f64(runtime, momenta, length, points, out, points);
+    emit("values-kinematics", status, out, points);
+    SELECTED("selected-kinematics", NULL, 0, NULL, 0, helicity_by_point, points, NULL, 0);
+    returned_helicities = returned_colors = 0;
+    status = rusticol_runtime_evaluate_resolved_f64(runtime, momenta, length, points, NULL, 0,
+        NULL, 0, out, capacity, &returned_helicities, &returned_colors);
+    emit("resolved-kinematics", status, out, points * returned_helicities * returned_colors);
+    if (order_status == RUSTICOL_STATUS_OK) {
+        status = rusticol_runtime_evaluate_orders_f64(runtime, momenta, length, points, NULL, 0,
+            NULL, 0, out, points, partials, points * orders);
+        emit("orders-kinematics", status, partials, points * orders);
+    }
+    if (correlation_status == RUSTICOL_STATUS_OK && correlations > 0) {
+        RusticolCorrelatedRequest born[] = {{"born", NULL, 0, 0}};
+        status = rusticol_runtime_evaluate_correlated_many_f64(runtime, momenta, length, points,
+            born, 1, NULL, 0, out, 2 * points);
+        emit("correlated-kinematics", status, out, 2 * points);
+    }
+    {
+        size_t required = 0;
+        status = rusticol_runtime_take_warnings_json(runtime, NULL, 0, &required);
+        char *notes = malloc(required > 0 ? required : 1);
+        if (notes == NULL) return 8;
+        notes[0] = '\0';
+        if (status == RUSTICOL_STATUS_OK)
+            status = rusticol_runtime_take_warnings_json(runtime, notes, required, &required);
+        printf("kinematics-notes %d %s\n", status, notes);
+        free(notes);
+    }
+    status = rusticol_runtime_set_kinematics_improvement_binary64(runtime, 0);
+    printf("kinematics-off %d\n", status);
+
     RusticolWarmUpResult warm;
     memset(&warm, 0, sizeof warm);
     status = rusticol_runtime_warm_up_f64(runtime, momenta, 4 * legs, NULL, 0, NULL, 0, NULL,
@@ -356,6 +398,13 @@ int main(int argc, char **argv) {
         }
         return flat;
     });
+    attempt("values-kinematics", [&] {
+        runtime.set_kinematics_improvement("z-shift");
+        runtime.set_kinematics_improvement_binary64(true);
+        auto values = runtime.evaluate(momenta, points);
+        runtime.set_kinematics_improvement_binary64(false);
+        return values;
+    });
     attempt("warm-up", [&] {
         const std::vector<double> point(momenta.begin(), momenta.begin() + 4 * legs);
         const auto warm = runtime.warm_up(point);
@@ -458,6 +507,11 @@ program tree_licence_probe
   else
     call emit("correlated", ierr, [real(c_double) ::])
   end if
+  call runtime%set_kinematics_improvement("z-shift", ierr=ierr)
+  if (ierr == 0) call runtime%set_kinematics_improvement_binary64(.true., ierr=ierr)
+  if (ierr == 0) call runtime%evaluate(momenta, int(points, c_size_t), values, ierr=ierr)
+  call emit("values-kinematics", ierr, values)
+  call runtime%set_kinematics_improvement_binary64(.false., ierr=ierr)
   call runtime%warm_up(momenta(1:4 * legs), warm, ierr=ierr)
   call emit("warm-up", ierr, [real(warm%query_count, c_double), real(warm%warmed_query_count, c_double)])
   call runtime%set_model_parameter(trim(parameter), parameter_value, ierr=ierr)
@@ -566,6 +620,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         runtime.evaluate_correlated_many_f64(&momenta, points, &[request], &[]).map(|c| flat(&c.values))
     });
     emit("correlated-default-spin", defaults);
+    let kinematics = runtime
+        .set_kinematics_improvement("z-shift")
+        .and_then(|()| runtime.set_kinematics_improvement_binary64(true))
+        .and_then(|()| runtime.evaluate_f64(&momenta, points));
+    runtime.set_kinematics_improvement_binary64(false)?;
+    emit("values-kinematics", kinematics);
     emit(
         "warm-up",
         runtime
@@ -871,10 +931,44 @@ def test_binary64_tree_observables_need_no_symbolica_licensing(
         "warm-up",
         "values-after-parameter",
         "get-parameter",
+        # m-lit lit-psimprove: the binary64 kinematics improvement switch, on
+        # every f64 observable, with no licensing either.
+        "values-kinematics",
+        "selected-kinematics",
+        "resolved-kinematics",
+        "orders-kinematics",
+        "correlated-kinematics",
     }, served
     # The parameter update changes the values (it is evaluated, not ignored).
     reference = calls[f"c {_ARTIFACTS[0][0]}"]
     assert reference["values-after-parameter"] != reference["values"]
+    # The kinematics improvement (m-lit lit-psimprove): the native policy's
+    # one refusal (status 1), the switch's records in the warnings channel
+    # (MadLoop's default variant; these beam-frame points are produced by it),
+    # and the Python tree runtime's binary64 switch gives the C ABI's values
+    # bitwise (one native implementation, the same binary64 masses).
+    for name in tree_artifacts:
+        record = calls[f"c {name}"]
+        assert record["kinematics-refused"] == ["1"], (name, record)
+        assert record["kinematics-setting"] == record["kinematics-binary64"] == ["0"]
+        assert record["kinematics-off"] == ["0"]
+        notes = " ".join(record["kinematics-notes"][1:])
+        assert record["kinematics-notes"][0] == "0", (name, notes)
+        assert (
+            f"kinematics-improvement: double at precision 16 (z-shift): z-shift {_POINTS}"
+            in notes
+        ), (name, notes)
+        assert "kinematics-not-improved" not in notes, (name, notes)
+    python = Runtime.load(tree_artifacts[_ARTIFACTS[0][0]], process=_NAME)
+    improved = python.evaluate(points, kinematics_improvement_binary64=True)
+    assert [struct.pack(">d", complex(v).real).hex() for v in improved] == reference[
+        "values-kinematics"
+    ][1:]
+    assert any("(z-shift): z-shift" in text for text in python.take_warnings())
+    plain = python.evaluate(points)
+    assert [struct.pack(">d", complex(v).real).hex() for v in plain] == reference[
+        "values"
+    ][1:]
     for language in ("cpp", "fortran", "rust"):
         wrapped = {}
         for name in _WRAPPED:
@@ -892,12 +986,18 @@ def test_binary64_tree_observables_need_no_symbolica_licensing(
             "correlated",
             "warm-up",
             "values-after-parameter",
+            "values-kinematics",
         } | ({"correlated-default-spin"} if language != "fortran" else set()), (
             language,
             sorted(wrapped),
         )
         # The wrappers return the C ABI's values bitwise.
-        for call in ("values", "resolved", "values-after-parameter"):
+        for call in (
+            "values",
+            "resolved",
+            "values-after-parameter",
+            "values-kinematics",
+        ):
             name, fields = wrapped[call]
             assert fields == calls[f"c {name}"][call][1:], (language, call)
     umami_lines = licensed["umami"].splitlines()

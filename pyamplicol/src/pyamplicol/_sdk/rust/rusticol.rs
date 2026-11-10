@@ -69,8 +69,9 @@ pub mod virtual_amplitudes {
     /// (`rusticol_virtual_selection`): global helicity IDs (`h<i>` or
     /// `h:<helicities in leg order>`), per-point zero-based helicity rows
     /// (one per point; exclusive with the IDs), colour flows (refused for a
-    /// loop-induced process: full colour only) and a resolved evaluation's
-    /// colour resolution (`"contracted"`, the default, or
+    /// loop-induced process: full colour only; for a Born-interfered one
+    /// served by the Python API's `color_flows=`) and a loop-induced resolved
+    /// evaluation's colour resolution (`"contracted"`, the default, or
     /// `"amplitude-basis"`). Empty vectors omit a selector.
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     pub struct Selection {
@@ -279,6 +280,32 @@ pub mod virtual_amplitudes {
                 )
             })
         }
+        /// Kinematics improvement of later evaluations, the Python API's
+        /// `kinematics_improvement=`: `"z-shift"` (MadLoop's default),
+        /// `"rescaling"`, `"projection"` or `"off"`; recorded per point in
+        /// the diagnostics (`"kinematics"`). Another value is an
+        /// invalid-argument error.
+        pub fn set_kinematics_improvement(&mut self, setting: &str) -> Result<()> {
+            let setting = checked_cstring(setting, "kinematics improvement")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe {
+                ffi::rusticol_virtual_set_kinematics_improvement(
+                    self.handle.as_ptr(),
+                    setting.as_ptr(),
+                )
+            })
+        }
+        /// Whether later binary64 evaluations are improved too, the Python
+        /// API's `kinematics_improvement_binary64=` (default false).
+        pub fn set_kinematics_improvement_binary64(&mut self, binary64: bool) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_kinematics_improvement_binary64(
+                    self.handle.as_ptr(),
+                    c_int::from(binary64),
+                )
+            })
+        }
         /// Stability checks of later evaluations, the Python API's
         /// `stability_checks=`: `rotation_count` default rotations, or (with
         /// a count of 0) the rotation specifications `rotations`, the
@@ -366,9 +393,11 @@ pub mod virtual_amplitudes {
             result.copy()
         }
         /// `rusticol_virtual_evaluate_selected`: the selected helicity rows
-        /// of a loop-induced process (`resolved` false: their sum per point,
-        /// RULED Q39; true: per selected row its colour components in the
-        /// selection's colour resolution); refusals are errors.
+        /// of a loop-induced process or, at every colour accuracy, of a
+        /// Born-interfered one (lit-fc-hel) (`resolved` false: their sum per
+        /// point, RULED Q39; true: per selected row its colour components in
+        /// the selection's colour resolution, or the accuracy's resolved
+        /// layout); refusals are errors.
         #[allow(clippy::too_many_arguments)]
         pub fn evaluate_selected(
             &mut self,
@@ -946,6 +975,14 @@ pub mod virtual_amplitudes {
             pub(super) fn rusticol_virtual_set_reduction_unchecked(
                 handle: *mut c_void,
                 unchecked: c_int,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_kinematics_improvement(
+                handle: *mut c_void,
+                setting: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_kinematics_improvement_binary64(
+                handle: *mut c_void,
+                binary64: c_int,
             ) -> c_int;
             pub(super) fn rusticol_virtual_set_stability_checks(
                 handle: *mut c_void,
@@ -2201,6 +2238,33 @@ impl Runtime {
         })
     }
 
+    /// Kinematics improvement of later f64 evaluations (m-lit
+    /// lit-psimprove), the Python API's `kinematics_improvement=`:
+    /// `"z-shift"` (MadLoop's default), `"rescaling"`, `"projection"` or
+    /// `"off"`. Every evaluation of this runtime is binary64, so the variant
+    /// runs only with [`Self::set_kinematics_improvement_binary64`]`(true)`;
+    /// the records reach [`Self::take_warnings_json`]. Another value is an
+    /// invalid-argument error.
+    pub fn set_kinematics_improvement(&mut self, setting: &str) -> Result<()> {
+        let setting = checked_cstring(setting, "kinematics improvement")?;
+        // SAFETY: The CString and owning handle remain live for the call.
+        check(unsafe {
+            ffi::runtime_set_kinematics_improvement(self.handle.as_ptr(), setting.as_ptr())
+        })
+    }
+
+    /// Whether later f64 evaluations are improved (default false), the
+    /// Python API's `kinematics_improvement_binary64=`.
+    pub fn set_kinematics_improvement_binary64(&mut self, binary64: bool) -> Result<()> {
+        // SAFETY: The owning handle remains live and exclusively borrowed.
+        check(unsafe {
+            ffi::runtime_set_kinematics_improvement_binary64(
+                self.handle.as_ptr(),
+                c_int::from(binary64),
+            )
+        })
+    }
+
     pub fn set_warnings_muted(&mut self, muted: bool) -> Result<()> {
         // SAFETY: The owning handle remains live and exclusively borrowed.
         check(unsafe { ffi::runtime_mute_warnings(self.handle.as_ptr(), c_int::from(muted)) })
@@ -2920,6 +2984,14 @@ mod ffi {
             handle: *mut RuntimeHandle,
             path: *const c_char,
         ) -> c_int;
+        pub(super) fn rusticol_runtime_set_kinematics_improvement(
+            handle: *mut RuntimeHandle,
+            setting: *const c_char,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_set_kinematics_improvement_binary64(
+            handle: *mut RuntimeHandle,
+            binary64: c_int,
+        ) -> c_int;
         pub(super) fn rusticol_runtime_mute_warnings(
             handle: *mut RuntimeHandle,
             muted: c_int,
@@ -2965,6 +3037,8 @@ mod ffi {
     pub(super) use rusticol_runtime_representative_process_key as runtime_representative_process_key;
     pub(super) use rusticol_runtime_resolved_shape as runtime_resolved_shape;
     pub(super) use rusticol_runtime_save as runtime_save;
+    pub(super) use rusticol_runtime_set_kinematics_improvement as runtime_set_kinematics_improvement;
+    pub(super) use rusticol_runtime_set_kinematics_improvement_binary64 as runtime_set_kinematics_improvement_binary64;
     pub(super) use rusticol_runtime_set_model_parameter as runtime_set_model_parameter;
     pub(super) use rusticol_runtime_set_model_parameters as runtime_set_model_parameters;
     pub(super) use rusticol_runtime_set_model_parameters_json as runtime_set_model_parameters_json;

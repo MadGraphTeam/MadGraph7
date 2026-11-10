@@ -476,6 +476,14 @@ class DefaultCliServices:
                 "virtual evaluation requires --mu-r2 or --mu-r2-file"
             )
 
+        # The kinematics improvement (m-lit lit-psimprove): load-time
+        # defaults of the runtime, set only when given.
+        kinematics = {
+            name: getattr(evaluation, name)
+            for name in ("kinematics_improvement", "kinematics_improvement_binary64")
+            if getattr(evaluation, name) is not None
+        }
+
         def load_runtime() -> Runtime:
             if virtual:
                 return Runtime.load(
@@ -500,11 +508,13 @@ class DefaultCliServices:
                         if evaluation.reduction_unchecked
                         else {}
                     ),
+                    **kinematics,
                 )
             return Runtime.load(
                 artifact,
                 process=evaluation.process,
                 model_parameters=parameters,
+                **kinematics,
             )
 
         runtime = _load_process_output(artifact, progress, load_runtime)

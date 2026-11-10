@@ -636,6 +636,21 @@ integrals to be its squared mass, so a binary64-rounded point gives the same
 finite part and poles in all three, to binary64's accuracy (see
 [Configuration, the v2 loop engine](configuration.md#the-v2-loop-engine)).
 
+**The precision ladder and the input point.** Above binary64 the point is
+first improved in each carrier (`kinematics_improvement`, MadLoop's
+`"z-shift"` by default; binary64 only with `kinematics_improvement_binary64`,
+off by default): binary64 (as given) -> double-double (the point improved in
+double-double) -> arbitrary precision (improved at its working digits). Each
+rescue level and the per-point NinjaRS fallback start from the caller's
+original inputs in their own carrier, never from another level's improved
+point, and the stability rotations rotate the improved point. A tree
+evaluation at a precision other than 16 (an exact executor) and the
+correlated default (`arithmetic="arbitrary"`, any precision, 16 included)
+are improved the same way (the record in `take_warnings`). The value is then
+the value at the improved point of the given inputs: it moves at the level
+of the input's own defect (about 1e-16 relative at regular points); see
+[Configuration](configuration.md#kinematics-improvement-of-the-input-points).
+
 After updating from a version that rounded these definitions during generation,
 regenerate the prepared model and process output: increasing `precision` cannot
 repair coefficients already rounded in an older output. The prepared-model

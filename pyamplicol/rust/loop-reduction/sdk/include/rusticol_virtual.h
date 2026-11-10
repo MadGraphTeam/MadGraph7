@@ -200,6 +200,25 @@ int rusticol_virtual_set_reduction_target(rusticol_virtual_handle *handle,
  * nothing changes. */
 int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
   int unchecked);
+/* Kinematics improvement of later evaluations (the Python API's
+ * kinematics_improvement=; m-lit lit-psimprove; additive, ABI version 2 kept):
+ * "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to 1; the
+ * default, also for NULL), "rescaling" (ImprovePSPoint 1), "projection" (the
+ * frame-independent minimal-norm projection) or "off". Before a double-double
+ * or arbitrary-precision evaluation (a binary64 one only under
+ * rusticol_virtual_set_kinematics_improvement_binary64) each point is moved
+ * onto exact energy-momentum conservation and the external shells in that
+ * carrier, from the caller's inputs in the caller's leg order; the diagnostics
+ * record it per point ("kinematics"). Another value is
+ * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
+int rusticol_virtual_set_kinematics_improvement(rusticol_virtual_handle *handle,
+  const char *setting);
+/* Whether later binary64 evaluations are improved too (the Python API's
+ * kinematics_improvement_binary64=; additive, ABI version 2 kept): 1 improves
+ * them with the selected variant, 0 (the default) evaluates them as given.
+ * Any other value is RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
+int rusticol_virtual_set_kinematics_improvement_binary64(
+  rusticol_virtual_handle *handle, int binary64);
 /* Stability checks of later evaluations (the Python API's stability_checks=,
  * VirtualStabilityChecks; additive, ABI version 2 kept): rotation_count
  * default rotations (the Python API's count; any number), or, with
@@ -326,9 +345,16 @@ int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *
  * Every process: a NULL selection, or one without selectors whose
  * color_resolution is NULL or "contracted", is rusticol_virtual_evaluate
  * (values and diagnostics, its monitoring included).
- * Born-interfered processes: a color_resolution is
- * refused with the Python API's text; selectors at NLC and full colour with
- * its text; a leading-colour selection is served by the Python API only (both
+ * Born-interfered processes (lit-fc-hel): helicity IDs and helicity_by_point
+ * are served at every colour accuracy as for a loop-induced process (ordinary:
+ * the selected rows' value per point; resolved: the selected rows in the
+ * accuracy's resolved layout, one contracted component at NLC / full colour,
+ * one "basis-<b>" component per Born basis element at leading colour); only
+ * the selected rows' trees, links, lanes and resolved columns are formed
+ * (the Python API's stored path, one Rust formation), binary64 bitwise the
+ * Python API's; a color_resolution is refused with the Python API's text,
+ * colour flows at NLC and full colour with its text, and a leading-colour
+ * colour-flow selection is the Python API's (color_flows=; all
  * RUSTICOL_VIRTUAL_RUNTIME_ERROR). */
 typedef struct {
   const char *const *helicity_ids; /* global helicity IDs */

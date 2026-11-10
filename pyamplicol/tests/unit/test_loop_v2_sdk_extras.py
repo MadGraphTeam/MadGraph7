@@ -888,25 +888,29 @@ def test_sdk_leading_colour_resolved_rows_equal_the_python_api(leading):
 
 
 def test_sdk_leading_colour_selection_is_the_python_apis(leading):
-    """A Born-interfered leading-colour process (m-lit lit-sdk-b): the Python
-    API serves its helicity and colour-flow selection; the SDK's selection
-    call refuses it typed (RUSTICOL_VIRTUAL_RUNTIME_ERROR, "served by the
-    Python API"), and a colour resolution in the Python API's words."""
+    """A Born-interfered leading-colour process (lit-fc-hel; m-lit lit-sdk-b
+    before it): the SDK serves its helicity selection with the Python API's
+    values, bitwise in binary64 (one helicity, per point and resolved, one
+    component per Born basis element); its colour-flow selection stays the
+    Python API's (refused typed, RUSTICOL_VIRTUAL_RUNTIME_ERROR, naming
+    ``color_flows=``), and a colour resolution in the Python API's words."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.errors import CompatibilityError
-    from tests.unit.test_loop_v2_sdk_selection import STATUS_RUNTIME_ERROR, _call
+    from tests.unit.test_loop_v2_sdk_selection import (
+        STATUS_RUNTIME_ERROR,
+        _bitwise,
+        _call,
+        _python_values,
+    )
 
     runtime = Runtime.load(leading, process="uugg")
     point = [[float(c) for c in p] for p in LEADING_POINTS[0]]
     exact = [[[str(Decimal(c)) for c in p] for p in point]]
     scale = float(SCALES[0])
-    served = runtime.evaluate(exact, mu_r2=str(Decimal(scale)), helicities=["h0"])
-    assert served.values[0] is not None
+    mu = str(Decimal(scale))
     with pytest.raises(CompatibilityError) as resolution:
-        runtime.evaluate_resolved(
-            exact, mu_r2=str(Decimal(scale)), color_resolution="amplitude-basis"
-        )
+        runtime.evaluate_resolved(exact, mu_r2=mu, color_resolution="amplitude-basis")
     sdk = _sdk()
     handle = ctypes.c_void_p()
     status = sdk.rusticol_virtual_open(
@@ -914,10 +918,27 @@ def test_sdk_leading_colour_selection_is_the_python_apis(leading):
     )
     assert status == 0, _error(sdk)
     try:
-        for selectors in ({"ids": ["h0"]}, {"colours": ["1"]}, {"by_point": [0]}):
+        for selectors, python, resolved in (
+            ({"ids": ["h1"]}, {"helicities": ["h1"]}, False),
+            ({"by_point": [1]}, {"helicities": ["h1"]}, False),
+            (
+                {"resolved": True, "ids": ["h1", "h2"]},
+                {"helicities": ["h1", "h2"]},
+                True,
+            ),
+        ):
             found = _call(sdk, handle, [point], [scale], **selectors)
-            assert found["status"] == STATUS_RUNTIME_ERROR, (selectors, found)
-            assert "served by the Python API" in found["error"], found["error"]
+            assert found["status"] == 0, (selectors, found.get("error"))
+            call = runtime.evaluate_resolved if resolved else runtime.evaluate
+            expected = call(exact, mu_r2=mu, **python)
+            assert expected.values[0] is not None
+            assert _bitwise(found["virtual"], _python_values(expected, resolved))
+            if resolved:
+                assert found["axes"]["color_ids"] == list(expected.virtual_color_ids)
+                assert all(i.startswith("basis-") for i in expected.virtual_color_ids)
+        found = _call(sdk, handle, [point], [scale], colours=["1"])
+        assert found["status"] == STATUS_RUNTIME_ERROR
+        assert "color_flows=" in found["error"], found["error"]
         found = _call(
             sdk, handle, [point], [scale], resolved=True, resolution="amplitude-basis"
         )

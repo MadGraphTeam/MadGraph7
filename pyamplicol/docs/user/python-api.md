@@ -284,7 +284,9 @@ Input shape is:
 ```
 
 At LC, resolved shape is `(point, helicity, color_flow)`. At NLC/full,
-the color dimension has length one because color is contracted.
+the color dimension has length one because color is contracted. A one-loop
+virtual's `evaluate_resolved(helicities=...)` returns the selected rows only
+(the same layout over the kept rows).
 
 ## One-loop virtuals and loop-induced processes
 
@@ -694,10 +696,40 @@ estimate of the value's own size rather than refused. One `evaluate_correlated_m
 of the points whatever its spin vectors: every request is formed on the same
 amplitudes. A single-helicity selection divides by the total's average, so
 the selections of every row sum to the total, and its dressing is pruned to
-the selected rows (a family keeping more than half of its links runs whole).
+the selected rows (every family that drops a link runs its pruned copy).
 The amplitude-basis anchors are basis-dependent parts whose sum is the
 helicity's value. Colour-flow selection does not exist for loop-induced
 processes.
+
+### Helicity selection of Born-interfered virtuals
+
+A Born-interfered virtual selects its Born helicity rows at every colour
+accuracy (lit-fc-hel), with the tree engine's helicity IDs (`h:<values in leg
+order>`) or the runtime's `h<index>`:
+
+```python
+one = runtime.evaluate(points, mu_r2=scales, helicities=["h3"])
+half = runtime.evaluate(points, mu_r2=scales, helicities=ids[: len(ids) // 2])
+rows = runtime.evaluate_resolved(points, mu_r2=scales, helicities=["h3", "h7"])
+```
+
+At next-to-leading and full colour the colour is contracted: a selection
+keeps some helicity rows with every colour component of their Born, the
+selected value is the sum of those rows' `evaluate_resolved` entries (one
+helicity is its entry, bitwise up to the sign of a zero), and a complete set
+of selections sums to the unselected value within rounding. Colour flows
+exist at leading colour only (`color_flows=` there); at NLC and full colour
+they are refused with a `CompatibilityError`. A selected call evaluates only
+the selected helicities and nothing more: it forms the kept rows' Born and
+counterterm trees, dresses the loop links those rows reach (every family
+that drops a link runs its pruned copy) and reduces only the lanes of the
+families they reach; `evaluate_resolved(helicities=...)` forms only the kept
+rows' resolved columns (at leading colour the kept rows' and kept flows'
+basis elements). A stored artifact serves the selection without
+regeneration (artifacts generated before the feature included). The
+correlated evaluations take no helicity or colour-flow selection (the v2
+rule of both process types). The native SDKs serve the same helicity
+selections ([Native APIs](native-apis.md)).
 
 ## Split totals by squared coupling order
 
@@ -751,8 +783,8 @@ checks it against another public path at the same settings that does not
 read the partials: for a loop-induced example (`g g > z g g`,
 `g g > e+ e- m+ m-`) the sum of one call per helicity (`helicities=[h]`,
 each forming only that helicity's rows, a different contraction); for a
-Born-interfered one, which has no helicity selection at full colour, the
-correlated route's `"born"` history summed over the sectors (within 28
+Born-interfered one the correlated route's `"born"` history summed over the
+sectors (within 28
 units of roundoff of S for `u u~ > t t~ g g`; bitwise for
 `u u~ > d d~ e+ e-`, where it reads the same contraction as the plain
 evaluation, so there it checks the split's bookkeeping only: that example's
@@ -1044,9 +1076,53 @@ Symbolica to attempt registration of the pyAmpliCol library key; synchronous
 registration failures retain the personal-license and restricted-mode paths.
 Other positive precision requests load retained exact evaluator state when
 the artifact supports it.
-Decimal input preserves the supplied decimal digits;
-binary64 input cannot gain information merely by requesting more arithmetic
-precision.
+Above binary64 the result is the value at the *improved* point of the given
+inputs (the kinematics improvement below: the point is first moved onto exact
+energy-momentum conservation and the exact external shells in the carrier);
+with `kinematics_improvement="off"` Decimal input is evaluated with the
+supplied decimal digits as given. Binary64 input cannot gain information
+merely by requesting more arithmetic precision: the improvement makes it
+consistent, not more accurate.
+
+**Kinematics improvement.** A one-loop or tree evaluation in
+double-double or arbitrary precision evaluates the value at the *improved*
+point of the given inputs: before anything is evaluated in that carrier,
+each point is moved onto exact energy-momentum conservation and the exact
+external shells in the carrier's arithmetic, by default with MadLoop's
+default (`kinematics_improvement="z-shift"`, MadLoop's `ImprovePSPoint = 2`
+with its own fallback to `ImprovePSPoint = 1`, `"rescaling"`), or with
+`"projection"` (frame-independent) or not at all (`"off"`); binary64
+evaluations only with `kinematics_improvement_binary64=True` (default
+False: binary64 values are unchanged). Both are `Runtime.load` defaults and
+per-call arguments of every `evaluate*` method; the variants, the chain, the
+bounds and the record are described in
+[Configuration](configuration.md#kinematics-improvement-of-the-input-points).
+Each lane diagnostic records it (`VirtualLaneDiagnostic.kinematics`, a
+`VirtualKinematics`; `None` for a binary64 evaluation without the switch), a
+rescue attempt per level (`VirtualRescueAttempt.kinematics`: each level
+improves the original inputs in its own carrier). Tree results are values
+only: a tree runtime's `take_warnings()` returns the record of the most
+recent improved call (a summary line, e.g. `"kinematics-improvement:
+arbitrary at precision 32 (z-shift): z-shift 4"`, and every typed warning
+with its point index; the lines of the C ABI's
+`rusticol_runtime_take_warnings_json`), replaced by the next improved call
+and not kept while the warnings are muted; the typed warnings are also
+issued as Python warnings. The tree binary64 switch runs the native tree
+runtime's binary64 code (the C ABI's: the same values bit for bit). Its typed warnings
+(`"kinematics-not-improved"`: evaluated as given; `"kinematics-inexact"`: the
+produced point misses exactness, e.g. MadLoop's rescaling in a frame whose
+beams are not along z) are records, not failures. The default is exact
+wherever the beams lie along the z axis; in other frames MadLoop's chain
+produces the rescaling's point, which keeps a conservation residual of the
+input's own order (flagged by `"kinematics-inexact"`): use
+`kinematics_improvement="projection"` there for exact consistency in every
+frame. Near forward, backward and thresholds that residual matters: NinjaRS
+amplifies an input's shell or conservation defect by about the inverse box
+Gram determinant (F-GH), which the improvement removes. Two hazards remain
+after it: binary64 `"auto"` near-forward points served by the NinjaRS
+fallback carry no estimate, and TIRust at 32-40 digits can serve suppressed
+resolved rows of boosted near-forward points badly off (use at least 60
+digits there).
 
 `evaluate_correlated` always uses retained Symbolica evaluator states through
 the separate Python exact executor, including at its default precision 16.
@@ -1194,8 +1270,9 @@ target 1e-5, the same rotation) in three ways:
   rotated values.
 
 For a Born-interfered process every pole selection (`poles=`), colour
-accuracy and leading-colour `helicities` / `color_flows` selection is
-supported. A loop-induced process is rescued with what it serves: the pole
+accuracy and selection (`helicities=` at every accuracy, `color_flows=` at
+leading colour) is supported; every level and every rotation evaluates the
+selected rows only. A loop-induced process is rescued with what it serves: the pole
 selections `"all"` and `"none"`, full colour and its helicity selections
 (`helicities=`); it has no colour flows to select (`CompatibilityError`). The reduction backend (`reduction=`) is
 resolved for every level's carrier before the first point is evaluated: an

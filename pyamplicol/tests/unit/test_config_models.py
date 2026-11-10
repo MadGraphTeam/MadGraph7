@@ -68,11 +68,12 @@ def test_check_energy_must_be_a_positive_finite_number() -> None:
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    # 140: lit-ewprep's model.loop_preparation_cache, M-LIT lit-fold's
+    # 142: lit-ewprep's model.loop_preparation_cache, M-LIT lit-fold's
     # generation.loop_induced_folding (USER ~22:39), lit-examples' check
-    # section, lit-ew-blocks' check.sqrt_s and lit-check's
-    # check.arbitrary_digits.
-    assert len(FIELD_REGISTRY) == 140
+    # section, lit-ew-blocks' check.sqrt_s, lit-check's check.arbitrary_digits
+    # and lit-psimprove's evaluation.kinematics_improvement /
+    # evaluation.kinematics_improvement_binary64.
+    assert len(FIELD_REGISTRY) == 142
     # m-lit lit-examples: `pyamplicol check` (the check action's section).
     assert FIELD_REGISTRY["check.points"].default == 3
     assert FIELD_REGISTRY["check.seed"].nullable
@@ -98,6 +99,13 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # (off by default).
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].kind == "bool"
+    # m-lit lit-psimprove: the kinematics improvement, runtime options (None:
+    # the native defaults, MadLoop's variant above binary64, off in binary64).
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement"].default is None
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement"].nullable
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement"].kind == "str"
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement_binary64"].default is None
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement_binary64"].kind == "bool"
     # m-lit F3: TIRust's target accuracy, a runtime option (None: 1e-5).
     assert FIELD_REGISTRY["evaluation.reduction_target"].default is None
     assert FIELD_REGISTRY["evaluation.reduction_target"].nullable
