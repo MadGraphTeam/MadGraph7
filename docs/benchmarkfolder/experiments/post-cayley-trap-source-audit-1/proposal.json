@@ -1,0 +1,93 @@
+{
+  "dilog_analysis": {
+    "arithmetic": "4*pi*pi/modulus, then ceil((bits+6)*ln(2)/ln(ratio)) as usize + 1",
+    "conditional_unimplemented_route": {
+      "integer_condition": "0 < modulus.to_bits() <= 0x0030_0000_0000_0000",
+      "limits": [
+        "Not valid without rounding contract",
+        "Suppresses skipped division exceptions",
+        "Does not cover entire overflow interval",
+        "No actual modulus or MXCSR evidence",
+        "Keep signed-zero caller count0 bypass; leave negative/nonfinite/other bit patterns untouched"
+      ],
+      "operation": "Substitute ratio=INFINITY and retain old remaining expression; no patch prepared.",
+      "proof": "modulus<=2^-1020 and numerator>32 imply exact quotient>2^1025, so masked nearest division must return +infinity.",
+      "required_contract": "Explicitly checked FE_TONEAREST; no rounding mutation."
+    },
+    "directed_rounding": "Downward/toward-zero overflow may saturate to f64::MAX and select a different term count.",
+    "finite_clamp_or_log_rewrite": "Not return-equivalent: finite huge ratio gives a positive quotient and at least2 terms before cap.",
+    "masked_nearest_overflow_result": "ratio +infinity; term estimator1, before coefficient-table cap.",
+    "oneloopmaster_revision": "bd703d09a78f7849a6b86a07096e6f222fc01193",
+    "recommendation": "Do not implement/promote a dilog change without operand/rounding evidence or an explicitly checked environment contract.",
+    "role": "Convergence estimate controls coefficient count and actual Horner recurrence at series:141-148."
+  },
+  "gram_proof": {
+    "caller": "alternative_estimate_of uses Option via ? at retained gram.rs:963, controlling reduction estimates.",
+    "guarantee": "For a denominator whose magnitude bits are zero, preserve the old masked Option::None variant for every numerator bit pattern and rounding mode.",
+    "intentional_difference": "Skipped division and rejected predicate may change IEEE flags and trap behavior; this is not full IEEE equivalence.",
+    "nonzero_or_nonfinite_denominator": "Original division and predicate remain unchanged; no finite-denominator filter.",
+    "not_a_remedy_for": "Tiny-nonzero overflow, earlier sqrt/norm/conversion traps or unobserved operand causes.",
+    "prior_arithmetic": "Unchanged determinant, numerator, conversion and sqrt evaluation."
+  },
+  "gram_source": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/sources/gram.rs",
+  "inputs": {
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/guard.patch": {
+      "bytes": 426,
+      "sha256": "41803af300a83683479df8df20c1769733e63cae2981bbc2cf4497a046ade96d"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/README.md": {
+      "bytes": 3089,
+      "sha256": "cfa8457e19277aaf5a9f55f2998c32be517e91475da328c791ca26c489781270"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/analysis.json": {
+      "bytes": 12849,
+      "sha256": "0e7dbc83e584002a5fc19ec53b1a7d2e5043867d5db750d0d6c04306e50edb3a"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/evidence-index.json": {
+      "bytes": 3688,
+      "sha256": "08c221e1a259d0e47595ebac67d04c4471f2efec2713c9afb7afde0d61d31264"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/gram-indicator.disassembly.txt": {
+      "bytes": 32838,
+      "sha256": "0949d8703a196b580b97ae8d05818be45ec7f6e0de6aed83276018b519b59215"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/oneloop-series.disassembly.txt": {
+      "bytes": 36873,
+      "sha256": "fafd0ce573d82dffc2662c1c63673339c7a072d9d3cd9bc1eb1e34dc69854b10"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/sources/bridge-Cargo.lock": {
+      "bytes": 35874,
+      "sha256": "0d09649d4005c3a905dd605407d29e5b2818cd2c574d608d34a7f1dff3d4a2d3"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/sources/gram.rs": {
+      "bytes": 113130,
+      "sha256": "572fff44788d7a419151065a75af86a028cc1477987ec70dc0f47d70894a4dda"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/sources/oneloop-dilog.rs": {
+      "bytes": 10564,
+      "sha256": "bcf5add6fbb397e7a002541dac15fdef000ef3ff95a4a3fdbf3c474e407308e9"
+    }
+  },
+  "localization_analysis": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/localization/analysis.json",
+  "localization_index_sha256": "08c221e1a259d0e47595ebac67d04c4471f2efec2713c9afb7afde0d61d31264",
+  "native_build": false,
+  "native_execution": false,
+  "observed_dilog_overflow": false,
+  "observed_zero_denominator": false,
+  "old_expression": "    let w = largest / cnorm2(&delta).to_f64().sqrt();",
+  "patch_applied": false,
+  "performance_acceptance": false,
+  "private_library_sha256": "69722452c234f494f0aa436fa24bbabfeae59100c03b05a1f0b76336cc17886b",
+  "proposed_expression": "    let denominator = cnorm2(&delta).to_f64().sqrt();\n    if denominator.to_bits() & 0x7fff_ffff_ffff_ffff == 0 {\n        return None;\n    }\n    let w = largest / denominator;",
+  "proposed_gram_sha256": "c898f5512ec5e457ad959abdf73c8d963266b342f79375a81296e54caff9a159",
+  "required_root_review_before_native": [
+    "One isolated source-only change at a time",
+    "Signed-zero/nonfinite/rounding/entry-flag/trap-control tests",
+    "Static guarded-instruction inspection",
+    "Exact closed masked/trapped physical replay with separate numerical/stability/precision/trap gates",
+    "Independent scalar and amplitude accuracy checks for any eventual dilog recurrence change"
+  ],
+  "schema": "post-cayley-trap-source-audit-v1",
+  "scope": "Unapplied Gram signed-zero-only patch; independent dilog recurrence/rounding audit. Text-only, no native artifacts read.",
+  "trap_fix_qualified": false
+}

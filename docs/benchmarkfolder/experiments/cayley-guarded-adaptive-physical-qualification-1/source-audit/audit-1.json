@@ -1,0 +1,34 @@
+{
+  "capture_or_native_execution_performed": false,
+  "findings": [
+    {
+      "code": "runtime-after-closure",
+      "finding": "Portable verifier does not bind record.runtime_sha256_after to retained native identities/text payloads.",
+      "severity": "required provenance check"
+    },
+    {
+      "code": "selected-build-binding",
+      "finding": "Portable verifier does not parse binding1.json to check build_receipt path/hash or selected guarded library against record.guarded_library_sha256, and does not repeat record source-index/artifact-binding relations checked during capture.",
+      "severity": "required provenance check"
+    },
+    {
+      "code": "native-classification",
+      "finding": "Verifier accepts any missing dependency text as native/hash-only without re-deriving external/native-path classification; internal text dependencies should be required as payloads.",
+      "severity": "required retention check"
+    }
+  ],
+  "frozen_dependencies": 185,
+  "frozen_source_index_sha256": "7d9a40657b9df702fe1bdd1b3f302363813b1ba4a9514a2bcc88467f371dcd1c",
+  "frozen_sources": 45,
+  "positive_findings": [
+    "Capture native/external branch uses frozen or terminal identity without reading bytes; source/text branch rejects ELF/ar and requires UTF8.",
+    "Capture preserves reaped SIGFPE/failed outcomes, execution_complete is distinct from qualification.",
+    "Verifier rebuilds content-addressed gzip text fragments without opening historical paths."
+  ],
+  "reviewed_sha256": {
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/capture.py": "da5dec5ea68a5548a968124305257fe18cd548c6252a7965d63e4ccbdc2034d0",
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-qualification-1/verify.py": "70c16548c89b78b45e1dea2486643bf792eaeb331114f45da2b3d40c71aef149"
+  },
+  "schema": "physical-retention-source-audit-v1",
+  "scope": "Read-only review of capture.py/verify.py and frozen source index before terminal authorization; no run1 contents used for findings."
+}

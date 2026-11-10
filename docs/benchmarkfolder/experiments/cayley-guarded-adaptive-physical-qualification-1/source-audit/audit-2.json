@@ -1,0 +1,22 @@
+{
+  "consistent_alias_rows": 36,
+  "frozen_dependency_rows": 185,
+  "independent_child_review": true,
+  "native_action_or_capture_executed_by_audit": false,
+  "previous_remaining_narrow_recommendation": "Explicitly require selected guarded bridge itself in runtime_sha256_after, not just some15 entries plus manifest identity. See latest verifier source for resolution.",
+  "resolved": [
+    "Frozen source and artifact-binding identities repeated in verifier.",
+    "Actual binding identifies successful build receipt, matching selected guarded library/hash/size.",
+    "Frozen185 rows require derived internal-text vsnative/external classification.",
+    "Runtimeafter entries bind retained identities, completed record requires15 entries and unchanged protected closure."
+  ],
+  "reviewed_sha256": {
+    "capture.py": "da5dec5ea68a5548a968124305257fe18cd548c6252a7965d63e4ccbdc2034d0",
+    "verify.py": "d9c130077ceaf6a1a1450d465bf1d1323d6212a677f034c52ac8463c9635d1b9"
+  },
+  "schema": "physical-retention-followup-source-audit-v1",
+  "unique_dependency_paths": 149,
+  "unique_external_identities": 27,
+  "unique_internal_native": 42,
+  "unique_internal_text": 80
+}

@@ -1,0 +1,102 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3089,
+      "sha256": "cfa8457e19277aaf5a9f55f2998c32be517e91475da328c791ca26c489781270"
+    },
+    "analysis.json": {
+      "bytes": 12849,
+      "sha256": "0e7dbc83e584002a5fc19ec53b1a7d2e5043867d5db750d0d6c04306e50edb3a"
+    },
+    "cayley.disassembly.txt": {
+      "bytes": 34127,
+      "sha256": "d404d35022816cb6db60f8bddc9682222c2265c3c5bd20a739ad46f625a9f746"
+    },
+    "checked-trapped.addr2line.txt": {
+      "bytes": 111,
+      "sha256": "23fa21bce854d30de920974ded826068964332ced53a6cfe402ed61b998ef701"
+    },
+    "elf-layout.json": {
+      "bytes": 794,
+      "sha256": "b0f3959215eece62b3cb8d22c9c6a8f2ac08ccd0d75afce933ab667249953da2"
+    },
+    "forced-qp-trapped.addr2line.txt": {
+      "bytes": 115,
+      "sha256": "4a67d74793ab27ed3b1bdd92a3e135d10d813183ccfd50744fb3f58aa7393fc0"
+    },
+    "gram-indicator.disassembly.txt": {
+      "bytes": 32838,
+      "sha256": "0949d8703a196b580b97ae8d05818be45ec7f6e0de6aed83276018b519b59215"
+    },
+    "inputs/binding1.json": {
+      "bytes": 2563,
+      "sha256": "ee2933ed02f2f2c6ba1b004c0feb951553275c2967f829b5bb0efb894de7c61a"
+    },
+    "inputs/build-execution.json.gz": {
+      "bytes": 83263,
+      "sha256": "da23ea720836a353a7dbb2f53ca32778df2a3fbc3c9bb1a8e0b699bb475c588b"
+    },
+    "inputs/checked-trapped.control.log": {
+      "bytes": 3827,
+      "sha256": "bb8cf54a6b51da8e75a9d1cd45486752cda4519a883915ca5794d7a3ca94458e"
+    },
+    "inputs/checked-trapped.maps.txt": {
+      "bytes": 18347,
+      "sha256": "22952f83d60c96069bf4aaefbc067081748d1066404b057615f3fdee9e11b6bf"
+    },
+    "inputs/checked-trapped.stdout.log": {
+      "bytes": 788,
+      "sha256": "782ae06a966f82ff3d3aa429205460b6efcecebc22f154d6c15f5d89ef0ed39d"
+    },
+    "inputs/forced-qp-trapped.control.log": {
+      "bytes": 3827,
+      "sha256": "4ecdd50ae1581fcb1fb0306e8fc627a1246abbc6eca4b51af29469fc57b48c2c"
+    },
+    "inputs/forced-qp-trapped.maps.txt": {
+      "bytes": 15681,
+      "sha256": "d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9"
+    },
+    "inputs/forced-qp-trapped.stdout.log": {
+      "bytes": 977,
+      "sha256": "7ba1587061c79fcc2befd01092d727c003aa56ab8679c7c28f618fdadcd2a07c"
+    },
+    "inputs/physical-source-index.json": {
+      "bytes": 40376,
+      "sha256": "7d9a40657b9df702fe1bdd1b3f302363813b1ba4a9514a2bcc88467f371dcd1c"
+    },
+    "inputs/runtime-execution.json.gz": {
+      "bytes": 28319,
+      "sha256": "e4777bca96642b020f7f8b1ee2c5a1a0175b29f64482e212f6984e3a75ba29bf"
+    },
+    "localize.py": {
+      "bytes": 8844,
+      "sha256": "890b637619a96ae66e0ecb81d6a1eda3c5ccfeaf6f7991fdbce4a20f7512880c"
+    },
+    "oneloop-series.disassembly.txt": {
+      "bytes": 36873,
+      "sha256": "fafd0ce573d82dffc2662c1c63673339c7a072d9d3cd9bc1eb1e34dc69854b10"
+    },
+    "sources/bridge-Cargo.lock": {
+      "bytes": 35874,
+      "sha256": "0d09649d4005c3a905dd605407d29e5b2818cd2c574d608d34a7f1dff3d4a2d3"
+    },
+    "sources/gram.rs": {
+      "bytes": 113130,
+      "sha256": "572fff44788d7a419151065a75af86a028cc1477987ec70dc0f47d70894a4dda"
+    },
+    "sources/oneloop-dilog.rs": {
+      "bytes": 10564,
+      "sha256": "bcf5add6fbb397e7a002541dac15fdef000ef3ff95a4a3fdbf3c474e407308e9"
+    },
+    "symbols.txt": {
+      "bytes": 303,
+      "sha256": "0aa6e102e92f60273efd9ec0b53dabd44d46bc0fcda630b245b2b395c85ee1b3"
+    },
+    "verify.py": {
+      "bytes": 5907,
+      "sha256": "b8355a5938f194cb08ee6ec232ef43cf41cd9d99d52d244db516af4305d0010c"
+    }
+  },
+  "schema": "closed-guarded-static-localization-v1",
+  "scope": "Static decoding of closed SIGFPE evidence; no native artifact execution or numerical qualification"
+}

@@ -1,0 +1,68 @@
+{
+  "artifact_binding_created": false,
+  "byte_identical_parent_files": {
+    "driver-witness.f90": "f988d23ab5b01710a7d5fb7eff42d7223454379b5fc2696e6a38b86ec356ad06",
+    "fixtures/checked/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a",
+    "fixtures/checked/MadLoop5_resources/ML5_0_ColorNumFactors.dat": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703",
+    "fixtures/checked/MadLoop5_resources/ML5_0_HelConfigs.dat": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425",
+    "fixtures/checked/MadLoop5_resources/MadLoopParams.dat": "e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573",
+    "fixtures/checked/MadLoop5_resources/ident_card.dat": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40",
+    "fixtures/checked/MadLoop5_resources/param_card.dat": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+    "fixtures/checked/param_card.dat": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+    "fixtures/checked/selected.dat": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3",
+    "fixtures/forced-qp/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a",
+    "fixtures/forced-qp/MadLoop5_resources/ML5_0_ColorNumFactors.dat": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703",
+    "fixtures/forced-qp/MadLoop5_resources/ML5_0_HelConfigs.dat": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425",
+    "fixtures/forced-qp/MadLoop5_resources/MadLoopParams.dat": "0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b",
+    "fixtures/forced-qp/MadLoop5_resources/ident_card.dat": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40",
+    "fixtures/forced-qp/MadLoop5_resources/param_card.dat": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+    "fixtures/forced-qp/param_card.dat": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+    "fixtures/forced-qp/selected.dat": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3",
+    "offline-fixed-selfcheck.json": "d63da96199a236e5b0caa8cff595bc5143b7ae58fb38c5aa82edc22e94a8027e"
+  },
+  "changed_source_files": {
+    "assessment.py": {
+      "delta": "assessment.py.delta.patch",
+      "delta_sha256": "6b158cf41990527b8386453b020c6a05b9eeb8c8ea0d1f51180130f3e633a2f1",
+      "parent_sha256": "66e6d2ea51b43727f14552e2c52dbdc35ea9513ddbf118b047ee252432f9acec",
+      "successor_sha256": "2a63b767533b03efab16e961f7f73e0efd114740c0296ee4610d0118b4243d8b"
+    },
+    "controller.py": {
+      "delta": "controller.py.delta.patch",
+      "delta_sha256": "97a7a50792bb3ff5c0b63ee010f346694e51c9de6b6aeece267cb210175df4a4",
+      "parent_sha256": "eac1ae50406629905c8676d896a0892c553fd36a3f794493363c5523a0747e96",
+      "successor_sha256": "e39f5620fab5af8690b3ebdbf684f594cee6af90eb18f6aa5697e0ff713badaa"
+    },
+    "dependency-bindings.json": {
+      "delta": "dependency-bindings.json.delta.patch",
+      "delta_sha256": "1710ec555691b567bbc67db311f9ec91e91cfea5e6579a786bb4e702363ea598",
+      "parent_sha256": "81ceb86a400133c467884bb9dc8a8b3393586f8604b618e6eb017a226e820089",
+      "successor_sha256": "32ec407296211837cbc0e5ff041afe96619f762bf15baa17d0b4e059a4476955"
+    },
+    "prepared.json": {
+      "delta": "prepared.json.delta.patch",
+      "delta_sha256": "817b8399dc6207a27cae351eebc604369765411b95d89c67a2fa3383cf2f110d",
+      "parent_sha256": "84de522263f900638761057823d9e5af90b54eaef59dee0a50c80871afe18ab2",
+      "successor_sha256": "7b6b2bbef59f62d4d938f39e422eebf458b7a0bc519b6abdfaaf634854306404"
+    },
+    "test_assessment.py": {
+      "delta": "test_assessment.py.delta.patch",
+      "delta_sha256": "aa63ddda444461aa303be6c10c52eaf05970b86d07fe417203c079e753c0c9a4",
+      "parent_sha256": "1e3904497046e8bce45bf9feb1142e110879518b4b3d2df801e55aa0aef7a35f",
+      "successor_sha256": "cdf0d6b39a8c5978dfdcacf27c2aed04b9be9f5a4abc19e4c984f5168ed275e0"
+    }
+  },
+  "native_or_loader_executed": false,
+  "new_metadata_replaces_no_historical_files": [
+    "README.md",
+    "source-audit.json",
+    "tests-receipt.json"
+  ],
+  "parent_dependency_bindings_preserved": 155,
+  "parent_source_count": 26,
+  "parent_source_index": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/source-index.json",
+  "parent_source_index_sha256": "83ee98dd13b1baf79a5651e4673374994c856b6022bef53c6ce9523d930a5233",
+  "runtime_seconds_unchanged": 600,
+  "schema": "guarded-physical-additive-source-lineage-v1",
+  "target_build_source_index_sha256": "39d6ba2bd3c7aef5c8f5008360661c988a93d86ab1265cb3bc815707233b9e72"
+}

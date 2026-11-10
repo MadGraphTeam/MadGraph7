@@ -1,0 +1,578 @@
+
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/runtime/libmadloop_tirust_adaptive_private.so:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+00000000025236c0 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>>:
+ 25236c0:	55                   	push   %rbp
+ 25236c1:	41 57                	push   %r15
+ 25236c3:	41 56                	push   %r14
+ 25236c5:	41 55                	push   %r13
+ 25236c7:	41 54                	push   %r12
+ 25236c9:	53                   	push   %rbx
+ 25236ca:	48 81 ec d8 01 00 00 	sub    $0x1d8,%rsp
+ 25236d1:	45 89 c7             	mov    %r8d,%r15d
+ 25236d4:	48 89 cd             	mov    %rcx,%rbp
+ 25236d7:	48 89 54 24 50       	mov    %rdx,0x50(%rsp)
+ 25236dc:	48 89 bc 24 a8 00 00 	mov    %rdi,0xa8(%rsp)
+ 25236e3:	00 
+ 25236e4:	48 8d 9c 24 30 01 00 	lea    0x130(%rsp),%rbx
+ 25236eb:	00 
+ 25236ec:	48 89 df             	mov    %rbx,%rdi
+ 25236ef:	48 89 74 24 08       	mov    %rsi,0x8(%rsp)
+ 25236f4:	48 89 f2             	mov    %rsi,%rdx
+ 25236f7:	e8 34 a6 45 ff       	call   197dd30 <oneloop::native::primitives::inline_mul::<numerica::domains::float::multiprecision::Float>>
+ 25236fc:	48 89 df             	mov    %rbx,%rdi
+ 25236ff:	ff 15 db 47 8b 01    	call   *0x18b47db(%rip)        # 3dd7ee0 <_GLOBAL_OFFSET_TABLE_+0x59b8>
+ 2523705:	f2 0f 11 44 24 58    	movsd  %xmm0,0x58(%rsp)
+ 252370b:	48 8d bc 24 50 01 00 	lea    0x150(%rsp),%rdi
+ 2523712:	00 
+ 2523713:	ff 15 c7 47 8b 01    	call   *0x18b47c7(%rip)        # 3dd7ee0 <_GLOBAL_OFFSET_TABLE_+0x59b8>
+ 2523719:	66 0f 28 c8          	movapd %xmm0,%xmm1
+ 252371d:	f2 0f 10 44 24 58    	movsd  0x58(%rsp),%xmm0
+ 2523723:	ff 15 67 f8 8a 01    	call   *0x18af867(%rip)        # 3dd2f90 <hypot@GLIBC_2.35>
+ 2523729:	66 0f 57 c9          	xorpd  %xmm1,%xmm1
+ 252372d:	66 0f 2e c1          	ucomisd %xmm1,%xmm0
+ 2523731:	0f 85 84 05 00 00    	jne    2523cbb <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x5fb>
+ 2523737:	0f 8a 7e 05 00 00    	jp     2523cbb <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x5fb>
+ 252373d:	45 31 ed             	xor    %r13d,%r13d
+ 2523740:	48 8b b4 24 30 01 00 	mov    0x130(%rsp),%rsi
+ 2523747:	00 
+ 2523748:	48 89 f0             	mov    %rsi,%rax
+ 252374b:	48 c1 e8 20          	shr    $0x20,%rax
+ 252374f:	0f 85 14 06 00 00    	jne    2523d69 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x6a9>
+ 2523755:	48 85 f6             	test   %rsi,%rsi
+ 2523758:	0f 84 f8 06 00 00    	je     2523e56 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x796>
+ 252375e:	49 be 02 00 00 00 00 	movabs $0x8000000000000002,%r14
+ 2523765:	00 00 80 
+ 2523768:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 252376d:	ff 15 c5 0b 8b 01    	call   *0x18b0bc5(%rip)        # 3dd4338 <_GLOBAL_OFFSET_TABLE_+0x1e10>
+ 2523773:	4c 39 b4 24 40 01 00 	cmp    %r14,0x140(%rsp)
+ 252377a:	00 
+ 252377b:	74 1c                	je     2523799 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0xd9>
+ 252377d:	8b 8c 24 38 01 00 00 	mov    0x138(%rsp),%ecx
+ 2523784:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523789:	48 8d b4 24 30 01 00 	lea    0x130(%rsp),%rsi
+ 2523790:	00 
+ 2523791:	31 d2                	xor    %edx,%edx
+ 2523793:	ff 15 77 47 8b 01    	call   *0x18b4777(%rip)        # 3dd7f10 <_GLOBAL_OFFSET_TABLE_+0x59e8>
+ 2523799:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 252379f:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 25237a5:	66 0f 29 4c 24 70    	movapd %xmm1,0x70(%rsp)
+ 25237ab:	66 0f 29 44 24 60    	movapd %xmm0,0x60(%rsp)
+ 25237b1:	48 8d bc 24 30 01 00 	lea    0x130(%rsp),%rdi
+ 25237b8:	00 
+ 25237b9:	ff 15 71 f2 8a 01    	call   *0x18af271(%rip)        # 3dd2a30 <_GLOBAL_OFFSET_TABLE_+0x508>
+ 25237bf:	85 c0                	test   %eax,%eax
+ 25237c1:	0f 84 ad 06 00 00    	je     2523e74 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x7b4>
+ 25237c7:	89 c6                	mov    %eax,%esi
+ 25237c9:	48 8d 5c 24 10       	lea    0x10(%rsp),%rbx
+ 25237ce:	48 89 df             	mov    %rbx,%rdi
+ 25237d1:	ff 15 61 0b 8b 01    	call   *0x18b0b61(%rip)        # 3dd4338 <_GLOBAL_OFFSET_TABLE_+0x1e10>
+ 25237d7:	be 04 00 00 00       	mov    $0x4,%esi
+ 25237dc:	48 89 df             	mov    %rbx,%rdi
+ 25237df:	31 d2                	xor    %edx,%edx
+ 25237e1:	ff 15 f9 05 8b 01    	call   *0x18b05f9(%rip)        # 3dd3de0 <_GLOBAL_OFFSET_TABLE_+0x18b8>
+ 25237e7:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 25237ed:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 25237f3:	66 0f 29 84 24 f0 00 	movapd %xmm0,0xf0(%rsp)
+ 25237fa:	00 00 
+ 25237fc:	66 0f 29 8c 24 00 01 	movapd %xmm1,0x100(%rsp)
+ 2523803:	00 00 
+ 2523805:	48 8d bc 24 b8 01 00 	lea    0x1b8(%rsp),%rdi
+ 252380c:	00 
+ 252380d:	48 8d 74 24 60       	lea    0x60(%rsp),%rsi
+ 2523812:	48 8d 94 24 f0 00 00 	lea    0xf0(%rsp),%rdx
+ 2523819:	00 
+ 252381a:	e8 e1 1b 27 00       	call   2795400 <<numerica::domains::float::multiprecision::Float as core::ops::arith::Div<&numerica::domains::float::multiprecision::Float>>::div>
+ 252381f:	48 8b b4 24 50 01 00 	mov    0x150(%rsp),%rsi
+ 2523826:	00 
+ 2523827:	48 89 f0             	mov    %rsi,%rax
+ 252382a:	48 c1 e8 20          	shr    $0x20,%rax
+ 252382e:	0f 85 c2 05 00 00    	jne    2523df6 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x736>
+ 2523834:	48 85 f6             	test   %rsi,%rsi
+ 2523837:	0f 84 55 06 00 00    	je     2523e92 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x7d2>
+ 252383d:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523842:	ff 15 f0 0a 8b 01    	call   *0x18b0af0(%rip)        # 3dd4338 <_GLOBAL_OFFSET_TABLE_+0x1e10>
+ 2523848:	4c 39 b4 24 60 01 00 	cmp    %r14,0x160(%rsp)
+ 252384f:	00 
+ 2523850:	74 1c                	je     252386e <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x1ae>
+ 2523852:	8b 8c 24 58 01 00 00 	mov    0x158(%rsp),%ecx
+ 2523859:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 252385e:	48 8d b4 24 50 01 00 	lea    0x150(%rsp),%rsi
+ 2523865:	00 
+ 2523866:	31 d2                	xor    %edx,%edx
+ 2523868:	ff 15 a2 46 8b 01    	call   *0x18b46a2(%rip)        # 3dd7f10 <_GLOBAL_OFFSET_TABLE_+0x59e8>
+ 252386e:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 2523874:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 252387a:	66 0f 29 8c 24 c0 00 	movapd %xmm1,0xc0(%rsp)
+ 2523881:	00 00 
+ 2523883:	66 0f 29 84 24 b0 00 	movapd %xmm0,0xb0(%rsp)
+ 252388a:	00 00 
+ 252388c:	48 8d bc 24 50 01 00 	lea    0x150(%rsp),%rdi
+ 2523893:	00 
+ 2523894:	ff 15 96 f1 8a 01    	call   *0x18af196(%rip)        # 3dd2a30 <_GLOBAL_OFFSET_TABLE_+0x508>
+ 252389a:	85 c0                	test   %eax,%eax
+ 252389c:	0f 84 0b 06 00 00    	je     2523ead <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x7ed>
+ 25238a2:	89 c6                	mov    %eax,%esi
+ 25238a4:	48 8d 5c 24 10       	lea    0x10(%rsp),%rbx
+ 25238a9:	48 89 df             	mov    %rbx,%rdi
+ 25238ac:	ff 15 86 0a 8b 01    	call   *0x18b0a86(%rip)        # 3dd4338 <_GLOBAL_OFFSET_TABLE_+0x1e10>
+ 25238b2:	be 04 00 00 00       	mov    $0x4,%esi
+ 25238b7:	48 89 df             	mov    %rbx,%rdi
+ 25238ba:	31 d2                	xor    %edx,%edx
+ 25238bc:	ff 15 1e 05 8b 01    	call   *0x18b051e(%rip)        # 3dd3de0 <_GLOBAL_OFFSET_TABLE_+0x18b8>
+ 25238c2:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 25238c8:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 25238ce:	66 0f 29 44 24 60    	movapd %xmm0,0x60(%rsp)
+ 25238d4:	66 0f 29 4c 24 70    	movapd %xmm1,0x70(%rsp)
+ 25238da:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 25238df:	48 8d b4 24 b0 00 00 	lea    0xb0(%rsp),%rsi
+ 25238e6:	00 
+ 25238e7:	48 8d 54 24 60       	lea    0x60(%rsp),%rdx
+ 25238ec:	e8 0f 1b 27 00       	call   2795400 <<numerica::domains::float::multiprecision::Float as core::ops::arith::Div<&numerica::domains::float::multiprecision::Float>>::div>
+ 25238f1:	0f 10 84 24 b8 01 00 	movups 0x1b8(%rsp),%xmm0
+ 25238f8:	00 
+ 25238f9:	0f 10 8c 24 c8 01 00 	movups 0x1c8(%rsp),%xmm1
+ 2523900:	00 
+ 2523901:	0f 29 84 24 70 01 00 	movaps %xmm0,0x170(%rsp)
+ 2523908:	00 
+ 2523909:	0f 29 8c 24 80 01 00 	movaps %xmm1,0x180(%rsp)
+ 2523910:	00 
+ 2523911:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 2523917:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 252391d:	66 0f 29 84 24 90 01 	movapd %xmm0,0x190(%rsp)
+ 2523924:	00 00 
+ 2523926:	66 0f 29 8c 24 a0 01 	movapd %xmm1,0x1a0(%rsp)
+ 252392d:	00 00 
+ 252392f:	4c 8d 3d 6a 34 b9 fd 	lea    -0x246cb96(%rip),%r15        # b6da0 <mpfr_clear>
+ 2523936:	48 8d 7c 24 60       	lea    0x60(%rsp),%rdi
+ 252393b:	41 ff d7             	call   *%r15
+ 252393e:	48 8d bc 24 f0 00 00 	lea    0xf0(%rsp),%rdi
+ 2523945:	00 
+ 2523946:	41 ff d7             	call   *%r15
+ 2523949:	48 8b 44 24 08       	mov    0x8(%rsp),%rax
+ 252394e:	48 8b 30             	mov    (%rax),%rsi
+ 2523951:	48 89 f0             	mov    %rsi,%rax
+ 2523954:	48 c1 e8 20          	shr    $0x20,%rax
+ 2523958:	0f 85 b0 04 00 00    	jne    2523e0e <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x74e>
+ 252395e:	48 85 f6             	test   %rsi,%rsi
+ 2523961:	0f 84 61 05 00 00    	je     2523ec8 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x808>
+ 2523967:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 252396c:	ff 15 c6 09 8b 01    	call   *0x18b09c6(%rip)        # 3dd4338 <_GLOBAL_OFFSET_TABLE_+0x1e10>
+ 2523972:	48 8b 44 24 08       	mov    0x8(%rsp),%rax
+ 2523977:	4c 39 70 10          	cmp    %r14,0x10(%rax)
+ 252397b:	74 15                	je     2523992 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x2d2>
+ 252397d:	48 8b 74 24 08       	mov    0x8(%rsp),%rsi
+ 2523982:	8b 4e 08             	mov    0x8(%rsi),%ecx
+ 2523985:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 252398a:	31 d2                	xor    %edx,%edx
+ 252398c:	ff 15 7e 45 8b 01    	call   *0x18b457e(%rip)        # 3dd7f10 <_GLOBAL_OFFSET_TABLE_+0x59e8>
+ 2523992:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 2523998:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 252399e:	66 0f 29 4c 24 70    	movapd %xmm1,0x70(%rsp)
+ 25239a4:	66 0f 29 44 24 60    	movapd %xmm0,0x60(%rsp)
+ 25239aa:	48 8d bc 24 b0 00 00 	lea    0xb0(%rsp),%rdi
+ 25239b1:	00 
+ 25239b2:	48 8d 74 24 60       	lea    0x60(%rsp),%rsi
+ 25239b7:	48 8d 94 24 70 01 00 	lea    0x170(%rsp),%rdx
+ 25239be:	00 
+ 25239bf:	e8 1c 0e 27 00       	call   27947e0 <<numerica::domains::float::multiprecision::Float as core::ops::arith::Sub<&numerica::domains::float::multiprecision::Float>>::sub>
+ 25239c4:	48 8b 44 24 08       	mov    0x8(%rsp),%rax
+ 25239c9:	48 8b 70 20          	mov    0x20(%rax),%rsi
+ 25239cd:	48 89 f0             	mov    %rsi,%rax
+ 25239d0:	48 c1 e8 20          	shr    $0x20,%rax
+ 25239d4:	0f 85 4c 04 00 00    	jne    2523e26 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x766>
+ 25239da:	48 85 f6             	test   %rsi,%rsi
+ 25239dd:	0f 84 00 05 00 00    	je     2523ee3 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x823>
+ 25239e3:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 25239e8:	ff 15 4a 09 8b 01    	call   *0x18b094a(%rip)        # 3dd4338 <_GLOBAL_OFFSET_TABLE_+0x1e10>
+ 25239ee:	48 8b 44 24 08       	mov    0x8(%rsp),%rax
+ 25239f3:	4c 39 70 30          	cmp    %r14,0x30(%rax)
+ 25239f7:	74 19                	je     2523a12 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x352>
+ 25239f9:	48 8b 44 24 08       	mov    0x8(%rsp),%rax
+ 25239fe:	48 8d 70 20          	lea    0x20(%rax),%rsi
+ 2523a02:	8b 48 28             	mov    0x28(%rax),%ecx
+ 2523a05:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523a0a:	31 d2                	xor    %edx,%edx
+ 2523a0c:	ff 15 fe 44 8b 01    	call   *0x18b44fe(%rip)        # 3dd7f10 <_GLOBAL_OFFSET_TABLE_+0x59e8>
+ 2523a12:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 2523a18:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 2523a1e:	66 0f 29 4c 24 70    	movapd %xmm1,0x70(%rsp)
+ 2523a24:	66 0f 29 44 24 60    	movapd %xmm0,0x60(%rsp)
+ 2523a2a:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523a2f:	48 8d 74 24 60       	lea    0x60(%rsp),%rsi
+ 2523a34:	48 8d 94 24 90 01 00 	lea    0x190(%rsp),%rdx
+ 2523a3b:	00 
+ 2523a3c:	e8 9f 0d 27 00       	call   27947e0 <<numerica::domains::float::multiprecision::Float as core::ops::arith::Sub<&numerica::domains::float::multiprecision::Float>>::sub>
+ 2523a41:	0f 10 84 24 b0 00 00 	movups 0xb0(%rsp),%xmm0
+ 2523a48:	00 
+ 2523a49:	0f 10 8c 24 c0 00 00 	movups 0xc0(%rsp),%xmm1
+ 2523a50:	00 
+ 2523a51:	0f 29 84 24 f0 00 00 	movaps %xmm0,0xf0(%rsp)
+ 2523a58:	00 
+ 2523a59:	0f 29 8c 24 00 01 00 	movaps %xmm1,0x100(%rsp)
+ 2523a60:	00 
+ 2523a61:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 2523a67:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 2523a6d:	66 0f 29 84 24 10 01 	movapd %xmm0,0x110(%rsp)
+ 2523a74:	00 00 
+ 2523a76:	66 0f 29 8c 24 20 01 	movapd %xmm1,0x120(%rsp)
+ 2523a7d:	00 00 
+ 2523a7f:	4d 85 ed             	test   %r13,%r13
+ 2523a82:	0f 84 f9 02 00 00    	je     2523d81 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x6c1>
+ 2523a88:	49 8d 5d ff          	lea    -0x1(%r13),%rbx
+ 2523a8c:	48 39 eb             	cmp    %rbp,%rbx
+ 2523a8f:	0f 83 84 04 00 00    	jae    2523f19 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x859>
+ 2523a95:	48 c1 e3 05          	shl    $0x5,%rbx
+ 2523a99:	48 8b 44 24 50       	mov    0x50(%rsp),%rax
+ 2523a9e:	48 8b 34 18          	mov    (%rax,%rbx,1),%rsi
+ 2523aa2:	48 89 f0             	mov    %rsi,%rax
+ 2523aa5:	48 c1 e8 20          	shr    $0x20,%rax
+ 2523aa9:	0f 85 8f 03 00 00    	jne    2523e3e <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x77e>
+ 2523aaf:	48 85 f6             	test   %rsi,%rsi
+ 2523ab2:	0f 84 46 04 00 00    	je     2523efe <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x83e>
+ 2523ab8:	48 03 5c 24 50       	add    0x50(%rsp),%rbx
+ 2523abd:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523ac2:	ff 15 70 08 8b 01    	call   *0x18b0870(%rip)        # 3dd4338 <_GLOBAL_OFFSET_TABLE_+0x1e10>
+ 2523ac8:	4c 39 73 10          	cmp    %r14,0x10(%rbx)
+ 2523acc:	74 13                	je     2523ae1 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x421>
+ 2523ace:	8b 4b 08             	mov    0x8(%rbx),%ecx
+ 2523ad1:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523ad6:	48 89 de             	mov    %rbx,%rsi
+ 2523ad9:	31 d2                	xor    %edx,%edx
+ 2523adb:	ff 15 2f 44 8b 01    	call   *0x18b442f(%rip)        # 3dd7f10 <_GLOBAL_OFFSET_TABLE_+0x59e8>
+ 2523ae1:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 2523ae7:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 2523aed:	66 0f 29 4c 24 70    	movapd %xmm1,0x70(%rsp)
+ 2523af3:	66 0f 29 44 24 60    	movapd %xmm0,0x60(%rsp)
+ 2523af9:	48 8b 7c 24 08       	mov    0x8(%rsp),%rdi
+ 2523afe:	ff 15 2c ef 8a 01    	call   *0x18aef2c(%rip)        # 3dd2a30 <_GLOBAL_OFFSET_TABLE_+0x508>
+ 2523b04:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523b09:	89 c6                	mov    %eax,%esi
+ 2523b0b:	ff 15 b7 f1 8a 01    	call   *0x18af1b7(%rip)        # 3dd2cc8 <_GLOBAL_OFFSET_TABLE_+0x7a0>
+ 2523b11:	0f 28 44 24 60       	movaps 0x60(%rsp),%xmm0
+ 2523b16:	0f 28 4c 24 70       	movaps 0x70(%rsp),%xmm1
+ 2523b1b:	0f 29 8c 24 c0 00 00 	movaps %xmm1,0xc0(%rsp)
+ 2523b22:	00 
+ 2523b23:	0f 29 84 24 b0 00 00 	movaps %xmm0,0xb0(%rsp)
+ 2523b2a:	00 
+ 2523b2b:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 2523b31:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 2523b37:	66 0f 29 84 24 d0 00 	movapd %xmm0,0xd0(%rsp)
+ 2523b3e:	00 00 
+ 2523b40:	66 0f 29 8c 24 e0 00 	movapd %xmm1,0xe0(%rsp)
+ 2523b47:	00 00 
+ 2523b49:	48 83 44 24 50 c0    	addq   $0xffffffffffffffc0,0x50(%rsp)
+ 2523b4f:	49 c1 e5 05          	shl    $0x5,%r13
+ 2523b53:	4c 8d 7c 24 10       	lea    0x10(%rsp),%r15
+ 2523b58:	48 8d 9c 24 b0 00 00 	lea    0xb0(%rsp),%rbx
+ 2523b5f:	00 
+ 2523b60:	4c 8d b4 24 30 01 00 	lea    0x130(%rsp),%r14
+ 2523b67:	00 
+ 2523b68:	0f 1f 84 00 00 00 00 	nopl   0x0(%rax,%rax,1)
+ 2523b6f:	00 
+ 2523b70:	49 83 fd 20          	cmp    $0x20,%r13
+ 2523b74:	74 76                	je     2523bec <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x52c>
+ 2523b76:	4c 89 ff             	mov    %r15,%rdi
+ 2523b79:	48 89 de             	mov    %rbx,%rsi
+ 2523b7c:	4c 89 f2             	mov    %r14,%rdx
+ 2523b7f:	e8 ac a1 45 ff       	call   197dd30 <oneloop::native::primitives::inline_mul::<numerica::domains::float::multiprecision::Float>>
+ 2523b84:	48 8b 44 24 50       	mov    0x50(%rsp),%rax
+ 2523b89:	4e 8d 24 28          	lea    (%rax,%r13,1),%r12
+ 2523b8d:	48 89 df             	mov    %rbx,%rdi
+ 2523b90:	48 8d 2d 09 32 b9 fd 	lea    -0x246cdf7(%rip),%rbp        # b6da0 <mpfr_clear>
+ 2523b97:	ff d5                	call   *%rbp
+ 2523b99:	48 8d bc 24 d0 00 00 	lea    0xd0(%rsp),%rdi
+ 2523ba0:	00 
+ 2523ba1:	ff d5                	call   *%rbp
+ 2523ba3:	66 0f 10 44 24 10    	movupd 0x10(%rsp),%xmm0
+ 2523ba9:	66 0f 10 4c 24 20    	movupd 0x20(%rsp),%xmm1
+ 2523baf:	0f 10 54 24 30       	movups 0x30(%rsp),%xmm2
+ 2523bb4:	0f 10 5c 24 40       	movups 0x40(%rsp),%xmm3
+ 2523bb9:	0f 29 9c 24 e0 00 00 	movaps %xmm3,0xe0(%rsp)
+ 2523bc0:	00 
+ 2523bc1:	0f 29 94 24 d0 00 00 	movaps %xmm2,0xd0(%rsp)
+ 2523bc8:	00 
+ 2523bc9:	66 0f 29 8c 24 c0 00 	movapd %xmm1,0xc0(%rsp)
+ 2523bd0:	00 00 
+ 2523bd2:	66 0f 29 84 24 b0 00 	movapd %xmm0,0xb0(%rsp)
+ 2523bd9:	00 00 
+ 2523bdb:	49 83 c5 e0          	add    $0xffffffffffffffe0,%r13
+ 2523bdf:	48 89 df             	mov    %rbx,%rdi
+ 2523be2:	4c 89 e6             	mov    %r12,%rsi
+ 2523be5:	e8 c6 19 27 00       	call   27955b0 <<numerica::domains::float::multiprecision::Float as core::ops::arith::AddAssign<&numerica::domains::float::multiprecision::Float>>::add_assign>
+ 2523bea:	eb 84                	jmp    2523b70 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x4b0>
+ 2523bec:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523bf1:	48 8d 94 24 30 01 00 	lea    0x130(%rsp),%rdx
+ 2523bf8:	00 
+ 2523bf9:	48 8b 74 24 08       	mov    0x8(%rsp),%rsi
+ 2523bfe:	e8 2d a1 45 ff       	call   197dd30 <oneloop::native::primitives::inline_mul::<numerica::domains::float::multiprecision::Float>>
+ 2523c03:	48 8d 7c 24 60       	lea    0x60(%rsp),%rdi
+ 2523c08:	48 8d 74 24 10       	lea    0x10(%rsp),%rsi
+ 2523c0d:	48 8d 94 24 b0 00 00 	lea    0xb0(%rsp),%rdx
+ 2523c14:	00 
+ 2523c15:	4c 8d 3d 84 31 b9 fd 	lea    -0x246ce7c(%rip),%r15        # b6da0 <mpfr_clear>
+ 2523c1c:	e8 0f a1 45 ff       	call   197dd30 <oneloop::native::primitives::inline_mul::<numerica::domains::float::multiprecision::Float>>
+ 2523c21:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523c26:	41 ff d7             	call   *%r15
+ 2523c29:	48 8d 7c 24 30       	lea    0x30(%rsp),%rdi
+ 2523c2e:	41 ff d7             	call   *%r15
+ 2523c31:	48 8d bc 24 f0 00 00 	lea    0xf0(%rsp),%rdi
+ 2523c38:	00 
+ 2523c39:	48 8d 74 24 60       	lea    0x60(%rsp),%rsi
+ 2523c3e:	e8 6d 19 27 00       	call   27955b0 <<numerica::domains::float::multiprecision::Float as core::ops::arith::AddAssign<&numerica::domains::float::multiprecision::Float>>::add_assign>
+ 2523c43:	48 8d 9c 24 80 00 00 	lea    0x80(%rsp),%rbx
+ 2523c4a:	00 
+ 2523c4b:	48 8d bc 24 10 01 00 	lea    0x110(%rsp),%rdi
+ 2523c52:	00 
+ 2523c53:	48 89 de             	mov    %rbx,%rsi
+ 2523c56:	e8 55 19 27 00       	call   27955b0 <<numerica::domains::float::multiprecision::Float as core::ops::arith::AddAssign<&numerica::domains::float::multiprecision::Float>>::add_assign>
+ 2523c5b:	0f 28 84 24 f0 00 00 	movaps 0xf0(%rsp),%xmm0
+ 2523c62:	00 
+ 2523c63:	0f 28 8c 24 00 01 00 	movaps 0x100(%rsp),%xmm1
+ 2523c6a:	00 
+ 2523c6b:	0f 28 94 24 10 01 00 	movaps 0x110(%rsp),%xmm2
+ 2523c72:	00 
+ 2523c73:	0f 28 9c 24 20 01 00 	movaps 0x120(%rsp),%xmm3
+ 2523c7a:	00 
+ 2523c7b:	48 8b 84 24 a8 00 00 	mov    0xa8(%rsp),%rax
+ 2523c82:	00 
+ 2523c83:	0f 11 58 30          	movups %xmm3,0x30(%rax)
+ 2523c87:	0f 11 50 20          	movups %xmm2,0x20(%rax)
+ 2523c8b:	0f 11 48 10          	movups %xmm1,0x10(%rax)
+ 2523c8f:	0f 11 00             	movups %xmm0,(%rax)
+ 2523c92:	48 8d 7c 24 60       	lea    0x60(%rsp),%rdi
+ 2523c97:	41 ff d7             	call   *%r15
+ 2523c9a:	48 89 df             	mov    %rbx,%rdi
+ 2523c9d:	41 ff d7             	call   *%r15
+ 2523ca0:	48 8d bc 24 b0 00 00 	lea    0xb0(%rsp),%rdi
+ 2523ca7:	00 
+ 2523ca8:	41 ff d7             	call   *%r15
+ 2523cab:	48 8d bc 24 d0 00 00 	lea    0xd0(%rsp),%rdi
+ 2523cb2:	00 
+ 2523cb3:	41 ff d7             	call   *%r15
+ 2523cb6:	e9 fd 00 00 00       	jmp    2523db8 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x6f8>
+ 2523cbb:	f2 0f 10 0d 45 b9 2e 	movsd  0x12eb945(%rip),%xmm1        # 380f608 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x698>
+ 2523cc2:	01 
+ 2523cc3:	f2 0f 5e c8          	divsd  %xmm0,%xmm1
+ 2523cc7:	44 89 f8             	mov    %r15d,%eax
+ 2523cca:	0f 57 c0             	xorps  %xmm0,%xmm0
+ 2523ccd:	f2 48 0f 2a c0       	cvtsi2sd %rax,%xmm0
+ 2523cd2:	f2 0f 58 05 a6 b5 2e 	addsd  0x12eb5a6(%rip),%xmm0        # 380f280 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x310>
+ 2523cd9:	01 
+ 2523cda:	f2 0f 59 05 66 b7 2e 	mulsd  0x12eb766(%rip),%xmm0        # 380f448 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x4d8>
+ 2523ce1:	01 
+ 2523ce2:	f2 0f 11 44 24 58    	movsd  %xmm0,0x58(%rsp)
+ 2523ce8:	66 0f 28 c1          	movapd %xmm1,%xmm0
+ 2523cec:	ff 15 06 0b 8b 01    	call   *0x18b0b06(%rip)        # 3dd47f8 <log@GLIBC_2.29>
+ 2523cf2:	f2 0f 10 4c 24 58    	movsd  0x58(%rsp),%xmm1
+ 2523cf8:	f2 0f 5e c8          	divsd  %xmm0,%xmm1
+ 2523cfc:	66 0f 28 c1          	movapd %xmm1,%xmm0
+ 2523d00:	ff 15 42 33 8b 01    	call   *0x18b3342(%rip)        # 3dd7048 <_GLOBAL_OFFSET_TABLE_+0x4b20>
+ 2523d06:	f2 48 0f 2c c0       	cvttsd2si %xmm0,%rax
+ 2523d0b:	48 89 c1             	mov    %rax,%rcx
+ 2523d0e:	66 0f 28 c8          	movapd %xmm0,%xmm1
+ 2523d12:	f2 0f 5c 0d 3e b5 2e 	subsd  0x12eb53e(%rip),%xmm1        # 380f258 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x2e8>
+ 2523d19:	01 
+ 2523d1a:	f2 48 0f 2c d1       	cvttsd2si %xmm1,%rdx
+ 2523d1f:	48 c1 f9 3f          	sar    $0x3f,%rcx
+ 2523d23:	48 21 ca             	and    %rcx,%rdx
+ 2523d26:	48 09 c2             	or     %rax,%rdx
+ 2523d29:	31 c0                	xor    %eax,%eax
+ 2523d2b:	66 0f 57 c9          	xorpd  %xmm1,%xmm1
+ 2523d2f:	66 0f 2e c1          	ucomisd %xmm1,%xmm0
+ 2523d33:	48 0f 43 c2          	cmovae %rdx,%rax
+ 2523d37:	66 0f 2e 05 d1 b8 2e 	ucomisd 0x12eb8d1(%rip),%xmm0        # 380f610 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x6a0>
+ 2523d3e:	01 
+ 2523d3f:	49 c7 c5 ff ff ff ff 	mov    $0xffffffffffffffff,%r13
+ 2523d46:	4c 0f 46 e8          	cmovbe %rax,%r13
+ 2523d4a:	49 ff c5             	inc    %r13
+ 2523d4d:	4c 39 ed             	cmp    %r13,%rbp
+ 2523d50:	4c 0f 42 ed          	cmovb  %rbp,%r13
+ 2523d54:	48 8b b4 24 30 01 00 	mov    0x130(%rsp),%rsi
+ 2523d5b:	00 
+ 2523d5c:	48 89 f0             	mov    %rsi,%rax
+ 2523d5f:	48 c1 e8 20          	shr    $0x20,%rax
+ 2523d63:	0f 84 ec f9 ff ff    	je     2523755 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x95>
+ 2523d69:	48 8d 15 50 7c 88 01 	lea    0x1887c50(%rip),%rdx        # 3dab9c0 <__gmpfr_one+0x20060>
+ 2523d70:	be 11 00 00 00       	mov    $0x11,%esi
+ 2523d75:	48 8d 3d 54 b7 2e 01 	lea    0x12eb754(%rip),%rdi        # 380f4d0 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x560>
+ 2523d7c:	e9 e8 00 00 00       	jmp    2523e69 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x7a9>
+ 2523d81:	0f 28 84 24 f0 00 00 	movaps 0xf0(%rsp),%xmm0
+ 2523d88:	00 
+ 2523d89:	0f 28 8c 24 00 01 00 	movaps 0x100(%rsp),%xmm1
+ 2523d90:	00 
+ 2523d91:	0f 28 94 24 10 01 00 	movaps 0x110(%rsp),%xmm2
+ 2523d98:	00 
+ 2523d99:	0f 28 9c 24 20 01 00 	movaps 0x120(%rsp),%xmm3
+ 2523da0:	00 
+ 2523da1:	48 8b 84 24 a8 00 00 	mov    0xa8(%rsp),%rax
+ 2523da8:	00 
+ 2523da9:	0f 11 58 30          	movups %xmm3,0x30(%rax)
+ 2523dad:	0f 11 50 20          	movups %xmm2,0x20(%rax)
+ 2523db1:	0f 11 48 10          	movups %xmm1,0x10(%rax)
+ 2523db5:	0f 11 00             	movups %xmm0,(%rax)
+ 2523db8:	48 8d bc 24 70 01 00 	lea    0x170(%rsp),%rdi
+ 2523dbf:	00 
+ 2523dc0:	41 ff d7             	call   *%r15
+ 2523dc3:	48 8d bc 24 90 01 00 	lea    0x190(%rsp),%rdi
+ 2523dca:	00 
+ 2523dcb:	41 ff d7             	call   *%r15
+ 2523dce:	48 8d bc 24 30 01 00 	lea    0x130(%rsp),%rdi
+ 2523dd5:	00 
+ 2523dd6:	41 ff d7             	call   *%r15
+ 2523dd9:	48 8d bc 24 50 01 00 	lea    0x150(%rsp),%rdi
+ 2523de0:	00 
+ 2523de1:	41 ff d7             	call   *%r15
+ 2523de4:	48 81 c4 d8 01 00 00 	add    $0x1d8,%rsp
+ 2523deb:	5b                   	pop    %rbx
+ 2523dec:	41 5c                	pop    %r12
+ 2523dee:	41 5d                	pop    %r13
+ 2523df0:	41 5e                	pop    %r14
+ 2523df2:	41 5f                	pop    %r15
+ 2523df4:	5d                   	pop    %rbp
+ 2523df5:	c3                   	ret
+ 2523df6:	48 8d 15 c3 7b 88 01 	lea    0x1887bc3(%rip),%rdx        # 3dab9c0 <__gmpfr_one+0x20060>
+ 2523dfd:	be 11 00 00 00       	mov    $0x11,%esi
+ 2523e02:	48 8d 3d c7 b6 2e 01 	lea    0x12eb6c7(%rip),%rdi        # 380f4d0 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x560>
+ 2523e09:	e9 97 00 00 00       	jmp    2523ea5 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x7e5>
+ 2523e0e:	48 8d 15 ab 7b 88 01 	lea    0x1887bab(%rip),%rdx        # 3dab9c0 <__gmpfr_one+0x20060>
+ 2523e15:	be 11 00 00 00       	mov    $0x11,%esi
+ 2523e1a:	48 8d 3d af b6 2e 01 	lea    0x12eb6af(%rip),%rdi        # 380f4d0 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x560>
+ 2523e21:	e9 b5 00 00 00       	jmp    2523edb <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x81b>
+ 2523e26:	48 8d 15 93 7b 88 01 	lea    0x1887b93(%rip),%rdx        # 3dab9c0 <__gmpfr_one+0x20060>
+ 2523e2d:	be 11 00 00 00       	mov    $0x11,%esi
+ 2523e32:	48 8d 3d 97 b6 2e 01 	lea    0x12eb697(%rip),%rdi        # 380f4d0 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x560>
+ 2523e39:	e9 b8 00 00 00       	jmp    2523ef6 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x836>
+ 2523e3e:	48 8d 15 7b 7b 88 01 	lea    0x1887b7b(%rip),%rdx        # 3dab9c0 <__gmpfr_one+0x20060>
+ 2523e45:	be 11 00 00 00       	mov    $0x11,%esi
+ 2523e4a:	48 8d 3d 7f b6 2e 01 	lea    0x12eb67f(%rip),%rdi        # 380f4d0 <anon.ff43bc5bd5855f7de9d3673a2b58cf77.30.llvm.7152592439255538497+0x560>
+ 2523e51:	e9 bb 00 00 00       	jmp    2523f11 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x851>
+ 2523e56:	48 8d 15 93 6d 88 01 	lea    0x1886d93(%rip),%rdx        # 3daabf0 <__gmpfr_one+0x1f290>
+ 2523e5d:	be 2d 00 00 00       	mov    $0x2d,%esi
+ 2523e62:	48 8d 3d 2d 1e 34 01 	lea    0x1341e2d(%rip),%rdi        # 3865c96 <anon.123112458808ba5824067f10e3ced1e0.10.llvm.7337483002658276480+0x11678>
+ 2523e69:	ff 15 f9 29 8b 01    	call   *0x18b29f9(%rip)        # 3dd6868 <_GLOBAL_OFFSET_TABLE_+0x4340>
+ 2523e6f:	e9 b8 00 00 00       	jmp    2523f2c <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x86c>
+ 2523e74:	48 8d 3d 1b 1e 34 01 	lea    0x1341e1b(%rip),%rdi        # 3865c96 <anon.123112458808ba5824067f10e3ced1e0.10.llvm.7337483002658276480+0x11678>
+ 2523e7b:	48 8d 15 6e 6d 88 01 	lea    0x1886d6e(%rip),%rdx        # 3daabf0 <__gmpfr_one+0x1f290>
+ 2523e82:	be 2d 00 00 00       	mov    $0x2d,%esi
+ 2523e87:	ff 15 db 29 8b 01    	call   *0x18b29db(%rip)        # 3dd6868 <_GLOBAL_OFFSET_TABLE_+0x4340>
+ 2523e8d:	e9 9a 00 00 00       	jmp    2523f2c <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x86c>
+ 2523e92:	48 8d 15 57 6d 88 01 	lea    0x1886d57(%rip),%rdx        # 3daabf0 <__gmpfr_one+0x1f290>
+ 2523e99:	be 2d 00 00 00       	mov    $0x2d,%esi
+ 2523e9e:	48 8d 3d f1 1d 34 01 	lea    0x1341df1(%rip),%rdi        # 3865c96 <anon.123112458808ba5824067f10e3ced1e0.10.llvm.7337483002658276480+0x11678>
+ 2523ea5:	ff 15 bd 29 8b 01    	call   *0x18b29bd(%rip)        # 3dd6868 <_GLOBAL_OFFSET_TABLE_+0x4340>
+ 2523eab:	eb 7f                	jmp    2523f2c <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x86c>
+ 2523ead:	48 8d 3d e2 1d 34 01 	lea    0x1341de2(%rip),%rdi        # 3865c96 <anon.123112458808ba5824067f10e3ced1e0.10.llvm.7337483002658276480+0x11678>
+ 2523eb4:	48 8d 15 35 6d 88 01 	lea    0x1886d35(%rip),%rdx        # 3daabf0 <__gmpfr_one+0x1f290>
+ 2523ebb:	be 2d 00 00 00       	mov    $0x2d,%esi
+ 2523ec0:	ff 15 a2 29 8b 01    	call   *0x18b29a2(%rip)        # 3dd6868 <_GLOBAL_OFFSET_TABLE_+0x4340>
+ 2523ec6:	eb 64                	jmp    2523f2c <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x86c>
+ 2523ec8:	48 8d 15 21 6d 88 01 	lea    0x1886d21(%rip),%rdx        # 3daabf0 <__gmpfr_one+0x1f290>
+ 2523ecf:	be 2d 00 00 00       	mov    $0x2d,%esi
+ 2523ed4:	48 8d 3d bb 1d 34 01 	lea    0x1341dbb(%rip),%rdi        # 3865c96 <anon.123112458808ba5824067f10e3ced1e0.10.llvm.7337483002658276480+0x11678>
+ 2523edb:	ff 15 87 29 8b 01    	call   *0x18b2987(%rip)        # 3dd6868 <_GLOBAL_OFFSET_TABLE_+0x4340>
+ 2523ee1:	eb 49                	jmp    2523f2c <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x86c>
+ 2523ee3:	48 8d 15 06 6d 88 01 	lea    0x1886d06(%rip),%rdx        # 3daabf0 <__gmpfr_one+0x1f290>
+ 2523eea:	be 2d 00 00 00       	mov    $0x2d,%esi
+ 2523eef:	48 8d 3d a0 1d 34 01 	lea    0x1341da0(%rip),%rdi        # 3865c96 <anon.123112458808ba5824067f10e3ced1e0.10.llvm.7337483002658276480+0x11678>
+ 2523ef6:	ff 15 6c 29 8b 01    	call   *0x18b296c(%rip)        # 3dd6868 <_GLOBAL_OFFSET_TABLE_+0x4340>
+ 2523efc:	eb 2e                	jmp    2523f2c <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x86c>
+ 2523efe:	48 8d 15 eb 6c 88 01 	lea    0x1886ceb(%rip),%rdx        # 3daabf0 <__gmpfr_one+0x1f290>
+ 2523f05:	be 2d 00 00 00       	mov    $0x2d,%esi
+ 2523f0a:	48 8d 3d 85 1d 34 01 	lea    0x1341d85(%rip),%rdi        # 3865c96 <anon.123112458808ba5824067f10e3ced1e0.10.llvm.7337483002658276480+0x11678>
+ 2523f11:	ff 15 51 29 8b 01    	call   *0x18b2951(%rip)        # 3dd6868 <_GLOBAL_OFFSET_TABLE_+0x4340>
+ 2523f17:	eb 13                	jmp    2523f2c <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x86c>
+ 2523f19:	48 8d 15 28 36 88 01 	lea    0x1883628(%rip),%rdx        # 3da7548 <__gmpfr_one+0x1bbe8>
+ 2523f20:	48 89 df             	mov    %rbx,%rdi
+ 2523f23:	48 89 ee             	mov    %rbp,%rsi
+ 2523f26:	ff 15 f4 28 8b 01    	call   *0x18b28f4(%rip)        # 3dd6820 <_GLOBAL_OFFSET_TABLE_+0x42f8>
+ 2523f2c:	0f 0b                	ud2
+ 2523f2e:	48 89 c3             	mov    %rax,%rbx
+ 2523f31:	48 8d 7c 24 10       	lea    0x10(%rsp),%rdi
+ 2523f36:	41 ff d7             	call   *%r15
+ 2523f39:	48 8d 7c 24 30       	lea    0x30(%rsp),%rdi
+ 2523f3e:	41 ff d7             	call   *%r15
+ 2523f41:	eb 5e                	jmp    2523fa1 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x8e1>
+ 2523f43:	eb 59                	jmp    2523f9e <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x8de>
+ 2523f45:	48 89 c3             	mov    %rax,%rbx
+ 2523f48:	4c 8d 35 51 2e b9 fd 	lea    -0x246d1af(%rip),%r14        # b6da0 <mpfr_clear>
+ 2523f4f:	48 8d bc 24 b8 01 00 	lea    0x1b8(%rsp),%rdi
+ 2523f56:	00 
+ 2523f57:	41 ff d6             	call   *%r14
+ 2523f5a:	48 8d 7c 24 60       	lea    0x60(%rsp),%rdi
+ 2523f5f:	41 ff d6             	call   *%r14
+ 2523f62:	e9 d6 00 00 00       	jmp    252403d <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x97d>
+ 2523f67:	48 89 c3             	mov    %rax,%rbx
+ 2523f6a:	e9 ce 00 00 00       	jmp    252403d <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x97d>
+ 2523f6f:	48 89 c3             	mov    %rax,%rbx
+ 2523f72:	48 8d 7c 24 60       	lea    0x60(%rsp),%rdi
+ 2523f77:	41 ff d7             	call   *%r15
+ 2523f7a:	48 8d bc 24 80 00 00 	lea    0x80(%rsp),%rdi
+ 2523f81:	00 
+ 2523f82:	41 ff d7             	call   *%r15
+ 2523f85:	eb 1a                	jmp    2523fa1 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x8e1>
+ 2523f87:	48 89 c3             	mov    %rax,%rbx
+ 2523f8a:	48 8d 7c 24 60       	lea    0x60(%rsp),%rdi
+ 2523f8f:	ff 15 db 23 8b 01    	call   *0x18b23db(%rip)        # 3dd6370 <_GLOBAL_OFFSET_TABLE_+0x3e48>
+ 2523f95:	4c 8d 3d 04 2e b9 fd 	lea    -0x246d1fc(%rip),%r15        # b6da0 <mpfr_clear>
+ 2523f9c:	eb 48                	jmp    2523fe6 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x926>
+ 2523f9e:	48 89 c3             	mov    %rax,%rbx
+ 2523fa1:	48 8d bc 24 b0 00 00 	lea    0xb0(%rsp),%rdi
+ 2523fa8:	00 
+ 2523fa9:	4c 8d 3d f0 2d b9 fd 	lea    -0x246d210(%rip),%r15        # b6da0 <mpfr_clear>
+ 2523fb0:	41 ff d7             	call   *%r15
+ 2523fb3:	48 8d bc 24 d0 00 00 	lea    0xd0(%rsp),%rdi
+ 2523fba:	00 
+ 2523fbb:	41 ff d7             	call   *%r15
+ 2523fbe:	eb 26                	jmp    2523fe6 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x926>
+ 2523fc0:	48 89 c3             	mov    %rax,%rbx
+ 2523fc3:	48 8d bc 24 b0 00 00 	lea    0xb0(%rsp),%rdi
+ 2523fca:	00 
+ 2523fcb:	ff 15 9f 23 8b 01    	call   *0x18b239f(%rip)        # 3dd6370 <_GLOBAL_OFFSET_TABLE_+0x3e48>
+ 2523fd1:	eb 5c                	jmp    252402f <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x96f>
+ 2523fd3:	48 89 c3             	mov    %rax,%rbx
+ 2523fd6:	48 8d 7c 24 60       	lea    0x60(%rsp),%rdi
+ 2523fdb:	ff 15 8f 23 8b 01    	call   *0x18b238f(%rip)        # 3dd6370 <_GLOBAL_OFFSET_TABLE_+0x3e48>
+ 2523fe1:	eb 6d                	jmp    2524050 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x990>
+ 2523fe3:	48 89 c3             	mov    %rax,%rbx
+ 2523fe6:	48 8d bc 24 f0 00 00 	lea    0xf0(%rsp),%rdi
+ 2523fed:	00 
+ 2523fee:	41 ff d7             	call   *%r15
+ 2523ff1:	48 8d bc 24 10 01 00 	lea    0x110(%rsp),%rdi
+ 2523ff8:	00 
+ 2523ff9:	41 ff d7             	call   *%r15
+ 2523ffc:	eb 16                	jmp    2524014 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x954>
+ 2523ffe:	48 89 c3             	mov    %rax,%rbx
+ 2524001:	48 8d bc 24 b0 00 00 	lea    0xb0(%rsp),%rdi
+ 2524008:	00 
+ 2524009:	ff 15 61 23 8b 01    	call   *0x18b2361(%rip)        # 3dd6370 <_GLOBAL_OFFSET_TABLE_+0x3e48>
+ 252400f:	eb 03                	jmp    2524014 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x954>
+ 2524011:	48 89 c3             	mov    %rax,%rbx
+ 2524014:	48 8d bc 24 70 01 00 	lea    0x170(%rsp),%rdi
+ 252401b:	00 
+ 252401c:	41 ff d7             	call   *%r15
+ 252401f:	48 8d bc 24 90 01 00 	lea    0x190(%rsp),%rdi
+ 2524026:	00 
+ 2524027:	41 ff d7             	call   *%r15
+ 252402a:	eb 24                	jmp    2524050 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x990>
+ 252402c:	48 89 c3             	mov    %rax,%rbx
+ 252402f:	48 8d bc 24 b8 01 00 	lea    0x1b8(%rsp),%rdi
+ 2524036:	00 
+ 2524037:	ff 15 33 23 8b 01    	call   *0x18b2333(%rip)        # 3dd6370 <_GLOBAL_OFFSET_TABLE_+0x3e48>
+ 252403d:	48 8d bc 24 f0 00 00 	lea    0xf0(%rsp),%rdi
+ 2524044:	00 
+ 2524045:	ff 15 25 23 8b 01    	call   *0x18b2325(%rip)        # 3dd6370 <_GLOBAL_OFFSET_TABLE_+0x3e48>
+ 252404b:	eb 03                	jmp    2524050 <oneloop::native::dilog::series::<numerica::domains::float::multiprecision::Float>+0x990>
+ 252404d:	48 89 c3             	mov    %rax,%rbx
+ 2524050:	4c 8d 35 49 2d b9 fd 	lea    -0x246d2b7(%rip),%r14        # b6da0 <mpfr_clear>
+ 2524057:	48 8d bc 24 30 01 00 	lea    0x130(%rsp),%rdi
+ 252405e:	00 
+ 252405f:	41 ff d6             	call   *%r14
+ 2524062:	48 8d bc 24 50 01 00 	lea    0x150(%rsp),%rdi
+ 2524069:	00 
+ 252406a:	41 ff d6             	call   *%r14
+ 252406d:	48 89 df             	mov    %rbx,%rdi
+ 2524070:	e8 2b e0 b3 fd       	call   620a0 <_Unwind_Resume@plt>

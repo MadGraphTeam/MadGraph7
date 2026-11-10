@@ -1,0 +1,56 @@
+{
+  "schema": "guarded-adaptive-physical-additive-source-audit-v2",
+  "review_scope": "Static source and existing frozen journal research only",
+  "blocking_protocol_or_qualification_defect_found": false,
+  "target_build_proposal": "cayley-guarded-adaptive-build-proposal-3",
+  "target_build_source_index_sha256": "39d6ba2bd3c7aef5c8f5008360661c988a93d86ab1265cb3bc815707233b9e72",
+  "target_build_outcome_reported_by_root": "Separately admitted build with1800-second allowance; no successful receipt or DSO assumed by this source freeze",
+  "artifact_binding_created": false,
+  "guarded_library_hash_assumed": false,
+  "physical_attempt_created": false,
+  "retargeted_to_later_build": true,
+  "source_preservation": {
+    "source_deltas_retained": [
+      "controller.py.delta.patch",
+      "assessment.py.delta.patch",
+      "prepared.json.delta.patch",
+      "test_assessment.py.delta.patch",
+      "dependency-bindings.json.delta.patch"
+    ],
+    "numerical_qualifiers_and_closed_comparators_unchanged": true,
+    "driver_witness_and_all16_fixture_files_byte_identical": true,
+    "old_executable_reused_without_compilation_or_relink": true,
+    "numerical_objects_unchanged": 25,
+    "runtime_schedule_and_limits_unchanged": true,
+    "parent_dependencies_preserved": 155,
+    "dependency_bindings": 184
+  },
+  "reviewed_gates": [
+    "Actual future build receipt must be successful, reaped, within its1800-second build cap, sourced from proposal3 and match the actual DSO bytes",
+    "Build receipt explicitly requires root admission, CPU11 without reservation, one job, zero automatic retries,8GiB build and4GiB cache-copy limits",
+    "Existing checked executable and every dependency are rehashed without executing a loader or native artifact",
+    "Four guarded-only physical workers plus three deliberate fault controls; existing comparators are not rerun",
+    "Actual15-library mapping closure and child reaping are required for all seven workers",
+    "Common nonblocking numerical lock, CPU12 without reservation,4GiB address space,120-second physical and10-second fault/loader caps",
+    "One600-second aggregate deadline includes preflight, copying, workers, offline parsing and successful final closure",
+    "Checked gate requires the unchanged independent MadLoop qualifier and actual QP coverage in both exception policies",
+    "Fixed gate separately requires120/-1 sentinels, one200-group mode4 traversal per point, genuine-QP snapshots, all native calls served/stable, finite results and zero W03",
+    "Masked/trapped physical inputs and outputs must match; hardware flags and inherited software latches remain separate observations",
+    "Frozen adaptive checked/fixed outputs and all previously served original checked outputs must remain exact",
+    "Deadline, transport or final protected-input closure failure clears both qualification gates",
+    "The new build target and budget do not change the separate600-second physical replay cap"
+  ],
+  "remaining_unqualified": [
+    "A guarded shared library for this proposal",
+    "Any executed guarded physical or trap outcome",
+    "Independent physical truth",
+    "Explicit rotation identity",
+    "Per-call working precision",
+    "Runtime performance",
+    "Production installation or promotion"
+  ],
+  "compiler_linker_loader_native_or_numerical_lock_executed_for_this_freeze": false,
+  "later_build_requires_separate_additive_proposal_and_root_review": true,
+  "parent_source_index_sha256": "83ee98dd13b1baf79a5651e4673374994c856b6022bef53c6ce9523d930a5233",
+  "historical_proposal_modified": false
+}

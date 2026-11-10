@@ -1,0 +1,78 @@
+{
+  "build_receipt_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/execution.json",
+  "build_receipt_sha256": "59167eec84a767f0712b6905285a99564458ff0667427de87ce1921534b46632",
+  "library": {
+    "bytes": 69162336,
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/runtime/libmadloop_tirust_adaptive_private.so",
+    "sha256": "69722452c234f494f0aa436fa24bbabfeae59100c03b05a1f0b76336cc17886b"
+  },
+  "literal_ELF_metadata": {
+    "bytes": 69162336,
+    "metadata": {
+      "elf_class": 64,
+      "elf_type": "ET_DYN",
+      "endianness": "little",
+      "exported_ml_tirust_symbols": [
+        "ml_tirust_abi_version",
+        "ml_tirust_cache_statistics",
+        "ml_tirust_clear_cache",
+        "ml_tirust_context_create",
+        "ml_tirust_context_destroy",
+        "ml_tirust_evaluate_dp",
+        "ml_tirust_evaluate_mp",
+        "ml_tirust_last_error",
+        "ml_tirust_qp_cache_statistics",
+        "ml_tirust_qp_precision_statistics",
+        "ml_tirust_register_plan",
+        "ml_tirust_set_cache_budget",
+        "ml_tirust_supports"
+      ],
+      "machine": "x86_64",
+      "needed": [
+        "libgcc_s.so.1",
+        "libm.so.6",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath": null,
+      "runpath": "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib:/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+      "soname": null,
+      "version_requirements": {
+        "ld-linux-x86-64.so.2": [
+          "GLIBC_2.3"
+        ],
+        "libc.so.6": [
+          "GLIBC_2.14",
+          "GLIBC_2.16",
+          "GLIBC_2.17",
+          "GLIBC_2.18",
+          "GLIBC_2.2.5",
+          "GLIBC_2.25",
+          "GLIBC_2.28",
+          "GLIBC_2.3",
+          "GLIBC_2.3.4",
+          "GLIBC_2.30",
+          "GLIBC_2.32",
+          "GLIBC_2.33",
+          "GLIBC_2.34",
+          "GLIBC_2.38"
+        ],
+        "libgcc_s.so.1": [
+          "GCC_3.0",
+          "GCC_3.3",
+          "GCC_4.2.0"
+        ],
+        "libm.so.6": [
+          "GLIBC_2.2.5",
+          "GLIBC_2.29",
+          "GLIBC_2.35"
+        ]
+      }
+    },
+    "sha256": "69722452c234f494f0aa436fa24bbabfeae59100c03b05a1f0b76336cc17886b"
+  },
+  "loader_or_native_executed": false,
+  "read_hash_ELF_decode_only": true,
+  "schema": "guarded-physical-artifact-binding-v1",
+  "source_index_sha256": "7d9a40657b9df702fe1bdd1b3f302363813b1ba4a9514a2bcc88467f371dcd1c"
+}

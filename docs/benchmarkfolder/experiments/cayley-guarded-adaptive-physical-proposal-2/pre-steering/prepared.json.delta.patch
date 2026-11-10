@@ -1,0 +1,13 @@
+--- physical-proposal-1/prepared.json
++++ physical-proposal-2/prepared.json
+@@ -3,8 +3,8 @@
+   "scope": "Old private genuine-MP-mass executable with new private zero-guarded adaptive bridge; separate from invariant-symmetry-1 and production.",
+   "source_only_prepared": true,
+   "compiler_linker_loader_or_native_launched": false,
+-  "expected_build_source_index_sha256": "85e950b7d431988beb2481eeb2ad88ff4c0db3494121fcc986f9821ae3e9fd21",
+-  "eventual_build_receipt": ".tirust-build/cayley-guarded-adaptive-build-proposal-2/attempt1/execution.json",
++  "expected_build_source_index_sha256": "39d6ba2bd3c7aef5c8f5008360661c988a93d86ab1265cb3bc815707233b9e72",
++  "eventual_build_receipt": ".tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/execution.json",
+   "candidate_library_hash": "derived only from the successful actual receipt by read/hash/ELF-only bind; no presumed hash",
+   "existing_checked_executable": ".tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked",
+   "existing_checked_executable_sha256": "0181fba617011c58b36cc8d59bbc92d807f670f19f3d74ea64dc8539b11c8e28",

@@ -1,0 +1,631 @@
+
+/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/runtime/libmadloop_tirust_adaptive_private.so:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+00000000012031f0 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>>:
+ 12031f0:	41 57                	push   %r15
+ 12031f2:	41 56                	push   %r14
+ 12031f4:	41 55                	push   %r13
+ 12031f6:	41 54                	push   %r12
+ 12031f8:	53                   	push   %rbx
+ 12031f9:	48 83 ec 20          	sub    $0x20,%rsp
+ 12031fd:	48 85 d2             	test   %rdx,%rdx
+ 1203200:	0f 84 96 00 00 00    	je     120329c <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0xac>
+ 1203206:	66 0f 10 5f 40       	movupd 0x40(%rdi),%xmm3
+ 120320b:	48 83 fa 02          	cmp    $0x2,%rdx
+ 120320f:	0f 85 90 00 00 00    	jne    12032a5 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0xb5>
+ 1203215:	66 0f 28 f3          	movapd %xmm3,%xmm6
+ 1203219:	66 0f c6 f3 01       	shufpd $0x1,%xmm3,%xmm6
+ 120321e:	66 0f 10 27          	movupd (%rdi),%xmm4
+ 1203222:	66 0f 10 6f 08       	movupd 0x8(%rdi),%xmm5
+ 1203227:	66 0f 10 57 10       	movupd 0x10(%rdi),%xmm2
+ 120322c:	66 0f 14 e4          	unpcklpd %xmm4,%xmm4
+ 1203230:	66 0f 59 e6          	mulpd  %xmm6,%xmm4
+ 1203234:	66 0f 14 ed          	unpcklpd %xmm5,%xmm5
+ 1203238:	66 0f 59 eb          	mulpd  %xmm3,%xmm5
+ 120323c:	66 0f 28 dc          	movapd %xmm4,%xmm3
+ 1203240:	66 0f 5c dd          	subpd  %xmm5,%xmm3
+ 1203244:	66 0f 58 ec          	addpd  %xmm4,%xmm5
+ 1203248:	66 0f c6 eb 02       	shufpd $0x2,%xmm3,%xmm5
+ 120324d:	66 0f 57 f6          	xorpd  %xmm6,%xmm6
+ 1203251:	66 0f 58 f5          	addpd  %xmm5,%xmm6
+ 1203255:	66 0f 28 da          	movapd %xmm2,%xmm3
+ 1203259:	66 0f 15 da          	unpckhpd %xmm2,%xmm3
+ 120325d:	66 0f 57 e4          	xorpd  %xmm4,%xmm4
+ 1203261:	66 0f 57 ed          	xorpd  %xmm5,%xmm5
+ 1203265:	f2 0f 5c eb          	subsd  %xmm3,%xmm5
+ 1203269:	f2 0f 5c e2          	subsd  %xmm2,%xmm4
+ 120326d:	66 0f 14 ed          	unpcklpd %xmm5,%xmm5
+ 1203271:	66 0f 59 ea          	mulpd  %xmm2,%xmm5
+ 1203275:	66 0f 14 e4          	unpcklpd %xmm4,%xmm4
+ 1203279:	66 0f c6 d2 01       	shufpd $0x1,%xmm2,%xmm2
+ 120327e:	66 0f 59 d4          	mulpd  %xmm4,%xmm2
+ 1203282:	66 0f 28 da          	movapd %xmm2,%xmm3
+ 1203286:	66 0f 5c dd          	subpd  %xmm5,%xmm3
+ 120328a:	66 0f 58 d5          	addpd  %xmm5,%xmm2
+ 120328e:	66 0f c6 d3 02       	shufpd $0x2,%xmm3,%xmm2
+ 1203293:	66 0f 58 d6          	addpd  %xmm6,%xmm2
+ 1203297:	e9 22 03 00 00       	jmp    12035be <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x3ce>
+ 120329c:	66 0f 57 d2          	xorpd  %xmm2,%xmm2
+ 12032a0:	e9 19 03 00 00       	jmp    12035be <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x3ce>
+ 12032a5:	48 8d 42 fc          	lea    -0x4(%rdx),%rax
+ 12032a9:	48 83 f8 fd          	cmp    $0xfffffffffffffffd,%rax
+ 12032ad:	0f 82 3d 0a 00 00    	jb     1203cf0 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0xb00>
+ 12032b3:	66 44 0f 10 97 80 00 	movupd 0x80(%rdi),%xmm10
+ 12032ba:	00 00 
+ 12032bc:	f2 44 0f 10 a7 88 00 	movsd  0x88(%rdi),%xmm12
+ 12032c3:	00 00 
+ 12032c5:	66 44 0f 10 07       	movupd (%rdi),%xmm8
+ 12032ca:	66 0f 10 67 50       	movupd 0x50(%rdi),%xmm4
+ 12032cf:	f2 0f 10 7f 58       	movsd  0x58(%rdi),%xmm7
+ 12032d4:	66 0f 10 6f 70       	movupd 0x70(%rdi),%xmm5
+ 12032d9:	66 0f 28 d3          	movapd %xmm3,%xmm2
+ 12032dd:	66 0f 14 d4          	unpcklpd %xmm4,%xmm2
+ 12032e1:	66 45 0f 28 da       	movapd %xmm10,%xmm11
+ 12032e6:	66 44 0f 14 dd       	unpcklpd %xmm5,%xmm11
+ 12032eb:	66 44 0f 59 da       	mulpd  %xmm2,%xmm11
+ 12032f0:	66 0f 28 d3          	movapd %xmm3,%xmm2
+ 12032f4:	66 0f 15 d5          	unpckhpd %xmm5,%xmm2
+ 12032f8:	66 41 0f 28 f4       	movapd %xmm12,%xmm6
+ 12032fd:	66 0f 14 f7          	unpcklpd %xmm7,%xmm6
+ 1203301:	66 45 0f 28 ca       	movapd %xmm10,%xmm9
+ 1203306:	66 44 0f 14 cc       	unpcklpd %xmm4,%xmm9
+ 120330b:	66 44 0f 59 ca       	mulpd  %xmm2,%xmm9
+ 1203310:	66 0f 59 d6          	mulpd  %xmm6,%xmm2
+ 1203314:	66 44 0f 5c da       	subpd  %xmm2,%xmm11
+ 1203319:	66 0f 28 d3          	movapd %xmm3,%xmm2
+ 120331d:	66 0f 14 d5          	unpcklpd %xmm5,%xmm2
+ 1203321:	66 0f 59 d6          	mulpd  %xmm6,%xmm2
+ 1203325:	66 41 0f 58 d1       	addpd  %xmm9,%xmm2
+ 120332a:	66 0f 28 f2          	movapd %xmm2,%xmm6
+ 120332e:	66 0f 14 f2          	unpcklpd %xmm2,%xmm6
+ 1203332:	66 0f 15 d2          	unpckhpd %xmm2,%xmm2
+ 1203336:	66 0f 5c f2          	subpd  %xmm2,%xmm6
+ 120333a:	66 41 0f 59 f0       	mulpd  %xmm8,%xmm6
+ 120333f:	66 41 0f 28 d3       	movapd %xmm11,%xmm2
+ 1203344:	66 41 0f 14 d3       	unpcklpd %xmm11,%xmm2
+ 1203349:	66 45 0f 15 db       	unpckhpd %xmm11,%xmm11
+ 120334e:	66 41 0f 5c d3       	subpd  %xmm11,%xmm2
+ 1203353:	66 45 0f c6 c0 01    	shufpd $0x1,%xmm8,%xmm8
+ 1203359:	66 44 0f 59 c2       	mulpd  %xmm2,%xmm8
+ 120335e:	66 41 0f 28 d0       	movapd %xmm8,%xmm2
+ 1203363:	66 0f 5c d6          	subpd  %xmm6,%xmm2
+ 1203367:	66 44 0f 58 c6       	addpd  %xmm6,%xmm8
+ 120336c:	66 44 0f c6 c2 02    	shufpd $0x2,%xmm2,%xmm8
+ 1203372:	66 0f 57 d2          	xorpd  %xmm2,%xmm2
+ 1203376:	66 41 0f 58 d0       	addpd  %xmm8,%xmm2
+ 120337b:	48 83 fa 01          	cmp    $0x1,%rdx
+ 120337f:	0f 84 39 02 00 00    	je     12035be <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x3ce>
+ 1203385:	0f 29 04 24          	movaps %xmm0,(%rsp)
+ 1203389:	66 44 0f 10 4f 30    	movupd 0x30(%rdi),%xmm9
+ 120338f:	66 44 0f 10 7f 60    	movupd 0x60(%rdi),%xmm15
+ 1203395:	66 45 0f 28 c1       	movapd %xmm9,%xmm8
+ 120339a:	66 44 0f 59 c5       	mulpd  %xmm5,%xmm8
+ 120339f:	66 41 0f 28 c1       	movapd %xmm9,%xmm0
+ 12033a4:	f2 41 0f 10 c7       	movsd  %xmm15,%xmm0
+ 12033a9:	66 0f 28 f4          	movapd %xmm4,%xmm6
+ 12033ad:	66 41 0f c6 f2 01    	shufpd $0x1,%xmm10,%xmm6
+ 12033b3:	66 0f 59 f0          	mulpd  %xmm0,%xmm6
+ 12033b7:	66 44 0f 29 64 24 10 	movapd %xmm12,0x10(%rsp)
+ 12033be:	66 45 0f 28 e7       	movapd %xmm15,%xmm12
+ 12033c3:	66 45 0f 28 ef       	movapd %xmm15,%xmm13
+ 12033c8:	66 44 0f 28 db       	movapd %xmm3,%xmm11
+ 12033cd:	66 45 0f 59 df       	mulpd  %xmm15,%xmm11
+ 12033d2:	66 44 0f 28 f5       	movapd %xmm5,%xmm14
+ 12033d7:	66 45 0f 15 f7       	unpckhpd %xmm15,%xmm14
+ 12033dc:	66 41 0f 14 ef       	unpcklpd %xmm15,%xmm5
+ 12033e1:	66 45 0f 14 fa       	unpcklpd %xmm10,%xmm15
+ 12033e6:	f2 44 0f 10 d4       	movsd  %xmm4,%xmm10
+ 12033eb:	66 45 0f c6 e1 01    	shufpd $0x1,%xmm9,%xmm12
+ 12033f1:	66 45 0f 59 e2       	mulpd  %xmm10,%xmm12
+ 12033f6:	66 0f 10 47 10       	movupd 0x10(%rdi),%xmm0
+ 12033fb:	66 44 0f 58 e6       	addpd  %xmm6,%xmm12
+ 1203400:	66 44 0f 28 d2       	movapd %xmm2,%xmm10
+ 1203405:	66 0f 10 57 20       	movupd 0x20(%rdi),%xmm2
+ 120340a:	66 41 0f 14 e1       	unpcklpd %xmm9,%xmm4
+ 120340f:	66 41 0f 59 e7       	mulpd  %xmm15,%xmm4
+ 1203414:	66 0f 14 7c 24 10    	unpcklpd 0x10(%rsp),%xmm7
+ 120341a:	66 45 0f 15 e9       	unpckhpd %xmm9,%xmm13
+ 120341f:	66 44 0f 59 ef       	mulpd  %xmm7,%xmm13
+ 1203424:	66 41 0f 5c e5       	subpd  %xmm13,%xmm4
+ 1203429:	66 41 0f 28 f1       	movapd %xmm9,%xmm6
+ 120342e:	66 0f 14 f3          	unpcklpd %xmm3,%xmm6
+ 1203432:	66 44 0f 59 f6       	mulpd  %xmm6,%xmm14
+ 1203437:	66 44 0f 15 cb       	unpckhpd %xmm3,%xmm9
+ 120343c:	66 44 0f 59 cd       	mulpd  %xmm5,%xmm9
+ 1203441:	66 45 0f 58 ce       	addpd  %xmm14,%xmm9
+ 1203446:	66 0f 28 dc          	movapd %xmm4,%xmm3
+ 120344a:	66 0f 14 dc          	unpcklpd %xmm4,%xmm3
+ 120344e:	66 0f 15 e4          	unpckhpd %xmm4,%xmm4
+ 1203452:	66 0f 5c dc          	subpd  %xmm4,%xmm3
+ 1203456:	66 41 0f 28 e4       	movapd %xmm12,%xmm4
+ 120345b:	66 41 0f 14 e4       	unpcklpd %xmm12,%xmm4
+ 1203460:	66 45 0f 15 e4       	unpckhpd %xmm12,%xmm12
+ 1203465:	66 41 0f 5c e4       	subpd  %xmm12,%xmm4
+ 120346a:	66 0f 59 e0          	mulpd  %xmm0,%xmm4
+ 120346e:	66 0f c6 c0 01       	shufpd $0x1,%xmm0,%xmm0
+ 1203473:	66 0f 59 c3          	mulpd  %xmm3,%xmm0
+ 1203477:	66 0f 28 d8          	movapd %xmm0,%xmm3
+ 120347b:	66 0f 5c dc          	subpd  %xmm4,%xmm3
+ 120347f:	66 0f 58 e0          	addpd  %xmm0,%xmm4
+ 1203483:	66 0f c6 e3 02       	shufpd $0x2,%xmm3,%xmm4
+ 1203488:	66 44 0f 58 d4       	addpd  %xmm4,%xmm10
+ 120348d:	66 41 0f 28 c1       	movapd %xmm9,%xmm0
+ 1203492:	66 41 0f 14 c1       	unpcklpd %xmm9,%xmm0
+ 1203497:	66 45 0f 15 c9       	unpckhpd %xmm9,%xmm9
+ 120349c:	66 41 0f 5c c1       	subpd  %xmm9,%xmm0
+ 12034a1:	66 0f 59 c2          	mulpd  %xmm2,%xmm0
+ 12034a5:	66 41 0f 28 db       	movapd %xmm11,%xmm3
+ 12034aa:	66 41 0f 15 db       	unpckhpd %xmm11,%xmm3
+ 12034af:	f2 44 0f 5c db       	subsd  %xmm3,%xmm11
+ 12034b4:	66 41 0f 28 d8       	movapd %xmm8,%xmm3
+ 12034b9:	66 41 0f 15 d8       	unpckhpd %xmm8,%xmm3
+ 12034be:	f2 44 0f 5c c3       	subsd  %xmm3,%xmm8
+ 12034c3:	f2 45 0f 5c c3       	subsd  %xmm11,%xmm8
+ 12034c8:	66 45 0f 14 c0       	unpcklpd %xmm8,%xmm8
+ 12034cd:	66 0f c6 d2 01       	shufpd $0x1,%xmm2,%xmm2
+ 12034d2:	66 41 0f 59 d0       	mulpd  %xmm8,%xmm2
+ 12034d7:	66 0f 28 da          	movapd %xmm2,%xmm3
+ 12034db:	66 0f 5c d8          	subpd  %xmm0,%xmm3
+ 12034df:	66 0f 58 d0          	addpd  %xmm0,%xmm2
+ 12034e3:	66 0f c6 d3 02       	shufpd $0x2,%xmm3,%xmm2
+ 12034e8:	66 41 0f 58 d2       	addpd  %xmm10,%xmm2
+ 12034ed:	48 83 fa 03          	cmp    $0x3,%rdx
+ 12034f1:	75 0a                	jne    12034fd <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x30d>
+ 12034f3:	66 0f 28 04 24       	movapd (%rsp),%xmm0
+ 12034f8:	e9 c1 00 00 00       	jmp    12035be <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x3ce>
+ 12034fd:	48 8d 87 a8 00 00 00 	lea    0xa8(%rdi),%rax
+ 1203504:	48 8d 4a fd          	lea    -0x3(%rdx),%rcx
+ 1203508:	66 0f 28 04 24       	movapd (%rsp),%xmm0
+ 120350d:	0f 1f 00             	nopl   (%rax)
+ 1203510:	66 0f 10 60 c8       	movupd -0x38(%rax),%xmm4
+ 1203515:	44 0f 10 50 d8       	movups -0x28(%rax),%xmm10
+ 120351a:	66 0f 10 58 88       	movupd -0x78(%rax),%xmm3
+ 120351f:	66 0f 10 68 a8       	movupd -0x58(%rax),%xmm5
+ 1203524:	0f 10 70 f8          	movups -0x8(%rax),%xmm6
+ 1203528:	66 0f 28 fc          	movapd %xmm4,%xmm7
+ 120352c:	66 0f 14 fd          	unpcklpd %xmm5,%xmm7
+ 1203530:	45 0f 28 c2          	movaps %xmm10,%xmm8
+ 1203534:	44 0f 16 c6          	movlhps %xmm6,%xmm8
+ 1203538:	41 0f 12 f2          	movhlps %xmm10,%xmm6
+ 120353c:	f2 44 0f 10 08       	movsd  (%rax),%xmm9
+ 1203541:	45 0f c6 d1 4e       	shufps $0x4e,%xmm9,%xmm10
+ 1203546:	66 44 0f 59 d7       	mulpd  %xmm7,%xmm10
+ 120354b:	66 41 0f 59 f8       	mulpd  %xmm8,%xmm7
+ 1203550:	0f 12 ec             	movhlps %xmm4,%xmm5
+ 1203553:	66 0f 59 f5          	mulpd  %xmm5,%xmm6
+ 1203557:	66 0f 5c fe          	subpd  %xmm6,%xmm7
+ 120355b:	f2 0f 10 68 b0       	movsd  -0x50(%rax),%xmm5
+ 1203560:	66 0f c6 e5 01       	shufpd $0x1,%xmm5,%xmm4
+ 1203565:	66 41 0f 59 e0       	mulpd  %xmm8,%xmm4
+ 120356a:	66 41 0f 58 e2       	addpd  %xmm10,%xmm4
+ 120356f:	66 0f 28 ec          	movapd %xmm4,%xmm5
+ 1203573:	66 0f 14 ec          	unpcklpd %xmm4,%xmm5
+ 1203577:	66 0f 15 e4          	unpckhpd %xmm4,%xmm4
+ 120357b:	66 0f 5c ec          	subpd  %xmm4,%xmm5
+ 120357f:	66 0f 59 eb          	mulpd  %xmm3,%xmm5
+ 1203583:	66 0f 28 e7          	movapd %xmm7,%xmm4
+ 1203587:	66 0f 14 e7          	unpcklpd %xmm7,%xmm4
+ 120358b:	66 0f 15 ff          	unpckhpd %xmm7,%xmm7
+ 120358f:	66 0f 5c e7          	subpd  %xmm7,%xmm4
+ 1203593:	66 0f c6 db 01       	shufpd $0x1,%xmm3,%xmm3
+ 1203598:	66 0f 59 dc          	mulpd  %xmm4,%xmm3
+ 120359c:	66 0f 28 e3          	movapd %xmm3,%xmm4
+ 12035a0:	66 0f 5c e5          	subpd  %xmm5,%xmm4
+ 12035a4:	66 0f 58 dd          	addpd  %xmm5,%xmm3
+ 12035a8:	66 0f c6 dc 02       	shufpd $0x2,%xmm4,%xmm3
+ 12035ad:	66 0f 58 d3          	addpd  %xmm3,%xmm2
+ 12035b1:	48 83 c0 10          	add    $0x10,%rax
+ 12035b5:	48 ff c9             	dec    %rcx
+ 12035b8:	0f 85 52 ff ff ff    	jne    1203510 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x320>
+ 12035be:	66 0f 14 c8          	unpcklpd %xmm0,%xmm1
+ 12035c2:	66 0f 58 c9          	addpd  %xmm1,%xmm1
+ 12035c6:	66 0f 28 c1          	movapd %xmm1,%xmm0
+ 12035ca:	66 0f c6 c1 01       	shufpd $0x1,%xmm1,%xmm0
+ 12035cf:	66 0f 28 da          	movapd %xmm2,%xmm3
+ 12035d3:	66 0f 14 da          	unpcklpd %xmm2,%xmm3
+ 12035d7:	66 0f 59 d8          	mulpd  %xmm0,%xmm3
+ 12035db:	66 0f 15 d2          	unpckhpd %xmm2,%xmm2
+ 12035df:	66 0f 59 d1          	mulpd  %xmm1,%xmm2
+ 12035e3:	66 0f 28 c2          	movapd %xmm2,%xmm0
+ 12035e7:	66 0f 58 c3          	addpd  %xmm3,%xmm0
+ 12035eb:	66 0f 5c d3          	subpd  %xmm3,%xmm2
+ 12035ef:	f2 0f 10 d0          	movsd  %xmm0,%xmm2
+ 12035f3:	66 0f 28 c2          	movapd %xmm2,%xmm0
+ 12035f7:	66 0f 59 c2          	mulpd  %xmm2,%xmm0
+ 12035fb:	66 0f 28 c8          	movapd %xmm0,%xmm1
+ 12035ff:	66 0f 15 c8          	unpckhpd %xmm0,%xmm1
+ 1203603:	f2 0f 58 c8          	addsd  %xmm0,%xmm1
+ 1203607:	0f 57 c0             	xorps  %xmm0,%xmm0
+ 120360a:	f2 0f 51 c1          	sqrtsd %xmm1,%xmm0
+ 120360e:	48 85 d2             	test   %rdx,%rdx
+ 1203611:	0f 84 ba 01 00 00    	je     12037d1 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x5e1>
+ 1203617:	48 83 fa 02          	cmp    $0x2,%rdx
+ 120361b:	0f 85 0a 02 00 00    	jne    120382b <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x63b>
+ 1203621:	66 0f 10 0f          	movupd (%rdi),%xmm1
+ 1203625:	66 0f 10 67 40       	movupd 0x40(%rdi),%xmm4
+ 120362a:	f2 0f 10 1e          	movsd  (%rsi),%xmm3
+ 120362e:	f2 0f 10 7e 08       	movsd  0x8(%rsi),%xmm7
+ 1203633:	66 0f 28 eb          	movapd %xmm3,%xmm5
+ 1203637:	f2 0f 59 eb          	mulsd  %xmm3,%xmm5
+ 120363b:	66 0f 28 f7          	movapd %xmm7,%xmm6
+ 120363f:	f2 0f 59 f7          	mulsd  %xmm7,%xmm6
+ 1203643:	f2 0f 5c ee          	subsd  %xmm6,%xmm5
+ 1203647:	66 0f 28 f3          	movapd %xmm3,%xmm6
+ 120364b:	f2 0f 59 f7          	mulsd  %xmm7,%xmm6
+ 120364f:	f2 0f 58 f6          	addsd  %xmm6,%xmm6
+ 1203653:	66 0f 14 ed          	unpcklpd %xmm5,%xmm5
+ 1203657:	66 0f 14 f6          	unpcklpd %xmm6,%xmm6
+ 120365b:	66 0f 59 f4          	mulpd  %xmm4,%xmm6
+ 120365f:	66 0f c6 e4 01       	shufpd $0x1,%xmm4,%xmm4
+ 1203664:	66 0f 59 e5          	mulpd  %xmm5,%xmm4
+ 1203668:	66 0f 28 ec          	movapd %xmm4,%xmm5
+ 120366c:	66 0f 58 ee          	addpd  %xmm6,%xmm5
+ 1203670:	66 0f 5c e6          	subpd  %xmm6,%xmm4
+ 1203674:	f2 0f 10 e5          	movsd  %xmm5,%xmm4
+ 1203678:	66 0f 5c d4          	subpd  %xmm4,%xmm2
+ 120367c:	66 0f 59 e4          	mulpd  %xmm4,%xmm4
+ 1203680:	66 0f 28 ec          	movapd %xmm4,%xmm5
+ 1203684:	66 0f 15 ec          	unpckhpd %xmm4,%xmm5
+ 1203688:	f2 0f 58 ec          	addsd  %xmm4,%xmm5
+ 120368c:	0f 57 e4             	xorps  %xmm4,%xmm4
+ 120368f:	f2 0f 51 e5          	sqrtsd %xmm5,%xmm4
+ 1203693:	f2 0f 58 c4          	addsd  %xmm4,%xmm0
+ 1203697:	f2 0f 10 66 10       	movsd  0x10(%rsi),%xmm4
+ 120369c:	66 0f 28 f3          	movapd %xmm3,%xmm6
+ 12036a0:	f2 0f 59 f4          	mulsd  %xmm4,%xmm6
+ 12036a4:	f2 0f 10 6e 18       	movsd  0x18(%rsi),%xmm5
+ 12036a9:	66 44 0f 28 c4       	movapd %xmm4,%xmm8
+ 12036ae:	f2 44 0f 59 c7       	mulsd  %xmm7,%xmm8
+ 12036b3:	f2 0f 59 fd          	mulsd  %xmm5,%xmm7
+ 12036b7:	f2 0f 5c f7          	subsd  %xmm7,%xmm6
+ 12036bb:	f2 0f 59 dd          	mulsd  %xmm5,%xmm3
+ 12036bf:	f2 41 0f 58 d8       	addsd  %xmm8,%xmm3
+ 12036c4:	66 44 0f 10 47 10    	movupd 0x10(%rdi),%xmm8
+ 12036ca:	66 44 0f 10 4f 30    	movupd 0x30(%rdi),%xmm9
+ 12036d0:	66 0f 57 ff          	xorpd  %xmm7,%xmm7
+ 12036d4:	66 45 0f 57 d2       	xorpd  %xmm10,%xmm10
+ 12036d9:	66 45 0f 5c d1       	subpd  %xmm9,%xmm10
+ 12036de:	66 45 0f 28 ca       	movapd %xmm10,%xmm9
+ 12036e3:	66 45 0f c6 ca 01    	shufpd $0x1,%xmm10,%xmm9
+ 12036e9:	66 0f 14 f6          	unpcklpd %xmm6,%xmm6
+ 12036ed:	66 44 0f 59 ce       	mulpd  %xmm6,%xmm9
+ 12036f2:	66 0f 14 db          	unpcklpd %xmm3,%xmm3
+ 12036f6:	66 44 0f 59 d3       	mulpd  %xmm3,%xmm10
+ 12036fb:	66 45 0f 28 d9       	movapd %xmm9,%xmm11
+ 1203700:	66 45 0f 58 da       	addpd  %xmm10,%xmm11
+ 1203705:	66 45 0f 5c ca       	subpd  %xmm10,%xmm9
+ 120370a:	f2 45 0f 10 cb       	movsd  %xmm11,%xmm9
+ 120370f:	66 41 0f 5c d1       	subpd  %xmm9,%xmm2
+ 1203714:	66 45 0f 59 c9       	mulpd  %xmm9,%xmm9
+ 1203719:	66 45 0f 28 d1       	movapd %xmm9,%xmm10
+ 120371e:	66 45 0f 15 d1       	unpckhpd %xmm9,%xmm10
+ 1203723:	f2 45 0f 58 d1       	addsd  %xmm9,%xmm10
+ 1203728:	45 0f 57 c9          	xorps  %xmm9,%xmm9
+ 120372c:	f2 45 0f 51 ca       	sqrtsd %xmm10,%xmm9
+ 1203731:	f2 44 0f 58 c8       	addsd  %xmm0,%xmm9
+ 1203736:	66 41 0f 5c f8       	subpd  %xmm8,%xmm7
+ 120373b:	66 0f 59 df          	mulpd  %xmm7,%xmm3
+ 120373f:	66 0f c6 ff 01       	shufpd $0x1,%xmm7,%xmm7
+ 1203744:	66 0f 59 fe          	mulpd  %xmm6,%xmm7
+ 1203748:	66 0f 28 c7          	movapd %xmm7,%xmm0
+ 120374c:	66 0f 58 c3          	addpd  %xmm3,%xmm0
+ 1203750:	66 0f 5c fb          	subpd  %xmm3,%xmm7
+ 1203754:	f2 0f 10 f8          	movsd  %xmm0,%xmm7
+ 1203758:	66 0f 5c d7          	subpd  %xmm7,%xmm2
+ 120375c:	66 0f 59 ff          	mulpd  %xmm7,%xmm7
+ 1203760:	66 0f 28 c7          	movapd %xmm7,%xmm0
+ 1203764:	66 0f 15 c7          	unpckhpd %xmm7,%xmm0
+ 1203768:	f2 0f 58 c7          	addsd  %xmm7,%xmm0
+ 120376c:	0f 57 db             	xorps  %xmm3,%xmm3
+ 120376f:	f2 0f 51 d8          	sqrtsd %xmm0,%xmm3
+ 1203773:	f2 41 0f 58 d9       	addsd  %xmm9,%xmm3
+ 1203778:	66 0f 28 c4          	movapd %xmm4,%xmm0
+ 120377c:	f2 0f 59 c4          	mulsd  %xmm4,%xmm0
+ 1203780:	f2 0f 59 e5          	mulsd  %xmm5,%xmm4
+ 1203784:	f2 0f 59 ed          	mulsd  %xmm5,%xmm5
+ 1203788:	f2 0f 5c c5          	subsd  %xmm5,%xmm0
+ 120378c:	f2 0f 58 e4          	addsd  %xmm4,%xmm4
+ 1203790:	66 0f 14 c0          	unpcklpd %xmm0,%xmm0
+ 1203794:	66 0f 14 e4          	unpcklpd %xmm4,%xmm4
+ 1203798:	66 0f 59 e1          	mulpd  %xmm1,%xmm4
+ 120379c:	66 0f c6 c9 01       	shufpd $0x1,%xmm1,%xmm1
+ 12037a1:	66 0f 59 c8          	mulpd  %xmm0,%xmm1
+ 12037a5:	66 0f 28 c1          	movapd %xmm1,%xmm0
+ 12037a9:	66 0f 58 c4          	addpd  %xmm4,%xmm0
+ 12037ad:	66 0f 5c cc          	subpd  %xmm4,%xmm1
+ 12037b1:	f2 0f 10 c8          	movsd  %xmm0,%xmm1
+ 12037b5:	66 0f 5c d1          	subpd  %xmm1,%xmm2
+ 12037b9:	66 0f 59 c9          	mulpd  %xmm1,%xmm1
+ 12037bd:	66 0f 28 c1          	movapd %xmm1,%xmm0
+ 12037c1:	66 0f 15 c1          	unpckhpd %xmm1,%xmm0
+ 12037c5:	f2 0f 58 c1          	addsd  %xmm1,%xmm0
+ 12037c9:	f2 0f 51 c0          	sqrtsd %xmm0,%xmm0
+ 12037cd:	f2 0f 58 c3          	addsd  %xmm3,%xmm0
+ 12037d1:	66 0f 59 d2          	mulpd  %xmm2,%xmm2
+ 12037d5:	66 0f 28 ca          	movapd %xmm2,%xmm1
+ 12037d9:	66 0f 15 ca          	unpckhpd %xmm2,%xmm1
+ 12037dd:	f2 0f 58 ca          	addsd  %xmm2,%xmm1
+ 12037e1:	66 0f 57 d2          	xorpd  %xmm2,%xmm2
+ 12037e5:	66 0f 2e ca          	ucomisd %xmm2,%xmm1
+ 12037e9:	75 06                	jne    12037f1 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x601>
+ 12037eb:	7a 04                	jp     12037f1 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x601>
+ 12037ed:	31 c0                	xor    %eax,%eax
+ 12037ef:	eb 2c                	jmp    120381d <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x62d>
+ 12037f1:	f2 0f 51 c9          	sqrtsd %xmm1,%xmm1
+ 12037f5:	f2 0f 5e c1          	divsd  %xmm1,%xmm0
+ 12037f9:	66 48 0f 7e c0       	movq   %xmm0,%rax
+ 12037fe:	48 b9 ff ff ff ff ff 	movabs $0x7fffffffffffffff,%rcx
+ 1203805:	ff ff 7f 
+ 1203808:	48 21 c1             	and    %rax,%rcx
+ 120380b:	48 ba 00 00 00 00 00 	movabs $0x7ff0000000000000,%rdx
+ 1203812:	00 f0 7f 
+ 1203815:	31 c0                	xor    %eax,%eax
+ 1203817:	48 39 d1             	cmp    %rdx,%rcx
+ 120381a:	0f 9c c0             	setl   %al
+ 120381d:	48 83 c4 20          	add    $0x20,%rsp
+ 1203821:	5b                   	pop    %rbx
+ 1203822:	41 5c                	pop    %r12
+ 1203824:	41 5d                	pop    %r13
+ 1203826:	41 5e                	pop    %r14
+ 1203828:	41 5f                	pop    %r15
+ 120382a:	c3                   	ret
+ 120382b:	66 0f 10 0e          	movupd (%rsi),%xmm1
+ 120382f:	66 0f 10 5e 10       	movupd 0x10(%rsi),%xmm3
+ 1203834:	66 0f 29 1c 24       	movapd %xmm3,(%rsp)
+ 1203839:	66 0f 10 66 20       	movupd 0x20(%rsi),%xmm4
+ 120383e:	48 8d 47 30          	lea    0x30(%rdi),%rax
+ 1203842:	48 8d 4f 60          	lea    0x60(%rdi),%rcx
+ 1203846:	4c 8d 42 fd          	lea    -0x3(%rdx),%r8
+ 120384a:	4c 8d 4e 30          	lea    0x30(%rsi),%r9
+ 120384e:	45 31 db             	xor    %r11d,%r11d
+ 1203851:	41 ba 02 00 00 00    	mov    $0x2,%r10d
+ 1203857:	eb 10                	jmp    1203869 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x679>
+ 1203859:	0f 1f 80 00 00 00 00 	nopl   0x0(%rax)
+ 1203860:	49 39 d3             	cmp    %rdx,%r11
+ 1203863:	0f 84 68 ff ff ff    	je     12037d1 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x5e1>
+ 1203869:	4c 89 db             	mov    %r11,%rbx
+ 120386c:	66 44 0f 28 d0       	movapd %xmm0,%xmm10
+ 1203871:	49 ff c3             	inc    %r11
+ 1203874:	49 89 df             	mov    %rbx,%r15
+ 1203877:	49 c1 e7 04          	shl    $0x4,%r15
+ 120387b:	49 83 fb 03          	cmp    $0x3,%r11
+ 120387f:	41 be 00 00 00 00    	mov    $0x0,%r14d
+ 1203885:	4d 0f 45 f3          	cmovne %r11,%r14
+ 1203889:	48 83 eb 01          	sub    $0x1,%rbx
+ 120388d:	49 0f 42 da          	cmovb  %r10,%rbx
+ 1203891:	49 c1 e6 04          	shl    $0x4,%r14
+ 1203895:	48 c1 e3 04          	shl    $0x4,%rbx
+ 1203899:	66 42 0f 10 2c 3e    	movupd (%rsi,%r15,1),%xmm5
+ 120389f:	66 44 0f 28 c5       	movapd %xmm5,%xmm8
+ 12038a4:	66 44 0f c6 c5 01    	shufpd $0x1,%xmm5,%xmm8
+ 12038aa:	66 44 0f 28 ed       	movapd %xmm5,%xmm13
+ 12038af:	66 44 0f 59 e9       	mulpd  %xmm1,%xmm13
+ 12038b4:	66 0f 28 c1          	movapd %xmm1,%xmm0
+ 12038b8:	66 41 0f 59 c0       	mulpd  %xmm8,%xmm0
+ 12038bd:	66 42 0f 10 3c 30    	movupd (%rax,%r14,1),%xmm7
+ 12038c3:	66 44 0f 10 0c 19    	movupd (%rcx,%rbx,1),%xmm9
+ 12038c9:	66 41 0f 28 f1       	movapd %xmm9,%xmm6
+ 12038ce:	66 41 0f 15 f1       	unpckhpd %xmm9,%xmm6
+ 12038d3:	66 0f 59 f7          	mulpd  %xmm7,%xmm6
+ 12038d7:	66 44 0f 28 e7       	movapd %xmm7,%xmm12
+ 12038dc:	66 44 0f c6 e7 01    	shufpd $0x1,%xmm7,%xmm12
+ 12038e2:	66 45 0f 28 d9       	movapd %xmm9,%xmm11
+ 12038e7:	66 45 0f 14 d9       	unpcklpd %xmm9,%xmm11
+ 12038ec:	66 45 0f 59 dc       	mulpd  %xmm12,%xmm11
+ 12038f1:	66 45 0f 28 e3       	movapd %xmm11,%xmm12
+ 12038f6:	66 44 0f 58 e6       	addpd  %xmm6,%xmm12
+ 12038fb:	66 44 0f 5c de       	subpd  %xmm6,%xmm11
+ 1203900:	f2 45 0f 10 dc       	movsd  %xmm12,%xmm11
+ 1203905:	66 0f 10 34 18       	movupd (%rax,%rbx,1),%xmm6
+ 120390a:	66 42 0f 10 1c 31    	movupd (%rcx,%r14,1),%xmm3
+ 1203910:	66 44 0f 28 f3       	movapd %xmm3,%xmm14
+ 1203915:	66 44 0f 15 f3       	unpckhpd %xmm3,%xmm14
+ 120391a:	66 44 0f 59 f6       	mulpd  %xmm6,%xmm14
+ 120391f:	66 44 0f 28 fe       	movapd %xmm6,%xmm15
+ 1203924:	66 44 0f c6 fe 01    	shufpd $0x1,%xmm6,%xmm15
+ 120392a:	66 44 0f 28 e3       	movapd %xmm3,%xmm12
+ 120392f:	66 44 0f 14 e3       	unpcklpd %xmm3,%xmm12
+ 1203934:	66 45 0f 59 e7       	mulpd  %xmm15,%xmm12
+ 1203939:	66 45 0f 28 fc       	movapd %xmm12,%xmm15
+ 120393e:	66 45 0f 58 fe       	addpd  %xmm14,%xmm15
+ 1203943:	66 45 0f 5c e6       	subpd  %xmm14,%xmm12
+ 1203948:	f2 45 0f 10 e7       	movsd  %xmm15,%xmm12
+ 120394d:	66 45 0f 5c dc       	subpd  %xmm12,%xmm11
+ 1203952:	66 45 0f 28 e5       	movapd %xmm13,%xmm12
+ 1203957:	66 45 0f 14 e5       	unpcklpd %xmm13,%xmm12
+ 120395c:	66 45 0f 15 ed       	unpckhpd %xmm13,%xmm13
+ 1203961:	66 45 0f 5c e5       	subpd  %xmm13,%xmm12
+ 1203966:	66 45 0f 59 e3       	mulpd  %xmm11,%xmm12
+ 120396b:	66 44 0f 28 e8       	movapd %xmm0,%xmm13
+ 1203970:	66 44 0f 14 e8       	unpcklpd %xmm0,%xmm13
+ 1203975:	66 0f 15 c0          	unpckhpd %xmm0,%xmm0
+ 1203979:	66 41 0f 58 c5       	addpd  %xmm13,%xmm0
+ 120397e:	66 45 0f c6 db 01    	shufpd $0x1,%xmm11,%xmm11
+ 1203984:	66 44 0f 59 d8       	mulpd  %xmm0,%xmm11
+ 1203989:	66 41 0f 28 c4       	movapd %xmm12,%xmm0
+ 120398e:	66 41 0f 58 c3       	addpd  %xmm11,%xmm0
+ 1203993:	66 45 0f 5c e3       	subpd  %xmm11,%xmm12
+ 1203998:	f2 44 0f 10 e0       	movsd  %xmm0,%xmm12
+ 120399d:	66 41 0f 5c d4       	subpd  %xmm12,%xmm2
+ 12039a2:	66 45 0f 59 e4       	mulpd  %xmm12,%xmm12
+ 12039a7:	66 41 0f 28 c4       	movapd %xmm12,%xmm0
+ 12039ac:	66 41 0f 15 c4       	unpckhpd %xmm12,%xmm0
+ 12039b1:	f2 41 0f 58 c4       	addsd  %xmm12,%xmm0
+ 12039b6:	f2 0f 51 c0          	sqrtsd %xmm0,%xmm0
+ 12039ba:	f2 41 0f 58 c2       	addsd  %xmm10,%xmm0
+ 12039bf:	48 83 fa 01          	cmp    $0x1,%rdx
+ 12039c3:	0f 84 97 fe ff ff    	je     1203860 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x670>
+ 12039c9:	66 44 0f 10 14 1f    	movupd (%rdi,%rbx,1),%xmm10
+ 12039cf:	66 46 0f 10 1c 37    	movupd (%rdi,%r14,1),%xmm11
+ 12039d5:	66 44 0f 28 e3       	movapd %xmm3,%xmm12
+ 12039da:	66 44 0f c6 e3 01    	shufpd $0x1,%xmm3,%xmm12
+ 12039e0:	66 45 0f 28 ea       	movapd %xmm10,%xmm13
+ 12039e5:	66 45 0f 14 ea       	unpcklpd %xmm10,%xmm13
+ 12039ea:	66 45 0f 59 ec       	mulpd  %xmm12,%xmm13
+ 12039ef:	66 45 0f 28 e2       	movapd %xmm10,%xmm12
+ 12039f4:	66 45 0f 15 e2       	unpckhpd %xmm10,%xmm12
+ 12039f9:	66 44 0f 59 e3       	mulpd  %xmm3,%xmm12
+ 12039fe:	66 41 0f 28 dd       	movapd %xmm13,%xmm3
+ 1203a03:	66 41 0f 58 dc       	addpd  %xmm12,%xmm3
+ 1203a08:	66 45 0f 5c ec       	subpd  %xmm12,%xmm13
+ 1203a0d:	f2 44 0f 10 eb       	movsd  %xmm3,%xmm13
+ 1203a12:	66 41 0f 28 d9       	movapd %xmm9,%xmm3
+ 1203a17:	66 41 0f c6 d9 01    	shufpd $0x1,%xmm9,%xmm3
+ 1203a1d:	66 45 0f 28 e3       	movapd %xmm11,%xmm12
+ 1203a22:	66 45 0f 14 e3       	unpcklpd %xmm11,%xmm12
+ 1203a27:	66 44 0f 59 e3       	mulpd  %xmm3,%xmm12
+ 1203a2c:	66 41 0f 28 db       	movapd %xmm11,%xmm3
+ 1203a31:	66 41 0f 15 db       	unpckhpd %xmm11,%xmm3
+ 1203a36:	66 41 0f 59 d9       	mulpd  %xmm9,%xmm3
+ 1203a3b:	66 45 0f 28 cc       	movapd %xmm12,%xmm9
+ 1203a40:	66 44 0f 58 cb       	addpd  %xmm3,%xmm9
+ 1203a45:	66 44 0f 5c e3       	subpd  %xmm3,%xmm12
+ 1203a4a:	66 0f 28 dd          	movapd %xmm5,%xmm3
+ 1203a4e:	66 44 0f 28 34 24    	movapd (%rsp),%xmm14
+ 1203a54:	66 41 0f 59 de       	mulpd  %xmm14,%xmm3
+ 1203a59:	f2 45 0f 10 e1       	movsd  %xmm9,%xmm12
+ 1203a5e:	66 44 0f 28 cc       	movapd %xmm4,%xmm9
+ 1203a63:	66 45 0f 59 c8       	mulpd  %xmm8,%xmm9
+ 1203a68:	66 45 0f 59 c6       	mulpd  %xmm14,%xmm8
+ 1203a6d:	66 45 0f 5c ec       	subpd  %xmm12,%xmm13
+ 1203a72:	66 45 0f 28 e0       	movapd %xmm8,%xmm12
+ 1203a77:	66 45 0f 14 e0       	unpcklpd %xmm8,%xmm12
+ 1203a7c:	66 45 0f 15 c0       	unpckhpd %xmm8,%xmm8
+ 1203a81:	66 45 0f 58 c4       	addpd  %xmm12,%xmm8
+ 1203a86:	66 44 0f 28 e3       	movapd %xmm3,%xmm12
+ 1203a8b:	66 44 0f 14 e3       	unpcklpd %xmm3,%xmm12
+ 1203a90:	66 0f 15 db          	unpckhpd %xmm3,%xmm3
+ 1203a94:	66 44 0f 5c e3       	subpd  %xmm3,%xmm12
+ 1203a99:	66 45 0f 59 e5       	mulpd  %xmm13,%xmm12
+ 1203a9e:	66 45 0f c6 ed 01    	shufpd $0x1,%xmm13,%xmm13
+ 1203aa4:	66 45 0f 59 e8       	mulpd  %xmm8,%xmm13
+ 1203aa9:	66 41 0f 28 dc       	movapd %xmm12,%xmm3
+ 1203aae:	66 41 0f 58 dd       	addpd  %xmm13,%xmm3
+ 1203ab3:	66 45 0f 5c e5       	subpd  %xmm13,%xmm12
+ 1203ab8:	f2 44 0f 10 e3       	movsd  %xmm3,%xmm12
+ 1203abd:	66 41 0f 5c d4       	subpd  %xmm12,%xmm2
+ 1203ac2:	66 45 0f 59 e4       	mulpd  %xmm12,%xmm12
+ 1203ac7:	66 41 0f 28 dc       	movapd %xmm12,%xmm3
+ 1203acc:	66 41 0f 15 dc       	unpckhpd %xmm12,%xmm3
+ 1203ad1:	f2 41 0f 58 dc       	addsd  %xmm12,%xmm3
+ 1203ad6:	f2 0f 51 db          	sqrtsd %xmm3,%xmm3
+ 1203ada:	66 44 0f 28 c0       	movapd %xmm0,%xmm8
+ 1203adf:	f2 44 0f 58 c3       	addsd  %xmm3,%xmm8
+ 1203ae4:	66 0f 28 c6          	movapd %xmm6,%xmm0
+ 1203ae8:	66 0f 15 c6          	unpckhpd %xmm6,%xmm0
+ 1203aec:	66 41 0f 59 c3       	mulpd  %xmm11,%xmm0
+ 1203af1:	66 45 0f c6 db 01    	shufpd $0x1,%xmm11,%xmm11
+ 1203af7:	66 0f 14 f6          	unpcklpd %xmm6,%xmm6
+ 1203afb:	66 41 0f 59 f3       	mulpd  %xmm11,%xmm6
+ 1203b00:	66 0f 28 de          	movapd %xmm6,%xmm3
+ 1203b04:	66 0f 58 d8          	addpd  %xmm0,%xmm3
+ 1203b08:	66 0f 5c f0          	subpd  %xmm0,%xmm6
+ 1203b0c:	f2 0f 10 f3          	movsd  %xmm3,%xmm6
+ 1203b10:	66 0f 28 c7          	movapd %xmm7,%xmm0
+ 1203b14:	66 0f 15 c7          	unpckhpd %xmm7,%xmm0
+ 1203b18:	66 41 0f 59 c2       	mulpd  %xmm10,%xmm0
+ 1203b1d:	66 45 0f c6 d2 01    	shufpd $0x1,%xmm10,%xmm10
+ 1203b23:	66 0f 14 ff          	unpcklpd %xmm7,%xmm7
+ 1203b27:	66 41 0f 59 fa       	mulpd  %xmm10,%xmm7
+ 1203b2c:	66 0f 28 df          	movapd %xmm7,%xmm3
+ 1203b30:	66 0f 58 d8          	addpd  %xmm0,%xmm3
+ 1203b34:	66 0f 5c f8          	subpd  %xmm0,%xmm7
+ 1203b38:	f2 0f 10 fb          	movsd  %xmm3,%xmm7
+ 1203b3c:	66 0f 28 c5          	movapd %xmm5,%xmm0
+ 1203b40:	66 0f 59 c4          	mulpd  %xmm4,%xmm0
+ 1203b44:	66 0f 5c f7          	subpd  %xmm7,%xmm6
+ 1203b48:	66 0f 28 d8          	movapd %xmm0,%xmm3
+ 1203b4c:	66 0f 14 d8          	unpcklpd %xmm0,%xmm3
+ 1203b50:	66 0f 15 c0          	unpckhpd %xmm0,%xmm0
+ 1203b54:	66 0f 5c d8          	subpd  %xmm0,%xmm3
+ 1203b58:	66 41 0f 28 c1       	movapd %xmm9,%xmm0
+ 1203b5d:	66 41 0f 14 c1       	unpcklpd %xmm9,%xmm0
+ 1203b62:	66 45 0f 15 c9       	unpckhpd %xmm9,%xmm9
+ 1203b67:	66 44 0f 58 c8       	addpd  %xmm0,%xmm9
+ 1203b6c:	66 0f 59 de          	mulpd  %xmm6,%xmm3
+ 1203b70:	66 0f c6 f6 01       	shufpd $0x1,%xmm6,%xmm6
+ 1203b75:	66 41 0f 59 f1       	mulpd  %xmm9,%xmm6
+ 1203b7a:	66 0f 28 c3          	movapd %xmm3,%xmm0
+ 1203b7e:	66 0f 58 c6          	addpd  %xmm6,%xmm0
+ 1203b82:	66 0f 5c de          	subpd  %xmm6,%xmm3
+ 1203b86:	f2 0f 10 d8          	movsd  %xmm0,%xmm3
+ 1203b8a:	66 0f 5c d3          	subpd  %xmm3,%xmm2
+ 1203b8e:	66 0f 59 db          	mulpd  %xmm3,%xmm3
+ 1203b92:	66 0f 28 c3          	movapd %xmm3,%xmm0
+ 1203b96:	66 0f 15 c3          	unpckhpd %xmm3,%xmm0
+ 1203b9a:	f2 0f 58 c3          	addsd  %xmm3,%xmm0
+ 1203b9e:	f2 0f 51 c0          	sqrtsd %xmm0,%xmm0
+ 1203ba2:	f2 41 0f 58 c0       	addsd  %xmm8,%xmm0
+ 1203ba7:	48 83 fa 03          	cmp    $0x3,%rdx
+ 1203bab:	0f 84 af fc ff ff    	je     1203860 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x670>
+ 1203bb1:	66 0f 28 f5          	movapd %xmm5,%xmm6
+ 1203bb5:	66 0f 15 f5          	unpckhpd %xmm5,%xmm6
+ 1203bb9:	4d 89 cf             	mov    %r9,%r15
+ 1203bbc:	4d 89 c4             	mov    %r8,%r12
+ 1203bbf:	49 89 cd             	mov    %rcx,%r13
+ 1203bc2:	66 66 66 66 66 2e 0f 	data16 data16 data16 data16 cs nopw 0x0(%rax,%rax,1)
+ 1203bc9:	1f 84 00 00 00 00 00 
+ 1203bd0:	66 45 0f 10 07       	movupd (%r15),%xmm8
+ 1203bd5:	66 44 0f 28 cd       	movapd %xmm5,%xmm9
+ 1203bda:	66 45 0f 59 c8       	mulpd  %xmm8,%xmm9
+ 1203bdf:	66 43 0f 10 5c 35 60 	movupd 0x60(%r13,%r14,1),%xmm3
+ 1203be6:	f2 41 0f 10 7c 1d 00 	movsd  0x0(%r13,%rbx,1),%xmm7
+ 1203bed:	f2 45 0f 10 54 1d 08 	movsd  0x8(%r13,%rbx,1),%xmm10
+ 1203bf4:	66 45 0f 14 d2       	unpcklpd %xmm10,%xmm10
+ 1203bf9:	66 44 0f 59 d3       	mulpd  %xmm3,%xmm10
+ 1203bfe:	66 0f c6 db 01       	shufpd $0x1,%xmm3,%xmm3
+ 1203c03:	66 0f 14 ff          	unpcklpd %xmm7,%xmm7
+ 1203c07:	66 0f 59 fb          	mulpd  %xmm3,%xmm7
+ 1203c0b:	66 41 0f 10 5c 1d 60 	movupd 0x60(%r13,%rbx,1),%xmm3
+ 1203c12:	f2 47 0f 10 5c 35 00 	movsd  0x0(%r13,%r14,1),%xmm11
+ 1203c19:	f2 47 0f 10 64 35 08 	movsd  0x8(%r13,%r14,1),%xmm12
+ 1203c20:	66 44 0f 28 ef       	movapd %xmm7,%xmm13
+ 1203c25:	66 45 0f 14 e4       	unpcklpd %xmm12,%xmm12
+ 1203c2a:	66 44 0f 59 e3       	mulpd  %xmm3,%xmm12
+ 1203c2f:	66 0f c6 db 01       	shufpd $0x1,%xmm3,%xmm3
+ 1203c34:	66 41 0f 5c fa       	subpd  %xmm10,%xmm7
+ 1203c39:	66 45 0f 14 db       	unpcklpd %xmm11,%xmm11
+ 1203c3e:	66 44 0f 59 db       	mulpd  %xmm3,%xmm11
+ 1203c43:	66 41 0f 28 db       	movapd %xmm11,%xmm3
+ 1203c48:	66 45 0f 58 ea       	addpd  %xmm10,%xmm13
+ 1203c4d:	66 41 0f 58 dc       	addpd  %xmm12,%xmm3
+ 1203c52:	66 45 0f 5c dc       	subpd  %xmm12,%xmm11
+ 1203c57:	66 45 0f 28 d1       	movapd %xmm9,%xmm10
+ 1203c5c:	f2 41 0f 10 fd       	movsd  %xmm13,%xmm7
+ 1203c61:	66 45 0f 14 d1       	unpcklpd %xmm9,%xmm10
+ 1203c66:	66 45 0f 15 c9       	unpckhpd %xmm9,%xmm9
+ 1203c6b:	66 45 0f 5c d1       	subpd  %xmm9,%xmm10
+ 1203c70:	f2 44 0f 10 db       	movsd  %xmm3,%xmm11
+ 1203c75:	66 41 0f 28 d8       	movapd %xmm8,%xmm3
+ 1203c7a:	f2 0f 59 de          	mulsd  %xmm6,%xmm3
+ 1203c7e:	66 45 0f 15 c0       	unpckhpd %xmm8,%xmm8
+ 1203c83:	66 41 0f 5c fb       	subpd  %xmm11,%xmm7
+ 1203c88:	f2 44 0f 59 c5       	mulsd  %xmm5,%xmm8
+ 1203c8d:	f2 44 0f 58 c3       	addsd  %xmm3,%xmm8
+ 1203c92:	66 45 0f 14 c0       	unpcklpd %xmm8,%xmm8
+ 1203c97:	66 44 0f 59 d7       	mulpd  %xmm7,%xmm10
+ 1203c9c:	66 0f c6 ff 01       	shufpd $0x1,%xmm7,%xmm7
+ 1203ca1:	66 41 0f 59 f8       	mulpd  %xmm8,%xmm7
+ 1203ca6:	66 41 0f 28 da       	movapd %xmm10,%xmm3
+ 1203cab:	66 0f 58 df          	addpd  %xmm7,%xmm3
+ 1203caf:	66 44 0f 5c d7       	subpd  %xmm7,%xmm10
+ 1203cb4:	f2 44 0f 10 d3       	movsd  %xmm3,%xmm10
+ 1203cb9:	66 41 0f 5c d2       	subpd  %xmm10,%xmm2
+ 1203cbe:	66 45 0f 59 d2       	mulpd  %xmm10,%xmm10
+ 1203cc3:	66 41 0f 28 da       	movapd %xmm10,%xmm3
+ 1203cc8:	66 41 0f 15 da       	unpckhpd %xmm10,%xmm3
+ 1203ccd:	f2 41 0f 58 da       	addsd  %xmm10,%xmm3
+ 1203cd2:	f2 0f 51 db          	sqrtsd %xmm3,%xmm3
+ 1203cd6:	f2 0f 58 c3          	addsd  %xmm3,%xmm0
+ 1203cda:	49 83 c5 30          	add    $0x30,%r13
+ 1203cde:	49 83 c7 10          	add    $0x10,%r15
+ 1203ce2:	49 ff cc             	dec    %r12
+ 1203ce5:	0f 85 e5 fe ff ff    	jne    1203bd0 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x9e0>
+ 1203ceb:	e9 70 fb ff ff       	jmp    1203860 <iregi_rust::direct::exec::gram::cayley_cancellation::<f64>+0x670>
+ 1203cf0:	48 8d 15 49 a9 b8 02 	lea    0x2b8a949(%rip),%rdx        # 3d8e640 <__gmpfr_one+0x2ce0>
+ 1203cf7:	bf 03 00 00 00       	mov    $0x3,%edi
+ 1203cfc:	be 03 00 00 00       	mov    $0x3,%esi
+ 1203d01:	ff 15 19 2b bd 02    	call   *0x2bd2b19(%rip)        # 3dd6820 <_GLOBAL_OFFSET_TABLE_+0x42f8>

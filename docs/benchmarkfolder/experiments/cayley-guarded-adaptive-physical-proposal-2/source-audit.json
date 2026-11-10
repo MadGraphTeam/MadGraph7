@@ -1,0 +1,33 @@
+{
+  "schema": "guarded-physical2-separated-assessment-source-audit-v1",
+  "compiler_linker_loader_native_or_lock_executed": false,
+  "existing_checked_executable_and25numerical_objects_unchanged": true,
+  "fixtures_driver_and_closed_comparators_unchanged": true,
+  "target_build_source_index_sha256": "39d6ba2bd3c7aef5c8f5008360661c988a93d86ab1265cb3bc815707233b9e72",
+  "actual_DSO_binding": "Separate read/hash/ELF-only binding derives actual hash from successful proposal3 receipt; no hash is assumed by this source freeze.",
+  "gate_review": {
+    "numerical": "Existing LoopMEComparator3e-6/target1e-8 over all8ANSwords perpoint, independentofpubliccode/accuracybits/DP-QPselection/callcounts.",
+    "host_stability": "Existing qualify_checked unchanged; actual219/323/finiteknownaccuracy<1e-6/fulloutputs/noW03. CleanerFPflagsneverestablishhoststability.",
+    "QP_coverage": "Separateactualtraversals/callcounts;autoDPacceptancecanpassnumerical+hostgateswithautoQPcoveragefalse. ForcedQP400nativegroups/120/-1/noW03/genuineQP servesowncoverage.",
+    "traps": "Namedrequestedhaltingpolicy+complete trappedworker+3positivefaultcontrols. Faultcontrolfailuredoesnotrelabelnumericalorhostmeasurements;closure/transportqualificationstillrequired.",
+    "diagnostics": "RetainstrictbitwiseANS/public/accuracy/rawrecords andexplicitDP-QP/callcount/snapshot/passchanges. MissingautoQPgroupsarecoveragegaps.",
+    "closure": "Deadline/transport/sourceclosurefailureclearsallpublishedqualifiedgates,retainingrawprovisionalmeasurements."
+  },
+  "independent_read_only_auditor": "/root/adaptive_physical_replay_design/cayley_zero_guard/physical_replay_parser_audit",
+  "independent_review_conclusion": "No blockingcodeissue. Stalemetadata exact-output/autoQPrequirements removed beforefreeze.",
+  "no_per_call_precision_physical_truth_or_performance_claim": true,
+  "ast_parse_only": [
+    {
+      "path": "controller.py",
+      "sha256": "a11d5c23e76205d43be4fa121fc03435a169957da0bcec53e2e04b954c66dae2"
+    },
+    {
+      "path": "assessment.py",
+      "sha256": "3869c9a682e973e08a1ce7b076b73c4c4bcbfa6c6e6fe4b846395257a084233b"
+    },
+    {
+      "path": "test_assessment.py",
+      "sha256": "34727870ec91320fe847ef3bc8f1e10ac5e038dfb661436a4dbbdcaafd36a780"
+    }
+  ]
+}

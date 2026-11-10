@@ -1,0 +1,25 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 6091,
+      "sha256": "1dc7c795f80f9f7908146962c01492b5ca7a0ff6418a90e67d81d996477056ed"
+    },
+    "gram-zero-only.patch": {
+      "bytes": 491,
+      "sha256": "d3f546105bf6ed2b1c37aef1bdc73e084a3f0c757c89f374a9983be4fdd3a266"
+    },
+    "proposal.json": {
+      "bytes": 6141,
+      "sha256": "480c319205febc1e184f999509cfcc85a973b269148480e467f346da7dd0e90b"
+    },
+    "verify.py": {
+      "bytes": 2389,
+      "sha256": "0d620bef6b778808f42f9a8387c8e8c27c0037e629b19b4e35152f63b415506c"
+    }
+  },
+  "native_execution": false,
+  "native_payloads": false,
+  "path_base": "this-directory",
+  "schema": "post-cayley-trap-source-audit-index-v1",
+  "source_patch_applied": false
+}

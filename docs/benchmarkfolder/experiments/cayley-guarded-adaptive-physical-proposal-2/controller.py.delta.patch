@@ -1,0 +1,115 @@
+--- physical-proposal1/controller.py
++++ physical-proposal2/controller.py
+@@ -11,11 +11,11 @@
+ 
+ HERE = Path(__file__).resolve().parent
+ ROOT = HERE.parents[3]
+-WORK = ROOT / '.tirust-build/cayley-guarded-adaptive-physical-proposal-1'
++WORK = ROOT / '.tirust-build/cayley-guarded-adaptive-physical-proposal-2'
+ RUN = WORK / 'run1'
+ OLD = ROOT / 'docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1'
+-BUILD_PROPOSAL = ROOT / 'docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-2'
+-BUILD_RECEIPT = ROOT / '.tirust-build/cayley-guarded-adaptive-build-proposal-2/attempt1/execution.json'
++BUILD_PROPOSAL = ROOT / 'docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3'
++BUILD_RECEIPT = ROOT / '.tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/execution.json'
+ 
+ def sha(path):
+     digest = hashlib.sha256()
+@@ -126,7 +126,7 @@
+                   'physical_truth_or_performance_qualified': False, 'per_call_precision_qualified': False}
+         expected = {}
+         captures = {}
+-        pending = {'checked': False, 'forced-qp': False}
++        pending = {}
+         runtime = RUN / 'runtime-guarded'
+         def checkpoint():
+             old.save(RUN / 'execution.json', record)
+@@ -216,31 +216,50 @@
+                     row['offline_assessment_failure'] = {'type': type(error).__name__, 'message': str(error)}
+                 checkpoint()
+             comparisons = {}
++            benchmark = load('frozen_MadLoop_regression_comparator', ROOT / 'tools/tirust_benchmark.py')
+             for mode in ('checked', 'forced-qp'):
+                 left, right = mode + '-masked', mode + '-trapped'
++                observations = {'numerical_to_closed_adaptive': {'masked': False, 'trapped': False},
++                                'host_stability_acceptance': {'masked': False, 'trapped': False},
++                                'observed_QP_path_coverage': {'masked': False, 'trapped': False},
++                                'IEEE_policy_worker_completion': {'masked': False, 'trapped': False},
++                                'policy_numerical_agreement': False}
++                for policy in ('masked', 'trapped'):
++                    row = record['workers'].get(mode + '-' + policy, {})
++                    observed = row.get('numerical_assessment', {})
++                    observations['host_stability_acceptance'][policy] = bool(mode == 'checked' and observed.get('checked_outputs_qualified', False))
++                    observations['observed_QP_path_coverage'][policy] = bool(observed.get('qp_coverage_observed', False) if mode == 'checked' else observed.get('fixed_qp_outputs_qualified', False))
++                    observations['IEEE_policy_worker_completion'][policy] = row.get('control_assessment', {}).get('physical_worker_completed_with_requested_IEEE_policy', False)
+                 if left in captures and right in captures:
+                     inputs = parser.compare_inputs_and_born(captures[left], captures[right])
+-                    outputs = old.compare_policy_outputs(captures[left], captures[right])
+-                    comparisons[mode + '_policy_inputs'] = inputs
+-                    comparisons[mode + '_policy_outputs'] = outputs
+-                    gate = 'checked_outputs_qualified' if mode == 'checked' else 'fixed_qp_outputs_qualified'
+-                    pending[mode] = inputs['inputs_and_born_exact'] and inputs['all_input_records_comparable'] and outputs['outputs_exact'] and all(
+-                        record['workers'][key].get('numerical_assessment', {}).get(gate, False) and
+-                        record['workers'][key].get('control_assessment', {}).get('physical_worker_completed_with_requested_IEEE_policy', False)
+-                        for key in (left, right))
+-                    if mode == 'checked':
+-                        pending[mode] &= all(record['workers'][key]['numerical_assessment'].get('qp_coverage_observed', False) for key in (left, right))
++                    numerical = assessment.compare_amplitudes(captures[left], captures[right], parser, benchmark)
++                    comparisons[mode + '_policy_comparison'] = {
++                        'inputs_and_born': inputs, 'numerical_outputs': numerical,
++                        'path_changes': assessment.classify_paths(captures[left], captures[right], parser),
++                        'strict_bitwise_diagnostic': old.compare_policy_outputs(captures[left], captures[right])}
++                    # Unmatched QP passes/snapshots are explicit coverage changes;
++                    # they are not evidence that saved physical input changed.
++                    observations['policy_numerical_agreement'] = bool(inputs['inputs_and_born_exact'] and numerical['passed'])
+                 for reference in spec['comparators']:
+-                    if reference['mode'] != mode or left not in captures:
++                    if reference['mode'] != mode:
+                         continue
+                     previous = parser.parse(ROOT / reference['journal'])
+-                    key = reference['label'] + '__' + left
+-                    comparisons[key] = {'inputs_and_born': parser.compare_inputs_and_born(previous, captures[left]),
+-                                        'previously_served': assessment.previously_served_preserved(previous, captures[left], parser)}
+-                    pending[mode] &= comparisons[key]['previously_served']['preserved_exact'] and comparisons[key]['inputs_and_born']['inputs_and_born_exact'] and comparisons[key]['inputs_and_born']['all_input_records_comparable']
+-                    if reference['requires_all_outputs_exact']:
+-                        comparisons[key]['outputs'] = old.compare_policy_outputs(previous, captures[left])
+-                        pending[mode] &= comparisons[key]['outputs']['outputs_exact'] and comparisons[key]['inputs_and_born']['inputs_and_born_exact'] and comparisons[key]['inputs_and_born']['all_input_records_comparable']
++                    for policy in ('masked', 'trapped'):
++                        current = mode + '-' + policy
++                        if current not in captures:
++                            continue
++                        key = reference['label'] + '__' + current
++                        inputs = parser.compare_inputs_and_born(previous, captures[current])
++                        numerical = assessment.compare_amplitudes(previous, captures[current], parser, benchmark)
++                        comparisons[key] = {'inputs_and_born': inputs, 'numerical_outputs': numerical,
++                            'path_changes': assessment.classify_paths(previous, captures[current], parser),
++                            'previously_served_bitwise_diagnostic': assessment.previously_served_preserved(previous, captures[current], parser),
++                            'strict_bitwise_diagnostic': old.compare_policy_outputs(previous, captures[current]),
++                            'numerical_agreement_reference': reference['numerical_agreement_reference']}
++                        if reference['numerical_agreement_reference']:
++                            observations['numerical_to_closed_adaptive'][policy] = bool(inputs['inputs_and_born_exact'] and numerical['passed'])
++                pending[mode] = observations
++            record['gate_observations_before_transport_closure'] = pending
+             old.save(RUN / 'comparisons.json', comparisons)
+             record['all_trap_controls_demonstrated'] = all(record['workers']['fault-' + n].get('control_assessment', {}).get('fault_control_demonstrated', False) for n in spec['fault_controls'])
+         except BaseException as error:
+@@ -254,12 +273,16 @@
+                 for name, row in record['workers'].items():
+                     row['complete_case_files_sha256'] = {str(p.relative_to(ROOT)): sha(p) for p in (RUN / name).rglob('*') if p.is_file()}
+                 record['execution_complete'] = old.transport_complete(record['workers'], top_failure='failure' in record)
+-                valid = record['execution_complete'] and record.get('all_trap_controls_demonstrated', False)
+-                record['checked_trap_gate_qualified'] = bool(valid and pending['checked'])
+-                record['forced_qp_trap_gate_qualified'] = bool(valid and pending['forced-qp'])
++                record['qualified_gates'] = assessment.separate_gates(pending,
++                    record['execution_complete'], record.get('all_trap_controls_demonstrated', False))
++                checked = record['qualified_gates'].get('checked', {})
++                fixed = record['qualified_gates'].get('forced-qp', {})
++                record['checked_trap_gate_qualified'] = bool(checked.get('numerical_agreement', False) and checked.get('host_stability_acceptance', False) and checked.get('trap_completion', False) and checked.get('masked_trapped_numerical_agreement', False))
++                record['forced_qp_trap_gate_qualified'] = bool(fixed.get('numerical_agreement', False) and fixed.get('QP_path_coverage', False) and fixed.get('trap_completion', False) and fixed.get('masked_trapped_numerical_agreement', False))
+             old.publish_final(RUN / 'execution.json', record, deadline, start, 'execution_complete', closure)
+             if not record['execution_complete']:
+                 record['checked_trap_gate_qualified'] = record['forced_qp_trap_gate_qualified'] = False
++                record['qualified_gates'] = assessment.separate_gates(pending, False)
+                 old.save(RUN / 'execution.json', record)
+         print(json.dumps({k: record[k] for k in ('execution_complete', 'checked_trap_gate_qualified', 'forced_qp_trap_gate_qualified')}, indent=2))
+         if not record['execution_complete']:

@@ -1,0 +1,2974 @@
+{
+  "artifact_binding_sha256": "ee2933ed02f2f2c6ba1b004c0feb951553275c2967f829b5bb0efb894de7c61a",
+  "execution_complete_as_recorded": true,
+  "execution_sha256": "18f7d89c565a97962871ee428e4edc993e7d33c9e5980da96915cff0bf22ba13",
+  "historical_native_paths_required": false,
+  "native_identities": {
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked": {
+      "bytes": 88674592,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "0181fba617011c58b36cc8d59bbc92d807f670f19f3d74ea64dc8539b11c8e28"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/build1/driver.o": {
+      "bytes": 22592,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "f6d08fa5bb309a346038bae559945a102f8ed7fc44a15cd4145aef15f27998a0"
+    },
+    ".tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so": {
+      "bytes": 69157632,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libc.so.6": {
+      "bytes": 2413048,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libcollier.so": {
+      "bytes": 3752144,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libdl.so.2": {
+      "bytes": 15688,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libgcc_s.so.1": {
+      "bytes": 196968,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libgfortran.so.5": {
+      "bytes": 3647568,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libm.so.6": {
+      "bytes": 1029504,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libmadloop_tirust.so": {
+      "bytes": 69162336,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "69722452c234f494f0aa436fa24bbabfeae59100c03b05a1f0b76336cc17886b"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libmvec.so.1": {
+      "bytes": 1070952,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libninja.so.0": {
+      "bytes": 3770520,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libpthread.so.0": {
+      "bytes": 16536,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libquadmath.so.0": {
+      "bytes": 302136,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/librt.so.1": {
+      "bytes": 16352,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libstdc++.so.6": {
+      "bytes": 3230392,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/runtime-guarded/libutil.so.1": {
+      "bytes": 15512,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libavh_olo.a": {
+      "bytes": 2585768,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "10acae25536d5f7580d60980290e21033eb7413224554f167f031d2c809bab48"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libcollier.so": {
+      "bytes": 3752144,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libcts.a": {
+      "bytes": 10134496,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libdhelas.a": {
+      "bytes": 6384454,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "65c455edabfa895ce9e2542b417f522e5945ba4dd9ce4de8a5c303bb540b526a"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libgcc.a": {
+      "bytes": 3281212,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libiregi.a": {
+      "bytes": 3821534,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "6246428ec9d75ec8d57e0d1dd16efc4525053dc8d49857c6c41366ea14eb4fdf"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libmodel.a": {
+      "bytes": 15093354,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "d0354d6902a0d92bb1c8a2199b9a756827381aa59b36552266bb9e0fbd5845b7"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libninja.so.0": {
+      "bytes": 3770520,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/libraries/libninjars.a": {
+      "bytes": 298293528,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/COLLIER_interface.o": {
+      "bytes": 26408,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "33016b649c9597c595397b98ba3bc1a463bac21b63bd1f2ffc8f2a4161e73bee"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/CT_interface.o": {
+      "bytes": 101096,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "5958c787ac265db09314dcb77faffd95cb5923cebe3642665a8f2105112a6161"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/MadLoopCommons.o": {
+      "bytes": 23360,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "02996eabadcaff647e5932a0c53496fa0e31f2175552af5f535b61f812e22f1a"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/MadLoopParamReader.o": {
+      "bytes": 45072,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "53518badf58f38dec9f931547da196d2c7b9a893fe526ae74d7bf812a257a7fb"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/TIRUST_interface.o": {
+      "bytes": 23992,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "0a756f7f0dc49d9b764ae18fbb7752eddeef420d69995b5ab22d8d60e83a0720"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/TIR_interface.o": {
+      "bytes": 22192,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "857b6efcf3703820f42eb017311cb6b05d4c6042a80c687e91de51f45af3cb6c"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/born_matrix.o": {
+      "bytes": 28792,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "4e8e9bbc1afd111ea0b17b40650ff458cfc4a06ee726e6c86e9f60b671b386ef"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/check_sa.o": {
+      "bytes": 9672,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "e9bf4f4fe822d74cd12d90ccf8dd7d60be9d60044ba135ae971ca642f2306658"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/coef_construction_1.o": {
+      "bytes": 590680,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "a9cb407e63940a249641ee4db07af4a6b13606184ff1d1214df16d77bbbef9bf"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/coef_construction_2.o": {
+      "bytes": 334136,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "08d367a25a2e6692a7be362b79bc92a57b7ba1bd756c0a4c86c82228689c120f"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/ew_mass_observer.mod": {
+      "bytes": 2617,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "dd693eb64d848361087512a8c5ea7ffc1e692b356d348b398c4b0126950dec24"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/ew_mass_observer.o": {
+      "bytes": 18736,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "b6df68c9fcbb3ec6c63c65467f66dd2039d63a690611e334381a95d857f30630"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/ew_mass_snapshot.o": {
+      "bytes": 10128,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "b4421c0e2440a90c2719b6d31b15122bf4bb3292ff0a1263bbf03de0c1b7c2d9"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/ew_trace.o": {
+      "bytes": 12936,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "5792ce26f554caf4196762574972e1a0400ec0f7d0a7748d27a0e2e3ed480010"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/helas_calls_ampb_1.o": {
+      "bytes": 93696,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "f623ffe98c1bfdc9d213a61cf76a1994356bd267b8146e922daffba1595b5a24"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/improve_ps.o": {
+      "bytes": 36488,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "bc2167c3b460481447a2b5d678766dd84f60001553aafd8a0aff30f98e4f3d05"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/loop_matrix.o": {
+      "bytes": 96816,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "402a5f307cc5659e16aeacd6a837eace45cd7e6a4b154e76c58cd9069e6d6acf"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/loop_num.o": {
+      "bytes": 3800,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "f5544c5846fb0293fcbbd7e9c48e7f46fd16e3248f654b350b5ba9475ab70dd0"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/mg5_citation.o": {
+      "bytes": 5448,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "cb05941f5dbf37c04e97ea8e4f9e702180e141418bc9222faff3f8c49b742e84"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/mp_coef_construction_1.o": {
+      "bytes": 635952,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "959de37289078357e9192d936ed562bbe8221002ed59ac476fe8ea5db8e766e4"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/mp_coef_construction_2.o": {
+      "bytes": 363520,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "8e610e88777c3dabd79f2dc03c30f3ef5a263658c8c0a9112463c2bc4b21dd16"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/mp_compute_loop_coefs.o": {
+      "bytes": 17600,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "eb7b4a84a1dd2e832247f7d4bbfe707cf2fc9484bcb4d1a948c76ed06aec58f1"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/mp_helas_calls_ampb_1.o": {
+      "bytes": 93704,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "0d598b33fe2c597c54dc36d7c8b915664b84a8aab00f3f79790db527cb9c0d95"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/polynomial.o": {
+      "bytes": 447248,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "8772e8d9d1fc450105f6ea6704f82595954502e2d7848ff86c57862f73809a13"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/build/adapters.o": {
+      "bytes": 22456,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "070ad22ef1e8f7a6851775a8f98e26bd098006c5c6330e5e06b511becc9356ca"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/build/guarded-qp": {
+      "bytes": 88665784,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "beb1fdb8f3c5239bbc7ee3b57d660b0104afc32c7061601e6d8a58cb8d1e81f9"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/build/helpers.o": {
+      "bytes": 67528,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "292e6c2b19f8639bc4337c0207be11d4f0d95d6106654f1df044789dd26f2b83"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/build/loop_CT_calls_1.o": {
+      "bytes": 204216,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "6f8bbeeff941425a6ea124c29863e22803701a22f592f1743b9a28d7c532c0b2"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-runtime/libmadloop_tirust.so": {
+      "bytes": 69094528,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/current-runtime/libtirust.a": {
+      "bytes": 26118,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a"
+    },
+    "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2": {
+      "bytes": 263056,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "e655ec5a68127ee03586457e67039ea9deef55abaeae519c1f53ad1cf18ee5b2"
+    },
+    "/nix/store/463ik27ppxhpbvw7c50s7qcfc7mgfa5x-python3-3.12.12-env/bin/python3.12": {
+      "bytes": 16528,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "d13a9f621e36e79b73171bfdc7888997cdf54624714a2f63436b1b0bdd35ae5f"
+    },
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran": {
+      "bytes": 10951,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae"
+    },
+    "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so": {
+      "bytes": 132,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "69a56a9993b7729b29b274e65016031c81f2397f176ed5ad44d59bd50425e0bd"
+    },
+    "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": {
+      "bytes": 196968,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+    },
+    "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": {
+      "bytes": 3647568,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+    },
+    "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0": {
+      "bytes": 302136,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+    },
+    "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o": {
+      "bytes": 2744,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "754390a4952316d2c199c3480a7da38e1be699f50a40565fc619abc894b8643e"
+    },
+    "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o": {
+      "bytes": 1160,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "5c42d26eaa4a7974a6f62ba0bc85f770d9abf870cd2f7b670fb68367dcfdf467"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o": {
+      "bytes": 1808,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "0d4f828f340108eaacf5177f7de2d3ee7a10c35950bd71ea052188e6a1998b54"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o": {
+      "bytes": 1240,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "8c1507e22ab4137ac5c5d984b7d8d44156f2d61617e5774bebea6e3299f68adf"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o": {
+      "bytes": 808,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "225270dc2c7f8fb4603441e5dd501497de53a8d38f60d680a5d4e7cad6bf4801"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2": {
+      "bytes": 253696,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so": {
+      "bytes": 414,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "3051eb23b4916df17a396054d8a9d9c29279a28707c5aaaf2b8cd2adf09c7089"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": {
+      "bytes": 2413048,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc_nonshared.a": {
+      "bytes": 6154,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "2f366aebdb4d6e112d80d02e567d2305dfe16463406b33643dcdad3720cc6e12"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2": {
+      "bytes": 15688,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so": {
+      "bytes": 220,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "5102c7ae44be1b185f81a094341fbc6e1ecc43414053ff28ae45cd69de2e1bc2"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": {
+      "bytes": 1029504,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1": {
+      "bytes": 1070952,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0": {
+      "bytes": 16536,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1": {
+      "bytes": 16352,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+    },
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1": {
+      "bytes": 15512,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+    },
+    "/nix/store/qarrb8yfby1yyypm32vabzgxgq3w41ma-gcc-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a": {
+      "bytes": 3281212,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396"
+    },
+    "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0": {
+      "bytes": 302136,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "58f1e90497fdb2fe3bfc1ea468829b2f3e469c28a5b2018b6693b3a53491dbd2"
+    },
+    "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34": {
+      "bytes": 3230392,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+    },
+    "/run/current-system/sw/bin/taskset": {
+      "bytes": 90408,
+      "hash_origin": "frozen-input-or-terminal-runtime-closure",
+      "payload_retained": false,
+      "sha256": "b5d01660bcca50634a7e046ed5702be5d46417b287dfb4cf642683bd70747a15"
+    }
+  },
+  "native_loader_or_process_executed_by_capture": false,
+  "native_payloads_retained": false,
+  "runtime_failure_retained": null,
+  "schema": "guarded-physical-portable-text-v1",
+  "source_index_sha256": "7d9a40657b9df702fe1bdd1b3f302363813b1ba4a9514a2bcc88467f371dcd1c",
+  "terminal_confirmation": "Root session 95330 TERMINAL0; both SIGFPE outcomes preserved; no native retry",
+  "text_payloads": {
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/build1/build.json": {
+      "bytes": 30555,
+      "chunks": [
+        "payloads/5da0dfacd2a0ca90dcb6c807b9936e6d9686f8cf62c32c0266514bca1c4aef6e.gz"
+      ],
+      "sha256": "5da0dfacd2a0ca90dcb6c807b9936e6d9686f8cf62c32c0266514bca1c4aef6e"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/build1/checked.map": {
+      "bytes": 35306859,
+      "chunks": [
+        "payloads/296e622f46b2103ae035cef1728c0b204be379ef2fdba0820af6e64e577c0e83.gz",
+        "payloads/86dae5438b3e5f39846c0aa1cedf712fa3cc032ff7118c12a369d49b49de544d.gz",
+        "payloads/2e686ca212ed83456d0ed61b884f0c5e78918591059b031512d816ab2805c691.gz",
+        "payloads/4a9cd8fa3d7d7b2875a45175301ba6b16c4fee75f9591ca297011cff610a9d80.gz",
+        "payloads/ec2d2ce4b493839604948aee1548950f28cc8f4a2ff6754b9035c9296f154f86.gz",
+        "payloads/da49576b1fcd33fc3f3f0a4dbba4cfbbedf11a9776ce43c6b747852968f1531c.gz",
+        "payloads/c143e4bfb9dd5bee5639f86f014e66e96e598a3ce3b78754f66efc93512ef9ed.gz",
+        "payloads/2769855e5ff6a084d4a4f6aa15263d625999ace5f67e64f6ce2e889d6fb78405.gz",
+        "payloads/0fe405bb3c7b625246551e2ba3ef47917bafee89d62e4d9394364b0b62919801.gz",
+        "payloads/58699ad12b2e56e02abd61a949077f2c3d96006fe8972deafa14b037ed7f802b.gz",
+        "payloads/fbac882b23785890776d27044927295e4f64347322644f0ac41231341fc2d964.gz",
+        "payloads/140cbb958f1d21b86ce1a5bdc59c65f0e9905052ffa2ebb0b5afd3a1ab913946.gz",
+        "payloads/345ddad502660b277cb4d70d287b78bd97f4f56950e3b72282cc2d2479546f9e.gz",
+        "payloads/48cad78352f2df6bd5e2e776b36f7885f095ccfe476012d767d8a76a04c13fd8.gz",
+        "payloads/f12d129157aa9f618207f011304aaa487f0e22e81dfe0834d343bfbbb00d79a7.gz",
+        "payloads/e1a27fcc00c0d23cdeb35b29ddf9f09fa0f6ac37aa0d203b206543aff851a13d.gz",
+        "payloads/9bbc913111d36ce9758c9250f4c5a57f36fc0ce5e71a28da27d3bd5565ccbc87.gz",
+        "payloads/e3604de815738c609152bc33641d14860df67343af292dc226ed2ccef0db64ba.gz",
+        "payloads/b31cf8ca105532609b4c0bdd6f9b153f7dfdc344293e500860f676c76b5ce141.gz",
+        "payloads/adced54009e6379d9ad825bf6e2b557fbe525c1df58b22ec1a692748fb906997.gz",
+        "payloads/a6fc2d5adac82386e7de0a2887d987f6c1e7f0337fe2d995eb214de4ea994850.gz",
+        "payloads/3959bca46df43299ecda38f6a7aaa7c10401d7f9b887deab817e23276723ac42.gz",
+        "payloads/5cead4ce1ae59f564e8a5b4c14417e8488d3ca0610779400f3228cc9a806b579.gz",
+        "payloads/97b640183294c603ae0c131604a7ba74271391ae8d816665a0ab9926a75adead.gz",
+        "payloads/17990e4dbd7e84194a56002dd65e3e5b32fb17b1c0be566556588b27527fc751.gz",
+        "payloads/2e7832ee42ae3f80b7cb253a85c7b75dfed58c5255ddc1bbb1b5a023d206ad85.gz",
+        "payloads/b2601047cfd0de5554c91183a2ecfe501f075ebe9ebb07759cf06800899c1fb3.gz",
+        "payloads/83a3f5b4000b517b2a6d202eb4bd8cb9122acab8c5c0aaa0c8f221b4608a26e4.gz",
+        "payloads/29d31a77a58f33cebd8741902d613c511ec7ed4dac8cb63f9dd6dad3dfd41f6b.gz",
+        "payloads/cb8ed73cc90ff5fa97e021977197d3789a9eb8f3b258d1ec9d0531f630714ddb.gz",
+        "payloads/c65c9143497a2c974666383a7cb7f26d0ddbcb8bb8054cd7cf694f5e38302bd8.gz",
+        "payloads/cdf303eb78c7ddff1fa8a472ed6fd56d7d934bc2c8dda8636eb20c33a1a2315f.gz",
+        "payloads/1bd061444fee524cc447a54f703332badf1887a718a7ff93219541b414f67f82.gz",
+        "payloads/6342bcf2993905d82b314212383553530603ace1a561a3d2d83ff3719bde5a65.gz",
+        "payloads/a538797d7d5ae9b6542d095623655f22aa517aa1fb59d219424a982890ed2617.gz",
+        "payloads/e1448e82a7dd17f3016c6e521127adc64376504cad354abd3b9945b6edcf3b5d.gz",
+        "payloads/bdd1b7c565c1202cc774ff91502dd5563e617b67f462c7ad25f46243b28728dc.gz",
+        "payloads/ccc26cef017112ad3a2a2dabb4ea7f0d13f88d911c6905081d41a65b7eddbfa8.gz",
+        "payloads/d78bd05f0bdd2499a67c9a1c7a2514ed1b46228d010efbf8bb9a6f7077ecd6ea.gz",
+        "payloads/e70658f44ff5158f925ccca35817e38e6ab43eb8f7984b126f085beadc4cb29e.gz",
+        "payloads/acfe646520c6b4c2a997a3e566aa860ee2f324fae23db694d2e4357ea6742237.gz",
+        "payloads/5bba491731f79ee71c1f6c24491f81afec3912dd2764760aa92cbc262f48babb.gz",
+        "payloads/a5a2dc236cbbb6f0614b4d7a29816a4df6895ba520d77f7b0eebd529282178d4.gz",
+        "payloads/cb87f77b4f064f9392100b70b479b4294acccf3261df47200774b51d64583ff4.gz",
+        "payloads/2fe1b75f1ab31d6a004caf0998469ae5486335aea821f1285dc9baeb7dd27688.gz",
+        "payloads/9972c5f9d88891b24e7a5adfc7f010a9a9f0d7d2ea3cec3dfb6c445cb9d0c79d.gz",
+        "payloads/c73b4a85746adbe1b390e7fe279cd8529055702b39a1ff8f039cc1fab9bfe642.gz",
+        "payloads/6a713b93cb699fb49164c031650b5339b4dd24b12d4caaf7dccca2543e431467.gz",
+        "payloads/707fd29024c118a0d8f9d7409eba3ddb9761560d21ab5628fbe944c74f08c735.gz",
+        "payloads/784a8c8e9cabfd29b2fe45dc5c699d7eb6ff2822db5c73a953bff2b68e0d75d0.gz",
+        "payloads/8bf87b398cb0bf23a84e6b0c3d1d2d6d920c00b4b61d040feb0507431c2f0e10.gz",
+        "payloads/e24b970c6149954d2d8ea3ab11b2e074121f56f34098034fa80cba4ab1cd96cd.gz",
+        "payloads/9f7085a442369209767643ba13938f3699b014d57098539a16ac0d602fb8f98a.gz",
+        "payloads/4f0c8ff3de2fbf1bcf459bf61ecf6945c00ec2059e9d3d4100cfb667f025ba3f.gz",
+        "payloads/8c8b6431f062c1a1c135f5ceaeaa374f2010d5f1c5fa9206bb94df25d9cbfd0d.gz",
+        "payloads/a95c14ef9fa9215e6e33f715de213a9bbce7ad49c58eebd9e0beb72f3bc300ad.gz",
+        "payloads/dfcc90f949d985f42a01f3a3fd79cc06bc2a28ce16652c12a09348e740386d3c.gz",
+        "payloads/d353a7c14475eae62ae15d5b4f85947a0bd3584cbb928cf5cc78e82b89d225cc.gz",
+        "payloads/0cceb9fbc10d483f9a6470acf51c06f2905b84daf6f996ddd54d3d6005e34c44.gz",
+        "payloads/01f628f6a1e1fe5647f663fffe8312971bce026fce662edf3c7af32d364c3e62.gz",
+        "payloads/26db5f515271ca8483b668d1df78fae0a5b3edc37745f88faaf2c238f0883fa5.gz",
+        "payloads/75cb6d9ce4b4063318ccada11be75fa9b85e10d498fa1289bc8af498c70403d0.gz",
+        "payloads/80a9b9cfe9f1900b0041e40324ca137a249f993a364ef484ac23f5b635699874.gz",
+        "payloads/35c7d963f3efc304277e60ea13574123120871b0823fd89b70946d97266ebf57.gz",
+        "payloads/15bb7a1a6618cd52d991d1cf755ed6e06edd638d7241dc56f0f0e8ad8454a40f.gz",
+        "payloads/91d45fe5d74eb1bb5eacec981161eb185082354f5c8ece91f68abb99db165fe4.gz",
+        "payloads/40b128657d0571dad77c5ce803ee8099c8268efb2a0199c3d222edb752330b2b.gz",
+        "payloads/69241ee714d082b789f3ba44eca6ea3f5f81e21dc1c83ddc89ffe8a8788cae0e.gz",
+        "payloads/071a6dbf271f902285b8f987dcf7de41cdc2b64a95ae32ac766327dbe1bbf96c.gz",
+        "payloads/b9442508e34e27e18e307e65a3b3bb17831d6fe8201cb8a45069f429b47bd7b5.gz",
+        "payloads/6cfb68e0e8b2668bbf757c978dc0700481a24ae304721fbf0c80bce904a43f13.gz",
+        "payloads/7166028c3c141010974034e4424ea1ffa188d04c3cb75f7e063a495490c491f9.gz",
+        "payloads/13b571ff53df29a577741fd449db071d23571bd57b8682025c889b685ac507c9.gz",
+        "payloads/296cc26fd9434d7665cbbbe12b5ae6c0737d81a256a3e2ba224457ab49ce608c.gz",
+        "payloads/cd8d83623980490be741a87ed2afd82e6bbc3aad485dad8cc68bc549e861bcbf.gz",
+        "payloads/7fccf37873eb769115ffefde51f6e1bd2ea7b1b4bcd3255ead25ec8a145463e8.gz",
+        "payloads/558d1284018dc517eaae80a50b1191880fca4f453f9d41f374901a5f39076d12.gz",
+        "payloads/172bb673f55d40b7b65b9622543a93b1e5a3032465cd7559d16707d0b7d4c451.gz",
+        "payloads/85756b7a96552a0a0e350ef27d4ed3fd208dfe2b401996df383a0badd3427b30.gz",
+        "payloads/5072b9c02b39d08b5a3e990fb9533c23e0bf9962e4a47d60d4f89dc63e6321e8.gz",
+        "payloads/3e117551c81184978be326934cb3bc62639353341b739518432838e1974f8d10.gz",
+        "payloads/6e61dfd31a4d902f777cf0f875030a6c30f913053e4ae9a881f7c09af02bbc81.gz",
+        "payloads/38077c80eec5dd850028ac07e3e69361796005c49fdb7b4f14c2ba87991bc29d.gz",
+        "payloads/2c6ea60cbd950f939c0a5d3c648abb31cc3a51299802312db929af7e1cb2c930.gz",
+        "payloads/8ded5c20f144de65ec6b8e266f846cd73e1e3da8852d293a56c6031c1f28d9e6.gz",
+        "payloads/0bd953ea0d4e0f57875a80cfac18b7114326374438fdda95d6212bf08bb9bd44.gz",
+        "payloads/b382bb6dc41e9fabfabea4fb601a23b2b0ef02d91cdc71fdd4fa055962aed1b3.gz",
+        "payloads/95d0903a0b456af4db1da9c88719ee5fbcb5c9a8b369424abb7c2d13dd2a818d.gz",
+        "payloads/96309079e30a3564dbd28524702d894a29911e66dd386cc3e9db342185b236c4.gz",
+        "payloads/a42e12d9d5bb2a215ec7885c05eae18b9af8f89da5d60b0ea6bf53e52cd9f2d6.gz",
+        "payloads/43f9e7e5c04c245d6a0d46d3fbbedc672a13f98814573a8a3be3261ae67ebd68.gz",
+        "payloads/96d3ba663bb7ac507b652e5431fac1ab612263bf3c91a04d1560495d17531044.gz",
+        "payloads/15735d11b23be801001f3161252d4e1a8ea32f68f6ac96f205f910be691796ad.gz",
+        "payloads/5b55b981fa154fc4453954ee12cc59e3be6d885be8535f93d87f68a71a651ffb.gz",
+        "payloads/3a617ea40213ea504b1ebda9b7b916b834c6f1502d18447bd0970fd7fe7eb850.gz",
+        "payloads/0887ccb41b91cc1debf4eeb16e2567771742896c1beb74d9657e1457b97bba4d.gz",
+        "payloads/6e27ff0c1d27b7b758eff9197fcc46f621f2a49c739da2f83cdc1570c0efb307.gz",
+        "payloads/3981f38c2b9cf3a31541c9570f4578a081acf73b77d74f03aa6cfa2529d3890e.gz",
+        "payloads/8e84247e98e198ff374ec74c8aaba3860a7decb236db4e98a3f36567c7353d68.gz",
+        "payloads/f4fcec7e224b3204bc9bdee10e225fd0fb4848136e58ffa2c8b4f8b0a43c5f1f.gz",
+        "payloads/02807306289e5fcc0ab95ee683e661fd076b43207b0075edcbb4ae0fdba2ed21.gz",
+        "payloads/fffc7f433c328fc5287a3c97e300a7a32c68a6a3953be14469d570ed6ac72755.gz",
+        "payloads/f2e692288cbba09a70fc59571e1beb66a38ccfdf6cb428c34f9eec03b5fc482f.gz",
+        "payloads/ac5187adf5f79419f53ba8ebaab467ae5e29ce8fb8c8de9236a2b4664b9ca63e.gz",
+        "payloads/943dcbcaf30ebf97bd3ad09a6d7b16bb9323cfaacd2d94483ba260e1cadf5221.gz",
+        "payloads/cd9b926f489f3e2d647c6801b5a6fbaec585c1aa198c7cbebc1519308d269224.gz",
+        "payloads/776e260b75c07069198b5db16be9f01799683dab6c76bfc0bd1a3a6977bb3055.gz",
+        "payloads/86ffc78fefcb3a680ea39b193ec33430e92a75e81455446a2c6bf6a7639b1bc2.gz",
+        "payloads/82947ea0f2e76e503971b22e5c9b00642f4982d2743767f9a15c35891c23493c.gz",
+        "payloads/4a68ee781833c198fc478fb79da7d6ebd460c0e801f5364c59c40924faaf0af8.gz",
+        "payloads/bfa229895e89765f7f6b5ad47332940a60eff9c961d26a9c7a26392cdafc38f9.gz",
+        "payloads/af8124a6ce54808c6c046b7ca1b6bbc464520603c278c910fd2de6e8fcd45ecf.gz",
+        "payloads/f588ea68a1701dfa32f0e257ab5c67fb6636ed7d37cec874e222fdc3ef5c3518.gz",
+        "payloads/3f22bb5d3a98a81730f81570d8665a0e0154003aae06bfdf0febdc6f5a100aff.gz",
+        "payloads/9ceef24d155503c869824562b05e14ce8a5a21e32ec5818a45e8f5a08e6169ca.gz",
+        "payloads/572aafeeca65a4de563d2deee5f9a0692a4dd7c924326eba84885c1c6b3750fd.gz",
+        "payloads/53891bde6ecdf9ebbab54ee95b480f76c751692674a0bfa00d6f161f7f1e7fa5.gz",
+        "payloads/9b6be6dbdea62170d76c382f22bed35183203f8994c260ef5d366edd97fdcbd7.gz",
+        "payloads/c8c550d08ff8c1e3a40381e8e26cfd00b0d8a6d0f7567c4eac0c2d6cfdd344f9.gz",
+        "payloads/c12f21ba879f968d0e4915bd6485b412d55317499456c0682a1d137dac6ec5f1.gz",
+        "payloads/7664cee2420a3aa6f66d3ef3772a6155a46b75284eab07e04a1ade66df018cef.gz",
+        "payloads/66bd752f3f37c879d2d6a4ec23bf1c1bbb1de87507f41a4899a71a1c791beb3c.gz",
+        "payloads/0d483b2c3d7b75ce0fc418aeb3fc65b28b5895af6c6562fb7773e7ceb9606fbc.gz",
+        "payloads/ee93839ee48c4908859c48cb0f95916ead956d02330ef3e91e43a9a0ce7df871.gz",
+        "payloads/b3b8d0ee68ef77f990791d5e5d92baf90ac639b461f21508b6529e259c203223.gz",
+        "payloads/a11531e9dba3f2a126b23bd7bbe341ce0c23245d16a567071f23cea7d1fcdb66.gz",
+        "payloads/cabd1334ecf6f72180675158c2bbe75f9c20b66888206ed8a5f98407f7688ce4.gz",
+        "payloads/0e66bbdc06e158a01d5b9da457c6a8489a830490aa3fa6c5990590ac5757cf6d.gz",
+        "payloads/60166dd1de71e43e9ae21d1a7f81a4d97d54110bc021cb82e4014c65d8efdf24.gz",
+        "payloads/72d876ce5d0d8b481a5e0b0827093d9c2fba9b5ab4a8fb8cfbe55260ae99806b.gz",
+        "payloads/03ca450c5747ac8a8aec448616dd3145a89a62413d37c8c7753717404e12b663.gz",
+        "payloads/a1745973dd83914ee6baa93848fd97d0b5cff68da23ad1a9097b7e8020ef541d.gz",
+        "payloads/f4842bfabc17d632a4684bbfa747d524dcc0517fca97e06eb9dea2cf2a748428.gz",
+        "payloads/c7668e0f0d03596cfd49346a185624aba55b58d37faf8dc698e2cec976696cc9.gz",
+        "payloads/9a4de69dd81e5613669b8d81059af052668bb6cebe7d1a2a39d3b3da7c8c65c1.gz",
+        "payloads/0f7f4393a772027a89aad97732a5e7df0c71cdc71e7e660f7c7410522b76031f.gz",
+        "payloads/63e9f4ec22f347816683916c622302e5f8371385ad81a4213fe8a30211c62f3e.gz",
+        "payloads/d47eda05d75023a0374b13b00519c622887358c0bde9fc4cc7ece543c907969a.gz",
+        "payloads/7e1f63e5030862b13af440384fd798c0604c199d45603c8041046a3300da4ccd.gz",
+        "payloads/fe5dfc2f8c08fdffb116c21ddf91c64e86b6aa67c7b0d58ebce7773d9c167cd0.gz",
+        "payloads/57c710bce632ce2d10d1ba7af44914ed6eb5ae7d415c45276bd58fbd3da2bdd5.gz",
+        "payloads/f28c6a2297fa82373d7621c06fd77a5a96d32f6ad10e9b9e699c293839993e37.gz",
+        "payloads/809d05526221d146c424b2159c846228ae235cdcda2e75954aad560ebcfff3f4.gz",
+        "payloads/f903833a2074021866973b440538629b5efa1af4d4ce2dbca1ee5ccf559a9ee3.gz",
+        "payloads/474c684c8238cec6a6a3afa2e1d1b30a4733edee659a3a3dff7c85508f76eff0.gz",
+        "payloads/5ca00904b295935de5d533d834bb72a77c7b2c95d21f4e3fcbd066e3e2e1d049.gz",
+        "payloads/fad818971b3a279a119ac924ffb9ab575e5cb24f15f1d3b11e3058a979dca5f6.gz",
+        "payloads/331662fc7a14aa8405d516877cd742c761d49f188c6d1040e918e015a68d963c.gz",
+        "payloads/d4d679821d0fffde8479c02739c6f0f202c524f6799ceeb45b8e1fe59b12c133.gz",
+        "payloads/ca09be709e5fd09812afc0148bb9493fcfed20e137b6af3a2bfa4852698a7630.gz",
+        "payloads/343fd95ae936155ecdba866607cf159c032872ca9fd91e96c751dd47466dd008.gz",
+        "payloads/eda2444d5d4d50816a657c5edc45c985deaedf03ad20451ee8f5fe153b59be2d.gz",
+        "payloads/957b8140570d0b02bcb4f3e80b654ffa2a24eb32e4d17d6bafd0c57afecdfe9e.gz",
+        "payloads/0ea69f4beb1b837ca3094d8ea4d78762f83786068c4787eefb9069b0ad770957.gz",
+        "payloads/dbf342f8cf3253e88925574b65dd8565d2ba11c50c3c52b799fe200f33de99bd.gz",
+        "payloads/3b198b1775771771fb2a33a961b224899232372ec0aad8edb492a8e132e2ab6d.gz",
+        "payloads/51f2946a9e87fc14b87d2c0e6d8294fa435b2cac6bfa90f20ab173611b19d150.gz",
+        "payloads/b9fc8e20d2d11d5c3770288d4334197887a2cfa3eea2d9ae9567f59a8306e4a9.gz",
+        "payloads/c7397d9eef1b2b97ab9775499121d7a3dd3bbe88d30ee93ee6342dfc701dcb7f.gz",
+        "payloads/ba07b151b64a1a9f3dd5bdeb9783641926a2c18d2319a2dfca413213ce9540b7.gz",
+        "payloads/764e7125cb3ae5e6d6f2d8e8a47659f6b6a6b679a69a5f476a4a413a5b8ce43f.gz",
+        "payloads/93f76358777bb4c4cd31e8b81ff3e094597d61087276bf77a83ee58388e9ea18.gz",
+        "payloads/7abb3d6b7bd677f039955ad986938bba987477a93c850a9cfb7958015f737161.gz",
+        "payloads/79c51b0514736f756f9af7c8d16ff1a93b963e84606ff71030c4d47eadb80da6.gz",
+        "payloads/cb392bad38a59b8642b337d09c8664f1aec2267b54eb003331d1057a9fd52b55.gz",
+        "payloads/23d2210af7dab1c13fc46b6a7bd0d336ead3d3ce0a0511d7a468a51fe561cb85.gz",
+        "payloads/fbb06d19ddb1f1b1d4e49d4019a288cf5107d4c039eb2c7078ce8696aff7827e.gz",
+        "payloads/0d80d31fea49344cfb7b8f5702a6a9c90b5a0ee4f0c15c7906c46d3cdd67e596.gz",
+        "payloads/24807324b2f568247444edb2959f14d083baa308e4e70f079d2185f55ccf996b.gz",
+        "payloads/42f55f14b29cf4906dd6ddb33be1c73d2c69345b2e2984ee433067fc6a7c26e3.gz",
+        "payloads/e1123031026be6ef61961888cc9ecc8fce29eeb90bf20a5f92f3da7ef61bffea.gz",
+        "payloads/8f1bc0f773f5c65156fbe8ad3d8845eb1cd2dd055b995db718d0e75b39a9ccdb.gz",
+        "payloads/7f0ff6d854e83d198164444a08ca453f5915909db6d09ed982c560a45ff79b8c.gz",
+        "payloads/9296d3f8b4340646531a15eee4ad85aa664b626ad6efed5734f25012059887ce.gz",
+        "payloads/41c11bbce604fbd5de30c1ceb0d95ceb01e2af700e15c1d98964e14b374549ba.gz",
+        "payloads/15019397b2968e6b250067bf09d5556833ca1a864ca4d0d446cde887447b2c86.gz",
+        "payloads/e40362a10d78f73bb0a1da100d968df87b1df07537a5847c544b95a4c6ed5ec7.gz",
+        "payloads/63affb056de238a1acfcfccdf53e7097632ddefe977aac28ffd5494e937608d9.gz",
+        "payloads/a07e9aede36112ac5389e0bcafec2b7057cddfc4669070b269073094800601f5.gz",
+        "payloads/8a718f6edd7639d26468820369b83c25696605e56400e48243932a23fa050e05.gz",
+        "payloads/595217813c1794ce15fc7e35dd1505decf92445d877815306d705564bef9c6fa.gz",
+        "payloads/16f61b934107ace4af3cb8c0df8340f13c970fca650b2058a4db1054e4692cd2.gz",
+        "payloads/75c2834260f61f9bf2e86e793a5ed868fb2bec4c0caf53092df49779920b30ca.gz",
+        "payloads/ea93117ce63043c3677c107e1cd38749f36f26a72f6d1b0318c761f0e9427140.gz",
+        "payloads/36043733b1238bdf1451759e9341574a74f9cdb22beaaa5e393ac4af515f3746.gz",
+        "payloads/607ba033036ef30f74735349090def7ada608f96cd568a784a5ecd6f038865d1.gz",
+        "payloads/869ed7e443673008b25fbe3d9924b0ed061ce1a0b41d642e5e46efe4b699a4c5.gz",
+        "payloads/851b99ebb985a9b1ed08f1a6a5fd56fbae86ba34a1df23a6f5e7a0dd25184b24.gz",
+        "payloads/61a538d2593f3cb3eb9c3a691c6552aed32bf5a6546200b8b084e712662c6c6a.gz",
+        "payloads/cf98608e2a44c2c4e5fc0b93043ba1d7b7436e5d943a4b5d8832d422c87e7917.gz",
+        "payloads/1f25e3f0fe327faa9337a1f57421b64869ce55a354f420ab91e8c3ea327f7afa.gz",
+        "payloads/c442f378c835fd6263835768505e1c06172dd8e081f8bca3d63965cbf768046b.gz",
+        "payloads/27cd9912286c5ff21c54e5c9515c8d90cc109b017e8bd189727377d0ce46da5b.gz",
+        "payloads/af66dcaf906b22b94023aa306c5fd1b3c17c025f711cd92cce93e99ef6b4e3e4.gz",
+        "payloads/bc01a17f749c45ec9e67d4e3af8f7f0654972d1a4c528c18c1414db000ea99b1.gz",
+        "payloads/3eb8d6f7ce9a1f6dc99de7156ee4961756c2ec0e074505ba92809b7574a40aef.gz",
+        "payloads/2cf09eb08e6f5a90a1afc0953492730bf78b0f4f1fc657924a21cc1d38632272.gz",
+        "payloads/75ff7c728a7a4681a2163819c960a19a97319e86e26c86126b0fee36b8e87689.gz",
+        "payloads/2320effaf66ab79e3aacd2e1f0dceec92225ce8ed509aab5825b47b0c7b0a855.gz",
+        "payloads/e44f874fb72ad854021887a55b0ad33c7ab48764e48d92a20ad9d58b4d4c4c00.gz",
+        "payloads/fbc1af97df5349e425b9a075fc72648dfb6896fa6945ddaf4014b30e852977e0.gz",
+        "payloads/29093272a0aed970bf9b0057d41384e7ba3ce85172ca564af240496ab0bb21f6.gz",
+        "payloads/0d52cd7db0df83c100d5d6159676cc79a0e1ec4a90b0aed3a93340dc3db99d1c.gz",
+        "payloads/6512420ff5c153dac1a7dea6e78e381ae769d78fc617ecfbbe6291b2e0b42f34.gz",
+        "payloads/11487b1b50808c0c532f84245c6af4b7128cfcc3d1e81f0e227628a7c4db8960.gz",
+        "payloads/5028b777eb934d21bb83c955600c9a9665346e9992ff967c1936843525e65ca3.gz",
+        "payloads/b48ab52df5f3f7828af7b0527981b8b82f7a951d6d194b5909b19176045a1156.gz",
+        "payloads/86c523b10dee87580a9e64391f2e112a53e8b3c86d43ba13b29871f0156a6cd6.gz",
+        "payloads/394dd5f8beda163ccacf2eb346fb1ebba583534c25c8d9eeaeed11908d8d98a7.gz",
+        "payloads/5ca615c1dafc4d7458deccf8d3ee96f403bfb2d318c05ba263c5395f39f9729d.gz",
+        "payloads/d16107712cf6f42f42bd551d48c3aec474d778f81a9b12d934e7539f9e7efc34.gz",
+        "payloads/6eb9793a9fb552b29368228f7fddbe1842b82c118fe5b5998430838ee95e2e3f.gz",
+        "payloads/b49d95b4e825fb49cc7827718a72887d3d57149de4317e7cdb703bc7bf052587.gz",
+        "payloads/fe0543a001e9e5603fb0c91ed3ae56d9eaa7967e6ea4d3f1ef9e6bef4718b72d.gz",
+        "payloads/e6b724e9a7a43b59b4637ef19f8e6435f9cb6e3e8bf4b689376129d290a4c325.gz",
+        "payloads/4265550056b29d0c2eca1f08bf4048279aaaddc07a05309e5e8506627881b725.gz",
+        "payloads/ce607ab0b509a97ed705fedf1318c3462a5035f0b336f427b902df81c0b6769c.gz",
+        "payloads/660e963feca26ab084f8330c3dbb2583a68a873d9c65e3a7218bae123c5864c8.gz",
+        "payloads/0fb2e3dbd502231baf170f1d03534bb96e1f4fa8364877fc369194bf9548c6f9.gz",
+        "payloads/12b0cfc6e4d2d3742120982342f848343613ac3c100c04899bdca72348d06048.gz",
+        "payloads/e815510f385adf7f1208548a665e3f7849d76c49042e26d7b59a85cbc0e91fb6.gz",
+        "payloads/255e82b275aee75122aeca841f0cdb8f2f8bdfb0c370580a4bb1b396aa6db211.gz",
+        "payloads/bbc19f0d8d59904714edade53f3d5f36a572773171757762b0fab7b875be103e.gz",
+        "payloads/614f676860b81eb89baaaa44f09918c8e3a253893e242b88b8fd7adb0877ea78.gz",
+        "payloads/411327108cf425e47e605d8b78d9ea8c3721441e5eaf956b26cf64d04c60f14b.gz",
+        "payloads/331b0a48564e047704d44e924583b0a64fb2b8f859289fc9be77b45e8a218c9f.gz",
+        "payloads/6e2b703f27515c31c4d68d8ff223261b663f28bd81997f4f9d2918918986504f.gz",
+        "payloads/fb84504fe3a68413db9e59547d053f19fa7969ab97f0c54b00603fae02abb7d4.gz",
+        "payloads/31dd32d2126f968c80a85e9bd2ef5c684150e02de11a3bfcad42217de04ae9af.gz",
+        "payloads/70718879b3abc57231ef8fa8f9384411d4dd36a4bdb41299ae52a9cc1d732caa.gz",
+        "payloads/f9990c86cd590a3222e568a3a61a3a15de3e8b755db77ff3a916d8de448a1c42.gz",
+        "payloads/2d0a051bb7a06781f5d8046e2d70c276b863626dda63f539da7c6e5855261317.gz",
+        "payloads/b10495dd0858ff98b8d26c2ab444fe3c514fddd61261468aaa567e814505c05a.gz",
+        "payloads/a223962f40cf98ec6384f3ef65afa756e86c29812974af819246be571a31f075.gz",
+        "payloads/af7d66f9c1ba3118b8b19d09c08f40b655edf7b959c3362252ef4a2eadbe1160.gz",
+        "payloads/65bb0b05cbd539c13bf5d20b359c723dccb8b253871c95f6f6d5ef8e07dacc75.gz",
+        "payloads/f7e7312761543fc3f627394fb7d89c44868d53b2b4750cf5486bdf5c5f437e8d.gz",
+        "payloads/c273b474464cc725d4e96dd48bc06386ca95bce1c9db7b4ec75056f6c2ce082f.gz",
+        "payloads/f444451381ddcbdb07f9c0d9b3d6ed023d617495eb04c532083a0ab913e5dfaa.gz",
+        "payloads/a74fc0c160a5b0502a84eea8c609d99922da39feca39c44fe7537917e4b730a8.gz",
+        "payloads/6823d7588d213cb4cffa96c35397f44e48266bfa488780aa079fe1e951e70b7a.gz",
+        "payloads/658fea3588c42d8dd7f4f380394ab1a97d0c38945fc329f67da81740cf90b112.gz",
+        "payloads/6348cbb69e4275391b96ce9792dbd77e52e7ba94aaafd3dd7d5eead0fd3d30fa.gz",
+        "payloads/fd92b859045d489b17d4c307230e5727ead79154aeced7eac33e916e3b4bf2ec.gz",
+        "payloads/54a151a09ae8f12a482882696605b3e84fbad38c6ddc722909c350d417dd9e6c.gz",
+        "payloads/28e9661e94293d0f4d9872d13a716113d0cf4c81c72ebaa2dc921ad0aa3c014f.gz",
+        "payloads/d1fb14ae43eab6c8dbb41d56587f01a463b305413e6140266a39e0b90ff8ac8d.gz",
+        "payloads/ee73abda9a28162e9f84ab6d2ba3608f3164efdfb00f090507486242b0cd116f.gz",
+        "payloads/4737b1ff3e7239ad7a510ec2cea1be59aa77b5bdc52ac98772f16588ea173328.gz",
+        "payloads/acf646383d8f15a71fbd78a5e949fba5c44a18bcf2b699b973d299ded4ebbe34.gz",
+        "payloads/04ff70f7f28818451383570a093b06122e11ec6946bb1014aadd30442d9daae6.gz",
+        "payloads/f5e76fa5561cab3830f5905fd9091a4452adc4d98d1a1e73e85e73e28bbf0ca1.gz",
+        "payloads/f4c84a9e805eac4ebef84142287d6c6de1dd1d548f2cdb2b52f38b0932b1e9bb.gz",
+        "payloads/fbd112c15c93319f6ea2536697c461321f06ae3cf64fbd36aa17eee73cab14bc.gz",
+        "payloads/49bf6043802c7b156f3d4c337df7df03103861c3c3fefcd7bd4cd404b1bea209.gz",
+        "payloads/5e8022cc80af3ae8d6d236b3c162dc4ffe3c148fce0c4173aecd83421dbfa409.gz",
+        "payloads/07204b8ea434d23df2825e94f8bc5d54cc0d9eb49c13c6adbc76c0c6c3c73d54.gz",
+        "payloads/12e8f0f26f1918a9580498151d83cd86e434d3bafe692fc25e1ec686c2687684.gz",
+        "payloads/d23e368762c45e78be480a74c45d097a3754ef198ca158f70175e1542546a4ea.gz",
+        "payloads/9e5264f9030bc4a883cc6e3b39c4640841549ade442129aa7530a82c3e880aa8.gz",
+        "payloads/d330fbe5dc1555bf125d15ba364f56c80d0a6a22fb0f5e10e9824c4784cea644.gz",
+        "payloads/6e1e3a3103a3f155e03a1cf8c7553b332635d04c862bcfbffce92ec6e36dbf4f.gz",
+        "payloads/7fbffc1807a05258203b8cb8864d6d854794eb3d2751b1a90b05696de1aef271.gz",
+        "payloads/172b3374073a708804ad350696ce2b099eb0f83c965ef9e1847e5487c1f8d3d4.gz",
+        "payloads/e28baa5e62d96b5c4607b9706bc996d66d7a4a46908467d85ef7c51456476d53.gz",
+        "payloads/185af679305fb47ddf143e41ba633fb9fa3739ba4fd83043777557a8e3b00386.gz",
+        "payloads/d654616343f83ad9cb20bc4e35f754782d6c82816b374401393cdd599a7df329.gz",
+        "payloads/83c9cd33e7d4e1656c2d3518c52b7198b36b321ad7e1d9bb10e12dded49636f0.gz",
+        "payloads/1c9168da44d320267ecf59d758e1b931cdd3a69b64783a20bb04834b624e5f15.gz",
+        "payloads/a4a69b6a51276cfacea69fab79b9f78cd337ac792450a6bb585acb6c25c79ccc.gz"
+      ],
+      "sha256": "7f8861138eeb6c8eff7da96b01249518bd660c67810a1393f1f804aa204c06e5"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/build1/compile-main.log": {
+      "bytes": 0,
+      "chunks": [
+        "payloads/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.gz"
+      ],
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/build1/relink-only.log": {
+      "bytes": 314,
+      "chunks": [
+        "payloads/c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51.gz"
+      ],
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/adaptive-masked/checked-control.log": {
+      "bytes": 6724,
+      "chunks": [
+        "payloads/b570f8545a019c7dcbd1daa260195874c5d495e6927806584cc813696c87ff46.gz"
+      ],
+      "sha256": "b570f8545a019c7dcbd1daa260195874c5d495e6927806584cc813696c87ff46"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/adaptive-masked/mass-observer.hex": {
+      "bytes": 9569125,
+      "chunks": [
+        "payloads/4de1dd81c027899bb60b4ccf0d0a295dc6e9776cc80c1432b8ff514d549615a3.gz",
+        "payloads/34589693ebc1c8e5be285597c44ad654c02d5cedeabf9b7796a10cb67ddfce8c.gz",
+        "payloads/56db1582856950e420d1ab1db342f3c8862e7bed85caff037246f877538aefa1.gz",
+        "payloads/d1b2920c092db444eb40c0b99a5021560fe8faefcedfc9896ae64cf66729bd24.gz",
+        "payloads/23aae6a973bf57f1a887fe3596dce9ef6ffb2f109e765aacf9be08c5c596d16c.gz",
+        "payloads/95fa7a3adfb4737734071fb60e9ebe00a7c1cc84b7b779d0f934b87f93486291.gz",
+        "payloads/923325d2ded055fb3382335202dc6ea1a2f102088fdb73c100de0d90812856d6.gz",
+        "payloads/02811e1b212a887e0e38ca11cf8028b77def4fdbdc7a65a25e5b3e88b1d7e47e.gz",
+        "payloads/f2f6484f5ca68d0fa344e51fe38520260ecaced7b46ff014d23efee60b83ebd0.gz",
+        "payloads/377dada3039500ef4f4fac5cffa81028ed4b7d41e17fbb872326763789aadaac.gz",
+        "payloads/0c6c7f7b74706d9b25f6b046dd9be755ec95bb16a4ef49ea71da792c6ad34cad.gz",
+        "payloads/fb0fab842889ecaa27c9a1a980c656fa283011bded4a1413a0c12fe98fc8ef14.gz",
+        "payloads/8fc0492a057afd3fd7640ed74dd1f85566e6dfc7520dfb3159ceb428968e8728.gz",
+        "payloads/47e2181a87d9d69e5482fffa7b56004d7f8f598b86fc48e0925752700340f624.gz",
+        "payloads/17deaf9aae90237eea3ebfc151b91bc44815c899f7dfd44247c58278bb2d773c.gz",
+        "payloads/59d87ba35fbc5cbafd33d9df699e9b9ca2b31c4186239cce98d723732dce9b37.gz",
+        "payloads/151de93d26dda527a9d4f605398832cfe0a09156292e033bc5ad45a3fbff203b.gz",
+        "payloads/8ab43240f23386beb911279d88831586f6b7d63841bb2aa5a224678122b3ee47.gz",
+        "payloads/bc6274e619bbb187501d895792b1626ff6fed085e54749c878b0fc61a3c6f092.gz",
+        "payloads/f66a1e4dab3cb2a8cf06d4b4473d2f1331927ccfae6ce2c8204a85c3d9065e05.gz",
+        "payloads/47f599dd3c3802ea4b6eacaf779799792d305b88bd5b83df64c42b25f7fe1143.gz",
+        "payloads/823d02243dbdccc2ec19b779c71275e1dc19f26278da399c7ea920c9ccc5982d.gz",
+        "payloads/298392bab4b48a4b7f7b3778ca3cbfd7eb3edc0830596b3c441bd49f9730d5d1.gz",
+        "payloads/c076333d864ec5dfe03db191535490a04170248d4340bf6399fb816a72ece9fb.gz",
+        "payloads/a5d513bf7d3804a8e3cc224085201093805691d5fbf33a9d7891c57fffa7c220.gz",
+        "payloads/f386a38256796e9696f08c6a244702ac71c1485227ce0987ffb11b27dbfd1391.gz",
+        "payloads/c9fea599fadecc22091556484c83daba207ed6ddfe29caa16ccf447b0085235d.gz",
+        "payloads/c15e954d40c4e3b9648bac8e6be23950d334fe2dc7cabee1d33a2f63244f6654.gz",
+        "payloads/1c80b872b76b5618b1aa477ce972b191df2f829001e714d7e2522529efd85a1e.gz",
+        "payloads/3760a6792663c27f3409e12e34a3f4fd6b8d7656ddaa4a62964a7f16e3f0949a.gz",
+        "payloads/7412ec207b1871abfccd4905bc0ebc2c558105c6b5fef08260832adde29f14db.gz",
+        "payloads/1eba7587185e4f9b19a8f5d067c2a56ae313fa83079b3ef9feba1059770910d0.gz",
+        "payloads/051ff3461e2c4b5c1a33e1fd4574226bb74c5fafca9e42b68443e3729f8bc5aa.gz",
+        "payloads/15b48f5f95cdf496318bccf34be0b04c7dfd23180fbdf8c59b3b42032aed9957.gz",
+        "payloads/2182fda3f329f4ff0876232579b943b72f9976be1c1af67422dbda536cb3d89e.gz",
+        "payloads/93dabcdd5b4b1287493cdbdfa064122f6f36dc71905eb84fa6ed5ec3b48c9175.gz",
+        "payloads/12e21100999b9d413a6c0b5205f51e22797d10f82d7692ed62310e8a9135d67e.gz",
+        "payloads/e9e922190d52fc49d3040030a169129a5fc2e1ab7959c9d64baa13a50501d7df.gz",
+        "payloads/5a9c7f3f37d8c7e148a39820cfd8db52dcc1acd4810ef7dd2559928c2ed31ab8.gz",
+        "payloads/4ceb501e74c915d069224880582b60425b159253ed1460897f0d2706def8a236.gz",
+        "payloads/52c1fd0e3a6ce50ef7b4d75aa6d6a788511f5bc170e4d018ed005228ea33403b.gz",
+        "payloads/fe44c648aa47d14d9d153ffbda1d291243c54d21bcb4ecce906993d119f3c78e.gz",
+        "payloads/11414550f42e8474f2305f67d1d13e0b649d43284cd302b7ffacb918cae93b92.gz",
+        "payloads/fc7df171d78fd75a6d2dfb0eef76dd97764652fa11279d8feee33f9994fb1c14.gz",
+        "payloads/95bca3e251176fb4f90db41ab5756ffa09f6cdcfb9a19fa6787e53b0fe9c331e.gz",
+        "payloads/0ef98e393658655f4cc74f48315f68b01755c661d0c4b9b746a9a1eb31aa5ec8.gz",
+        "payloads/267e623527353a8430d9f3b4098b198a91ec3f31efbe7e42f273714a9561b561.gz",
+        "payloads/bddd73d60eca7569f4bfe85f13f833092dcf0b9c43dd17bd81a0e8f3fc0e4463.gz",
+        "payloads/a1f0161d0fd0e625207a1a1f411d1cba75ab4f363469b34c288725dff288be9e.gz",
+        "payloads/dcd51461afb5b9bea896d51e4e69778661d9228d9e79d41b1d61923e26e86240.gz",
+        "payloads/ae116617791e37adb0c092a511daabe43a684eb515d3020eee1bb569928233c5.gz",
+        "payloads/2c8739bc70b5236c58f2816426adce7c7db3051046712f44611581b3aa191c33.gz",
+        "payloads/197c2d821daf5723a1d39599734e16f77614211ef1625b6e0ca00ade9365fb39.gz",
+        "payloads/69464663a20d5b18c9db7dd67dd2efcc9e8de16887f300d22da889233829126f.gz",
+        "payloads/c660f6e5193413da948cc55e339d7259b1701780990ca0dcb0354a3f06d72659.gz",
+        "payloads/8e325598e7d0e20fe6f4b2de89eb81b29debe9c88230d1cdc74f698029c34e85.gz",
+        "payloads/df315234da56ed51f1e66cb1f40e1eacc28159048dd408ef7c9bcbdd3c9ae0b5.gz",
+        "payloads/6b7b550af860458947a4b044af8c5c7ed4a54d2656a57f64e8be0611defa8e20.gz",
+        "payloads/487c701cab4543c4a7aff9a5ba72b12acacf3ab37a75cd36ba2f014bdae6696e.gz",
+        "payloads/ca52b13594cf9619b68c746d61be1482efa483593f875b319fbeaa9d54899ac6.gz",
+        "payloads/88e2c6dd2646f28e8f28a245d7891b0559b64320ef197fcf34823a9d3b20f2e8.gz",
+        "payloads/a7532bc8aff75edf5ae11775e186dffe0c4b246a439d3841b4c847ce8c558400.gz",
+        "payloads/a67721ce0a713d53d62c83df9a888f49cf646c622ff91ed8830d06714b8dea7b.gz",
+        "payloads/61939aea8520a243a30cf1da4aff84ae71077ae79bc3d0d213eb8260ab66cf41.gz",
+        "payloads/feae974fce4df314ae4123996e0e1716fb5aeb437fe137cd713c9be31c5dc3a3.gz",
+        "payloads/43d492507e6fbaefb7d3748a1dd43170b4db831ea0d599de9fc1ca8f13e64eb4.gz",
+        "payloads/94684fc24c5dcd517d2419cfb452a285e847788db8d1c447c96751525f407e58.gz",
+        "payloads/33662e032b9844dd50210afea8e4a70d74161b20da09e1acfc719be95dd5bffc.gz",
+        "payloads/1369d3e43cbd9d05af80388f444f4196ab5de1f43b4477a08c29597cd00264f5.gz",
+        "payloads/c8efe6e06869fc4a042d4df1ac63abfe5c099f2b060498fe0b475ef20604a719.gz",
+        "payloads/ffc594e998bfbd9459a83cde15e51166db260e7fc41d0be5e8175cb7ab49005a.gz",
+        "payloads/86cab425736079752b351110d8b5e748bbf1a3e7fe2eed9fd882ccd7256c7e46.gz",
+        "payloads/e96e3d0942dcc1faef4154f2bb8f6aad7e96d78739bb1eaa11e043810653691a.gz",
+        "payloads/2059c7548d0a40cbcfd6d245ccc01b7e936ba86fc4a06e4632f3eab0819961c4.gz"
+      ],
+      "sha256": "d01a7f50717aab08a4a104dff31e6f36e876368d598d8f4801480ca26a990881"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/adaptive-masked/named-control.json": {
+      "bytes": 19943,
+      "chunks": [
+        "payloads/5fb1652e01b3a78984a4bce7042f19e54c0920891b0aad3ba56334d36e429f3e.gz"
+      ],
+      "sha256": "5fb1652e01b3a78984a4bce7042f19e54c0920891b0aad3ba56334d36e429f3e"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/adaptive-masked/native-maps.txt": {
+      "bytes": 14353,
+      "chunks": [
+        "payloads/439a4f7400516142ad47ef6a400a5f438082adec942a6ed58ed29b51b654553f.gz"
+      ],
+      "sha256": "439a4f7400516142ad47ef6a400a5f438082adec942a6ed58ed29b51b654553f"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/adaptive-masked/stdout.log": {
+      "bytes": 4054,
+      "chunks": [
+        "payloads/b12e53a80993f93731e9510ceb509bcdb2120f6abcde0fcdcaa96c8c184a9c8e.gz"
+      ],
+      "sha256": "b12e53a80993f93731e9510ceb509bcdb2120f6abcde0fcdcaa96c8c184a9c8e"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/adaptive-trapped/checked-control.log": {
+      "bytes": 3827,
+      "chunks": [
+        "payloads/bb8cf54a6b51da8e75a9d1cd45486752cda4519a883915ca5794d7a3ca94458e.gz"
+      ],
+      "sha256": "bb8cf54a6b51da8e75a9d1cd45486752cda4519a883915ca5794d7a3ca94458e"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/adaptive-trapped/named-control.json": {
+      "bytes": 11045,
+      "chunks": [
+        "payloads/2bcc2afa3bac71497a437881ea1cdfb8dcc5ad0b995c06e751181d5db18d5437.gz"
+      ],
+      "sha256": "2bcc2afa3bac71497a437881ea1cdfb8dcc5ad0b995c06e751181d5db18d5437"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/adaptive-trapped/native-maps.txt": {
+      "bytes": 17808,
+      "chunks": [
+        "payloads/5c1af92fa122b79e4122d58ae328a14c440db17913b2f8f98c91a52c865316ac.gz"
+      ],
+      "sha256": "5c1af92fa122b79e4122d58ae328a14c440db17913b2f8f98c91a52c865316ac"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/adaptive-trapped/stdout.log": {
+      "bytes": 923,
+      "chunks": [
+        "payloads/f236f8f0c56b5af9c19d85e6fc7f476f1676d7c11a0acff442b5fc907dfb9897.gz"
+      ],
+      "sha256": "f236f8f0c56b5af9c19d85e6fc7f476f1676d7c11a0acff442b5fc907dfb9897"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/execution.json": {
+      "bytes": 310700,
+      "chunks": [
+        "payloads/dd86bca12cc45bf56aae1f879fbe4db21b4092e679a0316d0833ef393ed86b3b.gz",
+        "payloads/b0f28ea6dd609d13a7f7832e1081db8950afde0c204080808e8048d9383c7c44.gz",
+        "payloads/436e657ac53b484b6c1d610e06c9d3e5878ca99739f5db706d63ee8c7b99b4bb.gz"
+      ],
+      "sha256": "1bc2a17a164b44548026d8f4658b9d77756904f0b3a97604b6f6442c0daa6d8e"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/original-masked/checked-control.log": {
+      "bytes": 6724,
+      "chunks": [
+        "payloads/e37016ae67f4bd677306c38bf74a272d6534291cf2f9876f98351db2c3a2c953.gz"
+      ],
+      "sha256": "e37016ae67f4bd677306c38bf74a272d6534291cf2f9876f98351db2c3a2c953"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/original-masked/mass-observer.hex": {
+      "bytes": 8322985,
+      "chunks": [
+        "payloads/57555a97be407f329e2fc5e17b3e0af07674bfac90f2e6991e9d6850b327da02.gz",
+        "payloads/6bee1d1aa2e5abdd72ed800a0d72bedd74909fe09687080a95b874b16134af4b.gz",
+        "payloads/548f74fcb1845dffc958012519e6e4614229a2dd785f576a55620d2e7daf7aea.gz",
+        "payloads/7cbe6c3a2383a89a318249311d097083fba6e30372321b2bdc0b12d9824d60f9.gz",
+        "payloads/052f21b8d8105e5922f30ade8305de2aa53be3e3a2efe4b5c8e91a1f54e5d50d.gz",
+        "payloads/ba84d061bf4b6679aeb3dce4c459859d40a778b5e0bd9454108c8ed89fa1c0bf.gz",
+        "payloads/bd2d0114fd1908dcd02fe5e886835237e7091f3dc8cae0d8b987dc8ec88cddd3.gz",
+        "payloads/444c2b7b18c471cff874ed7e4ba100675b7bc886153b71e71902ac1af8903d20.gz",
+        "payloads/32f0661834a59c28a7fc3ed21f387d1fd49fed9e50eecf89a4cd88a11f6e3fbf.gz",
+        "payloads/d786b157d426978bba7e6cdb3fec37b2773a77fbdf967fdea9559a716376d814.gz",
+        "payloads/f1c7dfe5f855b6aac610d3503fab48ca5850191a3111a243b0b45fda1638e68f.gz",
+        "payloads/94d9ad1eeb1a4e6e03879989ea20690720105d482133e4c1e8063f5c84c90e8e.gz",
+        "payloads/21f666890b25a1535150f1c97fc6f10faade295a269a6ba45ac9fca95b38b325.gz",
+        "payloads/ff1900af5920be6dc741a6255e350006836766a48942543b084bb018744fcf74.gz",
+        "payloads/1100f6faec684b4df2f8cd37a4b0821294c8286e12f6a1e06f4a03355da67f00.gz",
+        "payloads/e6d90f53953ffbc98c209e3e69bf09c0379f0e06322de5263a254dcf9135a247.gz",
+        "payloads/e8e19dc540ba9edaa82fecec66a9ec3fa63ff148048d0b1c3a0efce68daf5ae3.gz",
+        "payloads/a97a0b021dc0c500438defd4c84db6b3d4cb452ef10a0d786452704e1801db0e.gz",
+        "payloads/ca6fb8a4d992193ad86132d8fcb7c83ec1146aa8a61a947e32bf7399c4cca89d.gz",
+        "payloads/87c7e757baf0e4d703ae412466f94a165eeae48d9173ded8ea28fff999e22e78.gz",
+        "payloads/edbc6b51f42f6f5a9893cae55c52d190618e6d6fb0a743c68dac00b807bd7d67.gz",
+        "payloads/4845baf92ac6abf9308a21b2f69a85b67fddff18a705bd1954048b4a07056075.gz",
+        "payloads/a425f2b88a9aae550d9cbe785a96011e5ddda0d4e0f509bbbee8bd6efcda18c7.gz",
+        "payloads/613eed72fadba7ff5b94e4b3c26d9e613708ef4b47c5fa00e29d6a2257b8956e.gz",
+        "payloads/cea724d0f2bf8ba9466a05b02e1d325d528bfeeb70d627e9739e53c6dcdebe4f.gz",
+        "payloads/ae4f240aac019127bba3f30eb8cb014143591302fdd71bd351f3719a7f85e494.gz",
+        "payloads/9457996574d1512a1cafeb713695fdd544513ef4e0fe074f1a72136f8eac2861.gz",
+        "payloads/4f233783b67539a32744b7f839938e96f8f89b27b490fede765aa0cac0b6a72d.gz",
+        "payloads/5a1ec6c8b79bd5fcb25e27016da326e986def1c074ea40454be671d94f1ee693.gz",
+        "payloads/2d0a78e126f160c2c8524e502b703dbc5e514a3dc433499325c0bd613cd0c51b.gz",
+        "payloads/456b130701f34b097f3df4ce35ffa20f3709f5378b4670ca9ef19718ae7a9051.gz",
+        "payloads/52b34ee5370478c18784bbc48bc2d5a44f3b1e50df5116082feaa8a287c80224.gz",
+        "payloads/3d7bc28170e62717f0219bf59a8bb55a3227648b44f1960ada969c158b5cc9ae.gz",
+        "payloads/000c1e3744dc59e8d8042b208b8a212a4be1d0dc7dbfae1a42e1a43d7277098a.gz",
+        "payloads/32f990cf5dc6aa3c27f6699c97b0fbf014fb45831557987f0c18ab7479f934ae.gz",
+        "payloads/e0b9e363208b30d59e110ea1ee32c7ed4b0c6a1fabbf2921ef2c2c218b0079db.gz",
+        "payloads/d203076a4127fcaf7c53c718b80f5ced6068b82435096b9f0865499c8f67d6be.gz",
+        "payloads/17773f562a829426afad61c712f1e0e1f4d13fcbc8081669fc15fc516c59ae28.gz",
+        "payloads/34c269270ce022f610c4612cf52fc7965ffd944192c7f06d9336505c09ab2c8e.gz",
+        "payloads/dea5d0e7ec3efac662b29d373fd9bdb6a87a7df1c0d984fbb55b550aaf4cb5b0.gz",
+        "payloads/3828306a85876c8f0eee83fd0d1d657255b10449c8243ea609bb67b8e7b9a4a1.gz",
+        "payloads/dc7a5555bfdae9f01619c01d0dbb45dc86c7d2d20de093074498cdac5ad21f9b.gz",
+        "payloads/3c358369edafe8704faa819ac09319b9f041e2f47929ae1017ba8743a9804728.gz",
+        "payloads/f6e43f414497480ae0b7313f804b4baa3f3a5a274041075bfae0411d9e4187cc.gz",
+        "payloads/8f4ed6952c18596fe0dce8eee0daaf2141f6e64bdfa1cd309bd22c0cc8fa2512.gz",
+        "payloads/52a436f2ff6d6181e8f525ac20e6c00f11f071bc12e2328404a074335eeb7909.gz",
+        "payloads/e577b0afcec3e8df78ed712025a594b3d0adc66891ccb7e2fd8562c7fb722cb9.gz",
+        "payloads/39c1e9e8a5bd7019a50ee5bae94554f14102f75d8f790b21f4e57601435420a5.gz",
+        "payloads/6fe76404467ae48f63dd5ebca317c579efc2d28589d81e0915437813ab3e73c0.gz",
+        "payloads/446229731b9be47d9fe8e44b61021d0b3cb2d9d8066acece7436f3edfd8d3555.gz",
+        "payloads/ae2925a609eac0d6057000818f09c16e26e72d2632a880783e626ded46a85991.gz",
+        "payloads/a30a76e40dbf558fd8baaa386ee932e64899855078e43dc46fd6d60ec234376c.gz",
+        "payloads/53fc41a9417bbb39c8d4270c35153a23e49bc131e13446bc2d0c9a81bb3ccd65.gz",
+        "payloads/43d6b49e46043da2d2ec454456c8341d0dc6d7a26d25403baf63344895b67740.gz",
+        "payloads/1cfaa4303051bcd00ce3bf7734f48c89b7464faa60684d5feebb2112aeb7590c.gz",
+        "payloads/b98ccaff4602c5a8e0a4fc1b2081dacb0f331bba706c4ab84aa7a2b9c179d68f.gz",
+        "payloads/20928bc7eb4ee956b809e07e4b9abb06ddb8228292ddc7e357dc9f5f1cf55a3a.gz",
+        "payloads/ae989645ade80abffeb427470427757e8fa4171689f620744ba5e5bff1166578.gz",
+        "payloads/ff2897f626ff583919e558a2d923b3da71ca73e457510b61685aa81199751fc8.gz",
+        "payloads/1e02cb44e82c986945f5e15c154b3462133f2fdb95b99503ed371196cefed766.gz",
+        "payloads/963c3894ed09fad31086cff5702a9513750769a4787f85633d021312608266f9.gz",
+        "payloads/136cca1c75f10d76d013d488cd207dcda2617fbadc9d9fbeb537d275a20497bc.gz",
+        "payloads/60f99dc544cf9ad0cf4ae4d9a2b7db6e069fb8cab03d82b55e7efa95f84cbb0b.gz",
+        "payloads/c3b186adc371d3373d632d1d2e5a53bc5f4b9dd19c3d45ecb258af48a7c03cfe.gz"
+      ],
+      "sha256": "4348d14c71b9826d26fe6c0bb1af322b45f0b9d92a480f196804fcca8b465e07"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/original-masked/named-control.json": {
+      "bytes": 19954,
+      "chunks": [
+        "payloads/0745b3921afcff34955751b1d802e8cab733b7ff4e44d7fffa906f55f97b4269.gz"
+      ],
+      "sha256": "0745b3921afcff34955751b1d802e8cab733b7ff4e44d7fffa906f55f97b4269"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/original-masked/native-maps.txt": {
+      "bytes": 15212,
+      "chunks": [
+        "payloads/b84daa851811076fbf747688af14c339adaea8a57df256ac825e89a63774903c.gz"
+      ],
+      "sha256": "b84daa851811076fbf747688af14c339adaea8a57df256ac825e89a63774903c"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/original-masked/stdout.log": {
+      "bytes": 6532,
+      "chunks": [
+        "payloads/2c32c44033729759292db920b5682793a271bae60221572daf267cbcc4871af7.gz"
+      ],
+      "sha256": "2c32c44033729759292db920b5682793a271bae60221572daf267cbcc4871af7"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/original-trapped/checked-control.log": {
+      "bytes": 3827,
+      "chunks": [
+        "payloads/bb8cf54a6b51da8e75a9d1cd45486752cda4519a883915ca5794d7a3ca94458e.gz"
+      ],
+      "sha256": "bb8cf54a6b51da8e75a9d1cd45486752cda4519a883915ca5794d7a3ca94458e"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/original-trapped/named-control.json": {
+      "bytes": 11045,
+      "chunks": [
+        "payloads/2bcc2afa3bac71497a437881ea1cdfb8dcc5ad0b995c06e751181d5db18d5437.gz"
+      ],
+      "sha256": "2bcc2afa3bac71497a437881ea1cdfb8dcc5ad0b995c06e751181d5db18d5437"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/original-trapped/native-maps.txt": {
+      "bytes": 17808,
+      "chunks": [
+        "payloads/0f2209965de2768de618e09ec487790c666eb7775b69c715161293b79aaaad6a.gz"
+      ],
+      "sha256": "0f2209965de2768de618e09ec487790c666eb7775b69c715161293b79aaaad6a"
+    },
+    ".tirust-build/adaptive-qp-checked-trap-proposal-1/run1/original-trapped/stdout.log": {
+      "bytes": 923,
+      "chunks": [
+        "payloads/b0e21c17c427393b1397334ec4f9a40fb6a6ab3db9d894ed69143c50a6165b4e.gz"
+      ],
+      "sha256": "b0e21c17c427393b1397334ec4f9a40fb6a6ab3db9d894ed69143c50a6165b4e"
+    },
+    ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/case/mass-observer.hex": {
+      "bytes": 6381754,
+      "chunks": [
+        "payloads/07d1e7c50fd996567ad223cc7a277a0f0eb0eaf73fea196231940492ecf93c27.gz",
+        "payloads/bbe62a93a0ec0d8c6a47c7560b18dc8d4773ba869a72e78f835acebfda389112.gz",
+        "payloads/ab00ef25a4c92ff3f0363ed94f8762da57eb9f7a577a4b109147e437909cfa2e.gz",
+        "payloads/d2eeac2c09b1e461b14f5247f48139196dec585e5e1418feb6f3ed11b69895e7.gz",
+        "payloads/8ed6ed997f01269bfd0b332bf5b94954596171752a05d0e9bc036f6d10e2ded0.gz",
+        "payloads/bc3c148c588d7a4007a807a4e19ae8e7431bcc4695a240d0cfde5374972b0cc2.gz",
+        "payloads/6ad478eb03fc5b4c3dbd4156a8a11aa0791f26b9c4744d2436bc0a51c8836b09.gz",
+        "payloads/41656287b7c0443c0c58f4c654963ff3c760ccbc0053c5bb12517eddbdde943f.gz",
+        "payloads/e6b1a28e249e3504e5d1179349236fa9dde30bebff88580ed4c4ee85336199bc.gz",
+        "payloads/49a7271e2b3f9bbd170fb54021750469b9d2896bfcebac33eda69bd78e1098bd.gz",
+        "payloads/4ad4fe31580c705e0f654c8e24fe64d56a0e0bbdaf3af0a9e9510a7f73f97ae7.gz",
+        "payloads/a555552e559313f84ea5b6bb569c88d78fa0d41a4b516edc1659823f214f8f36.gz",
+        "payloads/b6083f3c677088c618e68a99e82bfe522cf7a0ea6070b2c50420938dd6a25659.gz",
+        "payloads/03d273877108944b43cbb316b29d813a2c4c787f010fd6a57d7982c0b3f67e52.gz",
+        "payloads/ed2ca4ce0b7f613c87d0422268235124b77435dcbc6212d3ba05a113763718b4.gz",
+        "payloads/55bd5dc4fb8cc50e01409adb84f5048cdca6fe96e3df3dddb7fee120185b0091.gz",
+        "payloads/7c67a9a424c25d24d702fbac2f169874193cc14d31f563fe5bb7474f8f690be7.gz",
+        "payloads/90bfe06e2348b6639442ad21d9814be6e23a5dc06329a1e828e914eb445cd92e.gz",
+        "payloads/bdb9940ae90ae0b136c279b5deb399510f57cbcf6b8087ab10110de4b5497a39.gz",
+        "payloads/b94250bff1545bfdae421415aa9f0aa8c3ec18e3eaa66265faf9a01138ba7834.gz",
+        "payloads/46849c13c000a31c724e262dc2f35a8df9da177f150e88e4426606c3ae2cff39.gz",
+        "payloads/e5c1d3f7e9a86ce9747078f1fb3c96da215d9eac974ade24a14ce3a25ef779db.gz",
+        "payloads/338b67086df199265670056aadb072434588506801029356deed65325cbaa8f0.gz",
+        "payloads/e971ba057dbd38442ef5de7a921ec26e44525840a835077968bc9ee865722980.gz",
+        "payloads/82e97189ea9ff6eb81e53d0b76dae0d6b1c0f80ea806dda80cbc6058e34d0f8e.gz",
+        "payloads/19bf3dc907a63025e8e7de8d1a3b98023d27a54a250638ad841f964b64743e42.gz",
+        "payloads/e07d236e7bc3ce92018cea25ea9e74c5497047e4bc40d357527946d7a177b4b9.gz",
+        "payloads/333a711035ebedb350d040f59612c7b7480ca9e0ce1d12b85cf63d0c0845776f.gz",
+        "payloads/b35373d3aa7cecca1cc9151be21e5934532c8be9bccbe169749aeb0b8a1b376c.gz",
+        "payloads/47b88e8acca5c7db7264b5f7d3a13f2b482da5db82ad1c98790eadc9a9fed841.gz",
+        "payloads/519b17d9360106d8fd75ee37a21782f2d063124f60e0c7ac8861ddcbd3765e38.gz",
+        "payloads/31b971c8779964c44d7fe443440f4393cf610c70e00560acadcf79148a19b5e6.gz",
+        "payloads/692152ff60dd80c0702bc11255d70574de203889a2d29add71b51b0180a7b3ff.gz",
+        "payloads/ade3f6ca9bc69f601d4056c316c3c567d02db2930b3211755da7eb7cf634e183.gz",
+        "payloads/a4f147bc626e187ad5e5c3cb9685dae0b7ae317cb0210739a8b4a8bf525d1771.gz",
+        "payloads/9013135cf612271301e20ca4b87077ae2ef4bea44200ed30e75528e4f248f7c0.gz",
+        "payloads/ee9e9fa80234993fa15ed75d606b1203875c377258d9f4dde35d31ce6e8e01f7.gz",
+        "payloads/41d2926ed9e0f493770ce161c31393bce8fdbf6800bdbc92a31d8ccca6f3187f.gz",
+        "payloads/4c31c200aa36cee191d77ab39d74731bcf68f497c35a50a31b1ec6e2c720cce7.gz",
+        "payloads/f7bd3b718c2eb561cb2c2a07aae7986e558b0650e1459d23bd138b55536327ec.gz",
+        "payloads/a5a03b188b659f6efb759e0727f536ca78da58b06935f83e526023465027a858.gz",
+        "payloads/96c743a03fb4d3f5dc4c10f97e2980c5b2936f1b615f01689107f58e3770871f.gz",
+        "payloads/dcfd224748894c30cee97f55af54a29e28aa89e3cf2e165c608d03c8ee623539.gz",
+        "payloads/6ea7f60d966ba0d753cc28aa63a9fce2ffcadca50e4ae88139cf343dda0ef47a.gz",
+        "payloads/4d7cf560014afef460cb092df7ee6cb36e21911ff481c9a3358cb4bcb2a92186.gz",
+        "payloads/b5db6c9ca8916cc053831a9e02b2ac78c5c67dcfb1a116e9288b49e72a1ddd67.gz",
+        "payloads/1dad2922e8199217b573d4f82c5f6cd7cfdf04bd7dfce27d65f406683b6fcc1d.gz",
+        "payloads/fecf04f4a619b4bd7818da355f3e5bed5bd33e1668a0002a6aeb6a36639cb7d1.gz",
+        "payloads/fc431fec79df5c1a5dba088086d951be5cec9475b70a7b6cce3156462467bb4b.gz"
+      ],
+      "sha256": "fa7cce970eb83668da625ee1b6fd69ea834834e7d1f80071029264c30d395c2d"
+    },
+    ".tirust-build/adaptive-qp-physical-replay-proposal-1/attempt1/case/stdout.log": {
+      "bytes": 4054,
+      "chunks": [
+        "payloads/da7869e638bdc058ea0c7b2a96f2fb989f53caf6268894fadd383162298b9e81.gz"
+      ],
+      "sha256": "da7869e638bdc058ea0c7b2a96f2fb989f53caf6268894fadd383162298b9e81"
+    },
+    ".tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/execution.json": {
+      "bytes": 754280,
+      "chunks": [
+        "payloads/5394bf592d2358a5af5237af970a1a60707ac0d44e661678179e392067433c30.gz",
+        "payloads/303ddf9afe61dd59b46bf20b212473c796ca6024dfc1392d2cd07adffe8f49b6.gz",
+        "payloads/cde1b44abed3ca5cfb681dd4fa92342c96d8197ddbd523d20d0729913d4ee1c4.gz",
+        "payloads/ab19e9ac9dc9ceb9cde48163803c31921aa4cec2cac7dbfd6cf8e55f6ed90984.gz",
+        "payloads/0fd6ffc670a52473eb9e490a6ed5b06986e42834a0fc82a9d8ae30a79f8f84ba.gz",
+        "payloads/47c7f0e1819bd2df9116d5eb4b9f33510cd76ff25090f6812dc19b2aad9abbe7.gz"
+      ],
+      "sha256": "59167eec84a767f0712b6905285a99564458ff0667427de87ce1921534b46632"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/binding1.json": {
+      "bytes": 2563,
+      "chunks": [
+        "payloads/ee2933ed02f2f2c6ba1b004c0feb951553275c2967f829b5bb0efb894de7c61a.gz"
+      ],
+      "sha256": "ee2933ed02f2f2c6ba1b004c0feb951553275c2967f829b5bb0efb894de7c61a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/preparation-failure-1/failure.json": {
+      "bytes": 863,
+      "chunks": [
+        "payloads/6fd9f69895642b607b4ad2a098fbbc2eb9184c1351ea6e53254135433698aa01.gz"
+      ],
+      "sha256": "6fd9f69895642b607b4ad2a098fbbc2eb9184c1351ea6e53254135433698aa01"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14623,
+      "chunks": [
+        "payloads/e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573.gz"
+      ],
+      "sha256": "e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/checked-control.log": {
+      "bytes": 6724,
+      "chunks": [
+        "payloads/b570f8545a019c7dcbd1daa260195874c5d495e6927806584cc813696c87ff46.gz"
+      ],
+      "sha256": "b570f8545a019c7dcbd1daa260195874c5d495e6927806584cc813696c87ff46"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/journal-summary.json": {
+      "bytes": 1327,
+      "chunks": [
+        "payloads/d852a0158566921178deae182b983cf2c35f325961b460fddac970e5c1f5859c.gz"
+      ],
+      "sha256": "d852a0158566921178deae182b983cf2c35f325961b460fddac970e5c1f5859c"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/mapping-ready": {
+      "bytes": 37,
+      "chunks": [
+        "payloads/2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945.gz"
+      ],
+      "sha256": "2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/mass-observer.hex": {
+      "bytes": 9569125,
+      "chunks": [
+        "payloads/4de1dd81c027899bb60b4ccf0d0a295dc6e9776cc80c1432b8ff514d549615a3.gz",
+        "payloads/34589693ebc1c8e5be285597c44ad654c02d5cedeabf9b7796a10cb67ddfce8c.gz",
+        "payloads/56db1582856950e420d1ab1db342f3c8862e7bed85caff037246f877538aefa1.gz",
+        "payloads/d1b2920c092db444eb40c0b99a5021560fe8faefcedfc9896ae64cf66729bd24.gz",
+        "payloads/23aae6a973bf57f1a887fe3596dce9ef6ffb2f109e765aacf9be08c5c596d16c.gz",
+        "payloads/95fa7a3adfb4737734071fb60e9ebe00a7c1cc84b7b779d0f934b87f93486291.gz",
+        "payloads/923325d2ded055fb3382335202dc6ea1a2f102088fdb73c100de0d90812856d6.gz",
+        "payloads/02811e1b212a887e0e38ca11cf8028b77def4fdbdc7a65a25e5b3e88b1d7e47e.gz",
+        "payloads/f2f6484f5ca68d0fa344e51fe38520260ecaced7b46ff014d23efee60b83ebd0.gz",
+        "payloads/377dada3039500ef4f4fac5cffa81028ed4b7d41e17fbb872326763789aadaac.gz",
+        "payloads/0c6c7f7b74706d9b25f6b046dd9be755ec95bb16a4ef49ea71da792c6ad34cad.gz",
+        "payloads/fb0fab842889ecaa27c9a1a980c656fa283011bded4a1413a0c12fe98fc8ef14.gz",
+        "payloads/8fc0492a057afd3fd7640ed74dd1f85566e6dfc7520dfb3159ceb428968e8728.gz",
+        "payloads/47e2181a87d9d69e5482fffa7b56004d7f8f598b86fc48e0925752700340f624.gz",
+        "payloads/17deaf9aae90237eea3ebfc151b91bc44815c899f7dfd44247c58278bb2d773c.gz",
+        "payloads/59d87ba35fbc5cbafd33d9df699e9b9ca2b31c4186239cce98d723732dce9b37.gz",
+        "payloads/151de93d26dda527a9d4f605398832cfe0a09156292e033bc5ad45a3fbff203b.gz",
+        "payloads/8ab43240f23386beb911279d88831586f6b7d63841bb2aa5a224678122b3ee47.gz",
+        "payloads/bc6274e619bbb187501d895792b1626ff6fed085e54749c878b0fc61a3c6f092.gz",
+        "payloads/f66a1e4dab3cb2a8cf06d4b4473d2f1331927ccfae6ce2c8204a85c3d9065e05.gz",
+        "payloads/47f599dd3c3802ea4b6eacaf779799792d305b88bd5b83df64c42b25f7fe1143.gz",
+        "payloads/823d02243dbdccc2ec19b779c71275e1dc19f26278da399c7ea920c9ccc5982d.gz",
+        "payloads/298392bab4b48a4b7f7b3778ca3cbfd7eb3edc0830596b3c441bd49f9730d5d1.gz",
+        "payloads/c076333d864ec5dfe03db191535490a04170248d4340bf6399fb816a72ece9fb.gz",
+        "payloads/a5d513bf7d3804a8e3cc224085201093805691d5fbf33a9d7891c57fffa7c220.gz",
+        "payloads/f386a38256796e9696f08c6a244702ac71c1485227ce0987ffb11b27dbfd1391.gz",
+        "payloads/c9fea599fadecc22091556484c83daba207ed6ddfe29caa16ccf447b0085235d.gz",
+        "payloads/c15e954d40c4e3b9648bac8e6be23950d334fe2dc7cabee1d33a2f63244f6654.gz",
+        "payloads/1c80b872b76b5618b1aa477ce972b191df2f829001e714d7e2522529efd85a1e.gz",
+        "payloads/3760a6792663c27f3409e12e34a3f4fd6b8d7656ddaa4a62964a7f16e3f0949a.gz",
+        "payloads/7412ec207b1871abfccd4905bc0ebc2c558105c6b5fef08260832adde29f14db.gz",
+        "payloads/1eba7587185e4f9b19a8f5d067c2a56ae313fa83079b3ef9feba1059770910d0.gz",
+        "payloads/051ff3461e2c4b5c1a33e1fd4574226bb74c5fafca9e42b68443e3729f8bc5aa.gz",
+        "payloads/15b48f5f95cdf496318bccf34be0b04c7dfd23180fbdf8c59b3b42032aed9957.gz",
+        "payloads/2182fda3f329f4ff0876232579b943b72f9976be1c1af67422dbda536cb3d89e.gz",
+        "payloads/93dabcdd5b4b1287493cdbdfa064122f6f36dc71905eb84fa6ed5ec3b48c9175.gz",
+        "payloads/12e21100999b9d413a6c0b5205f51e22797d10f82d7692ed62310e8a9135d67e.gz",
+        "payloads/e9e922190d52fc49d3040030a169129a5fc2e1ab7959c9d64baa13a50501d7df.gz",
+        "payloads/5a9c7f3f37d8c7e148a39820cfd8db52dcc1acd4810ef7dd2559928c2ed31ab8.gz",
+        "payloads/4ceb501e74c915d069224880582b60425b159253ed1460897f0d2706def8a236.gz",
+        "payloads/52c1fd0e3a6ce50ef7b4d75aa6d6a788511f5bc170e4d018ed005228ea33403b.gz",
+        "payloads/fe44c648aa47d14d9d153ffbda1d291243c54d21bcb4ecce906993d119f3c78e.gz",
+        "payloads/11414550f42e8474f2305f67d1d13e0b649d43284cd302b7ffacb918cae93b92.gz",
+        "payloads/fc7df171d78fd75a6d2dfb0eef76dd97764652fa11279d8feee33f9994fb1c14.gz",
+        "payloads/95bca3e251176fb4f90db41ab5756ffa09f6cdcfb9a19fa6787e53b0fe9c331e.gz",
+        "payloads/0ef98e393658655f4cc74f48315f68b01755c661d0c4b9b746a9a1eb31aa5ec8.gz",
+        "payloads/267e623527353a8430d9f3b4098b198a91ec3f31efbe7e42f273714a9561b561.gz",
+        "payloads/bddd73d60eca7569f4bfe85f13f833092dcf0b9c43dd17bd81a0e8f3fc0e4463.gz",
+        "payloads/a1f0161d0fd0e625207a1a1f411d1cba75ab4f363469b34c288725dff288be9e.gz",
+        "payloads/dcd51461afb5b9bea896d51e4e69778661d9228d9e79d41b1d61923e26e86240.gz",
+        "payloads/ae116617791e37adb0c092a511daabe43a684eb515d3020eee1bb569928233c5.gz",
+        "payloads/2c8739bc70b5236c58f2816426adce7c7db3051046712f44611581b3aa191c33.gz",
+        "payloads/197c2d821daf5723a1d39599734e16f77614211ef1625b6e0ca00ade9365fb39.gz",
+        "payloads/69464663a20d5b18c9db7dd67dd2efcc9e8de16887f300d22da889233829126f.gz",
+        "payloads/c660f6e5193413da948cc55e339d7259b1701780990ca0dcb0354a3f06d72659.gz",
+        "payloads/8e325598e7d0e20fe6f4b2de89eb81b29debe9c88230d1cdc74f698029c34e85.gz",
+        "payloads/df315234da56ed51f1e66cb1f40e1eacc28159048dd408ef7c9bcbdd3c9ae0b5.gz",
+        "payloads/6b7b550af860458947a4b044af8c5c7ed4a54d2656a57f64e8be0611defa8e20.gz",
+        "payloads/487c701cab4543c4a7aff9a5ba72b12acacf3ab37a75cd36ba2f014bdae6696e.gz",
+        "payloads/ca52b13594cf9619b68c746d61be1482efa483593f875b319fbeaa9d54899ac6.gz",
+        "payloads/88e2c6dd2646f28e8f28a245d7891b0559b64320ef197fcf34823a9d3b20f2e8.gz",
+        "payloads/a7532bc8aff75edf5ae11775e186dffe0c4b246a439d3841b4c847ce8c558400.gz",
+        "payloads/a67721ce0a713d53d62c83df9a888f49cf646c622ff91ed8830d06714b8dea7b.gz",
+        "payloads/61939aea8520a243a30cf1da4aff84ae71077ae79bc3d0d213eb8260ab66cf41.gz",
+        "payloads/feae974fce4df314ae4123996e0e1716fb5aeb437fe137cd713c9be31c5dc3a3.gz",
+        "payloads/43d492507e6fbaefb7d3748a1dd43170b4db831ea0d599de9fc1ca8f13e64eb4.gz",
+        "payloads/94684fc24c5dcd517d2419cfb452a285e847788db8d1c447c96751525f407e58.gz",
+        "payloads/33662e032b9844dd50210afea8e4a70d74161b20da09e1acfc719be95dd5bffc.gz",
+        "payloads/1369d3e43cbd9d05af80388f444f4196ab5de1f43b4477a08c29597cd00264f5.gz",
+        "payloads/c8efe6e06869fc4a042d4df1ac63abfe5c099f2b060498fe0b475ef20604a719.gz",
+        "payloads/ffc594e998bfbd9459a83cde15e51166db260e7fc41d0be5e8175cb7ab49005a.gz",
+        "payloads/86cab425736079752b351110d8b5e748bbf1a3e7fe2eed9fd882ccd7256c7e46.gz",
+        "payloads/e96e3d0942dcc1faef4154f2bb8f6aad7e96d78739bb1eaa11e043810653691a.gz",
+        "payloads/2059c7548d0a40cbcfd6d245ccc01b7e936ba86fc4a06e4632f3eab0819961c4.gz"
+      ],
+      "sha256": "d01a7f50717aab08a4a104dff31e6f36e876368d598d8f4801480ca26a990881"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/named-control.json": {
+      "bytes": 19943,
+      "chunks": [
+        "payloads/5fb1652e01b3a78984a4bce7042f19e54c0920891b0aad3ba56334d36e429f3e.gz"
+      ],
+      "sha256": "5fb1652e01b3a78984a4bce7042f19e54c0920891b0aad3ba56334d36e429f3e"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/native-maps.snapshots/complete.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/01fee7687305278b25d6af4142d40593fd470b6faae7c9cfa1c03db213602fbd.gz"
+      ],
+      "sha256": "01fee7687305278b25d6af4142d40593fd470b6faae7c9cfa1c03db213602fbd"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/native-maps.snapshots/first-incomplete.txt": {
+      "bytes": 13792,
+      "chunks": [
+        "payloads/6dd7c0441e62b4a1eb8f87608a7edd126446bb2604d7f37a7a5da8df7494588b.gz"
+      ],
+      "sha256": "6dd7c0441e62b4a1eb8f87608a7edd126446bb2604d7f37a7a5da8df7494588b"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/native-maps.snapshots/first-nonempty.txt": {
+      "bytes": 13792,
+      "chunks": [
+        "payloads/6dd7c0441e62b4a1eb8f87608a7edd126446bb2604d7f37a7a5da8df7494588b.gz"
+      ],
+      "sha256": "6dd7c0441e62b4a1eb8f87608a7edd126446bb2604d7f37a7a5da8df7494588b"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/native-maps.snapshots/first-read.txt": {
+      "bytes": 13792,
+      "chunks": [
+        "payloads/6dd7c0441e62b4a1eb8f87608a7edd126446bb2604d7f37a7a5da8df7494588b.gz"
+      ],
+      "sha256": "6dd7c0441e62b4a1eb8f87608a7edd126446bb2604d7f37a7a5da8df7494588b"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/native-maps.snapshots/last-incomplete.txt": {
+      "bytes": 13792,
+      "chunks": [
+        "payloads/6dd7c0441e62b4a1eb8f87608a7edd126446bb2604d7f37a7a5da8df7494588b.gz"
+      ],
+      "sha256": "6dd7c0441e62b4a1eb8f87608a7edd126446bb2604d7f37a7a5da8df7494588b"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/native-maps.snapshots/last-nonempty.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/01fee7687305278b25d6af4142d40593fd470b6faae7c9cfa1c03db213602fbd.gz"
+      ],
+      "sha256": "01fee7687305278b25d6af4142d40593fd470b6faae7c9cfa1c03db213602fbd"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/native-maps.snapshots/last-read.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/01fee7687305278b25d6af4142d40593fd470b6faae7c9cfa1c03db213602fbd.gz"
+      ],
+      "sha256": "01fee7687305278b25d6af4142d40593fd470b6faae7c9cfa1c03db213602fbd"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/native-maps.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/01fee7687305278b25d6af4142d40593fd470b6faae7c9cfa1c03db213602fbd.gz"
+      ],
+      "sha256": "01fee7687305278b25d6af4142d40593fd470b6faae7c9cfa1c03db213602fbd"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/param.log": {
+      "bytes": 936,
+      "chunks": [
+        "payloads/0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635.gz"
+      ],
+      "sha256": "0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-masked/stdout.log": {
+      "bytes": 4054,
+      "chunks": [
+        "payloads/b12e53a80993f93731e9510ceb509bcdb2120f6abcde0fcdcaa96c8c184a9c8e.gz"
+      ],
+      "sha256": "b12e53a80993f93731e9510ceb509bcdb2120f6abcde0fcdcaa96c8c184a9c8e"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14623,
+      "chunks": [
+        "payloads/e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573.gz"
+      ],
+      "sha256": "e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/checked-control.log": {
+      "bytes": 3827,
+      "chunks": [
+        "payloads/bb8cf54a6b51da8e75a9d1cd45486752cda4519a883915ca5794d7a3ca94458e.gz"
+      ],
+      "sha256": "bb8cf54a6b51da8e75a9d1cd45486752cda4519a883915ca5794d7a3ca94458e"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/mapping-ready": {
+      "bytes": 37,
+      "chunks": [
+        "payloads/2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945.gz"
+      ],
+      "sha256": "2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/named-control.json": {
+      "bytes": 11045,
+      "chunks": [
+        "payloads/2bcc2afa3bac71497a437881ea1cdfb8dcc5ad0b995c06e751181d5db18d5437.gz"
+      ],
+      "sha256": "2bcc2afa3bac71497a437881ea1cdfb8dcc5ad0b995c06e751181d5db18d5437"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/native-maps.snapshots/complete.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/22952f83d60c96069bf4aaefbc067081748d1066404b057615f3fdee9e11b6bf.gz"
+      ],
+      "sha256": "22952f83d60c96069bf4aaefbc067081748d1066404b057615f3fdee9e11b6bf"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/native-maps.snapshots/first-incomplete.txt": {
+      "bytes": 7336,
+      "chunks": [
+        "payloads/b45dbbec86405581306e2d80d20b0b22a27bdf34ad7918c854289b815a5ca0c6.gz"
+      ],
+      "sha256": "b45dbbec86405581306e2d80d20b0b22a27bdf34ad7918c854289b815a5ca0c6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/native-maps.snapshots/first-nonempty.txt": {
+      "bytes": 7336,
+      "chunks": [
+        "payloads/b45dbbec86405581306e2d80d20b0b22a27bdf34ad7918c854289b815a5ca0c6.gz"
+      ],
+      "sha256": "b45dbbec86405581306e2d80d20b0b22a27bdf34ad7918c854289b815a5ca0c6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/native-maps.snapshots/first-read.txt": {
+      "bytes": 7336,
+      "chunks": [
+        "payloads/b45dbbec86405581306e2d80d20b0b22a27bdf34ad7918c854289b815a5ca0c6.gz"
+      ],
+      "sha256": "b45dbbec86405581306e2d80d20b0b22a27bdf34ad7918c854289b815a5ca0c6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/native-maps.snapshots/last-incomplete.txt": {
+      "bytes": 7336,
+      "chunks": [
+        "payloads/b45dbbec86405581306e2d80d20b0b22a27bdf34ad7918c854289b815a5ca0c6.gz"
+      ],
+      "sha256": "b45dbbec86405581306e2d80d20b0b22a27bdf34ad7918c854289b815a5ca0c6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/native-maps.snapshots/last-nonempty.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/22952f83d60c96069bf4aaefbc067081748d1066404b057615f3fdee9e11b6bf.gz"
+      ],
+      "sha256": "22952f83d60c96069bf4aaefbc067081748d1066404b057615f3fdee9e11b6bf"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/native-maps.snapshots/last-read.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/22952f83d60c96069bf4aaefbc067081748d1066404b057615f3fdee9e11b6bf.gz"
+      ],
+      "sha256": "22952f83d60c96069bf4aaefbc067081748d1066404b057615f3fdee9e11b6bf"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/native-maps.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/22952f83d60c96069bf4aaefbc067081748d1066404b057615f3fdee9e11b6bf.gz"
+      ],
+      "sha256": "22952f83d60c96069bf4aaefbc067081748d1066404b057615f3fdee9e11b6bf"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/param.log": {
+      "bytes": 936,
+      "chunks": [
+        "payloads/0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635.gz"
+      ],
+      "sha256": "0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/checked-trapped/stdout.log": {
+      "bytes": 788,
+      "chunks": [
+        "payloads/782ae06a966f82ff3d3aa429205460b6efcecebc22f154d6c15f5d89ef0ed39d.gz"
+      ],
+      "sha256": "782ae06a966f82ff3d3aa429205460b6efcecebc22f154d6c15f5d89ef0ed39d"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/comparisons.json": {
+      "bytes": 3342573,
+      "chunks": [
+        "payloads/65da08913ae64f642b7dfa9bf65bac654c67b1e10a7e5bcd32e1dba22a9690d4.gz",
+        "payloads/ffc5332530be06c6746e94f6c7cfe07628b54aabc9860517f88a5007a52eebdb.gz",
+        "payloads/3fbbd0f3e9c93df62bd1671b6b9897db648e983862e3b6ac97bfcbf9883a562d.gz",
+        "payloads/f8ee3470f33dced251f2b1621a57d1a86add768cc4c745da0f04de8499035edc.gz",
+        "payloads/800f8b70094f66a65c31e3574d6ab01d5f26daa99871c4499820a928870177df.gz",
+        "payloads/92ebd168f4af64f8e17a7bcfe3ed3ba5e3103bbdcfb6c5508e6c1c71a365f7c7.gz",
+        "payloads/013c6b8f1c9b8934ab368339dde53f27ba367f598e081a922a38bc786859486e.gz",
+        "payloads/4ec5305707f8ee3edb53cf7c66de951c5e5bb1a6fd64f88195d5490b137e0a0c.gz",
+        "payloads/4217178cade90f8342e76fe1406f2a733596c552ed465119693aaf5ea81e8aa4.gz",
+        "payloads/07f382a5655bacdba1bd0cd2ffee6bf9375c7b46be47326c72242f29e219a6cf.gz",
+        "payloads/41184c0bcdf780dd878e6c87e7a6dc7568d19bb6c20f8b747c9016934e2b8016.gz",
+        "payloads/7eebebe818d229c37c94118f9fc240c1e8ad825ee775522f0e08e77c65289fd8.gz",
+        "payloads/45e99dafad385c4f1aa702b2b7c5a8408812606559e47fe16ac179e842c3e919.gz",
+        "payloads/a2146435195eab68ae4753ecdff68973f336413cf51e2b6d7f6b62cde78b27d5.gz",
+        "payloads/0aeeff48e3dbdb9250401ae79af076b02b562cf05cf87d26c80e8400b7d75cc8.gz",
+        "payloads/c0b30201aacbdeb35bd5f541868bc2d222253d5758cb2022e74d8cbb0a3b4777.gz",
+        "payloads/808d01a7045d63f4c3eab4025be24f9cff4bc7b8bba781499048a998d42bf76c.gz",
+        "payloads/bcc1c77ab27789de615c4448997bb4c5a4b0e083f91222c19eb2e243ef7d1813.gz",
+        "payloads/31ca4321617b0280ce5998baa7cfd1d14088d8f2263f9a18a5fcf59cbcf0a0c9.gz",
+        "payloads/2d0a3625827e2a7de388f7e4602656cd8308155cd2b6bac39b77406069c2ea19.gz",
+        "payloads/be246461635cd8362b016469790494f9327caa376f435d0d89a7d23c3446fc6a.gz",
+        "payloads/08952f31b64cffb8c474486fec324ef04f86d2860bcc0a5ff846c44db3aba068.gz",
+        "payloads/2210161b750bb6ab6754052a31ec38c43bccd6454087e97e3de34907eaca771a.gz",
+        "payloads/3eee33300429f67c17dcc1f38cc0bbcd75e97254283dea79ee7e0cabf191c30d.gz",
+        "payloads/948a4baa7768a881660c02cc9a5efa166d2c02ea7b27799b0b97821f59cabb54.gz",
+        "payloads/3ccd0ce2a6e44af7d27c0290b4d696ad98d836aa6e615a32825782950f3f6d12.gz"
+      ],
+      "sha256": "45517c6767baf7dcf72ba7d4bf61924fa68d594af8c7ab9224ae3ccfbf19bb0d"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/execution.json": {
+      "bytes": 313732,
+      "chunks": [
+        "payloads/d26d54741f36b3e3c181e272b392f220e74f5da7b00af5b8ff549211289fa226.gz",
+        "payloads/396a81f4a5472e1d4e96ba37df82ef67a9b0e60acd50c44183ca8ce683fea3c0.gz",
+        "payloads/ac76bbdfbe497e23f4075e6134e20c9ebf0d49abeff05f53b174f85b1fd29823.gz"
+      ],
+      "sha256": "18f7d89c565a97962871ee428e4edc993e7d33c9e5980da96915cff0bf22ba13"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/checked-control.log": {
+      "bytes": 516,
+      "chunks": [
+        "payloads/6c8460e1bcf6c96bc0d5b65e992d5fcc9f4849201bb9eb48650e356a4d8ba390.gz"
+      ],
+      "sha256": "6c8460e1bcf6c96bc0d5b65e992d5fcc9f4849201bb9eb48650e356a4d8ba390"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/mapping-ready": {
+      "bytes": 37,
+      "chunks": [
+        "payloads/2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945.gz"
+      ],
+      "sha256": "2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/named-control.json": {
+      "bytes": 1583,
+      "chunks": [
+        "payloads/4c866b4cafec3782a0c976c1e885fffca268c601d6b012e92ea53efe1276679d.gz"
+      ],
+      "sha256": "4c866b4cafec3782a0c976c1e885fffca268c601d6b012e92ea53efe1276679d"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/native-maps.snapshots/complete.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1.gz"
+      ],
+      "sha256": "4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/native-maps.snapshots/first-nonempty.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1.gz"
+      ],
+      "sha256": "4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/native-maps.snapshots/first-read.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1.gz"
+      ],
+      "sha256": "4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/native-maps.snapshots/last-nonempty.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1.gz"
+      ],
+      "sha256": "4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/native-maps.snapshots/last-read.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1.gz"
+      ],
+      "sha256": "4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/native-maps.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1.gz"
+      ],
+      "sha256": "4e3d86707fc8ee6ba61305c39d003bb3d1b0e218498a0a9e4e3b635c6d62a8d1"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-divide_by_zero/stdout.log": {
+      "bytes": 357,
+      "chunks": [
+        "payloads/f5f0eb4d4b6ebd061f2ed8a097a185b63fa26cb82fdbc4133c18fbad83cd3a00.gz"
+      ],
+      "sha256": "f5f0eb4d4b6ebd061f2ed8a097a185b63fa26cb82fdbc4133c18fbad83cd3a00"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/checked-control.log": {
+      "bytes": 502,
+      "chunks": [
+        "payloads/166dbb9c23e5280bbe3214b2bedbf050d03a081072d82f12948b11cc24bcd4bb.gz"
+      ],
+      "sha256": "166dbb9c23e5280bbe3214b2bedbf050d03a081072d82f12948b11cc24bcd4bb"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/mapping-ready": {
+      "bytes": 37,
+      "chunks": [
+        "payloads/2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945.gz"
+      ],
+      "sha256": "2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/named-control.json": {
+      "bytes": 1569,
+      "chunks": [
+        "payloads/fa57c21ffee20793b4c56940e687fde8a93b9877e8e6bb2f721ee0939bc5bb1f.gz"
+      ],
+      "sha256": "fa57c21ffee20793b4c56940e687fde8a93b9877e8e6bb2f721ee0939bc5bb1f"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/native-maps.snapshots/complete.txt": {
+      "bytes": 14745,
+      "chunks": [
+        "payloads/911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a.gz"
+      ],
+      "sha256": "911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/native-maps.snapshots/first-nonempty.txt": {
+      "bytes": 14745,
+      "chunks": [
+        "payloads/911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a.gz"
+      ],
+      "sha256": "911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/native-maps.snapshots/first-read.txt": {
+      "bytes": 14745,
+      "chunks": [
+        "payloads/911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a.gz"
+      ],
+      "sha256": "911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/native-maps.snapshots/last-nonempty.txt": {
+      "bytes": 14745,
+      "chunks": [
+        "payloads/911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a.gz"
+      ],
+      "sha256": "911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/native-maps.snapshots/last-read.txt": {
+      "bytes": 14745,
+      "chunks": [
+        "payloads/911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a.gz"
+      ],
+      "sha256": "911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/native-maps.txt": {
+      "bytes": 14745,
+      "chunks": [
+        "payloads/911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a.gz"
+      ],
+      "sha256": "911a910a49f051e3bfa014f49173e7c2c725ff07f08b0076f7f7206b07dd0a8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-invalid/stdout.log": {
+      "bytes": 357,
+      "chunks": [
+        "payloads/99d06f23d631efd6eafd08813de60054b7d1de6db6e6aa0944110ec95f999768.gz"
+      ],
+      "sha256": "99d06f23d631efd6eafd08813de60054b7d1de6db6e6aa0944110ec95f999768"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/checked-control.log": {
+      "bytes": 504,
+      "chunks": [
+        "payloads/1f474a7420839a9b1d40c90cf6e673160762a2353d918514d5b709f57efb19a8.gz"
+      ],
+      "sha256": "1f474a7420839a9b1d40c90cf6e673160762a2353d918514d5b709f57efb19a8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/mapping-ready": {
+      "bytes": 37,
+      "chunks": [
+        "payloads/2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945.gz"
+      ],
+      "sha256": "2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/named-control.json": {
+      "bytes": 1571,
+      "chunks": [
+        "payloads/58a229f1cbef79e73c441ec01bfcfe2c1cfe113cac21e05e48d87b9bd09e25fb.gz"
+      ],
+      "sha256": "58a229f1cbef79e73c441ec01bfcfe2c1cfe113cac21e05e48d87b9bd09e25fb"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/native-maps.snapshots/complete.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/2ea10822b81ce9bd1375e00402003df805f775e1481fbff43eb67d8978e93f8c.gz"
+      ],
+      "sha256": "2ea10822b81ce9bd1375e00402003df805f775e1481fbff43eb67d8978e93f8c"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/native-maps.snapshots/first-incomplete.txt": {
+      "bytes": 10065,
+      "chunks": [
+        "payloads/5dfc1eaea56ba4169e0fdc56dc389d19a3ffe5f965053d376962eb80bf5c91f0.gz"
+      ],
+      "sha256": "5dfc1eaea56ba4169e0fdc56dc389d19a3ffe5f965053d376962eb80bf5c91f0"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/native-maps.snapshots/first-nonempty.txt": {
+      "bytes": 10065,
+      "chunks": [
+        "payloads/5dfc1eaea56ba4169e0fdc56dc389d19a3ffe5f965053d376962eb80bf5c91f0.gz"
+      ],
+      "sha256": "5dfc1eaea56ba4169e0fdc56dc389d19a3ffe5f965053d376962eb80bf5c91f0"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/native-maps.snapshots/first-read.txt": {
+      "bytes": 10065,
+      "chunks": [
+        "payloads/5dfc1eaea56ba4169e0fdc56dc389d19a3ffe5f965053d376962eb80bf5c91f0.gz"
+      ],
+      "sha256": "5dfc1eaea56ba4169e0fdc56dc389d19a3ffe5f965053d376962eb80bf5c91f0"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/native-maps.snapshots/last-incomplete.txt": {
+      "bytes": 10065,
+      "chunks": [
+        "payloads/5dfc1eaea56ba4169e0fdc56dc389d19a3ffe5f965053d376962eb80bf5c91f0.gz"
+      ],
+      "sha256": "5dfc1eaea56ba4169e0fdc56dc389d19a3ffe5f965053d376962eb80bf5c91f0"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/native-maps.snapshots/last-nonempty.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/2ea10822b81ce9bd1375e00402003df805f775e1481fbff43eb67d8978e93f8c.gz"
+      ],
+      "sha256": "2ea10822b81ce9bd1375e00402003df805f775e1481fbff43eb67d8978e93f8c"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/native-maps.snapshots/last-read.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/2ea10822b81ce9bd1375e00402003df805f775e1481fbff43eb67d8978e93f8c.gz"
+      ],
+      "sha256": "2ea10822b81ce9bd1375e00402003df805f775e1481fbff43eb67d8978e93f8c"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/native-maps.txt": {
+      "bytes": 18347,
+      "chunks": [
+        "payloads/2ea10822b81ce9bd1375e00402003df805f775e1481fbff43eb67d8978e93f8c.gz"
+      ],
+      "sha256": "2ea10822b81ce9bd1375e00402003df805f775e1481fbff43eb67d8978e93f8c"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/fault-overflow/stdout.log": {
+      "bytes": 357,
+      "chunks": [
+        "payloads/6d6a4af23c453f566af2c6c34b362ca7867734ff69f69a2b61d09b950d8c2730.gz"
+      ],
+      "sha256": "6d6a4af23c453f566af2c6c34b362ca7867734ff69f69a2b61d09b950d8c2730"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14622,
+      "chunks": [
+        "payloads/0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b.gz"
+      ],
+      "sha256": "0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/checked-control.log": {
+      "bytes": 6724,
+      "chunks": [
+        "payloads/c8068e2180f2cf2d438d33e8532da6c15e0ff1ab9c50c924d32212db79c66fd8.gz"
+      ],
+      "sha256": "c8068e2180f2cf2d438d33e8532da6c15e0ff1ab9c50c924d32212db79c66fd8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/journal-summary.json": {
+      "bytes": 1329,
+      "chunks": [
+        "payloads/76e2ff059a18f508628de3c85f644714633ea6c6fd3736e1cd8b8cb6df8f41f3.gz"
+      ],
+      "sha256": "76e2ff059a18f508628de3c85f644714633ea6c6fd3736e1cd8b8cb6df8f41f3"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/mapping-ready": {
+      "bytes": 37,
+      "chunks": [
+        "payloads/2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945.gz"
+      ],
+      "sha256": "2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/mass-observer.hex": {
+      "bytes": 6381754,
+      "chunks": [
+        "payloads/07d1e7c50fd996567ad223cc7a277a0f0eb0eaf73fea196231940492ecf93c27.gz",
+        "payloads/bbe62a93a0ec0d8c6a47c7560b18dc8d4773ba869a72e78f835acebfda389112.gz",
+        "payloads/ab00ef25a4c92ff3f0363ed94f8762da57eb9f7a577a4b109147e437909cfa2e.gz",
+        "payloads/d2eeac2c09b1e461b14f5247f48139196dec585e5e1418feb6f3ed11b69895e7.gz",
+        "payloads/8ed6ed997f01269bfd0b332bf5b94954596171752a05d0e9bc036f6d10e2ded0.gz",
+        "payloads/bc3c148c588d7a4007a807a4e19ae8e7431bcc4695a240d0cfde5374972b0cc2.gz",
+        "payloads/6ad478eb03fc5b4c3dbd4156a8a11aa0791f26b9c4744d2436bc0a51c8836b09.gz",
+        "payloads/41656287b7c0443c0c58f4c654963ff3c760ccbc0053c5bb12517eddbdde943f.gz",
+        "payloads/e6b1a28e249e3504e5d1179349236fa9dde30bebff88580ed4c4ee85336199bc.gz",
+        "payloads/49a7271e2b3f9bbd170fb54021750469b9d2896bfcebac33eda69bd78e1098bd.gz",
+        "payloads/4ad4fe31580c705e0f654c8e24fe64d56a0e0bbdaf3af0a9e9510a7f73f97ae7.gz",
+        "payloads/a555552e559313f84ea5b6bb569c88d78fa0d41a4b516edc1659823f214f8f36.gz",
+        "payloads/b6083f3c677088c618e68a99e82bfe522cf7a0ea6070b2c50420938dd6a25659.gz",
+        "payloads/03d273877108944b43cbb316b29d813a2c4c787f010fd6a57d7982c0b3f67e52.gz",
+        "payloads/ed2ca4ce0b7f613c87d0422268235124b77435dcbc6212d3ba05a113763718b4.gz",
+        "payloads/55bd5dc4fb8cc50e01409adb84f5048cdca6fe96e3df3dddb7fee120185b0091.gz",
+        "payloads/7c67a9a424c25d24d702fbac2f169874193cc14d31f563fe5bb7474f8f690be7.gz",
+        "payloads/90bfe06e2348b6639442ad21d9814be6e23a5dc06329a1e828e914eb445cd92e.gz",
+        "payloads/bdb9940ae90ae0b136c279b5deb399510f57cbcf6b8087ab10110de4b5497a39.gz",
+        "payloads/b94250bff1545bfdae421415aa9f0aa8c3ec18e3eaa66265faf9a01138ba7834.gz",
+        "payloads/46849c13c000a31c724e262dc2f35a8df9da177f150e88e4426606c3ae2cff39.gz",
+        "payloads/e5c1d3f7e9a86ce9747078f1fb3c96da215d9eac974ade24a14ce3a25ef779db.gz",
+        "payloads/338b67086df199265670056aadb072434588506801029356deed65325cbaa8f0.gz",
+        "payloads/e971ba057dbd38442ef5de7a921ec26e44525840a835077968bc9ee865722980.gz",
+        "payloads/82e97189ea9ff6eb81e53d0b76dae0d6b1c0f80ea806dda80cbc6058e34d0f8e.gz",
+        "payloads/19bf3dc907a63025e8e7de8d1a3b98023d27a54a250638ad841f964b64743e42.gz",
+        "payloads/e07d236e7bc3ce92018cea25ea9e74c5497047e4bc40d357527946d7a177b4b9.gz",
+        "payloads/333a711035ebedb350d040f59612c7b7480ca9e0ce1d12b85cf63d0c0845776f.gz",
+        "payloads/b35373d3aa7cecca1cc9151be21e5934532c8be9bccbe169749aeb0b8a1b376c.gz",
+        "payloads/47b88e8acca5c7db7264b5f7d3a13f2b482da5db82ad1c98790eadc9a9fed841.gz",
+        "payloads/519b17d9360106d8fd75ee37a21782f2d063124f60e0c7ac8861ddcbd3765e38.gz",
+        "payloads/31b971c8779964c44d7fe443440f4393cf610c70e00560acadcf79148a19b5e6.gz",
+        "payloads/692152ff60dd80c0702bc11255d70574de203889a2d29add71b51b0180a7b3ff.gz",
+        "payloads/ade3f6ca9bc69f601d4056c316c3c567d02db2930b3211755da7eb7cf634e183.gz",
+        "payloads/a4f147bc626e187ad5e5c3cb9685dae0b7ae317cb0210739a8b4a8bf525d1771.gz",
+        "payloads/9013135cf612271301e20ca4b87077ae2ef4bea44200ed30e75528e4f248f7c0.gz",
+        "payloads/ee9e9fa80234993fa15ed75d606b1203875c377258d9f4dde35d31ce6e8e01f7.gz",
+        "payloads/41d2926ed9e0f493770ce161c31393bce8fdbf6800bdbc92a31d8ccca6f3187f.gz",
+        "payloads/4c31c200aa36cee191d77ab39d74731bcf68f497c35a50a31b1ec6e2c720cce7.gz",
+        "payloads/f7bd3b718c2eb561cb2c2a07aae7986e558b0650e1459d23bd138b55536327ec.gz",
+        "payloads/a5a03b188b659f6efb759e0727f536ca78da58b06935f83e526023465027a858.gz",
+        "payloads/96c743a03fb4d3f5dc4c10f97e2980c5b2936f1b615f01689107f58e3770871f.gz",
+        "payloads/dcfd224748894c30cee97f55af54a29e28aa89e3cf2e165c608d03c8ee623539.gz",
+        "payloads/6ea7f60d966ba0d753cc28aa63a9fce2ffcadca50e4ae88139cf343dda0ef47a.gz",
+        "payloads/4d7cf560014afef460cb092df7ee6cb36e21911ff481c9a3358cb4bcb2a92186.gz",
+        "payloads/b5db6c9ca8916cc053831a9e02b2ac78c5c67dcfb1a116e9288b49e72a1ddd67.gz",
+        "payloads/1dad2922e8199217b573d4f82c5f6cd7cfdf04bd7dfce27d65f406683b6fcc1d.gz",
+        "payloads/fecf04f4a619b4bd7818da355f3e5bed5bd33e1668a0002a6aeb6a36639cb7d1.gz",
+        "payloads/fc431fec79df5c1a5dba088086d951be5cec9475b70a7b6cce3156462467bb4b.gz"
+      ],
+      "sha256": "fa7cce970eb83668da625ee1b6fd69ea834834e7d1f80071029264c30d395c2d"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/named-control.json": {
+      "bytes": 19832,
+      "chunks": [
+        "payloads/1588c68d8c5f9ed8494131ae9ff9934d5be5c8ca79695903496d51d75412f759.gz"
+      ],
+      "sha256": "1588c68d8c5f9ed8494131ae9ff9934d5be5c8ca79695903496d51d75412f759"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/native-maps.snapshots/complete.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6.gz"
+      ],
+      "sha256": "f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/native-maps.snapshots/first-nonempty.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6.gz"
+      ],
+      "sha256": "f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/native-maps.snapshots/first-read.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6.gz"
+      ],
+      "sha256": "f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/native-maps.snapshots/last-nonempty.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6.gz"
+      ],
+      "sha256": "f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/native-maps.snapshots/last-read.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6.gz"
+      ],
+      "sha256": "f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/native-maps.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6.gz"
+      ],
+      "sha256": "f2f3c6a5c245e3a213b21b5f4222500bd58f2379675d429e527dacf76102e1e6"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/param.log": {
+      "bytes": 936,
+      "chunks": [
+        "payloads/0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635.gz"
+      ],
+      "sha256": "0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-masked/stdout.log": {
+      "bytes": 4054,
+      "chunks": [
+        "payloads/da7869e638bdc058ea0c7b2a96f2fb989f53caf6268894fadd383162298b9e81.gz"
+      ],
+      "sha256": "da7869e638bdc058ea0c7b2a96f2fb989f53caf6268894fadd383162298b9e81"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14622,
+      "chunks": [
+        "payloads/0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b.gz"
+      ],
+      "sha256": "0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/checked-control.log": {
+      "bytes": 3827,
+      "chunks": [
+        "payloads/4ecdd50ae1581fcb1fb0306e8fc627a1246abbc6eca4b51af29469fc57b48c2c.gz"
+      ],
+      "sha256": "4ecdd50ae1581fcb1fb0306e8fc627a1246abbc6eca4b51af29469fc57b48c2c"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/mapping-ready": {
+      "bytes": 37,
+      "chunks": [
+        "payloads/2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945.gz"
+      ],
+      "sha256": "2c7a98419de501267beff0d5a2d1b55c03d8af08b26e6afbf6c29b7c628c1945"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/named-control.json": {
+      "bytes": 10985,
+      "chunks": [
+        "payloads/64284e1c5f294d617f12611bb6f6d97de3d71edf6d69810995569d61b308d8a5.gz"
+      ],
+      "sha256": "64284e1c5f294d617f12611bb6f6d97de3d71edf6d69810995569d61b308d8a5"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/native-maps.snapshots/complete.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9.gz"
+      ],
+      "sha256": "d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/native-maps.snapshots/first-nonempty.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9.gz"
+      ],
+      "sha256": "d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/native-maps.snapshots/first-read.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9.gz"
+      ],
+      "sha256": "d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/native-maps.snapshots/last-nonempty.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9.gz"
+      ],
+      "sha256": "d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/native-maps.snapshots/last-read.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9.gz"
+      ],
+      "sha256": "d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/native-maps.txt": {
+      "bytes": 15681,
+      "chunks": [
+        "payloads/d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9.gz"
+      ],
+      "sha256": "d0d5dad0dbfc6ef99d157c47acee41d6b2452a08f90deb7afe638d8f5a985be9"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/param.log": {
+      "bytes": 936,
+      "chunks": [
+        "payloads/0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635.gz"
+      ],
+      "sha256": "0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/forced-qp-trapped/stdout.log": {
+      "bytes": 977,
+      "chunks": [
+        "payloads/7ba1587061c79fcc2befd01092d727c003aa56ab8679c7c28f618fdadcd2a07c.gz"
+      ],
+      "sha256": "7ba1587061c79fcc2befd01092d727c003aa56ab8679c7c28f618fdadcd2a07c"
+    },
+    ".tirust-build/cayley-guarded-adaptive-physical-proposal-2/run1/loader.log": {
+      "bytes": 2789,
+      "chunks": [
+        "payloads/3de48049a49b7efcfc4733f319d1d0f74f0b3dd8b00c9ecc905a3383d2fa4566.gz"
+      ],
+      "sha256": "3de48049a49b7efcfc4733f319d1d0f74f0b3dd8b00c9ecc905a3383d2fa4566"
+    },
+    ".tirust-build/ew-qp-mass-prototype/observer-native-design/attempt2/original/SubProcesses/P0_epem_ttxa/coupl.inc": {
+      "bytes": 4686,
+      "chunks": [
+        "payloads/56613b2d105e1ba8ad11a60711a1a71c46e27630ce5fcc26bb2531cc3d0a7aed.gz"
+      ],
+      "sha256": "56613b2d105e1ba8ad11a60711a1a71c46e27630ce5fcc26bb2531cc3d0a7aed"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/prepared.json": {
+      "bytes": 157696,
+      "chunks": [
+        "payloads/9a8237793c3b748765167a692ad73be76b0662f3e721a19c169540bf76035b98.gz",
+        "payloads/8f337ce02a967f016ee3e76b748cf29021f0f444c89adc16fb890f1f665de203.gz"
+      ],
+      "sha256": "990da23b00a04c4aa5dffd7bf1c573997a2c6523556b49befb46668d7ccff6df"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/runs/guarded-qp-9/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/runs/guarded-qp-9/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/runs/guarded-qp-9/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/runs/guarded-qp-9/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14622,
+      "chunks": [
+        "payloads/0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b.gz"
+      ],
+      "sha256": "0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/runs/guarded-qp-9/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/runs/guarded-qp-9/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/runs/guarded-qp-9/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/amplitude/runs/guarded-qp-9/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/build.json": {
+      "bytes": 64596,
+      "chunks": [
+        "payloads/0f1b01f60d2044271519e97566fb6772c1a66a4f4310edc06b281070b92e497e.gz"
+      ],
+      "sha256": "0f1b01f60d2044271519e97566fb6772c1a66a4f4310edc06b281070b92e497e"
+    },
+    ".tirust-build/qp-mass-general-implementation/combined-qualification/prepared.json": {
+      "bytes": 451813,
+      "chunks": [
+        "payloads/a5171fbbb51f057b5d6e3acd702566dc7bb93512de36c942a6e859e465344048.gz",
+        "payloads/6e74c65085cef2e8720788cf1cf281aee98c5a91ab2b4a63f2e94189ec58aab5.gz",
+        "payloads/687e0ee54605901aebe6bb91ea02497b8a35192e93a29628fef5c7c9d933ddfd.gz",
+        "payloads/36e65a1700bad0974fb45354358093a50921a0b87d6a9729a81f641eea8645ee.gz"
+      ],
+      "sha256": "906cc984cc59068b89823ef7108f3f80f28e373e2ee8a15dfe9df7abb86c2a1e"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/README.md": {
+      "bytes": 9335,
+      "chunks": [
+        "payloads/339785a117233e62b635bdaa1738105ecb21257c7bbc828363f5123a7d0dbe23.gz"
+      ],
+      "sha256": "339785a117233e62b635bdaa1738105ecb21257c7bbc828363f5123a7d0dbe23"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/control_log.py": {
+      "bytes": 7544,
+      "chunks": [
+        "payloads/6643f56faca580172b7dc79fda3dd4e4914aefe7d85c452bbd0292add94c9952.gz"
+      ],
+      "sha256": "6643f56faca580172b7dc79fda3dd4e4914aefe7d85c452bbd0292add94c9952"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/controller.py": {
+      "bytes": 30130,
+      "chunks": [
+        "payloads/5bb8892db4dd96c63ecbb2321eedeaebb2afddc7dd4ca3efd98763639308ae72.gz"
+      ],
+      "sha256": "5bb8892db4dd96c63ecbb2321eedeaebb2afddc7dd4ca3efd98763639308ae72"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/driver.f90": {
+      "bytes": 6343,
+      "chunks": [
+        "payloads/f988d23ab5b01710a7d5fb7eff42d7223454379b5fc2696e6a38b86ec356ad06.gz"
+      ],
+      "sha256": "f988d23ab5b01710a7d5fb7eff42d7223454379b5fc2696e6a38b86ec356ad06"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/fixtures/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/fixtures/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/fixtures/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/fixtures/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14623,
+      "chunks": [
+        "payloads/e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573.gz"
+      ],
+      "sha256": "e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/fixtures/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/fixtures/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/fixtures/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/fixtures/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/parser.py": {
+      "bytes": 25033,
+      "chunks": [
+        "payloads/b729f06f014989b04ab8c1f00a015abf44964916597e238f659948e3aa1dafee.gz"
+      ],
+      "sha256": "b729f06f014989b04ab8c1f00a015abf44964916597e238f659948e3aa1dafee"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/prepared.json": {
+      "bytes": 46170,
+      "chunks": [
+        "payloads/90ab45724f3544ae3353e32025d09abbb86a1b3ac6c5273a58a04b4c89a2893b.gz"
+      ],
+      "sha256": "90ab45724f3544ae3353e32025d09abbb86a1b3ac6c5273a58a04b4c89a2893b"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/qualification-1/evidence-index.json": {
+      "bytes": 15433,
+      "chunks": [
+        "payloads/d60f909d5dd20d749342c446a74b605743aa43556cb6554ba9ea8030519d967e.gz"
+      ],
+      "sha256": "d60f909d5dd20d749342c446a74b605743aa43556cb6554ba9ea8030519d967e"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/source-audit.json": {
+      "bytes": 1650,
+      "chunks": [
+        "payloads/b5bb44adf798658b06e202372e29c9d9055d62f19409460ff86fae9227b57a0f.gz"
+      ],
+      "sha256": "b5bb44adf798658b06e202372e29c9d9055d62f19409460ff86fae9227b57a0f"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/source-index.json": {
+      "bytes": 14903,
+      "chunks": [
+        "payloads/32909d9a7b4b2102f35eeddc547d2f45c7560f903253b0571bf77b5628220a29.gz"
+      ],
+      "sha256": "32909d9a7b4b2102f35eeddc547d2f45c7560f903253b0571bf77b5628220a29"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/test_control_log.py": {
+      "bytes": 4904,
+      "chunks": [
+        "payloads/20ab441c50f15fe7c87c91522aedffe85adc786a0ad77a7f44978b70f375012a.gz"
+      ],
+      "sha256": "20ab441c50f15fe7c87c91522aedffe85adc786a0ad77a7f44978b70f375012a"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/test_controller.py": {
+      "bytes": 4740,
+      "chunks": [
+        "payloads/3bc6e386b3edc654b33a389e91aab0a128d995ebb93f4bbda43892a8915100a7.gz"
+      ],
+      "sha256": "3bc6e386b3edc654b33a389e91aab0a128d995ebb93f4bbda43892a8915100a7"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-checked-trap-proposal-1/test_parser.py": {
+      "bytes": 14770,
+      "chunks": [
+        "payloads/75470d861f06368f4e60584f88f250c02fa5a4a8e0eed1110cc02a0980b3fa4d.gz"
+      ],
+      "sha256": "75470d861f06368f4e60584f88f250c02fa5a4a8e0eed1110cc02a0980b3fa4d"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-physical-replay-independent-8-audit-1/evidence-index.json": {
+      "bytes": 1361,
+      "chunks": [
+        "payloads/5b9100fc21b6d197c07401d89ec77709d9e37486f32e40f9e1e7a7e537345e32.gz"
+      ],
+      "sha256": "5b9100fc21b6d197c07401d89ec77709d9e37486f32e40f9e1e7a7e537345e32"
+    },
+    "docs/benchmarkfolder/experiments/adaptive-qp-physical-replay-qualification-1/evidence-index.json": {
+      "bytes": 10134,
+      "chunks": [
+        "payloads/a728fbeb29c64e77b09189c5a97b1a509c71a681aa722dbe3affa1312895c9e9.gz"
+      ],
+      "sha256": "a728fbeb29c64e77b09189c5a97b1a509c71a681aa722dbe3affa1312895c9e9"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-2/plan.json": {
+      "bytes": 12162,
+      "chunks": [
+        "payloads/9f3b92616c7d35740cfc27b96f0c110c0512415a16634d7a74ac7eba976f923c.gz"
+      ],
+      "sha256": "9f3b92616c7d35740cfc27b96f0c110c0512415a16634d7a74ac7eba976f923c"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-2/source-index.json": {
+      "bytes": 3850,
+      "chunks": [
+        "payloads/85e950b7d431988beb2481eeb2ad88ff4c0db3494121fcc986f9821ae3e9fd21.gz"
+      ],
+      "sha256": "85e950b7d431988beb2481eeb2ad88ff4c0db3494121fcc986f9821ae3e9fd21"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/plan.json": {
+      "bytes": 14287,
+      "chunks": [
+        "payloads/e7e633a519dd3c17ba413cbdcd49625415790520d42c35f3a6ce2b2c26899ab6.gz"
+      ],
+      "sha256": "e7e633a519dd3c17ba413cbdcd49625415790520d42c35f3a6ce2b2c26899ab6"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/source-index.json": {
+      "bytes": 3352,
+      "chunks": [
+        "payloads/39d6ba2bd3c7aef5c8f5008360661c988a93d86ab1265cb3bc815707233b9e72.gz"
+      ],
+      "sha256": "39d6ba2bd3c7aef5c8f5008360661c988a93d86ab1265cb3bc815707233b9e72"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-qualification-1/README.md": {
+      "bytes": 4865,
+      "chunks": [
+        "payloads/5675376f5b1c61130a006cf462b4e5aeba0f6bd328d97f10f252b02548e0e42d.gz"
+      ],
+      "sha256": "5675376f5b1c61130a006cf462b4e5aeba0f6bd328d97f10f252b02548e0e42d"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-qualification-1/evidence-index.json": {
+      "bytes": 9052,
+      "chunks": [
+        "payloads/94f7a23d4c10373353b04e876da32585bc0274852fc573e8d94b740c9fa0ae3e.gz"
+      ],
+      "sha256": "94f7a23d4c10373353b04e876da32585bc0274852fc573e8d94b740c9fa0ae3e"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/README.md": {
+      "bytes": 4798,
+      "chunks": [
+        "payloads/107a5fb35f11baee7f5c2da4711253f20a903df2eb64a6fd5bce4ed2af41d56c.gz"
+      ],
+      "sha256": "107a5fb35f11baee7f5c2da4711253f20a903df2eb64a6fd5bce4ed2af41d56c"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/assessment.py": {
+      "bytes": 6079,
+      "chunks": [
+        "payloads/66e6d2ea51b43727f14552e2c52dbdc35ea9513ddbf118b047ee252432f9acec.gz"
+      ],
+      "sha256": "66e6d2ea51b43727f14552e2c52dbdc35ea9513ddbf118b047ee252432f9acec"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/controller.py": {
+      "bytes": 17223,
+      "chunks": [
+        "payloads/eac1ae50406629905c8676d896a0892c553fd36a3f794493363c5523a0747e96.gz"
+      ],
+      "sha256": "eac1ae50406629905c8676d896a0892c553fd36a3f794493363c5523a0747e96"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/dependency-bindings.json": {
+      "bytes": 29504,
+      "chunks": [
+        "payloads/81ceb86a400133c467884bb9dc8a8b3393586f8604b618e6eb017a226e820089.gz"
+      ],
+      "sha256": "81ceb86a400133c467884bb9dc8a8b3393586f8604b618e6eb017a226e820089"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/driver-witness.f90": {
+      "bytes": 6343,
+      "chunks": [
+        "payloads/f988d23ab5b01710a7d5fb7eff42d7223454379b5fc2696e6a38b86ec356ad06.gz"
+      ],
+      "sha256": "f988d23ab5b01710a7d5fb7eff42d7223454379b5fc2696e6a38b86ec356ad06"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/checked/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/checked/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/checked/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/checked/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14623,
+      "chunks": [
+        "payloads/e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573.gz"
+      ],
+      "sha256": "e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/checked/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/checked/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/checked/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/checked/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/forced-qp/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/forced-qp/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/forced-qp/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/forced-qp/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14622,
+      "chunks": [
+        "payloads/0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b.gz"
+      ],
+      "sha256": "0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/forced-qp/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/forced-qp/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/forced-qp/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/fixtures/forced-qp/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/offline-fixed-selfcheck.json": {
+      "bytes": 2032,
+      "chunks": [
+        "payloads/d63da96199a236e5b0caa8cff595bc5143b7ae58fb38c5aa82edc22e94a8027e.gz"
+      ],
+      "sha256": "d63da96199a236e5b0caa8cff595bc5143b7ae58fb38c5aa82edc22e94a8027e"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/prepared.json": {
+      "bytes": 9200,
+      "chunks": [
+        "payloads/84de522263f900638761057823d9e5af90b54eaef59dee0a50c80871afe18ab2.gz"
+      ],
+      "sha256": "84de522263f900638761057823d9e5af90b54eaef59dee0a50c80871afe18ab2"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/source-audit.json": {
+      "bytes": 2998,
+      "chunks": [
+        "payloads/1e24cdee6401173d9b1bdffff17a4a1d21db825ce7bddcca41fa189b88d76482.gz"
+      ],
+      "sha256": "1e24cdee6401173d9b1bdffff17a4a1d21db825ce7bddcca41fa189b88d76482"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/source-index.json": {
+      "bytes": 32841,
+      "chunks": [
+        "payloads/83ee98dd13b1baf79a5651e4673374994c856b6022bef53c6ce9523d930a5233.gz"
+      ],
+      "sha256": "83ee98dd13b1baf79a5651e4673374994c856b6022bef53c6ce9523d930a5233"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/test_assessment.py": {
+      "bytes": 6454,
+      "chunks": [
+        "payloads/1e3904497046e8bce45bf9feb1142e110879518b4b3d2df801e55aa0aef7a35f.gz"
+      ],
+      "sha256": "1e3904497046e8bce45bf9feb1142e110879518b4b3d2df801e55aa0aef7a35f"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-1/tests-receipt.json": {
+      "bytes": 1932,
+      "chunks": [
+        "payloads/62ca224849af2e7cd52a707f31c82be3687fbc7607526fe6660c849afc2fee3b.gz"
+      ],
+      "sha256": "62ca224849af2e7cd52a707f31c82be3687fbc7607526fe6660c849afc2fee3b"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/README.md": {
+      "bytes": 7538,
+      "chunks": [
+        "payloads/ce06821f139267737e50302b4167db9835203e86b7abe5427f6b677cf921ee44.gz"
+      ],
+      "sha256": "ce06821f139267737e50302b4167db9835203e86b7abe5427f6b677cf921ee44"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/assessment.py": {
+      "bytes": 10357,
+      "chunks": [
+        "payloads/3869c9a682e973e08a1ce7b076b73c4c4bcbfa6c6e6fe4b846395257a084233b.gz"
+      ],
+      "sha256": "3869c9a682e973e08a1ce7b076b73c4c4bcbfa6c6e6fe4b846395257a084233b"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/assessment.py.delta.patch": {
+      "bytes": 7118,
+      "chunks": [
+        "payloads/4c16d10a45003830203676634886288982b4e661176e1229a9d25dd347287d98.gz"
+      ],
+      "sha256": "4c16d10a45003830203676634886288982b4e661176e1229a9d25dd347287d98"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/controller.py": {
+      "bytes": 19320,
+      "chunks": [
+        "payloads/a11d5c23e76205d43be4fa121fc03435a169957da0bcec53e2e04b954c66dae2.gz"
+      ],
+      "sha256": "a11d5c23e76205d43be4fa121fc03435a169957da0bcec53e2e04b954c66dae2"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/controller.py.delta.patch": {
+      "bytes": 9797,
+      "chunks": [
+        "payloads/28e5244cf3562a5f3afe1a31d0c3751b9c7082f70379fd1984b396668f94aad3.gz"
+      ],
+      "sha256": "28e5244cf3562a5f3afe1a31d0c3751b9c7082f70379fd1984b396668f94aad3"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/dependency-bindings.json": {
+      "bytes": 35052,
+      "chunks": [
+        "payloads/9191d6f166e4cb62ca73b41203038cae15d65b2c573f12da82c2d79fb2507b0a.gz"
+      ],
+      "sha256": "9191d6f166e4cb62ca73b41203038cae15d65b2c573f12da82c2d79fb2507b0a"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/dependency-bindings.json.delta.patch": {
+      "bytes": 26991,
+      "chunks": [
+        "payloads/e383146ca77e965589e83655a17f3fabe675e5ea8af61aaa135004a3b4f4afd8.gz"
+      ],
+      "sha256": "e383146ca77e965589e83655a17f3fabe675e5ea8af61aaa135004a3b4f4afd8"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/driver-witness.f90": {
+      "bytes": 6343,
+      "chunks": [
+        "payloads/f988d23ab5b01710a7d5fb7eff42d7223454379b5fc2696e6a38b86ec356ad06.gz"
+      ],
+      "sha256": "f988d23ab5b01710a7d5fb7eff42d7223454379b5fc2696e6a38b86ec356ad06"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/checked/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/checked/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/checked/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/checked/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14623,
+      "chunks": [
+        "payloads/e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573.gz"
+      ],
+      "sha256": "e2adbbb40929e5412978dbdbdcb58ad3c219fe6144dd793bf74c106968e37573"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/checked/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/checked/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/checked/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/checked/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/forced-qp/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "bytes": 20400,
+      "chunks": [
+        "payloads/5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a.gz"
+      ],
+      "sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/forced-qp/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "bytes": 22112,
+      "chunks": [
+        "payloads/4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703.gz"
+      ],
+      "sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/forced-qp/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "bytes": 400,
+      "chunks": [
+        "payloads/0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425.gz"
+      ],
+      "sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/forced-qp/MadLoop5_resources/MadLoopParams.dat": {
+      "bytes": 14622,
+      "chunks": [
+        "payloads/0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b.gz"
+      ],
+      "sha256": "0a3abffa7393f0baa4ec258edff2a3f112c41ec3a98c2865b893daed4285754b"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/forced-qp/MadLoop5_resources/ident_card.dat": {
+      "bytes": 389,
+      "chunks": [
+        "payloads/1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40.gz"
+      ],
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/forced-qp/MadLoop5_resources/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/forced-qp/param_card.dat": {
+      "bytes": 4538,
+      "chunks": [
+        "payloads/891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8.gz"
+      ],
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/fixtures/forced-qp/selected.dat": {
+      "bytes": 974,
+      "chunks": [
+        "payloads/f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3.gz"
+      ],
+      "sha256": "f1663e764a65d5b9ca89691177f3607ba85f3daff8b52af9360b1a4f09e26de3"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/offline-fixed-selfcheck.json": {
+      "bytes": 2032,
+      "chunks": [
+        "payloads/d63da96199a236e5b0caa8cff595bc5143b7ae58fb38c5aa82edc22e94a8027e.gz"
+      ],
+      "sha256": "d63da96199a236e5b0caa8cff595bc5143b7ae58fb38c5aa82edc22e94a8027e"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/README.md": {
+      "bytes": 5618,
+      "chunks": [
+        "payloads/822a55873f7c0f948519b4ab1235732db35d88865269edee5d65bb7b71cb72e0.gz"
+      ],
+      "sha256": "822a55873f7c0f948519b4ab1235732db35d88865269edee5d65bb7b71cb72e0"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/assessment.py": {
+      "bytes": 6081,
+      "chunks": [
+        "payloads/2a63b767533b03efab16e961f7f73e0efd114740c0296ee4610d0118b4243d8b.gz"
+      ],
+      "sha256": "2a63b767533b03efab16e961f7f73e0efd114740c0296ee4610d0118b4243d8b"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/assessment.py.delta.patch": {
+      "bytes": 1733,
+      "chunks": [
+        "payloads/6b158cf41990527b8386453b020c6a05b9eeb8c8ea0d1f51180130f3e633a2f1.gz"
+      ],
+      "sha256": "6b158cf41990527b8386453b020c6a05b9eeb8c8ea0d1f51180130f3e633a2f1"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/controller.py": {
+      "bytes": 17223,
+      "chunks": [
+        "payloads/e39f5620fab5af8690b3ebdbf684f594cee6af90eb18f6aa5697e0ff713badaa.gz"
+      ],
+      "sha256": "e39f5620fab5af8690b3ebdbf684f594cee6af90eb18f6aa5697e0ff713badaa"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/controller.py.delta.patch": {
+      "bytes": 879,
+      "chunks": [
+        "payloads/97a7a50792bb3ff5c0b63ee010f346694e51c9de6b6aeece267cb210175df4a4.gz"
+      ],
+      "sha256": "97a7a50792bb3ff5c0b63ee010f346694e51c9de6b6aeece267cb210175df4a4"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/dependency-bindings.json": {
+      "bytes": 34951,
+      "chunks": [
+        "payloads/32ec407296211837cbc0e5ff041afe96619f762bf15baa17d0b4e059a4476955.gz"
+      ],
+      "sha256": "32ec407296211837cbc0e5ff041afe96619f762bf15baa17d0b4e059a4476955"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/dependency-bindings.json.delta.patch": {
+      "bytes": 26891,
+      "chunks": [
+        "payloads/1710ec555691b567bbc67db311f9ec91e91cfea5e6579a786bb4e702363ea598.gz"
+      ],
+      "sha256": "1710ec555691b567bbc67db311f9ec91e91cfea5e6579a786bb4e702363ea598"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/prepared.json": {
+      "bytes": 9200,
+      "chunks": [
+        "payloads/7b6b2bbef59f62d4d938f39e422eebf458b7a0bc519b6abdfaaf634854306404.gz"
+      ],
+      "sha256": "7b6b2bbef59f62d4d938f39e422eebf458b7a0bc519b6abdfaaf634854306404"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/prepared.json.delta.patch": {
+      "bytes": 1108,
+      "chunks": [
+        "payloads/817b8399dc6207a27cae351eebc604369765411b95d89c67a2fa3383cf2f110d.gz"
+      ],
+      "sha256": "817b8399dc6207a27cae351eebc604369765411b95d89c67a2fa3383cf2f110d"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/source-audit.json": {
+      "bytes": 3586,
+      "chunks": [
+        "payloads/fd90f480d40d7b6297bfe827c387e72ca14c93c8ce2926231ff8a891a7066616.gz"
+      ],
+      "sha256": "fd90f480d40d7b6297bfe827c387e72ca14c93c8ce2926231ff8a891a7066616"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/source-copies.json": {
+      "bytes": 4758,
+      "chunks": [
+        "payloads/ff41a265bb0cbec9140b0185e9ecc8b5ee00f7f6e284978edda88483b3b69c80.gz"
+      ],
+      "sha256": "ff41a265bb0cbec9140b0185e9ecc8b5ee00f7f6e284978edda88483b3b69c80"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/test_assessment.py": {
+      "bytes": 6456,
+      "chunks": [
+        "payloads/cdf0d6b39a8c5978dfdcacf27c2aed04b9be9f5a4abc19e4c984f5168ed275e0.gz"
+      ],
+      "sha256": "cdf0d6b39a8c5978dfdcacf27c2aed04b9be9f5a4abc19e4c984f5168ed275e0"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/pre-steering/test_assessment.py.delta.patch": {
+      "bytes": 1437,
+      "chunks": [
+        "payloads/aa63ddda444461aa303be6c10c52eaf05970b86d07fe417203c079e753c0c9a4.gz"
+      ],
+      "sha256": "aa63ddda444461aa303be6c10c52eaf05970b86d07fe417203c079e753c0c9a4"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/prepared.json": {
+      "bytes": 10490,
+      "chunks": [
+        "payloads/adb337532aa0fb8ad5058860c6c9490935a09688e2cc4b54f658fa0a3a3a3f12.gz"
+      ],
+      "sha256": "adb337532aa0fb8ad5058860c6c9490935a09688e2cc4b54f658fa0a3a3a3f12"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/prepared.json.delta.patch": {
+      "bytes": 4054,
+      "chunks": [
+        "payloads/c552d4f9224b6a395f0224f00ce952faec18527bf1ca52402690ab4b296cc7fd.gz"
+      ],
+      "sha256": "c552d4f9224b6a395f0224f00ce952faec18527bf1ca52402690ab4b296cc7fd"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/source-audit.json": {
+      "bytes": 2272,
+      "chunks": [
+        "payloads/1a7743ced4c6379c80e6e133958b04acb43cc75e5d2a74d36fee44bfd4f5b985.gz"
+      ],
+      "sha256": "1a7743ced4c6379c80e6e133958b04acb43cc75e5d2a74d36fee44bfd4f5b985"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/source-copies.json": {
+      "bytes": 5063,
+      "chunks": [
+        "payloads/a47f46e4b8e770393de0ec0883cfecce0652e557ad9d72053f33423846558261.gz"
+      ],
+      "sha256": "a47f46e4b8e770393de0ec0883cfecce0652e557ad9d72053f33423846558261"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/source-index.json": {
+      "bytes": 40376,
+      "chunks": [
+        "payloads/7d9a40657b9df702fe1bdd1b3f302363813b1ba4a9514a2bcc88467f371dcd1c.gz"
+      ],
+      "sha256": "7d9a40657b9df702fe1bdd1b3f302363813b1ba4a9514a2bcc88467f371dcd1c"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/test_assessment.py": {
+      "bytes": 10434,
+      "chunks": [
+        "payloads/34727870ec91320fe847ef3bc8f1e10ac5e038dfb661436a4dbbdcaafd36a780.gz"
+      ],
+      "sha256": "34727870ec91320fe847ef3bc8f1e10ac5e038dfb661436a4dbbdcaafd36a780"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/test_assessment.py.delta.patch": {
+      "bytes": 6129,
+      "chunks": [
+        "payloads/05d8659454054ac8d9136033c52b0f6957321463c3fb442262dc83de704f428c.gz"
+      ],
+      "sha256": "05d8659454054ac8d9136033c52b0f6957321463c3fb442262dc83de704f428c"
+    },
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-physical-proposal-2/tests-receipt.json": {
+      "bytes": 676,
+      "chunks": [
+        "payloads/628c4ca620d1071fcda3012b741ab6276ebecc84d3bfd4b07fb34d7a92e0c464.gz"
+      ],
+      "sha256": "628c4ca620d1071fcda3012b741ab6276ebecc84d3bfd4b07fb34d7a92e0c464"
+    },
+    "docs/benchmarkfolder/experiments/ew-qp-mass-prototype/observer-native-design/attempt2/check_observed.f": {
+      "bytes": 2436,
+      "chunks": [
+        "payloads/3e8d0bb803f2a6af1e21d19f5c5f7288e349a5f6450ad953587cc75206a05d03.gz"
+      ],
+      "sha256": "3e8d0bb803f2a6af1e21d19f5c5f7288e349a5f6450ad953587cc75206a05d03"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-design/elf_metadata.py": {
+      "bytes": 7235,
+      "chunks": [
+        "payloads/3327e253c4ea1b581b252fc9547f9b7c3f71f610c131e8c23b0dc1039b26f73a.gz"
+      ],
+      "sha256": "3327e253c4ea1b581b252fc9547f9b7c3f71f610c131e8c23b0dc1039b26f73a"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-runner2/supervise.py": {
+      "bytes": 9125,
+      "chunks": [
+        "payloads/ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42.gz"
+      ],
+      "sha256": "ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42"
+    },
+    "tools/tirust_benchmark.py": {
+      "bytes": 96661,
+      "chunks": [
+        "payloads/bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370.gz"
+      ],
+      "sha256": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "guarded-portable-audit-harness-failure-v1",
+  "exit_code": 1,
+  "failed_before_verifier_execution": true,
+  "native_or_loader_executed": false,
+  "first_failure": "open hook rejected Python importlib nonexistent .pyc source-cache probe before get_data fallback",
+  "second_failure": "cleanup parent directory /tmp/guarded-portable-relocation-m03v7fgn was outside permitted qualification subdirectory",
+  "initial_main_index_sha256": "cb7be1959ff0e92aebc4d6218d29791844e235064605d7823359cbff4c20b703",
+  "numerical_runtime_or_captured_evidence_modified": false
+}

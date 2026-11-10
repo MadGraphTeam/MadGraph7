@@ -1,0 +1,20 @@
+--- physical-proposal-1/test_assessment.py
++++ physical-proposal-2/test_assessment.py
+@@ -24,7 +24,7 @@
+                           'source_index_sha256': 'b' * 64, 'build_command': ['synthetic-never-executed']}
+         self.record = {'complete': True, 'loader_or_native_test_executed': False,
+             'root_admission_received': True, 'cpu_exclusive': False, 'cpu': 11,
+-            'jobs': 1, 'automatic_retries': 0, 'overall_seconds': 600,
++            'jobs': 1, 'automatic_retries': 0, 'overall_seconds': 1800,
+             'address_space_limit_bytes_per_build_process': 8589934592,
+             'address_space_limit_bytes_per_cache_copy_process': 4294967296,
+             'commands': [{'label': label, 'command': ['synthetic-never-executed'],
+@@ -43,7 +43,7 @@
+                            ('address_space_limit_bytes_per_build_process', 4294967296),
+                            ('root_admission_received', False), ('cpu_exclusive', True),
+                            ('cpu', 12), ('jobs', 2), ('automatic_retries', 1), ('overall_seconds', 900),
+-                           ('protected_inputs_after', {}), ('elapsed_seconds', 600),
++                           ('protected_inputs_after', {}), ('elapsed_seconds', 1800),
+                            ('elapsed_seconds', float('nan')), ('elapsed_seconds', True),
+                            ('private_library_not_loaded', {})]:
+             with self.subTest(key=key, value=value):
