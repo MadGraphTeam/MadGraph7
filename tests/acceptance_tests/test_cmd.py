@@ -2805,6 +2805,47 @@ class TestCmdShell2(unittest.TestCase,
         mg_cmd.exec_cmd('generate tata(1|1S0) > Jpsi(1|3S11) a / z h')
         self.assertTrue(mg_cmd._curr_amps[0].get('diagrams'))
 
+    def test_leptonium_decay_without_photon_vertex(self):
+        """A leptonium decaying without a photon vertex: ortho-ditauonium into
+        nu_e nubar_e through the Z. The Coulomb LDME takes alpha from the
+        photon coupling of the leptons, which the output now declares although
+        no amplitude uses it (matrix.f did not compile). The width is the LO
+        result of arXiv:2204.07269 (p. 14) for Gamma_Z = 0,
+        Gamma = alpha^5 m_tau/6 m_tau^4 (1-4s_W^2)^2/(8 s_W^4 c_W^4 (m_Z^2-4m_tau^2)^2)."""
+
+        import glob
+        import math
+        import madgraph.interface.master_interface as MGCmd
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-lepton_masses')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        mg_cmd.exec_cmd('generate tata(1|3S1) > ve ve~')
+        mg_cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+        proc_dir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))[0]
+        mta, mz, gf, alpha = 1.777, 91.188, 1.16639e-5, 1 / 132.507
+        M = 2 * mta
+        card = pjoin(self.out_dir, 'Cards', 'onia_card.dat')
+        text = re.sub(r'(?m)^(\s*\d+\s+)[0-9.Ee+-]+(\s+# mass for tata\(1\|3S1\))', r'\g<1>%.12e\2' % M,
+                      open(card).read())
+        open(card, 'w').write(text)
+        param = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        text, n = re.subn(r'(?mi)^(DECAY\s+23\s+)\S+', r'\g<1>0.000000e+00', open(param).read())
+        self.assertEqual(n, 1)
+        open(param, 'w').write(text)
+        k, nx, ny, nz = M / 2, 0.36, -0.48, 0.80
+        me = self._onia_check_me(proc_dir, [[M, 0., 0., 0.], [k, k * nx, k * ny, k * nz],
+                                            [k, -k * nx, -k * ny, -k * nz]])
+        width = me * (M / 2) / (8 * math.pi * M ** 2)
+        mw = math.sqrt(mz ** 2 / 2 + math.sqrt(mz ** 4 / 4 - math.pi * alpha * mz ** 2 / (math.sqrt(2) * gf)))
+        s2 = 1 - mw ** 2 / mz ** 2
+        expected = alpha ** 5 * mta / 6 * mta ** 4 * (1 - 4 * s2) ** 2 / (
+            8 * s2 ** 2 * (1 - s2) ** 2 * (mz ** 2 - 4 * mta ** 2) ** 2)
+        self.assertLess(abs(width - expected) / expected, 1e-9, '%s against %s' % (width, expected))
+
     def test_onia_decay_channels(self):
         """The madevent channels of a 1 -> N process with onia follow the
         propagators of their diagram, over the physical final state:

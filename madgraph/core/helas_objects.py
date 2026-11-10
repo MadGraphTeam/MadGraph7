@@ -7258,9 +7258,42 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return output
 
+    def get_leptonium_alpha_coupling(self):
+        """The coupling from which the Coulomb LDME of a leptonium takes
+        alpha = |g|^2/(4 pi): the photon coupling of its constituent leptons
+        (GC_3 in the SM). None if the process has no leptonium."""
+
+        leptons = set()
+        for proc in self.get('processes'):
+            for leg in proc.get('legs'):
+                if leg.get('onium') and abs(leg.get('id')) in (11, 13, 15):
+                    leptons.add(abs(leg.get('id')))
+        if not leptons:
+            return None
+        model = self.get('processes')[0].get('model')
+        for lep in sorted(leptons):
+            for inter in model.get('interactions'):
+                ids = sorted(abs(p.get_pdg_code()) for p in inter.get('particles'))
+                if ids == sorted([lep, lep, 22]) and inter.get('couplings'):
+                    return sorted(inter.get('couplings').values())[0]
+        return None
+
     def get_used_couplings(self, output=str):
         """Return a list with all couplings used by this
-        HelasMatrixElement."""
+        HelasMatrixElement, and the coupling of the Coulomb LDME of a
+        leptonium (get_leptonium_alpha_coupling)."""
+
+        used = self._get_used_couplings(output)
+        extra = self.get_leptonium_alpha_coupling()
+        if extra:
+            # a list of [name] lists, or of names (output="set")
+            item = extra if used and not isinstance(used[0], list) else [extra]
+            if item not in used:
+                used = list(used) + [item]
+        return used
+
+    def _get_used_couplings(self, output=str):
+        """The couplings of the wavefunctions and amplitudes."""
 
         tmp = [wa.get('coupling') for wa in \
                 self.get_all_wavefunctions() + self.get_all_amplitudes() \

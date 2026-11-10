@@ -5037,8 +5037,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
 
         ldmes = sorted(list(set(ldmes)))
         ldme_perturbative = ''
+        # alpha of the Coulomb wave function, |g|^2/(4 pi) with g the photon
+        # coupling of the constituent leptons (GC_3 in the SM), which
+        # get_used_couplings declares even without a photon vertex in the
+        # process (e.g. tata(1|3S1) > vt vt~, W and Z exchange only)
+        alpha = 'ABS(%s)**2/16D0/ATAN(1D0)' % \
+                (matrix_element.get_leptonium_alpha_coupling() or 'GC_3')
         for ldme in ldmes:
-            alpha = 'ABS(GC_3)**2/16D0/ATAN(1D0)'
             if ldme[1]==11:
                 mass1 = 'MDL_ME'
             elif ldme[1]==13:
