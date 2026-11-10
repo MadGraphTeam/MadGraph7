@@ -25,6 +25,10 @@ from madgraph.iolibs import jamp_optimiser
 import aloha
 from aloha import aloha_writers
 
+# name suffix of the cIPD slot that holds the imaginary part of a complex
+# parameter (the complex masses of the complex-mass scheme)
+IMAG_SLOT = '__imag'
+
 # FD gauge check — if set on second output
 class _FdGaugeFlag:
     __slots__ = ()
@@ -343,7 +347,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             else:
                 continue # AV no need to declare the variable
             if fullname.startswith('OM') :
-                codedict[fullname] = 'fptype_amp %s' % fullname # multiple of scalars 
+                # 1/M^2, complex in the complex-mass scheme
+                codedict[fullname] = '%s %s' % ('cxtype_amp' if aloha.complex_mass else 'fptype_amp',
+                                                fullname) # multiple of scalars 
             else:
                 codedict[fullname] = '%s %s' % (self.type2def[type+'_v'], fullname) # AV vectorize, add to codedict
             ###print(fullname, codedict[fullname]) # FOR DEBUGGING
@@ -401,8 +407,14 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             if self.declaration.is_used( 'OM%s' % (i+1) ):
                 declname = 'OM%s' % (i+1)
                 if self.nodeclare: declname = 'const ' + self.declaration.codedict[declname]
-                out.write('    {3} = ( M{0} != {1} ? {2} / ( M{0} * M{0} ) : {1} );\n'.format( # AV use ternary in OM3
-                    i+1, '0.', '1.', declname)) # AV force scalar "1." instead of vector "one", add declaration
+                if aloha.complex_mass:
+                    # M is a cxtype, which has no comparison with a double
+                    out.write('    {1} = ( M{0}.real() != 0. || M{0}.imag() != 0. ? '
+                              'static_cast<cxtype_amp>( cxtype( 1. ) / ( M{0} * M{0} ) ) : cxtype_amp( 0. ) );\n'.format(
+                                  i+1, declname))
+                else:
+                    out.write('    {3} = ( M{0} != {1} ? {2} / ( M{0} * M{0} ) : {1} );\n'.format( # AV use ternary in OM3
+                        i+1, '0.', '1.', declname)) # AV force scalar "1." instead of vector "one", add declaration
             if i+1 == self.outgoing:
                 out_type = type
                 out_size = self.type_to_size[type]
@@ -2098,7 +2110,21 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             replace_dict['cipcassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
             replace_dict['cipchrdassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
 
-        if len(params) > 0:
+        if any(p.endswith(IMAG_SLOT) for p in params):
+            # complex-mass scheme: a complex mass fills two slots of the real
+            # cIPD (see format_coupling), which a table of pointers to double
+            # members cannot express
+            def slot(param, prefix):
+                if param.endswith(IMAG_SLOT):
+                    return '(fptype)%s%s.imag()' % (prefix, param[:-len(IMAG_SLOT)])
+                if param + IMAG_SLOT in params:
+                    return '(fptype)%s%s.real()' % (prefix, param)
+                return '(fptype)%s%s' % (prefix, param)
+            replace_dict['cipdassign'] = 'const fptype tIPD[nIPD] = { %s };\n    setIndependentParams( tIPD );' \
+                                         % ', '.join(slot(p, 'm_pars->') for p in params)
+            replace_dict['cipdhrdassign'] = 'const fptype tIPD[nIPD] = { %s };\n    setIndependentParams( tIPD );' \
+                                         % ', '.join(slot(p, 'Parameters::') for p in params)
+        elif len(params) > 0:
             replace_dict['cipdassign'] = ('static constexpr double Parameters::* const cIPD_members[nIPD] = {\n'
                                            '      &Parameters::' + ',\n      &Parameters::'.join(params) + '\n'
                                            '    };\n'
@@ -3336,7 +3362,16 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     for k in self.couporderindep:
                         self.couporderindep[k] += 1
                 newcoup = True
-            if name == 'cIPD':
+            if name == 'cIPD' and param.type == 'complex':
+                # complex-mass scheme: the mass CMASS_* of a propagator is
+                # complex; cIPD is real, so it takes two slots (real, imaginary)
+                imag = coup + IMAG_SLOT
+                if imag not in alias:
+                    alias[imag] = len(alias)
+                call = call.replace('m_pars->%s%s' % (sign, coup),
+                                    '%scxmake( %s[%s], %s[%s] )' % (sign, name, alias[coup],
+                                                                   name, alias[imag]))
+            elif name == 'cIPD':
                 call = call.replace('m_pars->%s%s' % (sign, coup),
                                     '%s%s[%s]' % (sign, name, alias[coup]))                        
             elif model.is_running_coupling(coup):

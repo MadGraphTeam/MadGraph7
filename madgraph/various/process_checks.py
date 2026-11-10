@@ -4313,6 +4313,7 @@ def check_language(process_definition, param_card=None, options=None,
                 try:
                     opt_f = {'sa_symmetry': False, 'export_format': 'standalone_fortran',
                              'mp': False, 'v5_model': True,
+                             'complex_mass': aloha.complex_mass,
                              'output_options': {'noeps': 'True'}}
                     exporter_f = export_v4.ProcessExporterFortranSA(sa_dir_f, opt_f)
                     fmodel = helas_call_writers.FortranUFOHelasCallWriter(model)
@@ -4360,6 +4361,7 @@ def check_language(process_definition, param_card=None, options=None,
                     opt_cpp = {'sa_symmetry': False,
                                'export_format': 'standalone_cpp',
                                'mp': False, 'v5_model': True,
+                               'complex_mass': aloha.complex_mass,
                                'cpp_compiler': cpp_compiler}
                     exporter_cpp = export_cpp.ProcessExporterCPP(sa_dir_cpp,
                                                                   opt_cpp)
@@ -4409,6 +4411,7 @@ def check_language(process_definition, param_card=None, options=None,
                 try:
                     opt_mg7 = {'export_format': 'standalone',
                                'mp': False, 'v5_model': True,
+                               'complex_mass': aloha.complex_mass,
                                'cpp_compiler': cpp_compiler,
                                'output_options': {}}
                     exporter_mg7 = madmatrix_output.\

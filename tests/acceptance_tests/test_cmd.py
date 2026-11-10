@@ -2165,6 +2165,65 @@ class TestCmdShell2(unittest.TestCase,
             # -ffast-math on the C++ side puts the backends ~3e-8 apart
             self._assert_me_lists_close(values, standalone, rtol=1e-6)
 
+    def test_madmatrix_complex_mass_scheme_vs_fortran(self):
+        """Complex-mass scheme: madmatrix compiles and agrees with the Fortran
+        standalone, in the unitary and in the FD gauge.
+
+        It did not compile: Parameters.cc takes the sqrt of a cxsmpl (the
+        complex masses), the real cIPD table held the complex CMASS_* of the
+        propagators, and the unitary propagator wrote 1/M^2 into a real OM.
+        u u~ > w+ w- has a Z propagator (a complex mass, and OM in the unitary
+        gauge) and the two drivers evaluate the same RAMBO point (massless
+        initial state). The default mixed-precision build puts the backends
+        ~1e-7 apart; in double precision they agree to 1e-15."""
+
+        import aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV', re.IGNORECASE)
+        devnull = open(os.devnull, 'w')
+        self.addCleanup(devnull.close)
+
+        def get_value(output_format, check_exe):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if output_format == 'standalone_fortran':
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+                target = ['make', 'check']
+            else:
+                target = ['make']
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dir = pjoin(proc_root, [d for d in sorted(os.listdir(proc_root))
+                                         if d.startswith('P')][0])
+            self.assertEqual(subprocess.call(target, stdout=devnull, stderr=devnull,
+                                             cwd=proc_dir), 0,
+                             '%s does not compile in the complex-mass scheme' % output_format)
+            out = subprocess.check_output('%s 1000' % check_exe, shell=True,
+                                          cwd=proc_dir).decode()
+            found = me_re.findall(out)
+            self.assertTrue(found, '%s produced no matrix element' % output_format)
+            return [float(v) for v in found]
+
+        self.do('set auto_gauge False')
+        self.do('set complex_mass_scheme True')
+        try:
+            for gauge in ('unitary', 'FD'):
+                self.do('set gauge %s' % gauge)
+                self.do('import model sm')
+                self.do('generate u u~ > w+ w-')
+                fortran = get_value('standalone_fortran', './check')
+                madmatrix = get_value('standalone', './check_sa.exe')
+                self.assertGreater(max(abs(v) for v in fortran), 1e-6, gauge)
+                self._assert_me_lists_close(madmatrix, fortran, rtol=1e-6)
+        finally:
+            self.do('set complex_mass_scheme False')
+            self.do('set gauge unitary')
+
     def test_madmatrix_fd_simd_lanes(self):
         """FD gauge: the scalar and the vectorised madmatrix backends must
         compute the same thing, over many events.

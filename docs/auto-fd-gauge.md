@@ -317,10 +317,43 @@ of the particles that appear as external states to zero (the param_card has
 one width per particle, so this also removes it from their internal
 propagators). `help set gauge` says so.
 
-Pre-existing, not addressed here: `check gauge` with `complex_mass_scheme`
-stops in its axial-gauge step (the Python writer refuses custom denominators
-with a complex mass), and the madmatrix output (`output standalone`, mg7)
-does not compile in the complex-mass scheme (`sqrt` of `cxsmpl` in
-`Parameters.cc`, and complex masses in the `double` parameter table of
-`CPPProcess.cc`). So the madmatrix change above is checked on the generated
-text only.
+Two more things stood in the way of checking all this, and are fixed too:
+
+- **`check gauge` stopped at its axial-gauge step in the complex-mass
+  scheme.** Every ALOHA writer refused a custom propagator denominator with
+  a complex mass, including the axial gauge `(P.PBar) P^2` of a massless
+  vector, which has no mass or width at all. A custom denominator is now
+  written as it is unless it uses the width (the polarised propagators keep
+  a refusal, with a message that says why). With the external W width at
+  zero, `check gauge w+ w- > w+ w-` gives the same number in the unitary,
+  Feynman, axial and FD gauges (1e-13); `b b > h b b QCD=0` with the h width
+  at zero, 3e-15. Test: `test_check_gauge_complex_mass_scheme`.
+- **madmatrix (`output standalone`, and so mg7) did not compile in the
+  complex-mass scheme.** Three things were missing:
+  - `Parameters.cc` takes the `sqrt` of a `cxsmpl`, the complex masses. A
+    host-only `sqrt(cxsmpl)` now sits next to `conj` in the four
+    `mgOnGpuCxtypes.h`.
+  - The real `cIPD` table held the complex `CMASS_*` of the propagators. A
+    complex parameter now takes two slots (real, imaginary), and the call
+    passes `cxmake( cIPD[k], cIPD[k+1] )`.
+  - The unitary propagator wrote `1/M^2` into a real `OM`. In the
+    complex-mass scheme `OM` is a `cxtype_amp`.
+
+  Outside the complex-mass scheme the generated code is unchanged. Built in
+  double precision (`FPTYPE=d`), at a pinned phase-space point, madmatrix
+  equals the Fortran standalone to 1e-15 in the complex-mass scheme, in the
+  unitary and in the FD gauge, with and without widths (`w+ w- > w+ w-`,
+  `t t~ > w+ w-`). The default mixed-precision build is 1e-7 away. Test:
+  `test_madmatrix_complex_mass_scheme_vs_fortran`. `check language` also
+  built its Fortran, C++ and madmatrix outputs without the complex-mass
+  option (the Fortran one did not compile: no `CMASS_*` in `coupl.inc`); it
+  now passes it on.
+
+Not addressed here, all pre-existing:
+- The madmatrix `HRDCOD=1` build is still broken with complex parameters.
+- `check language` disagrees in places without the complex-mass scheme
+  too: its C++ column (the retired `standalone_cpp`) does not apply the FD
+  gauge, and `t t~ > w+ w-` in the unitary gauge is 0.4% apart between
+  Fortran/C++ and madmatrix/Python.
+- MadSpin still falls back to its Fortran density backend in the
+  complex-mass scheme (`density_backend`).
