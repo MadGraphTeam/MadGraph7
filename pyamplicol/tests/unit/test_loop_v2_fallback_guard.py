@@ -987,8 +987,8 @@ def test_the_guard_on_improved_near_forward_points(hh, loop_native):
             if found.values[p] is None:
                 assert lane.status == "failed" and lane.detail, lane
             elif _tirust(loop_native):
-                exact = str(truth.values[p][0][0].finite)
-                value = ((found.values[p][0][0].finite,),)
+                exact = str(truth.values[p][0].finite)
+                value = ((found.values[p][0].finite,),)
                 assert _error(value, exact) <= _limit(TARGET), (carrier, digits, p, lane)
         found = runtime.evaluate(points, **call)
         for lane in found.diagnostics:
@@ -1488,7 +1488,11 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     digits at the target 1e-6 (the limit stays 1e-5): point 1 is accepted
     and point 2 rejected typed on every route
     (estimates 1.6e-6..3.7e-6 and 3.8e-3..1.8e-2 at NinjaRS 5b6a8f57 and 71eddb15,
-    ``tmp/lit-fallback-guard/fix3/probe9.json``)."""
+    ``tmp/lit-fallback-guard/fix3/probe9.json``). These decisions were
+    derived on the texts as given: both APIs run with the kinematics
+    improvement off (m-lit lit-psimprove (G8), DECISIONS 2026-11-10 01:30
+    (F); the improved points are
+    ``test_the_guard_on_improved_near_forward_points``'s)."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.errors import EvaluationError
@@ -1534,6 +1538,7 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
             assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0
             assert sdk.rusticol_virtual_set_reduction_target(handle, target) == 0
             assert sdk.rusticol_virtual_set_arithmetic(handle, arithmetic, digits) == 0
+            assert sdk.rusticol_virtual_set_kinematics_improvement(handle, b"off") == 0
             if reduction is not None:
                 assert sdk.rusticol_virtual_set_reduction(handle, reduction) == 0
             return {
@@ -1557,6 +1562,7 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
         "arithmetic": "double-double",
         "poles": "none",
         "on_failure": "return",
+        "kinematics_improvement": "off",
     }
     found, explicit = python(options), python({**options, "reduction": "ninjars"})
     sdk_found = sdk_calls(b"double-double", 0, TARGET)
@@ -1597,6 +1603,7 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
         "reduction_target": 1e-6,
         "poles": "none",
         "on_failure": "return",
+        "kinematics_improvement": "off",
     }
     found, sdk_found = python(options), sdk_calls(b"arbitrary", 16, 1e-6)
     for route, result in found.items():
