@@ -1244,6 +1244,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     'ebeam1',
                     r'block\s+mw_run',
                     r'block\s+ldme',
+                    r'block\s+onium_mass', # onia card without LDMEs (leptonia)
                     'BLOCK',
                     'DECAY',
                     'launch',
@@ -1305,7 +1306,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             return 'madweight_card.dat'
         elif 'transfer_card.dat' in text:
             return 'transfer_card.dat'
-        elif any(t.endswith('ldme') for t in text):
+        elif any(t.endswith('ldme') or t.endswith('onium_mass') for t in text):
             return 'onia_card.dat'
         elif 'block' in text and 'decay' in text: 
             return 'param_card.dat'

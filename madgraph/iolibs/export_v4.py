@@ -4725,9 +4725,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
             (onia_info, onia_ids) = self.get_onia_info(matrix_elements)
             # A produced onium takes its production LDME (Block ldme), a
             # decaying quarkonium its decay LDME (Block ldme_decay), colour
-            # singlet or octet. A leptonium has one LDME, from its Coulomb
-            # wave function, for production and decay: it stays in Block ldme.
-            prod_ids = [row[0] for row in onia_info if row[4] or (row[5] and row[6])]
+            # singlet or octet. The LDME of a leptonium is computed in the
+            # matrix element from its Coulomb wave function, for production
+            # and decay (get_ldme_perturbative): it is not in the card.
+            prod_ids = [row[0] for row in onia_info if row[4] and not row[6]]
             decay_ids = [row[0] for row in onia_info if row[5] and not row[6]]
 
             self.create_onia_card(onia_info)
@@ -4773,8 +4774,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
         its own: for colour octets it is not related to the production one.
         Its default is the vacuum-saturation value <O^H_n>/(2J_H+1), exact at
         LO in v for colour singlets (2J_H+1 is the last digit of the PDG
-        code). A leptonium has one LDME, from its Coulomb wave function, for
-        production and decay: it is listed in Block ldme in both cases."""
+        code). The LDME of a leptonium is computed from its Coulomb wave
+        function (get_ldme_perturbative), for production and decay: it is
+        not in the card, which only says so."""
 
         shutil.copy(pjoin(self.mgme_dir, 'Template/Common/Cards/onia_card.dat'),
                                pjoin(self.dir_path,'Cards'))
@@ -4786,7 +4788,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                     with open(pjoin(self.dir_path, 'Cards',card + '_default.dat'), 'w') as f:
                         with open(pjoin(self.dir_path, 'Cards',card + '.dat'),'r') as source:
                             shutil.copyfileobj(source, f)
-                        in_ldme = lambda row: row[4] or (row[5] and row[6])
+                        in_ldme = lambda row: row[4] and not row[6]
                         if any(in_ldme(onium_info) for onium_info in onia_info):
                             f.write('#*********************************************************************\n')
                             f.write('# Long distance matrix elements (LDME)                               *\n')
@@ -4808,6 +4810,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                                     f.write('   {id:7}  {value:.16f}   # decay LDME for {name}\n'.format(
                                         id=onium_info[0], name=onium_info[1],
                                         value=onium_info[3] / (onium_info[0] % 10)))
+                        if any(row[6] for row in onia_info):
+                            f.write('#*********************************************************************\n')
+                            f.write('# The LDMEs of leptonia are computed from their Coulomb wave         *\n')
+                            f.write('# functions, for production and decay; they are not set here.       *\n')
                         f.write('#*********************************************************************\n')
                         f.write('# Masses                                                             *\n')
                         f.write('#*********************************************************************\n')

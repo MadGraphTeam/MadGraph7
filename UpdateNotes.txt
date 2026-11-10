@@ -14,8 +14,9 @@ ANNOUNCEMENT:
          ldme_decay of the onia card ("set onia_card ldme_decay <pdg> <value>"),
          independent of the production LDMEs of Block ldme (colour-octet production
          and decay LDMEs differ); its default is the vacuum-saturation value
-         <O^H>/(2J_H+1), exact at LO for colour singlets. A leptonium keeps its one
-         Coulomb LDME (Block ldme) for production and decay.
+         <O^H>/(2J_H+1), exact at LO for colour singlets. The LDME of a leptonium is
+         computed from its Coulomb wave function, for production and decay, and no
+         longer appears in the onia card (where it was ignored).
          Its mass is the onium_mass of the onia card, as in production: the
          decay products are rescaled onto the constituent kinematics (m1+m2)
          for the matrix element; set the onium_mass to m1+m2 for strict LO.
