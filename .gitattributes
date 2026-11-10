@@ -8,6 +8,7 @@
 # Preserve the frozen report bytes and keep compressed PDF streams out of diffs.
 doc/benchmarkfolder/*.pdf binary
 docs/benchmarkfolder/*.pdf binary
+docs/benchmarkfolder/**/*.pdf binary
 
 # Preserve raw CLI output and generated cards exactly as measured.
 docs/benchmarkfolder/experiments/** -whitespace

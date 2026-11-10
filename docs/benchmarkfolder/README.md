@@ -100,29 +100,60 @@ to reproduce that audit. These physics results have a separate report page and
 do not supply the pending runtime-campaign measurements.
 The standalone pole diagnostic is described in `POLES.md`.
 
-The current PDF is a closed-evidence intermediate report for
+The current PDF presents closed evidence for the older measured candidate
 `split-dp-terminal-1`: all eleven processes, all six lanes per process,
 and 100 saved points per lane pass the `3e-6` criterion. The complete matrix
 contains 66 lanes. The `1e-8` misses in QCD three- and four-particle cases
 and the EW four-particle case remain visible; accepted precision
 is reported separately from internal retries, which this dataset does not observe.
 
+The [sealed shared-host appendix](campaigns/split-dp-terminal-1/provisional-retention-2/sealed-1/index.json)
+retains three alternating pairs over all 100 points: seven chain comparisons and
+22 standalone comparisons complete, five comparisons time out, and 32 are not
+started within the budget. Total elapsed time is 1,790.210 seconds. These are
+descriptive observations for the older candidate, without CPU reservation,
+confidence intervals or a `≤1.05` acceptance claim. Initialization, actual batch
+durations and accepted backend/precision counts are retained separately.
+
 Final precise timings are **deferred to Hua-Sheng on his local machine**, as
-recorded in [the user amendment](PLAN-AMENDMENT-2026-11-10.md). Shared-host timing
-is provisional and uses no CPU reservation. No new paired timings are included
-in this snapshot and no `≤1.05` performance claim is made. The runnable [local timing handoff](campaigns/split-dp-terminal-1/timing-handoff-2/LOCAL_TIMING_TODO.md)
-covers fresh installation, local registration, numerical replay, timing and a
-separate local PDF. Its source/test qualification is not a local measurement.
-The historical quiet-window controller remains unrun.
+recorded in [the user amendment](PLAN-AMENDMENT-2026-11-10.md). The new current-source
+registration is `invariant-symmetry-1`, at revision `2c13246ffa63`, with numerical
+identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
+Its fresh eleven-process numerical matrix and precise timing remain pending;
+the older 66 lanes do not qualify this source. Use the runnable
+[current-source local timing handoff](campaigns/invariant-symmetry-1/timing-handoff-3/LOCAL_TIMING_TODO.md)
+for fresh installation, local registration, numerical replay, timing and a
+separate local PDF. Its tests are not a local measurement. The preserved
+[handoff 2](campaigns/split-dp-terminal-1/timing-handoff-2/LOCAL_TIMING_TODO.md)
+belongs to the older source; the historical quiet-window controller remains unrun.
 
 The experimental adaptive-precision bridge is an isolated development build,
 not a private repository or the installed backend used in this campaign. It
 tries 256-bit MPFR first and retries an eligible conditioning refusal once at
-512 bits. Its 20 Rust tests pass, but dynamic Fortran/physical qualification
-remains open. The report also distinguishes the completed legacy Born/effective-
-point checks and current synthetic stability replay from physical qualification.
-The installer version-type hardening fix remains unpromoted; earlier passed
-ABI/interface rows describe only their identified test groups.
+512 bits. Its [debug Fortran runtime](experiments/adaptive-qp-fortran-qualification/runtime1/evidence-index.json)
+and [release Fortran runtime](experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/evidence-index.json)
+now supply bounded transport, dispatch and cache proofs. A separate
+[fixed-mode physical replay diagnostic](experiments/adaptive-qp-physical-replay-qualification-1/README.md)
+is retained; it does not establish independent physical truth, checked stability,
+per-call precision or performance. Adaptive-bridge production promotion and
+broader stress qualification remain open. Actual backend 8/9 real-Z Born controls
+are also retained, with unchecked fixed-QP status 120 explicit.
+
+The [symmetric-invariant Fortran template is promoted](experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/index.json).
+Four tests pass, including three compiled recording-fixture methods and one
+Python permutation method; this does not requalify earlier exports. The
+[strict installer version-type correction is applied](experiments/installer-metadata-promotion-1/index.json),
+with 27 tests and 37 subtests recorded as passing. That receipt explicitly notes
+that no raw pytest log was captured. Earlier ABI/interface rows retain their
+original test scope.
+
+Threshold, soft/collinear, complex-mass and higher-rank accuracy limitations
+remain open. The [additive finite audit](experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/README.md)
+distinguishes the worst finite residual, approximately `0.0013285038`, from an
+aggregate residual of one caused by analytically zero UV terms with tiny COLLIER
+noise. The original diagnostic is preserved. Native-DP/rescued timing cohorts
+and all precise performance gates remain unqualified; the separately passed
+functional cache-lifecycle checks are unchanged.
 
 The feature branch is `madloop_tirust`, based on `madloop_ninjars` at the frozen
 baseline. The intended future PR target is `madloop_ninjars`.
@@ -145,9 +176,9 @@ numerical directories before opening them. To reproduce or verify this snapshot:
 ```sh
 source tools/tirust_env.sh
 python3 -B docs/benchmarkfolder/build_report.py --campaign split-dp-terminal-1 \
-  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed11-1.json
+  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-1.json
 python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign split-dp-terminal-1 \
-  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed11-1.json
+  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-1.json
 PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider \
   tests/unit_tests/various/test_tirust_report.py \
   docs/benchmarkfolder/test_intermediate_report.py \
@@ -160,6 +191,8 @@ a previous dossier or use partial numerical rows as completed evidence. The
 closed10 PDF, ledger and Typst sources are preserved under
 `history/report-before-closed11/`; its immutable selections and dossier remain
 in the campaign report-snapshots directory.
+The closed11 PDF, ledger, context and changed report sources from commit
+`772b15ed39cc` are preserved under `history/report-before-closed-provisional/`.
 
 The report build does not run numerical measurements. It writes `benchmark.pdf`
 and `report-build.json`, which records input and PDF hashes, the exact Typst

@@ -70,3 +70,49 @@ def test_bound_payload_change_is_not_accepted(tmp_path):
     (tmp_path/'campaigns/test/numerical-checkpoints/one/summary.json').write_text('{}')
     with pytest.raises(ValueError):
         REFRESH.selection(REPORT.Evidence(tmp_path),'selection.json',manifest,config)
+
+
+def next_fixture(root, change=lambda summary: None):
+    cases = ["case" + str(i) for i in range(11)]
+    manifest = {"schema": "madloop-tirust-campaign-v1", "id": "fresh",
+                "baseline": {"revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"},
+                "candidate": {"exporter_identity": {"dirty": False, "files_sha256": "new-source", "revision": "new-revision"},
+                              "numerical_identity_sha256": "new-numerical"}}
+    manifest_pin = {"path": "fresh/manifest.json", "sha256": write(root, "fresh/manifest.json", manifest)["sha256"]}
+    summary = {"campaign_binding": {"id": "fresh", "manifest_sha256": manifest_pin["sha256"]},
+               "gate": {"passed": False, "complete": False, "failed_cases": [], "validation_errors": []},
+               "cases": [{"id": case, "status": "pending", "complete": False, "retained_attempts": [],
+                          "performance": {"pairs": 0, "geometric_mean_ratio": None},
+                          "correctness": [{"backend": b, "status": "pending", "samples": 0, "passed": None} for b in (1, 6, 7, 8, 9)],
+                          "timings": [{"backend": b, "status": "pending", "samples": 0, "median_seconds_per_point": None} for b in (1, 6, 7, 8, 9)]}
+                         for case in cases]}
+    change(summary)
+    selection = {"manifest": manifest_pin, "summary": {"path": "fresh/summary.json",
+                 "sha256": write(root, "fresh/summary.json", summary)["sha256"]}}
+    report = {"campaign_binding": {"id": "old"}, "registered_source_sha256": "old-source",
+              "numerical": {"cases": [{"id": case} for case in cases]}}
+    return selection, report
+
+
+def test_new_registration_is_bound_without_overlaying_old_measurements(tmp_path):
+    selected, report = next_fixture(tmp_path)
+    frozen = deepcopy(report)
+    result = REFRESH.next_campaign(REPORT.Evidence(tmp_path), selected, report)
+    assert result["id"] == "fresh" and result["case_count"] == 11
+    assert result["displayed_measurements_from_this_campaign"] is False
+    assert result["fresh_numerical_qualification"] == "pending"
+    assert report == frozen
+
+
+@pytest.mark.parametrize("change", [
+    lambda d: d["campaign_binding"].update(id="other"),
+    lambda d: d["cases"][0]["timings"][0].update(samples=1),
+    lambda d: d["cases"][0]["correctness"][0].update(passed=True),
+    lambda d: d["cases"][0]["performance"].update(geometric_mean_ratio=1.),
+    lambda d: d["cases"][0].update(retained_attempts=["observed"]),
+    lambda d: d["gate"].update(passed=True),
+])
+def test_new_registration_cannot_smuggle_unbound_measurements(tmp_path, change):
+    selected, report = next_fixture(tmp_path, change)
+    with pytest.raises(ValueError):
+        REFRESH.next_campaign(REPORT.Evidence(tmp_path), selected, report)

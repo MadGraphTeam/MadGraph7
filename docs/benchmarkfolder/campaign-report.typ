@@ -35,7 +35,15 @@
     corrupt observations retain their diagnostics and never become successful rows.]
 }
 
+#let show-campaign-provisional(data, cases, process-label) = {
+  if data.at("refresh", default: none) != none and data.refresh.at("provisional", default: none) != none {
+    import "campaign-provisional.typ" as appendix
+    appendix.show-provisional(data.refresh.provisional, cases, process-label)
+  }
+}
+
 #let show-campaign-details(data, cases, process-label) = {
+  show-campaign-provisional(data, cases, process-label)
   pagebreak()
   heading(level: 1)[Timing eligibility and control-process scope]
   if data.at("refresh", default: none) != none {
@@ -53,6 +61,19 @@
         #link("https://github.com/MadGraphTeam/MadGraph7/blob/madloop_tirust/docs/benchmarkfolder/" + data.refresh.local_handoff_path)[Hua-Sheng’s local precise timing handoff].
         It covers fresh installation, local registration, full numerical replay,
         paired timing and a separate local PDF; the handoff is not a measurement.] }]
+    if data.refresh.at("next_campaign", default: none) != none {
+      v(5pt)
+      block[
+        #set par(justify: false)
+        #text(7.3pt, fill: ink2)[The new local handoff targets #raw(data.refresh.next_campaign.id)
+        at revision #raw(data.refresh.next_campaign.registered_exporter_revision.slice(0, 12)).
+        #linebreak()Its source identity is #raw(data.refresh.next_campaign.source_sha256).
+        #linebreak()
+        Fresh qualification is pending for all #data.refresh.next_campaign.case_count cases;
+        zero observations are not a numerical failure. This registration supplies
+        none of the older candidate’s displayed measurements.]
+      ]
+    }
     v(7pt)
   }
   [Formal main-process timing uses a 2 s calibration target and the frozen
@@ -79,7 +100,7 @@
     Missing or invalid observations do not supply a duration. Selected runs and
     each attempt's exact minima, labels and eligibility remain in the dossier.]
   v(9pt)
-  heading(level: 2)[Descriptive controls]
+  heading(level: 2)[Controls in the formal campaign]
   [Mixed QCD/QED and loop-induced controls require numerical qualification.
   Their speed measurements are descriptive and do not carry the main-process
   ≤1.05 runtime gate. Generic raw-summary failure labels can include slow
@@ -88,7 +109,7 @@
   v(6pt)
   let control-details = data.paired.at("controls", default: ())
   table-style(table(columns: (1.3fr, 1fr, 1fr, 1fr), inset: 6pt, stroke: table-stroke, fill: table-fill,
-    table.header([Control], [Paired numerical evidence], [Raw summary status], [Runtime gate]),
+    table.header([Control], [Formal paired numerical evidence], [Raw summary status], [Runtime gate]),
     ..cases.filter(c => c.role != "main").map(c => {
       let row = control-details.find(q => q.case == c.id)
       (
@@ -99,8 +120,9 @@
       )
     }).flatten()))
   v(5pt)
-  text(8pt, fill: ink2)[The earlier untimed numerical table is a separate dataset.
-    It can be complete before any paired control run exists.]
+  text(8pt, fill: ink2)[The untimed numerical and provisional shared-host tables are
+    separate datasets. Their completed observations do not populate these
+    formal-campaign fields.]
 
   pagebreak()
   heading(level: 1)[Native-DP and rescued cohort diagnostics]
@@ -156,11 +178,22 @@
   samples.]
   if data.at("refresh", default: none) != none {
     v(5pt)
-    note(fill: warm)[*Integration work remains open.* The installer version-type
+    if data.refresh.at("implementation_supplement", default: none) != none {
+      note(fill: warm)[*Integration work remains open.* Selected standalone runtime,
+        control and diagnostic proofs are recorded below. Adaptive-bridge production promotion
+        remains pending a separately bound receipt.
+        #if data.refresh.implementation_supplement.strict_installer_promotion == "applied; recorded tests passed" {
+          [The installer metadata correction has a bound production test receipt.]
+        } else { [Installer hardening also remains pending a production receipt.] }
+        These scoped proofs do not close the full campaign, stress or
+        performance gates.]
+    } else {
+      note(fill: warm)[*Integration work remains open.* The installer version-type
       correction is tested only in an isolated module and is not yet applied to
       production. Adaptive-precision and effective-point changes still need
       actual backend 8/9 physical qualification. Passed rows describe their
       recorded test scope; they do not mean all implementation audits are closed.]
+    }
   }
   v(6pt)
   note(fill: if data.subprocess_event_cache_lifecycle.status == "passed" { pale } else { warm })[*Subprocess/event cache lifecycle:
@@ -203,7 +236,17 @@
     gate alone cannot declare the full integration goal complete.]
   if data.at("refresh", default: none) != none {
     pagebreak()
-    heading(level: 1)[Experimental adaptive-precision bridge]
+    let supplemented = data.refresh.at("implementation_supplement", default: none) != none
+    if supplemented {
+      heading(level: 1)[Additional implementation proofs]
+      [Each updated claim below is derived from an explicitly selected package
+      whose index and retained files are hash-bound to this dossier. These
+      separate experiments do not replace the source identity, precision usage
+      or numerical observations of the ordinary campaign.]
+      v(6pt)
+    } else {
+      heading(level: 1)[Experimental adaptive-precision bridge]
+    }
     [The experimental bridge is an isolated development build, whose source and evidence
     are recorded in this public feature branch. It has not replaced the installed
     TIRust bridge used for the ordinary campaign. The branch is
@@ -217,8 +260,15 @@
       text(6.6pt, fill: ink2)[#raw(row.evidence)]
       v(8pt)
     }
-    note(fill: warm)[Compilation, mock tests, unchecked fixed-QP calls and
-      a separate all-512-bit experiment each have limited scope. None establishes
-      adaptive-library physical accuracy or final runtime acceptance.]
+    if supplemented {
+      note(fill: warm)[Actual Fortran tensor transport, unchecked fixed-QP controls
+        and a separate physical stream each have a defined scope. They do not
+        establish adaptive full-amplitude accuracy, general stress qualification
+        or final runtime acceptance. The older campaign remains unchanged.]
+    } else {
+      note(fill: warm)[Compilation, mock tests, unchecked fixed-QP calls and
+        a separate all-512-bit experiment each have limited scope. None establishes
+        adaptive-library physical accuracy or final runtime acceptance.]
+    }
   }
 }

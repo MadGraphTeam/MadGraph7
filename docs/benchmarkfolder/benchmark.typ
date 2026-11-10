@@ -61,11 +61,11 @@
 ]
 #v(7pt)
 #if campaign != none {
-  text(8pt, fill: ink2)[Selected campaign: #raw(campaign.id). Current numerical identity:
+  text(8pt, fill: ink2)[Selected campaign: #raw(campaign.id). Selected numerical identity:
     #raw(campaign.candidate.numerical_identity_sha256.slice(0,16)).]
   v(4pt)
   text(8pt, fill: ink2)[Registered exporter anchor: #raw(campaign.candidate.exporter_identity.revision.slice(0,12)).
-    Observed paired-timing export revisions: #if report.at("observed_candidate_revisions", default: ()).len() == 0 { [not yet measured] } else { raw(report.observed_candidate_revisions.map(r => r.slice(0,12)).join(", ")) }.
+    Observed formal paired-timing export revisions: #if report.at("observed_candidate_revisions", default: ()).len() == 0 { [not yet measured] } else { raw(report.observed_candidate_revisions.map(r => r.slice(0,12)).join(", ")) }.
     Documentary revisions can differ while the registered exporter bytes remain identical.]
   v(4pt)
   note(fill: warm)[*Complete delivery qualification:
@@ -80,7 +80,20 @@
 note(fill: warm)[*Precise performance acceptance: deferred to Hua-Sheng.*
   Final timings will run on his local machine. Shared-host timings are provisional,
   without CPU reservation, and cannot establish the ≤1.05 upper confidence bound.
-  This snapshot contains no new paired timing samples.]
+  #if refresh.at("provisional", default: none) == none {
+    [This snapshot contains no new paired timing samples.]
+  } else {
+    [The explicitly bound shared-host observations below are descriptive;
+    unavailable comparisons remain visible.]
+  }]
+if refresh.at("next_campaign", default: none) != none {
+  v(5pt)
+  note[*Current source registration: #raw(refresh.next_campaign.id).*
+    Revision #raw(refresh.next_campaign.registered_exporter_revision.slice(0, 12))
+    includes the promoted Fortran change. Fresh numerical qualification for its
+    #refresh.next_campaign.case_count processes and local precise timing remain pending. The results
+    in this PDF belong to the older #raw(campaign.id) candidate.]
+}
 } else { note(fill: if d.gate.complete and d.gate.passed { pale } else { warm })[
   *Main campaign acceptance: #cell-status(if d.gate.complete and d.gate.passed { "pass" } else if d.gate.complete or known-failures { "fail" } else { "incomplete" }).* #if known-failures and not d.gate.complete { [The remaining campaign is incomplete.] }
   Every main process requires five-backend agreement, an upper 95% paired runtime-ratio bound no greater than 1.05, and passing existing-backend regression checks. Unmeasured cells are shown as —. A failed or incomplete row is not a speedup claim.

@@ -587,8 +587,8 @@
       "bytes": 22166
     },
     "benchmark.typ": {
-      "sha256": "982abb618c09f440049547d958d36d33e361a2b6ce178ba6e5d65e9f0dd1256d",
-      "bytes": 25406
+      "sha256": "71ccba8b8757ca307215a7f7982cc020d470c3b04789ba8ee489e01e4884dfdc",
+      "bytes": 26076
     },
     "style.typ": {
       "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e",
@@ -614,13 +614,45 @@
       "sha256": "184df0d51e3ec6b66cef239e6ec7b9f96dc8a92dd028534af2b85cdad586aa4e",
       "bytes": 18466
     },
-    "campaigns/split-dp-terminal-1/report-snapshots/closed11-1.json": {
-      "sha256": "27787d93818cf9f763fc2b3f6d36ecebeb855b6edc5a05fffe04aa0b19a1a382",
-      "bytes": 1277491
+    "campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-1.json": {
+      "sha256": "5b7af33ef0126d7f5de717662eb87e4f59c078461d71f026d456c616b80e1335",
+      "bytes": 1511580
     },
     "PLAN-AMENDMENT-2026-11-10.md": {
       "sha256": "25ed0b77b54de7207f5bb52fe1ef13b2475022bf0ef1bfa70afd9285b418de78",
       "bytes": 2646
+    },
+    "campaigns/invariant-symmetry-1/manifest.json": {
+      "sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+      "bytes": 397109
+    },
+    "campaigns/invariant-symmetry-1/summary.json": {
+      "sha256": "02fe70b84fa3512adadf079b276e3b34ee25f9230bc855f21a3d430e6a0c2e3d",
+      "bytes": 69275
+    },
+    "campaigns/invariant-symmetry-1/timing-handoff-3/LOCAL_TIMING_TODO.md": {
+      "sha256": "55e4527dc13d9e9071e428dc2fa745fce5154506f99b2680e3e69317015a984b",
+      "bytes": 10887
+    },
+    "campaigns/invariant-symmetry-1/timing-handoff-3/bindings.json": {
+      "sha256": "fdd338d0aa3ccf2c13f3a12f98d8bd2c1582627d63a93a32753aca1037545ce0",
+      "bytes": 3424
+    },
+    "campaigns/invariant-symmetry-1/timing-handoff-3/index.json": {
+      "sha256": "b56d5c77631ff30be883c26f1382660b338e9171142f129b670b479e1d30c564",
+      "bytes": 1362
+    },
+    "campaigns/invariant-symmetry-1/timing-handoff-3/test_handoff.py": {
+      "sha256": "e48cc79a50351025afe015a23090c9331347af7d9825e89e64a6aaca7bfdf3de",
+      "bytes": 7768
+    },
+    "campaigns/invariant-symmetry-1/timing-handoff-3/tests.log": {
+      "sha256": "a339fe6166212499e60b0163bd7ff7177e7369c451bf9c7640ce4c2c6ea6ac55",
+      "bytes": 1158
+    },
+    "campaigns/invariant-symmetry-1/timing-handoff-3/validation.json": {
+      "sha256": "716e89aee6a1923b6b986219b726d29ea41ad4ac99af99ad824b279a0af853b1",
+      "bytes": 1705
     },
     "campaigns/split-dp-terminal-1/commands/candidate-ew_n1_udx_wp.mg5": {
       "sha256": "c24e33eafd1c3bb10ad70b67467abd32335f8a8b7c894448bcbdba62a5d9e377",
@@ -4886,9 +4918,25 @@
       "sha256": "e2b8a324c9d3728ab8abd91ac24bb7188474c43ace2d36003d2d9864c425107e",
       "bytes": 401914
     },
-    "campaigns/split-dp-terminal-1/report-snapshots/closed11-selection-1.json": {
-      "sha256": "bc3ba5656d5f8285d32648f6dee3ee1dde39ffa6913c405d445581ccb67fe044",
-      "bytes": 2591
+    "campaigns/split-dp-terminal-1/provisional-retention-2/sealed-1/index.json": {
+      "sha256": "4ffb7643943f40acc6ee099e78287ef99f05e2415e828088a2e46bd8d4e5ff76",
+      "bytes": 636977
+    },
+    "campaigns/split-dp-terminal-1/provisional-retention-2/sealed-1/payload-7d3449c1fefc51f4e024fcc3920bee0f487df186fe746b7ffb61b30a58ba2a9a.json.gz": {
+      "sha256": "7d3449c1fefc51f4e024fcc3920bee0f487df186fe746b7ffb61b30a58ba2a9a",
+      "bytes": 22853689
+    },
+    "campaigns/split-dp-terminal-1/provisional-retention-2/sealed-1/retain.py": {
+      "sha256": "c73b4b9ea05b663b5b5bc647a8ab2771762e86f77895664797c332708912c043",
+      "bytes": 23628
+    },
+    "campaigns/split-dp-terminal-1/provisional-retention-2/sealed-1/terminal-confirmation.json": {
+      "sha256": "d6cc24363d43ea78f145954cace0eb6ae1137dd5d594f869e0544380f104f528",
+      "bytes": 516
+    },
+    "campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-selection-1.json": {
+      "sha256": "2443d39de743c6973b1a1e0d8a222a81345f255264212dbd439dd867d7aa4a3f",
+      "bytes": 6433
     },
     "campaigns/split-dp-terminal-1/timing-handoff-2/LOCAL_TIMING_TODO.md": {
       "sha256": "8cf04830441198fc00488f6d33a9d59dcbb51bf4e940d62da1449d1d2efe7669",
@@ -4945,6 +4993,618 @@
     "commands/baseline-qcd_n4_uux_zzgg.mg5": {
       "sha256": "cd84173d4e82dc76ecb62ec6ff076f568f52538b5005e68eb1f74b9af21917bd",
       "bytes": 613
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/README.md": {
+      "sha256": "dbc5d6538af7b12ec69fea47e7cfb551785a2c8b0aca5dbabad0a5c8067ae10e",
+      "bytes": 3120
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/copies.json": {
+      "sha256": "f6a6e7637cc2a3f93613b510fcfd07356120cf781ae6710d7c2edba3c8a836c8",
+      "bytes": 11460
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/evidence-index.json": {
+      "sha256": "b65d02bea8000eb8e06cb2422f83502d13769dc49a8b2285d8c2d43ecd759876",
+      "bytes": 8424
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/execution.json": {
+      "sha256": "2fe072df782064edb9fb4f435d96e17041e20c211d178a79cd094175aaf6aa48",
+      "bytes": 34005
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/README.md": {
+      "sha256": "b97325f9f4cadd3039f3f579e11f377b6d9a5579102653855bfc73647fb300d0",
+      "bytes": 307
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/adaptive.map.gz": {
+      "sha256": "dbc3f96467c4a340c882f1e46fa9671ec83540a09c2ad68dace0aedc2204a441",
+      "bytes": 5390
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/build.json": {
+      "sha256": "a213c73aadab7d898e1a3699ab7c1c4ae09dae8afa1c7916a8e6671ebfb14b15",
+      "bytes": 21432
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/copies.json": {
+      "sha256": "b5b8bf9725845c59906f39af8396b9adfe67ad6f9b2852a9b4c57059b784fdc2",
+      "bytes": 2705
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/driver.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/evidence-index.json": {
+      "sha256": "7d92500bc6fb518f8904f831f305519b07b6b4c011d3e15785146fffee5923d9",
+      "bytes": 1259
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/legacy.map.gz": {
+      "sha256": "1ad9a665edbcc681909c74392895410186190b3887f3212ee2c8ad3b5b4b49af",
+      "bytes": 5395
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/link-adaptive.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/link-legacy.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/mtirust.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/observer.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/optional_getter.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/build1/qp_tier_records.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-index.json": {
+      "sha256": "80f83d5384ada33b609ac94bb9f9be935eb92e56ee706f979494e4d053fcc9b5",
+      "bytes": 6210
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/README.md": {
+      "sha256": "1237911dd2bd91af1803091398def4e0ed5f4be4539d4caa17a586e232a2884d",
+      "bytes": 4834
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source-tests.txt": {
+      "sha256": "74c03fc16fde9a2dfeff03db0ec8f472a5a8dfed04e9e982a912b4b7f64faee3",
+      "bytes": 105
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/analyze.py": {
+      "sha256": "b992b92bc83c0f1a43328fff15fa60cdc0a285ee27b695f0e6b01d62fb1ca494",
+      "bytes": 12557
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/controller.py": {
+      "sha256": "d4a419058752b8c943e0933f3e69d458a02f39f67e82bc57da43e706f0406997",
+      "bytes": 12884
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/driver.f90": {
+      "sha256": "1fb4a8a8a0fff8865c0348c4c8c723615f76568e6ec301a9bdb1e48c0fe00870",
+      "bytes": 5549
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/fixtures/group10-m.dat": {
+      "sha256": "d2e31016045fa13a4e1f06e36b3a5ba7c5bd1abe4a6b7de7302b84d144341424",
+      "bytes": 512
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/fixtures/group10-m.words": {
+      "sha256": "3c8c4edfbf7bdfff2ab4ae356ccda925df2a705ea06fddfd5e087c73679529d3",
+      "bytes": 274
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/fixtures/group10-p.dat": {
+      "sha256": "7db623319289b729f708fd703651cc2cbc1e2422c9f732cc46f47719a39594f8",
+      "bytes": 1024
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/fixtures/group10-p.words": {
+      "sha256": "95c2738242e0d0a189829223540d5edec679c9e3bca4b7b9f189019b27559650",
+      "bytes": 547
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/fixtures/group10-s.dat": {
+      "sha256": "8851fa58c55a183bcf64b41502f87a79458c2091a7a5391b9c79f8650f70a06e",
+      "bytes": 1024
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/fixtures/group10-s.words": {
+      "sha256": "7916fbc7f21ebb13efd34ee11ac57ba8d12d33ff3f362cdb8cfa437c66a59b02",
+      "bytes": 547
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/fixtures/group10-scale.dat": {
+      "sha256": "e33959904b7139a959ee066da9f270ccde46ebdda550023e9cc3abb6a3d3a6ac",
+      "bytes": 64
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/fixtures/group10-scale.words": {
+      "sha256": "979f8decf6eae4eeddfbadfc1c737416c2c51465e6825cc05eb5aef01fc78dff",
+      "bytes": 36
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/fixtures/manifest.json": {
+      "sha256": "97cba7119fe79afe5c9ffea59647a6e223ef2e7f3532bbc9629bd8694c27f9a0",
+      "bytes": 4330
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/mtirust.f90": {
+      "sha256": "3d7c8e58c4f5b92ac24427a09b83a2273ba81444bffac0e333227fd40be9cc7a",
+      "bytes": 18388
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/observer.c": {
+      "sha256": "c48e158c782f61528dfdbbbd42162da35fff53207264bc1d491adda76f0f0c19",
+      "bytes": 5266
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/optional_getter.c": {
+      "sha256": "9f8648c47609136523e13ac24d692ba46f4a57bd69508959318ef36b293e8d1f",
+      "bytes": 1449
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/origins.json": {
+      "sha256": "edf5017bf8906b30e1de910272328e8065f66b4f19b6ae2862e191bacc1061a4",
+      "bytes": 2031
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/qp_tier_records.f90": {
+      "sha256": "698ea0f6bdc06f03a48423461f41e8289eda20a07c45f22d03c5d236b7bba127",
+      "bytes": 951
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/telemetry.py": {
+      "sha256": "eacd347eea65d7a3cec67471ee7d00dd7bba6d124d6308e2700b59c2f880ac07",
+      "bytes": 4399
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/frozen/source-tree/source/test_analyze.py": {
+      "sha256": "59a4db542dc0c43415f662b67cea3d3bae52bd40e552c444d6091f9898ea7fbd",
+      "bytes": 1986
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive-console.log.gz": {
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "bytes": 20
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive-loader.log.gz": {
+      "sha256": "7cdbeed1f0ac79f9157034400d146ce39a9418618ae789f41e0cca81e2b2ea23",
+      "bytes": 348
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive-maps.snapshots/complete.txt.gz": {
+      "sha256": "ce844cfdb61f36141b3b3b60c5fd8b411613c4a84d589b578effd8b7438f0c0e",
+      "bytes": 834
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive-maps.snapshots/first-nonempty.txt.gz": {
+      "sha256": "ce844cfdb61f36141b3b3b60c5fd8b411613c4a84d589b578effd8b7438f0c0e",
+      "bytes": 834
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive-maps.snapshots/first-read.txt.gz": {
+      "sha256": "ce844cfdb61f36141b3b3b60c5fd8b411613c4a84d589b578effd8b7438f0c0e",
+      "bytes": 834
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive-maps.snapshots/last-nonempty.txt.gz": {
+      "sha256": "ce844cfdb61f36141b3b3b60c5fd8b411613c4a84d589b578effd8b7438f0c0e",
+      "bytes": 834
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive-maps.snapshots/last-read.txt.gz": {
+      "sha256": "ce844cfdb61f36141b3b3b60c5fd8b411613c4a84d589b578effd8b7438f0c0e",
+      "bytes": 834
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive-maps.txt.gz": {
+      "sha256": "ce844cfdb61f36141b3b3b60c5fd8b411613c4a84d589b578effd8b7438f0c0e",
+      "bytes": 834
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive/group10-m.words.gz": {
+      "sha256": "7f845e8e475ea12aad55d5840a4ab7f09d04da8a89a10ed200290e55a66c8d0c",
+      "bytes": 30
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive/group10-p.words.gz": {
+      "sha256": "f614258c81748d8d9139506581a23749976a36b4b2ed59e5ff4982fa4f7eaadf",
+      "bytes": 176
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive/group10-s.words.gz": {
+      "sha256": "cd4329f9ca94d1ee026de401e02d2a282e9a03849a8b9dbc4055676f61172756",
+      "bytes": 123
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive/group10-scale.words.gz": {
+      "sha256": "b1be5e3cbc7a712e4a955a1931d1b4103365b525383a59314c56e15cc642bf36",
+      "bytes": 36
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive/maps-ready.gz": {
+      "sha256": "0278ef9fe67a7c26b7dd48dcdf70fad2db6e0b86d19910054f653f2d083a3b9f",
+      "bytes": 48
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive/observer.jsonl.gz": {
+      "sha256": "7224b6d47caef8aaa8368fd5d7ed740c5625c67626d9ae768e1863c8dd8e5f60",
+      "bytes": 27956
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive/records.txt.gz": {
+      "sha256": "0e32945de2196a8e765bda679e7690c73b92db5032f6358b8e6f8b1a901bd271",
+      "bytes": 5243
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive/snapshots.jsonl.gz": {
+      "sha256": "4ef12b8ece076a7fe8c701a4c39771f0c0fd5551cc72a450f1962bf195ec8218",
+      "bytes": 293
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/adaptive/telemetry.txt.gz": {
+      "sha256": "3aa5f771906b1c45cb45534c397b8e7cc30d7fa87d9f7453de687bea01e49f23",
+      "bytes": 578
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy-console.log.gz": {
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "bytes": 20
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy-loader.log.gz": {
+      "sha256": "875097f7b0fc3ee1bd9d12e407f4304106321867b85a63d8c197fc65780159a5",
+      "bytes": 345
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy-maps.snapshots/complete.txt.gz": {
+      "sha256": "cbf30cc283218302dcd06197e388c7c3135b08e237a15842f43860b1524b2f8c",
+      "bytes": 804
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy-maps.snapshots/first-nonempty.txt.gz": {
+      "sha256": "cbf30cc283218302dcd06197e388c7c3135b08e237a15842f43860b1524b2f8c",
+      "bytes": 804
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy-maps.snapshots/first-read.txt.gz": {
+      "sha256": "cbf30cc283218302dcd06197e388c7c3135b08e237a15842f43860b1524b2f8c",
+      "bytes": 804
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy-maps.snapshots/last-nonempty.txt.gz": {
+      "sha256": "cbf30cc283218302dcd06197e388c7c3135b08e237a15842f43860b1524b2f8c",
+      "bytes": 804
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy-maps.snapshots/last-read.txt.gz": {
+      "sha256": "cbf30cc283218302dcd06197e388c7c3135b08e237a15842f43860b1524b2f8c",
+      "bytes": 804
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy-maps.txt.gz": {
+      "sha256": "cbf30cc283218302dcd06197e388c7c3135b08e237a15842f43860b1524b2f8c",
+      "bytes": 804
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy/group10-m.words.gz": {
+      "sha256": "7f845e8e475ea12aad55d5840a4ab7f09d04da8a89a10ed200290e55a66c8d0c",
+      "bytes": 30
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy/group10-p.words.gz": {
+      "sha256": "f614258c81748d8d9139506581a23749976a36b4b2ed59e5ff4982fa4f7eaadf",
+      "bytes": 176
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy/group10-s.words.gz": {
+      "sha256": "cd4329f9ca94d1ee026de401e02d2a282e9a03849a8b9dbc4055676f61172756",
+      "bytes": 123
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy/group10-scale.words.gz": {
+      "sha256": "b1be5e3cbc7a712e4a955a1931d1b4103365b525383a59314c56e15cc642bf36",
+      "bytes": 36
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy/maps-ready.gz": {
+      "sha256": "0278ef9fe67a7c26b7dd48dcdf70fad2db6e0b86d19910054f653f2d083a3b9f",
+      "bytes": 48
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy/observer.jsonl.gz": {
+      "sha256": "03038c252e620aad8549430afd2902d88b0518f0d547ea7736d8d0a36b7fdf9e",
+      "bytes": 208
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy/records.txt.gz": {
+      "sha256": "ae912d5a3396851e46e77eeac1e7ac739930dc03f18a6692690230a3cb091ba9",
+      "bytes": 206
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy/snapshots.jsonl.gz": {
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "bytes": 20
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/raw/legacy/telemetry.txt.gz": {
+      "sha256": "0a930c0f0689ebb8d0274bb829dfde4d28828f42e57df86b15ffa0fa371335b1",
+      "bytes": 245
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/replay.py": {
+      "sha256": "4e4043423ce93c7e283c627dc5a4fbcfc21ebd781ddd0b93d09b6cb4dde5922e",
+      "bytes": 6999
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/results.json": {
+      "sha256": "1db3228443e5bcc37d104541e608b62aba36b17000d1c8096bff6d838f6d644f",
+      "bytes": 6931
+    },
+    "experiments/adaptive-qp-fortran-qualification/runtime1/test_replay.py": {
+      "sha256": "4f0bbdd77e40843f6f427973899a835e75f2b1bb79a474cb7249830a4c2d383c",
+      "bytes": 2045
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/README.md": {
+      "sha256": "ef34cfb042459b61c7356bf51cd8c86d15d0a739f5a5535a639c1c53fe045a23",
+      "bytes": 3754
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/copies.json": {
+      "sha256": "f534441a238807b3edf47fd5f54c22b45af28d96ce3a5111a2ea6f95748beacc",
+      "bytes": 11460
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/evidence-index.json": {
+      "sha256": "cd35bc3fd2ae032a5e18da3c692c8faf5dbe53760d7069a5f8f40d50a8ee0501",
+      "bytes": 8711
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/execution.json": {
+      "sha256": "51170427b184026ddc0a695a9509e43a647b5067a3227831bf537e184f60b1c3",
+      "bytes": 34771
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/ancestry/adaptive-qp-fortran-qualification/build1/build.json": {
+      "sha256": "a213c73aadab7d898e1a3699ab7c1c4ae09dae8afa1c7916a8e6671ebfb14b15",
+      "bytes": 21432
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/ancestry/adaptive-qp-fortran-qualification/build1/evidence-index.json": {
+      "sha256": "7d92500bc6fb518f8904f831f305519b07b6b4c011d3e15785146fffee5923d9",
+      "bytes": 1259
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/ancestry/adaptive-qp-fortran-qualification/source-index.json": {
+      "sha256": "80f83d5384ada33b609ac94bb9f9be935eb92e56ee706f979494e4d053fcc9b5",
+      "bytes": 6210
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/ancestry/adaptive-qp-release-fortran-qualification/source-index.json": {
+      "sha256": "31fadfa13913519b13267ac3969a626fb2a95c52dc8c213f03653c6230e845ec",
+      "bytes": 18083
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/build1/README.md": {
+      "sha256": "cc8a157a1be8df95e01cf15677c71933f715367d57408fd16924b56a619bd54f",
+      "bytes": 1803
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/build1/adaptive.map.gz": {
+      "sha256": "e43dc668d284da8a54c9289222c748585a4bbf342df788d99d8e108e5208663f",
+      "bytes": 5402
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/build1/bindings.json": {
+      "sha256": "08f9074c3dd26da8eacb07b35a73899ab302182877f110b916b567a05889b5bd",
+      "bytes": 2265
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/build1/build.json": {
+      "sha256": "f27a190f04804e8dc13a9d534e8558ac4eab95c2881cf97cf0aaaefb12260005",
+      "bytes": 78951
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/build1/evidence-index.json": {
+      "sha256": "f6c4fd59be05127bfe3e98beb7480f61f2802225f31e4834d34ee661a75008a8",
+      "bytes": 966
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/build1/legacy.map.gz": {
+      "sha256": "1ad9a665edbcc681909c74392895410186190b3887f3212ee2c8ad3b5b4b49af",
+      "bytes": 5395
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/build1/link-adaptive.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/build1/verify.py": {
+      "sha256": "be4de2575885171eab2f954a051c9548d4bd15d1021a31aa63a18787dbb2e110",
+      "bytes": 3878
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-index.json": {
+      "sha256": "f85e28784762a70806398ab5b878f93f01c0a1ca51475d960c50036a9ad7995f",
+      "bytes": 22181
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/README.md": {
+      "sha256": "d4819ba576604c2d7b019d8fc07ad681689a1f045a52ed53d16d36c7616f8e19",
+      "bytes": 4857
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/controller.patch": {
+      "sha256": "07d35654f1ec271fd66d8ed0be951519ae36a0c044697be39ea9acf25970c3a4",
+      "bytes": 11928
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/mode-fix.patch": {
+      "sha256": "eb49d07051aea59a6296f38b2bd9e313c20c237d6b81855797de7d58a72805ab",
+      "bytes": 3869
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/release-plan.json": {
+      "sha256": "c1184caa93b39871aa0e1078a0bdd4ab31f688b02da7563fe523476872077037",
+      "bytes": 10282
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/analyze.py": {
+      "sha256": "b992b92bc83c0f1a43328fff15fa60cdc0a285ee27b695f0e6b01d62fb1ca494",
+      "bytes": 12557
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/controller.py": {
+      "sha256": "988465111b30959c06466da4b4044886a8d1386100ae4cf7cfc62cb103414ede",
+      "bytes": 17131
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/driver.f90": {
+      "sha256": "1fb4a8a8a0fff8865c0348c4c8c723615f76568e6ec301a9bdb1e48c0fe00870",
+      "bytes": 5549
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/fixtures/group10-m.dat": {
+      "sha256": "d2e31016045fa13a4e1f06e36b3a5ba7c5bd1abe4a6b7de7302b84d144341424",
+      "bytes": 512
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/fixtures/group10-m.words": {
+      "sha256": "3c8c4edfbf7bdfff2ab4ae356ccda925df2a705ea06fddfd5e087c73679529d3",
+      "bytes": 274
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/fixtures/group10-p.dat": {
+      "sha256": "7db623319289b729f708fd703651cc2cbc1e2422c9f732cc46f47719a39594f8",
+      "bytes": 1024
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/fixtures/group10-p.words": {
+      "sha256": "95c2738242e0d0a189829223540d5edec679c9e3bca4b7b9f189019b27559650",
+      "bytes": 547
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/fixtures/group10-s.dat": {
+      "sha256": "8851fa58c55a183bcf64b41502f87a79458c2091a7a5391b9c79f8650f70a06e",
+      "bytes": 1024
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/fixtures/group10-s.words": {
+      "sha256": "7916fbc7f21ebb13efd34ee11ac57ba8d12d33ff3f362cdb8cfa437c66a59b02",
+      "bytes": 547
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/fixtures/group10-scale.dat": {
+      "sha256": "e33959904b7139a959ee066da9f270ccde46ebdda550023e9cc3abb6a3d3a6ac",
+      "bytes": 64
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/fixtures/group10-scale.words": {
+      "sha256": "979f8decf6eae4eeddfbadfc1c737416c2c51465e6825cc05eb5aef01fc78dff",
+      "bytes": 36
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/fixtures/manifest.json": {
+      "sha256": "97cba7119fe79afe5c9ffea59647a6e223ef2e7f3532bbc9629bd8694c27f9a0",
+      "bytes": 4330
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/mtirust.f90": {
+      "sha256": "3d7c8e58c4f5b92ac24427a09b83a2273ba81444bffac0e333227fd40be9cc7a",
+      "bytes": 18388
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/observer.c": {
+      "sha256": "c48e158c782f61528dfdbbbd42162da35fff53207264bc1d491adda76f0f0c19",
+      "bytes": 5266
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/optional_getter.c": {
+      "sha256": "9f8648c47609136523e13ac24d692ba46f4a57bd69508959318ef36b293e8d1f",
+      "bytes": 1449
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/origins.json": {
+      "sha256": "edf5017bf8906b30e1de910272328e8065f66b4f19b6ae2862e191bacc1061a4",
+      "bytes": 2031
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/qp_tier_records.f90": {
+      "sha256": "698ea0f6bdc06f03a48423461f41e8289eda20a07c45f22d03c5d236b7bba127",
+      "bytes": 951
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/telemetry.py": {
+      "sha256": "eacd347eea65d7a3cec67471ee7d00dd7bba6d124d6308e2700b59c2f880ac07",
+      "bytes": 4399
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/frozen/source-tree/source/test_analyze.py": {
+      "sha256": "59a4db542dc0c43415f662b67cea3d3bae52bd40e552c444d6091f9898ea7fbd",
+      "bytes": 1986
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive-console.log.gz": {
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "bytes": 20
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive-loader.log.gz": {
+      "sha256": "399106f1a3cf0af76ab364efcdb52f1a20b8acd60a3616e21e6341eb54d55e68",
+      "bytes": 352
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive-maps.snapshots/complete.txt.gz": {
+      "sha256": "27f98ccf0a80e1e1e5f638c457435c016b5d0cd3d04cc4d7b2b76633416cb710",
+      "bytes": 840
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive-maps.snapshots/first-nonempty.txt.gz": {
+      "sha256": "27f98ccf0a80e1e1e5f638c457435c016b5d0cd3d04cc4d7b2b76633416cb710",
+      "bytes": 840
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive-maps.snapshots/first-read.txt.gz": {
+      "sha256": "27f98ccf0a80e1e1e5f638c457435c016b5d0cd3d04cc4d7b2b76633416cb710",
+      "bytes": 840
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive-maps.snapshots/last-nonempty.txt.gz": {
+      "sha256": "27f98ccf0a80e1e1e5f638c457435c016b5d0cd3d04cc4d7b2b76633416cb710",
+      "bytes": 840
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive-maps.snapshots/last-read.txt.gz": {
+      "sha256": "27f98ccf0a80e1e1e5f638c457435c016b5d0cd3d04cc4d7b2b76633416cb710",
+      "bytes": 840
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive-maps.txt.gz": {
+      "sha256": "27f98ccf0a80e1e1e5f638c457435c016b5d0cd3d04cc4d7b2b76633416cb710",
+      "bytes": 840
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive/group10-m.words.gz": {
+      "sha256": "7f845e8e475ea12aad55d5840a4ab7f09d04da8a89a10ed200290e55a66c8d0c",
+      "bytes": 30
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive/group10-p.words.gz": {
+      "sha256": "f614258c81748d8d9139506581a23749976a36b4b2ed59e5ff4982fa4f7eaadf",
+      "bytes": 176
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive/group10-s.words.gz": {
+      "sha256": "cd4329f9ca94d1ee026de401e02d2a282e9a03849a8b9dbc4055676f61172756",
+      "bytes": 123
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive/group10-scale.words.gz": {
+      "sha256": "b1be5e3cbc7a712e4a955a1931d1b4103365b525383a59314c56e15cc642bf36",
+      "bytes": 36
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive/maps-ready.gz": {
+      "sha256": "0278ef9fe67a7c26b7dd48dcdf70fad2db6e0b86d19910054f653f2d083a3b9f",
+      "bytes": 48
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive/observer.jsonl.gz": {
+      "sha256": "7224b6d47caef8aaa8368fd5d7ed740c5625c67626d9ae768e1863c8dd8e5f60",
+      "bytes": 27956
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive/records.txt.gz": {
+      "sha256": "0e32945de2196a8e765bda679e7690c73b92db5032f6358b8e6f8b1a901bd271",
+      "bytes": 5243
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive/snapshots.jsonl.gz": {
+      "sha256": "4ef12b8ece076a7fe8c701a4c39771f0c0fd5551cc72a450f1962bf195ec8218",
+      "bytes": 293
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/adaptive/telemetry.txt.gz": {
+      "sha256": "3aa5f771906b1c45cb45534c397b8e7cc30d7fa87d9f7453de687bea01e49f23",
+      "bytes": 578
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy-console.log.gz": {
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "bytes": 20
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy-loader.log.gz": {
+      "sha256": "3d98fd99c8cdca9563852cab047f44378fb9aeba53c62ee99805555c5e401600",
+      "bytes": 344
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy-maps.snapshots/complete.txt.gz": {
+      "sha256": "5ac7290869c680a11626f14d9ae6cdbce6529510105ca3fef373d431126533cd",
+      "bytes": 841
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy-maps.snapshots/first-nonempty.txt.gz": {
+      "sha256": "5ac7290869c680a11626f14d9ae6cdbce6529510105ca3fef373d431126533cd",
+      "bytes": 841
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy-maps.snapshots/first-read.txt.gz": {
+      "sha256": "5ac7290869c680a11626f14d9ae6cdbce6529510105ca3fef373d431126533cd",
+      "bytes": 841
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy-maps.snapshots/last-nonempty.txt.gz": {
+      "sha256": "5ac7290869c680a11626f14d9ae6cdbce6529510105ca3fef373d431126533cd",
+      "bytes": 841
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy-maps.snapshots/last-read.txt.gz": {
+      "sha256": "5ac7290869c680a11626f14d9ae6cdbce6529510105ca3fef373d431126533cd",
+      "bytes": 841
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy-maps.txt.gz": {
+      "sha256": "5ac7290869c680a11626f14d9ae6cdbce6529510105ca3fef373d431126533cd",
+      "bytes": 841
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy/group10-m.words.gz": {
+      "sha256": "7f845e8e475ea12aad55d5840a4ab7f09d04da8a89a10ed200290e55a66c8d0c",
+      "bytes": 30
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy/group10-p.words.gz": {
+      "sha256": "f614258c81748d8d9139506581a23749976a36b4b2ed59e5ff4982fa4f7eaadf",
+      "bytes": 176
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy/group10-s.words.gz": {
+      "sha256": "cd4329f9ca94d1ee026de401e02d2a282e9a03849a8b9dbc4055676f61172756",
+      "bytes": 123
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy/group10-scale.words.gz": {
+      "sha256": "b1be5e3cbc7a712e4a955a1931d1b4103365b525383a59314c56e15cc642bf36",
+      "bytes": 36
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy/maps-ready.gz": {
+      "sha256": "0278ef9fe67a7c26b7dd48dcdf70fad2db6e0b86d19910054f653f2d083a3b9f",
+      "bytes": 48
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy/observer.jsonl.gz": {
+      "sha256": "03038c252e620aad8549430afd2902d88b0518f0d547ea7736d8d0a36b7fdf9e",
+      "bytes": 208
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy/records.txt.gz": {
+      "sha256": "ae912d5a3396851e46e77eeac1e7ac739930dc03f18a6692690230a3cb091ba9",
+      "bytes": 206
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy/snapshots.jsonl.gz": {
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "bytes": 20
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/raw/legacy/telemetry.txt.gz": {
+      "sha256": "0a930c0f0689ebb8d0274bb829dfde4d28828f42e57df86b15ffa0fa371335b1",
+      "bytes": 245
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/replay.py": {
+      "sha256": "a68bc4fc9ebb0d4a62f63234478873b9b695a2521ba416c1f625bfc6f45047f5",
+      "bytes": 8190
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/results.json": {
+      "sha256": "1db3228443e5bcc37d104541e608b62aba36b17000d1c8096bff6d838f6d644f",
+      "bytes": 6931
+    },
+    "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/test_replay.py": {
+      "sha256": "4f0bbdd77e40843f6f427973899a835e75f2b1bb79a474cb7249830a4c2d383c",
+      "bytes": 2045
     },
     "experiments/adaptive-qp-rescue-private-tests/README.md": {
       "sha256": "07df183423922bfb2417306944ee0cdc2632c30c6d8813cf093c657907d7f21e",
@@ -6105,6 +6765,62 @@
     "experiments/born-effective-point-native/verify.py": {
       "sha256": "b856386210f3cf038633559e69ac3e1725f0ea88872dfecb65d6f8afc3b293c3",
       "bytes": 18434
+    },
+    "experiments/born-effective-point-native89-qualification-1/README.md": {
+      "sha256": "901122650f316900ac3d7795732a0caa7b49d0a4156e5b10b6772a34791b2052",
+      "bytes": 4474
+    },
+    "experiments/born-effective-point-native89-qualification-1/capture.py": {
+      "sha256": "544eb4ce68064fadcce6a3609722600d24341f99fc877cd6f1d4a1ff46fc6c23",
+      "bytes": 4887
+    },
+    "experiments/born-effective-point-native89-qualification-1/direct-copies.json": {
+      "sha256": "e39196c481056dc42d7a532302b5479f81b1fa1594a61a23ef1f8302ee5ed69f",
+      "bytes": 1078
+    },
+    "experiments/born-effective-point-native89-qualification-1/evidence-index.json": {
+      "sha256": "88164f16cdcabf60353df41b0faa140668ac2b3e1f4c4053214492bf0d8453bb",
+      "bytes": 2054
+    },
+    "experiments/born-effective-point-native89-qualification-1/fixed-qp-summary.json": {
+      "sha256": "7ceb4fd5a20c3fcfb9b1206dcc869e527cf9fc494d577a6697855d447f829895",
+      "bytes": 98909
+    },
+    "experiments/born-effective-point-native89-qualification-1/native89-lineage.json": {
+      "sha256": "935352664f757ea44da846c89f11c100beab46536065dd6690d628ce2abef13a",
+      "bytes": 584
+    },
+    "experiments/born-effective-point-native89-qualification-1/native89-prepared.json": {
+      "sha256": "de50e4a9c9599080bd9c6bf9f70f36b8f38e2e90390dda609e6cecd0728e4ff8",
+      "bytes": 1228772
+    },
+    "experiments/born-effective-point-native89-qualification-1/native89-source-index.json": {
+      "sha256": "55af12e109954110be3326e1a0d52dd28cb51bdf419585e2c12ffbd2fd1c03b4",
+      "bytes": 2769
+    },
+    "experiments/born-effective-point-native89-qualification-1/ordinary-summary.json": {
+      "sha256": "11f9f6a8b2b704d1678b6d97e838562e48e3f5d547c9c41dd3565aeac75e7d88",
+      "bytes": 50505
+    },
+    "experiments/born-effective-point-native89-qualification-1/other-bound-identities.json": {
+      "sha256": "1a5b7608e5f7b80bf1064957299e63ba9bc3fd17a2506e3924d08ccef32975f9",
+      "bytes": 1716482
+    },
+    "experiments/born-effective-point-native89-qualification-1/payload-inventory.json": {
+      "sha256": "bef7761a2cb0bb7ee0a0629c18ec7c14054f21ee00fcef72eda4463d76c231fe",
+      "bytes": 434538
+    },
+    "experiments/born-effective-point-native89-qualification-1/payload.json.gz": {
+      "sha256": "44cdb325d34858535d263aced0aedc56fe99553bb39d6515a74ddc6c54e2e5ea",
+      "bytes": 1870262
+    },
+    "experiments/born-effective-point-native89-qualification-1/prior-milestone.json": {
+      "sha256": "175b9f3713f88720d7404b0c5778042ec3737bfe1bc804fbd28e3d4e6a3b02fb",
+      "bytes": 384
+    },
+    "experiments/born-effective-point-native89-qualification-1/verify.py": {
+      "sha256": "9ff82a93b0d346f810464640641bd5290347783cd8f3dd07706f4626098485e4",
+      "bytes": 10888
     },
     "experiments/complex-mass/README.md": {
       "sha256": "92dd347a691d9e9ce7bdf4e6b7703a207649672f0174049cb13be9a1ca37ced4",
@@ -12146,6 +12862,822 @@
       "sha256": "d7822444539c94967c541767f7c7a69e6fffad3cda6a55779f1fd2dc94a06620",
       "bytes": 7243
     },
+    "experiments/dp-rescue-cause-observer/controller/run.py": {
+      "sha256": "6a0512b620f0f9723af8811bbbd128f3b1f0990aac64e3aaf1da60ec7e5cab10",
+      "bytes": 34631
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/TIRUST_interface.f": {
+      "sha256": "177a7973ea9182978097d5256fab0f0c93c1d4c799919203f7855631bee294ad",
+      "bytes": 15135
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/build-qualification-1/index.json": {
+      "sha256": "9749d31821172abb1cb5d8da6c45568b7728af4afcef7b0a6833f3d3bc74bb4e",
+      "bytes": 9858
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/README.md": {
+      "sha256": "c6d762da69a2b7a90ade7e1dc69dbb7ea9ee0ce9f05ced83fe8473b3c15748e1",
+      "bytes": 4460
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/artifact-hashes.json": {
+      "sha256": "5bef6f5f6c935780fd6a884a367335262a9b33805bab0c4d44b2f2214eded4be",
+      "bytes": 2575
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/execution.json.gz": {
+      "sha256": "2c25dd683f40cbef5edfa5f4fe5b650f56a8415618012aba4145bd6d7a1f17b1",
+      "bytes": 21840
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-bulk.stdout.gz": {
+      "sha256": "6e7cb6af920cb5390ff5af3730f33826903bc8e3bb0d30e514975baeb0e22054",
+      "bytes": 84407
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-link.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-loader-list.stdout.gz": {
+      "sha256": "e655d114ae144141041510acafa053a1a5d4f5e4a986d89a441d25d08d7eda55",
+      "bytes": 265
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-1-1-1-5-0.stdout.gz": {
+      "sha256": "4fbb1dc9edfb0d427a7d7a8f15475baa79edff8cf58a428973830371bf6f43a9",
+      "bytes": 321
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-1-1-1-5-1.stdout.gz": {
+      "sha256": "07de8cc152cc0e8e144cae2d596d7cbf02b0cbb3a085c1b9b05f6bcf542a3c16",
+      "bytes": 322
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-1-1-2-5-0.stdout.gz": {
+      "sha256": "840e7b1dd5074a991ede5a38aae93e90ebf92e00642af7332ac1f96f2a75740c",
+      "bytes": 323
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-1-1-2-5-1.stdout.gz": {
+      "sha256": "d0b88f3512dc4416d4f123dab95936d4ac615857319013587de04331d8f7c61a",
+      "bytes": 323
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-1-1-3-5-0.stdout.gz": {
+      "sha256": "704ad1c4da62837a54dcdacc107962880b2c69b8424efd2243d7b55ffaa392f3",
+      "bytes": 321
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-1-1-3-5-1.stdout.gz": {
+      "sha256": "0dfcb205a7d7780e3980420c92adf06381ed983b46dff1b38d0c270f39d9e549",
+      "bytes": 321
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-1-1-4-5-0.stdout.gz": {
+      "sha256": "37e3fdb9cca3eea27bd7a2185bcea1ac948c2a107d410ed925023aba90b62350",
+      "bytes": 322
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-1-1-4-5-1.stdout.gz": {
+      "sha256": "025894fd46109f0db2c514f8324fe0142c631d0c900f74307f8c1747bf966fc7",
+      "bytes": 321
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-7-1-1-0.stdout.gz": {
+      "sha256": "e8e2ccd76b6ce91ea3ede63f80103cd6d182705fae5772781dc7e4ab9048df04",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-7-1-1-1.stdout.gz": {
+      "sha256": "6bdaaac17ec5c5e6f0e7949dc6cb08398ef04e22feb28bffd30f580cdace9099",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-7-2-1-0.stdout.gz": {
+      "sha256": "9fcfa8459fa56f71831f40f1cdb50afacda18391e8853b9747b285d6c22789aa",
+      "bytes": 161
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-7-2-1-1.stdout.gz": {
+      "sha256": "070e6e9f2b54eab959f22d3edb354e61cd49d7e9762927562fba6d3fb41397aa",
+      "bytes": 161
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-7-3-1-0.stdout.gz": {
+      "sha256": "f6aaff2c1074c7b218cafb9402c1406f1b149bf0bb3d2cbd1be51ede9dd851fc",
+      "bytes": 161
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-7-3-1-1.stdout.gz": {
+      "sha256": "88bc5369abaa9830afb2afb5083ffe15a763b187fc534a3257473aaa8776a673",
+      "bytes": 161
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-7-4-1-0.stdout.gz": {
+      "sha256": "13adfcae756f5c830427841b6b12b8d00bb5ec41cf9335f3a3a46b3e2bc65137",
+      "bytes": 162
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-7-4-1-1.stdout.gz": {
+      "sha256": "c197a0579e8abafd0c0391d32216f36518715c254678ddc15b005606c0dc7722",
+      "bytes": 162
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-8-1-1-0.stdout.gz": {
+      "sha256": "4b4eb4745c9a698017a449981325f2619bbd7e213cc4b0b688174b47268b8799",
+      "bytes": 159
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-8-1-1-1.stdout.gz": {
+      "sha256": "defe58bb3a563c7a5ab42d2fd4601eae093562322ec6bbd97512b72e0aaa456e",
+      "bytes": 158
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-8-2-1-0.stdout.gz": {
+      "sha256": "5f9e844d6b3d525df9087086cf335401fb059cfeeec33ffca659e42b4aaab303",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-8-2-1-1.stdout.gz": {
+      "sha256": "05d03734d576df9043a85de41eef502bd9704bba7e9ab83a222092cf708c6c89",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-8-3-1-0.stdout.gz": {
+      "sha256": "f099a6a2396e372b32f500311af80e11d8b12a9211a6a3bf7de24af7ebb0debb",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-8-3-1-1.stdout.gz": {
+      "sha256": "853d090b34bb8acc80799ea8a8e961f7e07575a58017ad12967eb45c9b422a15",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-8-4-1-0.stdout.gz": {
+      "sha256": "537679bcb7e55d0ceab1ecc08f684165995bedafa8e6fc9de8783df60e3f790e",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-dp-trap-2-8-4-1-1.stdout.gz": {
+      "sha256": "fde3741bc76203c690e2696d0a42e7ef1a2544b3f21f309b1db2b2878708d252",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-driver_dp.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-driver_qp.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-mutation-no-equality.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-mutation-no-finite.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-no-equality-bulk.stdout.gz": {
+      "sha256": "44cf9286d3e8c53c48b5a1bc5fa8843fd27254229c76c8e3b3dabadfcc485ac7",
+      "bytes": 84636
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-no-equality-link.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-no-equality-loader-list.stdout.gz": {
+      "sha256": "b1149d4a388dccefd4a9c797d394b4cce1d1d40d3481d2f2b26e578ecdfb9b0c",
+      "bytes": 266
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-no-finite-bulk.stdout.gz": {
+      "sha256": "3036ed79402fba7c187fcc01b2a1163f34474822dbbc119da6f96b274b185db0",
+      "bytes": 85131
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-no-finite-link.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-no-finite-loader-list.stdout.gz": {
+      "sha256": "a667911e0f7dfd0963a707e77e4680644f692bc7156ffcb45cae87c9a23c8f34",
+      "bytes": 265
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-bulk.stdout.gz": {
+      "sha256": "29f30d8cd6b2de4b347102055165f6cac399f251dc72fbf5bd38fb89ebe36d80",
+      "bytes": 119939
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-link.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-loader-list.stdout.gz": {
+      "sha256": "00cf4adc6372843faaae7d6d5579a7f555648cfd181a20ea032a90162c6050d5",
+      "bytes": 265
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-1-1-1-5-0.stdout.gz": {
+      "sha256": "ecef61fb9775613e9350b8555817bbb9e845cc08a9d7f5e56d235567a58cf5d8",
+      "bytes": 376
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-1-1-1-5-1.stdout.gz": {
+      "sha256": "4552f5b7e811f1a1b489d53d465d8b920e23a17506047360a2082f2fa6215373",
+      "bytes": 375
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-1-1-2-5-0.stdout.gz": {
+      "sha256": "c81f849ef09e6feb6ffd31ad8db53a12696a7e84b9d94a73cd961a991a794ca1",
+      "bytes": 375
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-1-1-2-5-1.stdout.gz": {
+      "sha256": "53661b87d80b2084286834d002dc4c356d054566c22eeb2375802a08cd375dff",
+      "bytes": 374
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-1-1-3-5-0.stdout.gz": {
+      "sha256": "b2839bd6560ef30f74e8eba4a28413f339d835db38ff33479bfabf856c1a058d",
+      "bytes": 376
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-1-1-3-5-1.stdout.gz": {
+      "sha256": "e1ee82e2c1a99df739d97e96ae705d09fd22932913a5e2491cedb5dc6a821528",
+      "bytes": 372
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-1-1-4-5-0.stdout.gz": {
+      "sha256": "fafd22aa7dadc607a6543483532c07bbbd0e76cfceaa9ef96282946bfa3935cb",
+      "bytes": 374
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-1-1-4-5-1.stdout.gz": {
+      "sha256": "b0029928ed2fd0879d8b5ddc202cd41ae8d3693275e20254dcf4cbcfdf98922e",
+      "bytes": 372
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-7-1-1-0.stdout.gz": {
+      "sha256": "f3eabf20d6f28bd1f20de68fbce1c1b64241347b7f14a85feb629395df45da1c",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-7-1-1-1.stdout.gz": {
+      "sha256": "698d6e5a7b153cd87af9818220ac7b45a72e0bac3e4c845fb5b8e569c9e4bc99",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-7-2-1-0.stdout.gz": {
+      "sha256": "6bb80de4fdb8143d550eb9d1d61f604236825e26d932fc6b1201b87c4e4bc890",
+      "bytes": 180
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-7-2-1-1.stdout.gz": {
+      "sha256": "bd0275b2f30e832f70da153f56ce7f9ab9d5f444478ed9088be86f54d57f8cd7",
+      "bytes": 180
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-7-3-1-0.stdout.gz": {
+      "sha256": "e6991a5a5f75c36f9fd1dc1351e54cc903b50faf4131418349d18435889e1f4a",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-7-3-1-1.stdout.gz": {
+      "sha256": "4217307550f815beed737bb87b09337f84a3f9381a615e9f793b4f9cee6aee10",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-7-4-1-0.stdout.gz": {
+      "sha256": "33d2a79f389129c3ad76ce591c99547ad6fecd59144f84d6ff68f751d22a9e70",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-7-4-1-1.stdout.gz": {
+      "sha256": "f97a836194af36c7449f7899cc72c9a90931034a5122ec4285ff10af3962d4b4",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-8-1-1-0.stdout.gz": {
+      "sha256": "52d4d75ed476840212b8c67dd8898e3c05f1afe28a3671a48b28f638d5ccdfa6",
+      "bytes": 176
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-8-1-1-1.stdout.gz": {
+      "sha256": "40d81d550f00f4ba33cfd5b00542989f355100f10ee07191caaeb44e8df528c5",
+      "bytes": 176
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-8-2-1-0.stdout.gz": {
+      "sha256": "9739dcfd74967b52d792b13fd299ab7f4ed54bc79b426b2f6688c1853ca66157",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-8-2-1-1.stdout.gz": {
+      "sha256": "e396b61a957123ea82d93e7d8ed62c96912cf20641ba4d8aacd5a3399af67ddb",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-8-3-1-0.stdout.gz": {
+      "sha256": "2572440a2828eebcc3cd1bc7d6ddc8ae30cb56792062bb9fba86283cdda56472",
+      "bytes": 177
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-8-3-1-1.stdout.gz": {
+      "sha256": "b69780525bd370bbc34be16dbc31dee69ba480eec05346d5f9a82ed27a0622c9",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-8-4-1-0.stdout.gz": {
+      "sha256": "10c92dc06c6b66996c234f39f717d4eb9a60c0cf508b4b2306d000855edd3350",
+      "bytes": 177
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-qp-trap-2-8-4-1-1.stdout.gz": {
+      "sha256": "4ee646ec0f3473fa64e2a20305e0b7ae548ada7f2627cbe001051542cd7b51c8",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-shared.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/historical-flags-wrappers.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/progress.json.gz": {
+      "sha256": "7dddb10d22c477f442ad09b2a53af99404f8ee72d25d83f9efb7e65786b1a5f9",
+      "bytes": 21488
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-bulk.stdout.gz": {
+      "sha256": "6e7cb6af920cb5390ff5af3730f33826903bc8e3bb0d30e514975baeb0e22054",
+      "bytes": 84407
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-link.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-loader-list.stdout.gz": {
+      "sha256": "a01d4fb4dc656f625652d4f21a549a580e2d67304070138d1c57e7002d2bc2f7",
+      "bytes": 266
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-1-1-1-5-0.stdout.gz": {
+      "sha256": "893396dfa13c42075c5741a693e490a325048f5553b505c1ddcdbf08ee73330b",
+      "bytes": 308
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-1-1-1-5-1.stdout.gz": {
+      "sha256": "23aa11368baaa6fc05ee6157973397520d6cc249d6e11494264354196f5e1bac",
+      "bytes": 307
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-1-1-2-5-0.stdout.gz": {
+      "sha256": "aabb24d059c2d52104b8d45a072f0206836d2162cadaf872ca841703c0573b10",
+      "bytes": 308
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-1-1-2-5-1.stdout.gz": {
+      "sha256": "f5708de8d4f108298ef5d2a8426a0076aff47c20366dc67922d1a65bcd753878",
+      "bytes": 307
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-1-1-3-5-0.stdout.gz": {
+      "sha256": "901fdf4eb8186c26c0d6361cf44fb8f673fac8ed28ce2b1e6fdefc6578f8708c",
+      "bytes": 307
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-1-1-3-5-1.stdout.gz": {
+      "sha256": "40faeea34609968abd85b7fa70f2cdc12dd001d8ee608169d8cbdae19fe5caa7",
+      "bytes": 307
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-1-1-4-5-0.stdout.gz": {
+      "sha256": "6b4c4ee314281979617f69a2961a49757cced333181567be7e49042110384454",
+      "bytes": 307
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-1-1-4-5-1.stdout.gz": {
+      "sha256": "93ddf3c4d12b507f8c66750134df42aad5009fc97cf67345b381db05d89aefc8",
+      "bytes": 310
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-7-1-1-0.stdout.gz": {
+      "sha256": "e8e2ccd76b6ce91ea3ede63f80103cd6d182705fae5772781dc7e4ab9048df04",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-7-1-1-1.stdout.gz": {
+      "sha256": "6bdaaac17ec5c5e6f0e7949dc6cb08398ef04e22feb28bffd30f580cdace9099",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-7-2-1-0.stdout.gz": {
+      "sha256": "9fcfa8459fa56f71831f40f1cdb50afacda18391e8853b9747b285d6c22789aa",
+      "bytes": 161
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-7-2-1-1.stdout.gz": {
+      "sha256": "070e6e9f2b54eab959f22d3edb354e61cd49d7e9762927562fba6d3fb41397aa",
+      "bytes": 161
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-7-3-1-0.stdout.gz": {
+      "sha256": "f6aaff2c1074c7b218cafb9402c1406f1b149bf0bb3d2cbd1be51ede9dd851fc",
+      "bytes": 161
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-7-3-1-1.stdout.gz": {
+      "sha256": "88bc5369abaa9830afb2afb5083ffe15a763b187fc534a3257473aaa8776a673",
+      "bytes": 161
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-7-4-1-0.stdout.gz": {
+      "sha256": "13adfcae756f5c830427841b6b12b8d00bb5ec41cf9335f3a3a46b3e2bc65137",
+      "bytes": 162
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-7-4-1-1.stdout.gz": {
+      "sha256": "c197a0579e8abafd0c0391d32216f36518715c254678ddc15b005606c0dc7722",
+      "bytes": 162
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-8-1-1-0.stdout.gz": {
+      "sha256": "4b4eb4745c9a698017a449981325f2619bbd7e213cc4b0b688174b47268b8799",
+      "bytes": 159
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-8-1-1-1.stdout.gz": {
+      "sha256": "defe58bb3a563c7a5ab42d2fd4601eae093562322ec6bbd97512b72e0aaa456e",
+      "bytes": 158
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-8-2-1-0.stdout.gz": {
+      "sha256": "5f9e844d6b3d525df9087086cf335401fb059cfeeec33ffca659e42b4aaab303",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-8-2-1-1.stdout.gz": {
+      "sha256": "05d03734d576df9043a85de41eef502bd9704bba7e9ab83a222092cf708c6c89",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-8-3-1-0.stdout.gz": {
+      "sha256": "f099a6a2396e372b32f500311af80e11d8b12a9211a6a3bf7de24af7ebb0debb",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-8-3-1-1.stdout.gz": {
+      "sha256": "853d090b34bb8acc80799ea8a8e961f7e07575a58017ad12967eb45c9b422a15",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-8-4-1-0.stdout.gz": {
+      "sha256": "537679bcb7e55d0ceab1ecc08f684165995bedafa8e6fc9de8783df60e3f790e",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-dp-trap-2-8-4-1-1.stdout.gz": {
+      "sha256": "fde3741bc76203c690e2696d0a42e7ef1a2544b3f21f309b1db2b2878708d252",
+      "bytes": 160
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-driver_dp.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-driver_qp.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-bulk.stdout.gz": {
+      "sha256": "29f30d8cd6b2de4b347102055165f6cac399f251dc72fbf5bd38fb89ebe36d80",
+      "bytes": 119939
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-link.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-loader-list.stdout.gz": {
+      "sha256": "05b413e3c52dea18394b1106ac541adb356f2c12b888baef23650a246d095119",
+      "bytes": 265
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-1-1-1-5-0.stdout.gz": {
+      "sha256": "ab5a3a59fc3cd4a5a43e991524542843587c7c45e2d5fd0d8e69dd1f96c9125f",
+      "bytes": 359
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-1-1-1-5-1.stdout.gz": {
+      "sha256": "1b5977ac10984597dc474cb789e02f78a6c03279a2028747d87c0c420d8ce83c",
+      "bytes": 359
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-1-1-2-5-0.stdout.gz": {
+      "sha256": "8fcee4b08f96cccf0a1517b57b8b4f3f024d950c6fa3a8a8d4741eea203ac0a7",
+      "bytes": 357
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-1-1-2-5-1.stdout.gz": {
+      "sha256": "879e95b3c8ae8cc9d50f3d21ec8814a506e5ffdae6ad9146c98fa732fdf54a2c",
+      "bytes": 359
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-1-1-3-5-0.stdout.gz": {
+      "sha256": "90d8beeb8c5f32b75766d3c833bb5156d82f8011fa8ad91a226b8594840b66f5",
+      "bytes": 358
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-1-1-3-5-1.stdout.gz": {
+      "sha256": "18361d8f338ef0f08dcc5d659eca41d099767e20a3bb67f98ff7a2de940a3030",
+      "bytes": 358
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-1-1-4-5-0.stdout.gz": {
+      "sha256": "c43e9307537a721971a30ecf0fd5591a482ffecff9ccd7c983551db30eea448e",
+      "bytes": 357
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-1-1-4-5-1.stdout.gz": {
+      "sha256": "93d872a6640e50f308a29c0cc56229742b984fa2d926d0510101f398044e7f74",
+      "bytes": 358
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-7-1-1-0.stdout.gz": {
+      "sha256": "f3eabf20d6f28bd1f20de68fbce1c1b64241347b7f14a85feb629395df45da1c",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-7-1-1-1.stdout.gz": {
+      "sha256": "698d6e5a7b153cd87af9818220ac7b45a72e0bac3e4c845fb5b8e569c9e4bc99",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-7-2-1-0.stdout.gz": {
+      "sha256": "6bb80de4fdb8143d550eb9d1d61f604236825e26d932fc6b1201b87c4e4bc890",
+      "bytes": 180
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-7-2-1-1.stdout.gz": {
+      "sha256": "bd0275b2f30e832f70da153f56ce7f9ab9d5f444478ed9088be86f54d57f8cd7",
+      "bytes": 180
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-7-3-1-0.stdout.gz": {
+      "sha256": "e6991a5a5f75c36f9fd1dc1351e54cc903b50faf4131418349d18435889e1f4a",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-7-3-1-1.stdout.gz": {
+      "sha256": "4217307550f815beed737bb87b09337f84a3f9381a615e9f793b4f9cee6aee10",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-7-4-1-0.stdout.gz": {
+      "sha256": "33d2a79f389129c3ad76ce591c99547ad6fecd59144f84d6ff68f751d22a9e70",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-7-4-1-1.stdout.gz": {
+      "sha256": "f97a836194af36c7449f7899cc72c9a90931034a5122ec4285ff10af3962d4b4",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-8-1-1-0.stdout.gz": {
+      "sha256": "52d4d75ed476840212b8c67dd8898e3c05f1afe28a3671a48b28f638d5ccdfa6",
+      "bytes": 176
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-8-1-1-1.stdout.gz": {
+      "sha256": "40d81d550f00f4ba33cfd5b00542989f355100f10ee07191caaeb44e8df528c5",
+      "bytes": 176
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-8-2-1-0.stdout.gz": {
+      "sha256": "9739dcfd74967b52d792b13fd299ab7f4ed54bc79b426b2f6688c1853ca66157",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-8-2-1-1.stdout.gz": {
+      "sha256": "e396b61a957123ea82d93e7d8ed62c96912cf20641ba4d8aacd5a3399af67ddb",
+      "bytes": 179
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-8-3-1-0.stdout.gz": {
+      "sha256": "2572440a2828eebcc3cd1bc7d6ddc8ae30cb56792062bb9fba86283cdda56472",
+      "bytes": 177
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-8-3-1-1.stdout.gz": {
+      "sha256": "b69780525bd370bbc34be16dbc31dee69ba480eec05346d5f9a82ed27a0622c9",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-8-4-1-0.stdout.gz": {
+      "sha256": "10c92dc06c6b66996c234f39f717d4eb9a60c0cf508b4b2306d000855edd3350",
+      "bytes": 177
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-qp-trap-2-8-4-1-1.stdout.gz": {
+      "sha256": "4ee646ec0f3473fa64e2a20305e0b7ae548ada7f2627cbe001051542cd7b51c8",
+      "bytes": 178
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-shared.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/evidence/supplemental-O3-wrappers.o.stdout.gz": {
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
+      "bytes": 20
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/index.json": {
+      "sha256": "62368b50b659f388a031f35528bd0cda6ae54c82ed751dd39c49a3df3db97300",
+      "bytes": 58233
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/package.py": {
+      "sha256": "9ef4fd88828b33754f08f048b833df5575f58740afb61f4f1c2f8dc65ce9d0ec",
+      "bytes": 20215
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/packaging-start.json": {
+      "sha256": "8e49b8f7b7270c49f8342c244555a9bbf734fe5fdb7e71840f488674185a65aa",
+      "bytes": 215
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/plan-size-observations.json": {
+      "sha256": "29118c44bace3c69c4d0a25fe67f3100dccc38de03f2cbc0f8299e6440f941ac",
+      "bytes": 2573
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/preflight-failure-1/package.py": {
+      "sha256": "2f65928656d75b5a40030bf804c8d80d58dc5f6d6bfb009c87b44a3ba0df0a07",
+      "bytes": 18524
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/preflight-failure-1/receipt.json": {
+      "sha256": "96e54f6310a3560b24930151fd00f81e1ba890dc6d649589ba134af393e41d3f",
+      "bytes": 790
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/summary.json": {
+      "sha256": "673b2c9beebb524fff97ea7b26de501fe776770062aff3b4f7453d7ad6d91858",
+      "bytes": 3454
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/index.json": {
+      "sha256": "d3c1e4212669d66846195bf65af0a05153ce406c87ac12cb30cc58a612b3bb93",
+      "bytes": 3225
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-proposal/compare_source.py": {
+      "sha256": "f239301f3ec016a2c9a37e1efb0f8cd1706148bd31df663809929a2f9b52993d",
+      "bytes": 7296
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-proposal/promotion.patch": {
+      "sha256": "ea580786efd41bbad2e2df5061b564ba2c7e8f02a425ba7865a768d7fcd9ea8e",
+      "bytes": 11828
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-proposal/source-comparison.json": {
+      "sha256": "d23fca9f5345cd676b367d8939fc6b82663d623b615e0e13e0ee51f4d68ae574",
+      "bytes": 3748
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/README.md": {
+      "sha256": "e71d5fa307d0c2feadb7d28224493fa34b41e5b2de285c1026a5ea1ec6a226a0",
+      "bytes": 3985
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/index.json": {
+      "sha256": "ce543bfa47e29ed006502d03f92ee2bf3e99505fbd156faf8eff0e33bf64df89",
+      "bytes": 3803
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/rendered-TIRUST_interface.f": {
+      "sha256": "ee691e92cea6ad69dc67b2e3fc1527773b379353d37ec4b8f7afab2bcddf8eae",
+      "bytes": 15072
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/source-comparison.json": {
+      "sha256": "134be92c59f639d79b56416de009309a62ef122253a55797fe6bea579909310c",
+      "bytes": 3009
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/source/TIRUST_interface.inc": {
+      "sha256": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b",
+      "bytes": 14339
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/source/test_tirust_fortran.py": {
+      "sha256": "74b02f5d373fa515c440b0d59a3ad1654c7c7fcb15c7707f5c5b8aa00b486d1a",
+      "bytes": 21436
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/tests.json": {
+      "sha256": "a3393d74d52c86018ab996e878d68abf0779767159e308c2634cf46f381bc676",
+      "bytes": 1680
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/unittest.log": {
+      "sha256": "b49ef25879ffe98870e6cd0ee8c1da288d01978ae0b9430daa4bc0d54ed72788",
+      "bytes": 772
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/README.md": {
+      "sha256": "d9f579b0094cdf89b4699a06e117bf03e144c94f155637b6ed92196d1811879e",
+      "bytes": 2944
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/original/cause-public.txt.gz": {
+      "sha256": "c52c5a6ea612c7b6bc78c0f2b209c2dc301e4d4ef7a58403f19514ee3b59bb05",
+      "bytes": 17875
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/original/points.dat.gz": {
+      "sha256": "b5fbce6715d330ac2ef3aaaf15479900f08913284f4cb9fa006182529616dd7d",
+      "bytes": 14046
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/original/points.json.gz": {
+      "sha256": "128879073b9c9f7a11c5b763b9b84f8d7d6eedd179b60630e97652a5e5624bc6",
+      "bytes": 14723
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/original/warmup.dat.gz": {
+      "sha256": "69489807fe7c3d2bf8e1fddb49058938871c93e57669b3a1f4165252227943a1",
+      "bytes": 7490
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/baseline-1/dimensions.dat.gz": {
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29",
+      "bytes": 28
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/baseline-1/ready.json.gz": {
+      "sha256": "2167e9b6d3340f888be63a5edbfbc5885eae841b73910eaa4f846fe1a492e1f0",
+      "bytes": 84
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/baseline-1/warmup.dat.gz": {
+      "sha256": "2ef2a7d038003524663e81e082c23f49d632797eaae0594f8c8812a6d38a71c0",
+      "bytes": 7588
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-1/dimensions.dat.gz": {
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29",
+      "bytes": 28
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-1/ready.json.gz": {
+      "sha256": "64e3036980902c051d84e1799fcd1e36c801237c720adc4f0e3025809d11ea88",
+      "bytes": 85
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-1/warmup.dat.gz": {
+      "sha256": "2ef2a7d038003524663e81e082c23f49d632797eaae0594f8c8812a6d38a71c0",
+      "bytes": 7588
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-6/dimensions.dat.gz": {
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29",
+      "bytes": 28
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-6/ready.json.gz": {
+      "sha256": "c7e24c2d0ddc7057aa52971ebb411e28be53caef773784d8ffe1f6e3b944ab49",
+      "bytes": 85
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-6/warmup.dat.gz": {
+      "sha256": "2c24b1fe0b1f9058af94c35036e29cb6762131dd1053096b0337ab5bdbe382e3",
+      "bytes": 7620
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-7/dimensions.dat.gz": {
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29",
+      "bytes": 28
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-7/ready.json.gz": {
+      "sha256": "0ba8a92ac414b4ba284c0a2cdf7bb54ddc10f2644094a4d12fbacd5588c988ab",
+      "bytes": 85
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-7/warmup.dat.gz": {
+      "sha256": "d7ca506908505b37f2e44e8709917111cb10d5270b0ec89d27bd3b8705589f5c",
+      "bytes": 7633
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-8/dimensions.dat.gz": {
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29",
+      "bytes": 28
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-8/ready.json.gz": {
+      "sha256": "067aa954f6fe506418cf257d8a667c591ddeecc25cb19e97533d2a4b59e715aa",
+      "bytes": 84
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-8/warmup.dat.gz": {
+      "sha256": "8d0b6a8b611a31705c865e46ffa64b8fddc77fcd64d0fa9ff4d8ced542768df1",
+      "bytes": 7600
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-9/dimensions.dat.gz": {
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29",
+      "bytes": 28
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-9/ready.json.gz": {
+      "sha256": "cc4958977fbb8111bc43934b28f83fc6868959da0e4195414422f433dcf20659",
+      "bytes": 82
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/reference/candidate-9/warmup.dat.gz": {
+      "sha256": "69489807fe7c3d2bf8e1fddb49058938871c93e57669b3a1f4165252227943a1",
+      "bytes": 7490
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/Cards/ident_card.dat.gz": {
+      "sha256": "ee26f6d0de9ca022e4a2a383ab97a45d86c4b54edae1f5de79c28bf1b3e183a9",
+      "bytes": 164
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/Cards/param_card.dat.gz": {
+      "sha256": "dfae8ac50aaec87b4e8e25f0db567aa2db963d45395b73669022217a2a893439",
+      "bytes": 757
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/MadLoop5_resources/ML5_0_ColorDenomFactors.dat.gz": {
+      "sha256": "7ff14e8c02992f394ffc9d35fd2b92620f5307d361c2ecbd470fb75b159891ba",
+      "bytes": 81
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/MadLoop5_resources/ML5_0_ColorNumFactors.dat.gz": {
+      "sha256": "3d3e9791ce6890b18d6468ff18e8bddb5194837d5ee3cc619530b32028b0be61",
+      "bytes": 111
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/MadLoop5_resources/ML5_0_HelConfigs.dat.gz": {
+      "sha256": "741b229f9844b3f8267745dec693f28fb7ca3739e656ac8171d5eedb793cc51c",
+      "bytes": 96
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/MadLoop5_resources/MadLoopParams.dat.gz": {
+      "sha256": "01964d08ef58f251a8025ef30041a954aba0e119c56a5bc25a9bcb573acb95e6",
+      "bytes": 4825
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/MadLoop5_resources/ident_card.dat.gz": {
+      "sha256": "ee26f6d0de9ca022e4a2a383ab97a45d86c4b54edae1f5de79c28bf1b3e183a9",
+      "bytes": 164
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/MadLoop5_resources/param_card.dat.gz": {
+      "sha256": "dfae8ac50aaec87b4e8e25f0db567aa2db963d45395b73669022217a2a893439",
+      "bytes": 757
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/cause-public.txt.gz": {
+      "sha256": "5f060048656b8a5385b3d480060e0ca42999ec70225f1649dfb0aa1ef22e9867",
+      "bytes": 18070
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/dimensions.dat.gz": {
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29",
+      "bytes": 28
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/execution.json.gz": {
+      "sha256": "c86977f5e20325219c3b393ab687aec91adbe81b48c4d888e244825ccfe9a6f8",
+      "bytes": 2704
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/param.log.gz": {
+      "sha256": "9376c3120049be5a0ddb95727aa0fc42401929aed3a4756693cdb41deaf10e6e",
+      "bytes": 183
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/points.dat.gz": {
+      "sha256": "b5fbce6715d330ac2ef3aaaf15479900f08913284f4cb9fa006182529616dd7d",
+      "bytes": 14046
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/points.json.gz": {
+      "sha256": "128879073b9c9f7a11c5b763b9b84f8d7d6eedd179b60630e97652a5e5624bc6",
+      "bytes": 14723
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/process-maps.txt.gz": {
+      "sha256": "a9ea4d6fd7d7397a879b8b9a9993f691824dcf3c16911c78082e861ffab6ae9d",
+      "bytes": 1594
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/protocol.raw.gz": {
+      "sha256": "82dc9e8205b2cfccf05bfcb6591c4a38b3ee7e78bb84cc97d95a70ea167630ce",
+      "bytes": 60
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/qualification.json.gz": {
+      "sha256": "9237f5b4fd34e763fe1e4dbaa2fcce221c6e637b555a4e0e99d11f9e43bb04e7",
+      "bytes": 2827
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/results.json.gz": {
+      "sha256": "292485a6b09d20a83d507a525d45bb263ac426ef78bc3f35209c87b02b9fc80d",
+      "bytes": 127121
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/stdout.log.gz": {
+      "sha256": "12f6634b9502feebcb6759fbc2ab773d25467f24c777213ae3d712cd6e5e62fe",
+      "bytes": 889
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/run/warmup.dat.gz": {
+      "sha256": "f7cbfef927dd12c5ed30b69f0844b386799717746d900e001ffa44e421e72e5c",
+      "bytes": 7650
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/source/docs/benchmarkfolder/experiments/dp-rescue-cause-observer/analyze.py.gz": {
+      "sha256": "90c62fd06ea68f4ffb07cfd967619f625a4d2bb719e313b0b4ab922cb5985b99",
+      "bytes": 9906
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/source/docs/benchmarkfolder/experiments/dp-rescue-cause-observer/protocol.py.gz": {
+      "sha256": "fc03504761afd5446aa9a1868864b1c551175a004d28189bee8b53bce6f10f34",
+      "bytes": 5594
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/source/docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/runtime-1/run.py.gz": {
+      "sha256": "07e2d6016f44bd1525a8bf8d04bb08a1b296f34dd894c9843fe8fda8f09538b5",
+      "bytes": 3356
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/source/prepared.json.gz": {
+      "sha256": "e44693cd944933984171e4a106a8780e93f7122394195a79531fd6e580b0422a",
+      "bytes": 103446
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/source/tools/tirust_benchmark.py.gz": {
+      "sha256": "bb5f257125246766f70a061a4905f2e2fa94eb084ab0c039d0f7d7b56f4c5fbb",
+      "bytes": 23934
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/source/tools/tirust_benchmark_warmup.py.gz": {
+      "sha256": "2b6b62ff29d89d3b7c73e2d99b0885b4300dc823dff9ebe2fa01e4fd5fb08a57",
+      "bytes": 2493
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/evidence/source/tools/tirust_benchmark_worker.py.gz": {
+      "sha256": "9e548d65dd773c79d5323c41c7a1a5c537a28e80953ab53f04503a906024a684",
+      "bytes": 5913
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/index.json": {
+      "sha256": "7aa5cbe23c6b787cc57a9a58d323db8a8acdd4b6f3bf54d6e07f268a50a55fde",
+      "bytes": 43245
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/package.py": {
+      "sha256": "f92252796cdc4f4dd7573f395c68fdfe9fddb8c97476130d02035b201af7bddc",
+      "bytes": 17904
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/packaging-start.json": {
+      "sha256": "4645ea53d92e69666b5b34b6e91bbf5d12cae0aa0f682581741be15838b7d1cf",
+      "bytes": 307
+    },
+    "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/summary.json": {
+      "sha256": "0fb4b028a42b9e3ad3ce71bf7d4ba970df4ce64dc02284121ed4014c5f28fd2a",
+      "bytes": 3473
+    },
     "experiments/ew-qp-mass-prototype/evidence-index.json": {
       "sha256": "9c9725ed41fe6484bbfa7eaa14f5143e91bda235771ab281fa7ecfd8ddec2234",
       "bytes": 4688
@@ -12581,6 +14113,506 @@
     "experiments/ew-threshold-adjudication/tensor-replay/input-consistency/audit.py": {
       "sha256": "0cbb8734403893b1644cb6782db8697a1a91130e8e2a16f224ba4b0b3a6a2d63",
       "bytes": 4090
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/README.md": {
+      "sha256": "c8008dfbb78b7f7d57fa70e40a95766b6b7901039f5aff9da9790ae5fdfa5a43",
+      "bytes": 2533
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/copies.json": {
+      "sha256": "e25f55605a7512a446dbedb668bdaae93334cc6bfeb911c05ec8acc455d0fa77",
+      "bytes": 25251
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/controls/ew/observer.txt.gz": {
+      "sha256": "328ca0628059fe8916658b53f100fc86c14fc70a32397ec14acf828c7d59677b",
+      "bytes": 395034
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/controls/ew/records.txt.gz": {
+      "sha256": "bbcf1b83b3b22b9aacec9d840be2ce25ef32d21cc2a9ee90a792deb73ac898d3",
+      "bytes": 1015066
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/controls/qcd/observer.txt.gz": {
+      "sha256": "1456b3792562155b4cb1ba4eabd8601d85316532780062991d1059759da72534",
+      "bytes": 359998
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/controls/qcd/records.txt.gz": {
+      "sha256": "b52f008247a561f969a25d4f766f466ced932608d04a0fdb8eaedf1c75aee1f3",
+      "bytes": 772501
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/console.log.gz": {
+      "sha256": "84d89f904fcb759cd088a43e75ed2aa2b786424ef8b2a757d52ea4b1295508df",
+      "bytes": 166
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/execution.json": {
+      "sha256": "df5f2a27e0df63b6063ce723316ee7ab494f24c4fba106ab816144598eebcabf",
+      "bytes": 31098
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/loader.log.gz": {
+      "sha256": "70297ccd09fcbb69dd93870c64e56502d11fa96e7bce2d6cd3bd0475355949fc",
+      "bytes": 520
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/maps.snapshots/complete.txt.gz": {
+      "sha256": "b18c6f093b9b08b75d6414ec250bed23696d2799264e337b68d547a485ecdf59",
+      "bytes": 1504
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/maps.snapshots/first-incomplete.txt.gz": {
+      "sha256": "094714a135b9def12806341a6d9d157c1a5578681cab74482e476c885ab65913",
+      "bytes": 566
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/maps.snapshots/first-nonempty.txt.gz": {
+      "sha256": "094714a135b9def12806341a6d9d157c1a5578681cab74482e476c885ab65913",
+      "bytes": 566
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/maps.snapshots/first-read.txt.gz": {
+      "sha256": "094714a135b9def12806341a6d9d157c1a5578681cab74482e476c885ab65913",
+      "bytes": 566
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/maps.snapshots/last-incomplete.txt.gz": {
+      "sha256": "094714a135b9def12806341a6d9d157c1a5578681cab74482e476c885ab65913",
+      "bytes": 566
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/maps.snapshots/last-nonempty.txt.gz": {
+      "sha256": "b18c6f093b9b08b75d6414ec250bed23696d2799264e337b68d547a485ecdf59",
+      "bytes": 1504
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/maps.snapshots/last-read.txt.gz": {
+      "sha256": "b18c6f093b9b08b75d6414ec250bed23696d2799264e337b68d547a485ecdf59",
+      "bytes": 1504
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/maps.txt.gz": {
+      "sha256": "b18c6f093b9b08b75d6414ec250bed23696d2799264e337b68d547a485ecdf59",
+      "bytes": 1504
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/nominal/ident_card.dat.gz": {
+      "sha256": "ac289fce48ab1f91f82c90219a24390e4b4cb46c7bbe7be63a999130c02a836a",
+      "bytes": 164
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/nominal/param_card.dat.gz": {
+      "sha256": "44d9f2a12487e56c0a174ca3d25c2f5cf7aa8bd5dcc75ac8f271227c7eca5b26",
+      "bytes": 753
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/observer.txt.gz": {
+      "sha256": "d70b3c3d3c441b3c46f80955ad161d27bdcc8e075904d665e606834308718c65",
+      "bytes": 133762
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/param.log.gz": {
+      "sha256": "779f567584fd970973368fcc36cdc0d5c7994f694ddf3d280b1d1a1064e5cef1",
+      "bytes": 180
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/point.dat.gz": {
+      "sha256": "718f45882850ce12d3c25080afefc1c230510fbfe717a264a5bcb78bfe8fc963",
+      "bytes": 244
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/records.txt.gz": {
+      "sha256": "5600a860e0d501e80e387651b30f7df6c47ee969b1249dfa1f4a5e71d6b0f3f8",
+      "bytes": 341798
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/results.json": {
+      "sha256": "9eabaa9198e2575f17993c990e65d5a5ca0cd57d6e58c46ba1b83ade8ed55705",
+      "bytes": 58491
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/data/run1/schedule.dat.gz": {
+      "sha256": "959d38b89bf4e6df8664bd16c13b4be5d2010e5bbd6d02a1427ae38a6ba55abd",
+      "bytes": 120
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/.benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/Cards/param_card_default.dat": {
+      "sha256": "1021dca10f11bb82d06080dfd61b8a04e9b9429e75f23d42625a2d741b56d2f8",
+      "bytes": 4958
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/analyze.py": {
+      "sha256": "d3e6583162f3e3efe74bf933cda34e82eb0d8f606f752c475d15c6a3ac06eb4e",
+      "bytes": 24764
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build-plan.json": {
+      "sha256": "69333b95bd0eff677948ac9c75d311989e3bc74d4df8f915304456e087334047",
+      "bytes": 84027
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build1/archive.json": {
+      "sha256": "dc5fcf8ea9c52c2ede4db605e8aaea2a554ed638fafda7190e1e885fc4473d40",
+      "bytes": 2545
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build1/build.json": {
+      "sha256": "906e752fd9f3970fe9b5388c589e852544466d972221bced3ec04db2bc67533a",
+      "bytes": 51668
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/README.md": {
+      "sha256": "f767d8eab390ff47c8981ac3ff98ee8a9e64e97647ab8c981877b90f0a7b06a5",
+      "bytes": 2598
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/analyze.py": {
+      "sha256": "8a60f9e9145a3ed245c8f4d6595e9c8265fe460ea899c898ca4544da4471b6b8",
+      "bytes": 2632
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/build1/build.json": {
+      "sha256": "adef9bdc409518c346514cba95de2d04e4d51db90b4b4df9bb0ca64514e2b412",
+      "bytes": 49326
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/build1/copies.json": {
+      "sha256": "500bcf75a81ccbbc79d3351c738244a7f4c72250e47a775581c2c7f38b4b7fa7",
+      "bytes": 1041
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/build1/evidence-index.json": {
+      "sha256": "909755618b00887ed5089e9c9991b6b3087b4c2ede68cb4f9fbae931def493b2",
+      "bytes": 693
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/controller.py": {
+      "sha256": "fcaa871f6c5b6bc880b0c9c315d151ac27c04e63751d46e7309065e2d32aeeb4",
+      "bytes": 9702
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/driver.f": {
+      "sha256": "d903a0fd7e0f609dea218df6a3ee55eb91109772b432879906c59075ca84a27c",
+      "bytes": 9418
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/fixture.json": {
+      "sha256": "49b0b1e70a153c8599c3742625f0b00f01214cb67ee6ab7536278c85c5b0727c",
+      "bytes": 670
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/schedule.dat": {
+      "sha256": "18a02dd6b71953322c598511a6b62dde131b7050722b09fd6bd98b7036c7c0c8",
+      "bytes": 498
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/schedule.json": {
+      "sha256": "639daccccd7a8bdab4eb41f18c71e015f18025bbbad006e09a56b99d6d59b502",
+      "bytes": 3183
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/source-index.json": {
+      "sha256": "9ae56e046cced87962495ce875c0466743bd76740013e07bef9d0f6aeed11982",
+      "bytes": 3000
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/width-origin-card.dat": {
+      "sha256": "1021dca10f11bb82d06080dfd61b8a04e9b9429e75f23d42625a2d741b56d2f8",
+      "bytes": 4958
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/driver.f": {
+      "sha256": "3e9ac28982f957438d66eb3f6b0c9bc386f88fc082a925d93b5fff470bdce87a",
+      "bytes": 9414
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/monomials.json": {
+      "sha256": "dd94f11fb9e262a3abf891ecf12ea1e9fe34467d7e10bdb49bb96b295bce5726",
+      "bytes": 2941
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/review-index.json": {
+      "sha256": "38b30cda616b7ef9d589b8c83a0d4e1eaa8699397d567d97c8517695a80f72fb",
+      "bytes": 5894
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/run.py": {
+      "sha256": "8fd4ee125e8169f1e8cd232c16cca2ab58ac0844fdb9083c75553448eeffd8d2",
+      "bytes": 11822
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/runtime1/copies.json": {
+      "sha256": "ba5d89b6233cccd51df56bed3c1acc26d3b3903108ed02988f730334cdc5da1f",
+      "bytes": 8235
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/runtime1/evidence-index.json": {
+      "sha256": "73056ddbe46cbe5f83ad2c1b26e9b10ed7b79b39d98a651388b813e95fa262b5",
+      "bytes": 3841
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/runtime1/execution.json": {
+      "sha256": "b7930275a8a61b043d308d6cca1f556d20594d8181da191589df5e64663cad62",
+      "bytes": 59585
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/schedule.json": {
+      "sha256": "8b216ead16ded0bd985db5b326541fedcc94a48f8af7abc76e829dbf2a9e82a7",
+      "bytes": 26160
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/index.json": {
+      "sha256": "6f6bf5e20eb4ac27d6d6364193d93068db65953b6d8fc93b5a9421dd7423fc52",
+      "bytes": 10018
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/replay.py": {
+      "sha256": "253b333980dc91bde5037838ab30eb0f6416162787a81139c8741dc8b484d904",
+      "bytes": 9304
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/summary.json": {
+      "sha256": "914fe928954c11cc3f8e483a1e323a538ec8c74a86805fc8f48b9a0d03f1b2ce",
+      "bytes": 1116
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/README.md": {
+      "sha256": "2acbb9174dc40ca133bf227a35094630b8f9c512bb798c61cdce8c064791b9ab",
+      "bytes": 8604
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/analysis.json": {
+      "sha256": "92b5a3844de7d0a9ffa667aff23039d4d96d48e6ec2adc253cf751b4d143c8b1",
+      "bytes": 147713
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/audit.py": {
+      "sha256": "3b5ebf2797ce8f5eccd377ebd70f0bc18b9a34c0be57502d5344466bba93bfb0",
+      "bytes": 14627
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/bindings.json": {
+      "sha256": "491892e845d041064c5f9cce0b91a210b780624e51d4f48e914d785c99aec4c0",
+      "bytes": 6468
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/collier-identity.json": {
+      "sha256": "c0b4043ea61b4df45c474a1e698670b978d62ab1a26bea09f85b77e7a037bbac",
+      "bytes": 292
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/index.json": {
+      "sha256": "5c669260ad17e9d1ef2b7991bf90720a7b22190607ea1b82df035da2f6afd3f1",
+      "bytes": 955
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/rows.json.gz": {
+      "sha256": "729abf58745f554684eae4e2020c52280bcb3658becf80f2cec85f3540a3f74a",
+      "bytes": 131918
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/source-excerpts.json": {
+      "sha256": "7a3439fe45f224be054cf50d13b8d2c4ef3d2b61d976df099798db5013213694",
+      "bytes": 14875
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/README.md": {
+      "sha256": "bca70c8a41f34fe9d0fb1458cf74bd1d00e65ef88e88ace5f1449c5b1aefe0a3",
+      "bytes": 2521
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/copies.json": {
+      "sha256": "d6fbd71095f6391879edb4c78efff4bae8ea653465c868547ab557595fabead6",
+      "bytes": 5615
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/console.log": {
+      "sha256": "25ea459bb951898115d8427c901db12ab3c706280e66732ceb3d5717c03c457f",
+      "bytes": 793
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/execution.json": {
+      "sha256": "6e8f37d337f8475495d7e90df7ef746fbd846307cf0908cf89b3d643fd1b8cf1",
+      "bytes": 30171
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/loader.log": {
+      "sha256": "0dff76b6d91409d03aa0f15930c6633e4c8d56eb90276728f36dde901203d9ef",
+      "bytes": 1841
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/maps.snapshots/complete.txt.gz": {
+      "sha256": "c5934cacd7b01886cf5fbe07cfb435ee6690bad5ee32b9101ff505f8ceb9ab6f",
+      "bytes": 1512
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/maps.snapshots/first-incomplete.txt": {
+      "sha256": "5dca9d03f08f3a17af84d64c608f4618762dcd57566d38f6809adac1da10275e",
+      "bytes": 8910
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/maps.snapshots/first-nonempty.txt": {
+      "sha256": "5dca9d03f08f3a17af84d64c608f4618762dcd57566d38f6809adac1da10275e",
+      "bytes": 8910
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/maps.snapshots/first-read.txt": {
+      "sha256": "5dca9d03f08f3a17af84d64c608f4618762dcd57566d38f6809adac1da10275e",
+      "bytes": 8910
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/maps.snapshots/last-incomplete.txt": {
+      "sha256": "5dca9d03f08f3a17af84d64c608f4618762dcd57566d38f6809adac1da10275e",
+      "bytes": 8910
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/maps.snapshots/last-nonempty.txt.gz": {
+      "sha256": "c5934cacd7b01886cf5fbe07cfb435ee6690bad5ee32b9101ff505f8ceb9ab6f",
+      "bytes": 1512
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/maps.snapshots/last-read.txt.gz": {
+      "sha256": "c5934cacd7b01886cf5fbe07cfb435ee6690bad5ee32b9101ff505f8ceb9ab6f",
+      "bytes": 1512
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/maps.txt.gz": {
+      "sha256": "c5934cacd7b01886cf5fbe07cfb435ee6690bad5ee32b9101ff505f8ceb9ab6f",
+      "bytes": 1512
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/nominal/ident_card.dat": {
+      "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40",
+      "bytes": 389
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/nominal/param_card.dat": {
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+      "bytes": 4538
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/observer.txt.gz": {
+      "sha256": "18f731b47a471e1043ba4f4ac198dc8817a8c11336de9d0d76b5e30dd880accd",
+      "bytes": 114115
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/param.log": {
+      "sha256": "0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635",
+      "bytes": 936
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/records.txt.gz": {
+      "sha256": "7f4f4442a1bc475ef6d1ca2216102cff04d9cbf391bc2ef43265f2327c2843cb",
+      "bytes": 407290
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/results.json": {
+      "sha256": "6dacc4651d0017b8ebacdce331bf68643c10185974e36d914a5f54d44e3dd81c",
+      "bytes": 18079
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/data/schedule.dat": {
+      "sha256": "5649873a7e772f4480e4c652d5bbac5eaf2ae08cce4e7370c63a572d02cc75f2",
+      "bytes": 1053
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen-sources.json": {
+      "sha256": "6babcbddd1aa58e6a95c845d41df644fde838505e37141bba5095d2585ef1245",
+      "bytes": 11937
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/analyze.py": {
+      "sha256": "d3e6583162f3e3efe74bf933cda34e82eb0d8f606f752c475d15c6a3ac06eb4e",
+      "bytes": 24764
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build-plan.json": {
+      "sha256": "69333b95bd0eff677948ac9c75d311989e3bc74d4df8f915304456e087334047",
+      "bytes": 84027
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build1/archive.json": {
+      "sha256": "dc5fcf8ea9c52c2ede4db605e8aaea2a554ed638fafda7190e1e885fc4473d40",
+      "bytes": 2545
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/build1/build.json": {
+      "sha256": "906e752fd9f3970fe9b5388c589e852544466d972221bced3ec04db2bc67533a",
+      "bytes": 51668
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/controller.py": {
+      "sha256": "fcaa871f6c5b6bc880b0c9c315d151ac27c04e63751d46e7309065e2d32aeeb4",
+      "bytes": 9702
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/cms-width1/source-index.json": {
+      "sha256": "9ae56e046cced87962495ce875c0466743bd76740013e07bef9d0f6aeed11982",
+      "bytes": 3000
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/README.md": {
+      "sha256": "de0935c4df485632c8e8c7999e8858dde191bcf131f95383f05037f4bcbe9513",
+      "bytes": 3489
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/analyze.py": {
+      "sha256": "311b14ac14b258cc0ac589bb6ec2361c6d93d999a1815242d404eeca5bfbcb14",
+      "bytes": 9684
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/0.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/1.log": {
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51",
+      "bytes": 314
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/README.md": {
+      "sha256": "7ea4969bb1180efe7715a08de73173c701a1ee6e6fc90c22a0ea1b64ad54eb32",
+      "bytes": 459
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/build.json": {
+      "sha256": "a45c87070daf842e7c33acb36ead395ca1748b732199ed9038c0fc50222de350",
+      "bytes": 49356
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/copies.json": {
+      "sha256": "8672482af1a7ccec8514a917243bd2468bbc4130c8b5d999a6068cef0e47c1db",
+      "bytes": 1041
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/evidence-index.json": {
+      "sha256": "26e2ec613daf4c9876c318fc2a7ae0d08ded1c335a829dd3fd21d3f40dcf4344",
+      "bytes": 693
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/build1/link.map.gz": {
+      "sha256": "66e851c33945635f034a99206db776fe2e220b8953c9e791f8746d3def19c716",
+      "bytes": 1727478
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/controller.py": {
+      "sha256": "4007fd7f065e525d64b80106039df6aef71329162bc561a44e13e89d03c65f3e",
+      "bytes": 1992
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/driver.f": {
+      "sha256": "b3d70c1a07910dcd88cfcba0cc54a92f6c8fa6ab531072ea7ae9be360d2c2059",
+      "bytes": 9246
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/driver.patch": {
+      "sha256": "304f1f7575b1d80abf60399898d7b1d54d7424efc71e49915115e208b2501fe9",
+      "bytes": 3863
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/fixtures.json": {
+      "sha256": "180cb642d3886dab8055a70a7f4fef6586e2b2c635e998aab0066e95886f53f4",
+      "bytes": 8585
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/q0-source-audit.json": {
+      "sha256": "c84c8bd9ac0fe285435e74bacf7928f8c6be50da3a90c8c120a89656f77d15e2",
+      "bytes": 2301
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/schedule.dat": {
+      "sha256": "5649873a7e772f4480e4c652d5bbac5eaf2ae08cce4e7370c63a572d02cc75f2",
+      "bytes": 1053
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/schedule.json": {
+      "sha256": "00d56063dd164fb6d327f8c38cebc8d28d2c6f874144bd382667286bfd0dc37f",
+      "bytes": 6423
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/source-check.txt": {
+      "sha256": "93f7eb6c56dcd8137807350781af2ee4ba10900ee514815f18921111ac96eba4",
+      "bytes": 129
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/source-index.json": {
+      "sha256": "1573321dfc2c2e22295a21e61b37887e85f5dc0480b2a8a09666a55bdfe60ae2",
+      "bytes": 4032
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/verify_fixture.py": {
+      "sha256": "01500d39a6123713bdbd4fa03579d322f28ca28a5c0e91c49b1a1a51318da653",
+      "bytes": 3976
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/cap_collier.f": {
+      "sha256": "26c5a83505d0a564e2ba459a62b4fadf358bc5019e7a512d76e3bd7d628ea756",
+      "bytes": 31641
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/cap_tirust.f": {
+      "sha256": "4a336465f6e239b6f0a344b162938ade7d839b1a6989a0ae30e61779108e5bfc",
+      "bytes": 14078
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/driver.f": {
+      "sha256": "3e9ac28982f957438d66eb3f6b0c9bc386f88fc082a925d93b5fff470bdce87a",
+      "bytes": 9414
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/review-index.json": {
+      "sha256": "38b30cda616b7ef9d589b8c83a0d4e1eaa8699397d567d97c8517695a80f72fb",
+      "bytes": 5894
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/run.py": {
+      "sha256": "8fd4ee125e8169f1e8cd232c16cca2ab58ac0844fdb9083c75553448eeffd8d2",
+      "bytes": 11822
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/runtime1/evidence-index.json": {
+      "sha256": "73056ddbe46cbe5f83ad2c1b26e9b10ed7b79b39d98a651388b813e95fa262b5",
+      "bytes": 3841
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/runtime1/execution.json": {
+      "sha256": "b7930275a8a61b043d308d6cca1f556d20594d8181da191589df5e64663cad62",
+      "bytes": 59585
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": {
+      "sha256": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16",
+      "bytes": 34634
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": {
+      "sha256": "29dcb05866279d2039676a7fb369c068483fa556767254b15b399b736d289692",
+      "bytes": 10645
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/frozen/repo/madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": {
+      "sha256": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec",
+      "bytes": 11432
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/index.json": {
+      "sha256": "b25130768bc8a5f8daabbcfe820160755b41b4dd2e558cd0b1a87aa49e1f6ec7",
+      "bytes": 11780
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/replay.py": {
+      "sha256": "a84bd0e0438bbc12cfc77b5c31b090358f78b0f24336aeb342267f60376dff91",
+      "bytes": 5973
+    },
+    "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/summary.json": {
+      "sha256": "6146fdc8f56d31527b1136bb9f24dbefe49cc266c25aee7fba0ce5692158a807",
+      "bytes": 2864
+    },
+    "experiments/installer-metadata-promotion-1/README.md": {
+      "sha256": "cd551825196dd6c23c9e061ef580c09b62717dd527e3c7b856195f2dd2e3cf78",
+      "bytes": 764
+    },
+    "experiments/installer-metadata-promotion-1/index.json": {
+      "sha256": "1e001b963fe1bfae886edf7cf38ede97cc8499086b0223d6b356ec5652fe3f17",
+      "bytes": 628
+    },
+    "experiments/installer-metadata-promotion-1/qualification.json": {
+      "sha256": "89a80f4a0a7c97a885154031c56b4d84e21c183836b24a49862d7c7b17490c54",
+      "bytes": 1221
+    },
+    "experiments/installer-metadata-promotion-1/test_tirust_install.py": {
+      "sha256": "e29c11ed4c57011025215f6735ad56c85972c3be04711fae6afb58feb558b6b7",
+      "bytes": 27547
+    },
+    "experiments/installer-metadata-promotion-1/tirust_install.py": {
+      "sha256": "4397d9f60e146354154cde942c20e01a086cf25797e41ddea6ac5054a563663e",
+      "bytes": 25573
     },
     "experiments/numerical/strict-policy-qcd-n3/baseline-1/baseline-inputs.json": {
       "sha256": "0a56c4abe6a272f69f9d28bb9740519efb1eb8ac93ee847e601b18d43e34e649",
@@ -15095,8 +17127,8 @@
       "bytes": 29655
     },
     "campaign_report.py": {
-      "sha256": "45666ec29ee09019aea38aad913a3f9569d9c3b86441249e0c13ca91414fcfa3",
-      "bytes": 13744
+      "sha256": "c723d2e790d491ecd3653b210307ab2caa0562c840c5e65675d9c95f94a2c115",
+      "bytes": 14282
     },
     "campaign_report_numerical.py": {
       "sha256": "63ae9db2ef98db7269d7290b68feb5a02ae0c454e88086b0644253ebef8c4192",
@@ -15119,19 +17151,35 @@
       "bytes": 19180
     },
     "campaign_report_refresh.py": {
-      "sha256": "5a7c30439ffcd695fff91579e1123fbdf0bbb105781b8a0ab72a6333bade15d4",
-      "bytes": 9545
+      "sha256": "a1acbee40ee639b875a370e70b9b04a31593e594c927a84a6c70a33df58bdb32",
+      "bytes": 13973
+    },
+    "campaign_report_provisional.py": {
+      "sha256": "659dd893cab5f08c66caf614a0dc402d539524d9e3ebf69261b2ac30a30fa606",
+      "bytes": 12986
+    },
+    "campaign-provisional.typ": {
+      "sha256": "64efa538294293bb155ce7598751d6f7bac75a3de4d17c1d613e1080dbfd3018",
+      "bytes": 5568
+    },
+    "campaign_report_implementation.py": {
+      "sha256": "ab9deeaeefd48738ddacc0fb6ee07afe763fc66c30ba6e7a506a658c8230741e",
+      "bytes": 23161
+    },
+    "campaign_report_implementation_runtime.py": {
+      "sha256": "00712c2e828dcbc81f96509b2279e8980a9675455b39d991c1d86dc42fff1811",
+      "bytes": 34493
     },
     "campaign-report.typ": {
-      "sha256": "1011349d9ff9028f24b4acae5787de7c862b07d6e1455d044add5eca501b071e",
-      "bytes": 12913
+      "sha256": "f82d323253f97a24f2b237a5adda9f904d7908a7a4fe11ef17b86251847a4ad3",
+      "bytes": 15594
     },
     "campaigns/split-dp-terminal-1/report-context.json": {
-      "sha256": "431aae844b0a3f5f0be3dfbb515fc7c52d8ed342518fa0919f13409c0bc20b40",
-      "bytes": 1096
+      "sha256": "b37497a36d32b7c53d55166ce3333fea01865fa9e1d76c89d16c53a0c7a406e2",
+      "bytes": 1108
     }
   },
-  "pdf_sha256": "6578a5d5d5d43c9e0fa276ce88417273a20bce14491de1ae25a1dc7c30379928",
+  "pdf_sha256": "02428f3a7659b33ab55ea116288963f1d9b470ea1bc3a7d2877d1f60fc38387f",
   "campaign": "split-dp-terminal-1",
   "typst_inputs": {
     "summary": "campaigns/split-dp-terminal-1/summary.json",

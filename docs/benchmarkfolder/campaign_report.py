@@ -212,7 +212,8 @@ def collect(evidence, campaign_id, selection_path=None):
         result["refresh"] = document_module("campaign_report_refresh").supplement(evidence, selection, result)
         for key in ("eight_main_runtime_gates", "existing_backend_regressions", "paired_campaign_overall"):
             result["criteria"][key] = "deferred to Hua-Sheng"
-        result["criteria"]["installer_metadata_hardening"] = "open"
+        installer = result["refresh"].get("implementation_supplement", {}).get("strict_installer_promotion")
+        result["criteria"]["installer_metadata_hardening"] = "passed" if installer == "applied; recorded tests passed" else "open"
         result["delivery_complete"] = False
     return result
 
@@ -236,6 +237,12 @@ def validate(inputs, path, manifest, summary):
         inputs.add(name)
     if dossier.get("selection_path") is not None:
         inputs.add("campaign_report_refresh.py")
+    if dossier.get("refresh", {}).get("provisional") is not None:
+        inputs.add("campaign_report_provisional.py")
+        inputs.add("campaign-provisional.typ")
+    if dossier.get("refresh", {}).get("implementation_supplement") is not None:
+        inputs.add("campaign_report_implementation.py")
+        inputs.add("campaign_report_implementation_runtime.py")
     return dossier
 
 

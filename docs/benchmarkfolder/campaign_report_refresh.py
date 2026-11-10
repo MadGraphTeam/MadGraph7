@@ -52,6 +52,48 @@ def selection(evidence, path, manifest, config):
     return value
 
 
+def next_campaign(evidence, selected, report):
+    """Bind a fresh source registration without importing any of its results."""
+    require(set(selected) == {"manifest", "summary"}, "Unknown next-campaign selection")
+    for pin in selected.values():
+        require(set(pin) == {"path", "sha256"} and isinstance(pin["sha256"], str)
+                and len(pin["sha256"]) == 64 and all(c in "0123456789abcdef" for c in pin["sha256"]),
+                "Next campaign requires exact manifest and summary pins")
+    manifest = evidence.json(selected["manifest"]["path"], selected["manifest"]["sha256"])
+    summary = evidence.json(selected["summary"]["path"], selected["summary"]["sha256"])
+    require(manifest.get("schema") == "madloop-tirust-campaign-v1"
+            and manifest["id"] != report["campaign_binding"]["id"]
+            and summary["campaign_binding"] == {"id": manifest["id"], "manifest_sha256": selected["manifest"]["sha256"]},
+            "Next registration is not a separately bound campaign")
+    candidate = manifest["candidate"]
+    require(candidate["exporter_identity"]["dirty"] is False
+            and candidate["exporter_identity"]["files_sha256"] != report["registered_source_sha256"]
+            and manifest["baseline"]["revision"] == "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f",
+            "Next candidate source or baseline differs from its declared scope")
+    cases = summary["cases"]
+    require(len(cases) == 11 and {row["id"] for row in cases} == {row["id"] for row in report["numerical"]["cases"]}
+            and summary["gate"]["passed"] is False and summary["gate"]["complete"] is False
+            and summary["gate"]["failed_cases"] == [] and summary["gate"]["validation_errors"] == [],
+            "Next registration is not an unmeasured eleven-case campaign")
+    for row in cases:
+        require(row["status"] == "pending" and row["complete"] is False and row["retained_attempts"] == []
+                and row["performance"]["pairs"] == 0 and row["performance"]["geometric_mean_ratio"] is None
+                and len(row["correctness"]) == len(row["timings"]) == 5
+                and {check["backend"] for check in row["correctness"]} == {1, 6, 7, 8, 9}
+                and {timing["backend"] for timing in row["timings"]} == {1, 6, 7, 8, 9}
+                and all(check["status"] == "pending" and check["samples"] == 0 and check["passed"] is None
+                        for check in row["correctness"])
+                and all(timing["status"] == "pending" and timing["samples"] == 0
+                        and timing["median_seconds_per_point"] is None for timing in row["timings"]),
+                "Next registration contains observations; select a distinct measured dossier")
+    return {"id": manifest["id"], "case_count": len(cases), "manifest": selected["manifest"],
+            "summary": selected["summary"], "registered_exporter_revision": candidate["exporter_identity"]["revision"],
+            "source_sha256": candidate["exporter_identity"]["files_sha256"],
+            "numerical_identity_sha256": candidate["numerical_identity_sha256"],
+            "fresh_numerical_qualification": "pending", "precise_performance_acceptance": "deferred to Hua-Sheng",
+            "displayed_measurements_from_this_campaign": False}
+
+
 def supplement(evidence, selected, report):
     """Expose bounded claim anchors while leaving scientific gates unchanged."""
     observed = report["numerical"]["cases"]
@@ -89,7 +131,7 @@ def supplement(evidence, selected, report):
     triage = evidence.json("campaigns/split-dp-terminal-1/experiments/qcd-n4-target-triage-1/analysis.json")
     require(triage["new_native_evaluations"] == 0 and triage["higher_precision_adjudication"] is None
             and triage["performance_eligible"] is False, "QCD n4 triage promoted to truth/timing")
-    return {
+    refreshed = {
         "closed_cases": len(closed), "expected_cases": 11, "closed_lanes": 6 * len(closed),
         "excluded_active_cases": [row["id"] for row in observed if row["id"] not in selected["closed_cases"]],
         "performance_status": selected["performance_status"], "final_performance_accepted": False,
@@ -104,3 +146,22 @@ def supplement(evidence, selected, report):
             {"title": "QCD n4 target misses", "text": "All six 100-point lanes pass 3e-6. TIRust accepts 14 points in DP and 86 in QP. The 1e-8 target is missed at 45 distinct points by at least one candidate reducer; original discrepancies and all pairwise comparisons remain retained. No independent finite/single-pole truth or higher-precision adjudication is supplied by this read-only triage.", "evidence": "campaigns/split-dp-terminal-1/experiments/qcd-n4-target-triage-1/README.md"},
         ],
     }
+    if selected.get("implementation_packages") is not None:
+        import importlib.util
+        from pathlib import Path
+        source = Path(__file__).with_name("campaign_report_implementation.py")
+        spec = importlib.util.spec_from_file_location("campaign_report_implementation", source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.apply(refreshed, module.collect(evidence, selected["implementation_packages"]))
+    if selected.get("closed_provisional") is not None:
+        import importlib.util
+        from pathlib import Path
+        source = Path(__file__).with_name("campaign_report_provisional.py")
+        spec = importlib.util.spec_from_file_location("campaign_report_provisional", source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        refreshed["provisional"] = module.collect(evidence, selected["closed_provisional"], report)
+    if selected.get("next_campaign") is not None:
+        refreshed["next_campaign"] = next_campaign(evidence, selected["next_campaign"], report)
+    return refreshed

@@ -1,0 +1,137 @@
+{
+  "files": {
+    "docs/benchmarkfolder/IMPLEMENTATION-REPORT-CONTRACT.md": {
+      "bytes": 4839,
+      "sha256": "c41610b84ca2f5577d70068394f48389a7dd6f1fa17db644d8a8e0786ec8bebc"
+    },
+    "docs/benchmarkfolder/PROVISIONAL-REPORT-CONTRACT.md": {
+      "bytes": 4677,
+      "sha256": "68b9c27ae4a69d23cda9b4cca3e31cdf1feda1d4d67084caf39370fd8f9fc5aa"
+    },
+    "docs/benchmarkfolder/README.md": {
+      "bytes": 18162,
+      "sha256": "eea3c8829d36d2356d635306f644a11532e6a7d00a87c7458ee9ab40a34072fb"
+    },
+    "docs/benchmarkfolder/benchmark.pdf": {
+      "bytes": 564143,
+      "sha256": "02428f3a7659b33ab55ea116288963f1d9b470ea1bc3a7d2877d1f60fc38387f"
+    },
+    "docs/benchmarkfolder/benchmark.typ": {
+      "bytes": 26076,
+      "sha256": "71ccba8b8757ca307215a7f7982cc020d470c3b04789ba8ee489e01e4884dfdc"
+    },
+    "docs/benchmarkfolder/campaign-provisional.typ": {
+      "bytes": 5568,
+      "sha256": "64efa538294293bb155ce7598751d6f7bac75a3de4d17c1d613e1080dbfd3018"
+    },
+    "docs/benchmarkfolder/campaign-report.typ": {
+      "bytes": 15594,
+      "sha256": "f82d323253f97a24f2b237a5adda9f904d7908a7a4fe11ef17b86251847a4ad3"
+    },
+    "docs/benchmarkfolder/campaign_report.py": {
+      "bytes": 14282,
+      "sha256": "c723d2e790d491ecd3653b210307ab2caa0562c840c5e65675d9c95f94a2c115"
+    },
+    "docs/benchmarkfolder/campaign_report_implementation.py": {
+      "bytes": 23161,
+      "sha256": "ab9deeaeefd48738ddacc0fb6ee07afe763fc66c30ba6e7a506a658c8230741e"
+    },
+    "docs/benchmarkfolder/campaign_report_implementation_runtime.py": {
+      "bytes": 34493,
+      "sha256": "00712c2e828dcbc81f96509b2279e8980a9675455b39d991c1d86dc42fff1811"
+    },
+    "docs/benchmarkfolder/campaign_report_provisional.py": {
+      "bytes": 12986,
+      "sha256": "659dd893cab5f08c66caf614a0dc402d539524d9e3ebf69261b2ac30a30fa606"
+    },
+    "docs/benchmarkfolder/campaign_report_refresh.py": {
+      "bytes": 13973,
+      "sha256": "a1acbee40ee639b875a370e70b9b04a31593e594c927a84a6c70a33df58bdb32"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/report-context.json": {
+      "bytes": 1108,
+      "sha256": "b37497a36d32b7c53d55166ce3333fea01865fa9e1d76c89d16c53a0c7a406e2"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-1.json": {
+      "bytes": 1511580,
+      "sha256": "5b7af33ef0126d7f5de717662eb87e4f59c078461d71f026d456c616b80e1335"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-selection-1.json": {
+      "bytes": 6433,
+      "sha256": "2443d39de743c6973b1a1e0d8a222a81345f255264212dbd439dd867d7aa4a3f"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-tests-1.log": {
+      "bytes": 501,
+      "sha256": "88232a434cd3ecf91ce0d647c6d16c6b163cb2a6a450d430ad52b873c267dece"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-verification-1.json": {
+      "bytes": 4533,
+      "sha256": "82831bd8f3081c33826e16efdc6b9c8d6f29fb02222fc61481dea26ff4236f23"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/README.md": {
+      "bytes": 933,
+      "sha256": "efcf1c6f651597267320474dae9dae984fcdc40f9346221d8b792155d184d36f"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/archive-manifest.json": {
+      "bytes": 1834,
+      "sha256": "37d2cc5a6b5d09c1cfd2b19b26cf0ca5a99ebea6a1aea4928b16a40732160250"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/benchmark.pdf": {
+      "bytes": 348130,
+      "sha256": "6578a5d5d5d43c9e0fa276ce88417273a20bce14491de1ae25a1dc7c30379928"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/benchmark.typ": {
+      "bytes": 25406,
+      "sha256": "982abb618c09f440049547d958d36d33e361a2b6ce178ba6e5d65e9f0dd1256d"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/campaign-report.typ": {
+      "bytes": 12913,
+      "sha256": "1011349d9ff9028f24b4acae5787de7c862b07d6e1455d044add5eca501b071e"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/campaign_report.py": {
+      "bytes": 13744,
+      "sha256": "45666ec29ee09019aea38aad913a3f9569d9c3b86441249e0c13ca91414fcfa3"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/campaign_report_refresh.py": {
+      "bytes": 9545,
+      "sha256": "5a7c30439ffcd695fff91579e1123fbdf0bbb105781b8a0ab72a6333bade15d4"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/campaigns/split-dp-terminal-1/report-context.json": {
+      "bytes": 1096,
+      "sha256": "431aae844b0a3f5f0be3dfbb515fc7c52d8ed342518fa0919f13409c0bc20b40"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/canonical-README.md": {
+      "bytes": 15631,
+      "sha256": "e5f3d9e433b45ef526ca076ef69330e516880932cafb5b82c99c170b0a0724a6"
+    },
+    "docs/benchmarkfolder/history/report-before-closed-provisional/report-build.json": {
+      "bytes": 817817,
+      "sha256": "e5d66378311fcd63eb33a806690935027d54013f00e572c6f340165c3fb33126"
+    },
+    "docs/benchmarkfolder/report-build.json": {
+      "bytes": 938633,
+      "sha256": "5286830f1ae2506e55fa8c3f0015f13b5a3f507a3f4070c288a400331642d5a1"
+    },
+    "docs/benchmarkfolder/test_campaign_report_implementation.py": {
+      "bytes": 13357,
+      "sha256": "53df721a2b70a80192a05fd3089bc3d7b187eb0839fda8da3ff8bde67cef591c"
+    },
+    "docs/benchmarkfolder/test_campaign_report_implementation_runtime.py": {
+      "bytes": 28191,
+      "sha256": "b0028b0f2e477c1de05f039ce963523206814fa338c5a030e297fa1afdd237e3"
+    },
+    "docs/benchmarkfolder/test_campaign_report_provisional.py": {
+      "bytes": 12698,
+      "sha256": "e526adee512b0c6c2570ca03e59e07857ced8d81690bafb4685e8b111de295f3"
+    },
+    "docs/benchmarkfolder/test_campaign_report_refresh.py": {
+      "bytes": 5893,
+      "sha256": "fa9b975891a352d3b7cc1bd48fb7cde55b30f741f18f524e967ea22728c0722a"
+    }
+  },
+  "new_native_execution": false,
+  "pdf_sha256": "02428f3a7659b33ab55ea116288963f1d9b470ea1bc3a7d2877d1f60fc38387f",
+  "schema": "madloop-tirust-exact-report-staging-v1",
+  "scope": "Exact report-refresh owned files only; root stages and commits",
+  "self_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-staging-1.json"
+}
