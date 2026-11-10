@@ -1,0 +1,14 @@
+5aae9987b000-5aae9987e000 r--p 00000000 00:21 3798583                    /nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset
+5aae9987e000-5aae99889000 r-xp 00003000 00:21 3798583                    /nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset
+5aae99889000-5aae9988c000 r--p 0000e000 00:21 3798583                    /nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset
+5aae9988c000-5aae9988e000 rw-p 00011000 00:21 3798583                    /nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset
+7ea58d39d000-7ea58d3a1000 r--p 00000000 00:00 0                          [vvar]
+7ea58d3a1000-7ea58d3a3000 r--p 00000000 00:00 0                          [vvar_vclock]
+7ea58d3a3000-7ea58d3a5000 r-xp 00000000 00:00 0                          [vdso]
+7ea58d3a5000-7ea58d3a6000 r--p 00000000 00:21 2926843                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2
+7ea58d3a6000-7ea58d3d1000 r-xp 00001000 00:21 2926843                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2
+7ea58d3d1000-7ea58d3dc000 r--p 0002c000 00:21 2926843                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2
+7ea58d3dc000-7ea58d3df000 rw-p 00037000 00:21 2926843                    /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib/ld-linux-x86-64.so.2
+7ea58d3df000-7ea58d3e0000 rw-p 00000000 00:00 0 
+7fffd7af9000-7fffd7b1c000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

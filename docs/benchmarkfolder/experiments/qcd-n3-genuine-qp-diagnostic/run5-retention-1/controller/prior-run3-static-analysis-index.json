@@ -1,0 +1,14 @@
+{
+  "files": {
+    "diagnose.py": {
+      "bytes": 13057,
+      "sha256": "61341a468e5ceb054b07fd35b9f9b0a8e016eded61dcf5d2f62e4d5b03cb768b"
+    },
+    "diagnosis.json": {
+      "bytes": 89626,
+      "sha256": "38c2082194e24cbe1f165a0ef7677c4bf849a66037a5de1dc276e8531a7cb9ba"
+    }
+  },
+  "schema": "qcd-n3-run3-static-input-analysis-index-1",
+  "scope": "Independent byte/source-order diagnosis of the closed failed run3; no gate changes or native calls."
+}

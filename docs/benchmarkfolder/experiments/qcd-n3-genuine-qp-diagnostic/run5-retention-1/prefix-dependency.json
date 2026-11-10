@@ -1,0 +1,7 @@
+{
+  "index_file": "evidence-index.json",
+  "index_sha256": "fcd4f75340f7db9261e91d6f0c37e7a1ba85b3ff68b8b45a639ecbcc49ddf361",
+  "relative_sibling": "failed-run4-retention-1",
+  "schema": "fixed-closed-prefix-dependency-v1",
+  "scope": "Original failed run4 remains failed; ten native workers reinterpreted through sealed source5 parser"
+}

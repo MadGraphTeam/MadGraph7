@@ -1,0 +1,86 @@
+{
+  "actual_native_execution_by_this_task": false,
+  "closed_analysis": {
+    "bytes": 9310606,
+    "path": ".tirust-build/qcd-n3-genuine-qp-diagnostic/run5/analysis.json",
+    "sha256": "241ed7c23c6eb52728b7c2a79a7d17ba7558652eade794947c14a0223ff0c08a"
+  },
+  "compiler_loader_invocation_by_this_task": false,
+  "independent_review": "Child decimal_rounding_audit found no material defect in slot/order/metrics/global suppression/bounds; synthetic combined positive and tampered-metric controls passed. Suggested dict guard and combined regression were added.",
+  "production_sources": [
+    {
+      "bytes": 4722,
+      "excerpts": [
+        {
+          "first_line": 5,
+          "last_line": 6,
+          "text": "      REAL*8 POINTS(0:3,5,3),P(0:3,5),TOTAL(0:3)\n      REAL*8 ANS(0:3,0:1),ACC(0:1)"
+        },
+        {
+          "first_line": 27,
+          "last_line": 30,
+          "text": "      IF(RC.NE.0) STOP 81\n      CALL SETPARA('nominal/param_card.dat')\n      CALL ML5_0_GET_ANSWER_DIMENSION(NDIM)\n      CALL ML5_0_GET_NSQSO_LOOP(NSO)"
+        },
+        {
+          "first_line": 125,
+          "last_line": 133,
+          "text": "      CALL EMIT(1,0,[TRANSFER(P,[0_C_INT64_T],20),POLICY],\n     $ ALWAYS=.TRUE.)\n      CALL ML5_0_SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)\n      CALL POLICY_STATE(POLICY(7:11))\n      CALL EMIT(1,1,[TRANSFER(P,[0_C_INT64_T],20),POLICY,\n     $ TRANSFER(ANS,[0_C_INT64_T],8),\n     $ TRANSFER(ACC,[0_C_INT64_T],2),INT(CODE,C_INT64_T)],\n     $ ALWAYS=.TRUE.)\n      IF(QG_HEALTH().NE.0) CALL FAILED(86)"
+        }
+      ],
+      "path": "docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal5/driver.f",
+      "sha256": "1f3a0b00df5bbea5bd32d558167baed848ea0bbaea9dbadbed2cb86341bdadaf"
+    },
+    {
+      "bytes": 23607,
+      "excerpts": [
+        {
+          "first_line": 321,
+          "last_line": 327,
+          "text": "        public.extend([before['data'].hex(),after['data'].hex()])\n        values=floats(b[248:312]); accuracies=floats(b[312:328]); status=ints(b[328:336])[0]\n        if call>=101:\n            require(status==120 and accuracies==(-1.,-1.),'fixed diagnostic status/accuracy must remain unchecked120')\n            details=observed_inputs(group,backend,mode) if observation else None\n            points.append({'point':point,'status':status,'accuracy':list(accuracies),'host_checked':False,\n                           'coefficients':list(values),'inputs':details,'ieee_before':ieee(before),'ieee_after':ieee(after)})"
+        },
+        {
+          "first_line": 340,
+          "last_line": 375,
+          "text": "def delta(a,b):\n    difference=abs(a-b)\n    return {'absolute':difference,\n            'relative_to_left':difference/abs(a) if a else (0.0 if not difference else None),\n            'symmetric':difference/abs(a+b) if a+b else (0.0 if not difference else None),\n            'opposite_nonzero_sum':a+b==0 and difference!=0} \n\ndef adjudicate(workers):\n    require(len(workers)==16,'exact sixteen worker matrix required')\n    keyed={(w['backend'],w['mode'],w['observed']):w for w in workers}\n    require(set(keyed)=={(b,m,o) for b in BACKENDS for m in (4,5) for o in (0,1)},'duplicate/missing worker')\n    for b in BACKENDS:\n        for m in (4,5):\n            a,z=keyed[b,m,0],keyed[b,m,1]\n            require(a['public_raw']==z['public_raw'],'plain/observed input/output/status/IEEE mismatch')\n    comparisons=[]\n    arms=[(b,m) for b in BACKENDS for m in (4,5)]\n    for left,right in combinations(arms,2):\n        if left[0]!=right[0] and left[1]!=right[1]: continue\n        for a,b in zip(keyed[*left,1]['points'],keyed[*right,1]['points']):\n            equal=a['inputs']['shared_input_sha256']==b['inputs']['shared_input_sha256']\n            comparisons.append({'left':list(left),'right':list(right),'point':a['point'],\n                'shared_physical_born_repair_numerator_equal':equal,\n                'native_basis_identity_claimed':False,'host_checked':False,\n                'comparison_scope':'Same observed upstream physical/model/repair/Born/QP numerator inputs; backend-native bases and scalar construction are retained separately.' if equal else 'Inadmissible: shared effective inputs differ.',\n                'coefficients':[delta(x,y) for x,y in zip(a['coefficients'],b['coefficients'])] if equal else None})\n    return {'schema':'qcd-n3-genuine-qp-diagnostic-v1','workers':[{k:v for k,v in w.items() if k!='public_raw'} for w in workers],\n            'diagnostic_physical_calls':48,'answer_order_rows':96,\n            'all_public_calls':sum(w['public_calls'] for w in workers),\n            'bootstrap_and_initialization_calls':sum(w['public_calls']-3 for w in workers),\n            'public_call_budget':192,'host_checked':False,\n            'timing_or_campaign_acceptance':False,'comparisons':comparisons,\n            'all_shared_input_gates_pass':all(c['shared_physical_born_repair_numerator_equal'] for c in comparisons)}"
+        }
+      ],
+      "path": "docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal5/analyze.py",
+      "sha256": "3b34d143a09aec47d64aa45faa2e12eb85b6ca0320b8b16ee63ed25674fa5390"
+    },
+    {
+      "bytes": 100824,
+      "excerpts": [
+        {
+          "first_line": 793,
+          "last_line": 803,
+          "text": "C     First compute the borns, it will store them in ANS(0,I)\nC     It is left untouched for the rest of MadLoop evaluation.\nC     Notice that the squared split order index I does NOT\nC     correspond to the same ordering of J for the loop ME \nC     results stored in ANS(K,J), with K in [1-3].The ordering \nC     of each can be obtained with ML5SOINDEX_FOR_SQUARED_ORDERS \nC     and SQSOINDEX_FROM_ORDERS for the loop ME and born ME \nC     respectively. For this to work, we assume that there is \nC     always more squared split orders in the loop ME than in the\nC     born ME, which is practically always true. In any case, only\nC     the split_order summed value I=0 is used in ML5 code."
+        },
+        {
+          "first_line": 1543,
+          "last_line": 1547,
+          "text": "                      WRITE(*,*) 'Details for split order index : ',J\n                    ENDIF\n                    WRITE(*,*) 'Best estimate (fin,1eps,2eps):',(ANS(I\n     $               ,J),I=1,3)\n                    WRITE(*,*) 'Finite double precision evaluations :'"
+        }
+      ],
+      "path": ".benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.f",
+      "sha256": "2846f4d35755abfb7a8709a5bb1560983b3676535fd43b39cd62acac1be6185c"
+    }
+  ],
+  "retained_analysis_gzip": {
+    "bytes": 348262,
+    "path": "docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/run5-retention-1/actual-run5/analysis.json.gz",
+    "sha256": "8e36f9ec7a67b5e1e023dfebdc1cde0c33454a5ed38108487433e9318e8618e6"
+  },
+  "retained_decompressed_sha256": "241ed7c23c6eb52728b7c2a79a7d17ba7558652eade794947c14a0223ff0c08a",
+  "retention_index": {
+    "bytes": 39013,
+    "path": "docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/run5-retention-1/evidence-index.json",
+    "sha256": "30079cbae9a7823970d09b07e8bf6f54dce7c8c2f0f97cc84fc129271fde8830"
+  },
+  "schema": "run5-coefficient-static-source-proof-1",
+  "scientific_acceptance": false,
+  "source5_index": {
+    "bytes": 9303,
+    "path": "docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal5/source-index.json",
+    "sha256": "efc8c5b5c7a775fd3b4215171bd0d989bb5d6791710ceeb65d58816ba76b03e5"
+  }
+}

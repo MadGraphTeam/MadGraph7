@@ -1,15 +1,42 @@
 # Standard Model stability comparisons
 
-Actual [retrospective comparison plots](retrospective-qcd-n3-4/README.md) are
-available for the closed QCD 2→3 campaign: an accepted post-rescue internal
-estimate and finite-coefficient disagreement with current CutTools. They add
-no native evaluations and do not claim independently known true errors.
+The [31-page benchmark report](../benchmark.pdf) includes four raw stability
+plots on pages 27–30 and eight post-rescue comparisons on pages 18–25. Both
+studies cover top-pair QCD, Zgg QCD, dimuon EW and ZZgg QCD processes, with
+CutTools, Ninja, COLLIER, NinjaRS and TIRust on identical saved points.
 
-The separate raw-DP pilot below remains a source-only protocol. No pilot
-preparation, compilation or amplitude evaluation has run. Production sources
-are unchanged. Its executable stages require the sealed source inventory and
-separate stage admission; failures remain part of the evidence rather than
-being retried invisibly.
+The [closed raw pilot](raw-dp-pilot-5-1/README.md) has 100 newly generated,
+cut-qualified points per process. Its [four plots](raw-dp-pilot-5-figures-1/README.md)
+show three-probe consistency tails and ratios to Ninja. Eighteen backend/process
+samples have 100 available diagnostics. TIRust has 24/100 available for Zgg and
+0/100 for ZZgg; all 176 unavailable outcomes remain explicit unknown bounds.
+Nineteen completed requests do not mean nineteen accuracy passes. Full raw
+data, failures and [independent relocation checks](raw-dp-pilot-5-verification-1/README.md)
+are retained.
+
+The [first-failure diagnosis](raw-dp-pilot-5-diagnosis-1/README.md) identifies
+rank-4 pentagon and rank-5 hexagon failures. MadLoop's persistent flag is a
+software reduction-failure latch, not an observed hardware IEEE exception.
+The ZZgg latch was already set during bootstrap. Bridge status/error details
+were not recorded, so the underlying cause remains open. The diagnosis does
+not replace unavailable outcomes with successful points or change the plots.
+
+The separate [eight retrospective plots](retrospective-main-closed11-1/README.md)
+use the closed ordinary campaign's accepted post-rescue estimates and finite
+disagreement with current CutTools. Those original ordinary samples are not
+asserted to pass the paper's cuts. Neither study supplies independently known
+true errors or performance acceptance. Production sources are unchanged.
+The protocol below describes the executed raw pilot; sealed earlier source
+proposals and failed attempts remain preserved.
+
+The separate [three-point genuine-QP diagnostic](../experiments/qcd-n3-genuine-qp-diagnostic/run5-coefficient-analysis-1/README.md)
+investigates ordinary Zgg target misses, using four reducers with observed
+common upstream QP inputs. All finite and pole symmetric discrepancies are
+below `1e-10`. These unchecked returned values establish consistency only;
+CutTools retains its binary64 denominator ABI. This is neither a stability
+distribution nor a replacement for the raw pilot or 100-point campaign.
+The [complete journal verifier](../experiments/qcd-n3-genuine-qp-diagnostic/run5-retention-1/verify.py)
+replays ten inherited and six new workers without running numerical code.
 
 ## Reference and interpretation
 
@@ -82,8 +109,10 @@ mass, geometry or rescue patches. Full stdout and stderr, including `##W03`,
 are retained. Warning-invalidated and unavailable results cannot become
 successful numerical samples.
 
-There are 20 workers and 6,000 measured DP matrix-element calls, plus a bounded
-DP-only bootstrap. Workers have a 1,200-second execution cap and 4 GiB memory
+The protocol requests 20 workers and 6,000 primary DP matrix-element calls,
+plus a bounded DP-only bootstrap. The delivered pilot retains 5,954 returned
+primary calls and 46 unexecuted calls; bootstrap counts stay separate.
+Workers have a 1,200-second execution cap and 4 GiB memory
 cap, on nonreserved CPU 12. Backends 8 and 9 respect the existing common
 numerical lock, with separately accounted bounded lock waiting. No failed or
 timed-out point is silently replaced. Existing source exports are read-only;
@@ -110,8 +139,8 @@ The Born-process observable follows the finite/Born convention; the common
 coupling normalization cancels from this relative spread. All identical zeros
 give zero; nonzero spread with zero mean gives positive infinity. Neither
 result is clamped. Raw coefficients remain available so this convention can
-be audited. Finite, single-pole and double-pole coefficient comparisons are
-reported separately, with an explicit treatment of zero coefficients.
+be audited. Finite, single-pole and double-pole coefficients are retained
+separately for further comparisons; the raw plots here use finite/Born only.
 
 For target Δ, the curve is `count(a_i > Δ)/100`, with a strict greater-than
 comparison. Smaller tails mean more points pass this particular diagnostic.
@@ -137,7 +166,7 @@ not establish a population failure probability of zero.
 
 ## What existing accepted outputs can establish
 
-The closed QCD 2→3 portable analysis supplies 100 physical points per lane:
+The earlier closed QCD 2→3 portable analysis supplies 100 physical points per lane:
 `experiments/invariant-symmetry-qcd-n3-target-analysis/portable-analysis2`,
 index SHA256
 `79f57a8d83ea74249af83d12908de299372714cd7587d59d4ae31cfa9f63e457`.
@@ -153,11 +182,38 @@ combines finite and pole diagnostics, and COLLIER may use a different internal
 estimator. Accepted DP can follow QP work; the H/T/U status must be preserved,
 not collapsed into a “native DP” label. Exact diagnostic equality, including
 the 13 zero TIRust estimates in that closed QCD 2→3 analysis, does not certify
-infinitely many correct digits. The still-active main campaign and native
-stress/CMS attempts are not plot inputs until their actual terminals and
-retention are admitted.
+infinitely many correct digits. The current four-case retrospective capsule
+uses the later closed eleven-process ordinary campaign. Stress and CMS results
+have separate scopes and do not enter these ordinary or raw-pilot curves.
 
 ## Reproduction and larger local study
+
+Verify the delivered raw data and recompute all four statistical sidecars
+without compiling or running any amplitude:
+
+```sh
+source tools/tirust_env.sh
+python3 -B docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1/verify.py
+python3 -B docs/benchmarkfolder/stability_appendix_c/figure-source-1/figures.py verify \
+  docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-figures-1 \
+  --data-root docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1 \
+  --plotter-root docs/benchmarkfolder/stability_appendix_c/plotter-source-6
+```
+
+The expected data and figure index hashes are respectively
+`ebd8f1faf5228f205b1038a490329037066988dc03e7e774210d648b38dbbb6e` and
+`b131e6294fb3c6900e6776339948928ae71518092cc99de59a8bb0d39fdabcfd`.
+Render the four plots into a fresh ignored directory:
+
+```sh
+python3 -B docs/benchmarkfolder/stability_appendix_c/figure-source-1/figures.py render \
+  .tirust-build/stability-figures-reproduction-1 \
+  --data-root docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1 \
+  --plotter-root docs/benchmarkfolder/stability_appendix_c/plotter-source-6 \
+  --expected-data-index-sha256 ebd8f1faf5228f205b1038a490329037066988dc03e7e774210d648b38dbbb6e
+```
+
+Rebuild the combined PDF with the [report commands](../README.md#build-the-report).
 
 The public CLI already offers the basic diagnostic:
 
@@ -169,7 +225,7 @@ check stability 100 g g > t t~ [virt=QCD] --reduction=1|6|7|8|9 --energy=1000 --
 This is a reference command, not the paired pilot execution. The current CLI
 draws fresh random points inside each backend loop, only tries QP when its
 raw DP spread exceeds 0.1, and uses a driver without per-call return-code or
-warning attribution. The qualified pilot therefore uses common frozen points
+warning attribution. The paired pilot therefore uses common frozen points
 and a private instrumented driver. It preserves the raw DP diagnostics even
 when an individual check fails.
 

@@ -1,0 +1,31 @@
+{
+  "analysis_sha256": "241ed7c23c6eb52728b7c2a79a7d17ba7558652eade794947c14a0223ff0c08a",
+  "build_sha256": "c3d2d2568814b0f0efef8a8d465db561e129473eefe55e3fbaa4b785a1ded322",
+  "combined_budget_seconds": 3000,
+  "combined_elapsed_seconds": 269.03394974628463,
+  "elapsed_seconds": 116.47122734319419,
+  "inherited_elapsed_seconds": 152.56272240309045,
+  "inherited_source2_index_sha256": "44039ba25e451910d1ab7c264ac1f397437ce41f965d8e381b539dd9baf44046",
+  "inherited_workers": 10,
+  "new_phase_budget_seconds": 2847.4372775969096,
+  "new_phase_budget_seconds_decimal": "2847.43727759690955",
+  "new_worker_order": [
+    "b8-m5-o0",
+    "b8-m5-o1",
+    "b9-m4-o0",
+    "b9-m4-o1",
+    "b9-m5-o0",
+    "b9-m5-o1"
+  ],
+  "new_workers_native_reaped": 6,
+  "new_workers_native_started": 6,
+  "new_workers_parsed": 6,
+  "original_donor_runtime_preserved": true,
+  "original_source4_attempt_remains_failed": true,
+  "passed": true,
+  "recompiled": false,
+  "required_inherited_workers": 10,
+  "required_new_workers": 6,
+  "source_index_sha256": "efc8c5b5c7a775fd3b4215171bd0d989bb5d6791710ceeb65d58816ba76b03e5",
+  "workers_completed": 16
+}

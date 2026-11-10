@@ -1,0 +1,18 @@
+{
+  "files": {
+    "review.json": {
+      "bytes": 99534,
+      "sha256": "51e4962683192a14b761daa1dcd03cb90cff0baef02fcc271b7323c11df7174d"
+    },
+    "review.py": {
+      "bytes": 14145,
+      "sha256": "9fd67ec4a9454ad52b56de8ed81cd01cdf65cb690483a46b4c922d2e660c62b9"
+    },
+    "test.log": {
+      "bytes": 1829,
+      "sha256": "f353474e02d0c6d07b62dd9ef6fb94d827b897e34af7bf26f2aae325ce7689e8"
+    }
+  },
+  "schema": "source5-decimal-independent-draft-review-index-1",
+  "scope": "Stable parser/closed-prefix replay/decimal tests only; unsealed source5 controller and continuation are outside this review."
+}
