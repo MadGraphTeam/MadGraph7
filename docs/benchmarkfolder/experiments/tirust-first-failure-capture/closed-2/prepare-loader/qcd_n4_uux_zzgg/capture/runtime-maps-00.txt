@@ -1,0 +1,14 @@
+58653a071000-58653a072000 r--p 00000000 00:21 6309692                    /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13
+58653a072000-58653a073000 r-xp 00001000 00:21 6309692                    /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13
+58653a073000-58653a074000 r--p 00002000 00:21 6309692                    /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13
+58653a074000-58653a076000 rw-p 00002000 00:21 6309692                    /nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13
+712d398a9000-712d398ad000 r--p 00000000 00:00 0                          [vvar]
+712d398ad000-712d398af000 r--p 00000000 00:00 0                          [vvar_vclock]
+712d398af000-712d398b1000 r-xp 00000000 00:00 0                          [vdso]
+712d398b1000-712d398b2000 r--p 00000000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+712d398b2000-712d398dd000 r-xp 00001000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+712d398dd000-712d398e8000 r--p 0002c000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+712d398e8000-712d398eb000 rw-p 00037000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+712d398eb000-712d398ec000 rw-p 00000000 00:00 0 
+7ffd111ad000-7ffd111d0000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

@@ -1,0 +1,224 @@
+STABILITY_CALL_BEGIN            0           1           1           0           1
+  ========================================================================================== 
+ {                                                                                          }
+ {       [32m                                                                            [0m       }
+ {       [32m                               ,,                                           [0m       }
+ {       [32m`7MMM.     ,MMF'             `7MM  `7MMF'                                   [0m       }
+ {       [32m  MMMb    dPMM                 MM    MM                                     [0m       }
+ {       [32m  M YM   ,M MM   ,6"Yb.   ,M""bMM    MM         ,pW"Wq.   ,pW"Wq.`7MMpdMAo. [0m       }
+ {       [32m  M  Mb  M' MM  8)   MM ,AP    MM    MM        6W'   `Wb 6W'   `Wb MM   `Wb [0m       }
+ {       [32m  M  YM.P'  MM   ,pm9MM 8MI    MM    MM      , 8M     M8 8M     M8 MM    M8 [0m       }
+ {       [32m  M  `YM'   MM  8M   MM `Mb    MM    MM     ,M YA.   ,A9 YA.   ,A9 MM   ,AP [0m       }
+ {       [32m.JML. `'  .JMML.`Moo9^Yo.`Wbmd"MML..JMMmmmmMMM  `Ybmd9'   `Ybmd9'  MMbmmd'  [0m       }
+ {       [32m                                                                   MM       [0m       }
+ {       [32m                                                                 .JMML.     [0m       }
+ {       [32m[0mv0.2.1 (2026-09-24), Ref: arXiv:1103.0621v2, arXiv:1405.0301[32m                [0m       }
+ {       [32m                                                                            [0m       }
+ {                                                                                          }
+  ========================================================================================== 
+ ===============================================================
+ INFO: MadLoop read these parameters from ./MadLoop5_resources/MadLoopParams.dat                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+ ===============================================================
+  > MLReductionLib            = 9
+  > CTModeRun                 =            1
+  > LoopPoleMode              =           -1
+  > TIRustComputeFinite       =  T
+  > UseQPIntegrandForTIRust    =  T
+  > TIRustGlobalCache         =            0
+  > TIRustCacheMaxBytes       =             268435456
+  > MLStabThres               =    9.9999999999999995E-007
+  > NRotations_DP             =            0
+  > NRotations_QP             =            0
+  > CTStabThres               =    1.0000000000000000E-002
+  > CTLoopLibrary             =            2
+  > CTModeInit                =            1
+  > CheckCycle                =            3
+  > MaxAttempts               =           10
+  > UseLoopFilter             =  F
+  > HelicityFilterLevel       =            2
+  > ImprovePSPoint            =            2
+  > DoubleCheckHelicityFilter =  T
+  > LoopInitStartOver         =  F
+  > HelInitStartOver          =  F
+  > ZeroThres                 =    1.0000000000000001E-009
+  > OSThres                   =    1.0000000000000000E-008
+  > WriteOutFilters           =  T
+  > UseQPIntegrandForNinja    =  T
+  > UseQPIntegrandForNinjaRS  =  T
+  > UseQPIntegrandForCutTools =  T
+  > IREGIMODE                 =            2
+  > IREGIRECY                 =  T
+  > COLLIERMode               =            1
+  > COLLIERRequiredAccuracy   =    1.0000000000000000E-013
+  > COLLIERCanOutput          =  F
+  > COLLIERComputeUVpoles     =  T
+  > COLLIERComputeIRpoles     =  T
+  > COLLIERGlobalCache        =            0
+  > COLLIERUseCacheForPoles   =  F
+  > COLLIERUseInternalStabilityTest =  F
+ ===============================================================
+STABILITY_CALL_END            0           1           1           0           1         130
+STABILITY_CALL_BEGIN            0           2           2           0           1
+STABILITY_CALL_END            0           2           2           0           1         130
+STABILITY_CALL_BEGIN            0           3           3           0           1
+STABILITY_CALL_END            0           3           3           0           1         130
+STABILITY_CALL_BEGIN            0           4           4           0           1
+STABILITY_CALL_END            0           4           4           0           1         130
+STABILITY_CALL_BEGIN            0           5           5           0           1
+STABILITY_CALL_END            0           5           5           0           1         110
+STABILITY_CALL_BEGIN            1           6           1           1           1
+STABILITY_CALL_END            1           6           1           1           1         110
+STABILITY_CALL_BEGIN            1           7           1           2           2
+STABILITY_CALL_END            1           7           1           2           2         110
+STABILITY_CALL_BEGIN            1           8           1           3           1
+STABILITY_CALL_END            1           8           1           3           1         110
+STABILITY_CALL_BEGIN            1           9           2           1           1
+STABILITY_CALL_END            1           9           2           1           1         110
+STABILITY_CALL_BEGIN            1          10           2           2           2
+STABILITY_CALL_END            1          10           2           2           2         110
+STABILITY_CALL_BEGIN            1          11           2           3           1
+STABILITY_CALL_END            1          11           2           3           1         110
+STABILITY_CALL_BEGIN            1          12           3           1           1
+STABILITY_CALL_END            1          12           3           1           1         110
+STABILITY_CALL_BEGIN            1          13           3           2           2
+STABILITY_CALL_END            1          13           3           2           2         110
+STABILITY_CALL_BEGIN            1          14           3           3           1
+STABILITY_CALL_END            1          14           3           3           1         110
+STABILITY_CALL_BEGIN            1          15           4           1           1
+STABILITY_CALL_END            1          15           4           1           1         110
+STABILITY_CALL_BEGIN            1          16           4           2           2
+STABILITY_CALL_END            1          16           4           2           2         110
+STABILITY_CALL_BEGIN            1          17           4           3           1
+STABILITY_CALL_END            1          17           4           3           1         110
+STABILITY_CALL_BEGIN            1          18           5           1           1
+STABILITY_CALL_END            1          18           5           1           1         110
+STABILITY_CALL_BEGIN            1          19           5           2           2
+STABILITY_CALL_END            1          19           5           2           2         110
+STABILITY_CALL_BEGIN            1          20           5           3           1
+STABILITY_CALL_END            1          20           5           3           1         110
+STABILITY_CALL_BEGIN            1          21           6           1           1
+STABILITY_CALL_END            1          21           6           1           1         110
+STABILITY_CALL_BEGIN            1          22           6           2           2
+STABILITY_CALL_END            1          22           6           2           2         110
+STABILITY_CALL_BEGIN            1          23           6           3           1
+STABILITY_CALL_END            1          23           6           3           1         110
+STABILITY_CALL_BEGIN            1          24           7           1           1
+STABILITY_CALL_END            1          24           7           1           1         110
+STABILITY_CALL_BEGIN            1          25           7           2           2
+STABILITY_CALL_END            1          25           7           2           2         110
+STABILITY_CALL_BEGIN            1          26           7           3           1
+STABILITY_CALL_END            1          26           7           3           1         110
+STABILITY_CALL_BEGIN            1          27           8           1           1
+STABILITY_CALL_END            1          27           8           1           1         110
+STABILITY_CALL_BEGIN            1          28           8           2           2
+STABILITY_CALL_END            1          28           8           2           2         110
+STABILITY_CALL_BEGIN            1          29           8           3           1
+STABILITY_CALL_END            1          29           8           3           1         110
+STABILITY_CALL_BEGIN            1          30           9           1           1
+STABILITY_CALL_END            1          30           9           1           1         110
+STABILITY_CALL_BEGIN            1          31           9           2           2
+STABILITY_CALL_END            1          31           9           2           2         110
+STABILITY_CALL_BEGIN            1          32           9           3           1
+STABILITY_CALL_END            1          32           9           3           1         110
+STABILITY_CALL_BEGIN            1          33          10           1           1
+STABILITY_CALL_END            1          33          10           1           1         110
+STABILITY_CALL_BEGIN            1          34          10           2           2
+STABILITY_CALL_END            1          34          10           2           2         110
+STABILITY_CALL_BEGIN            1          35          10           3           1
+STABILITY_CALL_END            1          35          10           3           1         110
+STABILITY_CALL_BEGIN            1          36          11           1           1
+STABILITY_CALL_END            1          36          11           1           1         110
+STABILITY_CALL_BEGIN            1          37          11           2           2
+STABILITY_CALL_END            1          37          11           2           2         110
+STABILITY_CALL_BEGIN            1          38          11           3           1
+STABILITY_CALL_END            1          38          11           3           1         110
+STABILITY_CALL_BEGIN            1          39          12           1           1
+STABILITY_CALL_END            1          39          12           1           1         110
+STABILITY_CALL_BEGIN            1          40          12           2           2
+STABILITY_CALL_END            1          40          12           2           2         110
+STABILITY_CALL_BEGIN            1          41          12           3           1
+STABILITY_CALL_END            1          41          12           3           1         110
+STABILITY_CALL_BEGIN            1          42          13           1           1
+STABILITY_CALL_END            1          42          13           1           1         110
+STABILITY_CALL_BEGIN            1          43          13           2           2
+STABILITY_CALL_END            1          43          13           2           2         110
+STABILITY_CALL_BEGIN            1          44          13           3           1
+STABILITY_CALL_END            1          44          13           3           1         110
+STABILITY_CALL_BEGIN            1          45          14           1           1
+STABILITY_CALL_END            1          45          14           1           1         110
+STABILITY_CALL_BEGIN            1          46          14           2           2
+STABILITY_CALL_END            1          46          14           2           2         110
+STABILITY_CALL_BEGIN            1          47          14           3           1
+STABILITY_CALL_END            1          47          14           3           1         110
+STABILITY_CALL_BEGIN            1          48          15           1           1
+STABILITY_CALL_END            1          48          15           1           1         110
+STABILITY_CALL_BEGIN            1          49          15           2           2
+STABILITY_CALL_END            1          49          15           2           2         110
+STABILITY_CALL_BEGIN            1          50          15           3           1
+STABILITY_CALL_END            1          50          15           3           1         110
+STABILITY_CALL_BEGIN            1          51          16           1           1
+STABILITY_CALL_END            1          51          16           1           1         110
+STABILITY_CALL_BEGIN            1          52          16           2           2
+STABILITY_CALL_END            1          52          16           2           2         110
+STABILITY_CALL_BEGIN            1          53          16           3           1
+STABILITY_CALL_END            1          53          16           3           1         110
+STABILITY_CALL_BEGIN            1          54          17           1           1
+STABILITY_CALL_END            1          54          17           1           1         110
+STABILITY_CALL_BEGIN            1          55          17           2           2
+STABILITY_CALL_END            1          55          17           2           2         110
+STABILITY_CALL_BEGIN            1          56          17           3           1
+STABILITY_CALL_END            1          56          17           3           1         110
+STABILITY_CALL_BEGIN            1          57          18           1           1
+STABILITY_CALL_END            1          57          18           1           1         110
+STABILITY_CALL_BEGIN            1          58          18           2           2
+STABILITY_CALL_END            1          58          18           2           2         110
+STABILITY_CALL_BEGIN            1          59          18           3           1
+STABILITY_CALL_END            1          59          18           3           1         110
+STABILITY_CALL_BEGIN            1          60          19           1           1
+STABILITY_CALL_END            1          60          19           1           1         110
+STABILITY_CALL_BEGIN            1          61          19           2           2
+STABILITY_CALL_END            1          61          19           2           2         110
+STABILITY_CALL_BEGIN            1          62          19           3           1
+STABILITY_CALL_END            1          62          19           3           1         110
+STABILITY_CALL_BEGIN            1          63          20           1           1
+STABILITY_CALL_END            1          63          20           1           1         110
+STABILITY_CALL_BEGIN            1          64          20           2           2
+STABILITY_CALL_END            1          64          20           2           2         110
+STABILITY_CALL_BEGIN            1          65          20           3           1
+STABILITY_CALL_END            1          65          20           3           1         110
+STABILITY_CALL_BEGIN            1          66          21           1           1
+STABILITY_CALL_END            1          66          21           1           1         110
+STABILITY_CALL_BEGIN            1          67          21           2           2
+STABILITY_CALL_END            1          67          21           2           2         110
+STABILITY_CALL_BEGIN            1          68          21           3           1
+STABILITY_CALL_END            1          68          21           3           1         110
+STABILITY_CALL_BEGIN            1          69          22           1           1
+STABILITY_CALL_END            1          69          22           1           1         110
+STABILITY_CALL_BEGIN            1          70          22           2           2
+STABILITY_CALL_END            1          70          22           2           2         110
+STABILITY_CALL_BEGIN            1          71          22           3           1
+STABILITY_CALL_END            1          71          22           3           1         110
+STABILITY_CALL_BEGIN            1          72          23           1           1
+STABILITY_CALL_END            1          72          23           1           1         110
+STABILITY_CALL_BEGIN            1          73          23           2           2
+STABILITY_CALL_END            1          73          23           2           2         110
+STABILITY_CALL_BEGIN            1          74          23           3           1
+STABILITY_CALL_END            1          74          23           3           1         110
+STABILITY_CALL_BEGIN            1          75          24           1           1
+STABILITY_CALL_END            1          75          24           1           1         110
+STABILITY_CALL_BEGIN            1          76          24           2           2
+STABILITY_CALL_END            1          76          24           2           2         110
+STABILITY_CALL_BEGIN            1          77          24           3           1
+STABILITY_CALL_END            1          77          24           3           1         110
+STABILITY_CALL_BEGIN            1          78          25           1           1
+ ##W03 WARNING Contribution           59  is unstable.
+ ##W03 WARNING Contribution           61  is unstable.
+STABILITY_CALL_END            1          78          25           1           1         110
+STABILITY_CALL_BEGIN            1          79          25           2           2
+ ##W03 WARNING Contribution           59  is unstable.
+ ##W03 WARNING Contribution           61  is unstable.
+STABILITY_CALL_END            1          79          25           2           2         110
+STABILITY_CALL_BEGIN            1          80          25           3           1
+ ##W03 WARNING Contribution           59  is unstable.
+ ##W03 WARNING Contribution           61  is unstable.
+STABILITY_CALL_END            1          80          25           3           1         110

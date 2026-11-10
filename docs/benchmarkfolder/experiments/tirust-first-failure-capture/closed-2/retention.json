@@ -1,0 +1,705 @@
+{
+  "capture_terminal_confirmation": {
+    "exit_code": 1,
+    "observed_terminal": true,
+    "session_id": 62191,
+    "sha256": "7f21e3bd9e2b8bf0458c0c6008c500bc941786337523f863c5d64dec9c72f05e"
+  },
+  "missing_inputs_are_not_reconstructed": true,
+  "native_retries": 0,
+  "original_capture_failure_is_not_overridden": true,
+  "originals": {
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-3/points/qcd_n3_uux_zgg.dat": {
+      "bytes": 48542,
+      "logical": "points/qcd_n3_uux_zgg.dat",
+      "sha256": "b46ce200bb330826d2a4cff69f61f828d3105c0566444fa548b1de75622ee8dd"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-3/points/qcd_n3_uux_zgg.json": {
+      "bytes": 87715,
+      "logical": "points/qcd_n3_uux_zgg.json",
+      "sha256": "e4a262966bc0de149e3b16a56f85058c56ba068ead2b73f3586101ff38c320e4"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-3/points/qcd_n4_uux_zzgg.dat": {
+      "bytes": 58314,
+      "logical": "points/qcd_n4_uux_zzgg.dat",
+      "sha256": "7d50330150aa823a3721422909e3674dda7372797bf8ff88db0d50ddc07d9f98"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-3/points/qcd_n4_uux_zzgg.json": {
+      "bytes": 103315,
+      "logical": "points/qcd_n4_uux_zzgg.json",
+      "sha256": "03e76f8058f15af4bf86bc5443fa8bc5e1cd0d2076e11eb36a1be0c149235153"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/Cards/MadLoopParams.dat": {
+      "bytes": 14622,
+      "logical": "capture/qcd_n3_uux_zgg/cards/MadLoopParams.dat",
+      "sha256": "322aab7a61aaaa17bb6043bd25f8fc984cbd4489c95be93e93e0ec950abd0dda"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/Cards/ident_card.dat": {
+      "bytes": 460,
+      "logical": "capture/qcd_n3_uux_zgg/cards/ident_card.dat",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/Cards/param_card.dat": {
+      "bytes": 2472,
+      "logical": "capture/qcd_n3_uux_zgg/cards/param_card.dat",
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/MadLoop5_resources/ML5_0_HelFilter.dat": {
+      "bytes": 624,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/ML5_0_HelFilter.dat",
+      "sha256": "7fe9630e61964b5a90af92e2a76b48b14d75fd4925e95fefa40fa1ce1a644ee6"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/stability-dimensions.dat": {
+      "bytes": 61,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/stability-dimensions.dat",
+      "sha256": "5c6d7a7a95ac377f5d23cfa16b0389613b33a4a15656535f9759627e267e6945"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/stability-groups.dat": {
+      "bytes": 2522630,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/stability-groups.dat",
+      "sha256": "5b1b39c68876ac5327203ba470b07eae6ad237fe3c9e2c26691818739d0300ac"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/stability-values.dat": {
+      "bytes": 32624,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/stability-values.dat",
+      "sha256": "bf1add246340487fd8db278d4687e7c13b642da0c80f0d03bcc522d2aa7889da"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-capture-events.jsonl": {
+      "bytes": 12882,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/tirust-capture-events.jsonl",
+      "sha256": "0f1356f38fd6a22093f126b362f37405ad1974919655edaf2d141b9286bb55f7"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m1-g059.dat": {
+      "bytes": 1004,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/tirust-input-p025-m1-g059.dat",
+      "sha256": "b14af90667077aef544708227b0065e55366a9ddeeacc6a297c76447757d0438"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m1-g061.dat": {
+      "bytes": 1004,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/tirust-input-p025-m1-g061.dat",
+      "sha256": "72136f21085e91367b63448a5ef10e6be9ffdc6450a6b163fb88317ca31ec405"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m2-g059.dat": {
+      "bytes": 1004,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/tirust-input-p025-m2-g059.dat",
+      "sha256": "3ae17ecc24af56c2529ded8f330a2d5b79c59b2d21cd94ae892deed07927f8a8"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m2-g061.dat": {
+      "bytes": 1004,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/tirust-input-p025-m2-g061.dat",
+      "sha256": "68e4436c8bfe883f9c76899a232e5f44ec9ecdb248a00ce269ded7ab3e9ea165"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m3-g059.dat": {
+      "bytes": 1004,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/tirust-input-p025-m3-g059.dat",
+      "sha256": "dd6544bc1277f4d30f7579a2099aa5622b7482b0c892747661a0b18805b5bdcd"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m3-g061.dat": {
+      "bytes": 1004,
+      "logical": "capture/qcd_n3_uux_zgg/outputs/tirust-input-p025-m3-g061.dat",
+      "sha256": "479ad1fa89325e0bda14be066b95f6d8e87b26621c2fc9c9c3d3a0ede1c78557"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n4_uux_zzgg/Cards/MadLoopParams.dat": {
+      "bytes": 14622,
+      "logical": "capture/qcd_n4_uux_zzgg/cards/MadLoopParams.dat",
+      "sha256": "322aab7a61aaaa17bb6043bd25f8fc984cbd4489c95be93e93e0ec950abd0dda"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n4_uux_zzgg/Cards/ident_card.dat": {
+      "bytes": 460,
+      "logical": "capture/qcd_n4_uux_zzgg/cards/ident_card.dat",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n4_uux_zzgg/Cards/param_card.dat": {
+      "bytes": 2472,
+      "logical": "capture/qcd_n4_uux_zzgg/cards/param_card.dat",
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/stability-dimensions.dat": {
+      "bytes": 61,
+      "logical": "capture/qcd_n4_uux_zzgg/outputs/stability-dimensions.dat",
+      "sha256": "5c6d7a7a95ac377f5d23cfa16b0389613b33a4a15656535f9759627e267e6945"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/stability-groups.dat": {
+      "bytes": 403144,
+      "logical": "capture/qcd_n4_uux_zzgg/outputs/stability-groups.dat",
+      "sha256": "f56280ce71c57a204941fd4c0a2572675943cb828d084e5406dd423d3d594664"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/stability-values.dat": {
+      "bytes": 886,
+      "logical": "capture/qcd_n4_uux_zzgg/outputs/stability-values.dat",
+      "sha256": "7032c7fc7e0cedb472d03724938de19daa2e937c26a5cea7a31891eec8d4c3ff"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/tirust-capture-events.jsonl": {
+      "bytes": 644370,
+      "logical": "capture/qcd_n4_uux_zzgg/outputs/tirust-capture-events.jsonl",
+      "sha256": "8892a4d6a79691c23d6344510ad8f964f011d1af98bbeb0c8d8329631bb552a5"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture-started.json": {
+      "bytes": 216,
+      "logical": "receipts/capture-started.json",
+      "sha256": "13bcd0ff9bc679e07bc9294ced0eb36c2aaf4e570276d7295b028bbe77ca43c6"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture-terminal.json": {
+      "bytes": 119515,
+      "logical": "receipts/capture-terminal.json",
+      "sha256": "7f21e3bd9e2b8bf0458c0c6008c500bc941786337523f863c5d64dec9c72f05e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/command.json": {
+      "bytes": 6393,
+      "logical": "capture/qcd_n3_uux_zgg/command.json",
+      "sha256": "eff7a8d291c3d9b8445ea7364f70b9f0db55fc10dd00a450d8086f5d8f281923"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-00.txt": {
+      "bytes": 2899,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-00.txt",
+      "sha256": "19a531d8a8a376f5501d7033b90dcf808072052a439c61486bbb6f785a8785b4"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-01.txt": {
+      "bytes": 13873,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-01.txt",
+      "sha256": "8e2d4e0744a047ba148a1e2aecc21fad7ddbf41f0572be534742ca4b8a2cbfe9"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-02.txt": {
+      "bytes": 13873,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-02.txt",
+      "sha256": "216de782cf1f49617279367e61f2b67006112816434560d0fc87e1a593c84d52"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-03.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-03.txt",
+      "sha256": "a109fe03976dde4134505b9ef881e545acdd5327ef28fc65df11722376336509"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-04.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-04.txt",
+      "sha256": "c669792d332d18d2a1b64038e5b5ef8b0470f01e008670800d20a3476105d047"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-05.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-05.txt",
+      "sha256": "32233a2b5d7ca28cd736d7dc334ba65b6cd30adba8e8fa2784f70e14b4ddfbc0"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-06.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-06.txt",
+      "sha256": "46888468cde858cf7ca0e54c9952c0944a91f59bf6e49fc225f238fae62d9729"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-07.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-07.txt",
+      "sha256": "1355eb3c4466f8084924360f245502fb5a049a7ca3ccb117aae57600164ceffb"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-08.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-08.txt",
+      "sha256": "91e68837887cfd34aa0852fb9ae385c2c5801105efe751c87f3f93c65497584b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-09.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-09.txt",
+      "sha256": "e9cc6af96f6c5814b6480aeeb10dcd3864e438e678ed2a604f954deb3b2d46ea"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-10.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-10.txt",
+      "sha256": "fc0b9647d0d0f31390c7db81ec580f394f4daf14cec619baab9ade754752f956"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-11.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-11.txt",
+      "sha256": "1dbe3f7ea8be0ad1601f39037f3ede1f5395f8cc5dea1943f071afb2ac450ce6"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-12.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-12.txt",
+      "sha256": "3e279f0a1f2ad1b63680a227de3726cfa8f94676ab7434c264d5a97fe0e68a30"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-13.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-13.txt",
+      "sha256": "68ea91f5fd35de24015b5912172d776e11b43f6c6248a2fdda554f943e83540d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/runtime-maps-14.txt": {
+      "bytes": 13922,
+      "logical": "capture/qcd_n3_uux_zgg/runtime-maps-14.txt",
+      "sha256": "e6fd25bd2c76d2e180b77224c9db24fde5e4b6cd80163cb76a0864afdbd37bcd"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n3_uux_zgg/stdout.txt": {
+      "bytes": 18304,
+      "logical": "capture/qcd_n3_uux_zgg/stdout.txt",
+      "sha256": "23b2f089bb3e56f46118845a5dc2c2925e4981459e78db8a2fa97890cb53ff94"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/command.json": {
+      "bytes": 6798,
+      "logical": "capture/qcd_n4_uux_zzgg/command.json",
+      "sha256": "f1e6b240473174e9f724ba7830ef113c6b33d3b8b09c03ea5cda367659e60c02"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-00.txt": {
+      "bytes": 165,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-00.txt",
+      "sha256": "4428bd731f0b8ee057bbb7599088dff2465d6011f8c92faff5405cab0fbc0931"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-01.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-01.txt",
+      "sha256": "3bae89960dd47cdedff6f793183d1f36adf0e1c5ad258a3c4ee6ef08e88fa077"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-02.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-02.txt",
+      "sha256": "ea0e29ba015d472282a170fa846b3b930b17553854c0a477f78c859976cb52cc"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-03.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-03.txt",
+      "sha256": "19ecdb571e5bb63507b30cce7ab4cc1ed402166cba0aa526f16074c35d823431"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-04.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-04.txt",
+      "sha256": "2eaa59dc26bbd0b37b94e9d033bed727ef35581b41835c304fb77c770ee83711"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-05.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-05.txt",
+      "sha256": "c9ae8cf39eb4e8010b151c699c76799089cfd27cfa354591c9ea3834a033c078"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-06.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-06.txt",
+      "sha256": "c66e276e130e2fe5623bb774e19a63dda563ac1af16e8de80dedfeac48fcbc33"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-07.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-07.txt",
+      "sha256": "bbde92924ed05763f78bbf561b06554ea3412f12e3ff541d2f70dd7bc0c1e609"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-08.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-08.txt",
+      "sha256": "3d3adbb393b7dc669e934eec8d666a2c56a649f5f8f59159bfb57f1c2faa6c7e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-09.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-09.txt",
+      "sha256": "fda8e7b79aa7f1c4994800749de944f6c45bc80ca901062cfb1e2b716cce4b9f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-10.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-10.txt",
+      "sha256": "c0525da15cf9125d8eba4f4164c6b3bc8b75ebcd477e91f442788714b7540af9"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-11.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-11.txt",
+      "sha256": "d2fffc7b9ff13bc047366792b72d4838c74574e8690fcf9148496b9001ed60c3"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-12.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-12.txt",
+      "sha256": "3760925855d6466377dfb0089ac3e54367524bbc6b5611d0d58554825496fb67"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-13.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-13.txt",
+      "sha256": "2374add1d3b0d7b5626c8b3102b3c0aa0ee5329bed738282b2fe29daf34d1155"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-14.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-14.txt",
+      "sha256": "ca50f75e41071feb6d806dc753c2fde54eb9f53e13fc2107b57aefb632d675f1"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/runtime-maps-15.txt": {
+      "bytes": 13883,
+      "logical": "capture/qcd_n4_uux_zzgg/runtime-maps-15.txt",
+      "sha256": "4e57bf5682f1596ebf721e0903f14caf199a137ca97496bf4104be878b08ca7d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/capture/qcd_n4_uux_zzgg/stdout.txt": {
+      "bytes": 4484,
+      "logical": "capture/qcd_n4_uux_zzgg/stdout.txt",
+      "sha256": "4b618eaa32a54d13df72becd710dac2384f32fc76bd0da7ed83e4f6585cba97d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n3_uux_zgg/capture/command.json": {
+      "bytes": 4455,
+      "logical": "prepare-loader/qcd_n3_uux_zgg/capture/command.json",
+      "sha256": "3d888c4c1eb782157ac8837f78dfce0b3e5779103fa2fb865d533e20107c5ed5"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n3_uux_zgg/capture/runtime-maps-00.txt": {
+      "bytes": 165,
+      "logical": "prepare-loader/qcd_n3_uux_zgg/capture/runtime-maps-00.txt",
+      "sha256": "7a13008c10146868f2a3f8ffb3e82b14a56c1ad6934d46ad1d4df8e764d64925"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n3_uux_zgg/capture/stdout.txt": {
+      "bytes": 1841,
+      "logical": "prepare-loader/qcd_n3_uux_zgg/capture/stdout.txt",
+      "sha256": "d48d2a07e6dcd2c625a559a43a715b06c12b0fda271df26697e68d566c8b907c"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n3_uux_zgg/replay/command.json": {
+      "bytes": 4485,
+      "logical": "prepare-loader/qcd_n3_uux_zgg/replay/command.json",
+      "sha256": "e8bd412fa0ede352f2b2349498119800f39a685ba3b74d80659fc751bcb8a3e4"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n3_uux_zgg/replay/runtime-maps-00.txt": {
+      "bytes": 165,
+      "logical": "prepare-loader/qcd_n3_uux_zgg/replay/runtime-maps-00.txt",
+      "sha256": "fe4389affe5f60210409eff2b271e93bbeaaefd46d9f532b49ea38f2e49fbcb9"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n3_uux_zgg/replay/stdout.txt": {
+      "bytes": 1728,
+      "logical": "prepare-loader/qcd_n3_uux_zgg/replay/stdout.txt",
+      "sha256": "75d9055683de58e7bf6107e60f7d5801bd4480e7c6095ef440a014fe69b2bb41"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n4_uux_zzgg/capture/command.json": {
+      "bytes": 4464,
+      "logical": "prepare-loader/qcd_n4_uux_zzgg/capture/command.json",
+      "sha256": "0b6bf29a4c5f55cb38b611c0c19f67f16a56318d20ee4f32a9a040a7ea30fb06"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n4_uux_zzgg/capture/runtime-maps-00.txt": {
+      "bytes": 1693,
+      "logical": "prepare-loader/qcd_n4_uux_zzgg/capture/runtime-maps-00.txt",
+      "sha256": "fa26b789e39f11aff71674283cd99eceee25d5c9972b7a6921601b4958c4a724"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n4_uux_zzgg/capture/stdout.txt": {
+      "bytes": 1841,
+      "logical": "prepare-loader/qcd_n4_uux_zzgg/capture/stdout.txt",
+      "sha256": "81471d2351c12228834b9353a529f7d072642abd38713a5b2d23e0ae0d83e63c"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n4_uux_zzgg/replay/command.json": {
+      "bytes": 4494,
+      "logical": "prepare-loader/qcd_n4_uux_zzgg/replay/command.json",
+      "sha256": "b0931098408a44c9402a7ef61066823c4bff3068bc3f845295272ad8323bff1f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n4_uux_zzgg/replay/runtime-maps-00.txt": {
+      "bytes": 165,
+      "logical": "prepare-loader/qcd_n4_uux_zzgg/replay/runtime-maps-00.txt",
+      "sha256": "e107471c059a6b75d0c713c9b4975241ef52ec80f647f103ceb88cbd548bd11f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-loader/qcd_n4_uux_zzgg/replay/stdout.txt": {
+      "bytes": 1728,
+      "logical": "prepare-loader/qcd_n4_uux_zzgg/replay/stdout.txt",
+      "sha256": "d657b5d6aede29d7bfebc55e5e52526e86088d99bf194b50c9a6628856428181"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare-terminal.json": {
+      "bytes": 4462611,
+      "logical": "receipts/prepare-terminal.json",
+      "sha256": "41ddbc70654dac71134bfc11a1892e8795786d869b603abe76f5bcf735b51309"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare/qcd_n3_uux_zgg/command.json": {
+      "bytes": 7815,
+      "logical": "prepare/qcd_n3_uux_zgg/command.json",
+      "sha256": "a81576348276ec9fb32992dd785c7178984a02e676fc91521c736281546804e1"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare/qcd_n3_uux_zgg/runtime-maps-00.txt": {
+      "bytes": 1742,
+      "logical": "prepare/qcd_n3_uux_zgg/runtime-maps-00.txt",
+      "sha256": "ec99dd958842504fc27621c56991d5d9576c2abe84c4ccfa209e20f556a0208a"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare/qcd_n3_uux_zgg/runtime-maps-01.txt": {
+      "bytes": 2893,
+      "logical": "prepare/qcd_n3_uux_zgg/runtime-maps-01.txt",
+      "sha256": "4e2e192215cd1c636dc917a2c3850a471950ffad0b3fe4c5c25e84b6f53e0bab"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare/qcd_n3_uux_zgg/stdout.txt": {
+      "bytes": 5980,
+      "logical": "prepare/qcd_n3_uux_zgg/stdout.txt",
+      "sha256": "fc383464a44079c2639d7e83d319760a32dde862622ab49112ef3f29bbb5362e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare/qcd_n4_uux_zzgg/command.json": {
+      "bytes": 7825,
+      "logical": "prepare/qcd_n4_uux_zzgg/command.json",
+      "sha256": "70e1ce7d07b36291257f86c59f36a458ed30aa359b45c8f6647ba7756ca3d14d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare/qcd_n4_uux_zzgg/runtime-maps-00.txt": {
+      "bytes": 165,
+      "logical": "prepare/qcd_n4_uux_zzgg/runtime-maps-00.txt",
+      "sha256": "881ee96ad599152eedd7962c320e7fe8ceb7155c63124739bfa9548a1dad34db"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare/qcd_n4_uux_zzgg/runtime-maps-01.txt": {
+      "bytes": 2893,
+      "logical": "prepare/qcd_n4_uux_zzgg/runtime-maps-01.txt",
+      "sha256": "3054cc31a6378495ca59c4f7dfcc275a5b84a1e25685969d54a7206e52c3d6c5"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/evidence/prepare/qcd_n4_uux_zzgg/stdout.txt": {
+      "bytes": 6078,
+      "logical": "prepare/qcd_n4_uux_zzgg/stdout.txt",
+      "sha256": "9ce8bbf706085f0226300d98f94b734d089ac52d03cdbbc1bd89bab706d94cc3"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIRUST_interface.f": {
+      "bytes": 15767,
+      "logical": "private-sources/qcd_n3_uux_zgg/TIRUST_interface.f",
+      "sha256": "2c6062a5a6e7150c88cf65764b6c67d1152b9094a14fb49c00efed413abee8d5"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/TIR_interface.f": {
+      "bytes": 23553,
+      "logical": "private-sources/qcd_n3_uux_zgg/TIR_interface.f",
+      "sha256": "f04271925f94a9051b5bda5ef523a278cbb2cab212db7e93846905879f7924f7"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/capture-link.map": {
+      "bytes": 40680738,
+      "logical": "private-sources/qcd_n3_uux_zgg/capture-link.map",
+      "sha256": "6e2de25a9909fe0456bd9d58ccb6b0522b847606d01e71c59ed6c62f336c7890"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/capture.mk": {
+      "bytes": 877,
+      "logical": "private-sources/qcd_n3_uux_zgg/capture.mk",
+      "sha256": "bd82caca314cc7f6c32d970219e232f21082c511d2b6aaec34e3ab4f9df8a96e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/check_sa.f": {
+      "bytes": 13068,
+      "logical": "private-sources/qcd_n3_uux_zgg/check_sa.f",
+      "sha256": "7e249affb3db400cff9e6cc6bc3634ce10e41b4e6b424c9d74c654aea867f1a5"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/observer.c": {
+      "bytes": 8065,
+      "logical": "private-sources/qcd_n3_uux_zgg/observer.c",
+      "sha256": "7309f37b30ab1a82c45cbb6375a4d81e5a984f435b9bd13fb413802aabd7c79e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/observer.f90": {
+      "bytes": 2799,
+      "logical": "private-sources/qcd_n3_uux_zgg/observer.f90",
+      "sha256": "c5762e90a775ee5914b94eed129de22adcda40097bf85641d249dac7d556bba7"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/replay.c": {
+      "bytes": 12397,
+      "logical": "private-sources/qcd_n3_uux_zgg/replay.c",
+      "sha256": "d60574b25ec02283e643a6d059de5fe334674348e4e8b0819fe2ca948971e42b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust.h": {
+      "bytes": 5742,
+      "logical": "private-sources/qcd_n3_uux_zgg/tirust.h",
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/TIRUST_interface.f": {
+      "bytes": 16891,
+      "logical": "private-sources/qcd_n4_uux_zzgg/TIRUST_interface.f",
+      "sha256": "275bd06007876e028188e20277a90b1774bc15a3c470f04774654f56d9e61824"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/TIR_interface.f": {
+      "bytes": 37715,
+      "logical": "private-sources/qcd_n4_uux_zzgg/TIR_interface.f",
+      "sha256": "14137c5bac073fb96130613995255bc9b99bf8c6148ed86ad0366de810077678"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/capture-link.map": {
+      "bytes": 40729838,
+      "logical": "private-sources/qcd_n4_uux_zzgg/capture-link.map",
+      "sha256": "83c07cfcf660723159594bf93ba92c79ab212fdbdc4540d303118caecb732a53"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/capture.mk": {
+      "bytes": 877,
+      "logical": "private-sources/qcd_n4_uux_zzgg/capture.mk",
+      "sha256": "bd82caca314cc7f6c32d970219e232f21082c511d2b6aaec34e3ab4f9df8a96e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/check_sa.f": {
+      "bytes": 13065,
+      "logical": "private-sources/qcd_n4_uux_zzgg/check_sa.f",
+      "sha256": "4e76b8717f25519ce773c5b371c0e41e3a4fe0409ca90fda7aedc4a5d2f15034"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/observer.c": {
+      "bytes": 8065,
+      "logical": "private-sources/qcd_n4_uux_zzgg/observer.c",
+      "sha256": "7309f37b30ab1a82c45cbb6375a4d81e5a984f435b9bd13fb413802aabd7c79e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/observer.f90": {
+      "bytes": 2799,
+      "logical": "private-sources/qcd_n4_uux_zzgg/observer.f90",
+      "sha256": "c5762e90a775ee5914b94eed129de22adcda40097bf85641d249dac7d556bba7"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/replay.c": {
+      "bytes": 12397,
+      "logical": "private-sources/qcd_n4_uux_zzgg/replay.c",
+      "sha256": "d60574b25ec02283e643a6d059de5fe334674348e4e8b0819fe2ca948971e42b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/tirust.h": {
+      "bytes": 5742,
+      "logical": "private-sources/qcd_n4_uux_zzgg/tirust.h",
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-closed-validation-1/helfilter-proof.json": {
+      "bytes": 1351,
+      "logical": "receipts/helfilter-proof.json",
+      "sha256": "230d1fc54362032ebcc47befdc2ee7f33165a1d9d76942a68d4c9fa5caa0c18d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-readiness-1/proof.json": {
+      "bytes": 32183,
+      "logical": "receipts/readiness-1.json",
+      "sha256": "56b4117f13eecee52b07da1858d940edd055e7952111399ddfa6092aeacfce7b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/additive-admission.json": {
+      "bytes": 36341,
+      "logical": "receipts/additive-admission.json",
+      "sha256": "57d0d59873391e70cb9ca68d18f083338a1c2447cc3e3a1cf4522a8debc33564"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/replay-started.json": {
+      "bytes": 216,
+      "logical": "receipts/replay-started.json",
+      "sha256": "13bcd0ff9bc679e07bc9294ced0eb36c2aaf4e570276d7295b028bbe77ca43c6"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/replay-terminal.json": {
+      "bytes": 27247,
+      "logical": "receipts/replay-terminal.json",
+      "sha256": "ba0d8d043c54572fdc1f465129a9b3fdb899786422fdd863af74d3d37f140c01"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/replay/qcd_n3_uux_zgg/command.json": {
+      "bytes": 5154,
+      "logical": "replay/qcd_n3_uux_zgg/command.json",
+      "sha256": "5ffc9545dead506b7bcacbf809674601b77fab5f272bce8e60a4bf575519ea0a"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/replay/qcd_n3_uux_zgg/runtime-maps-00.txt": {
+      "bytes": 2899,
+      "logical": "replay/qcd_n3_uux_zgg/runtime-maps-00.txt",
+      "sha256": "090c413a034ce94ae0ceb5931a1c65c5c9994ac7101cbe69c2d144b6e95f85a6"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/replay/qcd_n3_uux_zgg/runtime-maps-01.txt": {
+      "bytes": 13100,
+      "logical": "replay/qcd_n3_uux_zgg/runtime-maps-01.txt",
+      "sha256": "d1c3dfb5538440d230c1e199e9f37589f020e2b225f17e37c6a174d2843d0ea1"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/replay/qcd_n3_uux_zgg/runtime-maps-02.txt": {
+      "bytes": 13100,
+      "logical": "replay/qcd_n3_uux_zgg/runtime-maps-02.txt",
+      "sha256": "5f801aac6d6f2de1469198fdf2650d63bfa3ebbc066c9c1aed6aa25c2c8638a8"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/replay/qcd_n3_uux_zgg/runtime-maps-03.txt": {
+      "bytes": 13100,
+      "logical": "replay/qcd_n3_uux_zgg/runtime-maps-03.txt",
+      "sha256": "5f2d5221efb6d68f024c2624abf2867bddcb319d9e7e5b2c6dc49b77b391f5ed"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/replay/qcd_n3_uux_zgg/runtime-maps-04.txt": {
+      "bytes": 13100,
+      "logical": "replay/qcd_n3_uux_zgg/runtime-maps-04.txt",
+      "sha256": "a86b988315e526be46f7dbdd61e8296afdb3cbfa1acf3f0127a4e8440212e30b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/evidence/replay/qcd_n3_uux_zgg/stdout.txt": {
+      "bytes": 0,
+      "logical": "replay/qcd_n3_uux_zgg/stdout.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/replay/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/request-manifest.txt": {
+      "bytes": 1074,
+      "logical": "replay/qcd_n3_uux_zgg/outputs/request-manifest.txt",
+      "sha256": "67cbe4ad43a65f9a3367614884e4936c1f103901b91af2b138c5da4eeee26dd4"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-2/replay/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-replay.jsonl": {
+      "bytes": 14797,
+      "logical": "replay/qcd_n3_uux_zgg/outputs/tirust-replay.jsonl",
+      "sha256": "5366b61c11121be71d900e0f26c1af73f3f20784d29c69e85c3bfc2786d10c04"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-replay-readiness-2/proof.json": {
+      "bytes": 37739,
+      "logical": "receipts/replay-readiness-2.json",
+      "sha256": "18cb676644201fd52e3808ea3fc1d57742d6a5a11c6e0e523aefe97ec98e518d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/README.md": {
+      "bytes": 5889,
+      "logical": "source/README.md",
+      "sha256": "7df02436dccb927af2b903ac5c56ac6e09db46622eaff6cea60137724cb4a6d8"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/controller.py": {
+      "bytes": 34489,
+      "logical": "source/controller.py",
+      "sha256": "fb121299e65adba6d49ece5577d8586c32f0cd89b5d998b7dae599a391833645"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/instrument.py": {
+      "bytes": 5684,
+      "logical": "source/instrument.py",
+      "sha256": "39b7e76fcb8233f87a839ce7ebffc0a82904eee04c4aa5da6237467964fb9ce1"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/observer.c": {
+      "bytes": 8065,
+      "logical": "source/observer.c",
+      "sha256": "7309f37b30ab1a82c45cbb6375a4d81e5a984f435b9bd13fb413802aabd7c79e"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/observer.f90": {
+      "bytes": 2799,
+      "logical": "source/observer.f90",
+      "sha256": "c5762e90a775ee5914b94eed129de22adcda40097bf85641d249dac7d556bba7"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/replay.c": {
+      "bytes": 12397,
+      "logical": "source/replay.c",
+      "sha256": "d60574b25ec02283e643a6d059de5fe334674348e4e8b0819fe2ca948971e42b"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/source-index.json": {
+      "bytes": 3325,
+      "logical": "source/source-index.json",
+      "sha256": "2b4bac95022fe550902164a0636699f46798bf4733185610d8f9829f6cd3880d"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/test_controller.py": {
+      "bytes": 18613,
+      "logical": "source/test_controller.py",
+      "sha256": "5e30948db9d04a2d48dab0d99c9187a1eb585e7065376b615cfd512c4816def4"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/test_instrument.py": {
+      "bytes": 5201,
+      "logical": "source/test_instrument.py",
+      "sha256": "32850463469d49992c2e6dba551e65ecb88d1c50a8a5c9e1e4cb2c9bc9a768fa"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/verify_readiness.py": {
+      "bytes": 3573,
+      "logical": "source/verify_readiness.py",
+      "sha256": "ca2dcbc0679cdf167a667742af38942fd9e99398b8520f5b66ce1d5bedf27521"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-2/README.md": {
+      "bytes": 2440,
+      "logical": "source2/README.md",
+      "sha256": "7eb855d534455a7dabbd3083c503e8f11d5a595279bc6561598d601cc215635f"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-2/prior-attempt.json": {
+      "bytes": 556,
+      "logical": "source2/prior-attempt.json",
+      "sha256": "70ea936bc12efb4521b10889dc2abcf923a29d87da8859caf69552eb8073ee94"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-2/prior-attempt.txt": {
+      "bytes": 2209,
+      "logical": "source2/prior-attempt.txt",
+      "sha256": "21b16b96caeefde01d29aa0538deae9debfd0a9bca2274870b209d81bd548139"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-2/replay_admission.py": {
+      "bytes": 6414,
+      "logical": "source2/replay_admission.py",
+      "sha256": "4973ab30c8d22e1ca839190b17831c9a9b5272949b93cec284ce947ec0dcc3ba"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-2/source-index.json": {
+      "bytes": 2012,
+      "logical": "source2/source-index.json",
+      "sha256": "bb990d419677675095d5c230b189a3986d428283e5c3df74edb2907e071a9734"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-2/test_replay_admission.py": {
+      "bytes": 4084,
+      "logical": "source2/test_replay_admission.py",
+      "sha256": "1c54a88012b6330428c2dc0fea7491b4f337d583e7952b2e034cdcf395268aea"
+    },
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-2/verify_readiness.py": {
+      "bytes": 2840,
+      "logical": "source2/verify_readiness.py",
+      "sha256": "8b093bc58dc21c4f82fa4d070b6faf97cd77424abc632b6c780eb68f1dafe34c"
+    }
+  },
+  "prepare_terminal_confirmation": {
+    "exit_code": 0,
+    "observed_terminal": true,
+    "session_id": 86009,
+    "sha256": "41ddbc70654dac71134bfc11a1892e8795786d869b603abe76f5bcf735b51309"
+  },
+  "replay_admission_confirmation": {
+    "description": "Tool-observed closed preadmission failure; common lock availability check immediately released; controller failed before its replay receipts and native calls.",
+    "exit_code": 1,
+    "log": "prior-attempt.txt",
+    "logical": "source2/prior-attempt.txt",
+    "native_started": false,
+    "observed_terminal": true,
+    "replay_started_exists": false,
+    "replay_terminal_exists": false,
+    "session_id": 1059,
+    "sha256": "21b16b96caeefde01d29aa0538deae9debfd0a9bca2274870b209d81bd548139",
+    "source1_capture_unchanged": "7f21e3bd9e2b8bf0458c0c6008c500bc941786337523f863c5d64dec9c72f05e"
+  },
+  "replay_status": "closed",
+  "replay_terminal_confirmation": {
+    "exit_code": 0,
+    "observed_terminal": true,
+    "session_id": 94497,
+    "sha256": "ba0d8d043c54572fdc1f465129a9b3fdb899786422fdd863af74d3d37f140c01"
+  },
+  "schema": "madloop-tirust-first-failure-retention-registry-v1"
+}

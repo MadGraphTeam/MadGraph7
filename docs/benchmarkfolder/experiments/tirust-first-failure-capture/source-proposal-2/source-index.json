@@ -1,0 +1,38 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 2440,
+      "sha256": "7eb855d534455a7dabbd3083c503e8f11d5a595279bc6561598d601cc215635f"
+    },
+    "prior-attempt.json": {
+      "bytes": 556,
+      "sha256": "70ea936bc12efb4521b10889dc2abcf923a29d87da8859caf69552eb8073ee94"
+    },
+    "prior-attempt.txt": {
+      "bytes": 2209,
+      "sha256": "21b16b96caeefde01d29aa0538deae9debfd0a9bca2274870b209d81bd548139"
+    },
+    "replay_admission.py": {
+      "bytes": 6414,
+      "sha256": "4973ab30c8d22e1ca839190b17831c9a9b5272949b93cec284ce947ec0dcc3ba"
+    },
+    "test_replay_admission.py": {
+      "bytes": 4084,
+      "sha256": "1c54a88012b6330428c2dc0fea7491b4f337d583e7952b2e034cdcf395268aea"
+    },
+    "verify_readiness.py": {
+      "bytes": 2840,
+      "sha256": "8b093bc58dc21c4f82fa4d070b6faf97cd77424abc632b6c780eb68f1dafe34c"
+    }
+  },
+  "inputs": {
+    ".tirust-build/tirust-first-failure-capture-1/evidence/capture-terminal.json": "7f21e3bd9e2b8bf0458c0c6008c500bc941786337523f863c5d64dec9c72f05e",
+    ".tirust-build/tirust-first-failure-capture-1/evidence/prepare-terminal.json": "41ddbc70654dac71134bfc11a1892e8795786d869b603abe76f5bcf735b51309",
+    ".tirust-build/tirust-first-failure-closed-validation-1/helfilter-proof.json": "230d1fc54362032ebcc47befdc2ee7f33165a1d9d76942a68d4c9fa5caa0c18d",
+    "docs/benchmarkfolder/experiments/tirust-first-failure-capture/source-proposal-1/source-index.json": "2b4bac95022fe550902164a0636699f46798bf4733185610d8f9829f6cd3880d",
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ece7c4e855b50f13822f441d7be227631293acbc9ed345a2f1a154f0329757a2",
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b"
+  },
+  "schema": "madloop-tirust-first-failure-replay-admission-v1",
+  "scope": "Replay-only exact-two-template successor inventory overlay; six captured Zgg inputs, <=12 calls, no absent reconstruction or source1/work1 mutation."
+}

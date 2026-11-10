@@ -1,0 +1,26 @@
+{
+  "actual_terminal": {
+    "exit_code": 0,
+    "session_id": 50512
+  },
+  "files": {
+    "README.md": {
+      "bytes": 1402,
+      "sha256": "3d862ae2b7cd3f5b3fbd5537cc7a0965e5586a9d80ebe38bbb10edae1b054094"
+    },
+    "guarded_verify.py": {
+      "bytes": 4441,
+      "sha256": "3cb0b14934907aee2593d191134d1f994ecb30b0c208874001cc2aad1a261df1"
+    },
+    "proof.json": {
+      "bytes": 16221,
+      "sha256": "581ce299e19c7c2ee94967446fb7a55002a06ad1320c7608bccc416aa5583b09"
+    }
+  },
+  "inputs": {
+    "compact_index_sha256": "1e26738f4489b55e85ac059c963fec0c75dbc33f8cb4bd208f59a8676477cc06",
+    "compact_verifier_sha256": "3097d96a5e90cde3aa437a1760384b05a25f2cf532b759f1376833a61169b8ec",
+    "guarded_proof_sha256": "581ce299e19c7c2ee94967446fb7a55002a06ad1320c7608bccc416aa5583b09"
+  },
+  "schema": "madloop-first-failure-portable-verification-v1"
+}

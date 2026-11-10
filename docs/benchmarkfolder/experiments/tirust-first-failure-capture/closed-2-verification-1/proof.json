@@ -1,0 +1,481 @@
+{
+  "amplitude_evaluations": 0,
+  "callback_equal": true,
+  "compiler_invocations": 0,
+  "denied_attempts": [],
+  "index_sha256": "1e26738f4489b55e85ac059c963fec0c75dbc33f8cb4bd208f59a8676477cc06",
+  "loader_invocations": 0,
+  "numerical_lock_attempts": 0,
+  "original_and_relocated_equal": true,
+  "physical_payload_count": 148,
+  "runner_sha256": "3cb0b14934907aee2593d191134d1f994ecb30b0c208874001cc2aad1a261df1",
+  "standalone_tensor_evaluations": 0,
+  "verification": {
+    "compact_source_index_sha256": "56d566ca59a93c2ffbce99a11e04814f6c865f134f394ad565fd218d02d0f53a",
+    "compressed_members": 2,
+    "index_sha256": "1e26738f4489b55e85ac059c963fec0c75dbc33f8cb4bd208f59a8676477cc06",
+    "logical_data_changes": 0,
+    "logical_payloads": 141,
+    "native_evaluations": 0,
+    "original_index_sha256": "d85a79ce185660512334c2f51e01cfa1734304149a29188fd62c782625a7092e",
+    "physical_payloads": 148,
+    "summary": {
+      "capture_terminal_sha256": "7f21e3bd9e2b8bf0458c0c6008c500bc941786337523f863c5d64dec9c72f05e",
+      "capture_terminal_status": "failed",
+      "captured_input_slots": 6,
+      "cases": [
+        {
+          "bootstrap_context_c_boundaries": 0,
+          "bootstrap_context_statuses": {},
+          "capture": {
+            "controller_state": "failed",
+            "error": null,
+            "executed": true,
+            "guard_error": {
+              "class": "ValueError",
+              "message": "Unregistered capture product"
+            },
+            "returncode": 0,
+            "runtime_verified_in_receipt": true
+          },
+          "case": "qcd_n3_uux_zgg",
+          "event_records": 43,
+          "open_group": null,
+          "primary_c_boundaries": 6
+        },
+        {
+          "bootstrap_context_c_boundaries": 288,
+          "bootstrap_context_statuses": {
+            "1": 288
+          },
+          "capture": {
+            "controller_state": "failed",
+            "error": {
+              "class": "TimeoutError",
+              "message": "Native/compile work deadline; cleanup reserve begins"
+            },
+            "executed": true,
+            "guard_error": null,
+            "returncode": -2,
+            "runtime_verified_in_receipt": true
+          },
+          "case": "qcd_n4_uux_zzgg",
+          "event_records": 2017,
+          "open_group": null,
+          "primary_c_boundaries": 0
+        }
+      ],
+      "expected_input_slots": 12,
+      "interpretation": "Captured tensor requests and explicit missing slots; no failed tensor output inspected.",
+      "missing_or_unavailable_input_slots": 6,
+      "numerical_acceptance_claimed": false,
+      "performance_acceptance_claimed": false,
+      "replay": {
+        "additive_admission": {
+          "admission_sha256": "57d0d59873391e70cb9ca68d18f083338a1c2447cc3e3a1cf4522a8debc33564",
+          "approved_template_changes": {
+            "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": {
+              "new": "ece7c4e855b50f13822f441d7be227631293acbc9ed345a2f1a154f0329757a2",
+              "old": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b"
+            },
+            "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": {
+              "new": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b",
+              "old": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8"
+            }
+          },
+          "predecessor_failure": {
+            "description": "Tool-observed closed preadmission failure; common lock availability check immediately released; controller failed before its replay receipts and native calls.",
+            "exit_code": 1,
+            "log": "prior-attempt.txt",
+            "logical": "source2/prior-attempt.txt",
+            "native_started": false,
+            "observed_terminal": true,
+            "replay_started_exists": false,
+            "replay_terminal_exists": false,
+            "session_id": 1059,
+            "sha256": "21b16b96caeefde01d29aa0538deae9debfd0a9bca2274870b209d81bd548139",
+            "source1_capture_unchanged": "7f21e3bd9e2b8bf0458c0c6008c500bc941786337523f863c5d64dec9c72f05e"
+          },
+          "readiness_sha256": "18cb676644201fd52e3808ea3fc1d57742d6a5a11c6e0e523aefe97ec98e518d",
+          "source2_index_sha256": "bb990d419677675095d5c230b189a3986d428283e5c3df74edb2907e071a9734"
+        },
+        "evaluate_count": 12,
+        "execution": {
+          "controller_state": "complete",
+          "error": null,
+          "executed": true,
+          "guard_error": null,
+          "returncode": 0,
+          "runtime_verified_in_receipt": true
+        },
+        "fresh_status_counts": {
+          "1": 6
+        },
+        "protocol": {
+          "evaluate_count": 12,
+          "evaluation_limit": 12,
+          "failed_stages": 12,
+          "full_raw_log_retained": true,
+          "inputs": [
+            {
+              "branch": "normal",
+              "input_key": {
+                "case_id": 1,
+                "group": 59,
+                "method": 1,
+                "phase": 1,
+                "point": 25
+              },
+              "input_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m1-g059.dat",
+              "missing_required_stages": [],
+              "missing_stages": []
+            },
+            {
+              "branch": "normal",
+              "input_key": {
+                "case_id": 1,
+                "group": 61,
+                "method": 1,
+                "phase": 1,
+                "point": 25
+              },
+              "input_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m1-g061.dat",
+              "missing_required_stages": [],
+              "missing_stages": []
+            },
+            {
+              "branch": "normal",
+              "input_key": {
+                "case_id": 1,
+                "group": 59,
+                "method": 2,
+                "phase": 1,
+                "point": 25
+              },
+              "input_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m2-g059.dat",
+              "missing_required_stages": [],
+              "missing_stages": []
+            },
+            {
+              "branch": "normal",
+              "input_key": {
+                "case_id": 1,
+                "group": 61,
+                "method": 2,
+                "phase": 1,
+                "point": 25
+              },
+              "input_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m2-g061.dat",
+              "missing_required_stages": [],
+              "missing_stages": []
+            },
+            {
+              "branch": "normal",
+              "input_key": {
+                "case_id": 1,
+                "group": 59,
+                "method": 3,
+                "phase": 1,
+                "point": 25
+              },
+              "input_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m3-g059.dat",
+              "missing_required_stages": [],
+              "missing_stages": []
+            },
+            {
+              "branch": "normal",
+              "input_key": {
+                "case_id": 1,
+                "group": 61,
+                "method": 3,
+                "phase": 1,
+                "point": 25
+              },
+              "input_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/capture/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/tirust-input-p025-m3-g061.dat",
+              "missing_required_stages": [],
+              "missing_stages": []
+            }
+          ],
+          "missing_evaluations": 0,
+          "numerical_acceptance_claimed": false,
+          "protocol_complete": true,
+          "qualification_passed": true,
+          "stage_count": 30,
+          "unknown_statuses": []
+        },
+        "repeat_status_counts": {
+          "1": 6
+        },
+        "status": "passed",
+        "status_counts": {
+          "1": 12
+        },
+        "successful_tensor_output_count": 0
+      },
+      "schema": "madloop-tirust-first-failure-capture-summary-v1",
+      "slots": [
+        {
+          "c_boundary_count": 1,
+          "c_errors": [
+            {
+              "error": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.697307002016101e-4\")",
+              "error_encoding": "latin1-bytes",
+              "error_required": 103,
+              "error_truncated": false
+            }
+          ],
+          "c_statuses": [
+            1
+          ],
+          "fortran_stage_only": false,
+          "group_end_stable": [
+            false
+          ],
+          "input_key": {
+            "case_id": 1,
+            "group": 59,
+            "method": 1,
+            "phase": 1,
+            "point": 25
+          },
+          "input_sha256": "b14af90667077aef544708227b0065e55366a9ddeeacc6a297c76447757d0438",
+          "input_state": "captured"
+        },
+        {
+          "c_boundary_count": 1,
+          "c_errors": [
+            {
+              "error": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.697307002016101e-4\")",
+              "error_encoding": "latin1-bytes",
+              "error_required": 103,
+              "error_truncated": false
+            }
+          ],
+          "c_statuses": [
+            1
+          ],
+          "fortran_stage_only": false,
+          "group_end_stable": [
+            false
+          ],
+          "input_key": {
+            "case_id": 1,
+            "group": 61,
+            "method": 1,
+            "phase": 1,
+            "point": 25
+          },
+          "input_sha256": "72136f21085e91367b63448a5ef10e6be9ffdc6450a6b163fb88317ca31ec405",
+          "input_state": "captured"
+        },
+        {
+          "c_boundary_count": 1,
+          "c_errors": [
+            {
+              "error": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.697307002016169e-4\")",
+              "error_encoding": "latin1-bytes",
+              "error_required": 103,
+              "error_truncated": false
+            }
+          ],
+          "c_statuses": [
+            1
+          ],
+          "fortran_stage_only": false,
+          "group_end_stable": [
+            false
+          ],
+          "input_key": {
+            "case_id": 1,
+            "group": 59,
+            "method": 2,
+            "phase": 1,
+            "point": 25
+          },
+          "input_sha256": "3ae17ecc24af56c2529ded8f330a2d5b79c59b2d21cd94ae892deed07927f8a8",
+          "input_state": "captured"
+        },
+        {
+          "c_boundary_count": 1,
+          "c_errors": [
+            {
+              "error": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 2, 3, 4]: conditioning 4.697307002016169e-4\")",
+              "error_encoding": "latin1-bytes",
+              "error_required": 103,
+              "error_truncated": false
+            }
+          ],
+          "c_statuses": [
+            1
+          ],
+          "fortran_stage_only": false,
+          "group_end_stable": [
+            false
+          ],
+          "input_key": {
+            "case_id": 1,
+            "group": 61,
+            "method": 2,
+            "phase": 1,
+            "point": 25
+          },
+          "input_sha256": "68e4436c8bfe883f9c76899a232e5f44ec9ecdb248a00ce269ded7ab3e9ea165",
+          "input_state": "captured"
+        },
+        {
+          "c_boundary_count": 1,
+          "c_errors": [
+            {
+              "error": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.697307002016101e-4\")",
+              "error_encoding": "latin1-bytes",
+              "error_required": 103,
+              "error_truncated": false
+            }
+          ],
+          "c_statuses": [
+            1
+          ],
+          "fortran_stage_only": false,
+          "group_end_stable": [
+            false
+          ],
+          "input_key": {
+            "case_id": 1,
+            "group": 59,
+            "method": 3,
+            "phase": 1,
+            "point": 25
+          },
+          "input_sha256": "dd6544bc1277f4d30f7579a2099aa5622b7482b0c892747661a0b18805b5bdcd",
+          "input_state": "captured"
+        },
+        {
+          "c_boundary_count": 1,
+          "c_errors": [
+            {
+              "error": "TIRust DP: Unstable(\"ill-conditioned Gram matrix for [0, 1, 2, 3]: conditioning 4.697307002016101e-4\")",
+              "error_encoding": "latin1-bytes",
+              "error_required": 103,
+              "error_truncated": false
+            }
+          ],
+          "c_statuses": [
+            1
+          ],
+          "fortran_stage_only": false,
+          "group_end_stable": [
+            false
+          ],
+          "input_key": {
+            "case_id": 1,
+            "group": 61,
+            "method": 3,
+            "phase": 1,
+            "point": 25
+          },
+          "input_sha256": "479ad1fa89325e0bda14be066b95f6d8e87b26621c2fc9c9c3d3a0ede1c78557",
+          "input_state": "captured"
+        },
+        {
+          "c_boundary_count": 0,
+          "c_errors": [],
+          "c_statuses": [],
+          "fortran_stage_only": false,
+          "group_end_stable": [],
+          "input_key": {
+            "case_id": 2,
+            "group": 408,
+            "method": 1,
+            "phase": 1,
+            "point": 2
+          },
+          "input_sha256": null,
+          "input_state": "missing"
+        },
+        {
+          "c_boundary_count": 0,
+          "c_errors": [],
+          "c_statuses": [],
+          "fortran_stage_only": false,
+          "group_end_stable": [],
+          "input_key": {
+            "case_id": 2,
+            "group": 422,
+            "method": 1,
+            "phase": 1,
+            "point": 2
+          },
+          "input_sha256": null,
+          "input_state": "missing"
+        },
+        {
+          "c_boundary_count": 0,
+          "c_errors": [],
+          "c_statuses": [],
+          "fortran_stage_only": false,
+          "group_end_stable": [],
+          "input_key": {
+            "case_id": 2,
+            "group": 408,
+            "method": 2,
+            "phase": 1,
+            "point": 2
+          },
+          "input_sha256": null,
+          "input_state": "missing"
+        },
+        {
+          "c_boundary_count": 0,
+          "c_errors": [],
+          "c_statuses": [],
+          "fortran_stage_only": false,
+          "group_end_stable": [],
+          "input_key": {
+            "case_id": 2,
+            "group": 422,
+            "method": 2,
+            "phase": 1,
+            "point": 2
+          },
+          "input_sha256": null,
+          "input_state": "missing"
+        },
+        {
+          "c_boundary_count": 0,
+          "c_errors": [],
+          "c_statuses": [],
+          "fortran_stage_only": false,
+          "group_end_stable": [],
+          "input_key": {
+            "case_id": 2,
+            "group": 408,
+            "method": 3,
+            "phase": 1,
+            "point": 2
+          },
+          "input_sha256": null,
+          "input_state": "missing"
+        },
+        {
+          "c_boundary_count": 0,
+          "c_errors": [],
+          "c_statuses": [],
+          "fortran_stage_only": false,
+          "group_end_stable": [],
+          "input_key": {
+            "case_id": 2,
+            "group": 422,
+            "method": 3,
+            "phase": 1,
+            "point": 2
+          },
+          "input_sha256": null,
+          "input_state": "missing"
+        }
+      ]
+    },
+    "verified": true
+  },
+  "verified": true,
+  "verifier_sha256": "3097d96a5e90cde3aa437a1760384b05a25f2cf532b759f1376833a61169b8ec"
+}

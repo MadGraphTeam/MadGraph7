@@ -1,0 +1,25 @@
+60317ce49000-60317ce54000 r--p 00000000 00:21 1140751                    /nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make
+60317ce54000-60317ce81000 r-xp 0000b000 00:21 1140751                    /nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make
+60317ce81000-60317ce8c000 r--p 00038000 00:21 1140751                    /nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make
+60317ce8c000-60317ce8d000 r--p 00043000 00:21 1140751                    /nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make
+60317ce8d000-60317ce8f000 rw-p 00044000 00:21 1140751                    /nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make
+60317ce8f000-60317ce93000 rw-p 00000000 00:00 0 
+6031bc170000-6031bc1e4000 rw-p 00000000 00:00 0                          [heap]
+7e0729d20000-7e0729d23000 rw-p 00000000 00:00 0 
+7e0729d23000-7e0729d4b000 r--p 00000000 00:21 1448533                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6
+7e0729d4b000-7e0729ecc000 r-xp 00028000 00:21 1448533                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6
+7e0729ecc000-7e0729f1b000 r--p 001a9000 00:21 1448533                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6
+7e0729f1b000-7e0729f1f000 r--p 001f7000 00:21 1448533                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6
+7e0729f1f000-7e0729f21000 rw-p 001fb000 00:21 1448533                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6
+7e0729f21000-7e0729f30000 rw-p 00000000 00:00 0 
+7e0729f30000-7e0729f34000 r--p 00000000 00:00 0                          [vvar]
+7e0729f34000-7e0729f36000 r--p 00000000 00:00 0                          [vvar_vclock]
+7e0729f36000-7e0729f38000 r-xp 00000000 00:00 0                          [vdso]
+7e0729f38000-7e0729f39000 r--p 00000000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+7e0729f39000-7e0729f64000 r-xp 00001000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+7e0729f64000-7e0729f6f000 r--p 0002c000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+7e0729f6f000-7e0729f71000 r--p 00037000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+7e0729f71000-7e0729f72000 rw-p 00039000 00:21 1448527                    /nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/ld-linux-x86-64.so.2
+7e0729f72000-7e0729f73000 rw-p 00000000 00:00 0 
+7fff30f3d000-7fff30f60000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

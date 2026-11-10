@@ -1,0 +1,35 @@
+{
+  "capture_terminal_sha256": "7f21e3bd9e2b8bf0458c0c6008c500bc941786337523f863c5d64dec9c72f05e",
+  "cases": [
+    {
+      "case": "qcd_n3_uux_zgg",
+      "new_standard_filter_products": {
+        "SubProcesses/MadLoop5_resources/ML5_0_HelFilter.dat": {
+          "bytes": 624,
+          "sha256": "7fe9630e61964b5a90af92e2a76b48b14d75fd4925e95fefa40fa1ce1a644ee6"
+        }
+      },
+      "original_controller_guard_failure_retained": {
+        "class": "ValueError",
+        "message": "Unregistered capture product"
+      },
+      "private_entries_sha256": "36b946d5aefd2b4e80fc1c1de5dd7ccca340c13993ceb1719940df680e37566c",
+      "source5_guard_passed": true
+    },
+    {
+      "case": "qcd_n4_uux_zzgg",
+      "new_standard_filter_products": {},
+      "original_controller_guard_failure_retained": null,
+      "private_entries_sha256": "72828c3eda8d27ead5cf4f4a9a1c56e005b2d4430adf3a4716188a58508a00b5",
+      "source5_guard_passed": true
+    }
+  ],
+  "guard": {
+    "lock_attempts": 0,
+    "native_attempts": 0,
+    "write_attempts": 0
+  },
+  "schema": "madloop-closed-capture-standard-filter-guard-check-v1",
+  "source5_guard_policy": "private_changes at source5/pilot.py:793; exact normal filter addition only; original failed terminal unchanged",
+  "source_index_sha256": "2b4bac95022fe550902164a0636699f46798bf4733185610d8f9829f6cd3880d"
+}

@@ -300,7 +300,7 @@ ledger are preserved under
 Reconstruct its original renderer inputs from the pinned Git commit to
 reproduce that historical PDF; current helpers do not replace those inputs.
 
-The current campaign has closed all eleven ordinary cases at `3e-6`. Its
+The preceding `invariant-symmetry-1` campaign closed all eleven ordinary cases at `3e-6`. Its
 sealed checkpoint is `8f5f7110…`; performance acceptance remains deferred.
 The additive retrospective view binds all eight plots and all twenty accepted
 backend streams from the [closed four-case plot capsule](stability_appendix_c/retrospective-main-closed11-1/README.md),
@@ -319,6 +319,14 @@ TIRust has 24/100 in QCD Zgg and 0/100 in QCD ZZgg. Their unavailable outcomes
 remain unknown bounds, not measured failure fractions. Nineteen completed requests
 are not nineteen accuracy passes. The preceding [25-page retrospective report](https://github.com/MadGraphTeam/MadGraph7/blob/ba047d9165/docs/benchmarkfolder/benchmark.pdf)
 remains available at its recorded commit.
+
+The [first-failure capture and standalone replay](experiments/tirust-first-failure-capture/closed-2/COMPACT_README.md)
+retains six exact Zgg tensor inputs. All six reproduce their reported
+Gram-conditioning rejection in fresh and repeated contexts; failed tensor
+outputs were never read. ZZgg times out during bootstrap, leaving six primary
+inputs missing. The original capture failure and later inventory-admission
+failure remain visible. These boundary diagnostics establish neither independent
+accuracy nor the exact cause of every internal fallback failure.
 
 The current PDF has 31 pages. The raw pilot methodology is on page 26, its four
 plots on pages 27–30, and complete call/failure accounting on page 31. All six new
