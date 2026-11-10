@@ -333,16 +333,12 @@ def _rung(
         row, parts = result[key]
         row = _with(row, digits=digits, fallback=texts[key])
         if row.verdict == FAIL and undecided(parts):
-            row = _with(
-                row,
-                verdict=UNDECIDED,
-                reason="still "
-                + _undecided_text(
-                    f"arbitrary ({digits} digits)",
-                    parts,
-                    rung_digits(parts, carrier.unit_roundoff),
-                ),
+            still = _undecided_text(
+                f"arbitrary ({digits} digits)",
+                parts,
+                rung_digits(parts, carrier.unit_roundoff),
             )
+            row = _with(row, verdict=UNDECIDED, reason=f"{texts[key]}; still {still}")
         decided[key] = row
 
 

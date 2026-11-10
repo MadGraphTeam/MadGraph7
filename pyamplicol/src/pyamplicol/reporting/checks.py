@@ -115,7 +115,10 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
                     _number(row.deviation),
                     _number(row.estimate),
                     verdict,
-                    row.fallback or row.reason or "",
+                    # An undecided row's reason holds both carriers' numbers.
+                    row.reason
+                    if row.verdict == "undecided"
+                    else row.fallback or row.reason or "",
                 )
             )
         blocks.append(table.get_string())

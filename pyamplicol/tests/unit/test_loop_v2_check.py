@@ -610,7 +610,8 @@ def test_still_undecided_far_above_the_estimate_option_and_explicit_carrier(
     row = _rung_rows(rows)["QED^4 1/eps"]
     assert row.verdict == checks.UNDECIDED and row.carrier == "arbitrary"
     assert row.fallback.startswith("double-double undecided")
-    assert row.reason.startswith("still arbitrary (34 digits) undecided")
+    assert row.reason.startswith("double-double undecided: residual 2e-11")
+    assert "; still arbitrary (34 digits) undecided" in row.reason
     process = checks.ProcessCheck(
         "p", "u u~ > a a", "virtual", "zero", (), "ninjars", tuple(rows), 0.0
     )
