@@ -426,7 +426,6 @@ where
     /// estimate `E_in = η T` of the finite part (`ninjars::Amplitude::input_errors`;
     /// 0 for a failed lane), in binary64.
     pub fn input_errors(&self) -> Vec<f64> {
-        use symbolica::domains::float::RealLike;
         self.amplitude
             .input_errors()
             .iter()
