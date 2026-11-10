@@ -348,26 +348,6 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
             Self::TiRust(backend) => T::tir_reduce(backend, groups, poles, check),
         }
     }
-
-    fn reduce_term_scale(
-        &mut self,
-        groups: &[FamilyLanes<T>],
-        poles: Poles,
-    ) -> RusticolResult<Reduced<T>> {
-        match self {
-            Self::NinjaRs(backend) => backend.reduce_term_scale(groups, poles),
-            #[cfg(feature = "tir")]
-            Self::TiRust(backend) => T::tir_reduce(backend, groups, poles, None),
-        }
-    }
-
-    fn take_input_errors(&mut self) -> Vec<Vec<f64>> {
-        match self {
-            Self::NinjaRs(backend) => V2Backend::<T>::take_input_errors(backend),
-            #[cfg(feature = "tir")]
-            Self::TiRust(_) => Vec::new(),
-        }
-    }
 }
 
 /// A [`V2Reducer`] as the executor's reduction backend. `masters` is the
@@ -502,23 +482,6 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
                 })
                 .collect::<RusticolResult<Vec<_>>>()
         };
-        self.reducer.keep_input_errors(output.input_errors);
         Ok((read(output.direct)?, output.check.map(read).transpose()?))
-    }
-
-    fn take_input_errors(&mut self) -> Vec<Vec<f64>> {
-        self.reducer.take_input_errors()
-    }
-
-    /// Without NinjaRS's measured decision of flagged lanes
-    /// (`crate::without_lane_measurement`): the term scale reads magnitudes
-    /// only, and a monomial's integral outside `2^-17` of its family's scale
-    /// must not fail the point.
-    fn reduce_term_scale(
-        &mut self,
-        groups: &[FamilyLanes<T>],
-        poles: Poles,
-    ) -> RusticolResult<Reduced<T>> {
-        crate::without_lane_measurement(|| self.reduce(groups, poles, None))
     }
 }

@@ -40,7 +40,6 @@ pub mod v2 {
     use std::sync::Arc;
     use std::time::Instant;
     use symbolica::domains::float::{Complex, Real};
-    use symbolica::domains::rational::Rational;
 
     /// Default SIMD lanes per chunk (gate G0, DESIGN.md §5.4).
     pub const DEFAULT_LANES: usize = 16;
@@ -221,29 +220,6 @@ pub mod v2 {
         /// The counters collected since the last call (none by default).
         fn take_statistics(&mut self) -> BackendStatistics {
             BackendStatistics::default()
-        }
-        /// [`Self::reduce`] of the term scale's unit-numerator lanes
-        /// ([`V2Options::term_scale`]): magnitudes for an estimate's rounding
-        /// floor, never a served value, so a backend may leave out its
-        /// value-level decisions there (NinjaRS's measured decision of the
-        /// lanes its conditioning screen flags, which would fail a point on an
-        /// auxiliary monomial integral). The default is [`Self::reduce`]
-        /// without a check.
-        fn reduce_term_scale(
-            &mut self,
-            groups: &[FamilyLanes<T>],
-            poles: Poles,
-        ) -> RusticolResult<Reduced<T>> {
-            self.reduce(groups, poles, None)
-        }
-        /// Per group and lane of the last [`Self::reduce`]'s direct pass an
-        /// absolute error estimate of the lane's finite integral that the
-        /// re-test does not see (NinjaRS's input-consistency estimate `E_in
-        /// = η T` of an S-matrix that disagrees with the shifts), or empty
-        /// (the default) when the backend reports none. The executor adds it
-        /// to the amplitude-mode re-test budget ([`PointResult::amplitude_budget`]).
-        fn take_input_errors(&mut self) -> Vec<Vec<f64>> {
-            Vec::new()
         }
     }
 
@@ -1201,10 +1177,6 @@ pub mod v2 {
         /// slot `Σ_f Σ_α |N_{f,α}| |I_{f,α}|` per coefficient (without the
         /// loop factor); empty until a point's first lane is reduced.
         terms: Vec<Vec<Vec<T>>>,
-        /// Per point the backend's input errors of its reduced lanes
-        /// ([`V2Backend::take_input_errors`]; dependent columns `|c|` times
-        /// their representative's).
-        inputs: Vec<Vec<(LaneKey, f64)>>,
     }
 
     /// The unit-numerator lanes of a family group: per point of the group
@@ -1308,7 +1280,6 @@ pub mod v2 {
                 self.backend
                     .reduce(&groups, self.options.poles, self.options.check)?;
             report.time("reduction", start);
-            let inputs = self.backend.take_input_errors();
             let statistics = self.backend.take_statistics();
             for (stage, seconds) in statistics.seconds {
                 *report.seconds.entry(stage).or_default() += seconds;
@@ -1328,16 +1299,6 @@ pub mod v2 {
                                 formed.push(&key, value, &mut sink.families[point]);
                             }
                             sink.families[point].push((key, value.clone()));
-                            if let Some(&error) = inputs.get(index).and_then(|g| g.get(row)) {
-                                if let Some(formed) = &dependents {
-                                    for (column, size) in formed.sizes(&key) {
-                                        let dependent = LaneKey { column, ..key };
-                                        sink.inputs[point]
-                                            .push((dependent, size.to_f64().abs() * error));
-                                    }
-                                }
-                                sink.inputs[point].push((key, error));
-                            }
                         }
                         Err(status) => sink.failures[point]
                             .push(format!("family {} lane {key:?}: {status}", group.family)),
@@ -1381,7 +1342,7 @@ pub mod v2 {
                 TERM_SCALE_LANES,
                 units.iter().map(|g| g.keys.len() as u64).sum(),
             );
-            let (moments, _) = self.backend.reduce_term_scale(&units, self.options.poles)?;
+            let (moments, _) = self.backend.reduce(&units, self.options.poles, None)?;
             let width = self.options.poles.width();
             let slots = self.plan.order_count * self.plan.columns;
             let sink = &mut *self.sink;
@@ -1530,7 +1491,6 @@ pub mod v2 {
             families: vec![Vec::new(); points],
             checks: vec![Vec::new(); points],
             terms: vec![Vec::new(); points],
-            inputs: vec![Vec::new(); points],
         };
         // The call's buffer pools, kept across its family walks and chunks
         // (lit-dress lever E).
@@ -1622,7 +1582,6 @@ pub mod v2 {
             mut families,
             mut checks,
             mut terms,
-            mut inputs,
         } = sink;
         let zero = zero.zero();
         let pi = zero.pi();
@@ -1667,7 +1626,6 @@ pub mod v2 {
                     lanes,
                     tests,
                     terms,
-                    std::mem::take(&mut inputs[point]),
                     options.raw_lanes,
                 ));
             }
@@ -1736,18 +1694,14 @@ pub mod v2 {
     /// re-test's amplitude and the budget `Σ_f |ΔΩ_f| / (16π²)` when a
     /// check ran, the term scale `Σ_f Σ_α |N_α| |I_α| / (16π²)` when asked
     /// (`terms`, [`V2Options::term_scale`]); the raw lanes kept only when
-    /// asked (`raw_lanes`). The backend's input errors of the lanes
-    /// (`inputs`, [`V2Backend::take_input_errors`]) enter the budget's
-    /// finite coefficient, `/ (16π²)` as the deviations do.
-    #[allow(clippy::too_many_arguments)]
-    fn amplitude_result<T: Real + symbolica::domains::float::SingleFloat>(
+    /// asked (`raw_lanes`).
+    fn amplitude_result<T: Real>(
         plan: &LoopProgramV4,
         zero: &T,
         width: usize,
         lanes: Vec<(LaneKey, Vec<Complex<T>>)>,
         tests: Option<Vec<(LaneKey, Vec<Complex<T>>)>>,
         terms: Option<Vec<Vec<T>>>,
-        inputs: Vec<(LaneKey, f64)>,
         raw_lanes: bool,
     ) -> PointResult<T> {
         let pi = zero.pi();
@@ -1788,15 +1742,6 @@ pub mod v2 {
                     debug_assert_eq!(key, other);
                     for (b, d) in budget[slot(key)].iter_mut().zip(deviation(direct, test)) {
                         *b += scale.clone() * &d;
-                    }
-                }
-                for (key, error) in &inputs {
-                    // A non-finite estimate is no estimate: NaN in the budget.
-                    let error = Rational::try_from(*error)
-                        .map(|r| zero.from_rational(&r))
-                        .unwrap_or_else(|_| zero.zero() / &zero.zero());
-                    if let Some(finite) = budget[slot(key)].first_mut() {
-                        *finite += scale.clone() * &error;
                     }
                 }
                 (Some(sum(tests)), Some(budget))
@@ -1881,47 +1826,6 @@ pub mod v2 {
                     .collect();
                 Ok((direct, None))
             }
-        }
-
-        /// A backend's input errors ([`V2Backend::take_input_errors`]) enter
-        /// the amplitude-mode re-test budget's finite coefficient, `/ (16π²)`
-        /// as the deviations do, beside a lane whose re-test agrees exactly.
-        #[test]
-        fn input_errors_enter_the_amplitude_budget() {
-            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
-            let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
-            let key = LaneKey {
-                family: 0,
-                order: 0,
-                column: 0,
-            };
-            let value = vec![Complex::new(1.0, 0.0); 3];
-            let result = amplitude_result(
-                &plan,
-                &0.0_f64,
-                3,
-                vec![(key, value.clone())],
-                Some(vec![(key, value.clone())]),
-                None,
-                vec![(key, 0.5)],
-                false,
-            );
-            let pi = std::f64::consts::PI;
-            let budget = result.amplitude_budget.unwrap();
-            assert_eq!(budget[0][0], 0.5 / (16.0 * pi * pi));
-            assert_eq!(&budget[0][1..], &[0.0, 0.0]);
-            // Without a check there is no budget, input errors or not.
-            let result = amplitude_result(
-                &plan,
-                &0.0_f64,
-                3,
-                vec![(key, value)],
-                None,
-                None,
-                vec![(key, 0.5)],
-                false,
-            );
-            assert!(result.amplitude_budget.is_none());
         }
 
         #[test]
