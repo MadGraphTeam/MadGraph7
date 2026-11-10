@@ -848,7 +848,14 @@ def test_check_takes_a_card_or_an_artifact_and_its_options(tmp_path: Path) -> No
     assert digits.effective.check.arbitrary_digits == 48
     with pytest.raises(ConfigurationError, match="must be auto"):
         parse_cli(
-            ("check", str(artifact), "--precision", "double", "--arbitrary-digits", "48")
+            (
+                "check",
+                str(artifact),
+                "--precision",
+                "double",
+                "--arbitrary-digits",
+                "48",
+            )
         ).resolve()
 
 

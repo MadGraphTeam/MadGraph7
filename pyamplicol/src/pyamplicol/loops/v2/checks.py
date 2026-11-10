@@ -301,9 +301,7 @@ def _rung(
     if not open_:
         return
     derived = {key: rung_digits(found[key][0], final.unit_roundoff) for key in open_}
-    texts = {
-        key: _undecided_text(name, found[key][0], derived[key]) for key in open_
-    }
+    texts = {key: _undecided_text(name, found[key][0], derived[key]) for key in open_}
     if rung is None:
         for key in open_:
             decided[key] = _with(
@@ -561,7 +559,9 @@ def _pole_parts(result: Any, key: Any, double: bool) -> list[Part]:
     checks (None without them)."""
 
     sector, k = key
-    values = [complex(x).real for x in result.components["virtual"][sector].coefficients]
+    values = [
+        complex(x).real for x in result.components["virtual"][sector].coefficients
+    ]
     poles = result.ir_poles[sector]
     estimate = result.stability
     absolute = (

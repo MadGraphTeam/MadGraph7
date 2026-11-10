@@ -362,16 +362,14 @@ def _toy_target(legs, corrections, fixed):
         compiled=compiled,
         request=NS(corrections=corrections, fixed_parameters=fixed),
         blocks=NS(
-            process=NS(
-                legs=[NS(label=i + 1, pdg=pdg) for i, pdg in enumerate(legs)]
-            )
+            process=NS(legs=[NS(label=i + 1, pdg=pdg) for i, pdg in enumerate(legs)])
         ),
         unpredicted_sectors=lambda: {},
     )
 
 
 @pytest.mark.loop_fast
-def test_ward_rows_of_ew_corrections_with_a_zero_width_massive_quark_are_not_applicable():
+def test_ew_corrections_with_a_zero_width_massive_quark_make_ward_not_applicable():
     """The class of the USER ruling 2026-11-10 ~00:17 from the request's own
     data: corrections other than the strong one (identified by the gluon's
     vertices) and an external massive quark with zero width (an antiquark's
@@ -421,7 +419,9 @@ def test_a_process_in_the_class_reports_one_not_applicable_ward_row(monkeypatch)
     )
 
     def evaluate(_executor, _point, _scale, carrier, checks_):
-        assert carrier.arithmetic == "double" and checks_ is stability.RECOMMENDED_CHECKS
+        assert (
+            carrier.arithmetic == "double" and checks_ is stability.RECOMMENDED_CHECKS
+        )
         return NS(
             stability=estimate,
             components={"virtual": {sector: NS(coefficients=[0.0, 2.0, -3.0])}},
@@ -477,8 +477,7 @@ def _scripted_poles(monkeypatch, script):
 
     from types import SimpleNamespace as NS
 
-    from pyamplicol.loops.v2 import checks, plan_export, ward
-    from pyamplicol.loops.v2 import induced
+    from pyamplicol.loops.v2 import checks, induced, plan_export, ward
 
     sector = (("QED", 4),)
     calls = []
@@ -553,7 +552,11 @@ def test_a_row_double_double_cannot_decide_is_decided_in_arbitrary_precision(
         rows.append(checks.born_interfered_rows(target, [(None, 1)], carriers, rung))
     first, second = _rung_rows(rows[0]), _rung_rows(rows[1])
     single = first["QED^4 1/eps"]
-    assert (single.verdict, single.carrier, single.digits) == (checks.PASS, "arbitrary", 34)
+    assert (single.verdict, single.carrier, single.digits) == (
+        checks.PASS,
+        "arbitrary",
+        34,
+    )
     assert single.fallback.startswith("double-double undecided: residual 2e-11")
     assert "34 digits derived" in single.fallback
     assert first["QED^4 1/eps^2"].carrier == "double-double"
@@ -708,7 +711,11 @@ def test_ward_rows_take_the_rung_by_the_double_double_criterion(monkeypatch):
         physical = result(1.0, None)
         checked = checked or arithmetic == "double"
         results = [
-            result(virtual[arithmetic], error[arithmetic] if checked else None, {sector: 0.0})
+            result(
+                virtual[arithmetic],
+                error[arithmetic] if checked else None,
+                {sector: 0.0},
+            )
             for _leg in legs
             for _factor in factors
         ]
@@ -722,7 +729,9 @@ def test_ward_rows_take_the_rung_by_the_double_double_criterion(monkeypatch):
 
     monkeypatch.setattr(ward, "ward_check", ward_check)
     lifted = []
-    rung = checks.Rung(lambda index, carrier: lifted.append(carrier.digits) or (None, 1))
+    rung = checks.Rung(
+        lambda index, carrier: lifted.append(carrier.digits) or (None, 1)
+    )
     carriers = (Precision.double(), Precision.double_double())
     rows = checks._born_ward_rows(None, None, 1, [5], carriers, 2, rung)
     assert len(rows) == 2

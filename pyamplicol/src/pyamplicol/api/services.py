@@ -1843,7 +1843,9 @@ def check(
         if carrier is CheckPrecision.DOUBLE
         else Precision.double_double()
     )
-    digits = run.check.arbitrary_digits if arbitrary_digits is None else arbitrary_digits
+    digits = (
+        run.check.arbitrary_digits if arbitrary_digits is None else arbitrary_digits
+    )
     if digits is not None:
         if isinstance(digits, bool) or not isinstance(digits, int) or digits < 1:
             raise ValueError("check.arbitrary_digits must be a positive integer")
