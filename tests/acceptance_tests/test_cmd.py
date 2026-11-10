@@ -1875,7 +1875,7 @@ class TestCmdShell2(unittest.TestCase,
         matrix element summed over the helicities is the one of the default
         gauge and of the helicity basis, in the standalone_fortran and in the
         standalone (madmatrix) output, for Dirac (g g > t t~ g) and for
-        Majorana (g g > go go) fermions.
+        Majorana (u u~ > go go, no vector at all) fermions.
 
         The widths are set to zero: a fixed width breaks gauge invariance, and
         with it the independence of the references of the gluons.
@@ -1921,19 +1921,22 @@ class TestCmdShell2(unittest.TestCase,
             self.assertTrue(found, '%s %s: no matrix element' % (fmt, options))
             return float(found.group('value'))
 
-        for model, process in (('sm', 'g g > t t~ g'),
-                               ('MSSM_SLHA2-full', 'g g > go go QED=2')):
+        fermions = ['IXXXXX', 'OXXXXX']
+        cases = (('sm', 'g g > t t~ g', fermions + ['VXXXXX'],
+                  fermions + ['VXXXXXR'], ['VXXXXXR', 'IXXXXXR', 'OXXXXXR']),
+                 # the massless quarks keep IXXXXX / OXXXXX
+                 ('MSSM_SLHA2-full', 'u u~ > go go QED=2', fermions, fermions,
+                  fermions + ['IXXXXXR', 'OXXXXXR']))
+        for model, process, plain, gauged, quantised in cases:
             self.do('import model %s' % model)
             self.do('generate %s' % process)
             for fmt in ('standalone_fortran', 'standalone'):
-                default = matrix_element(fmt, '', ['VXXXXX', 'IXXXXX',
-                                                   'OXXXXX'])
+                default = matrix_element(fmt, '', plain)
                 self.assertGreater(default, 0.)
                 vectors = matrix_element(
                     fmt, '--axial_gauge=True --fermion_reference=False',
-                    ['VXXXXXR', 'IXXXXX', 'OXXXXX'])
-                both = matrix_element(fmt, '--axial_gauge=True',
-                                      ['VXXXXXR', 'IXXXXXR', 'OXXXXXR'])
+                    gauged)
+                both = matrix_element(fmt, '--axial_gauge=True', quantised)
                 for value in (vectors, both):
                     self.assertAlmostEqual(value / default, 1., delta=1e-10,
                         msg='%s %s: %s vs %s' % (fmt, process, value, default))

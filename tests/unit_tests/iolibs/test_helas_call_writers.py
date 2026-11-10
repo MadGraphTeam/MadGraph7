@@ -1396,15 +1396,26 @@ class AxialGaugeReferenceTest(unittest.TestCase):
                          {5: 6, 6: 5, 3: 5, 4: 5})
 
     def test_reference_massive_fermions_photon(self):
-        """a a > t t~: the photons do for the charged top quarks what the
-        gluons do. g g > t t~ a: the top quarks follow the gluons"""
+        """a a > t t~ g: the photons do for the charged top quarks what the
+        gluons do, but the top quarks follow the gluons first. g g > t t~ a:
+        the photon, with no massless charged leg, takes the top quark"""
 
-        me = self.matrix_element('a a > t t~')
+        me = self.matrix_element('a a > t t~ g')
         self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
-                         {1: 2, 2: 1, 3: 1, 4: 1})
+                         {1: 2, 2: 1, 5: 3, 3: 5, 4: 5})
         me = self.matrix_element('g g > t t~ a')
         self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
                          {1: 2, 2: 1, 5: 3, 3: 1, 4: 1})
+
+    def test_two_vectors_to_two_massive_fermions(self):
+        """g g > t t~ and a a > t t~ keep the helicity basis, which has its
+        own vanishing helicity configurations there (and as many as any
+        other spin axis)"""
+
+        for process in ('g g > t t~', 'a a > t t~'):
+            me = self.matrix_element(process)
+            self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                             {1: 2, 2: 1})
 
     def test_reference_massive_fermions_no_vector(self):
         """u u~ > t t~ and e+ e- > t t~: no vector to gauge, the top quarks
@@ -1453,23 +1464,25 @@ class AxialGaugeReferenceTest(unittest.TestCase):
              'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))',
              'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
         # the gluons keep the references they have without the top quarks
-        me = self.matrix_element('g g > t t~')
+        me = self.matrix_element('g g > t t~ g')
         writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
         calls = writer.get_matrix_element_calls(me)
-        self.assertEqual(calls[:4],
+        self.assertEqual(calls[:5],
             ['CALL VXXXXXR(P(0,1),ZERO,NHEL(1),-1,P(0,2),W(1))',
              'CALL VXXXXXR(P(0,2),ZERO,NHEL(2),-1,P(0,1),W(2))',
              'CALL OXXXXXR(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))',
-             'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))'])
+             'CALL IXXXXXR(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
         # and nothing changes without the references of the fermions
         writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me,
                                                        massive_fermions=False)
         calls = writer.get_matrix_element_calls(me)
-        self.assertEqual(calls[:4],
+        self.assertEqual(calls[:5],
             ['CALL VXXXXXR(P(0,1),ZERO,NHEL(1),-1,P(0,2),W(1))',
              'CALL VXXXXXR(P(0,2),ZERO,NHEL(2),-1,P(0,1),W(2))',
              'CALL OXXXXX(P(0,3),mdl_MT,NHEL(3),+1, FLAVOR(3),W(3))',
-             'CALL IXXXXX(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),W(4))'])
+             'CALL IXXXXX(P(0,4),mdl_MT,NHEL(4),-1, FLAVOR(4),W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
 
     def test_madmatrix_ixxxxxr_call(self):
         """madmatrix: the 0-based particle number of the reference comes
@@ -1502,10 +1515,10 @@ class AxialGaugeReferenceTest(unittest.TestCase):
         massive fermions; --fermion_reference=False and --density keep the
         fermions in the helicity basis"""
 
-        me = self.matrix_element('g g > t t~')
+        me = self.matrix_element('g g > t t~ g')
         refs = helas_call_writers.get_output_axial_gauge_refs
-        both = {1: 2, 2: 1, 3: 1, 4: 1}
-        vectors = {1: 2, 2: 1}
+        both = {1: 2, 2: 1, 3: 1, 4: 1, 5: 1}
+        vectors = {1: 2, 2: 1, 5: 1}
         self.assertEqual(refs(me, None), {})
         self.assertEqual(refs(me, {}), {})
         self.assertEqual(refs(me, {'fermion_reference': 'True'}), {})

@@ -141,6 +141,10 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
     section of g g > t t~ g g by +0.4 to +0.7 %, against less than 0.1 % for
     the references of the gluons among themselves.
 
+    g g > t t~ itself keeps the helicity basis: 4 of its 16 helicity
+    configurations vanish there, another spin axis has 4 others and no more
+    vanishing amplitudes, for external wavefunctions that cost more.
+
     The two states of such a fermion are not helicity states, and their sum
     is all that is physical. Hence, with massive_fermions=False (the density
     matrix outputs) or as soon as one leg of the process is polarised, no
@@ -169,6 +173,12 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
                  and not externals[i].get('offshell')
                  and not externals[i].get('onium')
                  and not externals[i].get('is_loop')]
+    if len(externals) == 4 and len(vectors) == 2 and len(heavy) == 2:
+        # two massless vectors to two massive fermions (g g > t t~): the
+        # helicity basis has exact zeros of its own there (two vectors of
+        # the same helicity only give two fermions of the same helicity),
+        # which any other spin axis trades for as many others
+        heavy = []
     # A single massless leg cannot serve as the reference of itself.
     if not massless or not (vectors or heavy) or \
                                        (not heavy and len(massless) < 2):
