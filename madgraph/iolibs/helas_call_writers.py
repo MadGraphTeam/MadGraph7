@@ -38,6 +38,29 @@ class HelasWriterError(Exception):
 #===============================================================================
 # Axial-gauge reference vectors
 #===============================================================================
+def _output_flag(output_options, name, default):
+    """The boolean value of the option *name* of the output line."""
+
+    value = (output_options or {}).get(name, default)
+    if isinstance(value, str):
+        value = value.strip().lower() in ('true', 't', '1', 'yes', 'on')
+    return bool(value)
+
+
+def fermion_reference_requested(output_options):
+    """Whether the massive external fermions get a reference for their spin
+    axis (see get_axial_gauge_refs): with --axial_gauge=True, unless
+    --fermion_reference=False keeps them in the helicity basis or the output
+    writes a spin-density matrix (--density), which is one in the helicity
+    basis. *output_options* is the dictionary of the options of the output
+    line."""
+
+    if not isinstance(output_options, dict):
+        return False
+    return 'density' not in output_options and \
+           _output_flag(output_options, 'fermion_reference', True)
+
+
 def axial_gauge_requested(output_options, warn=False):
     """Whether --axial_gauge=True was given on the output line.
 
@@ -46,10 +69,7 @@ def axial_gauge_requested(output_options, warn=False):
     exporters ask it once more with warn=True when they are built, so that
     every output command that drops the option says so, once."""
 
-    value = (output_options or {}).get('axial_gauge', False)
-    if isinstance(value, str):
-        value = value.strip().lower() in ('true', 't', '1', 'yes', 'on')
-    if not value:
+    if not _output_flag(output_options, 'axial_gauge', False):
         return False
     if aloha.unitary_gauge == 3:
         if warn:
@@ -59,8 +79,9 @@ def axial_gauge_requested(output_options, warn=False):
     return True
 
 
-def get_axial_gauge_refs(matrix_element):
-    """Pick the axial-gauge reference leg of every massless external vector.
+def get_axial_gauge_refs(matrix_element, massive_fermions=True):
+    """Pick the reference leg of every massless external vector and of every
+    massive external fermion: {leg number: leg number of the reference}.
 
     VXXXXX builds its polarisation in the gauge n = (1,0,0,0). Choosing
     instead a lightlike r taken from another external leg gives eps.r = 0,
@@ -86,6 +107,39 @@ def get_axial_gauge_refs(matrix_element):
     by r.p, which for r on the beam is E * pT * exp(-y) of the gauged leg and
     so is kept away from zero by the usual pT and rapidity cuts (a final-state
     r relies on the separation cuts instead).
+
+    A massive fermion has no helicity-independent momentum to offer as a
+    reference (its spinor has both chiralities), but the axis along which its
+    spin is quantised is free in an unpolarised matrix element: with a
+    lightlike r, IXXXXXR/OXXXXXR build the two spin states from the
+    massless spinors of pflat = p - m^2/(2 p.r) r and of r, one per
+    chirality (arXiv:2011.10075). Taking for r the reference R shared by
+    the vectors the fermion couples to, one state of the fermion has the
+    massless spinor of R in the chirality a vector of a given helicity
+    contracts with R: a chain of same-helicity vectors then vanishes between
+    two such fermions, as it does on a massless fermion line carrying R, and
+    whole helicity configurations drop out (g g > t t~ g g: 4 of 64, the
+    zeros of the SUSY Ward identities for massive quarks). When R is itself
+    one of the vectors, it takes the momentum p of such a fermion as its own
+    reference rather than the next massless leg. vxxxxxr does not need a
+    lightlike r: for a massive one it is the gauge of the lightlike
+    p - m^2/(2 p.R) R, which is precisely pflat of that fermion, so the
+    coupling of R to that fermion vanishes for one spin state per helicity of
+    R, and with it every diagram where R is attached to this external leg
+    (r.p = p.R also has no collinear zero). Measured on g g > t t~ g g: 9376
+    non vanishing (helicity, amplitude) pairs in the helicity basis, 8784
+    with the references of the vectors only, 7710 with those of the top
+    quarks; this assignment is the best of the 32400 combinations of leg
+    momenta there. Without any external vector the fermions take a massless
+    leg they share a charge with (u u~ > t t~: 6 helicities instead of 8).
+
+    The two states of such a fermion are not helicity states, and their sum
+    is all that is physical. Hence, with massive_fermions=False (the density
+    matrix outputs) or as soon as one leg of the process is polarised, no
+    fermion gets a reference; neither does an initial-state one (the beam
+    polarisation of the run_card acts on its helicity), a leg that is
+    off-shell or a constituent of a bound state. The event file must not
+    present the state as a helicity either: see get_spin_reference_legs.
     """
 
     externals = {}
@@ -98,28 +152,101 @@ def get_axial_gauge_refs(matrix_element):
     massless = [i for i in sorted(externals)
                 if externals[i].get('mass').lower() == 'zero']
     vectors = [i for i in massless if externals[i].get('spin') == 3]
+    heavy = []
+    if massive_fermions and \
+               not any(wf.get('polarization') for wf in externals.values()):
+        heavy = [i for i in sorted(externals) if i not in massless
+                 and externals[i].get('spin') == 2
+                 and externals[i].get('leg_state')
+                 and not externals[i].get('offshell')
+                 and not externals[i].get('onium')
+                 and not externals[i].get('is_loop')]
     # A single massless leg cannot serve as the reference of itself.
-    if not vectors or len(massless) < 2:
+    if not massless or not (vectors or heavy) or \
+                                       (not heavy and len(massless) < 2):
         return {}
 
+    def colored(i):
+        return externals[i]['particle'].get('color') != 1
+
+    def charged(i):
+        return externals[i]['particle'].get('charge') != 0
+
     def couples_to(vector):
-        part = externals[vector]['particle']
-        if part.get('color') != 1:
-            return lambda i: externals[i]['particle'].get('color') != 1
-        if part.get('charge') == 0:
-            return lambda i: externals[i]['particle'].get('charge') != 0
+        if colored(vector):
+            return colored
+        if not charged(vector):
+            return charged
         return lambda i: True
 
+    def initial_first(legs):
+        order = [i for i in legs if externals[i].get('state') == 'initial']
+        return order + [i for i in legs if i not in order]
+
     refs = {}
+    # the reference shared by the vectors of the gauge group of each vector
+    shared = {}
     for vector in vectors:
         candidates = [i for i in massless if couples_to(vector)(i)]
+        fermions = [i for i in heavy if couples_to(vector)(i)]
         if len(candidates) < 2:
-            candidates = massless
-        order = [i for i in candidates
-                 if externals[i].get('state') == 'initial']
-        order += [i for i in candidates if i not in order]
-        refs[vector] = order[1] if vector == order[0] else order[0]
+            if not fermions:
+                candidates = massless
+            elif not candidates:
+                # a photon with massive charged fermions and nothing else:
+                # the photons play the role the gluons play for themselves
+                candidates = [i for i in vectors if not colored(i)]
+        order = initial_first(candidates)
+        shared[vector] = order[0]
+        if vector != order[0]:
+            refs[vector] = order[0]
+        elif fermions:
+            refs[vector] = fermions[0]
+        elif len(order) > 1:
+            refs[vector] = order[1]
+
+    for fermion in heavy:
+        # the reference shared by the vectors it couples to, the gluons first
+        coupled = [v for v in vectors if couples_to(v)(fermion)]
+        coupled.sort(key=lambda v: not colored(v))
+        if coupled:
+            refs[fermion] = shared[coupled[0]]
+            continue
+        # no such vector: a massless leg it shares a charge with
+        candidates = []
+        if colored(fermion):
+            candidates = [i for i in massless if colored(i)]
+        if not candidates and charged(fermion):
+            candidates = [i for i in massless if charged(i)]
+        if candidates:
+            refs[fermion] = initial_first(candidates)[0]
     return refs
+
+
+def get_output_axial_gauge_refs(matrix_element, output_options):
+    """get_axial_gauge_refs as an output with these options uses it: nothing
+    unless --axial_gauge=True was given (and kept, see axial_gauge_requested),
+    and no spin axis for the massive fermions if they are to stay in the
+    helicity basis (see fermion_reference_requested)."""
+
+    if not isinstance(output_options, dict) or \
+                                 not axial_gauge_requested(output_options):
+        return {}
+    return get_axial_gauge_refs(matrix_element,
+               massive_fermions=fermion_reference_requested(output_options))
+
+
+def get_spin_reference_legs(matrix_element, refs):
+    """The external fermions of *refs* (see get_axial_gauge_refs), sorted:
+    the legs whose two spin states are those of IXXXXXR/OXXXXXR and not
+    helicity states. The helicity summed matrix element does not depend on
+    it, but whatever reports the state of one event has to say that the
+    helicity of these legs is unknown (9 in the event file)."""
+
+    return sorted(wf.get('number_external')
+                  for wf in matrix_element.get_all_wavefunctions()
+                  if not wf.get('mothers') and wf.get('spin') == 2
+                  and wf.get('number_external') in refs)
 
 
 #===============================================================================
@@ -171,15 +298,17 @@ class HelasCallWriter(base_objects.PhysicsObject):
         self.axial_gauge_refs = {}
 
     def has_axial_gauge_ref(self, wf):
-        """Whether this external is written as vxxxxxr: a vector that got a
-        reference leg (a massless one, see get_axial_gauge_refs). Any other
-        external -- a massive vector in particular -- keeps vxxxxx."""
+        """Whether this external is written as vxxxxxr, ixxxxxr or oxxxxxr: a
+        massless vector or a massive fermion that got a reference leg (see
+        get_axial_gauge_refs). Any other external -- a massive vector, a
+        massless fermion -- keeps vxxxxx, ixxxxx or oxxxxx."""
 
         return self.axial_gauge and \
                wf.get('number_external') in self.axial_gauge_refs
 
     def get_axial_gauge_ref(self, wf):
-        """Reference leg used for the gauge of this external vector."""
+        """Reference leg used for the gauge of this external vector, or for
+        the spin axis of this external massive fermion."""
 
         return self.axial_gauge_refs[wf.get('number_external')]
 
@@ -944,9 +1073,15 @@ class FortranHelasCallWriter(HelasCallWriter):
             # get_axial_gauge_refs.  The call templates are cached per call
             # key, which a massless and a massive vector can share, so which of
             # the two a leg gets is decided when its call is written.
-            axial = self.axial_gauge and argument.get('spin') == 3
-            if axial:
+            # A massive fermion with a reference is IXXXXXR/OXXXXXR in the
+            # same way: the reference fixes the axis its spin is quantised
+            # along.
+            axial = self.axial_gauge and argument.get('spin') in (2, 3)
+            if axial and argument.get('spin') == 3:
                 axial_call = call + 'R(P(0,%d),%s,NHEL(%d),%+d,P(0,%d),W(%d))'
+            elif axial:
+                axial_call = call + \
+                       'R(P(0,%d),%s,NHEL(%d),%+d, FLAVOR(%d),P(0,%d),W(%d))'
             call = call + "(P(0,%d),"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
@@ -961,7 +1096,7 @@ class FortranHelasCallWriter(HelasCallWriter):
                                  # For boson, need initial/final here
                                  (-1) ** (wf.get('state') == 'initial'),
                                  wf.get('me_id'))
-            elif axial:
+            elif axial and argument.get('spin') == 3:
                 call_function = lambda wf: axial_call % \
                                 (wf.get('number_external'),
                                  wf.get('mass'),
@@ -975,6 +1110,23 @@ class FortranHelasCallWriter(HelasCallWriter):
                                  wf.get('mass'),
                                  wf.get('number_external'),
                                  (-1) ** (wf.get('state') == 'initial'),
+                                 wf.get('me_id'))
+            elif axial:
+                call_function = lambda wf: axial_call % \
+                                (wf.get('number_external'),
+                                 wf.get('mass'),
+                                 wf.get('number_external'),
+                                 # For fermions, need particle/antiparticle
+                                 - (-1) ** wf.get_with_flow('is_part'),
+                                 wf.get('number_external'),
+                                 self.get_axial_gauge_ref(wf),
+                                 wf.get('me_id')) \
+                                if self.has_axial_gauge_ref(wf) else call % \
+                                (wf.get('number_external'),
+                                 wf.get('mass'),
+                                 wf.get('number_external'),
+                                 - (-1) ** wf.get_with_flow('is_part'),
+                                 wf.get('number_external'),
                                  wf.get('me_id'))
             elif argument.is_boson():
                 call_function = lambda wf: call % \
@@ -1553,7 +1705,10 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             # get_axial_gauge_refs. The call templates are cached per call key,
             # which a massless and a massive vector can share, so which of the
             # two a leg gets is decided when its call is written.
-            axial = self.axial_gauge and argument.get('spin') == 3
+            # A massive fermion with a reference is IXXXXXR/OXXXXXR in the
+            # same way: the reference fixes the axis its spin is quantised
+            # along.
+            axial = self.axial_gauge and argument.get('spin') in (2, 3)
             call = call + "(P(0,%(number_external)d),"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
@@ -1563,6 +1718,10 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                     call = call + "%(mass)s,"
                 call = call + "NHEL(%(number_external)d),"
             if argument.get('spin') == 2:
+                if axial:
+                    axial_call = call.replace('XXXXX(', 'XXXXXR(', 1) + \
+                        "%(state_id)+d, FLAVOR(%(number_external)d),P(0,%(axial_ref)d),{0})".format(\
+                                    self.format_helas_object('W(','%(me_id)d'))
                 call = call + "%(state_id)+d, FLAVOR(%(number_external)d),{0})".format(\
                                     self.format_helas_object('W(','%(me_id)d'))
             else:

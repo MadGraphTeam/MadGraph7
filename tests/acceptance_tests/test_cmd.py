@@ -1868,6 +1868,76 @@ class TestCmdShell2(unittest.TestCase,
                                     [float(f_me.group('value'))])
 
     
+    def test_standalone_axial_gauge_massive_fermions(self):
+        """output --axial_gauge=True builds the massless vectors in the axial
+        gauge of a reference momentum (VXXXXXR) and quantises the spin of the
+        massive final-state fermions along one (IXXXXXR / OXXXXXR): the
+        matrix element summed over the helicities is the one of the default
+        gauge and of the helicity basis, in the standalone_fortran and in the
+        standalone (madmatrix) output, for Dirac (g g > t t~ g) and for
+        Majorana (g g > go go) fermions.
+
+        The widths are set to zero: a fixed width breaks gauge invariance, and
+        with it the independence of the references of the gluons.
+        """
+
+        me_re = re.compile(r'Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)\s*GeV',
+                           re.IGNORECASE)
+        devnull = open(os.devnull, 'w')
+
+        def matrix_element(fmt, options, routines):
+            """The matrix element of the single subprocess of this output at
+            the phase-space point of its check driver; *routines* are the
+            external wavefunctions the code has to call."""
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f %s' % (fmt, self.out_dir, options))
+            card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+            text = open(card).read()
+            zero = re.sub(r'(?mi)^(DECAY +\d+) +\S+', r'\1 0.000000e+00', text)
+            self.assertNotEqual(text, zero)
+            open(card, 'w').write(zero)
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dirs = [d for d in os.listdir(proc_root) if d.startswith('P')
+                         and os.path.isdir(pjoin(proc_root, d))]
+            self.assertEqual(len(proc_dirs), 1, proc_dirs)
+            proc_dir = pjoin(proc_root, proc_dirs[0])
+            if fmt == 'standalone_fortran':
+                source = open(pjoin(proc_dir, 'matrix.f')).read().upper()
+                build, run = ['make', 'check'], './check 2000'
+            else:
+                source = open(pjoin(proc_dir,
+                                    'EvaluateDiagrams.inc')).read().upper()
+                # FPTYPE=d: the default mixed precision rounds |M|^2 to a float
+                build, run = ['make', 'FPTYPE=d'], './check_sa.exe 2000'
+            called = set(re.findall(r'\b([IOV]XXXXXR?)\b', source))
+            self.assertEqual(called, set(routines), '%s %s' % (fmt, options))
+            self.assertEqual(0, subprocess.call(build, stdout=devnull,
+                                                stderr=devnull, cwd=proc_dir))
+            log = pjoin(proc_dir, 'check.log')
+            subprocess.call(run, stdout=open(log, 'w'),
+                            stderr=subprocess.STDOUT, cwd=proc_dir, shell=True)
+            found = me_re.search(open(log).read())
+            self.assertTrue(found, '%s %s: no matrix element' % (fmt, options))
+            return float(found.group('value'))
+
+        for model, process in (('sm', 'g g > t t~ g'),
+                               ('MSSM_SLHA2-full', 'g g > go go QED=2')):
+            self.do('import model %s' % model)
+            self.do('generate %s' % process)
+            for fmt in ('standalone_fortran', 'standalone'):
+                default = matrix_element(fmt, '', ['VXXXXX', 'IXXXXX',
+                                                   'OXXXXX'])
+                self.assertGreater(default, 0.)
+                vectors = matrix_element(
+                    fmt, '--axial_gauge=True --fermion_reference=False',
+                    ['VXXXXXR', 'IXXXXX', 'OXXXXX'])
+                both = matrix_element(fmt, '--axial_gauge=True',
+                                      ['VXXXXXR', 'IXXXXXR', 'OXXXXXR'])
+                for value in (vectors, both):
+                    self.assertAlmostEqual(value / default, 1., delta=1e-10,
+                        msg='%s %s: %s vs %s' % (fmt, process, value, default))
+
     def test_standalone_cpp_output_consistency(self):
         """test that standalone cpp is working"""
 
