@@ -230,9 +230,10 @@ def fd_gauge_criterion(amplitudes):
     the unitary-gauge propagator then grows with the energy and digits are
     lost in the sum over diagrams, while the FD gauge (arXiv:2203.10440,
     2405.01256) cancels it diagram by diagram.  A conserved end is a vertex
-    with two massless fermions (a quark line that also radiates gluons stays
-    conserved once the gluon insertions are summed); a massive fermion (t-b,
-    t-t, a massive b or tau) or a bosonic vertex (HVV, VVV, VVVV) is not.
+    with two massless fermions or SM charged leptons (a quark line that also
+    radiates gluons stays conserved once the gluon insertions are summed); a
+    massive quark (t-b, t-t, a massive b) or a bosonic vertex (HVV, VVV, VVVV)
+    is not.
     External massive vectors are not looked at; a massive vector of a decay
     chain is a propagator, ending on its production and its decay vertex.
     False for loop amplitudes, perturbed processes and particles of spin
@@ -304,8 +305,12 @@ def _fd_gauge_criterion_one(amp, decayed, decay):
             return False
         for leg in others:
             particle = model.get_particle(leg.get('id'))
-            if not particle or particle.get('spin') != 2 or \
-                                       particle.get('mass').lower() != 'zero':
+            if not particle or particle.get('spin') != 2:
+                return False
+            # the masses of the SM charged leptons are negligible against
+            # the W/Z mass: their currents count as conserved
+            if particle.get('mass').lower() != 'zero' and \
+                                abs(particle.get('pdg_code')) not in (11, 13, 15):
                 return False
         return True
 
@@ -1520,7 +1525,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("auto_gauge True|False",'$MG:color:GREEN')
         logger.info(" > (default True) pick the FD gauge automatically, per process, when a")
         logger.info("   W/Z propagator ends on a vertex that is not a conserved current")
-        logger.info("   (HVV, VVV, a massive fermion): the unitary gauge loses digits at")
+        logger.info("   (HVV, VVV, a massive quark): the unitary gauge loses digits at")
         logger.info("   high energy for them. 'set gauge X' or '--gauge=X' overrides it.")
         logger.info("complex_mass_scheme True|False",'$MG:color:GREEN')
         logger.info(" > (default False) Set complex mass scheme.")
@@ -12109,8 +12114,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger.info("auto_gauge True|False",'$MG:color:GREEN')
         logger.info(" > (default True) choose the FD gauge automatically for each process line")
         logger.info("   whose diagrams have a W/Z propagator ending on a vertex that is not a")
-        logger.info("   conserved current: a bosonic vertex (HVV, VVV) or a massive fermion")
-        logger.info("   (t-b). Two massless fermions are conserved, and external W/Z are not")
+        logger.info("   conserved current: a bosonic vertex (HVV, VVV) or a massive quark")
+        logger.info("   (t-b). Two massless fermions or SM leptons are conserved, external W/Z")
         logger.info("   looked at. In the unitary gauge the diagrams of such a process grow")
         logger.info("   with the energy and digits are lost in their sum; the FD gauge")
         logger.info("   cancels that diagram by diagram. When every line needs it the whole")

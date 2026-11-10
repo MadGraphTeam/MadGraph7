@@ -28,9 +28,10 @@ The rule proposed in the review of PR #422, read off the generated diagrams:
 2. An end is **conserved** when the vertex has two massless fermions (`e ve`,
    `u d~`, ...). A massless quark line that also radiates gluons stays
    conserved, since current conservation holds once the gluon insertions
-   are summed. An end is **not conserved** at a vertex with a massive
-   fermion (`t b`, `t t`, a massive `b` or `tau`) or a bosonic vertex
-   (`HVV`, `VVV`, `VVVV`).
+   are summed. The SM charged leptons count as massless (their masses are
+   negligible against the W/Z mass), so a `tau` current is conserved. An end
+   is **not conserved** at a vertex with a massive quark (`t b`, `t t`, a
+   massive `b`) or a bosonic vertex (`HVV`, `VVV`, `VVVV`).
 3. The FD gauge is wanted when at least one massive vector propagator has at
    least one non-conserved end.
 4. External massive vectors are not looked at. In a decay chain a decayed
@@ -47,7 +48,7 @@ The rule proposed in the review of PR #422, read off the generated diagrams:
 | `t t~` with leptonic W decays | W | leptons, t-b | FD |
 | `p p > w+ w-` | Z/a | quark line, WWV | FD |
 | `p p > e+ e-`, `e+ e- > mu+ mu-` | Z | massless currents | unitary |
-| `e+ e- > ta+ ta-` | Z | massive tau | FD |
+| `e+ e- > ta+ ta-` | Z | SM leptons | unitary |
 
 Never FD: loop processes and processes with perturbation couplings, a
 particle of spin above one anywhere in the diagrams (`p p > w+ y` with the

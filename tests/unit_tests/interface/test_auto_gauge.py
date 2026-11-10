@@ -81,7 +81,8 @@ class TestAutomaticGauge(unittest.TestCase):
             ('g b > t e- ve~', True),             # W between t-b and leptons
             ('p p > t t~, (t > b w+, w+ > l+ vl)', True),  # decayed W: t-b end
             ('p p > w+ w-, w+ > e+ ve', True),    # decay chain of the above
-            ('e+ e- > ta+ ta-', True),            # massive tau current
+            ('e+ e- > ta+ ta-', False),           # tau: an SM lepton, conserved
+            ('e+ e- > t t~', True),               # Z ending on the top current
             ('e+ e- > mu+ mu-', False),           # Z between massless currents
             ('u d~ > e+ ve g', False),            # quark line + gluon: conserved
             ('p p > z z', False),                 # external Z only
