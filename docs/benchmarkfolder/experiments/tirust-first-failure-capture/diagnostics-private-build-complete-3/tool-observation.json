@@ -1,0 +1,52 @@
+{
+  "actual_tool_exit_code": 0,
+  "actual_tool_session_id": 12260,
+  "artifacts_at_postterminal_observation": {
+    "capture/capture-replay.o": {
+      "bytes": 11504,
+      "sha256": "523fd07f93470d72711133a253d1025ab29def48d03ecb804d5b5b121434889b"
+    },
+    "capture/link.map": {
+      "bytes": 30401,
+      "sha256": "e8d36e00b050be29c14d97d41d5a2d17ea37addf67b2891e983e769e898f5a4b"
+    },
+    "capture/stability-check": {
+      "bytes": 21272,
+      "sha256": "8b530ead988e77df43b39d83d6a743e1ddad7de26aa77bf51ffbf0ba3a17a71c"
+    },
+    "target/release/libmadloop_tirust_private_diag.so": {
+      "bytes": 69161040,
+      "sha256": "73abcfb34d01afa09c45f1acb612da0a83d05c8961ec07b3cf2f65a02e94c721"
+    }
+  },
+  "automatic_retry_performed": false,
+  "child_terminal_returncodes": [
+    0,
+    0,
+    0
+  ],
+  "command_returncodes": [
+    0,
+    0,
+    0
+  ],
+  "controller_elapsed_seconds": 381.2772549591027,
+  "controller_terminal_status": "build_complete_unloaded",
+  "limitations": [
+    "900 seconds is an acceptance deadline and bounded child-execution cutoff, not a hard wall cap for synchronous preflight, copying or final hashing.",
+    "Cleanup receipts record owned-group signalling attempts and leader terminal status; no independent descendant-absence census was performed.",
+    "Cached dependency artifacts and native files are hash-bound observed inputs; this does not establish a fresh build of every dependency or complete historical compiler-environment provenance.",
+    "Artifacts were built and linked but never loaded or evaluated. Static ELF/runtime-provider review and numerical replay remain separate unqualified work."
+  ],
+  "native_replay_started": false,
+  "private_dso_loaded": false,
+  "root_reported_harness_context": {
+    "codex_profile_version": "0.167",
+    "numerical_tools_repinned": false,
+    "observation_source": "Root message; this subtask did not inspect or change the profile",
+    "profile_changed_during_build": true
+  },
+  "runtime_provider_qualification_performed": false,
+  "static_ELF_qualification_performed": false,
+  "tensor_evaluations": 0
+}

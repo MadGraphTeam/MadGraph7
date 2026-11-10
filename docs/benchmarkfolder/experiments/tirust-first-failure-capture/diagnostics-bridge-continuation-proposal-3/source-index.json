@@ -1,0 +1,31 @@
+{
+  "build_started": false,
+  "files": {
+    "README.md": {
+      "bytes": 4780,
+      "sha256": "f3f5e00bbb9376efef334237deadccafd102a8c4f71f2fb02edf70d14848d9ae"
+    },
+    "bindings.json": {
+      "bytes": 29448,
+      "sha256": "3b40519103b89a6425c7b37dae984448230d6fffeeb14b890d6d8031b42b61e1"
+    },
+    "continue_build.py": {
+      "bytes": 12747,
+      "sha256": "a70886987dfe87910d8e97d6bf318ace4f4d1c61931a2fbc6e613ca6e968eb09"
+    },
+    "test_continuation.py": {
+      "bytes": 4178,
+      "sha256": "43e5cf5d21098c1aaf5fdcccb729f8a75178ff04a62f38943980ec52302304bd"
+    },
+    "verify.py": {
+      "bytes": 1402,
+      "sha256": "2392be6baf572e1cb7490db93b2e882bd5402e1bbfccbb902dd323ab14b4e16c"
+    }
+  },
+  "original_v2_modified": false,
+  "payload_bytes": 52555,
+  "payload_files": 5,
+  "private_dso_loaded": false,
+  "schema": "conditional_v3_private_build_source_index_v1",
+  "tensor_evaluations": 0
+}

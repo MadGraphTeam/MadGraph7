@@ -1,0 +1,128 @@
+{
+  "artifacts": {
+    "capture/capture-replay.o": {
+      "bytes": 11504,
+      "sha256": "523fd07f93470d72711133a253d1025ab29def48d03ecb804d5b5b121434889b"
+    },
+    "capture/link.map": {
+      "bytes": 30401,
+      "sha256": "e8d36e00b050be29c14d97d41d5a2d17ea37addf67b2891e983e769e898f5a4b"
+    },
+    "capture/stability-check": {
+      "bytes": 21272,
+      "sha256": "8b530ead988e77df43b39d83d6a743e1ddad7de26aa77bf51ffbf0ba3a17a71c"
+    },
+    "target/release/libmadloop_tirust_private_diag.so": {
+      "bytes": 69161040,
+      "sha256": "73abcfb34d01afa09c45f1acb612da0a83d05c8961ec07b3cf2f65a02e94c721"
+    }
+  },
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin/cargo",
+        "build",
+        "--locked",
+        "--offline",
+        "--release",
+        "--features",
+        "poles-only",
+        "-vv",
+        "--color",
+        "never"
+      ],
+      "cargo_rebuild_guard": true,
+      "child_terminal_returncode": 0,
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-2/bridge",
+      "owned_child_pid_and_group": 14,
+      "owned_process_group_cleanup_attempted": true,
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/gcc",
+        "-std=c11",
+        "-O2",
+        "-fPIC",
+        "-I.",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+        "-c",
+        "replay.c",
+        "-o",
+        "capture-replay.o"
+      ],
+      "cargo_rebuild_guard": false,
+      "child_terminal_returncode": 0,
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/capture",
+      "owned_child_pid_and_group": 54,
+      "owned_process_group_cleanup_attempted": true,
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-w",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-I../../Source/MODEL",
+        "-I../../Source/DHELAS",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/capture/stability-check",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/capture/capture-replay.o",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/lib/",
+        "-ldhelas",
+        "-lmodel",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-first-failure-capture-1/masters/qcd_n3_uux_zgg/lib/",
+        "-lcts",
+        "-liregi",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/",
+        "-lninja",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/",
+        "-lavh_olo",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/",
+        "-lcollier",
+        "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a",
+        "-lgcc_s",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/",
+        "-lninjars",
+        "-ldl",
+        "-lgcc_s",
+        "-lutil",
+        "-lrt",
+        "-lpthread",
+        "-lm",
+        "-ldl",
+        "-lc",
+        "-lgcc_s",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/",
+        "-ltirust",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/target/release",
+        "-lmadloop_tirust_private_diag",
+        "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/target/release",
+        "-lstdc++",
+        "-Wl,-Map,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/capture/link.map"
+      ],
+      "cargo_rebuild_guard": false,
+      "child_terminal_returncode": 0,
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/tirust-private-diagnostics-3/capture",
+      "owned_child_pid_and_group": 57,
+      "owned_process_group_cleanup_attempted": true,
+      "returncode": 0
+    }
+  ],
+  "cpus_nonexclusive": [
+    16,
+    17
+  ],
+  "elapsed_seconds": 381.2772549591027,
+  "imported_files": 1161,
+  "jobs": 2,
+  "maximum_wall_seconds": 900,
+  "memory_bytes_per_child": 17179869184,
+  "original_v2_source_index_sha256": "9c962ee3f7117eba4399d5db3253533ecf92dbcf138964b18b446c363f4ca1d4",
+  "original_v2_unchanged": true,
+  "private_dso_loaded": false,
+  "source_index_sha256": "22f45713e21a2d95d1e0ebd6b718c3af9d8f47e65c0c91d262d6b1eed63d7fea",
+  "status": "build_complete_unloaded",
+  "tensor_evaluations": 0
+}

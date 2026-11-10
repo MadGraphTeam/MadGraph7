@@ -1,0 +1,50 @@
+{
+  "actual_tool_exit_code": 0,
+  "actual_tool_session_id": 12260,
+  "build_complete": true,
+  "files": {
+    "README.md": {
+      "bytes": 3352,
+      "sha256": "109f219cc9ea5f54b81bbb52bbca2b12d9f73a41b44a7f2858c3aee57f7ffbbb"
+    },
+    "build-started.json": {
+      "bytes": 456,
+      "sha256": "185501ba01924515155ace99acdf429480b8ca4d3038199a600aadad1c6bec43"
+    },
+    "build-terminal.json": {
+      "bytes": 4979,
+      "sha256": "74e73197c9700bf3b71bd75269384bae92a5182dca707f526195846ba9d81f95"
+    },
+    "build.log": {
+      "bytes": 27995,
+      "sha256": "8a6293e4168a9b745e5fe07bbff9adcf9a0db983ea85bcb71ee53b17df8abf6b"
+    },
+    "imported-files.json": {
+      "bytes": 169400,
+      "sha256": "ca38f0e49b1c1dff3352c7952ed365e535ff02d67365f5b0a6d25f0c8ea9c9b3"
+    },
+    "original-v2-after.json": {
+      "bytes": 728684,
+      "sha256": "c08150219f024a17f9792973ce495d619fd8e6b9fe81cc56d6386571bc158810"
+    },
+    "original-v2-before.json": {
+      "bytes": 728684,
+      "sha256": "c08150219f024a17f9792973ce495d619fd8e6b9fe81cc56d6386571bc158810"
+    },
+    "tool-observation.json": {
+      "bytes": 2106,
+      "sha256": "a499e16821fa3bef2c1bfa8279cf72498fd074c2284e40a695801d20d961935e"
+    },
+    "verify.py": {
+      "bytes": 6701,
+      "sha256": "d62b6ffc97239c3966032572754cf994e501afed513a2ec7abbde799812ea2ec"
+    }
+  },
+  "numerical_qualification_performed": false,
+  "payload_bytes": 1672357,
+  "payload_files": 9,
+  "private_dso_loaded": false,
+  "schema": "private_diagnostic_completed_unloaded_build_retention_v3",
+  "source_proposal_sha256": "22f45713e21a2d95d1e0ebd6b718c3af9d8f47e65c0c91d262d6b1eed63d7fea",
+  "tensor_evaluations": 0
+}
