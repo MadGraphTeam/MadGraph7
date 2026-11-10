@@ -4752,7 +4752,7 @@ already exists and is not a fifo file."""%fifo_path)
             # Since Pythia8 8.318, main164 loads its merging hook as a plugin with
             # a readString after reading the card. Pythia8 ignores that readString
             # for a card with 'Main:subrun' lines, as ours always has: without
-            # the hook, 'Merging:Process = guess' crashes and UMEPS/UNLOPS lose
+            # the hook, 'Merging:Process = guess' crashes and UMEPS loses
             # their subtractive samples. Load the hook from the card instead.
             merging_plugin = misc.get_pythia8_merging_plugin(self.options['pythia8_path'])
             if merging_plugin:
@@ -6657,10 +6657,12 @@ tar -czf split_$1.tar.gz split_$1
             self.make_opts_var['pdlabel1'] = 'eva'
         if self.run_card['pdlabel2'] in ['eva', 'iww']:
             self.make_opts_var['pdlabel2'] = 'eva'
-        if self.run_card['pdlabel1'] in ['edff','chff']:
+        if banner_mod.is_upc_label(self.run_card['pdlabel1']):
             self.make_opts_var['pdlabel1'] = self.run_card['pdlabel1']
-        if self.run_card['pdlabel2'] in ['edff','chff']:
+        if banner_mod.is_upc_label(self.run_card['pdlabel2']):
             self.make_opts_var['pdlabel2'] = self.run_card['pdlabel2']
+        # also in RunCard.check_validity (only a warning on some read paths): stop before compiling
+        banner_mod.check_upc_neutron_tagging(self.run_card, self.run_card['pdlabel1'])
 
 
         # set  lhapdf.

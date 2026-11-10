@@ -10,11 +10,9 @@ c        argument
 
 c timing statistics
          include "timing_variables.inc"
-
-         call cpu_time(tbefore)
+         if(timing_sampled)call timing_enter(timing_pdf)
          pdg2pdf_timed = pdg2pdf(ih,ipdg,ibeam,x,xmu)
-         call cpu_time(tAfter)
-         tPDF = tPDF + (tAfter-tBefore)
+         if(timing_sampled)call timing_leave(timing_pdf)
          return
 
       end
@@ -142,6 +140,7 @@ c     be saved
       xlast(i_replace)=x
       xmulast(i_replace)=xmu
       ihlast(i_replace)=ih
+      ipartlast(i_replace)=ipart
       imemlast(i_replace)=imem
       isetlast(i_replace)=iset
 c

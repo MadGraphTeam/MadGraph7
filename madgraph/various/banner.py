@@ -806,6 +806,60 @@ def parse_energy_unit(value):
 class UnknownPDFSet(InvalidRunCard):
     """A PDF label or LHAPDF id that no PDF set of the installation matches."""
 
+# gamma-UPC photon-photon luminosities (arXiv:2207.03012) with forward neutron
+# tagging. A pdlabel is made of
+#   'ed' (EDFF) or 'ch' (ChFF),
+#   'f', 'p' or 'm': central, upper or lower neutron-emission cross section,
+#   'f' (no tagging) or '<y>n<z>n', the neutron tags of beam 1 and beam 2:
+#       i (inclusive, 0n+Xn), x (Xn, X>=1), 0, 1, 2, 3, 4 (exactly that many).
+# The 'ed' and 'ch' prefixes are reserved for gamma-UPC: the makefiles link
+# libgammaUPC on them, and the Fortran code tests PDLABEL(1:2).
+UPC_NEUTRON_TAGS = ['in', 'xn', '0n', '1n', '2n', '3n', '4n']
+UPC_LABELS = ['%s%s%s' % (ff, err, tag)
+              for ff in ('ed', 'ch')
+              for err in ('f', 'p', 'm')
+              for tag in ['f'] + [y + z for y in UPC_NEUTRON_TAGS for z in UPC_NEUTRON_TAGS]]
+_UPC_LABEL_SET = frozenset(UPC_LABELS)
+
+def is_upc_label(label):
+    """True if label is a gamma-UPC pdlabel (edff, chpf, edf1n2n, ...)."""
+    return label in _UPC_LABEL_SET
+
+# Nuclei (Z, N) with forward neutron tagging, and the highest exact neutron
+# multiplicity available for each (all of them have xn and 0n).
+#   O16: '2n' uses the >=2n cross section; 3n and 4n are not available.
+#   U238 is not enabled: photoabsorption fits exist, but there is no adequate
+#   U238 photon flux yet (a Woods-Saxon profile is not suited to it).
+# A neutron tag on a proton beam is ignored by gamma-UPC.
+UPC_NEUTRON_TAGGING_NUCLEI = {(82, 126): 4,   # Pb208
+                              (79, 118): 4,   # Au197
+                              (8, 8): 2}      # O16
+
+def check_upc_neutron_tagging(card, label):
+    """Raise InvalidRunCard if the gamma-UPC pdlabel asks for a neutron tag
+    that gamma-UPC does not provide for the ion of that beam."""
+
+    if not is_upc_label(label) or label[3] == 'f':
+        return
+    if not abs(card['lpp1']) == 2 == abs(card['lpp2']):
+        return
+    for beam, tag in ((1, label[3:5]), (2, label[5:7])):
+        if tag == 'in':
+            continue
+        Z, N = card['nb_proton%i' % beam], card['nb_neutron%i' % beam]
+        if (Z, N) == (1, 0):
+            continue
+        nmax = UPC_NEUTRON_TAGGING_NUCLEI.get((Z, N))
+        if nmax is None:
+            raise InvalidRunCard("pdlabel '%s': forward neutron tagging ('%s') is not available "
+                                 "for beam %i (Z=%s, N=%s). Only Pb208, Au197 and O16 are supported "
+                                 "(use pdlabel '%sf' for no tagging)."
+                                 % (label, tag, beam, Z, N, label[:2]))
+        if tag[0].isdigit() and int(tag[0]) > nmax:
+            raise InvalidRunCard("pdlabel '%s': neutron tag '%s' is not available for beam %i "
+                                 "(Z=%s, N=%s), which has at most %in."
+                                 % (label, tag, beam, Z, N, nmax))
+
 class ProcCard(list):
     """Basic Proccard object"""
     
@@ -2023,6 +2077,11 @@ class ProcCharacteristic(ConfigFile):
         # output written with --density (spin-density matrix): like a
         # polarisation, the matrix element is then not Lorentz invariant
         self.add_param('density_matrix', False)
+        # the max_jet_flavor the MLM clustering needs for this output: the
+        # flavour scheme of the model, raised to the heaviest quark taken from
+        # a beam (default_max_jet_flavor). 0: no hadronic beam, or a model
+        # with no flavour scheme, and then nothing is enforced.
+        self.add_param('max_jet_flavor', 0)
 
     def read(self, finput):
         """Read the input file, this can be a path to a file, 
@@ -2237,7 +2296,7 @@ class PY8Card(ConfigFile):
               comment='Specify one must read inputs from the MadGraph banner.') 
         self.add_param("JetMatching:coneRadius", 1.0, hidden=True, always_write_to_card=False)
         self.add_param("JetMatching:nQmatch",4,hidden=True, always_write_to_card=False)
-        # for CKKWL merging (common with UMEPS, UNLOPS)
+        # for CKKWL merging (common with UMEPS)
         self.add_param("TimeShower:pTmaxMatch", 2, hidden=True, always_write_to_card=False)
         self.add_param("SpaceShower:pTmaxMatch", 1, hidden=True, always_write_to_card=False)
         self.add_param("SysCalc:tmsList", [10.0,20.0], hidden=True, always_write_to_card=False)
@@ -4175,14 +4234,17 @@ class RunCard(ConfigFile):
                 return lhaid[0]
             else:
                 return lhaid
-        else: 
+        elif is_upc_label(pdf):
+            return 0
+        else:
             try:
-                return {'none': 0, 'iww': 0, 'eva':0, 'edff':0, 'chff':0,
+                return {'none': 0, 'iww': 0, 'eva':0,
                     'cteq6_m':10000,'cteq6_l':10041,'cteq6l1':10042,
                     'nn23lo':246800,'nn23lo1':247000,'nn23nlo':244800
-                    }[pdf] 
+                    }[pdf]
             except:
-                return 0   
+                # any other label (lepton densities, mixed, ...) has no PDF id
+                return 0
     
     def get_lhapdf_id(self):
         return self.get_pdf_id(self['pdlabel'])
@@ -4435,11 +4497,18 @@ class PDLabelBlock(RunBlock):
         """check which template is active and fill the parameter in the inactive one. """
 
         if self.status(card):
-            if card['pdlabel1'] == 'lhapdf' or card['pdlabel2'] == 'lhapdf':
+            upc = is_upc_label(card['pdlabel1']) or is_upc_label(card['pdlabel2'])
+            # two elastic-photon beams never use lhapdf (the default pdlabel):
+            # a gamma-UPC label on one beam then wins over lhapdf on the other
+            photon_beams = isinstance(card['lpp1'],int) and isinstance(card['lpp2'],int) and \
+                           abs(card['lpp1']) == 2 == abs(card['lpp2'])
+            if (card['pdlabel1'] == 'lhapdf' or card['pdlabel2'] == 'lhapdf') and \
+               not (upc and photon_beams):
                 dict.__setitem__(card, 'pdlabel','lhapdf')
-            elif card['pdlabel1'] in ['edff','chff'] or card['pdlabel2'] in ['edff','chff']:
+            elif upc:
+                # gamma-UPC gives the photon-photon luminosity: one label for both beams
                 if card['pdlabel1'] != card['pdlabel2']:
-                    if card['pdlabel1'] in ['edff','chff']:
+                    if is_upc_label(card['pdlabel1']):
                         dict.__setitem__(card, 'pdlabel',card['pdlabel1'])
                         dict.__setitem__(card, 'pdlabel2',card['pdlabel1'])
                     else:
@@ -4470,6 +4539,9 @@ class PDLabelBlock(RunBlock):
         if isinstance(card['lpp1'],int) and isinstance(card['lpp2'],int) and \
             abs(card['lpp1']) == 1 == abs(card['lpp2']) and card['pdlabel1'] != card['pdlabel2']:
             raise InvalidRunCard("Asymmetric beam pdf not supported for proton-proton collision")
+
+        # pdlabel1 == pdlabel2 for gamma-UPC (see above)
+        check_upc_neutron_tagging(card, card['pdlabel1'])
 
     def status(self, card):
         """return False if template_off to be used, True if template_on to be used"""
@@ -4591,6 +4663,14 @@ def get_model_flavour_scheme(proc_def):
         if isinstance(item, (list, tuple)):
             todo = list(item) + todo
     return None
+
+
+def default_max_jet_flavor(nflav, beam_ids):
+    """The heaviest quark flavour that is a jet, as madevent sets maxjetflavor:
+    the flavour scheme ``nflav`` of the model (4 when unknown), raised to the
+    heaviest quark that is taken from a beam (a b-initiated process in a
+    4-flavour model)."""
+    return max([nflav or 4] + [abs(i) for i in beam_ids if -7 < i < 7])
 
 
 def default_me_frame_for_process(proc_def, density=False, radiates=None):
@@ -4793,8 +4873,8 @@ class RunCardLO(RunCard):
                        allowed=[-1,0, 0.938, 207.9766521*0.938, 0.000511, 0.105, '*'],
                        shortcut={'proton':0.938,'lead':207.9766521*0.938,'electron':0.000511,'muon':0.105},
                        comment='For heavy ion physics mass in GeV of the ion (of beam 2)', energy=True)
-        valid_pdf = ['lhapdf', 'cteq6_m','cteq6_l', 'cteq6l1','nn23lo', 'nn23lo1', 'nn23nlo','iww','eva','edff','chff','none','mixed']+\
-                       sum(self.allowed_lep_densities.values(),[])
+        valid_pdf = ['lhapdf', 'cteq6_m','cteq6_l', 'cteq6l1','nn23lo', 'nn23lo1', 'nn23nlo','iww','eva','none','mixed']+\
+                       sum(self.allowed_lep_densities.values(),[]) + UPC_LABELS
         self.add_param("pdlabel", "lhapdf", hidden=True, allowed=valid_pdf)
         self.add_param("pdlabel1", "lhapdf", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(1)")
         self.add_param("pdlabel2", "lhapdf", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(2)")
@@ -5158,7 +5238,7 @@ class RunCardLO(RunCard):
                     self.set(pdlabelX, 'none')
                     mod = True
             elif abs(self[lpp]) == 1: # PDF from PDF library
-                if self[pdlabelX] in ['eva','iww','edff','chff','none']:
+                if self[pdlabelX] in ['eva', 'iww', 'none'] or is_upc_label(self[pdlabelX]):
                     raise InvalidRunCard("%s \'%s\' not compatible with %s \'%s\'" % (lpp, self[lpp], pdlabelX, self[pdlabelX]))
             elif abs(self[lpp]) in [3,4]: # PDF from PDF library
                 if self[pdlabelX] not in ['none','eva','iww'] + sum(self.allowed_lep_densities.values(),[]):
@@ -5166,7 +5246,7 @@ class RunCardLO(RunCard):
                     self.set(pdlabelX, 'eva')
                     mod = True
             elif abs(self[lpp]) == 2:
-                if self[pdlabelX] not in ['none','chff','edff','iww']:
+                if self[pdlabelX] not in ['none','iww'] and not is_upc_label(self[pdlabelX]):
                     logger.warning("%s \'%s\' not compatible with %s \'%s\'. Changing %s to edff" % (lpp, self[lpp], pdlabelX, self[pdlabelX], pdlabelX))
                     self.set(pdlabelX, 'edff')
                     mod = True
@@ -5232,7 +5312,7 @@ class RunCardLO(RunCard):
                     logger.warning("Weak boson from lepton PDF is using fixed scale value of muf [dsqrt_q2fact%s]. Looks like you kept the default value (Mz). Is this really the cut-off that you want to use?" % i)
         
                 if abs(self['lpp%s' % i ]) == 2 and self['fixed_fac_scale%s' % i] and self['dsqrt_q2fact%s'%i] == 91.188:
-                    if self['pdlabel'] in ['edff','chff']:
+                    if is_upc_label(self['pdlabel']):
                         logger.warning("Since 3.5.0 exclusive photon-photon processes in ultraperipheral proton and nuclear collisions from gamma-UPC (arXiv:2207.03012) will ignore the factorisation scale.")
                     else:
                         logger.warning("Since 2.7.1 elastic photon from proton is using fixed scale value of muf [dsqrt_q2fact%s] as the cut in the Equivalent Photon Approximation (Budnev, et al) formula. Please edit it accordingly." % i)
@@ -6222,8 +6302,9 @@ class RunCardNLO(RunCard):
         self.add_param('mass_ion2', -1.0, hidden=True, fortran_name="mass_ion(2)",
                        allowed=[-1,0, 0.938, 207.9766521*0.938, 0.000511, 0.105, '*'],
                        comment='For heavy ion physics mass in GeV of the ion (of beam 2)', energy=True)
-        self.add_param('pdlabel', 'lhapdf', allowed=['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21','edff','chff'] +\
-             sum(self.allowed_lep_densities.values(),[]) )                
+        valid_pdf = ['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21'] +\
+             sum(self.allowed_lep_densities.values(),[]) + UPC_LABELS
+        self.add_param('pdlabel', 'lhapdf', allowed=valid_pdf )
         # NNPDF40_nlo_as_01180; create_default_for_process swaps in the
         # 4-flavour set (334700) when the model has a massive b (was 244600).
         self.add_param('lhaid', [331700],fortran_name='lhaPDFid')
@@ -6298,12 +6379,15 @@ class RunCardNLO(RunCard):
 
         #technical
         self.add_param('folding', [1,1,1], include=False)
+        self.add_param('born_spreading', False, fortran_name='born_spreading',
+            comment="Redistribute the Born contribution across the FKS energy and angle bins. "
+                    "The normalized table is fitted during integration step 0.")
 
         #bias
         self.add_param('flavour_bias',[5,1], hidden=True, comment="Example: '5,100' means that the probability to generate an event with a bottom (or anti-bottom) quark is increased by a factor 100, but the weight of those events is reduced by a factor 100. Requires that the 'event_norm' is set to 'bias'.")
         
         #merging
-        self.add_param('ickkw', 0, allowed=[-1,0,3,4], comment=" - 0: No merging\n - 3:  FxFx Merging :  http://amcatnlo.cern.ch/FxFx_merging.htm\n - 4: UNLOPS merging (No interface within MadGraph7)\n - -1:  NNLL+NLO jet-veto computation. See arxiv:1412.8408 [hep-ph]")
+        self.add_param('ickkw', 0, allowed=[0,3], comment=" - 0: No merging\n - 3:  FxFx Merging :  http://amcatnlo.cern.ch/FxFx_merging.htm")
         self.add_param('bwcutoff', 15.0)
         #cuts        
         self.add_param('jetalgo', 1.0)
@@ -6351,7 +6435,20 @@ class RunCardNLO(RunCard):
         self.add_param('ptmax4pdg',[-1.], hidden=True, system=True, energy=True)
         self.add_param('mxxmin4pdg',[0.], hidden=True, system=True, energy=True)
         self.add_param('mxxpart_antipart', [False], hidden=True, system=True)
-        
+
+    def __setitem__(self, name, value, change_userdefine=False, raiseerror=False):
+        # A removed matching mode must not silently become an unmerged run
+        # when a legacy card is read or edited.
+        if name.strip().lower() == 'ickkw':
+            raiseerror = InvalidRunCard
+        return super(RunCardNLO, self).__setitem__(
+            name, value, change_userdefine, raiseerror)
+
+    def post_set_parton_shower(self, value, change_userdefine, raiseerror, **opt):
+        """Use the current shower name when reading or editing legacy cards."""
+        if value.upper() in ('HERWIGPP', 'HERWIG++'):
+            dict.__setitem__(self, 'parton_shower', 'HERWIG7')
+
     def check_validity(self):
         """check the validity of the various input"""
 
@@ -6383,7 +6480,7 @@ class RunCardNLO(RunCard):
             if self['lpp1'] == 1 or self['lpp2']==1:
                 raise InvalidRunCard('Process like Deep Inelastic scattering not supported at NLO accuracy.')
 
-            if not self['lpp1'] == 2 == self['lpp2']:
+            if not abs(self['lpp1']) == 2 == abs(self['lpp2']):
 
                 if abs(self['lpp1']) == abs(self['lpp2']) in [3,4]:
                     # for dressed lepton collisions, check that the lhaid is a valid one
@@ -6400,6 +6497,8 @@ class RunCardNLO(RunCard):
                     self['pdlabel']='nn23nlo'
                     self['reweight_pdf']=[False]
                     logger.info('''Lepton-lepton collisions: ignoring PDF related parameters in the run_card.dat (pdlabel, lhaid, reweight_pdf, ...)''')
+
+        check_upc_neutron_tagging(self, self['pdlabel'])
 
         # For FxFx merging, make sure that the following parameters are set correctly:
         if self['ickkw'] == 3: 
@@ -6424,12 +6523,6 @@ class RunCardNLO(RunCard):
                     logger.info('''For consistency in the FxFx merging, \'%s\' has been set to 1.0'''
                                 % jetparam ,'$MG:BOLD')
                     self[jetparam] = 1.0
-        elif self['ickkw'] == -1 and (self["dynamical_scale_choice"][0] != -1 or
-                                      len(self["dynamical_scale_choice"]) > 1):
-                self["dynamical_scale_choice"] = [-1]
-                self["reweight_scale"]=[self["reweight_scale"][0]]
-                logger.warning('''For consistency with the jet veto, the scale which will be used is ptj. dynamical_scale_choice will be set at -1.'''
-                                ,'$MG:BOLD')            
                                 
         # For interface to PINEAPPL, need to use LHAPDF and reweighting to get scale uncertainties
         if self['pineappl'] and self['pdlabel'].lower() != 'lhapdf':
@@ -6496,7 +6589,7 @@ class RunCardNLO(RunCard):
                 raise InvalidRunCard("'dynamical_scale_choice' has two or more identical entries. They have to be all different for the code to work correctly.")
             
         # Check that length of lists are consistent
-        if self['lpp1'] == self['lpp2'] == 2:
+        if abs(self['lpp1']) == abs(self['lpp2']) == 2:
             if not self['rw_fscale'] == [1.0]:
                 self['rw_fscale'] = [1.0]
                 logger.warning("Factorisation scale cannot be varied for elastic photon collisions.")
@@ -7803,6 +7896,35 @@ class RunCardMG7(RunCard):
                 and not bool(beam['leptonic'])
                 and float(self['phasespace']['xqcut']) > 0)
 
+    def check_mlm_max_jet_flavor(self, expected):
+        """With the MLM clustering (dynamical_scale_choice = "mlm") on hadronic
+        beams, max_jet_flavor has to be ``expected``, the flavour scheme of the
+        model (proc_characteristics max_jet_flavor): the clustering decides
+        from it which partons are jets, and the shower's jet matching
+        (JetMatching:nQmatch) uses the same number. A massless b that is not a
+        jet gets no clustering scale and is never matched, so the sample
+        double counts; a massive b that is a jet is matched as if it were
+        massless. Any other scale choice uses max_jet_flavor for nothing but
+        the default jet list, so the user is free to set it.
+        ``expected`` 0 (unknown) checks nothing."""
+        beam = self['beam']
+        try:
+            expected = int(expected)
+        except (TypeError, ValueError):
+            return
+        if not expected or beam['dynamical_scale_choice'] != 'mlm' \
+                or bool(beam['leptonic']):
+            return
+        if int(beam['max_jet_flavor']) != expected:
+            raise InvalidRunCard(
+                "beam.max_jet_flavor = %s is not supported with "
+                "dynamical_scale_choice = \"mlm\": the MLM clustering and jet "
+                "matching need the flavour scheme of the model, "
+                "max_jet_flavor = %s (the quarks up to %s are massless jets). "
+                "Set beam.max_jet_flavor = %s, or use another "
+                "dynamical_scale_choice." % (beam['max_jet_flavor'], expected,
+                                             expected, expected))
+
     def _legacy_compat(self, key):
         beam = self['beam']
         leptonic = bool(beam['leptonic'])
@@ -7947,8 +8069,22 @@ class RunCardMG7(RunCard):
                     raise
 
     def read_data(self, data, unknown_warning=True):
-        """Fill the card from a parsed TOML mapping (section -> {key: value})."""
-        for section, content in data.items():
+        """Fill the card from a parsed TOML mapping (section -> {key: value}).
+
+        The free-form sections ([multiparticles], [cuts], ...) are read last:
+        setting beam.max_jet_flavor updates a standard jet multiparticle
+        (_sync_jet_group), and the jet list the card writes has to win over
+        that."""
+        self._reading = True
+        try:
+            items = sorted(data.items(), key=lambda item:
+                           item[0].lower() in self.dynamic_sections)
+            self._read_items(items, unknown_warning)
+        finally:
+            self._reading = False
+
+    def _read_items(self, items, unknown_warning):
+        for section, content in items:
             sl = section.lower()
             if sl in self.dynamic_sections:
                 self.dynamic_sections[sl] = collections.OrderedDict(content)
@@ -8035,7 +8171,53 @@ class RunCardMG7(RunCard):
                 # function matches the parameter name as written, case included
                 self.set_custom_parameter(parts[1], name.split('.')[2], value)
                 return
+            if lname == 'beam.max_jet_flavor':
+                old = self['beam']['max_jet_flavor']
+                out = super(RunCardMG7, self).set(name, value, *args, **opts)
+                self._sync_jet_group(old, self['beam']['max_jet_flavor'],
+                                     verbose=not getattr(self, '_reading', False))
+                return out
         return super(RunCardMG7, self).set(name, value, *args, **opts)
+
+    def _sync_jet_group(self, old, new, verbose=False):
+        """Make the ``jet`` multiparticle follow a change of
+        ``beam.max_jet_flavor`` from ``old`` to ``new``, as madevent's
+        maxjetflavor does: the jet cuts (pt, eta, delta_r) then apply to the
+        same quarks the MLM clustering treats as jets. In a 5-flavour model the
+        b is a jet; with the 4-flavour list a final-state b would get no cut
+        at all, and a massless one makes g b > X b collinear divergent.
+
+        Only a jet list that is the standard group of ``old`` (the quarks up
+        to that flavour, their antiquarks and the gluon) is replaced: a list
+        the user wrote is kept, with a warning. Returns whether the list was
+        changed."""
+        try:
+            old, new = int(old), int(new)
+        except (TypeError, ValueError):
+            return False
+        multiparticles = self.dynamic_sections['multiparticles']
+        current = multiparticles.get('jet')
+        if old == new or current is None:
+            return False
+        try:
+            current_set = set(int(p) for p in current)
+        except (TypeError, ValueError):
+            current_set = None
+        if current_set == set(self._lo_jet_group(new)):
+            return False
+        if current_set != set(self._lo_jet_group(old)):
+            if verbose:
+                logger.warning(
+                    "beam.max_jet_flavor is now %s but the jet multiparticle %s "
+                    "is not the standard one of max_jet_flavor = %s: it is kept "
+                    "as it is. Edit [multiparticles] jet if the jet cuts should "
+                    "apply to other quark flavours.", new, list(current), old)
+            return False
+        multiparticles['jet'] = self._lo_jet_group(new)
+        if verbose:
+            logger.info("multiparticles.jet follows beam.max_jet_flavor = %s: %s",
+                        new, multiparticles['jet'])
+        return True
 
     custom_function_kinds = ('cut', 'scale', 'pdf', 'bias')
 
@@ -8794,17 +8976,24 @@ class RunCardMG7(RunCard):
             # the heaviest quark the MLM clustering treats as a jet follows the
             # flavour scheme of the model, as madevent's maxjetflavor does: 5
             # once the b is massless and in the proton
-            nflav = get_model_flavour_scheme(proc_def) or 4
-            self['beam']['max_jet_flavor'] = max(
-                [nflav] + [abs(i) for i in beam_id if -7 < i < 7])
+            old = self['beam']['max_jet_flavor']
+            self['beam']['max_jet_flavor'] = default_max_jet_flavor(
+                get_model_flavour_scheme(proc_def), beam_id)
+            # and so do the jet cuts: in a 5-flavour model a final-state b is
+            # a jet (madevent applies ptj/etaj/drjj to it), not an uncut
+            # particle
+            self._sync_jet_group(old, self['beam']['max_jet_flavor'])
 
         if beam_id and beam_id <= leptons:
-            # lepton collider: no PDF, lower default energy, no hadronic cuts
+            # lepton collider: no PDF, lower default energy. The jet cuts stay,
+            # as in madevent's run_card (ptj/etaj/drjj are not hadron-collider
+            # specific): without them e+ e- > j j j (j) is infrared divergent,
+            # the survey is orders of magnitude off and the integration ends
+            # on a non-finite weight at a soft/collinear point.
             self['beam']['leptonic'] = True
             self['beam']['ebeam1'] = 500.0
             self['beam']['ebeam2'] = 500.0
             self['beam']['fixed_fact_scale'] = True
-            self.remove_jet_cuts()
         elif beam_id and not (beam_id & hadronic):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
@@ -9199,12 +9388,6 @@ class RunCardMG7(RunCard):
             self.dynamic_sections['multiparticles'].setdefault(
                 name, copy.deepcopy(pids))
         return True
-
-    def remove_jet_cuts(self):
-        """Drop jet related cuts (used for lepton colliders)."""
-        for key in list(self.dynamic_sections['cuts']):
-            if key.startswith('jet'):
-                del self.dynamic_sections['cuts'][key]
 
     # ------------------------------------------------------------------
     # conversion from the legacy LO run_card (see

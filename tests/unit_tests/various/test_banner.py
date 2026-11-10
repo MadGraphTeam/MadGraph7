@@ -1179,7 +1179,76 @@ class TestRunCard(unittest.TestCase):
         self.assertTrue(hasattr(run_card2, 'fortran_name'))
         self.assertFalse(hasattr(run_card2, 'default'))
         self.assertTrue(hasattr(run_card2, 'cuts_parameter'))   
-              
+
+    def test_nlo_matching_modes(self):
+        """Legacy matching selections must not silently change the physics."""
+        for mode in (0, 3):
+            with self.subTest(mode=mode):
+                card = bannermod.RunCardNLO(
+                    '%s = ickkw\n' % mode, consistency=False)
+                self.assertEqual(card['ickkw'], mode)
+                output = io.StringIO()
+                card.write(output)
+                restored = bannermod.RunCardNLO(output.getvalue(), consistency=False)
+                self.assertEqual(restored['ickkw'], mode)
+                include = io.StringIO()
+                card.write_include_file(None, output_file=include)
+                self.assertIn('ickkw = %s' % mode, include.getvalue())
+
+        for mode in (-1, 4):
+            with self.subTest(unsupported_mode=mode):
+                with self.assertRaisesRegex(bannermod.InvalidRunCard, 'ickkw'):
+                    bannermod.RunCardNLO('%s = ickkw\n' % mode, consistency=False)
+        for initial_mode in (0, 3):
+            card = bannermod.RunCardNLO()
+            card['ickkw'] = initial_mode
+            for mode in (-1, 4):
+                with self.subTest(initial_mode=initial_mode, unsupported_mode=mode):
+                    with self.assertRaisesRegex(bannermod.InvalidRunCard, 'ickkw'):
+                        card.set('ickkw', mode, user=True)
+                    self.assertEqual(card['ickkw'], initial_mode)
+                    with self.assertRaisesRegex(bannermod.InvalidRunCard, 'ickkw'):
+                        card['ickkw'] = mode
+                    self.assertEqual(card['ickkw'], initial_mode)
+
+    def test_born_spreading_option(self):
+        """Born spreading is off by default and can be enabled."""
+        run_card = bannermod.RunCardNLO()
+        self.assertFalse(run_card['born_spreading'])
+        self.assertEqual(run_card.fortran_name.get('born_spreading'),
+                         'born_spreading')
+        run_card['born_spreading'] = True
+        self.assertTrue(run_card['born_spreading'])
+        card_path = pjoin(self.tmpdir, 'born_spreading_run_card.dat')
+        with open(card_path, 'w') as output:
+            run_card.write(output)
+        saved_card = bannermod.RunCard(card_path, consistency=False)
+        self.assertTrue(saved_card['born_spreading'])
+
+
+    def test_herwig7_legacy_run_card(self):
+        """Legacy shower selections reach both the run card and Fortran as HERWIG7."""
+        for value in ('HERWIGPP', 'herwigpp', 'HeRwIgPp', "'HERWIGPP'",
+                      '"herwigpp"', 'HERWIG++'):
+            with self.subTest(value=value):
+                run_card = bannermod.RunCardNLO(
+                    '%s = parton_shower\n' % value, consistency=False)
+                self.assertEqual(run_card['parton_shower'], 'HERWIG7')
+                self.assertIn('parton_shower', run_card.user_set)
+
+                output = io.StringIO()
+                run_card.write(output)
+                self.assertRegex(output.getvalue(), r'HERWIG7\s*=\s*parton_shower')
+
+                include = io.StringIO()
+                run_card.write_include_file(None, output_file=include)
+                self.assertIn("shower_mc = 'HERWIG7'", include.getvalue())
+
+        run_card.set('parton_shower', 'herwigpp', user=True)
+        self.assertEqual(run_card['parton_shower'], 'HERWIG7')
+        for value in ('HERWIG6', 'PYTHIA8', 'PYTHIA6Q', 'PYTHIA6PT'):
+            run_card['parton_shower'] = value
+            self.assertEqual(run_card['parton_shower'], value)
 
     def test_default(self):
       
@@ -2915,7 +2984,9 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(rc['phasespace']['mode'], 'flat')
 
     def test_create_default_for_process(self):
-        """process dependent defaults: lepton collider drops jet cuts"""
+        """process dependent defaults: a lepton collider has no PDF and a
+        lower energy, but keeps the jet cuts, as madevent does (without them
+        e+ e- > j j j j is infrared divergent: non-finite integral in mg7)"""
         class PC(dict):
             def __init__(self):
                 super().__init__(ninitial=2, loop_induced=False, colored_pdgs=[])
@@ -2929,7 +3000,9 @@ class TestRunCardMG7(unittest.TestCase):
         rc.create_default_for_process(PC(), '', [proc([11, -11])])
         self.assertIs(rc['beam']['leptonic'], True)
         self.assertEqual(rc['beam']['e_cm'], 1000.0)
-        self.assertFalse([k for k in rc['cuts'] if k.startswith('jet')])
+        self.assertEqual(rc['cuts']['jet-pt'], {'min': 20.0})
+        self.assertEqual(rc['cuts']['jet-eta_abs'], {'max': 5.0})
+        self.assertEqual(rc['cuts']['jet-delta_r'], {'min': 0.4})
 
 
 class TestPhotonPDFDefault(unittest.TestCase):
@@ -3095,6 +3168,165 @@ class TestRunCardMG7AutoMLM(unittest.TestCase):
                          [mg7_proc([11, -11], [2, -2, 21])]])
         self.assertFalse(rc.is_mlm_merged())
         self.assertEqual(rc['phasespace']['xqcut'], 0.0)
+
+
+class FakeModel5F(FakeModel):
+    """A model with a massless b in the proton (5-flavour scheme)."""
+
+    def get_flavour_scheme(self):
+        return 5
+
+
+class TestRunCardMG7JetFlavours(unittest.TestCase):
+    """The jet multiparticle, hence the jet cuts, follows max_jet_flavor as
+    madevent's ptj/etaj/drjj follow maxjetflavor: in a 5-flavour model a
+    final-state b is a jet. With the 4-flavour list it got no cut at all, and
+    g b > X b with a massless b is collinear divergent (DMsimp monojet: mg7
+    3.5% above madevent)."""
+
+    JET4 = [1, 2, 3, 4, -1, -2, -3, -4, 21]
+    JET5 = [1, 2, 3, 4, 5, -1, -2, -3, -4, -5, 21]
+
+    class PC(dict):
+        def __init__(self, ninitial=2):
+            super().__init__(ninitial=ninitial, loop_induced=False,
+                             colored_pdgs=[])
+
+    def build(self, processes):
+        rc = bannermod.RunCardMG7()
+        rc.default_run_card = None
+        rc.create_default_for_process(self.PC(), '', processes)
+        return rc
+
+    def test_5f_default_cuts_the_b_as_a_jet(self):
+        model = FakeModel5F()
+        rc = self.build([[mg7_proc([21, 5], [52, -52, 5], model),
+                          mg7_proc([2, -2], [52, -52, 21], model)]])
+        self.assertEqual(rc['beam']['max_jet_flavor'], 5)
+        self.assertEqual(sorted(rc['multiparticles']['jet']), sorted(self.JET5))
+        # the jet cuts are the usual ones, now seen by the b too
+        self.assertEqual(rc['cuts']['jet-pt'], {'min': 20.0})
+        self.assertEqual(rc['cuts']['jet-delta_r'], {'min': 0.4})
+        # the bottom group stays (for ptb-like cuts), as madevent's is_a_b
+        self.assertEqual(rc['multiparticles']['bottom'], [-5, 5])
+        # and the card written for the run says so
+        import io, tomllib
+        buf = io.StringIO()
+        rc.write(buf)
+        data = tomllib.loads(buf.getvalue())
+        self.assertEqual(sorted(data['multiparticles']['jet']), sorted(self.JET5))
+
+    def test_4f_default_is_unchanged(self):
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        self.assertEqual(rc['beam']['max_jet_flavor'], 4)
+        self.assertEqual(rc['multiparticles']['jet'], self.JET4)
+
+    def test_lepton_collider_5f_default(self):
+        """no hadronic beam: max_jet_flavor and the jet list stay, and the
+        default jet cuts are kept, as madevent's ptj/etaj/drjj for lpp = 0
+        (without them e+ e- > j j j j is infrared divergent)"""
+        rc = self.build([[mg7_proc([11, -11], [5, -5], FakeModel5F())]])
+        self.assertTrue(rc['beam']['leptonic'])
+        self.assertEqual(rc['beam']['max_jet_flavor'], 4)
+        self.assertEqual(rc['multiparticles']['jet'], self.JET4)
+        self.assertEqual(rc['cuts']['jet-pt'], {'min': 20.0})
+        self.assertEqual(rc['cuts']['jet-delta_r'], {'min': 0.4})
+
+    def test_set_max_jet_flavor_updates_a_standard_jet_list(self):
+        rc = bannermod.RunCardMG7()
+        rc.set('beam.max_jet_flavor', 5, user=True)
+        self.assertEqual(sorted(rc['multiparticles']['jet']), sorted(self.JET5))
+        rc.set('max_jet_flavor', 4, user=True)
+        self.assertEqual(sorted(rc['multiparticles']['jet']), sorted(self.JET4))
+        # the legacy spelling does the same
+        rc.set_lo_param('maxjetflavor', '5')
+        self.assertEqual(rc['beam']['max_jet_flavor'], 5)
+        self.assertEqual(sorted(rc['multiparticles']['jet']), sorted(self.JET5))
+
+    def test_set_max_jet_flavor_keeps_a_custom_jet_list(self):
+        rc = bannermod.RunCardMG7()
+        rc.dynamic_sections['multiparticles']['jet'] = [1, -1, 2, -2, 21]
+        with self.assertLogs('madevent.cards', level='WARNING'):
+            rc.set('beam.max_jet_flavor', 5, user=True)
+        self.assertEqual(rc['beam']['max_jet_flavor'], 5)
+        self.assertEqual(rc['multiparticles']['jet'], [1, -1, 2, -2, 21])
+
+    def test_read_keeps_the_jet_list_of_the_card(self):
+        """a card that writes both keeps both, whatever the section order"""
+        jet4 = '[%s]' % ', '.join(str(p) for p in self.JET4)
+        for text in ('[beam]\nmax_jet_flavor = 5\n[multiparticles]\njet = %s\n' % jet4,
+                     '[multiparticles]\njet = %s\n[beam]\nmax_jet_flavor = 5\n' % jet4):
+            rc = bannermod.RunCardMG7()
+            rc.read(text, consistency=False)
+            self.assertEqual(rc['beam']['max_jet_flavor'], 5)
+            self.assertEqual(rc['multiparticles']['jet'], self.JET4)
+
+    def test_read_without_multiparticles_follows_max_jet_flavor(self):
+        """e.g. a site default_run_card_mg7.toml setting only [beam]"""
+        rc = bannermod.RunCardMG7()
+        rc.read('[beam]\nmax_jet_flavor = 5\n', consistency=False)
+        self.assertEqual(sorted(rc['multiparticles']['jet']), sorted(self.JET5))
+
+    def test_from_LO_5f(self):
+        lo = bannermod.RunCardLO()
+        lo['maxjetflavor'] = 5
+        mg7, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['max_jet_flavor'], 5)
+        self.assertEqual(sorted(mg7['multiparticles']['jet']), sorted(self.JET5))
+        self.assertIn('jet-pt', mg7['cuts'])
+
+    # --- MLM: max_jet_flavor is not free -------------------------------
+
+    def test_default_max_jet_flavor(self):
+        self.assertEqual(bannermod.default_max_jet_flavor(5, {2, -2}), 5)
+        self.assertEqual(bannermod.default_max_jet_flavor(4, {21, 2}), 4)
+        # a b from the beam in a 4-flavour model is a jet
+        self.assertEqual(bannermod.default_max_jet_flavor(4, {5, -5}), 5)
+        # no flavour scheme: madevent's 4
+        self.assertEqual(bannermod.default_max_jet_flavor(None, {21}), 4)
+
+    def test_proc_characteristics_has_max_jet_flavor(self):
+        pc = bannermod.ProcCharacteristic()
+        self.assertEqual(pc['max_jet_flavor'], 0)
+
+    def mlm_card(self, max_jet_flavor, xqcut=30.0):
+        rc = bannermod.RunCardMG7()
+        rc['beam']['dynamical_scale_choice'] = 'mlm'
+        rc['phasespace']['xqcut'] = xqcut
+        rc['beam']['max_jet_flavor'] = max_jet_flavor
+        return rc
+
+    def test_mlm_wrong_max_jet_flavor_crashes(self):
+        # 5-flavour model, 4 in the card: massless b not a jet
+        with self.assertRaises(bannermod.InvalidRunCard) as error:
+            self.mlm_card(4).check_mlm_max_jet_flavor(5)
+        self.assertIn('max_jet_flavor = 5', str(error.exception))
+        # 4-flavour model, 5 in the card: massive b clustered as a jet
+        with self.assertRaises(bannermod.InvalidRunCard):
+            self.mlm_card(5).check_mlm_max_jet_flavor(4)
+        # the MLM clustering scale without a merging cut is no different
+        with self.assertRaises(bannermod.InvalidRunCard):
+            self.mlm_card(4, xqcut=0.0).check_mlm_max_jet_flavor(5)
+
+    def test_mlm_correct_max_jet_flavor_passes(self):
+        self.mlm_card(5).check_mlm_max_jet_flavor(5)
+        self.mlm_card(4).check_mlm_max_jet_flavor(4)
+
+    def test_mlm_unknown_flavour_scheme_is_not_checked(self):
+        # an output older than the check, or a model with no flavour scheme
+        self.mlm_card(5).check_mlm_max_jet_flavor(0)
+        self.mlm_card(5).check_mlm_max_jet_flavor(None)
+
+    def test_no_mlm_max_jet_flavor_is_free(self):
+        rc = bannermod.RunCardMG7()
+        rc['beam']['max_jet_flavor'] = 3
+        for choice in ('transverse_energy', 'partonic_energy'):
+            rc['beam']['dynamical_scale_choice'] = choice
+            rc.check_mlm_max_jet_flavor(5)
+        # nor on lepton beams
+        rc = self.mlm_card(4)
+        rc['beam']['leptonic'] = True
+        rc.check_mlm_max_jet_flavor(5)
 
 
 class TestRunCardMG7Histograms(unittest.TestCase):
@@ -3419,4 +3651,3 @@ class TestMadLoopParam(unittest.TestCase):
         for key, value in new.items():
             if key != 'CTLoopLibrary':
                 self.assertEqual(value, param2[key])
-

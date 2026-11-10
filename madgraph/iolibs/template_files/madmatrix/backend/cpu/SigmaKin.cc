@@ -383,6 +383,16 @@ namespace madmatrix
 #include "HelRecycling.inc" // nHrRows, cHrRow[ncomb], hrNwf (and the declarations of the chunks, if any: see HelRecyclingChunks.h)
 #include "HelRecyclingTables.h" // the tabulated P1N groups (a fragment of this namespace)
 
+  // The warn-once flags of hr_unbaked_row and hr_declined, one per subprocess
+  // library. They must have internal linkage: a static local of an inline
+  // function is a weak symbol that the dynamic loader coalesces across the
+  // subprocess libraries, and only the first library to warn would say it.
+  namespace
+  {
+    std::atomic<bool> hrUnbakedRowSaid{ false }; // the helicity loop runs in OpenMP/madspace threads
+    std::atomic<bool> hrDeclinedSaid{ false };   // called from every thread of the helicity loop
+  }
+
   // The rows that were built are the rows that contributed AT THE PARAMETERS THE
   // WARM-UP RAN AT. getGoodHel still runs at run time, so when it finds a row that
   // is not in the table -- a different param_card, typically -- that helicity is
@@ -391,7 +401,7 @@ namespace madmatrix
   inline void
   hr_unbaked_row( int ihel )
   {
-    static std::atomic<bool> said{ false }; // the helicity loop runs in OpenMP/madspace threads
+    std::atomic<bool>& said = hrUnbakedRowSaid;
     if( said.exchange( true ) ) return;
     printf( "INFO: helicity row %d contributes at these parameters but is not in the --hel_recycling\n"
             "INFO: table (measured at others): it is computed without recycling. Regenerate the\n"
@@ -435,7 +445,7 @@ namespace madmatrix
   inline void
   hr_declined()
   {
-    static std::atomic<bool> said{ false }; // called from every thread of the helicity loop
+    std::atomic<bool>& said = hrDeclinedSaid;
     if( said.exchange( true ) ) return;
     printf( "INFO: --hel_recycling is not used by this build: its tables would be %.1f MB per SIMD page at\n"
             "INFO: this SIMD width, more than MGONGPU_HR_MAX_TABLE_MB=%d (make HRMAXMB=<n>, 0 for no limit);\n"
@@ -607,6 +617,19 @@ namespace madmatrix
                      allNumerators, allDenominators, jamp2_sv, ievt00 );
   }
 
+  namespace
+  {
+    // Its address names THIS subprocess library to the scratch area
+    // (hr_thread_scratch). It must have internal linkage: a static local of
+    // the inline hr_page is a weak symbol with the same name in every
+    // subprocess library, which the dynamic loader coalesces into one
+    // object, so every library would pass the same owner and the rows-mode
+    // table would never be zeroed when another library took the area over
+    // (stale amplitudes of another subprocess in the slots of the
+    // (helicity, amplitude) pairs this one drops).
+    const char hrOwnerTag = 0;
+  }
+
   // The whole page: the recycled block (calculate_all_jamps), then the helicity
   // loop of sigmaKin over the good helicities, one row at a time (hr_row), with
   // its color sum. MEs_ighel[ighel] (and MEs_ighel2 for the second page in mixed
@@ -653,8 +676,7 @@ namespace madmatrix
 #else
     constexpr size_t blasBytes = 0;
 #endif
-    static const char hrOwner = 0; // its address names this library to the scratch area
-    char* scratch = static_cast<char*>( hr_thread_scratch( tableBytes + pvecBytes + wBytes + blasBytes, zeroedBytes, &hrOwner ) );
+    char* scratch = static_cast<char*>( hr_thread_scratch( tableBytes + pvecBytes + wBytes + blasBytes, zeroedBytes, &hrOwnerTag ) );
 #ifdef MGONGPU_HR_ROWS
     cxtype_amp_sv* ampAll_sv = reinterpret_cast<cxtype_amp_sv*>( scratch );
     cxtype_amp_sv* jampTmpAll_sv = nullptr;

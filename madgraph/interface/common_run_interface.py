@@ -680,7 +680,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     # The three options categories are treated on a different footage when a
     # set/save configuration occur. current value are kept in self.options
     options_configuration = {'pythia8_path': './pythia8',
-                       'hwpp_path': './herwigPP',
+                       'herwig7_path': './herwig7',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
                        'hepmc3_path': None,
@@ -3716,17 +3716,33 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     ############################################################################
     def get_pid_final_initial_states(self):
         """Find the pid of all particles in the final and initial states"""
+        import json
+
         pids = set()
         subproc = [l.strip() for l in open(pjoin(self.me_dir,'SubProcesses',
                                                                  'subproc.mg'))]
-        nb_init = self.ninitial
-        pat = re.compile(r'''DATA \(IDUP\(ILH|I,\d+\),ILH|I=1,\d+\)/([\+\-\d,\s]*)/''', re.I)
+        pat = re.compile(r'DATA\s*\(IDUP\((?:ILH|I),\d+\),'
+                         r'\s*(?:ILH|I)=1,\d+\)\s*/([+\-\d,\s]*)/', re.I)
         for Pdir in subproc:
-            text = open(pjoin(self.me_dir, 'SubProcesses', Pdir, 'born_leshouche.inc')).read()
+            directory = pjoin(self.me_dir, 'SubProcesses', Pdir)
+            metadata_path = pjoin(directory, 'born_support.json')
+            source = pjoin(directory, 'born_leshouche.inc')
+            if os.path.isfile(metadata_path):
+                with open(metadata_path) as stream:
+                    metadata = json.load(stream)
+                if 'born_pdgs' in metadata:
+                    pids.update(str(pdg) for process in metadata['born_pdgs']
+                                for pdg in process)
+                    continue
+                # Earlier shared-provider outputs keep the immutable IDUP
+                # table in the context metadata rather than in this include.
+                source = pjoin(self.me_dir, 'Source', 'BornSupport',
+                               'c%d' % metadata['context'], 'metadata.f')
+            with open(source) as stream:
+                text = stream.read()
             group = pat.findall(text)
             for particles in group:
-                particles = particles.split(',')
-                pids.update(set(particles))
+                pids.update(str(int(pdg)) for pdg in particles.split(','))
 
         return pids
 
@@ -7522,14 +7538,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if proc_charac and 'MLM' in proc_charac['limitations']:
                 if self.run_card['ickkw']:
                     raise Exception( "Your model is identified as not fully supported within MadGraph7.\n" +\
-                      "You can NOT run with FxFx/UnLOPS matching/merging. Please check if merging outside MadGraph7 are suitable or refrain to use merging with this model")
+                      "You can NOT run with FxFx matching/merging. Please check if merging outside MadGraph7 are suitable or refrain to use merging with this model")
             
-            # ensure that for fixed order ICKKW model are not set to FxFx and/or UNLOPS
+            # FxFx requires shower matching, so it cannot be used at fixed order.
             if 'shower_cards' not in self.cards and self.opt['switch']['fixed_order'] == 'ON':
-                if self.run_card['ickkw'] in [3,4]:
-                    # 3 is FxFx and 4 is UNLOPS
-                    mergemode = {3:'FxFx', 4:'UNLOPS'}
-                    raise Exception("You are running in fixed order mode but ICKKW is set to %s (%s). This does not make sense. Please fix and retry" %(self.run_card['ickkw'], mergemode[self.run_card['ickkw']]))
+                if self.run_card['ickkw'] == 3:
+                    raise Exception("You are running in fixed order mode but ICKKW is set to 3 (FxFx). This does not make sense. Please fix and retry")
 
 
             if 'fix_scale' in proc_charac['limitations']:
@@ -7604,7 +7618,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             extralibs = self.shower_card['extralibs'].split()
             extrapaths = self.shower_card['extrapaths'].split()
             # remove default stdhep/Fmcfio for recent shower
-            if self.run_card['parton_shower'] in ['PYTHIA8', 'HERWIGPP', 'HW7']:
+            if self.run_card['parton_shower'] in ['PYTHIA8', 'HERWIG7', 'HW7']:
                 if 'stdhep' in self.shower_card['extralibs']:
                     extralibs.remove('stdhep')
                     modify_extralibs = True

@@ -1682,8 +1682,9 @@ class TestMECmdShell(unittest.TestCase):
         if not has_mg7:
             self.skipTest('mg7 runtime stack (madspace) unavailable')
         # e+ e- > mu+ mu- is leptonic, so no parton density is ever evaluated
-        # and the [systematics] PDF variations are empty -- but alpha_s still
-        # comes from the nominal set, and the mu_R/mu_F weights are computed.
+        # and the [systematics] PDF variations are empty -- but alpha_s comes
+        # from the param-card grid the launcher writes (fixed_alphas.info), and
+        # the mu_R/mu_F weights are computed.
         # They are deliberately left enabled: the gridpack has to reproduce the
         # calculator the launcher built, and used to die doing so.
         datadir = os.environ.get('LHAPDF_DATA_PATH')
