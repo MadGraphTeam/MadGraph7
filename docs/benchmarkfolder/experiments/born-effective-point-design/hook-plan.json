@@ -1,0 +1,142 @@
+{
+  "apply_ready": false,
+  "compile_ready": false,
+  "hooks": [
+    {
+      "anchor": "CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))",
+      "expected_occurrences": 1,
+      "name": "original_born_boundary",
+      "proposed_action": "Retain ordinary call; snapshot IEEE entry for nonfinite fallback, reset call-local certificates before early exits. Nonfinite Born branches to staged C/first-QP preparation before REF-dependent work.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "REF=REF+ANS(0,I)",
+      "expected_occurrences": 1,
+      "name": "reference_update",
+      "proposed_action": "Publish a checked contiguous Born buffer into the strided ANS row; keep REF=sum(Born(1:NSQSO_BORN)). Refresh for finite-Born QP rescue too.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "MP_DONE=.FALSE.\nMP_DONE_ONCE=.FALSE.\nMP_PS_SET=.FALSE.",
+      "expected_occurrences": 1,
+      "name": "ordinary_mp_resets",
+      "proposed_action": "Preserve any current-call staged C across these resets; set MP_PS_SET only after successful adoption. Never set MP_DONE or MP_DONE_ONCE for preparation/Born work.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "205 CONTINUE",
+      "expected_occurrences": 1,
+      "name": "qp_policy_entry",
+      "proposed_action": "For every selected QP library, resolve the integrand policy outside the MP_PS_SET guard and before any MP_DONE/reuse test. First adoption/policy change refreshes Born and starts a fresh QP stability cohort (result slots, EVAL_DONE, STAB_INDEX); historical cohorts are diagnostic only.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "IF (.NOT.MP_PS_SET.AND.(CTMODE.EQ.0.OR.CTMODE.GE.4)) THEN",
+      "expected_occurrences": 1,
+      "name": "qp_coordinate_entry",
+      "proposed_action": "Prepare/adopt C only once. Keep CTMode0 and unsupported formats on explicit legacy setter path. Failure uses initialized-stage cleanup and rejected output.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "I_LIB=INDEX_QP_TOOLS(I_QP_LIB)",
+      "expected_occurrences": 1,
+      "name": "qp_backend_reuse_shortcut",
+      "proposed_action": "Recheck the selected policy before the zero-rotation GOTO300 shortcut (which bypasses label205 and numerator generation). If the policy changed, route through staging and recomputation with MP_DONE false; preserve same-policy direction/reuse shortcuts.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "  NTRY=NTRY+1",
+      "expected_occurrences": 1,
+      "name": "host_initialization_commit",
+      "proposed_action": "Nonfinite-Born preparation failures occur before this counter/filter publication. Use validity flags for threshold/bypass/rotation snapshots; do not jump blindly to final cleanup with uninitialized state/backend identity.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "CALL %(proc_prefix)sMP_COMPUTE_LOOP_COEFS(MP_P,BUFFR_BIS)",
+      "expected_occurrences": 2,
+      "name": "actual_numerator_completion",
+      "proposed_action": "Existing calls remain actual completion boundaries. Invalidate MP_DONE and coefficient-reuse state on policy/view change; do not fabricate completion.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "IF (DOING_QP_EVALS) CALL %(proc_prefix)sMP_ROTATE_PS",
+      "expected_occurrences": 3,
+      "name": "rotation",
+      "proposed_action": "Use fixed MP_PS=C for every rotation, preserve current MP_P view and cache resets. No second phase-space repair.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "C Make sure that we finish by emptying caches",
+      "expected_occurrences": 1,
+      "name": "failure_cleanup",
+      "proposed_action": "Restore only initialized threshold/rotation/bypass snapshots and relevant caches, then finalize rejected accuracy1/invalid output. Do not let CHECKPHASE overwrite a preparation-failure rejection or access an uninitialized backend identity.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
+    },
+    {
+      "anchor": "COMPUTE_INTEGRAND_IN_QP = ((MLREDUCTIONLIB(LIBINDEX)",
+      "expected_occurrences": 1,
+      "name": "integrand_policy",
+      "proposed_action": "One generated policy predicate shared with effective-Born staging; preserve all existing UseQPIntegrand flags and actual selected-library identity.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/mp_compute_loop_coefs.inc"
+    },
+    {
+      "anchor": "CALL MP_UPDATE_AS_PARAM()",
+      "expected_occurrences": 1,
+      "name": "model_sync",
+      "proposed_action": "The true Born evaluator uses the existing MP model after the same synchronization contract. No decimal reparse or blanket promotion of DP parameters.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/mp_compute_loop_coefs.inc"
+    },
+    {
+      "anchor": "W(I)%P = DPW(I)%P",
+      "expected_occurrences": 1,
+      "name": "rounded_view",
+      "proposed_action": "False integrand option retains rounded DP coordinate/numerator view; published Born/reference must match it. QP tensor and mass policies remain independently reported.",
+      "source": "madgraph/iolibs/template_files/loop_optimized/mp_compute_loop_coefs.inc"
+    },
+    {
+      "anchor": "bornME.optimization = True",
+      "expected_occurrences": 1,
+      "name": "born_graph",
+      "proposed_action": "Reuse the copied Born graph/color/split-order data to emit a stateless precision-specific aggregate with generated HELAS calls, flavor, polarization, averaging and selections. No fixture dimensions or shared waveform scratch.",
+      "source": "madgraph/loop/loop_exporters.py"
+    },
+    {
+      "anchor": "IF (BUFF .NE. 0D0 .AND. .NOT.    GOODHEL(IHEL,FLAV_IDX)) THEN",
+      "expected_occurrences": 1,
+      "name": "split_born_learning",
+      "proposed_action": "Generate a narrowly supported transaction for private saved Born learning state: successful finite calls retain exact existing updates; failed nonfinite attempts restore entry NTRY/GOODHEL/HELRESET/selection state. Host cleanup cannot access these saved locals.",
+      "source": "madgraph/iolibs/template_files/matrix_standalone_splitOrders_v4.inc"
+    },
+    {
+      "anchor": "IF (T .NE. 0D0 .AND. .NOT.    GOODHEL(IHEL,FLAV_IDX)) THEN",
+      "expected_occurrences": 1,
+      "name": "unsplit_born_learning",
+      "proposed_action": "Apply the same generated transaction to the ordinary Born template without changing successful finite calls or unsupported exports. Validate selection/learning equivalence through source fixtures before native tests.",
+      "source": "madgraph/iolibs/template_files/matrix_standalone_v4.inc"
+    },
+    {
+      "anchor": "C Report to the user or update the PS point.",
+      "expected_occurrences": 1,
+      "name": "repair_outcome",
+      "proposed_action": "Render a checked sibling preserving the existing numerical body and explicit primary/alternate errors. Copy output only on actual success; a finite retained input is not success.",
+      "source": "madgraph/iolibs/template_files/loop/improve_ps.inc"
+    }
+  ],
+  "interfaces": {
+    "adoption": "ADOPT_EFFECTIVE_CONTEXT(..., CONTEXT_CHANGED, OK); call-local readiness distinct from numerator completion; update host arrays/REF atomically.",
+    "born": "EFFECTIVE_BORN(C128, C8, INTEGRAND_POLICY, USERHEL, FLAV_IDX, BORN(0:NSQSO_BORN), OK); stateless generated aggregate, no loop scratch mutation.",
+    "checked_repair": "PREPARE_EFFECTIVE_POINT(P_USER, C128, C8, ERR_PRIMARY, ERR_ALTERNATE, OK); same model and repair arithmetic, explicit success.",
+    "cleanup": "Current-call rejected state survives normal cleanup; precision return digits describe actual loop work only."
+  },
+  "legacy_preserved": [
+    "LoopInduced",
+    "AmplitudeReduction/color flow",
+    "CTMode0",
+    "off-shell/spacelike",
+    "vector"
+  ],
+  "no_accuracy_claim": "Coordinate/normalization alignment does not resolve scalar/tensor accuracy or the separate default stability estimator limitation.",
+  "reason": "Reviewable implementation plan. Checked-repair and generated stateless Born bodies must be implemented together; these hooks alone are not executable changes.",
+  "schema": 1,
+  "supported": "scalar optimized on-shell SM Born with direct interference reduction"
+}

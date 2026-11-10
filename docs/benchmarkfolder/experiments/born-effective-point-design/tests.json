@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "docs/benchmarkfolder/experiments/born-effective-point-design",
+    "-p",
+    "test_policy_model.py",
+    "-v"
+  ],
+  "returncode": 0,
+  "scope": "Pure Python lifecycle specification tests; no Fortran/MadGraph/native execution.",
+  "sources_sha256": {
+    "policy_model.py": "77c7ac3667a9477806c1914a8ad5f2d41df37f642882b8fb5b93c9798ad55f05",
+    "test_policy_model.py": "53ab89149937ddd7d267b026f5489d3529327c128ddf89735d5002af39459e9d"
+  },
+  "stderr": "test_conversion_and_born_failure_never_publish_old_born (test_policy_model.Lifecycle.test_conversion_and_born_failure_never_publish_old_born) ... ok\ntest_false_option_keeps_actual_dp_view (test_policy_model.Lifecycle.test_false_option_keeps_actual_dp_view) ... ok\ntest_finite_born_is_replaced_at_qp_transition (test_policy_model.Lifecycle.test_finite_born_is_replaced_at_qp_transition) ... ok\ntest_finite_failed_repair_is_rejected (test_policy_model.Lifecycle.test_finite_failed_repair_is_rejected) ... ok\ntest_loop_induced_and_unsupported_keep_legacy_path (test_policy_model.Lifecycle.test_loop_induced_and_unsupported_keep_legacy_path) ... ok\ntest_new_call_never_inherits_certificate (test_policy_model.Lifecycle.test_new_call_never_inherits_certificate) ... ok\ntest_nonfinite_trigger_does_not_certify_a_loop (test_policy_model.Lifecycle.test_nonfinite_trigger_does_not_certify_a_loop) ... ok\ntest_ordinary_success_does_no_rescue_work (test_policy_model.Lifecycle.test_ordinary_success_does_no_rescue_work) ... ok\ntest_policy_switch_invalidates_born_coefficients_and_cache (test_policy_model.Lifecycle.test_policy_switch_invalidates_born_coefficients_and_cache) ... ok\ntest_rotation_uses_canonical_point (test_policy_model.Lifecycle.test_rotation_uses_canonical_point) ... ok\ntest_same_policy_reuses_only_born_and_coordinates (test_policy_model.Lifecycle.test_same_policy_reuses_only_born_and_coordinates) ... ok\n\n----------------------------------------------------------------------\nRan 11 tests in 0.000s\n\nOK\n",
+  "stdout": ""
+}

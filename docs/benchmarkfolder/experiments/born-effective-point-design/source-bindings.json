@@ -1,0 +1,66 @@
+{
+  "compiler_or_reducer_executed": false,
+  "evidence_sha256": {
+    "docs/benchmarkfolder/experiments/ew-qp-input-policy/evidence-index.json": "2f90c77b68edf80df9a9e54da2fff6f9afba570ae24b474f2f049cc2d55e9ba1",
+    "docs/benchmarkfolder/experiments/general-kinematics-rescue-design/evidence-index.json": "d3be1d91e162bccce2b3afee30f0739c57c81c01eb4dabdf49d31695833f337e",
+    "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/revision-1/born_fallback.f": "89ab9ed6d08a53f2ae36e49c905fa056f90f335311fffe5f90bbee17120eb92a",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-native/RESULTS.md": "c8484de056393c2e1064eedecaa53beedc406d759ea031735212fa3585fa960b",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-native/evidence-index.json": "c7d185c4991fdfacf5c76710d1790b7ccf31c5c2ec0f9270cc4f72ec3dfdfc32",
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/born-c-design/born-c-handoff.patch": "963b53cea32b9445ea754c57f3fa6d8446fd79067e47b4018d2c27d3d8e1fa58"
+  },
+  "identity_contract": "Source bytes are independently hashed. A Git HEAD is not an assertion that dirty source belongs to it; dirty bytes are snapshotted.",
+  "production_changed": false,
+  "repository_head_context": "1fe144e865990b398526fdffe5129e2812d44b09",
+  "schema": 1,
+  "source_sha256": {
+    "madgraph/iolibs/helas_call_writers.py": {
+      "bytes": 128403,
+      "git_blob_at_recorded_head": "3ad8a251789b390c7bd5f7f51735fe6cf7b547fb",
+      "git_blob_sha256": "7a267fa78b75fa5b8efc4fc2f595769f938ee59919f55c6fffc3ab86ec5707ea",
+      "sha256": "7a267fa78b75fa5b8efc4fc2f595769f938ee59919f55c6fffc3ab86ec5707ea",
+      "working_differs_from_head": false
+    },
+    "madgraph/iolibs/template_files/loop/improve_ps.inc": {
+      "bytes": 27025,
+      "git_blob_at_recorded_head": "0b62f7155711674c43500654a33c20522853661e",
+      "git_blob_sha256": "aa268bdc637a7c9c094ead43cf967614ab2c4fde7f7de03e774ffea6a33da6ae",
+      "sha256": "aa268bdc637a7c9c094ead43cf967614ab2c4fde7f7de03e774ffea6a33da6ae",
+      "working_differs_from_head": false
+    },
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": {
+      "bytes": 103475,
+      "git_blob_at_recorded_head": "7d22a54d85351275263ed702f351e5ab15d071b9",
+      "git_blob_sha256": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+      "sha256": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+      "working_differs_from_head": false
+    },
+    "madgraph/iolibs/template_files/loop_optimized/mp_compute_loop_coefs.inc": {
+      "bytes": 21896,
+      "git_blob_at_recorded_head": "10c202930f6952b10d2d076123621b7d38e54731",
+      "git_blob_sha256": "d101fdedc0d4a419effe4f591c1e1bb02347712eb0ac2c05a85c18f7d2f58a38",
+      "sha256": "d101fdedc0d4a419effe4f591c1e1bb02347712eb0ac2c05a85c18f7d2f58a38",
+      "working_differs_from_head": false
+    },
+    "madgraph/iolibs/template_files/matrix_standalone_splitOrders_v4.inc": {
+      "bytes": 24451,
+      "git_blob_at_recorded_head": "5ccc0c70108a34d8e17b1b9efcf5913c80b87577",
+      "git_blob_sha256": "ee029533e9ba13dbd6b2a70a1b308ba1e286720aba172fae47bff8762b6d1aa6",
+      "sha256": "ee029533e9ba13dbd6b2a70a1b308ba1e286720aba172fae47bff8762b6d1aa6",
+      "working_differs_from_head": false
+    },
+    "madgraph/iolibs/template_files/matrix_standalone_v4.inc": {
+      "bytes": 24320,
+      "git_blob_at_recorded_head": "8b5ac56d8db2dc2456f0d44fc95f8c78b3b494f1",
+      "git_blob_sha256": "b507c01926876f5cd5b3aebc330932d9423637f977c01565e66970198b9e3c3b",
+      "sha256": "b507c01926876f5cd5b3aebc330932d9423637f977c01565e66970198b9e3c3b",
+      "working_differs_from_head": false
+    },
+    "madgraph/loop/loop_exporters.py": {
+      "bytes": 218323,
+      "git_blob_at_recorded_head": "7acf45f963317c030426821eeb0e78fd18ddd05f",
+      "git_blob_sha256": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74",
+      "sha256": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74",
+      "working_differs_from_head": false
+    }
+  }
+}
