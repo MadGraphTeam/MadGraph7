@@ -1,0 +1,138 @@
+{
+  "appendix_c_raw_dp": {
+    "index": "stability_appendix_c/raw-dp-pilot-5-figures-1/index.json",
+    "sha256": "b131e6294fb3c6900e6776339948928ae71518092cc99de59a8bb0d39fdabcfd"
+  },
+  "appendix_c_retrospective": {
+    "index": "stability_appendix_c/retrospective-main-closed11-1/index.json",
+    "sha256": "1138e7f644aec5a0eda96959b47eb17694344a2ad92caa09b2abee6202e23dab"
+  },
+  "campaign": "invariant-symmetry-1",
+  "closed_cases": [
+    "qcd_n1_uux_z",
+    "ew_n1_udx_wp",
+    "li_gg_h",
+    "qcd_n2_gg_ttx",
+    "ew_n2_epem_mupmum",
+    "mixed_uux_ga",
+    "li_gg_hh",
+    "qcd_n3_uux_zgg",
+    "ew_n3_epem_ttxa",
+    "qcd_n4_uux_zzgg",
+    "ew_n4_epem_mupmumaa"
+  ],
+  "current_lifecycle": {
+    "index": "experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json",
+    "sha256": "212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964"
+  },
+  "documents": {
+    "PLAN-AMENDMENT-2026-11-10.md": "25ed0b77b54de7207f5bb52fe1ef13b2475022bf0ef1bfa70afd9285b418de78",
+    "PRECISION_STREAM_TODO.md": "b48071ea8b8c4a1176f88ab78eb5678792748deaecc30c2d4845b37316501c03",
+    "campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md": "83ea3b3ad45d6d25f72734acf72befa0556deae18122e01bdd4ec1ed569614e4",
+    "campaigns/invariant-symmetry-1/timing-handoff-4/bindings.json": "f56e529537b374df1024e099f5e6bbb095c29adfbceda15a0d337efed2741e1f",
+    "campaigns/invariant-symmetry-1/timing-handoff-4/index.json": "f218a9fa65b15f79d6ea0444d31a5c16517d0cbb6341fe3c7c4cde4c43ab295a",
+    "campaigns/invariant-symmetry-1/timing-handoff-4/test_handoff.py": "9ee0bd36249e76ae01c2964ccec1a2f42d78c1ec7f98c4f10ec9ea0c5ea77981",
+    "campaigns/invariant-symmetry-1/timing-handoff-4/tests.log": "aacee13fd39cc2968bb0625aebda17628ddc72ba886d4e42d2628cddebc4cb9c",
+    "campaigns/invariant-symmetry-1/timing-handoff-4/validation.json": "d875833be2ca3fbdd023685fd43ceacefed30ca91710c49942bdb478dd8f44c1",
+    "experiments/cayley-guarded-adaptive-build-proposal-3/README.md": "e93391cef0a04261d68e9dba4f6dbdcfc55d6717557e75c612053a2103f49549"
+  },
+  "final_performance_accepted": false,
+  "historical_archive": {
+    "index": "history/report-before-invariant-symmetry-qualification/archive-manifest.json",
+    "sha256": "3ac7e02340a1148f9c22d9d7cec2e0b81493c429d9b3ac264e616ff2bb5d9dec"
+  },
+  "implementation_packages": {
+    "adaptive_debug": {
+      "index": "experiments/adaptive-qp-fortran-qualification/runtime1/evidence-index.json",
+      "sha256": "b65d02bea8000eb8e06cb2422f83502d13769dc49a8b2285d8c2d43ecd759876"
+    },
+    "adaptive_fixed_replay": {
+      "index": "experiments/adaptive-qp-physical-replay-qualification-1/evidence-index.json",
+      "sha256": "a728fbeb29c64e77b09189c5a97b1a509c71a681aa722dbe3affa1312895c9e9"
+    },
+    "adaptive_independent_backend8": {
+      "index": "experiments/adaptive-qp-physical-replay-independent-8-audit-1/evidence-index.json",
+      "sha256": "5b9100fc21b6d197c07401d89ec77709d9e37486f32e40f9e1e7a7e537345e32"
+    },
+    "adaptive_masked_trap": {
+      "index": "experiments/adaptive-qp-checked-trap-proposal-1/qualification-1/evidence-index.json",
+      "sha256": "d60f909d5dd20d749342c446a74b605743aa43556cb6554ba9ea8030519d967e"
+    },
+    "adaptive_release": {
+      "index": "experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/evidence-index.json",
+      "sha256": "cd35bc3fd2ae032a5e18da3c692c8faf5dbe53760d7069a5f8f40d50a8ee0501"
+    },
+    "born_backend89": {
+      "index": "experiments/born-effective-point-native89-qualification-1/evidence-index.json",
+      "sha256": "88164f16cdcabf60353df41b0faa140668ac2b3e1f4c4053214492bf0d8453bb"
+    },
+    "cms_diagnostic": {
+      "index": "experiments/generated-rank6-poles-proposal/attempt1/cms-width1/runtime1/index.json",
+      "sha256": "6f6bf5e20eb4ac27d6d6364193d93068db65953b6d8fc93b5a9421dd7423fc52"
+    },
+    "common_input_diagnostic": {
+      "index": "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/runtime1/index.json",
+      "sha256": "b25130768bc8a5f8daabbcfe820160755b41b4dd2e558cd0b1a87aa49e1f6ec7"
+    },
+    "common_input_finite_audit": {
+      "index": "experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/index.json",
+      "sha256": "5c669260ad17e9d1ef2b7991bf90720a7b22190607ea1b82df035da2f6afd3f1"
+    },
+    "current_cms": {
+      "index": "experiments/current-cms-replay-retention-2/evidence-index.json",
+      "sha256": "aa39809c5d6cde25367454bb1fd9c3500b9aaa9b14b976fc1ff42bb0783714d3"
+    },
+    "current_physical_stress": {
+      "index": "experiments/physical-stress-current-portable-4-terminal-2/evidence-index.json",
+      "sha256": "6fc2035649ba0387f0d4457784ae883592f13bb7e3b6f9c33b99e038b81f7146"
+    },
+    "guarded_adaptive_build": {
+      "index": "experiments/cayley-guarded-adaptive-build-qualification-1/evidence-index.json",
+      "sha256": "94f7a23d4c10373353b04e876da32585bc0274852fc573e8d94b740c9fa0ae3e"
+    },
+    "guarded_adaptive_physical": {
+      "index": "experiments/cayley-guarded-adaptive-physical-qualification-1/evidence-index.json",
+      "sha256": "715f436c704fe1cf1f7de9c2f15a2ca1b17ba8f7453956196ceb88bc4828cd90"
+    },
+    "installer_promotion": {
+      "index": "experiments/installer-metadata-promotion-1/index.json",
+      "sha256": "1e001b963fe1bfae886edf7cf38ede97cc8499086b0223d6b356ec5652fe3f17"
+    },
+    "mass_diagnostic": {
+      "index": "experiments/ew-qp-mass-prototype/observer-native-design/attempt2/execution-1/evidence-index.json",
+      "sha256": "4012228d621d39956944027d5682033781c88791c6dc11f90abc4a6fe30e1f7b"
+    },
+    "rank6_feynman_all_components": {
+      "index": "experiments/rank6-feynman-parameter-all-components-qualification-1/index.json",
+      "sha256": "14d13b3fc44e01916d6cc826d35b34efb4eccc9c33ada8ba70f5a6efa8b5abeb"
+    },
+    "rank6_feynman_sampled": {
+      "index": "experiments/rank6-feynman-parameter-qualification-1/index.json",
+      "sha256": "c2fe806d2996e7ee758e2a7894318d04388b640126b9f636fd23be99650b90d7"
+    },
+    "symmetry_components": {
+      "index": "experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/index.json",
+      "sha256": "62368b50b659f388a031f35528bd0cda6ae54c82ed751dd39c49a3df3db97300"
+    },
+    "symmetry_ew100": {
+      "index": "experiments/ew-invariant-symmetry-prototype/v2/runtime-1/qualification-1/index.json",
+      "sha256": "7aa5cbe23c6b787cc57a9a58d323db8a8acdd4b6f3bf54d6e07f268a50a55fde"
+    },
+    "symmetry_promotion": {
+      "index": "experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/index.json",
+      "sha256": "ce543bfa47e29ed006502d03f92ee2bf3e99505fbd156faf8eff0e33bf64df89"
+    }
+  },
+  "local_handoff_path": "campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md",
+  "numerical_checkpoint": {
+    "index": "campaigns/invariant-symmetry-1/numerical-retention-1/sealed-1/index.json",
+    "sha256": "8f5f7110cc101dc79e8fe75d5dd1ef342e1e72797986a5a5026680e28d4496be"
+  },
+  "packages": {
+    "experiments/default-stability-current-1/evidence-index.json": "e5d3f09114c96f491e27c8f7ddd65469072a55512da9dc23b947492d81ba2bb3",
+    "experiments/qcd-topology-rescue-higher-precision-native2/evidence-index.json": "d665b517532be1e87f3e7002edbe8ec6131c814fa26df3d7b002adf0eb409dcf"
+  },
+  "performance_status": "deferred to Hua-Sheng",
+  "schema": "madloop-tirust-closed-report-selection-v2",
+  "snapshot_date": "2026-11-10"
+}

@@ -1,6 +1,6 @@
 {
   "campaign_id": "invariant-symmetry-1",
-  "campaign_report_path": "campaigns/invariant-symmetry-1/report-snapshots/closed11-retrospective-1.json",
+  "campaign_report_path": "campaigns/invariant-symmetry-1/report-snapshots/closed11-raw-dp-pilot-1.json",
   "cases_path": "campaigns/invariant-symmetry-1/cases.json",
   "delivery_complete": false,
   "numerical_identity_sha256": "f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8",

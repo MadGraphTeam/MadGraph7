@@ -96,6 +96,124 @@
   }
 }
 
+#let show-appendix-c-raw-dp(pilot, process-label) = {
+  pagebreak()
+  heading(level: 1)[Appendix C style SM stability pilot]
+  note(fill: warm)[These four plots use 100 cut-qualified points per process,
+    with 1% empirical tail resolution. The host forces its DP path and selects
+    each configured backend through the card. Actual reducer identity and
+    reducer-internal arithmetic precision are unobserved; unchecked status 110
+    is not checked host acceptance. This three-probe internal-consistency
+    diagnostic supplies neither independently known true error nor performance
+    acceptance. The existing retrospective plots have a different scope.]
+  v(7pt)
+  [For the three retained probe values, MadLoop's range-over-absolute-mean
+  convention is $Delta = (max(f_1, f_2, f_3) - min(f_1, f_2, f_3)) / abs((f_1 + f_2 + f_3) / 3)$.
+  Here $f_i$ is the retained finite coefficient divided by Born. The legacy
+  stability driver's common $alpha_s/(2 pi)$ factor cancels algebraically in
+  relative spread; it is omitted from the pilot's $f_i$. No bitwise equivalence
+  to separately scaled floating-point values is implied. All-zero values give
+  zero; nonzero spread with zero mean gives infinity. The exact formula comes
+  from MadLoop's implementation; the paper describes the probes and tail
+  presentation, rather than printing this equation.]
+  v(7pt)
+  [The tail uses strict exceedance $P(Delta > delta)$ over all 100 intended
+  point slots. Known exceedances give a lower bound; dotted upper bounds account
+  for unavailable outcomes and are not measured failure fractions. A wholly
+  unavailable lane is unknown in $[0, 1]$; its zero lower bound cannot appear on
+  a log axis. Complete populations have exact empirical tails. Ninja ratios
+  require complete paired populations and a positive Ninja denominator, with
+  no floor or pseudocount. A valid infinite spread remains distinct from an
+  unavailable nonfinite-coefficient failure.]
+  v(7pt)
+  [All twenty configured requests and their native failures remain in the
+  dossier and the tables below. Each lane has 100 intended physical points and
+  300 intended primary probe-call outcomes. Bootstrap calls are separate.
+  A complete request can still have partially unavailable diagnostic points;
+  completion does not establish a measured complete tail. The frozen protocol's broad precision wording does not establish that every
+  internal arithmetic operation was observed in binary64.]
+  v(7pt)
+  note(fill: warm)[The ordinary full-eleven checkpoint, physical-stress and CMS
+    outcomes, precision cohorts and Hua-Sheng's deferred local performance
+    acceptance keep their existing gates. This pilot changes none of them.]
+  for item in pilot.cases {
+    pagebreak()
+    heading(level: 1)[Raw stability pilot · #process-label(item)]
+    figure(image("/" + item.figure_path, width: 100%, height: 170mm, fit: "contain"),
+      caption: [Host forced-DP/card-selected backend; actual backend and internal
+        precision unobserved. Three-probe consistency on 100 cut-qualified points
+        (1% empirical resolution), not true error. Dotted curves are upper bounds
+        for unavailable outcomes, not measured failure fractions. Zero tails are
+        omitted on log axes; missing populations or zero Ninja tails mask ratios.
+        All five configured reducers remain visible. No performance acceptance.])
+    v(4pt)
+    table-style(table(columns: (.85fr, 1fr, 1fr, .8fr, 1fr), inset: 4pt,
+      stroke: table-stroke, fill: table-fill,
+      table.header([Configured reducer], [Result state], [Available / unavailable],
+        [Zero / infinite], [Tail bounds at 1e-3]),
+      ..item.lanes.map(lane => (
+        [#names.at(str(lane.backend))], [#text(7pt)[#lane.result_state]],
+        [#lane.available_points / #lane.unavailable_points],
+        [#lane.zero_points / #lane.infinite_points],
+        [#fixed(100 * lane.tail_at_1e3.lower, 0)%–#fixed(100 * lane.tail_at_1e3.upper, 0)%],
+      )).flatten()))
+    v(4pt)
+    if item.id == "qcd_n3_uux_zgg" {
+      text(7pt, fill: ink2)[TIRust's request completed, but only its first 24 point
+        diagnostics are available. The following 76 are unavailable after the
+        point-25 group failure and persistent DP floating-point latch. Its
+        1e-3 tail is bounded by 0%–76%, not a measured zero tail. The 15 active-group
+        failure calls and 228 latched calls do not mean 76 independent exceptions.]
+      v(4pt)
+    }
+    if item.id == "qcd_n4_uux_zzgg" {
+      text(7pt, fill: ink2)[TIRust's stream failed/incomplete: all 100 point
+        diagnostics remain unavailable, so the tail is unknown in [0, 1], not
+        a measured 100% failure fraction. There are 254 unchecked primary
+        status-110 returns and 46 unexecuted primary calls, with 212 active-group
+        failure calls and 254 latched calls. The 1190.177 s deadline/cleanup
+        duration is a diagnostic observation, not precise benchmark timing.]
+      v(4pt)
+    }
+    text(6.2pt, fill: ink2)[Indexed PDF export: #raw(item.export_pdf_path)]
+  }
+  pagebreak()
+  heading(level: 1)[Raw pilot failure and call accounting]
+  [Primary return-code histograms use order-zero calls from the three probes.
+  Primary outcome counts retain all 300 intended calls per lane; unavailable
+  or unexecuted outcomes are not silently dropped. Bootstrap return codes are
+  separate. Group and floating-point-latch counts are observed primary-call
+  diagnostics; they are not measured point-failure fractions. All error records,
+  raw diagnostics and unavailable-point reasons remain bound in the dossier.
+  Sticky floating-point-latch observations may persist into later calls; their
+  count is not the number of independent exceptions.]
+  v(6pt)
+  for item in pilot.cases {
+    heading(level: 2)[#process-label(item)]
+    table-style(table(columns: (.65fr, 1fr, .85fr, 1.5fr, 1.1fr), inset: 4pt,
+      stroke: table-stroke, fill: table-fill,
+      table.header([Reducer], [Primary RET_CODE], [Bootstrap RET_CODE],
+        [Primary outcomes / 300], [Group failure counts]),
+      ..item.lanes.map(lane => {
+        let failures = lane.group_failure_call_counts
+        (
+          [#names.at(str(lane.backend))],
+          [#text(7pt)[#lane.return_code_counts_text]],
+          [#text(7pt)[#lane.bootstrap_return_code_counts_text]],
+          [#text(7pt)[#lane.primary_outcome_counts_text]],
+          [#failures.coverage_missing / #failures.active_group_failure /
+           #failures.nonfinite_coefficients / #failures.nonfinite_results /
+           #failures.floating_point_failure_latch],
+        )
+      }).flatten()))
+    v(6pt)
+  }
+  text(7pt, fill: ink2)[Group columns are missing coverage / active-group failure /
+    nonfinite coefficients / nonfinite results / floating-point failure latch.
+    These categories may overlap. This diagnostic does not promote a scientific
+    or performance gate.]
+}
+
 #let show-campaign-details(data, cases, process-label) = {
   show-campaign-provisional(data, cases, process-label)
   pagebreak()
@@ -333,5 +451,8 @@
   }
   if data.at("refresh", default: none) != none and data.refresh.at("appendix_c_retrospective", default: none) != none {
     show-retrospective-stability(data.refresh.appendix_c_retrospective, process-label)
+  }
+  if data.at("refresh", default: none) != none and data.refresh.at("appendix_c_raw_dp", default: none) != none {
+    show-appendix-c-raw-dp(data.refresh.appendix_c_raw_dp, process-label)
   }
 }

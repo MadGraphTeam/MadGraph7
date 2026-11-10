@@ -336,9 +336,11 @@ def current_selection(evidence, value, manifest, config):
     required = {"schema", "campaign", "numerical_checkpoint", "closed_cases", "documents", "packages",
                 "implementation_packages", "historical_archive", "local_handoff_path", "snapshot_date",
                 "performance_status", "final_performance_accepted", "current_lifecycle"}
-    require(required <= set(value) <= required | {"appendix_c_retrospective"}
+    require(required <= set(value) <= required | {"appendix_c_retrospective", "appendix_c_raw_dp"}
             and value["campaign"] == manifest["id"],
             "Current selection requires explicit closed inputs and no old timing or next-campaign join")
+    if value.get("appendix_c_raw_dp") is not None:
+        sibling("campaign_report_appendix_c").require_admitted(value["appendix_c_raw_dp"])
     if value.get("appendix_c_retrospective") is not None:
         require_retrospective_pin(value["appendix_c_retrospective"])
         require(value["numerical_checkpoint"].get("sha256") == RETROSPECTIVE_BINDINGS["checkpoint"],
@@ -422,4 +424,7 @@ def current_supplement(evidence, selected, report):
     if selected.get("appendix_c_retrospective") is not None:
         refreshed["appendix_c_retrospective"] = retrospective_plots(
             evidence, selected["appendix_c_retrospective"], selected["numerical_checkpoint"])
+    if selected.get("appendix_c_raw_dp") is not None:
+        refreshed["appendix_c_raw_dp"] = sibling("campaign_report_appendix_c").collect(
+            evidence, selected["appendix_c_raw_dp"])
     return refreshed

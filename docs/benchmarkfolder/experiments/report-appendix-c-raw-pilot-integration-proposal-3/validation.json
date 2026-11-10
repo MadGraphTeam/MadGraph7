@@ -1,0 +1,73 @@
+{
+  "actual_active_inputs_read": false,
+  "actual_closed_inputs_root_admitted": true,
+  "actual_collection": {
+    "canonical_changes": false,
+    "collection_passed": true,
+    "common_evidence_identities_unchanged": true,
+    "dossier": {
+      "bound_paths": 10143,
+      "bytes": 4940803,
+      "sha256": "b69312c77ef5563eb9f99e7ed145dcef199b49bc507645cf68dd41ae162a0133"
+    },
+    "elapsed_diagnostic_seconds": 87.99922620505095,
+    "existing_report_semantics_unchanged": true,
+    "process_DSO_loading_blocked": true,
+    "rendered": false,
+    "selection": {
+      "bytes": 7460,
+      "sha256": "7970d67ddf68547612edf6c384d1c4928c84cc695a8b7c3949acdbd1426b178b"
+    }
+  },
+  "actual_frozen_validation": {
+    "bound_evidence_paths": 10143,
+    "elapsed_diagnostic_seconds": 85.6479983148165,
+    "exact_frozen_validate_passed": true,
+    "process_DSO_loading_blocked": true,
+    "promoted_source_bindings": {
+      "campaign_report.py": {
+        "bytes": 16540,
+        "sha256": "99ce6fd89a6b736411af2c1b861464799e23afcb8b3b26c525301c3a94824961"
+      },
+      "campaign_report_appendix_c.py": {
+        "bytes": 13171,
+        "sha256": "58f74f395e52788e67371ce708bd86a0abe7f6638e15707d9a84c0945be9412c"
+      },
+      "campaign_report_refresh.py": {
+        "bytes": 33644,
+        "sha256": "9a7f221e5c47a36ea2eee6732cc9b3b626b7f9a90685ca5058cf7aff47751254"
+      }
+    },
+    "rendered": false,
+    "validated_inputs": 10160
+  },
+  "available_metrics": 1824,
+  "canonical9baselines_unchanged": true,
+  "core_and_README_patch_apply_check": "PASS --check --whitespace=error",
+  "delivery_complete": false,
+  "figure_sets": 4,
+  "full_closure_paths": 289,
+  "independent_exact_actual_case_caption_review": "PASS; complete!=available;unknownbounds;stickycounts;deadline diagnostic",
+  "independent_final_documentation_command_review": "PASS",
+  "independent_private_artifact_status_delta_review": "PASS; all20rows/full6000outcomes/exactpriorsemantics/commonidentities",
+  "independent_source_API_literal_pin_review": "PASS",
+  "intended_primary_outcomes": 6000,
+  "native_compiler_plotter_or_Typst_execution": false,
+  "new_science_or_performance_gate_promotion": false,
+  "normalized_rows": 20,
+  "old_report_semantics_and_retrospective_preserved": true,
+  "payload_count": 286,
+  "pending": [
+    "root source/pin review",
+    "canonical promotion/fresh dossier",
+    "admitted render/allnewpages visual/verify-only"
+  ],
+  "source_only": true,
+  "tests": {
+    "prior_retrospective_suite_against_actual_successor": "10testsPASS0.868s",
+    "raw_normal": "17testsPASS0.341s",
+    "raw_optimized": "17testsPASS0.285s",
+    "synthetic_only": true
+  },
+  "unavailable_unknown_metrics": 176
+}

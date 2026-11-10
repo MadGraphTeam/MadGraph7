@@ -1,0 +1,1122 @@
+{
+  "canonical_changes": false,
+  "collection_passed": true,
+  "common_evidence_identities_unchanged": true,
+  "dossier": {
+    "bound_paths": 10143,
+    "bytes": 4940803,
+    "sha256": "b69312c77ef5563eb9f99e7ed145dcef199b49bc507645cf68dd41ae162a0133"
+  },
+  "elapsed_diagnostic_seconds": 87.99922620505095,
+  "existing_report_semantics_unchanged": true,
+  "file_delta": {
+    "added": [
+      "experiments/report-appendix-c-raw-pilot-integration-proposal-3/selection.proposed.json",
+      "stability_appendix_c/plotter-source-6/README.md",
+      "stability_appendix_c/plotter-source-6/index.json",
+      "stability_appendix_c/plotter-source-6/plot_metrics.py",
+      "stability_appendix_c/plotter-source-6/presentation-only.patch",
+      "stability_appendix_c/plotter-source-6/test_plot_metrics.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/README.md",
+      "stability_appendix_c/raw-dp-pilot-5-1/card-observations.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/ew_n2_epem_mupmum-backend1/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/ew_n2_epem_mupmum-backend6/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/ew_n2_epem_mupmum-backend7/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/ew_n2_epem_mupmum-backend8/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/ew_n2_epem_mupmum-backend9/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/ew_n2_epem_mupmum/param_card.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n2_gg_ttx-backend1/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n2_gg_ttx-backend6/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n2_gg_ttx-backend7/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n2_gg_ttx-backend8/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n2_gg_ttx-backend9/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n2_gg_ttx/param_card.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n3_uux_zgg-backend1/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n3_uux_zgg-backend6/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n3_uux_zgg-backend7/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n3_uux_zgg-backend8/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n3_uux_zgg-backend9/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n3_uux_zgg/param_card.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n4_uux_zzgg-backend1/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n4_uux_zzgg-backend6/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n4_uux_zzgg-backend7/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n4_uux_zzgg-backend8/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n4_uux_zzgg-backend9/MadLoopParams.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/cards/qcd_n4_uux_zzgg/param_card.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__ew_n2_epem_mupmum-backend1__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__ew_n2_epem_mupmum-backend6__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__ew_n2_epem_mupmum-backend7__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__ew_n2_epem_mupmum-backend8__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__ew_n2_epem_mupmum-backend9__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n2_gg_ttx-backend1__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n2_gg_ttx-backend6__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n2_gg_ttx-backend7__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n2_gg_ttx-backend8__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n2_gg_ttx-backend9__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n3_uux_zgg-backend1__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n3_uux_zgg-backend6__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n3_uux_zgg-backend7__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n3_uux_zgg-backend8__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n3_uux_zgg-backend9__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend1__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend1__stability-groups.dat/chunk-000001.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend6__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend6__stability-groups.dat/chunk-000001.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend7__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend7__stability-groups.dat/chunk-000001.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend8__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend8__stability-groups.dat/chunk-000001.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend9__stability-groups.dat/chunk-000000.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/compressed/requests__qcd_n4_uux_zzgg-backend9__stability-groups.dat/chunk-000001.gz",
+      "stability_appendix_c/raw-dp-pilot-5-1/index.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/journal_codec.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/point-metrics.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/point_validator.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/points/ew_n2_epem_mupmum.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/points/ew_n2_epem_mupmum.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n2_gg_ttx.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n2_gg_ttx.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n3_uux_zgg.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n3_uux_zgg.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n4_uux_zzgg.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/points/qcd_n4_uux_zzgg.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/receipts/inherit-started.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/receipts/inherit-terminal.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/receipts/prepare-terminal.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/receipts/run-started.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/receipts/run-terminal.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend1/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend1/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend1/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend1/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend1/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend1/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend1/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend6/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend6/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend6/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend6/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend6/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend6/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend6/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend7/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend7/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend7/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend7/native/runtime-maps-02.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend7/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend7/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend7/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend7/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend8/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend8/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend8/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend8/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend8/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend8/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend8/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend9/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend9/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend9/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend9/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend9/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend9/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/ew_n2_epem_mupmum-backend9/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend1/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend1/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend1/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend1/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend1/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend1/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend1/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend6/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend6/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend6/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend6/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend6/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend6/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend6/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend7/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend7/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend7/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend7/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend7/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend7/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend7/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend8/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend8/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend8/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend8/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend8/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend8/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend8/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend9/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend9/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend9/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend9/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend9/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend9/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n2_gg_ttx-backend9/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend1/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend1/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend1/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend1/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend1/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend1/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend1/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend6/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend6/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend6/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend6/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend6/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend6/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend6/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend7/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend7/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend7/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend7/native/runtime-maps-02.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend7/native/runtime-maps-03.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend7/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend7/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend7/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend7/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend8/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend8/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend8/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend8/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend8/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend8/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend8/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-02.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-03.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-04.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-05.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-06.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-07.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-08.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-09.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-10.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-11.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-12.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-13.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-14.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/runtime-maps-15.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n3_uux_zgg-backend9/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend1/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend1/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend1/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend1/native/runtime-maps-02.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend1/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend1/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend1/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend1/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend6/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend6/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend6/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend6/native/runtime-maps-02.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend6/native/runtime-maps-03.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend6/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend6/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend6/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend6/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/native/runtime-maps-02.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/native/runtime-maps-03.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/native/runtime-maps-04.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend7/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend8/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend8/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend8/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend8/native/runtime-maps-02.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend8/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend8/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend8/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend8/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/command.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-00.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-01.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-02.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-03.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-04.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-05.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-06.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-07.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-08.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-09.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-10.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-11.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-12.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-13.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-14.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/runtime-maps-15.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/native/stdout.txt",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/stability-dimensions.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/requests/qcd_n4_uux_zzgg-backend9/stability-values.dat",
+      "stability_appendix_c/raw-dp-pilot-5-1/retention.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/README.md",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/actual-prelaunch-proof.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/ancestry.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/dry-proof-history.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/pilot.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/plot_metrics.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/points.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/protocol.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/pure-test-result.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/source-index.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/source4-to-source5.patch",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/stability_worker.f",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/successor-delta.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/test_driver_source.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/test_pilot.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/test_plot_metrics.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/test_points.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/source5/verify_actual_prelaunch.py",
+      "stability_appendix_c/raw-dp-pilot-5-1/summary.json",
+      "stability_appendix_c/raw-dp-pilot-5-1/verify.py",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/README.md",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures.py",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/ew_n2_epem_mupmum.json",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/ew_n2_epem_mupmum.pdf",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/ew_n2_epem_mupmum.png",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/qcd_n2_gg_ttx.json",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/qcd_n2_gg_ttx.pdf",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/qcd_n2_gg_ttx.png",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/qcd_n3_uux_zgg.json",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/qcd_n3_uux_zgg.pdf",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/qcd_n3_uux_zgg.png",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/qcd_n4_uux_zzgg.json",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/qcd_n4_uux_zzgg.pdf",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/figures/qcd_n4_uux_zzgg.png",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/index.json",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/point-metrics.json",
+      "stability_appendix_c/raw-dp-pilot-5-figures-1/provenance.json"
+    ],
+    "removed": [
+      "campaigns/invariant-symmetry-1/report-snapshots/closed11-retrospective-selection-1.json"
+    ]
+  },
+  "normalized_rows": [
+    {
+      "available_points": 100,
+      "backend": 1,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n2_gg_ttx",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 6,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n2_gg_ttx",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 1,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 1
+    },
+    {
+      "available_points": 100,
+      "backend": 7,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n2_gg_ttx",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 2,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 2
+    },
+    {
+      "available_points": 100,
+      "backend": 8,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n2_gg_ttx",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 9,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n2_gg_ttx",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 2,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 2
+    },
+    {
+      "available_points": 100,
+      "backend": 1,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n3_uux_zgg",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 6,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n3_uux_zgg",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 7,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n3_uux_zgg",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 8,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n3_uux_zgg",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 24,
+      "backend": 9,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n3_uux_zgg",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 15,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 228,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 72,
+        "rejected": 228
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": null,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 76,
+        "upper": 0.76
+      },
+      "unavailable_points": 76,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 1,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "ew_n2_epem_mupmum",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 6,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "ew_n2_epem_mupmum",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 7,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "ew_n2_epem_mupmum",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 2,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 2
+    },
+    {
+      "available_points": 100,
+      "backend": 8,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "ew_n2_epem_mupmum",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 9,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "ew_n2_epem_mupmum",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 1,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 1
+    },
+    {
+      "available_points": 100,
+      "backend": 1,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n4_uux_zzgg",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 6,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n4_uux_zzgg",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 7,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n4_uux_zzgg",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 100,
+      "backend": 8,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n4_uux_zzgg",
+      "diagnostic_error": null,
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 0,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 0,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "diagnostic_available": 300
+      },
+      "readonly_guard_error": null,
+      "result_state": "complete",
+      "return_code_counts": {
+        "110": 300
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": 0.0,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 0,
+        "upper": 0.0
+      },
+      "unavailable_points": 0,
+      "zero_points": 0
+    },
+    {
+      "available_points": 0,
+      "backend": 9,
+      "bootstrap_return_code_counts": {
+        "110": 1,
+        "130": 4
+      },
+      "case": "qcd_n4_uux_zzgg",
+      "diagnostic_error": {
+        "class": "ValueError",
+        "message": "Incomplete diagnostic stream"
+      },
+      "error": null,
+      "group_failure_call_counts": {
+        "active_group_failure": 212,
+        "coverage_missing": 0,
+        "floating_point_failure_latch": 254,
+        "nonfinite_coefficients": 0,
+        "nonfinite_results": 0
+      },
+      "infinite_points": 0,
+      "intended_points": 100,
+      "native_started": true,
+      "primary_outcome_counts": {
+        "rejected": 254,
+        "unexecuted": 46
+      },
+      "readonly_guard_error": null,
+      "result_state": "failed",
+      "return_code_counts": {
+        "110": 254
+      },
+      "tail_at_1e3": {
+        "exact_zero_metrics": 0,
+        "fraction": null,
+        "known_exceedances": 0,
+        "lower": 0.0,
+        "n": 100,
+        "unavailable": 100,
+        "upper": 1.0
+      },
+      "unavailable_points": 100,
+      "zero_points": 0
+    }
+  ],
+  "process_DSO_loading_blocked": true,
+  "rendered": false,
+  "selection": {
+    "bytes": 7460,
+    "sha256": "7970d67ddf68547612edf6c384d1c4928c84cc695a8b7c3949acdbd1426b178b"
+  }
+}

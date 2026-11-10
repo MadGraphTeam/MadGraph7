@@ -1,0 +1,22 @@
+{
+  "bound_evidence_paths": 10143,
+  "elapsed_diagnostic_seconds": 85.6479983148165,
+  "exact_frozen_validate_passed": true,
+  "process_DSO_loading_blocked": true,
+  "promoted_source_bindings": {
+    "campaign_report.py": {
+      "bytes": 16540,
+      "sha256": "99ce6fd89a6b736411af2c1b861464799e23afcb8b3b26c525301c3a94824961"
+    },
+    "campaign_report_appendix_c.py": {
+      "bytes": 13171,
+      "sha256": "58f74f395e52788e67371ce708bd86a0abe7f6638e15707d9a84c0945be9412c"
+    },
+    "campaign_report_refresh.py": {
+      "bytes": 33644,
+      "sha256": "9a7f221e5c47a36ea2eee6732cc9b3b626b7f9a90685ca5058cf7aff47751254"
+    }
+  },
+  "rendered": false,
+  "validated_inputs": 10160
+}

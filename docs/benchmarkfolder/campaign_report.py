@@ -276,6 +276,8 @@ def validate(inputs, path, manifest, summary):
             inputs.add("campaign_report_guarded_build.py")
             inputs.add("campaign_report_guarded_physical.py")
             inputs.add("campaign_report_current_diagnostics.py")
+    if dossier.get("refresh", {}).get("appendix_c_raw_dp") is not None:
+        inputs.add("campaign_report_appendix_c.py")
     return dossier
 
 

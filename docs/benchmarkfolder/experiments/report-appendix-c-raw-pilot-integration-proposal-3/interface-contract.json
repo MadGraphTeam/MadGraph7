@@ -1,0 +1,131 @@
+{
+  "actual_results_read": true,
+  "admitted_capsules": {
+    "data": {
+      "index": "stability_appendix_c/raw-dp-pilot-5-1/index.json",
+      "sha256": "ebd8f1faf5228f205b1038a490329037066988dc03e7e774210d648b38dbbb6e"
+    },
+    "figures": {
+      "index": "stability_appendix_c/raw-dp-pilot-5-figures-1/index.json",
+      "sha256": "b131e6294fb3c6900e6776339948928ae71518092cc99de59a8bb0d39fdabcfd"
+    },
+    "plotter": {
+      "index": "stability_appendix_c/plotter-source-6/index.json",
+      "sha256": "a0521f17a658e04f8dc320509e733de8fd0e93ac4d02481d908373291ac706ae"
+    }
+  },
+  "configured_backends": [
+    1,
+    6,
+    7,
+    8,
+    9
+  ],
+  "expected_summary_rows": 20,
+  "figures": "exactly four figures/{case}.png, .pdf and .json sets; PNG embedded, all formats and all indexed files bound to dossier and PDF ledger",
+  "fixed_cases": [
+    "qcd_n2_gg_ttx",
+    "qcd_n3_uux_zgg",
+    "ew_n2_epem_mupmum",
+    "qcd_n4_uux_zzgg"
+  ],
+  "group_failure_categories": [
+    "coverage_missing",
+    "active_group_failure",
+    "nonfinite_coefficients",
+    "nonfinite_results",
+    "floating_point_failure_latch"
+  ],
+  "metric": {
+    "f_i": "retained finite_i/Born_i; common AO2PI normalization in legacy FIN cancels algebraically, without a bitwise rescaling claim",
+    "formula": "(max(f_i)-min(f_i))/abs(sum(f_i)/3)",
+    "origin": "MadLoop process_checks relative_spread and stability driver; paper describes probes/tails rather than printing exact formula",
+    "precision_scope": "host forced-DP/card-selected backend; no observed per-result actual backend or internal arithmetic precision",
+    "zero_mean": "allzero -> zero; nonzero spread -> infinity"
+  },
+  "needs_after_closure": [
+    "collect private closed-only selection/dossier with the exact promoted-science contracts",
+    "independent source/identity/dossier/status review",
+    "root source promotion and fresh canonical dossier",
+    "separate admitted render/visual/verify-only"
+  ],
+  "planned_paths_not_admitted": {},
+  "point_values": "number, string inf, or null; missing reasons and all400 serialized points remain in the authenticated data capsule",
+  "points_per_case": 100,
+  "portable_api": {
+    "data": "verify.py::verify(root=None) -> verified,index_sha256,summary,scope",
+    "figures": "figures.py::verify(figure_root, *, data_root, plotter_root) -> verified,index_sha256,dependencies,cases,artifacts=12; no summary",
+    "physical_index": "files maps relative paths to sha256 and bytes; payload logical aliases remain internal",
+    "relocation": "copy one authenticated physical payload at a time into three explicit temporary roots; pure root-only APIs; no original-host fallback; summaries/verification receipts finite JSON without relocation-dependent absolute paths"
+  },
+  "primary_calls_per_lane": 300,
+  "retained_figure_verification": "full verified/index_sha256/dependencies/cases/artifacts receipt; root data summary preserved separately",
+  "row_fields": [
+    "case",
+    "backend",
+    "result_state",
+    "native_started",
+    "error",
+    "diagnostic_error",
+    "readonly_guard_error",
+    "intended_points",
+    "available_points",
+    "unavailable_points",
+    "zero_points",
+    "infinite_points",
+    "return_code_counts",
+    "bootstrap_return_code_counts",
+    "primary_outcome_counts",
+    "group_failure_call_counts",
+    "tail_at_1e3"
+  ],
+  "schema": "tirust-appendix-c-raw-pilot-report-interface-proposal-v3",
+  "selection": {
+    "absent_or_null": "preserve the current25page report including selected retrospective optional output/read set; no raw helper import or discovery",
+    "coexists_with": "appendix_c_retrospective; neither optional diagnostic mutates report gates",
+    "optional_key": "appendix_c_raw_dp",
+    "value_keys": [
+      "index",
+      "sha256"
+    ]
+  },
+  "source_contracts_not_actual_results": {
+    "data": {
+      "index": "stability_appendix_c/retention-source-1/source-index.json",
+      "sha256": "ea6f8bba5bf93fc17821d15ea7c67c70e6a0f3d8d39dd024b2593089d7b4af7b",
+      "verifier_sha256": "efac5f8debda3513c935e1f2cd24de82ad1e8a6ff8561452fbff4ba3220186e0"
+    },
+    "figures": {
+      "index": "stability_appendix_c/figure-source-1/index.json",
+      "sha256": "113bc9703ea6cd6ee3e0d3be6210ed300c93d2dbe0f1e0be6359dd2501802c06",
+      "verifier_sha256": "9f3141c7cc1e0b92daf891a19c624ba23b2bd654643af51bf7b302f18f26e166"
+    },
+    "plotter": {
+      "index": "stability_appendix_c/plotter-source-6/index.json",
+      "sha256": "a0521f17a658e04f8dc320509e733de8fd0e93ac4d02481d908373291ac706ae"
+    }
+  },
+  "source_only": true,
+  "summary_schema": "madloop-raw-stability-summary-v1",
+  "tails": {
+    "all_missing": "unknown [0,1]; zero lower cannot be drawn on log axis",
+    "denominator": 100,
+    "dotted_curve": "upper bound for unavailable outcomes, not measured failure fraction",
+    "fraction": "null if any unavailable; otherwise exact empirical lower",
+    "lower": "known_exceedances/100",
+    "ratio_over_Ninja": "only defined empirical fractions with positive denominator; missing/zero denominator remains undefined",
+    "relation": "strict exceedance",
+    "upper": "(known_exceedances+unavailable)/100",
+    "zero_and_inf": "exact zero stays zero; valid infinite metric exceeds every finite threshold"
+  },
+  "unchanged_gates": [
+    "main full11 checkpoint",
+    "current source/native identities",
+    "stress and CMS failures",
+    "statistics/lifecycle",
+    "timing/cohorts",
+    "Hua-Sheng local performance acceptance",
+    "delivery_complete=false"
+  ],
+  "unstarted_outcomes": "native_started=false requires unavailable100 and primary_outcome_counts exactly {unexecuted:300}; request completion is not accuracy qualification"
+}
