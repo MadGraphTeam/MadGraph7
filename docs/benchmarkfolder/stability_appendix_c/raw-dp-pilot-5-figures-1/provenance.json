@@ -1,0 +1,16 @@
+{
+  "caption": "Host forced-DP, card-selected backends; reducer-internal precision and actual backend are unobserved. Each process has 100 cut-qualified physical points (1% empirical resolution). Dotted upper bounds account for unavailable outcomes; they are not measured failure fractions. Incomplete populations and zero Ninja exceedances mask ratios. Internal consistency is not a true-error bound; no performance claim is made.",
+  "case_ids": [
+    "qcd_n2_gg_ttx",
+    "qcd_n3_uux_zgg",
+    "ew_n2_epem_mupmum",
+    "qcd_n4_uux_zzgg"
+  ],
+  "dependencies": {
+    "data_index_sha256": "ebd8f1faf5228f205b1038a490329037066988dc03e7e774210d648b38dbbb6e",
+    "dataset_sha256": "95528da1163211f9236ff583a0e6d00897a70e3d5797e382917f9016196da4f2",
+    "figure_source_sha256": "9f3141c7cc1e0b92daf891a19c624ba23b2bd654643af51bf7b302f18f26e166",
+    "plotter_index_sha256": "a0521f17a658e04f8dc320509e733de8fd0e93ac4d02481d908373291ac706ae",
+    "plotter_module_sha256": "2fc1d3fb368d623726bb26a55ca6b85e207eb6ebaf07b97da1f1846a6e92395a"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1891,
+      "sha256": "646f72a9a3e2105ecd708dc23aba4fdf4fe80f73edb066fd3841e9aad284af8f"
+    },
+    "first-harness-failure/failed-guard.json": {
+      "bytes": 229,
+      "sha256": "f0fbd345cf306a9ad5d5cf190eddbe783a5b0c4a2a6c409c0b6c387218b82e40"
+    },
+    "first-harness-failure/guarded_verify.py": {
+      "bytes": 5515,
+      "sha256": "b6bd83a0a7dadf8cf594e576fb6ae7059b3dcef3a3795994f67c7777bc5b1ab3"
+    },
+    "guarded_verify.py": {
+      "bytes": 5531,
+      "sha256": "7129bc0f3178c7ebf9a24108f98ba9c490f766e5f7c2c2ee380c91699517ccaf"
+    },
+    "proof.json": {
+      "bytes": 23481,
+      "sha256": "4602413567a464af7518459d86f0bf2f108c12f18c0c4d319cf77d6aa0da761c"
+    }
+  },
+  "inputs": {
+    "docs/benchmarkfolder/stability_appendix_c/raw-dp-pilot-5-1/index.json": "ebd8f1faf5228f205b1038a490329037066988dc03e7e774210d648b38dbbb6e"
+  },
+  "schema": "madloop-raw-stability-verification-packet-v1",
+  "scope": "portable raw-parser/group/physical-point/metric replay only; no independent truth or performance qualification",
+  "status": "passed relocated closed-data replay; exact historical runner and proof, no binaries or relocated data packaged",
+  "validation": {
+    "negative_probes": {
+      "child": "rejected-before-operation",
+      "dlopen": "rejected-before-operation",
+      "outside_read": "rejected-before-operation",
+      "write": "rejected-before-operation"
+    },
+    "original_capsule_index_unchanged": true,
+    "read_only_native_guard": {
+      "byte_reads": 557,
+      "directory_opens": 210,
+      "external_reads": 0,
+      "mutations": 0,
+      "native_events": 0
+    }
+  }
+}

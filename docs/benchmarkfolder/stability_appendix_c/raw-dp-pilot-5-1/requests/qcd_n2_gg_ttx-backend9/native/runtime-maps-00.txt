@@ -1,0 +1,2 @@
+7fffcf18e000-7fffcf1b1000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

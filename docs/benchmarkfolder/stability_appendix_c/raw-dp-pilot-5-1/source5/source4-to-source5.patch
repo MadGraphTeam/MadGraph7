@@ -1,0 +1,282 @@
+--- source4/pilot.py
++++ source5/pilot.py
+@@ -28,7 +28,7 @@
+ HERE = Path(__file__).resolve().parent
+ ROOT = HERE.parents[3]
+ CAMPAIGN = ROOT / 'docs/benchmarkfolder/campaigns/invariant-symmetry-1'
+-WORK = ROOT / '.tirust-build/stability-appendix-c-pilot-4'
++WORK = ROOT / '.tirust-build/stability-appendix-c-pilot-5'
+ REPORT = WORK / 'evidence'
+ INHERITED_SOURCE = HERE.with_name('source3')
+ INHERITED_WORK = ROOT / '.tirust-build/stability-appendix-c-pilot-3'
+@@ -47,6 +47,8 @@
+     'vendor/SudGen/NNPDFDriver.f': '../../Template/NLO/Source/PDF/NNPDFDriver.f',
+ }
+ SPEC_SHA = 'f4ecf8d003faf1a570de53d803ca46ed5d12089235786d8a9a590198406cafd7'
++LHA_READ_SHA = '319682ba82c7f585b6673f81256723719ef1fc3a5c78c5debd183cd4ba171cca'
++RW_PARA_SHA = '6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c'
+ HISTORICAL_LDD_HOST_LOADER = {
+     'path': '/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/ld-linux-x86-64.so.2',
+     'sha256': 'e655ec5a68127ee03586457e67039ea9deef55abaeae519c1f53ad1cf18ee5b2',
+@@ -1116,6 +1118,85 @@
+     parsed = {str(path.relative_to(output)): verify_card_tokens(path.read_text(), settings) for path in destinations}
+     return {'settings': settings, 'readback': parsed,
+             'files': {str(path.relative_to(output)): digest(path) for path in destinations}}
++
++
++def physical_card(links, output, directory, case):
++    """Resolve SETPARA's first existing card using the pinned compiled reader.
++
++    LHA_open_file first opens the literal filename, then tries ./Cards/filename
++    followed by five parent prefixes. A shadowing match is never skipped.
++    """
++    output = Path(output); directory = Path(directory)
++    source = output / 'Source/MODEL/lha_read.f'
++    source_blob = source.read_bytes()
++    require(hashlib.sha256(source_blob).hexdigest() == LHA_READ_SHA,
++            'Compiled LHA card-search source differs')
++    wrapper = output / 'Source/MODEL/rw_para.f'; wrapper_blob = wrapper.read_bytes()
++    require(hashlib.sha256(wrapper_blob).hexdigest() == RW_PARA_SHA,
++            'Compiled SETPARA card-reader source differs')
++    driver = directory / 'check_sa.f'; driver_blob = driver.read_bytes()
++    require(hashlib.sha256(driver_blob).hexdigest() == case['driver_sha256']
++            and driver_blob.count(b"CALL SETPARA('param_card.dat')") == 1,
++            'Compiled driver card-search entrypoint differs')
++    candidates = ['param_card.dat'] + ['../' * level + './Cards/param_card.dat' for level in range(6)]
++    attempts = []
++    for index, name in enumerate(candidates):
++        candidate = directory / name
++        exists = candidate.exists(); attempts.append({'name': name, 'exists': exists})
++        if not exists: continue
++        require(candidate.is_file(), 'First physical-card match is not a regular file')
++        resolved = links.assert_private_path(output, candidate)
++        checksum = digest(candidate)
++        require(checksum == case['donor']['physical_card_sha256'],
++                'Driver-resolved physical card differs or is shadowed')
++        return {'search_source': str(source), 'search_source_sha256': LHA_READ_SHA,
++                'setpara_source': str(wrapper), 'setpara_source_sha256': RW_PARA_SHA,
++                'driver_sha256': case['driver_sha256'], 'search_order': candidates,
++                'attempts': attempts,
++                'first_existing_index': index, 'first_existing_name': name,
++                'path': str(candidate), 'resolved_private_path': str(resolved), 'sha256': checksum}
++    raise FileNotFoundError('Compiled LHA card search found no physical card in its seven candidates')
++
++
++def prelaunch_worker(value, request, case, output, helpers, record):
++    """Shared run/dry-proof preparation up to the lock/native boundary."""
++    links = helpers['links']; output = Path(output)
++    directory = output / case['donor']['subprocess']
++    record['card_write_intent'] = card_write_intent(links, output)
++    record['effective_card'] = configure_card(links, output, request['backend'], record['card_write_intent'])
++    record['physical_card'] = physical_card(links, output, directory, case)
++    diagnostic_names = ('stability-values.dat', 'stability-dimensions.dat', 'stability-groups.dat')
++    for name in diagnostic_names:
++        path = directory / name
++        links.assert_private_path(output, path)
++        require(not path.exists() and not path.is_symlink(), 'Inherited diagnostic output would pollute worker')
++    require(digest(directory / 'stability-check') == case['executable_sha256'], 'Private executable changed')
++    metadata = Path(case['donor']['points']).with_suffix('.json')
++    require(digest(case['donor']['points']) == case['donor']['points_sha256']
++            and digest(metadata) == case['donor']['point_metadata_sha256'],
++            'Fresh point stream changed after preparation')
++    record['prelaunch'] = {'status': 'passed', 'diagnostic_outputs_absent': list(diagnostic_names),
++                          'executable_sha256': case['executable_sha256'],
++                          'points_sha256': case['donor']['points_sha256'],
++                          'point_metadata_sha256': case['donor']['point_metadata_sha256'],
++                          'native_calls': 0}
++    return directory
++
++
++def worker_postguard(value, case, output, context, helpers, record):
++    """Shared finally guard for a native run or a complete prelaunch dry proof."""
++    links = helpers['links']; output = Path(output)
++    directory = output / case['donor']['subprocess']
++    changed = [output / name for name in record.get('card_write_intent', [])]
++    changed.extend(path for path in (output / 'SubProcesses').rglob('*')
++                   if path.name == 'param.log' or path.name.endswith(('HelFilter.dat', 'LoopFilter.dat')))
++    allowed = [str((directory / name).relative_to(output))
++               for name in ('stability-values.dat', 'stability-dimensions.dat', 'stability-groups.dat', 'param.log')]
++    observed = private_changes(links, output, context, changed, allowed)
++    links.verify_tree(Path(case['donor_context']['master']), case['donor_context']['expected_master'])
++    verify_production(value)
++    return {'private_entries_sha256': observed['canonical_entries_sha256'],
++            'source_and_external_guards_passed': True}
+ 
+ 
+ def parse_groups(raw, layout):
+@@ -1483,22 +1564,7 @@
+                     signals.check(); verify_production(value)
+                     links.verify_tree(Path(case['donor_context']['master']), case['donor_context']['expected_master'])
+                     context = links.prepare_worker(master, output, case['master_snapshot'], audit)
+-                    directory = output / case['donor']['subprocess']
+-                    record['card_write_intent'] = card_write_intent(links, output)
+-                    card = configure_card(links, output, request['backend'], record['card_write_intent'])
+-                    record['effective_card'] = card
+-                    physical = directory / 'param_card.dat'
+-                    links.assert_private_path(output, physical)
+-                    require(digest(physical) == case['donor']['physical_card_sha256'],
+-                            'Driver-resolved physical card differs or is shadowed')
+-                    changed = [output / name for name in card['files']]
+-                    for name in ('stability-values.dat', 'stability-dimensions.dat', 'stability-groups.dat'):
+-                        links.assert_private_path(output, directory / name)
+-                        require(not (directory / name).exists(), 'Inherited diagnostic output would pollute worker')
+-                    require(digest(directory / 'stability-check') == case['executable_sha256'], 'Private executable changed')
+-                    require(digest(case['donor']['points']) == case['donor']['points_sha256']
+-                            and digest(Path(case['donor']['points']).with_suffix('.json'))
+-                            == case['donor']['point_metadata_sha256'], 'Fresh point stream changed after preparation')
++                    directory = prelaunch_worker(value, request, case, output, helpers, record)
+                     with numerical_lock(value, request, signals) as lock:
+                         record.update(native_launch_attempted=True, state='running', lock=lock)
+                         native = command([directory / 'stability-check', case['donor']['points'], str(request['backend'])],
+@@ -1515,15 +1581,7 @@
+                     if context is not None:
+                         try:
+                             directory = output / case['donor']['subprocess']
+-                            changed = [output / name for name in record.get('card_write_intent', [])]
+-                            # Canonical donor may have param.log; only the private file may change.
+-                            changed.extend(path for path in (output / 'SubProcesses').rglob('*')
+-                                           if path.name == 'param.log' or path.name.endswith(('HelFilter.dat', 'LoopFilter.dat')))
+-                            allowed = [str((directory / name).relative_to(output))
+-                                       for name in ('stability-values.dat', 'stability-dimensions.dat', 'stability-groups.dat', 'param.log')]
+-                            private_changes(links, output, context, changed, allowed)
+-                            links.verify_tree(Path(case['donor_context']['master']), case['donor_context']['expected_master'])
+-                            verify_production(value)
++                            record['readonly_guard'] = worker_postguard(value, case, output, context, helpers, record)
+                             record['readonly_guard_passed'] = True
+                         except BaseException as error:
+                             record.update(state='failed', readonly_guard_error={'class': type(error).__name__, 'message': str(error)})
+--- source4/test_pilot.py
++++ source5/test_pilot.py
+@@ -957,5 +957,121 @@
+             self.assertEqual(pilot.read(report / 'inherit-terminal.json')['status'], 'failed')
+ 
+ 
++class PrelaunchChecks(unittest.TestCase):
++    LHA = b'compiled reader fixture: direct, then Cards with zero through five parents\n'
++    RW = b'compiled SETPARA fixture calling LHA_loadcard\n'
++
++    def fixture(self, root):
++        links = CardFailureGuards.links(); master = root / 'master'; output = root / 'worker'
++        (master / 'Cards').mkdir(parents=True)
++        (master / 'Source/MODEL').mkdir(parents=True)
++        directory = master / 'SubProcesses/P0'
++        directory.mkdir(parents=True)
++        (master / 'Source/MODEL/lha_read.f').write_bytes(self.LHA)
++        (master / 'Source/MODEL/rw_para.f').write_bytes(self.RW)
++        (master / 'Cards/MadLoopParams.dat').write_text('original numerical card\n')
++        (master / 'Cards/param_card.dat').write_text('frozen physical card\n')
++        (directory / 'check_sa.f').write_text("      CALL SETPARA('param_card.dat')\n")
++        (directory / 'stability-check').write_bytes(b'opaque executable fixture; never loaded\n')
++        points = root / 'points.dat'; points.write_text('frozen points\n')
++        points.with_suffix('.json').write_text('{"frozen":"metadata"}\n')
++        snapshot = links.tree_snapshot(master)
++        context = links.prepare_worker(master, output, snapshot, {'external_roots': {}, 'readonly_files': {}})
++        case = {'donor': {'subprocess': 'SubProcesses/P0', 'physical_card_sha256': pilot.digest(master / 'Cards/param_card.dat'),
++                         'points': str(points), 'points_sha256': pilot.digest(points),
++                         'point_metadata_sha256': pilot.digest(points.with_suffix('.json'))},
++                'donor_context': {'master': str(master), 'expected_master': snapshot},
++                'executable_sha256': pilot.digest(directory / 'stability-check'),
++                'driver_sha256': pilot.digest(directory / 'check_sa.f')}
++        return links, output, context, case
++
++    def source_pins(self):
++        return mock.patch.multiple(pilot, LHA_READ_SHA=hashlib.sha256(self.LHA).hexdigest(),
++                                   RW_PARA_SHA=hashlib.sha256(self.RW).hexdigest())
++
++    @staticmethod
++    def banner():
++        module = types.ModuleType('madgraph.various.banner')
++        class Card(dict):
++            def __init__(self, path): super().__init__(pilot.card_settings(9))
++            def write(self, path, **kwargs):
++                lines = []
++                for key, value in self.items():
++                    token = ('.TRUE.' if value else '.FALSE.') if isinstance(value, bool) else str(value)
++                    lines.extend(('#' + key, token))
++                Path(path).write_text('\n'.join(lines + ['/* End of param file */', '']))
++        module.MadLoopParam = Card
++        return module
++
++    def test_shared_prelaunch_and_postguard_complete_without_native_calls(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            links, output, context, case = self.fixture(Path(tmp)); record = {}
++            original_path = list(sys.path)
++            try:
++                with (self.source_pins(), mock.patch.dict(sys.modules, {'madgraph.various.banner': self.banner()}),
++                      mock.patch.object(pilot, 'verify_production', return_value=None),
++                      mock.patch.object(pilot.subprocess, 'Popen', side_effect=AssertionError('native')),
++                      mock.patch.object(pilot, 'command', side_effect=AssertionError('command'))):
++                    directory = pilot.prelaunch_worker({}, {'backend': 9}, case, output, {'links': links}, record)
++                    guard = pilot.worker_postguard({}, case, output, context, {'links': links}, record)
++            finally:
++                sys.path[:] = original_path
++            self.assertEqual(directory, output / 'SubProcesses/P0')
++            self.assertEqual(record['physical_card']['first_existing_index'], 3)
++            self.assertEqual(record['physical_card']['first_existing_name'], '../.././Cards/param_card.dat')
++            self.assertEqual([item['exists'] for item in record['physical_card']['attempts']], [False, False, False, True])
++            self.assertEqual(record['prelaunch']['status'], 'passed')
++            self.assertTrue(guard['source_and_external_guards_passed'])
++            self.assertEqual(record['effective_card']['settings'], pilot.card_settings(9))
++
++    def test_direct_match_precedes_cards_fallback(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            links, output, unused, case = self.fixture(Path(tmp)); directory = output / case['donor']['subprocess']
++            (directory / 'param_card.dat').write_bytes((output / 'Cards/param_card.dat').read_bytes())
++            with self.source_pins(): result = pilot.physical_card(links, output, directory, case)
++            self.assertEqual(result['first_existing_index'], 0)
++            self.assertEqual(len(result['attempts']), 1)
++
++    def test_first_existing_wrong_hash_external_or_directory_is_never_skipped(self):
++        for kind in ('wrong-hash', 'external', 'directory'):
++            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
++                root = Path(tmp); links, output, unused, case = self.fixture(root)
++                directory = output / case['donor']['subprocess']; shadow = directory / 'param_card.dat'
++                if kind == 'wrong-hash': shadow.write_text('wrong physical card\n')
++                elif kind == 'directory': shadow.mkdir()
++                else:
++                    external = root / 'external'; external.write_bytes((output / 'Cards/param_card.dat').read_bytes())
++                    shadow.symlink_to(external)
++                with self.source_pins(), self.assertRaises(ValueError):
++                    pilot.physical_card(links, output, directory, case)
++
++    def test_changed_source_chain_or_driver_cannot_admit_card(self):
++        for name in ('Source/MODEL/lha_read.f', 'Source/MODEL/rw_para.f', 'SubProcesses/P0/check_sa.f'):
++            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
++                links, output, unused, case = self.fixture(Path(tmp)); (output / name).write_text('changed source\n')
++                with self.source_pins(), self.assertRaises(ValueError):
++                    pilot.physical_card(links, output, output / case['donor']['subprocess'], case)
++
++    def test_missing_physical_card_fails_closed(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            links, output, unused, case = self.fixture(Path(tmp)); (output / 'Cards/param_card.dat').unlink()
++            with self.source_pins(), self.assertRaises(FileNotFoundError):
++                pilot.physical_card(links, output, output / case['donor']['subprocess'], case)
++
++    def test_shared_prelaunch_rejects_inherited_diagnostic_and_changed_executable_or_points(self):
++        for name in ('stability-values.dat', 'stability-dimensions.dat', 'stability-groups.dat', 'stability-check', 'points'):
++            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
++                links, output, unused, case = self.fixture(Path(tmp)); directory = output / case['donor']['subprocess']
++                if name == 'points': Path(case['donor']['points']).write_text('changed point stream\n')
++                else: (directory / name).write_text('inherited or changed output\n')
++                original_path = list(sys.path)
++                try:
++                    with (self.source_pins(), mock.patch.dict(sys.modules, {'madgraph.various.banner': self.banner()}),
++                          self.assertRaises(ValueError)):
++                        pilot.prelaunch_worker({}, {'backend': 1}, case, output, {'links': links}, {})
++                finally:
++                    sys.path[:] = original_path
++
++
+ if __name__ == '__main__':
+     unittest.main()
+--- source4/protocol.json
++++ source5/protocol.json
+@@ -7,7 +7,7 @@
+   "candidate_source_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+   "candidate_library_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+   "working_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+-  "private_work_directory": ".tirust-build/stability-appendix-c-pilot-4",
++  "private_work_directory": ".tirust-build/stability-appendix-c-pilot-5",
+   "point_count_per_process": 100,
+   "center_of_mass_energy_GeV": 1000,
+   "backends": [

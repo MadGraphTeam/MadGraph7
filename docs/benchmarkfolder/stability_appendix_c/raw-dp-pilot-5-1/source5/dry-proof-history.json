@@ -1,0 +1,36 @@
+{
+  "interpretation": "zero numerical calls; unchanged controller; closed attempts preserved in separate ignored namespaces; final proof separately retained",
+  "prior_proof_attempts": [
+    {
+      "attempt": 1,
+      "closed_summary_relative_path": ".tirust-build/stability-appendix-c-prelaunch-proof-5/evidence/attempt1-actual-prelaunch-proof.json",
+      "closed_summary_sha256": "a85c450d7be9278bd1a9c693e4e6c9e2454ec4d6a033db3e087ef1ee09069527",
+      "controller_sha256": "22b06cda2303d9d2fd42aed418aa4518db0d9e834678862330ffa0d6600e9eef",
+      "denied_audit_events": [
+        "os.utime"
+      ],
+      "failure_scope": "proof audit-hook instrumentation rejected legitimate private symlink metadata/node operation before shared prelaunch",
+      "ignored_proof_namespace": ".tirust-build/stability-appendix-c-prelaunch-proof-5",
+      "native_starts": 0,
+      "requests": 20,
+      "runner_sha256": "059daff4f43b994300f51c1b2f451a486c5fe283136f6eed3fd2f1a9d8841946",
+      "status": "failed"
+    },
+    {
+      "attempt": 2,
+      "closed_summary_relative_path": ".tirust-build/stability-appendix-c-prelaunch-proof-5-2/evidence/attempt2-actual-prelaunch-proof.json",
+      "closed_summary_sha256": "946617f189d1f2e1c952337e9911bf5bedc437a68f331e7a04c61f9527b2450f",
+      "controller_sha256": "22b06cda2303d9d2fd42aed418aa4518db0d9e834678862330ffa0d6600e9eef",
+      "denied_audit_events": [
+        "os.remove"
+      ],
+      "failure_scope": "proof audit-hook instrumentation rejected legitimate private symlink metadata/node operation before shared prelaunch",
+      "ignored_proof_namespace": ".tirust-build/stability-appendix-c-prelaunch-proof-5-2",
+      "native_starts": 0,
+      "requests": 20,
+      "runner_sha256": "bb3c4e5cfcebc1b0cdd3780c6e2a79fd852752909b949ec96d7616926c0fa9dc",
+      "status": "failed"
+    }
+  ],
+  "schema": "madloop-source5-prelaunch-proof-history-v1"
+}

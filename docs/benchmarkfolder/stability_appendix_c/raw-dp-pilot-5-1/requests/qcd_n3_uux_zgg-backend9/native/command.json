@@ -1,0 +1,118 @@
+{
+  "argv": [
+    "taskset",
+    "-c",
+    "12",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-I",
+    "-B",
+    "-c",
+    "import json, os, sys\npayload = json.loads(sys.argv[1])\nif os.read(0, 1) != b\"G\":\n    raise SystemExit(125)\nos.close(0)\ndescriptor = os.open(os.devnull, os.O_RDONLY)\nif descriptor != 0:\n    os.dup2(descriptor, 0)\n    os.close(descriptor)\nenvironment = os.environ.copy()\nenvironment.update(payload[\"environment\"])\nos.execvpe(payload[\"argv\"][0], payload[\"argv\"], environment)\n",
+    "{\"argv\": [\"/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-5/workers/qcd_n3_uux_zgg-backend9/SubProcesses/P0_uux_zgg/stability-check\", \"/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-3/points/qcd_n3_uux_zgg.dat\", \"9\"], \"environment\": {\"LD_LIBRARY_PATH\": \"/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier:/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib\"}}"
+  ],
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 2,
+        "pid": 29,
+        "process_group": 29,
+        "session": 29,
+        "start_time_ticks": 235702630,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "cpu": 12,
+  "cpu_exclusive": false,
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-5/workers/qcd_n3_uux_zgg-backend9/SubProcesses/P0_uux_zgg",
+  "elapsed_seconds": 16.905839097686112,
+  "error": null,
+  "exec_gate_source_sha256": "81a2a762718bccb3b8349e3bb474f1925c8c2b4a4677c5e0f1844eaae95be473",
+  "memory_bytes": 4294967296,
+  "process_started": true,
+  "returncode": 0,
+  "runtime_map_capture": "first sixteen distinct samples plus first useful application-and-DSO sample if needed",
+  "runtime_map_samples": [
+    {
+      "path": "runtime-maps-00.txt",
+      "sha256": "1204835b26ff7ff34e12871650b99a2425a5fb4a16a098a65f34ce29e6f7d162"
+    },
+    {
+      "path": "runtime-maps-01.txt",
+      "sha256": "039f435c5a0ef43e43b8bc2b5d886a3cefe719494befc85657e2646f83600148"
+    },
+    {
+      "path": "runtime-maps-02.txt",
+      "sha256": "5083e3acaf665d88926859d39b1ab7b92b81ce3507650ee75457d4879374214e"
+    },
+    {
+      "path": "runtime-maps-03.txt",
+      "sha256": "17783494499e0634ef93586259a46143bf5181f9d540eaea0bbbec7abc4ffea8"
+    },
+    {
+      "path": "runtime-maps-04.txt",
+      "sha256": "302d719e52f74a0f1d3bfd6741ad25cb3b604cbd9eefd78b569d4ccbf0bb370e"
+    },
+    {
+      "path": "runtime-maps-05.txt",
+      "sha256": "b03f8c8eb9eb622fb84290f6106e236c13d380b802ea7c9bd7c12c4c963ed15d"
+    },
+    {
+      "path": "runtime-maps-06.txt",
+      "sha256": "cf57eb0e9fc2a336dd1f1975b7a344b785e0982e316c12081930efb964c9772b"
+    },
+    {
+      "path": "runtime-maps-07.txt",
+      "sha256": "c82ac67b8a1ec0cf2ed36f8d71a4c354bdcfbc37dabef0c91dbf284c0941b4d8"
+    },
+    {
+      "path": "runtime-maps-08.txt",
+      "sha256": "32888a0086d847eedbfdd7c727bdc7e9b6769096dc36d9f8e8f66cfbbc2630bf"
+    },
+    {
+      "path": "runtime-maps-09.txt",
+      "sha256": "c484cb24a68dd14ebf9a569c6120033145a02113686f61955511b3a3215ecc75"
+    },
+    {
+      "path": "runtime-maps-10.txt",
+      "sha256": "8284b61e9a88fd7cddaed3083cddb596a5bdced400ae6abafbbcf627bd71bd22"
+    },
+    {
+      "path": "runtime-maps-11.txt",
+      "sha256": "c6180ef8d9fa4b12233a4c578dbfd94f0f93b7f77922dadee38cbc2b8a0eab77"
+    },
+    {
+      "path": "runtime-maps-12.txt",
+      "sha256": "63df0e29f88f1922902371b6d993a5507e03256667ac22ac36f9e93737ed469a"
+    },
+    {
+      "path": "runtime-maps-13.txt",
+      "sha256": "ae7fad7b1dede66683233ab3017fe7be8dc636e9a32e138dd8dcd36498cee894"
+    },
+    {
+      "path": "runtime-maps-14.txt",
+      "sha256": "8241fa74008a7b6b5a67abeb3c7cfc956d422150df9357bdaac3cd57a98d1048"
+    },
+    {
+      "path": "runtime-maps-15.txt",
+      "sha256": "e847bbf66ec9a1b46bc64d8dc6f8d01413a052a93699c3ec5885c7b5b1d50ccf"
+    }
+  ],
+  "setup_environment": {
+    "LC_ALL": "C",
+    "PATH": "/home/external/.codex/packages/app-server-daemon/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/external/.codex/tmp/arg0-linux/codex-arg0lRMkvY:/home/external/.codex/tmp/arg0-linux/codex-arg0Q3My4g:/nix/store/qswjy75ymf911zf9pjhqi4w6kmwm3v73-codex-0.163.0/codex-path:/run/wrappers/bin:/home/external/.nix-profile/bin:/nix/profile/bin:/home/external/.local/state/nix/profile/bin:/etc/profiles/per-user/external/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin:/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin:/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin:/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin:/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin:/nix/store/0g4agjda4ihmd291pamwahhy7praa4sn-gnum4-1.4.21/bin:/nix/store/1m0z4ixir10fg7ba7g131js04bxgv265-cmake-4.1.2/bin:/nix/store/0v0raqk1qw5g2a21km4xa1hwhaq4s976-pkg-config-wrapper-0.29.2/bin:/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin:/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin:/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin:/nix/store/8hz0qnr9z5j1w7rjl9qmsb34v2cb4akr-wget-1.25.0/bin"
+  },
+  "stdout_sha256": "12b8a539c07c9dbeffd3425a2899ae27d8f8c94af290c08184dd47371b0c66df",
+  "target_argv": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-5/workers/qcd_n3_uux_zgg-backend9/SubProcesses/P0_uux_zgg/stability-check",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/stability-appendix-c-pilot-3/points/qcd_n3_uux_zgg.dat",
+    "9"
+  ],
+  "target_environment": {
+    "LD_LIBRARY_PATH": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier:/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib:/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib"
+  },
+  "wall_cap_seconds": 1200
+}
