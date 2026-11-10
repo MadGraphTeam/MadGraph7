@@ -4744,6 +4744,16 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
             filename = pjoin(self.dir_path, 'Cards', 'ident_card.dat')
             self.extend_ident_card(filename, onia_ids, decay_ids, prod_ids)
 
+            # madevent's symmetry program (the channels of the survey) reads
+            # pmass.inc too, where a bound state has its onium_mass from the
+            # onia card. Without the card, a decaying onium has zero mass,
+            # sqrt(s) = 0, and no channel with a massive decay product has
+            # phase space ("No Phase Space", e.g. etab(1|1S01) > c c~ g).
+            filename = pjoin(self.dir_path, 'SubProcesses', 'symmetry.f')
+            if hasattr(self, 'write_symmetry') and os.path.exists(filename):
+                self.write_symmetry(writers.FortranWriter(filename),
+                                    v5=self.opt.get('v5_model', True), onia=True)
+
 
         else:
             filename = pjoin(self.dir_path, 'Source', 'MODEL', 'ldme.inc')
@@ -10246,8 +10256,10 @@ c           This is dummy particle used in multiparticle vertices
     #===========================================================================
     # write_symmetry
     #===========================================================================
-    def write_symmetry(self, writer, v5=True):
-        """Write the SubProcess/driver.f file for ME"""
+    def write_symmetry(self, writer, v5=True, onia=False):
+        """Write the SubProcess/symmetry.f file for ME. With onia, it reads
+        the onia card as the driver does: pmass.inc gives a bound state its
+        onium_mass (MDL_M<pdg>), and for a decaying one that mass is sqrt(s)."""
 
         
         path = pjoin(_file_path,'iolibs','template_files','madevent_symmetry.f')
@@ -10261,6 +10273,7 @@ c           This is dummy particle used in multiparticle vertices
             replace_dict = {'param_card_name':card, 'setparasecondarg':''}      
         else:
             replace_dict= {'param_card_name':card, 'setparasecondarg':',.true.'} 
+        replace_dict['load_onia_card'] = 'call setonia("onia_card.dat")' if onia else ''
         
         if writer:
             text = open(path).read() 

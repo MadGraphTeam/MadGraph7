@@ -95,6 +95,7 @@ c      call get_integer(npara,param,value," lpp1 ",lpp(1),0)
 c      call get_integer(npara,param,value," lpp2 ",lpp(2),0)
 
       call setpara('%(param_card_name)s' %(setparasecondarg)s)   !Sets up couplings and masses
+      %(load_onia_card)s
       include 'pmass.inc'
 
 c     Set stot

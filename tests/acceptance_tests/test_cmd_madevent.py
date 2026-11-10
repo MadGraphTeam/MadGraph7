@@ -2706,6 +2706,29 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(width2 / width - M / mphys), 1e-4,
                         '%s / %s against %s' % (width2, width, M / mphys))
 
+    def test_onium_decay_massive_products(self):
+        """An onium decaying into massive particles in madevent: the symmetry
+        program of the survey reads the onia card, so the decaying onium has
+        its onium_mass there too. Without it sqrt(s) was 0, every channel of
+        etab > c c~ g failed its threshold and the run stopped with "No Phase
+        Space"."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate etab(1|1S01) > c c~ g QED=0')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        self.assertIn('call setonia', open(pjoin(self.run_dir, 'SubProcesses', 'symmetry.f')).read())
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        run_card = pjoin(self.run_dir, 'Cards', 'run_card.dat')
+        text = open(run_card).read()
+        text = re.sub(r'(?m)^\s*\S+\s*=\s*nevents\b', ' 1000 = nevents', text)
+        open(run_card, 'w').write(text)
+        self.do('generate_events -f')
+        self.assertGreater(self.cmd_line.results.current['cross'], 0)
+
     def test_onium_production_default_scale(self):
         """Onium production at a hadron collider with madevent's default
         scale (dynamical_scale_choice -1): the clustering reads the s-channel

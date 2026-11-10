@@ -2787,6 +2787,24 @@ class TestCmdShell2(unittest.TestCase,
         for v in values[1:]:
             self.assertLess(abs(v / values[0] - 1), 1e-3, values)
 
+    def test_onia_full_model_fock_states(self):
+        """The unrestricted model (import model sm_onia-full) has the Fock
+        states of its boundstates.py, as the restricted ones do, so that a
+        leptonium and a charmonium can be in one process."""
+
+        import madgraph.interface.master_interface as MGCmd
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-full')
+        names = set(f.get('name') for f in mg_cmd._fockstates)
+        self.assertEqual(len(names), 192)
+        self.assertIn('tata(1|1S0)', names)
+        self.assertIn('Jpsi(1|3S11)', names)
+        mg_cmd.exec_cmd('generate tata(1|1S0) > Jpsi(1|3S11) a / z h')
+        self.assertTrue(mg_cmd._curr_amps[0].get('diagrams'))
+
     def test_onia_decay_channels(self):
         """The madevent channels of a 1 -> N process with onia follow the
         propagators of their diagram, over the physical final state:

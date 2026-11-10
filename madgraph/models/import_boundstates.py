@@ -13,7 +13,14 @@ def get_boundstates_ufo(model):
     if isinstance(model, str):
         path = model
     else:
-        path = model.get('modelpath') if 'modelpath' in model else None
+        # 'modelpath' is computed by Model.get from the version tag and is
+        # never a key of the model: a test "'modelpath' in model" is always
+        # false, and only restricted models (with their 'path' attribute)
+        # found their Fock states, not 'import model sm_onia-full'
+        try:
+            path = model.get('modelpath')
+        except Exception:
+            path = None
         path = path or model.__dict__.get('path')
     if not path or not os.path.isfile(os.path.join(path, 'boundstates.py')):
         return []
