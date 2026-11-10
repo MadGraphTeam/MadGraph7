@@ -659,7 +659,28 @@ physical scale or without an estimate); `double` or `double-double` runs one
 carrier alone, and there a row out of its carrier's scope reads "not run"
 (exit 3), never a failure or a pass. When binary64 evaluated a point and
 the double-double run is refused, the rows binary64 left undecided keep its
-verdict and say that double-double was refused. A sector Catani's operators
+verdict and say that double-double was refused. In `auto`, a row
+double-double fails while its residual is within 10 x double-double's own
+estimate (asked for only then: the recommended checks for poles, the
+reduction-direction check for Ward) has run out of digits: only such rows,
+at their points, are re-run in **arbitrary precision** at the digit count
+derived from the shortfall, d = ceil(32.0 + log10(10 E / B)) for an
+estimate E and a bound B (32.0: double-double's decimal digits, 1 +
+log10(0.5 / 2^-104); the largest over the point's rows; `--arbitrary-digits N`,
+`check.arbitrary_digits`, sets it), the point lifted again at those digits,
+and judged by their double-double criterion (no new bound; the row shows
+carrier `arbitrary`, its digits and the double-double numbers); a
+double-double residual far above its own estimate stays a failure. A row
+still undecided there, or undecided at an explicit carrier, reads
+"undecided" with both carriers' numbers and counts as a failure (exit 1).
+The loop-induced probes' criterion is their own estimate, so they never
+take this rung. The Ward rows of a request whose loop corrections include an
+electroweak one (any correction other than the model's strong one) and with
+an on-shell zero-width external massive quark (a top or a massive b, quark or
+antiquark) read "not applicable" and are not evaluated: the Ward identity of
+the asymmetric check is not guaranteed with electroweak corrections there;
+Ward rows are not split by squared-order sector, so that request's QCD-loop
+sectors are not Ward-checked either. A sector Catani's operators
 do not predict (a QCD correction of a process with photon-exchange Borns,
 ...) is listed as "no prediction" with its reason; a sector they predict
 that got no pole row at a point reads "not run" (exit 3: an applicable
@@ -676,13 +697,16 @@ a double-double pole row's |Catani|, its criterion being relative; a
 Born-interfered Ward row's physical scale; a probe's row term floor
 S_k(h)), the fallback's reason and the verdict. The exit code is 0 iff
 every applicable check passed, 1 on any failure, and 3 when a process had
-nothing to check (or an applicable check did not run). `--json` returns the
+nothing to check (or an applicable check did not run); an "undecided" row
+counts as a failure (1). `--json` returns the
 `CheckReport` (`source`, `source_kind`, `points`, `seed`, `precision`,
 `carriers`, `regeneration`, `seconds`, `exit_code`, and per process `process`,
 `expression`, `contribution`, `widths`, `zeroed_widths`, `reduction`,
-`status`, `seconds` and `rows` with the fields above); `source` names the run
-card or artifact checked. Python: `pyamplicol.api.check(target, points=...,
-seed=..., precision=..., model=..., sqrt_s=...)`.
+`status`, `seconds` and `rows` with the fields above and `digits`, the
+arbitrary-precision carrier's digit count); `carriers` ends with `arbitrary`
+under `auto`; `source` names the run card or artifact checked. Python:
+`pyamplicol.api.check(target, points=..., seed=..., precision=..., model=...,
+sqrt_s=..., arbitrary_digits=...)`.
 
 Cost: one probe-slice generation per process (about the generation's own
 cost: the request-model preparation included) plus a few evaluations per

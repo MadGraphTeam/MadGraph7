@@ -1741,6 +1741,7 @@ def check(
     source: str | None = None,
     progress: ProgressSink | None = None,
     sqrt_s: float | None = None,
+    arbitrary_digits: int | None = None,
 ) -> CheckReport:
     """The pole and Ward checks of a one-loop request (``pyamplicol check``):
     ``target`` is a run card (its generation request), a resolved run
@@ -1756,8 +1757,13 @@ def check(
     ``generation.validation.seed``): Born-interfered poles against Catani's
     operator and Ward identities, loop-induced finiteness and Ward probes,
     Goldstone-equivalence probes where they apply (``loops.v2.checks``).
-    ``precision`` "auto" runs binary64 first and double-double only where
-    binary64 fails, is refused or is out of scope. ``model`` replaces the
+    ``precision`` "auto" runs binary64 first, double-double only where
+    binary64 fails, is refused or is out of scope, and arbitrary precision
+    only for a row double-double leaves undecided (its residual above the
+    criterion while within ten times its own estimate), at the digit count
+    derived from the shortfall or ``arbitrary_digits`` (None takes
+    ``check.arbitrary_digits``; it needs "auto"); a row still undecided
+    there fails the check ("undecided", exit code 1). ``model`` replaces the
     configuration's model source (a ``ModelSource``, or a source as
     ``model.source`` takes it, with the configuration's restriction; None
     takes the configuration's ``check.model``, if set): e.g. an artifact
@@ -1837,6 +1843,17 @@ def check(
         if carrier is CheckPrecision.DOUBLE
         else Precision.double_double()
     )
+    digits = (
+        run.check.arbitrary_digits if arbitrary_digits is None else arbitrary_digits
+    )
+    if digits is not None:
+        if isinstance(digits, bool) or not isinstance(digits, int) or digits < 1:
+            raise ValueError("check.arbitrary_digits must be a positive integer")
+        if explicit is not None:
+            raise ValueError(
+                "check.arbitrary_digits sets the arbitrary-precision rung of the "
+                f"auto ladder; precision {str(carrier)!r} runs its carrier alone"
+            )
     energy = run.check.sqrt_s if sqrt_s is None else float(sqrt_s)
     if model is None:
         model = run.check.model
@@ -1875,6 +1892,7 @@ def check(
         precision=explicit,
         stored=stored,
         sqrt_s=energy,
+        arbitrary_digits=digits,
     )
     return CheckReport(
         label,
@@ -1882,7 +1900,8 @@ def check(
         count,
         first,
         str(carrier),
-        tuple(c.arithmetic for c in probe_carriers(explicit)),
+        tuple(c.arithmetic for c in probe_carriers(explicit))
+        + (("arbitrary",) if explicit is None else ()),
         tuple(checked),
         "in memory through the generation service (nothing written): the "
         "request on the full tree kernels, widths zeroed outside the "
