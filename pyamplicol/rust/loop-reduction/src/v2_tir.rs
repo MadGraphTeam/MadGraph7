@@ -1786,6 +1786,7 @@ impl TirReductionBackend {
         Ok(V2Output {
             direct: batches(direct)?,
             check: again.map(batches).transpose()?,
+            input_errors: Vec::new(),
         })
     }
 }

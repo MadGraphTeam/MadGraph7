@@ -360,6 +360,14 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
             Self::TiRust(backend) => T::tir_reduce(backend, groups, poles, None),
         }
     }
+
+    fn take_input_errors(&mut self) -> Vec<Vec<f64>> {
+        match self {
+            Self::NinjaRs(backend) => V2Backend::<T>::take_input_errors(backend),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => Vec::new(),
+        }
+    }
 }
 
 /// A [`V2Reducer`] as the executor's reduction backend. `masters` is the
@@ -494,7 +502,12 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
                 })
                 .collect::<RusticolResult<Vec<_>>>()
         };
+        self.reducer.keep_input_errors(output.input_errors);
         Ok((read(output.direct)?, output.check.map(read).transpose()?))
+    }
+
+    fn take_input_errors(&mut self) -> Vec<Vec<f64>> {
+        self.reducer.take_input_errors()
     }
 
     /// Without NinjaRS's measured decision of flagged lanes

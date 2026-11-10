@@ -422,6 +422,18 @@ where
         self.masters.pole_selection()
     }
 
+    /// Per lane of the last [`Self::evaluate`] NinjaRS's input-consistency
+    /// estimate `E_in = η T` of the finite part (`ninjars::Amplitude::input_errors`;
+    /// 0 for a failed lane), in binary64.
+    pub fn input_errors(&self) -> Vec<f64> {
+        use symbolica::domains::float::RealLike;
+        self.amplitude
+            .input_errors()
+            .iter()
+            .map(|z| z.re.to_f64())
+            .collect()
+    }
+
     /// Inputs and parameter rows are lane-major in the order of `ids`.
     /// Parameters are bound on every call, including empty and compact batches.
     pub fn evaluate(

@@ -236,6 +236,14 @@ pub struct FamilyGroup<'a> {
 pub struct V2Output {
     pub direct: Vec<ReductionBatch>,
     pub check: Option<Vec<ReductionBatch>>,
+    /// Per group and lane (input row order) of the direct pass NinjaRS's
+    /// input-consistency estimate `E_in = η T` of the lane's finite integral
+    /// (the S-matrix against the shifts, `ninjars::conditioning`), reported
+    /// above binary64 only (in binary64 the S-matrix and the shifts round the
+    /// same exact sums, so `E_in` is that carrier's own rounding); empty
+    /// otherwise and for a failed lane's 0. The executor adds it to the
+    /// amplitude-mode re-test budget (`V2Backend::take_input_errors`).
+    pub input_errors: Vec<Vec<f64>>,
 }
 
 /// Declared rank whose dense tensor has `columns` coefficients.
@@ -372,6 +380,8 @@ struct Outcome<T> {
     status: String,
     value: Option<[Complex<T>; 3]>,
     uv: Option<Complex<T>>,
+    /// NinjaRS's `E_in` of the lane's finite integral ([`V2Output::input_errors`]).
+    input_error: f64,
 }
 
 trait BucketEngine<T> {
@@ -685,22 +695,26 @@ impl FastEngine {
                 &mut self.statuses,
             )
             .map_err(error)?;
+        let estimates = amplitude.estimates();
         Ok(self
             .statuses
             .iter()
             .zip(&self.results)
-            .map(|(&status, result)| {
+            .enumerate()
+            .map(|(lane, (&status, result))| {
                 if status == FastStatus::Success {
                     Outcome {
                         status: "success".into(),
                         value: Some(result.laurent.map(|z| Complex::new(z.re, z.im))),
                         uv: None,
+                        input_error: estimates.get(lane).map_or(0.0, |e| e.input_error),
                     }
                 } else {
                     Outcome {
                         status: format!("{status:?}"),
                         value: None,
                         uv: None,
+                        input_error: 0.0,
                     }
                 }
             })
@@ -807,8 +821,14 @@ where
                 &input.coefficients[start * width..end * width],
                 Some(&input.s_matrix[start * n * n..end * n * n]),
             )?;
-            outcomes.extend(reduced.into_iter().map(|lane| {
+            let errors = reductions.input_errors();
+            outcomes.extend(reduced.into_iter().enumerate().map(|(row, lane)| {
                 Outcome {
+                    input_error: if lane.value.is_some() {
+                        errors.get(row).copied().unwrap_or(0.0)
+                    } else {
+                        0.0
+                    },
                     status: lane
                         .status
                         .strip_prefix("epsilon sector 0: ")
@@ -837,6 +857,8 @@ pub struct V2Reducer {
     precision_bits: u32,
     /// [`Self::set_unchecked`].
     unchecked: bool,
+    /// [`Self::take_input_errors`].
+    input_errors: Vec<Vec<f64>>,
 }
 
 impl V2Reducer {
@@ -868,7 +890,20 @@ impl V2Reducer {
             engines,
             precision_bits: bits,
             unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
+            input_errors: Vec::new(),
         })
+    }
+
+    /// Keeps a reduction's [`V2Output::input_errors`] for
+    /// [`Self::take_input_errors`] (the executor's backend reads them after
+    /// its `reduce`).
+    pub fn keep_input_errors(&mut self, errors: Vec<Vec<f64>>) {
+        self.input_errors = errors;
+    }
+
+    /// The kept [`V2Output::input_errors`] (empty after the first take).
+    pub fn take_input_errors(&mut self) -> Vec<Vec<f64>> {
+        std::mem::take(&mut self.input_errors)
     }
 
     pub fn precision_bits(&self) -> u32 {
@@ -986,7 +1021,20 @@ fn run<T: BatchCarrier, E: BucketEngine<T>>(
         .check
         .map(|frame| reduce_groups(engine, groups, &buckets, Some(frame), options.poles))
         .transpose()?;
+    let input_errors = if bits > f64::MANTISSA_DIGITS {
+        direct
+            .iter()
+            .map(|rows| {
+                rows.iter()
+                    .map(|o| o.as_ref().map_or(0.0, |o| o.input_error))
+                    .collect()
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     Ok(V2Output {
+        input_errors,
         direct: output_batches(groups, direct, options.poles, bits)?,
         check: check
             .map(|outcomes| output_batches(groups, outcomes, options.poles, bits))

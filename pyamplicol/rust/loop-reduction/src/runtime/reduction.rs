@@ -147,6 +147,17 @@ where
             .collect())
     }
 
+    /// NinjaRS's `E_in` per lane of the last [`Self::evaluate_native`]
+    /// (the epsilon-sector-0 numerator's; `ninjars::Amplitude::input_errors`),
+    /// empty when that sector is inactive.
+    pub(super) fn input_errors(&self) -> Vec<f64> {
+        if self.active[0] {
+            self.sectors[0].input_errors()
+        } else {
+            Vec::new()
+        }
+    }
+
     pub(super) fn evaluate_native(
         &mut self,
         ids: &[u64],
