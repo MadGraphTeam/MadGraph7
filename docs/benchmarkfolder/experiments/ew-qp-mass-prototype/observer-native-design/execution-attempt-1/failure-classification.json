@@ -1,0 +1,51 @@
+{
+  "state": "all_four_processes_stopped_during_model_initialization",
+  "classification": "driver_card_path_setup_failure",
+  "not_a_reducer_refusal": true,
+  "completed_observed_points": 0,
+  "numerical_parity_qualified": false,
+  "transport_interpretation_eligible": false,
+  "scope": "Fixed4 transport diagnostic only; no checked-QP, accuracy or performance claim",
+  "cases": {
+    "original-8": {
+      "exit_code": 0,
+      "complete": false,
+      "elapsed_seconds": 0.016622410155832767,
+      "observer_output_exists": false,
+      "observer_log_exists": false,
+      "stdout_sha256": "68366a4aecbdc4200d9315787c0cd6d689460a25db61151a32143364ddcb3745",
+      "param_log_bytes": 0,
+      "files_match_run_manifest": true
+    },
+    "original-9": {
+      "exit_code": 0,
+      "complete": false,
+      "elapsed_seconds": 0.00858636712655425,
+      "observer_output_exists": false,
+      "observer_log_exists": false,
+      "stdout_sha256": "68366a4aecbdc4200d9315787c0cd6d689460a25db61151a32143364ddcb3745",
+      "param_log_bytes": 0,
+      "files_match_run_manifest": true
+    },
+    "candidate-8": {
+      "exit_code": 0,
+      "complete": false,
+      "elapsed_seconds": 0.016625079791992903,
+      "observer_output_exists": false,
+      "observer_log_exists": false,
+      "stdout_sha256": "68366a4aecbdc4200d9315787c0cd6d689460a25db61151a32143364ddcb3745",
+      "param_log_bytes": 0,
+      "files_match_run_manifest": true
+    },
+    "candidate-9": {
+      "exit_code": 0,
+      "complete": false,
+      "elapsed_seconds": 0.0088267270475626,
+      "observer_output_exists": false,
+      "observer_log_exists": false,
+      "stdout_sha256": "68366a4aecbdc4200d9315787c0cd6d689460a25db61151a32143364ddcb3745",
+      "param_log_bytes": 0,
+      "files_match_run_manifest": true
+    }
+  }
+}

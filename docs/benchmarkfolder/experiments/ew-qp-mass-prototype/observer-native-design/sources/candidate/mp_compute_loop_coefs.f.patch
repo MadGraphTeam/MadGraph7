@@ -1,0 +1,10 @@
+--- frozen/mp_compute_loop_coefs.f
++++ observed/mp_compute_loop_coefs.f
+@@ -183,6 +183,7 @@
+ C      times for the same PS point during the stability checks.
+ C     But it is really not time consuming and I would rather be safe.
+       CALL MP_UPDATE_AS_PARAM()
++      CALL EW_MASS_UPDATE_SNAPSHOT(PS,COMPUTE_INTEGRAND_IN_QP)
+ 
+       MP_DONE_ONCE = .TRUE.
+ 

@@ -1,0 +1,181 @@
+{
+  "all_numerators_finite": true,
+  "by_backend_mode": {
+    "8:4": {
+      "calls": 116,
+      "clamped_pairs_by_class": {
+        "complement_of_single_leg": 64,
+        "composite": 19,
+        "direct_single_leg": 114
+      },
+      "composite_clamps": 19,
+      "native_statuses": {
+        "0": 106,
+        "1": 10
+      },
+      "refused_groups": [
+        42,
+        46,
+        56,
+        57,
+        60,
+        61,
+        67,
+        68,
+        69,
+        72
+      ],
+      "target_channels": 19,
+      "target_nonzero_cartesian_supplied_zero": 19,
+      "target_nonzero_computed_supplied_zero": 19
+    },
+    "8:5": {
+      "calls": 116,
+      "clamped_pairs_by_class": {
+        "complement_of_single_leg": 23,
+        "composite": 19,
+        "direct_single_leg": 155
+      },
+      "composite_clamps": 19,
+      "native_statuses": {
+        "0": 106,
+        "1": 10
+      },
+      "refused_groups": [
+        42,
+        46,
+        56,
+        57,
+        60,
+        61,
+        67,
+        68,
+        69,
+        72
+      ],
+      "target_channels": 19,
+      "target_nonzero_cartesian_supplied_zero": 19,
+      "target_nonzero_computed_supplied_zero": 19
+    },
+    "9:4": {
+      "calls": 116,
+      "clamped_pairs_by_class": {
+        "complement_of_single_leg": 64,
+        "composite": 19,
+        "direct_single_leg": 114
+      },
+      "composite_clamps": 19,
+      "native_statuses": {
+        "0": 85,
+        "1": 31
+      },
+      "refused_groups": [
+        10,
+        38,
+        41,
+        42,
+        44,
+        46,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        81,
+        82,
+        84,
+        91,
+        92,
+        94,
+        105,
+        106,
+        108
+      ],
+      "target_channels": 19,
+      "target_nonzero_cartesian_supplied_zero": 19,
+      "target_nonzero_computed_supplied_zero": 19
+    },
+    "9:5": {
+      "calls": 116,
+      "clamped_pairs_by_class": {
+        "complement_of_single_leg": 23,
+        "composite": 19,
+        "direct_single_leg": 155
+      },
+      "composite_clamps": 19,
+      "native_statuses": {
+        "0": 85,
+        "1": 31
+      },
+      "refused_groups": [
+        10,
+        38,
+        41,
+        42,
+        44,
+        46,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        81,
+        82,
+        84,
+        91,
+        92,
+        94,
+        105,
+        106,
+        108
+      ],
+      "target_channels": 19,
+      "target_nonzero_cartesian_supplied_zero": 19,
+      "target_nonzero_computed_supplied_zero": 19
+    }
+  },
+  "gram": {
+    "all_conditions_reconstructed": true,
+    "exact_cartesian_singular": 0,
+    "exact_supplied_singular": 22,
+    "refusals": 62,
+    "reported_kind": {
+      "ill-conditioned": 40,
+      "singular": 22
+    }
+  },
+  "ordinary_raw_and_printed_parity": true,
+  "stress_rows": {
+    "8": [
+      "AMPLITUDE_VALUE    2    2    0  420   4.30898559824016835E+019  -5.65394884573801472E+017  -1.33868288196557926E+019  -4.58569023710119526E+018   1.00000000000000000E+000 T F F",
+      "AMPLITUDE_VALUE    2    2    1  420   4.30898559824016835E+019  -5.65394884573801472E+017  -1.33868288196557926E+019  -4.58569023710119526E+018   1.00000000000000000E+000 T F F"
+    ],
+    "9": [
+      "AMPLITUDE_VALUE    2    2    0  420   4.30898559824016835E+019  -1.64433448793454848E+018  -1.33868236336212132E+019  -4.58568995014193050E+018   1.00000000000000000E+000 T T F",
+      "AMPLITUDE_VALUE    2    2    1  420   4.30898559824016835E+019  -1.64433448793454848E+018  -1.33868236336212132E+019  -4.58568995014193050E+018   1.00000000000000000E+000 T T F"
+    ]
+  },
+  "supplied_cartesian_exact_equality_not_assumed": true
+}

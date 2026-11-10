@@ -1,0 +1,100 @@
+{
+  "control_scope": "Historical fixed-QP records on the same two inputs/model; decimal output tokens retain at least17 significant digits and round-trip binary64. This is a regression control, not checked physics.",
+  "backend8_original_source_matches": {
+    "CT_interface.f": "ac240d6ffc2f7e1a15a72e61a325a53d0acf776f65b9329e4e9518cd85f3da0a",
+    "improve_ps.f": "7ae30d4c3719d6f00a3306463b4c442bfef93d0a7976d1f72bc3d114842af1eb",
+    "loop_matrix.f": "e40430b9bb99f8abe8a91871be5949384fce51687fd7cf8e996c09a5375cf860",
+    "mp_compute_loop_coefs.f": "7518213871f13f57fa2b666b8bf3b4e488392373e1bf74ecbafb0adad8a3bd8d",
+    "loop_CT_calls_1.f": "b3dbadafa11d25c95f075334a30346d4f01ceeccaf9ed728004bfdc8d7390889"
+  },
+  "cases": {
+    "original-8": {
+      "source": "docs/benchmarkfolder/experiments/physical-stress/diagnostics/ew_n3_epem_ttxa/candidate-8-qp-init-dp/raw/values.dat",
+      "sha256": "7315e1ddaf322c429d80595184a98bc35e94ac2a5a8f4f1ea3bd7a6d30cea64f",
+      "points": {
+        "1": {
+          "status": 120,
+          "amplitude_bits": [
+            "3E889488CA877C57",
+            "3E1EC1C61663DE83",
+            "3E0A78E02E0038E8",
+            "BDFE3B64BAE5880C",
+            "3E889488CA877C57",
+            "3E1EC1C61663DE83",
+            "3E0A78E02E0038E8",
+            "BDFE3B64BAE5880C"
+          ],
+          "accuracy_bits": [
+            "BFF0000000000000",
+            "BFF0000000000000"
+          ]
+        },
+        "2": {
+          "status": 120,
+          "amplitude_bits": [
+            "41600A722CBC6EB8",
+            "4261780550C3C1C0",
+            "40CC7F6327A929D3",
+            "C0D3BAA6EBC582E4",
+            "41600A722CBC6EB8",
+            "4261780550C3C1C0",
+            "40CC7F6327A929D3",
+            "C0D3BAA6EBC582E4"
+          ],
+          "accuracy_bits": [
+            "BFF0000000000000",
+            "BFF0000000000000"
+          ]
+        }
+      }
+    },
+    "original-9": {
+      "source": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/raw/values.dat",
+      "sha256": "73dc0813aed04648a35ace4cb8f7a5f336158cd69f3d2c13ec968f34419b52f2",
+      "points": {
+        "1": {
+          "status": 120,
+          "amplitude_bits": [
+            "3E889488CA877C57",
+            "3E1EC1C61663DE7C",
+            "3E0A78E02E0038EA",
+            "BDFE3B64BAE5880C",
+            "3E889488CA877C57",
+            "3E1EC1C61663DE7C",
+            "3E0A78E02E0038EA",
+            "BDFE3B64BAE5880C"
+          ],
+          "accuracy_bits": [
+            "BFF0000000000000",
+            "BFF0000000000000"
+          ],
+          "fpe_dp": false,
+          "fpe_qp": true
+        },
+        "2": {
+          "status": 120,
+          "amplitude_bits": [
+            "41600A722CBC6EB8",
+            "426178082D10D141",
+            "4107782D13BF30D2",
+            "C0C337B1A50072AB",
+            "41600A722CBC6EB8",
+            "426178082D10D141",
+            "4107782D13BF30D2",
+            "C0C337B1A50072AB"
+          ],
+          "accuracy_bits": [
+            "BFF0000000000000",
+            "BFF0000000000000"
+          ],
+          "fpe_dp": false,
+          "fpe_qp": true
+        }
+      },
+      "host_flag_source": {
+        "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/summary.json",
+        "sha256": "296539397d0560e8a2beffedb862dd56af821876bf0a986d31600d721bc9f36c"
+      }
+    }
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "all_numerators_finite": true,
+  "by_backend_mode": {
+    "8:4": {
+      "calls": 116,
+      "clamped_pairs_by_class": {
+        "complement_of_single_leg": 64,
+        "direct_single_leg": 114
+      },
+      "composite_clamps": 0,
+      "native_statuses": {
+        "0": 116
+      },
+      "refused_groups": [],
+      "target_channels": 19,
+      "target_nonzero_cartesian_supplied_zero": 0,
+      "target_nonzero_computed_supplied_zero": 0
+    },
+    "8:5": {
+      "calls": 116,
+      "clamped_pairs_by_class": {
+        "complement_of_single_leg": 23,
+        "direct_single_leg": 155
+      },
+      "composite_clamps": 0,
+      "native_statuses": {
+        "0": 116
+      },
+      "refused_groups": [],
+      "target_channels": 19,
+      "target_nonzero_cartesian_supplied_zero": 0,
+      "target_nonzero_computed_supplied_zero": 0
+    },
+    "9:4": {
+      "calls": 116,
+      "clamped_pairs_by_class": {
+        "complement_of_single_leg": 64,
+        "direct_single_leg": 114
+      },
+      "composite_clamps": 0,
+      "native_statuses": {
+        "0": 92,
+        "1": 24
+      },
+      "refused_groups": [
+        10,
+        38,
+        44,
+        54,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        67,
+        68,
+        70,
+        71,
+        81,
+        82,
+        84,
+        91,
+        92,
+        94,
+        105,
+        106,
+        108
+      ],
+      "target_channels": 19,
+      "target_nonzero_cartesian_supplied_zero": 0,
+      "target_nonzero_computed_supplied_zero": 0
+    },
+    "9:5": {
+      "calls": 116,
+      "clamped_pairs_by_class": {
+        "complement_of_single_leg": 23,
+        "direct_single_leg": 155
+      },
+      "composite_clamps": 0,
+      "native_statuses": {
+        "0": 89,
+        "1": 27
+      },
+      "refused_groups": [
+        10,
+        38,
+        44,
+        46,
+        54,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        81,
+        82,
+        84,
+        91,
+        92,
+        94,
+        105,
+        106,
+        108
+      ],
+      "target_channels": 19,
+      "target_nonzero_cartesian_supplied_zero": 0,
+      "target_nonzero_computed_supplied_zero": 0
+    }
+  },
+  "gram": {
+    "all_conditions_reconstructed": true,
+    "exact_cartesian_singular": 0,
+    "exact_supplied_singular": 0,
+    "refusals": 51,
+    "reported_kind": {
+      "ill-conditioned": 51
+    }
+  },
+  "ordinary_raw_and_printed_parity": true,
+  "stress_rows": {
+    "8": [
+      "AMPLITUDE_VALUE    2    2    0  322   4.30746489426097521E+019  -4.34315235443402290E+021  -1.58727629046629892E+020  -7.01341075112268390E+018   1.09283754774591306E-015 T F F",
+      "AMPLITUDE_VALUE    2    2    1  322   4.30746489426097521E+019  -4.34315235443402290E+021  -1.58727629046629892E+020  -7.01341075112268390E+018   1.09283754774591306E-015 T F F"
+    ],
+    "9": [
+      "AMPLITUDE_VALUE    2    2    0  420   4.30746489426097521E+019   1.15448957271952248E+021   3.75173181817791529E+019  -3.48984497109549568E+018   1.00000000000000000E+000 T T F",
+      "AMPLITUDE_VALUE    2    2    1  420   4.30746489426097521E+019   1.15448957271952248E+021   3.75173181817791529E+019  -3.48984497109549568E+018   1.00000000000000000E+000 T T F"
+    ]
+  },
+  "supplied_cartesian_exact_equality_not_assumed": true
+}
