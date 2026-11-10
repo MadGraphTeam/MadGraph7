@@ -664,8 +664,9 @@ double-double fails while its residual is within 10 x double-double's own
 estimate (asked for only then: the recommended checks for poles, the
 reduction-direction check for Ward) has run out of digits: only such rows,
 at their points, are re-run in **arbitrary precision** at the digit count
-derived from the shortfall, d = ceil(32 + log10(10 E / B)) for an estimate E
-and a bound B (the largest over the point's rows; `--arbitrary-digits N`,
+derived from the shortfall, d = ceil(32.0 + log10(10 E / B)) for an
+estimate E and a bound B (32.0: double-double's decimal digits, 1 +
+log10(0.5 / 2^-104); the largest over the point's rows; `--arbitrary-digits N`,
 `check.arbitrary_digits`, sets it), the point lifted again at those digits,
 and judged by their double-double criterion (no new bound; the row shows
 carrier `arbitrary`, its digits and the double-double numbers); a
@@ -677,9 +678,9 @@ take this rung. The Ward rows of a request whose loop corrections include an
 electroweak one (any correction other than the model's strong one) and with
 an on-shell zero-width external massive quark (a top or a massive b, quark or
 antiquark) read "not applicable" and are not evaluated: the Ward identity of
-the asymmetric check is not guaranteed with electroweak corrections there
-(USER 2026-11-10); Ward rows are not split by squared-order sector, so that
-request's QCD-loop sectors are not Ward-checked either. A sector Catani's operators
+the asymmetric check is not guaranteed with electroweak corrections there;
+Ward rows are not split by squared-order sector, so that request's QCD-loop
+sectors are not Ward-checked either. A sector Catani's operators
 do not predict (a QCD correction of a process with photon-exchange Borns,
 ...) is listed as "no prediction" with its reason; a sector they predict
 that got no pole row at a point reads "not run" (exit 3: an applicable
