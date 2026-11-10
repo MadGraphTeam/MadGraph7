@@ -1195,6 +1195,27 @@ def _stored_records(observables: StoredObservableSlice) -> tuple[Any, ...]:
     )
 
 
+def _plan_weights(
+    overlay: Mapping[str, Any], classes: Sequence[Any], weights: Sequence[int | None]
+) -> list[int] | None:
+    """A formed set's seed columns as the plan's own seed-weight columns
+    (Rust ``template::plan_weights``): when the stored set stores no seed
+    records (it reads the plan's), each formed column reads one seed-weight
+    column and they cover the plan's columns (the loader's
+    ``column_weights`` rule), the set reads the plan's seed records in place
+    rather than a copy."""
+
+    if overlay.get("seed_classes") is not None and overlay.get("seeds") is not None:
+        return None
+    if any(w is None for w in weights):
+        return None
+    found = [int(w) for w in weights if w is not None]
+    width = len(classes[0]["columns"]) if classes else 0
+    if found and max(found) + 1 == width and width <= len(found):
+        return found
+    return None
+
+
 def resolved_parts(
     observables: StoredObservableSlice,
     rows: frozenset[Any] | None,
@@ -1314,6 +1335,19 @@ def resolved_parts_oracle(
         if classes is None or keys is None:
             plan = json.loads(plan_json)
             classes, keys = plan["seed_classes"], plan["seeds"]
+        in_place = _plan_weights(overlay, classes, [int(weights[c]) for c in order])
+        if in_place is not None:
+            formed.append(
+                {
+                    "columns": len(order),
+                    "column_rows": None
+                    if column_rows is None
+                    else [column_rows[c] for c in order],
+                    "column_weights": in_place,
+                    "born_components": overlay["born_components"],
+                }
+            )
+            continue
         formed.append(
             {
                 "seed_classes": [
@@ -1673,14 +1707,28 @@ class PythonSelectionTemplate:
                     ]
                 )
             del plan
+            rows_record = seed_rows if any(r is not None for r in seed_rows) else None
+            in_place = _plan_weights(
+                overlay,
+                seed_records,
+                [ws[0] if len(ws) == 1 else None for ws in template_weights[p]],
+            )
+            if in_place is not None:
+                formed.append(
+                    {
+                        "columns": len(seed_rows),
+                        "column_rows": rows_record,
+                        "column_weights": in_place,
+                        "born_components": overlay["born_components"],
+                    }
+                )
+                continue
             formed.append(
                 {
                     "seed_classes": class_columns,
                     "seeds": keys,
                     "columns": len(seed_rows),
-                    "column_rows": seed_rows
-                    if any(r is not None for r in seed_rows)
-                    else None,
+                    "column_rows": rows_record,
                     "column_weights": None,
                     "born_components": overlay["born_components"],
                 }

@@ -372,12 +372,38 @@ impl OverlayView<'_> {
 /// A formed set's seed records over a plan, as the loader reads them.
 #[derive(serde::Serialize)]
 struct FormedOverlay<'a> {
-    seed_classes: Vec<SeedClassView<'a>>,
-    seeds: &'a RawValue,
+    /// None: the plan's own seed records (`plan_weights`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed_classes: Option<Vec<SeedClassView<'a>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seeds: Option<&'a RawValue>,
     columns: usize,
     column_rows: Value,
     column_weights: Option<Vec<usize>>,
     born_components: usize,
+}
+
+/// A formed set's seed columns as the plan's own seed-weight columns, when
+/// it can read them without seed records of its own: the stored set stores
+/// none (it reads the plan's, e.g. a full-colour resolved set), each formed
+/// column reads exactly one seed-weight column `weights[c]`, and they cover
+/// the plan's columns as the loader's `column_weights` rule requires (the
+/// highest + 1 = the plan's seed-weight column count, at most the formed
+/// column count). The set then reads the plan's seed records in place
+/// rather than a copy of them (u u~ > g g g g g at full colour: 1.9 M terms,
+/// about 260 MB once loaded), with the same terms in the same order.
+fn plan_weights(
+    overlay: &OverlayView<'_>,
+    seed_records: &[SeedClassView<'_>],
+    weights: impl IntoIterator<Item = Option<usize>>,
+) -> Option<Vec<usize>> {
+    if overlay.own_seeds() {
+        return None;
+    }
+    let weights: Vec<usize> = weights.into_iter().collect::<Option<_>>()?;
+    let width = seed_records.first().map_or(0, |class| class.columns.len());
+    let covered = weights.iter().max().map(|w| w + 1);
+    (covered == Some(width) && width <= weights.len()).then_some(weights)
 }
 
 /// The seed records a formation reads for one plan: the set's own, else
@@ -782,6 +808,17 @@ impl SelectionTemplate {
                 family_classes.push(Some(per_family));
             }
             let any_rows = seed_rows.iter().any(Option::is_some);
+            let in_place = plan_weights(
+                overlay,
+                seed_records,
+                template_weights[p]
+                    .iter()
+                    .map(|ws| (ws.len() == 1).then(|| ws[0])),
+            );
+            let (class_columns, keys) = match in_place {
+                Some(_) => (None, None),
+                None => (Some(class_columns), Some(keys)),
+            };
             let overlay = FormedOverlay {
                 seed_classes: class_columns,
                 seeds: keys,
@@ -791,7 +828,7 @@ impl SelectionTemplate {
                 } else {
                     Value::Null
                 },
-                column_weights: None,
+                column_weights: in_place,
                 born_components,
             };
             formed.push(
@@ -986,16 +1023,27 @@ pub fn resolved_subset(
             })
             .collect::<RusticolResult<Vec<_>>>()?;
         let (seed_records, keys) = seed_records(overlay, plan_seeds[p].as_ref())?;
-        let classes = seed_records
-            .iter()
-            .map(|record| {
-                let columns = kept_weights
+        let in_place = plan_weights(
+            overlay,
+            seed_records,
+            used.iter().map(|&c| weights.get(c).copied()),
+        );
+        let (classes, keys, column_weights) = match in_place {
+            Some(in_place) => (None, None, in_place),
+            None => {
+                let classes = seed_records
                     .iter()
-                    .map(|&w| record.column(w).map(<[_]>::to_vec))
+                    .map(|record| {
+                        let columns = kept_weights
+                            .iter()
+                            .map(|&w| record.column(w).map(<[_]>::to_vec))
+                            .collect::<RusticolResult<Vec<_>>>()?;
+                        Ok(SeedClassView { columns })
+                    })
                     .collect::<RusticolResult<Vec<_>>>()?;
-                Ok(SeedClassView { columns })
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
+                (Some(classes), Some(keys), column_weights)
+            }
+        };
         let column_rows = match &overlay.column_rows {
             None => Value::Null,
             Some(rows) => Value::Array(
@@ -1111,10 +1159,10 @@ mod tests {
         let formed: Value = serde_json::from_str(&template.set.overlay).unwrap();
         assert_eq!(formed["columns"], json!(1));
         assert_eq!(formed["column_rows"], Value::Null);
-        assert_eq!(
-            formed["seed_classes"][0]["columns"],
-            json!([[[0, "1", "0"], [1, "2", "0"]]])
-        );
+        // The stored set reads the plan's seed records, and so does the
+        // template: in place, its one column the plan's seed-weight column 0.
+        assert_eq!(formed.get("seed_classes"), None);
+        assert_eq!(formed["column_weights"], json!([0]));
         let interference: Value = serde_json::from_str(&template.set.columns).unwrap();
         assert_eq!(interference["columns"][0]["rows"], Value::Null);
         assert_eq!(template.set.lanes, vec![(0, json!([["QCD", 2]]), 0, 0)]);
@@ -1145,6 +1193,7 @@ mod tests {
         let formed: Value = serde_json::from_str(&subset.overlay).unwrap();
         assert_eq!(formed["column_rows"], json!([[1]]));
         assert_eq!(formed["column_weights"], json!([0]));
+        assert_eq!(formed.get("seed_classes"), None);
         assert_eq!(subset.lanes, vec![(0, json!([["QCD", 2]]), 0, 0)]);
         let interference: Value = serde_json::from_str(&subset.columns).unwrap();
         assert_eq!(
