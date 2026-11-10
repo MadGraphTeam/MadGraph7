@@ -1,0 +1,93 @@
+{
+  "mp_prefix": "MP__",
+  "policy": "Prefix existing model-selected mass symbol; require a genuine REAL*16/COMPLEX*32 declaration; do not reparse card or infer from squared mass.",
+  "fixture_symbols": {
+    "MP__ZERO": 250,
+    "MP__MDL_MT": 139,
+    "MP__MDL_MZ": 100,
+    "MP__MDL_MH": 32,
+    "MP__MDL_MW": 105
+  },
+  "cms_source_call_count": 26,
+  "cms_complex_mass_argument_count": 30,
+  "cms_symbol_counts": {
+    "MP__CMASS_MDL_MZ": 13,
+    "MP__CMASS_MDL_MH": 3,
+    "MP__CMASS_MDL_MW": 12,
+    "MP__CMASS_MDL_MT": 2
+  },
+  "cms_examples": [
+    {
+      "formal": "M2",
+      "original_dp_actual": "DCMPLX(CMASS_MDL_MZ)",
+      "model_symbol": "CMASS_MDL_MZ",
+      "mp_symbol": "MP__CMASS_MDL_MZ",
+      "mp_declaration": "COMPLEX*32",
+      "new_qp_actual": "CMPLX(MP__CMASS_MDL_MZ,KIND=16)"
+    },
+    {
+      "formal": "M2",
+      "original_dp_actual": "DCMPLX(CMASS_MDL_MZ)",
+      "model_symbol": "CMASS_MDL_MZ",
+      "mp_symbol": "MP__CMASS_MDL_MZ",
+      "mp_declaration": "COMPLEX*32",
+      "new_qp_actual": "CMPLX(MP__CMASS_MDL_MZ,KIND=16)"
+    },
+    {
+      "formal": "M4",
+      "original_dp_actual": "DCMPLX(CMASS_MDL_MZ)",
+      "model_symbol": "CMASS_MDL_MZ",
+      "mp_symbol": "MP__CMASS_MDL_MZ",
+      "mp_declaration": "COMPLEX*32",
+      "new_qp_actual": "CMPLX(MP__CMASS_MDL_MZ,KIND=16)"
+    },
+    {
+      "formal": "M4",
+      "original_dp_actual": "DCMPLX(CMASS_MDL_MZ)",
+      "model_symbol": "CMASS_MDL_MZ",
+      "mp_symbol": "MP__CMASS_MDL_MZ",
+      "mp_declaration": "COMPLEX*32",
+      "new_qp_actual": "CMPLX(MP__CMASS_MDL_MZ,KIND=16)"
+    },
+    {
+      "formal": "M1",
+      "original_dp_actual": "DCMPLX(CMASS_MDL_MH)",
+      "model_symbol": "CMASS_MDL_MH",
+      "mp_symbol": "MP__CMASS_MDL_MH",
+      "mp_declaration": "COMPLEX*32",
+      "new_qp_actual": "CMPLX(MP__CMASS_MDL_MH,KIND=16)"
+    },
+    {
+      "formal": "M2",
+      "original_dp_actual": "DCMPLX(CMASS_MDL_MZ)",
+      "model_symbol": "CMASS_MDL_MZ",
+      "mp_symbol": "MP__CMASS_MDL_MZ",
+      "mp_declaration": "COMPLEX*32",
+      "new_qp_actual": "CMPLX(MP__CMASS_MDL_MZ,KIND=16)"
+    },
+    {
+      "formal": "M1",
+      "original_dp_actual": "DCMPLX(CMASS_MDL_MZ)",
+      "model_symbol": "CMASS_MDL_MZ",
+      "mp_symbol": "MP__CMASS_MDL_MZ",
+      "mp_declaration": "COMPLEX*32",
+      "new_qp_actual": "CMPLX(MP__CMASS_MDL_MZ,KIND=16)"
+    },
+    {
+      "formal": "M1",
+      "original_dp_actual": "DCMPLX(CMASS_MDL_MZ)",
+      "model_symbol": "CMASS_MDL_MZ",
+      "mp_symbol": "MP__CMASS_MDL_MZ",
+      "mp_declaration": "COMPLEX*32",
+      "new_qp_actual": "CMPLX(MP__CMASS_MDL_MZ,KIND=16)"
+    }
+  ],
+  "derived_real_example": {
+    "input": "DCMPLX(MDL_MW)",
+    "new_actual": "CMPLX(MP__MDL_MW,KIND=16)",
+    "declaration": "REAL*16",
+    "expression_source": ".benchmark-work/tirust/outputs/candidate/qcd_n1_uux_z/Source/MODEL/mp_intparam_definition.inc",
+    "expression_source_sha256": "fb04894dcb5b1ad5b0e99762688cfe69c1965f4ea3f5ac8d3b84c1b7c7f72969"
+  },
+  "qualification": "Source-routing cases only. Real-derived and CMS numerical coverage remains unqualified."
+}

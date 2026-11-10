@@ -1,0 +1,89 @@
+{
+  "state": "source_only_uncompiled; build and native execution require separate review/authorization",
+  "scope": "Explicit reducer 8 or 9 only; original and paired MP-mass candidate; unchanged historical model, repair, numerators and native precision guards.",
+  "initial_build_cap_seconds": 180,
+  "initial_build_jobs": 1,
+  "rust_rebuild": false,
+  "initial_native_phase": {
+    "purpose": "Bounded fixedQP input/transport and amplitude diagnostics; no host stability acceptance claim",
+    "max_processes": 4,
+    "max_seconds_per_process": 120,
+    "max_execution_seconds": 480,
+    "settings": [
+      {
+        "source": "original",
+        "backend": 8,
+        "points": [
+          "ordinary",
+          "threshold"
+        ],
+        "CTModeRun": 4,
+        "CTModeInit": 1,
+        "UseQPIntegrand": true
+      },
+      {
+        "source": "original",
+        "backend": 9,
+        "points": [
+          "ordinary",
+          "threshold"
+        ],
+        "CTModeRun": 4,
+        "CTModeInit": 1,
+        "UseQPIntegrand": true
+      },
+      {
+        "source": "candidate",
+        "backend": 8,
+        "points": [
+          "ordinary",
+          "threshold"
+        ],
+        "CTModeRun": 4,
+        "CTModeInit": 1,
+        "UseQPIntegrand": true
+      },
+      {
+        "source": "candidate",
+        "backend": 9,
+        "points": [
+          "ordinary",
+          "threshold"
+        ],
+        "CTModeRun": 4,
+        "CTModeInit": 1,
+        "UseQPIntegrand": true
+      }
+    ],
+    "startup_included_in_limit": true,
+    "automatic_retry": false,
+    "no_new_warmup_points": true
+  },
+  "later_checked_phase_requires_review": {
+    "max_processes": 4,
+    "max_seconds_per_process": 120,
+    "settings": "Same original/candidate \u00d7 8/9 on the same two inputs, CTModeRun=-1. Preserve all actual direction, FPE and accuracy tests. If DP succeeds and QP is not entered, mark checked QP unqualified. Do not call fixed mode 4 checked, even when FORCE_STABILITY_CHECK is true. Any synthetic DP-rejection trigger needs a new, explicitly reviewed source change."
+  },
+  "capture_required_before_later_native_launch": [
+    "Original input P and actual repaired C/MP_P as exact binary128 bytes, identical across original/candidate/reducers.",
+    "Current MP mass argument bytes, DP square bytes, new QP square bytes, cyclic and CT5 permutation for all reached groups.",
+    "Per-group adapter-entry PL, masses and rank, and prepared native shifts, invariant matrix and scale; distinguish common C from backend preprocessing.",
+    "Numerator/UseQPIntegrand setting, model-update sequence, cards and native identities.",
+    "Finite/single/double coefficients, Born normalization, status, host estimated accuracy, FPE flags, native failures and actual DP/QP usage.",
+    "Initial/steady cache boundaries and stability-check separation; no changed cache policy."
+  ],
+  "accuracy_policy": "Ordinary target 1e-8/regression 3e-6; retain all threshold refusals/disagreements. Reducer agreement and consistent masses alone do not certify a conditioned threshold amplitude. Require existing host acceptance plus independent analytic-pole/stability evidence before any accuracy claim.",
+  "unchanged_scale_policy": {
+    "TIRust": "REAL(MU_R,KIND=KI_QTIR)**2",
+    "NinjaRS": "REAL(MU_R**2,KIND=KI_QNRS)",
+    "classification": "Separate pre-existing cross-backend difference, not corrected by this mass-only prototype."
+  },
+  "numerical_lock": ".tirust-build/numerical-tests.lock",
+  "threads": {
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "RAYON_NUM_THREADS": 1
+  },
+  "quiet_lane": "Root assigns CPU/window; no timing/performance claim",
+  "remaining_source_work_before_execution": "A matched bounded observer/driver must be frozen and independently reviewed before compiler/native launch; the copied historical check is not qualified for the checked phase."
+}

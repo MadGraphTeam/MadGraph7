@@ -1,0 +1,45 @@
+{
+  "bit_identical_pdf_reproduction": true,
+  "canonical_ledger_sha256_after": "111f170db4a7c1359ac7760ea8d34405b682f4798206b3d0a2854d3d99c8010a",
+  "canonical_pdf_sha256_after": "f5cc86a70738dfc719b34a1e7686b57934fe1b421c7774275f2498ee0044d2df",
+  "commands": [
+    "python3 docs/benchmarkfolder/history/report-before-split-dp-campaign/reconstruct.py --destination .tirust-build/report-bd8-reconstruction",
+    "python3 .tirust-build/report-bd8-reconstruction/build_report.py --verify-only",
+    "python3 .tirust-build/report-bd8-reconstruction/build_report.py --output .tirust-build/report-bd8-reconstruction/recompiled.pdf"
+  ],
+  "fail_closed_checks": {
+    "missing-pdf": {
+      "error": "ValueError: Archive identity differs from the original report",
+      "rejected": true
+    },
+    "symlink-pdf": {
+      "error": "ValueError: Compact archive may not contain symlinks",
+      "rejected": true
+    },
+    "unknown-schema": {
+      "error": "ValueError: Archive identity differs from the original report",
+      "rejected": true
+    }
+  },
+  "final_integrity_verification_sha256": "e8a0c0dfc0dc62ef9f64684b35d32aa618f45abf34fa258d1fa8ffb704ca08d8",
+  "original_archive_compact_files_verified": true,
+  "original_pdf_sha256": "f5cc86a70738dfc719b34a1e7686b57934fe1b421c7774275f2498ee0044d2df",
+  "private_pdf_sha256": "f5cc86a70738dfc719b34a1e7686b57934fe1b421c7774275f2498ee0044d2df",
+  "private_typst_recompile_attempted": true,
+  "reconstructed_report_verify_only_passed": true,
+  "reconstruction_script_sha256": "55965b88d02a99ef5663b545b05d6da207389683c548917c7fd2626ef390d5e1",
+  "required_git_inputs": {
+    "compact_archive_verified": true,
+    "numerical_execution": false,
+    "original_pdf_sha256": "f5cc86a70738dfc719b34a1e7686b57934fe1b421c7774275f2498ee0044d2df",
+    "pdf_recompiled": false,
+    "reconstruction": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/report-bd8-reconstruction",
+    "report_commit": "bd8eb72a179a2a6a4385af07d13507f94c52df95",
+    "required_input_bytes_verified": 287811678,
+    "required_input_files_verified": 4693,
+    "status": "passed",
+    "total_git_files_verified": 4695
+  },
+  "scope": "Historical documentation reconstruction only; no numerical execution or native compilation",
+  "typst": "typst 0.15.1 (9dfd3a08)"
+}

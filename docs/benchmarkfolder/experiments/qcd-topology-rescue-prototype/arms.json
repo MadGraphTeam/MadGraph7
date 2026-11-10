@@ -1,0 +1,242 @@
+{
+  "arms": {
+    "original-b": {
+      "born_coordinates": "B",
+      "born_parameter_policy": "Unchanged exact promotion of DP parameters",
+      "loop_coordinates": "Actual existing SET_MP_PS output C, including later host rotations",
+      "ordinary_dp_source_path": "Unchanged original finite-DP branch",
+      "runtime_evaluated": false,
+      "sources": {
+        "CT_interface.f": {
+          "bytes": 73862,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/CT_interface.f",
+          "sha256": "58b9ce36633e3812ec694997844034376b50d8fedfa5b45fd36a4cdcaf0919e6"
+        },
+        "TIRUST_interface.f": {
+          "bytes": 15347,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/TIRUST_interface.f",
+          "sha256": "29870097e0b62d4fdf06310f46a959a929b51fea5259d2d42b26061cea90511c"
+        },
+        "amplitude_driver.f": {
+          "bytes": 3717,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/amplitude_driver.f",
+          "sha256": "21ab7cf7a9fe610ed7931434726ad0f95c89c10c56239a8c65690b60076537c7"
+        },
+        "born_fallback.f": {
+          "bytes": 11901,
+          "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/born_fallback.f",
+          "sha256": "d06ec729509c616790d2960fd9d06a54f3aa0e2fc1408011641fd1896e7ba621"
+        },
+        "loop_matrix.f": {
+          "bytes": 102562,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/loop_matrix.f",
+          "sha256": "5545b6163693344446545e6bde30b16c7aa95bbae80a19ecdc9b696e6af9fb7e"
+        },
+        "observer.f90": {
+          "bytes": 11930,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/observer.f90",
+          "sha256": "8bd7cfac57c7006c0da9d350013a4fe8bc98a988d61cdecc8c90ea3154aa47fe"
+        },
+        "observer_context.f": {
+          "bytes": 3410,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/observer_context.f",
+          "sha256": "df2adf62a983617c461047aa3f431208cdcceed6855347ccc6afb2111b087709"
+        }
+      },
+      "topology_gate": false
+    },
+    "original-c": {
+      "born_coordinates": "C",
+      "born_parameter_policy": "Unchanged exact promotion of DP parameters",
+      "loop_coordinates": "Actual existing SET_MP_PS output C, including later host rotations",
+      "ordinary_dp_source_path": "Unchanged original finite-DP branch",
+      "runtime_evaluated": false,
+      "sources": {
+        "CT_interface.f": {
+          "bytes": 73862,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/CT_interface.f",
+          "sha256": "58b9ce36633e3812ec694997844034376b50d8fedfa5b45fd36a4cdcaf0919e6"
+        },
+        "TIRUST_interface.f": {
+          "bytes": 15347,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/TIRUST_interface.f",
+          "sha256": "29870097e0b62d4fdf06310f46a959a929b51fea5259d2d42b26061cea90511c"
+        },
+        "amplitude_driver.f": {
+          "bytes": 3717,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/amplitude_driver.f",
+          "sha256": "21ab7cf7a9fe610ed7931434726ad0f95c89c10c56239a8c65690b60076537c7"
+        },
+        "born_fallback.f": {
+          "bytes": 12789,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/source-variants/born-c/born_fallback.f",
+          "sha256": "f0d5c64686e18c35f1ddaf2e12025131d251df290ea9c208a61feca2cefa3a1e"
+        },
+        "loop_matrix.f": {
+          "bytes": 103155,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/source-variants/born-c/loop_matrix.f",
+          "sha256": "36ccf4453e86734a3329151ec7e59d574db6bc4f00ecc28662b55f5b1a920fe3"
+        },
+        "observer.f90": {
+          "bytes": 11930,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/observer.f90",
+          "sha256": "8bd7cfac57c7006c0da9d350013a4fe8bc98a988d61cdecc8c90ea3154aa47fe"
+        },
+        "observer_context.f": {
+          "bytes": 3410,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/observer_context.f",
+          "sha256": "df2adf62a983617c461047aa3f431208cdcceed6855347ccc6afb2111b087709"
+        }
+      },
+      "topology_gate": false
+    },
+    "topology-b": {
+      "born_coordinates": "B",
+      "born_parameter_policy": "Unchanged exact promotion of DP parameters",
+      "loop_coordinates": "Actual existing SET_MP_PS output C, including later host rotations",
+      "ordinary_dp_source_path": "Unchanged original finite-DP branch",
+      "runtime_evaluated": false,
+      "sources": {
+        "CT_interface.f": {
+          "bytes": 84566,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/topology-design/CT_interface.f",
+          "sha256": "e10b55b425f52ff8913468f49c4092d9453e9ab7a1c9fb5ff3c8eecc6dbd950b"
+        },
+        "TIRUST_interface.f": {
+          "bytes": 24292,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/topology-design/TIRUST_interface.f",
+          "sha256": "4e4fcfb40d2c05f628db220f4435ffa9ed950cacd0ed900e4b542befad5be290"
+        },
+        "amplitude_driver.f": {
+          "bytes": 3717,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/amplitude_driver.f",
+          "sha256": "21ab7cf7a9fe610ed7931434726ad0f95c89c10c56239a8c65690b60076537c7"
+        },
+        "born_fallback.f": {
+          "bytes": 11901,
+          "path": "docs/benchmarkfolder/experiments/qcd-born-fallback-prototype/born_fallback.f",
+          "sha256": "d06ec729509c616790d2960fd9d06a54f3aa0e2fc1408011641fd1896e7ba621"
+        },
+        "loop_matrix.f": {
+          "bytes": 102562,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/loop_matrix.f",
+          "sha256": "5545b6163693344446545e6bde30b16c7aa95bbae80a19ecdc9b696e6af9fb7e"
+        },
+        "observer.f90": {
+          "bytes": 11930,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/observer.f90",
+          "sha256": "8bd7cfac57c7006c0da9d350013a4fe8bc98a988d61cdecc8c90ea3154aa47fe"
+        },
+        "observer_context.f": {
+          "bytes": 3410,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/observer_context.f",
+          "sha256": "df2adf62a983617c461047aa3f431208cdcceed6855347ccc6afb2111b087709"
+        },
+        "shell_classes.f": {
+          "bytes": 28643,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/topology-design/shell_classes.f",
+          "sha256": "21e0f4cb1e36276c480b8cae722af01aa3efc3bb0e4245c2f6d490acc2d4d8dc"
+        }
+      },
+      "topology_gate": true
+    },
+    "topology-c": {
+      "born_coordinates": "C",
+      "born_parameter_policy": "Unchanged exact promotion of DP parameters",
+      "loop_coordinates": "Actual existing SET_MP_PS output C, including later host rotations",
+      "ordinary_dp_source_path": "Unchanged original finite-DP branch",
+      "runtime_evaluated": false,
+      "sources": {
+        "CT_interface.f": {
+          "bytes": 84566,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/topology-design/CT_interface.f",
+          "sha256": "e10b55b425f52ff8913468f49c4092d9453e9ab7a1c9fb5ff3c8eecc6dbd950b"
+        },
+        "TIRUST_interface.f": {
+          "bytes": 24292,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/topology-design/TIRUST_interface.f",
+          "sha256": "4e4fcfb40d2c05f628db220f4435ffa9ed950cacd0ed900e4b542befad5be290"
+        },
+        "amplitude_driver.f": {
+          "bytes": 3717,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/sources/amplitude_driver.f",
+          "sha256": "21ab7cf7a9fe610ed7931434726ad0f95c89c10c56239a8c65690b60076537c7"
+        },
+        "born_fallback.f": {
+          "bytes": 12789,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/source-variants/born-c/born_fallback.f",
+          "sha256": "f0d5c64686e18c35f1ddaf2e12025131d251df290ea9c208a61feca2cefa3a1e"
+        },
+        "loop_matrix.f": {
+          "bytes": 103155,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/source-variants/born-c/loop_matrix.f",
+          "sha256": "36ccf4453e86734a3329151ec7e59d574db6bc4f00ecc28662b55f5b1a920fe3"
+        },
+        "observer.f90": {
+          "bytes": 11930,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/observer.f90",
+          "sha256": "8bd7cfac57c7006c0da9d350013a4fe8bc98a988d61cdecc8c90ea3154aa47fe"
+        },
+        "observer_context.f": {
+          "bytes": 3410,
+          "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/observer_context.f",
+          "sha256": "df2adf62a983617c461047aa3f431208cdcceed6855347ccc6afb2111b087709"
+        },
+        "shell_classes.f": {
+          "bytes": 28643,
+          "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/topology-design/shell_classes.f",
+          "sha256": "21e0f4cb1e36276c480b8cae722af01aa3efc3bb0e4245c2f6d490acc2d4d8dc"
+        }
+      },
+      "topology_gate": true
+    }
+  },
+  "c_derivation": {
+    "bytes": 11108,
+    "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/born-c-design/derive.py",
+    "sha256": "90f161f78a9a9a3f69ea77d64600c53c6f71d00c8c4b91e988e4f3c9d6182473"
+  },
+  "compiler_executed": false,
+  "future_runtime": {
+    "automatic_retries": 0,
+    "backends": [
+      9,
+      8
+    ],
+    "cpu": 11,
+    "formal_performance_eligible": false,
+    "max_seconds_per_process": 180,
+    "point_sequence": [
+      "ordinary",
+      "stress",
+      "ordinary"
+    ],
+    "requires_separate_approval": true,
+    "shared_lock": ".tirust-build/numerical-tests.lock"
+  },
+  "historical_build": {
+    "bytes": 72032,
+    "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/attempt1/build.json",
+    "sha256": "d9bb13b2e9d2bd70a9b3ecce31ad3918aeff4ed6c08f347e0e6ee78e9b91fcbd"
+  },
+  "historical_control": {
+    "bytes": 3669,
+    "path": "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/evidence-index.json",
+    "sha256": "6a2e48f62ee48ebd2a892da18f797249e686be660225e9d05c66415f98e8f5ac"
+  },
+  "interpretation": "A factorial source design, not authorization to execute all arms or a claim of amplitude accuracy.",
+  "kind": "private source-arm plan only",
+  "native_executed": false,
+  "production_modified": false,
+  "schema": 1,
+  "script": {
+    "bytes": 4865,
+    "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/prepare_arms.py",
+    "sha256": "f1b5819c2813d2f655c628898bde5153488f80dab99c2dc2793661eaecc97895"
+  },
+  "source_preparation": {
+    "bytes": 7133,
+    "path": "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/topology-design/prepared.json",
+    "sha256": "b664696dc8a2df6dee69e9ae8b70de55b586b6341e58456a5c336c250c91ccdc"
+  }
+}

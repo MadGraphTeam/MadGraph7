@@ -1,0 +1,483 @@
+{
+  "additional_qualifications": [
+    {
+      "production_artifacts_unchanged": true,
+      "record": "clean-download/index.json",
+      "source_scope": "Byte-copied pre-split-workspace implementation; source-inventory.json identifies the snapshot. Later bridge edits are not qualified by this run.",
+      "status": "passed"
+    },
+    {
+      "cache_reuse": true,
+      "main_configuration_changed_during_concurrent_activity": true,
+      "production_native_artifacts_unchanged": true,
+      "record": "current-source/index.json",
+      "source_revision": "606603e720aff7e96df0c9c7981e7bafd09b5d1c",
+      "status": "passed"
+    }
+  ],
+  "artifacts": {
+    "Cargo.lock": {
+      "sha256": "8be809d137651ec217157388a909a2e9976e83470ffe4f08ce5f259a4d3f4517",
+      "size": 35709
+    },
+    "Cargo.toml": {
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+      "size": 1074
+    },
+    "README.md": {
+      "sha256": "15429ab278d8e0eb5486665627d87f02ada60fa225260863923ae48d0cf7f6d8",
+      "size": 3311
+    },
+    "check-installation.json": {
+      "sha256": "fcf804fe459a2b169acd7ee2418cc0c5bab2cf6ee5dc07b90d801705497c1e8b",
+      "size": 4862
+    },
+    "clean-download/Cargo.lock": {
+      "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+      "size": 35857
+    },
+    "clean-download/Cargo.toml": {
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+      "size": 1074
+    },
+    "clean-download/README.md": {
+      "sha256": "3f6d476790a0ced35660f3872199f676614f0f7083f41f9d28ee6449312c90d3",
+      "size": 2659
+    },
+    "clean-download/allow-compilation": {
+      "sha256": "435e9a6c6492e0a9f5c8ef452320b5ed668abc6322d1e8b688ddff3082da84d6",
+      "size": 21
+    },
+    "clean-download/check-installation.json": {
+      "sha256": "eec847368e0207f27b033de36c173a8310a0b5fe7e3d9e222bb6166ade461aee",
+      "size": 3039
+    },
+    "clean-download/clean-install-start.json": {
+      "sha256": "ba33a87a67a150cac44a9dc9f0548a1c07b7d5885276b73b30189e4ff6eaefdb",
+      "size": 1155
+    },
+    "clean-download/cli-attempt-1.log": {
+      "sha256": "dfe212cdafe09844206c08554e51d6518d5f0d9c258dccd6dd2d102ba0d338e3",
+      "size": 4994
+    },
+    "clean-download/cli-attempt-2-network.log": {
+      "sha256": "50a9e1fb64370c42eb4a0c541e653e23730fdad6419384ea87347f1ec467ae57",
+      "size": 6283
+    },
+    "clean-download/compiled-module.sha256": {
+      "sha256": "951bfd9f4f78f9a386691e30b9ffb1072786c913ec0a4f69ee496ad661c7c47b",
+      "size": 148
+    },
+    "clean-download/dynamic-section.txt": {
+      "sha256": "4f40b0af86b6c40572f3c5f31666b4b50f04ad688d7f3596153f00fc617134ca",
+      "size": 1955
+    },
+    "clean-download/execution-observer.jsonl": {
+      "sha256": "98be32349c6ac9bd13cacbeeccbc9765b3edb6912a5df5365566e3d0b0ff1b71",
+      "size": 5402
+    },
+    "clean-download/execution-observer.py": {
+      "sha256": "d5783ed373b326ed67793f164b0cdda3d033b2b63d4d13bd02ab69e9be9093be",
+      "size": 1322
+    },
+    "clean-download/fetched-upstream-revision.txt": {
+      "sha256": "06d37af946d18c785b24eb6ec9a2fc6d50c56fe41fbbe496fdbe037d7805b1b6",
+      "size": 41
+    },
+    "clean-download/gmp-mpfr-source-build.log": {
+      "sha256": "8cbe692270c691a54135340f5470de51bc6aac7eb60fd3e56aa0b8c243ab327b",
+      "size": 3038150
+    },
+    "clean-download/host-toolchain.txt": {
+      "sha256": "868beea3f979051d989cda7fb24c82aa8ec803e4859bd43b77bb83859180fbaa",
+      "size": 745
+    },
+    "clean-download/index.json": {
+      "sha256": "811148a9168c4c2b7f85d38d95d1ff1e2965299c48b6ad26dd7967927ccc81c9",
+      "size": 4334
+    },
+    "clean-download/install-attempt-1-failed-dns.log": {
+      "sha256": "13562e7f7a8fe6f6ba27430b51164d94e71a16dc00661c8238ded69686cd1800",
+      "size": 225
+    },
+    "clean-download/install.log": {
+      "sha256": "5347f985947ff4d8915bef5c659c4d0d0d80cbe9ce14ef1b2c55d840456062be",
+      "size": 883718
+    },
+    "clean-download/install.mg5": {
+      "sha256": "efdce26ad50135c4ffd44e7b281b2d1083ada3356df775568dfa0bf74a9e09fc",
+      "size": 124
+    },
+    "clean-download/isolated-configuration-after.txt": {
+      "sha256": "6159b096fb78ddad638dc43e3791aac0f0614a30f55ec24650ff0952d534b400",
+      "size": 10727
+    },
+    "clean-download/native-exports.txt": {
+      "sha256": "9796c13e388314114726d4365e85c488218d6f1f44b726e4d88b5345abe18160",
+      "size": 515
+    },
+    "clean-download/package_evidence.py": {
+      "sha256": "26e1ecc2c28c011ddf01488a418c034088269bd6ba0c8077523c902f33c5d6ff",
+      "size": 9987
+    },
+    "clean-download/production-after.json": {
+      "sha256": "2c263b458d8309599885504774135d30e67de2c9ec9ae09f45f3ce04bb984130",
+      "size": 540
+    },
+    "clean-download/production-before.json": {
+      "sha256": "fe1a97e9c0c1ebfdb8b38d97b9c5bc3dd7088322ff35d963f14be329101cb0d3",
+      "size": 540
+    },
+    "clean-download/resolved-source-hashes.txt": {
+      "sha256": "6bae69b6e873093d6bbb08f1b486b86ba7ef3d8db478117a8573e90992cafdd5",
+      "size": 625
+    },
+    "clean-download/run.sh": {
+      "sha256": "0c04fcac0c5c5dde3d504964d02f964db4603996631869c5687df448ca1df080",
+      "size": 717
+    },
+    "clean-download/source-inventory.json": {
+      "sha256": "08065f656361d7d4938ec0b60fed02cb15fa3b582925e0ab092b748d5722b26b",
+      "size": 365863
+    },
+    "clean-download/source-revision-comparison.json": {
+      "sha256": "b3c0e9d31f14ccbfaeafe16b6679b136bfa4395e6fa34cb50f458afd2df57b5a",
+      "size": 2477
+    },
+    "clean-download/source-snapshot-amendments/.gitattributes": {
+      "sha256": "26d33bad6664679fafadc2877281277c5d963cf7f32657cc71f1378fbc37870e",
+      "size": 760
+    },
+    "clean-download/tirust-config.json": {
+      "sha256": "8c7f467dc8e8637cc4ec95d8965384e4c3dc2e4a9a38ab15d1808eb52d444dd2",
+      "size": 3048
+    },
+    "cli.log": {
+      "sha256": "16968d7aa7439a662e93c0543119211a9cc5f4ce26b7c5cd64a5f4a446eab0ed",
+      "size": 5861
+    },
+    "configuration-transaction-audit.json": {
+      "sha256": "8b6b8927b5cbba7c68220ff3fcd1632cd259c1f661bf21792043901c59ad94ee",
+      "size": 2093
+    },
+    "configuration-transaction-tests.log": {
+      "sha256": "e39235726500daa918bb978c6ebafc0e6dc4a0840c54437e251f8379f69bbe91",
+      "size": 420
+    },
+    "current-source/Cargo.lock": {
+      "sha256": "c4f59f296c7d2838a63b62bd4d47aa0e6e5eaaefd22b2d28d30e94d9f26179e4",
+      "size": 35857
+    },
+    "current-source/Cargo.toml": {
+      "sha256": "20686c31b726088ad14ede76bb5ec04ad181aeeebe74c4825482bceb9a38005e",
+      "size": 1074
+    },
+    "current-source/README.md": {
+      "sha256": "99e098461c98fae25f9b0d334ab1c35b11ff4f322e43d5de812df5644ca89c8c",
+      "size": 4231
+    },
+    "current-source/administrative-hold.json": {
+      "sha256": "4443fd1405b0131d232ea2e593a4a9c8dea3508417b74160efcc03679d72b323",
+      "size": 213
+    },
+    "current-source/allow-compilation": {
+      "sha256": "89773a3091432ae73e3577735930580d5798ba4f64dc0b22fb44425c3c13f1a4",
+      "size": 94
+    },
+    "current-source/bind_replay_evidence.py": {
+      "sha256": "4b84fc4acfa97a6567d179e3d74b5cb5deaa396a586e85f131a1a5ba20ef90af",
+      "size": 7346
+    },
+    "current-source/check-installation.json": {
+      "sha256": "e1de42b6524f7d375a4c712555123e8bd08a1d28855e92b177ca04ca122d1087",
+      "size": 4326
+    },
+    "current-source/cli.log": {
+      "sha256": "f24034184b5efa6cb07b68f74d7f2bc9a38bcb8d0a6b9272b5c7c3f075a38cc4",
+      "size": 6309
+    },
+    "current-source/compile-affinity.json": {
+      "sha256": "daed2b8352de75ddb8ef7ade59ebd0d91d76b0ce04b592177eaeb825cf5b3670",
+      "size": 1059
+    },
+    "current-source/compiled-module.sha256": {
+      "sha256": "c331d26785b651f5297017f0388077c7ae005fc04c01e109259944e97de2d9ce",
+      "size": 150
+    },
+    "current-source/config-drift-attribution.json": {
+      "sha256": "9af3afed11dad6c277ada3b992a14503df08400c065ba1d175cdadc5a7aa017b",
+      "size": 11958
+    },
+    "current-source/config-drift-search.json": {
+      "sha256": "77980dd705b0e7421ff53802a70c6faa0fcd022b9352fbddd1af827f8f683281",
+      "size": 252
+    },
+    "current-source/cpu-affinity.txt": {
+      "sha256": "cc8ad24a093e664a10fb2afed224fe055d7bcac0832ebc2a5ecc86a87d58ee66",
+      "size": 118
+    },
+    "current-source/dynamic-section.txt": {
+      "sha256": "239d694db2bd529a8c06db62e35e460a21d7856029a6ef38dbfcdb699ec998c2",
+      "size": 1955
+    },
+    "current-source/execution-observer.jsonl": {
+      "sha256": "78aa43fbe19925501ef9bc808051e7bb33ca6c6e1ad9e9107943fd155beefc1e",
+      "size": 4887
+    },
+    "current-source/execution-observer.py": {
+      "sha256": "d5783ed373b326ed67793f164b0cdda3d033b2b63d4d13bd02ab69e9be9093be",
+      "size": 1322
+    },
+    "current-source/host-overload-context.json": {
+      "sha256": "9d6370c0967e48f5e5d387bf669251961649824d9267738cf9c673e7522f1355",
+      "size": 686
+    },
+    "current-source/host-toolchain.txt": {
+      "sha256": "b97c92e09e78a905ac0bd01b98db03bf4f5885e7416fec32deeaf13da4e1e78c",
+      "size": 635
+    },
+    "current-source/index.json": {
+      "sha256": "5d7332c0aac9e83e4f4ebba5e27578f3383686da618e0d058a7e1792107cdc00",
+      "size": 7538
+    },
+    "current-source/install-start.json": {
+      "sha256": "1feb674e26daf95cab6204a2e4602489c006eae719228dbebc25d152b2b9cb6e",
+      "size": 1134
+    },
+    "current-source/install.log": {
+      "sha256": "b20aedcdf47f5654ee6c06e20ceb7ca95d0791ed67dfb97d1e2db01ee0f03a2c",
+      "size": 858343
+    },
+    "current-source/install.mg5": {
+      "sha256": "efdce26ad50135c4ffd44e7b281b2d1083ada3356df775568dfa0bf74a9e09fc",
+      "size": 124
+    },
+    "current-source/isolated-configuration-after.txt": {
+      "sha256": "b91be118cfd2bf9e58c24d778eed88030e5777654b4f8b7c5b6a0b521e0e595d",
+      "size": 10731
+    },
+    "current-source/native-exports.txt": {
+      "sha256": "3261fbd2abac0ba45b63b09946f750928ae24e0a6ec3f507c4a441f8313ec5d0",
+      "size": 515
+    },
+    "current-source/package_evidence.py": {
+      "sha256": "6a151b8271cf63283f01717ab821c3db0bc09edbb263166b80d0d1860b42179e",
+      "size": 10021
+    },
+    "current-source/prepare_snapshot.py": {
+      "sha256": "521cf14c67d125b9f3bc9c01c0c1efcb73f0ebc0f05e1788116cd53d24dd2611",
+      "size": 4658
+    },
+    "current-source/production-after.json": {
+      "sha256": "60db348b5c9aeff7589a5e99eb7106bd6a0a5dc111a209aee84252431c34f8cc",
+      "size": 540
+    },
+    "current-source/production-before.json": {
+      "sha256": "2c263b458d8309599885504774135d30e67de2c9ec9ae09f45f3ce04bb984130",
+      "size": 540
+    },
+    "current-source/production-drift-observed.json": {
+      "sha256": "ef4accb3b8f7a3c2317a78fdcac42221392585a6279dfad1ac200218e45b4bcc",
+      "size": 1361
+    },
+    "current-source/production-main-configuration-observed.txt": {
+      "sha256": "568dd763e3410fff45ed10e0772193632d37f247b119aea233e47d548d3fb0fa",
+      "size": 11122
+    },
+    "current-source/release-validation-workers/original.json": {
+      "sha256": "2f96ab2a27ec825d41903f6ef3ee6083cac9498773555faa7d5849e94a8658c5",
+      "size": 168887
+    },
+    "current-source/release-validation-workers/original.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    "current-source/release-validation-workers/split.json": {
+      "sha256": "87c94542badb5f98ee82ec182fe3efe1361b1df53a69415d8fb92228d3c6e1fd",
+      "size": 168953
+    },
+    "current-source/release-validation-workers/split.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    "current-source/release-validation.json": {
+      "sha256": "b842ea8b1d7cd0035cbeeb014fe2b3560244489489ce1f26dd340f58736aae6b",
+      "size": 6078
+    },
+    "current-source/replay-console.log": {
+      "sha256": "d5d2ae0ca2c67eab6dbc7e3e56e455aacdd7339e59580aeb6afb4523c8823a6c",
+      "size": 206
+    },
+    "current-source/replay-execution.json": {
+      "sha256": "45c07e22c60f08ccfa8ed125f8b464caa3298369b714cc1e1fea88efb6457252",
+      "size": 2019
+    },
+    "current-source/resolved-source-hashes.json": {
+      "sha256": "806e1a419516d7a6ed09828bd5fe957bb5c5f3af413453495246681354f3e146",
+      "size": 393
+    },
+    "current-source/run.sh": {
+      "sha256": "4c93d2395c854adf8d97e843ea1a0e179b0fcf4333ee50ae057efffbf2e3609c",
+      "size": 713
+    },
+    "current-source/run_final_replay.py": {
+      "sha256": "1a8de051f295ed1dfd3ff8e79b5b9b8f8f953135b7940a46391e4e95180ead70",
+      "size": 2541
+    },
+    "current-source/snapshot-result.json": {
+      "sha256": "86be466aea9de9dc0f4e9edb0af149f230c7cb21ce5126afee95fa2ddb5d70d9",
+      "size": 403
+    },
+    "current-source/source-inventory.json": {
+      "sha256": "121331077759510707d06073028fade69885f3cc66a13489eccd96921133b11a",
+      "size": 358711
+    },
+    "current-source/source-revision.json": {
+      "sha256": "19ac526c92762d1ac97ddf2d8b7bfeb73642738e44994c8b1db955acca35caec",
+      "size": 4184
+    },
+    "current-source/tirust-NOTICES.txt": {
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+      "size": 717
+    },
+    "current-source/tirust-config.json": {
+      "sha256": "a11c93e0a0d347ef027493b34a0569fbc957d5a9a5dbadb107e3756e70c3b97c",
+      "size": 3050
+    },
+    "current-source/tirust-dependency-provenance.json": {
+      "sha256": "ed9b1a93b60925540896445df49f90faca9bb282b9f3434e9255d3c69f79b4e6",
+      "size": 539552
+    },
+    "current-source/validate_release.py": {
+      "sha256": "f8d068e919642570701dad7db58e7619f22fddbcd632b83127d9fcea172ed223",
+      "size": 29655
+    },
+    "dynamic-section.txt": {
+      "sha256": "676debcbc8e6bfd0120c103d956960b9b094fedaa69dd616f61653a4287cecd9",
+      "size": 1955
+    },
+    "install-command.mg5": {
+      "sha256": "f72e73aaf65336388fb4bab5b2d1024394a48f6e7cb995d5a342c5fb64582e6b",
+      "size": 178
+    },
+    "install.log": {
+      "sha256": "fa6adf9b4c23c21f4830d50d8328cd5c8c07da1b7acb371d744b7e6cdd981e4c",
+      "size": 850430
+    },
+    "native-exports.txt": {
+      "sha256": "9796c13e388314114726d4365e85c488218d6f1f44b726e4d88b5345abe18160",
+      "size": 515
+    },
+    "production-source-identity.json": {
+      "sha256": "ce9db7d2dfe9457fabdc5a30435e0bd6d6ebbd04c5f6010eebbab68ccd6e1b02",
+      "size": 2535
+    },
+    "test-only-amendment.diff": {
+      "sha256": "f4d76bb6f410f20720733cca1b1dfb0287c9444a48dc254258a2526f9e071e5d",
+      "size": 798
+    },
+    "test-only-amendment.json": {
+      "sha256": "40f1e076940813f39494d4da88589fd6f728108de1a9b2ac59f34b8bd0a3cfd9",
+      "size": 1334
+    },
+    "tirust-NOTICES.txt": {
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435",
+      "size": 717
+    },
+    "tirust-config.json": {
+      "sha256": "000ac5255c1ba3fa268f17524b4d30bcd5a231c38f13a10b820d7b4a208711da",
+      "size": 5723
+    },
+    "tirust-dependency-notices.tar.gz": {
+      "sha256": "fd455e7c9ca05ba553f70961b03d3ac6a242a7cfa0639b112e274f2847f1702a",
+      "size": 849305
+    },
+    "tirust-dependency-provenance.json": {
+      "sha256": "394073803fdbedf11bae627709bb9060a8fd156fa3d35816af0cf070d79a7b9f",
+      "size": 538179
+    },
+    "toolchain.json": {
+      "sha256": "9eb276dd6d12ca60c7152f5dfc285e6e1f5a1a59e204b887a07a523f2bc14d52",
+      "size": 2526
+    },
+    "unit-tests.log": {
+      "sha256": "8ba192cb1b113f5c30a81166847a7576f2f7620ffc21ff34a4642648bb4cbccb",
+      "size": 420
+    },
+    "validated-patch-manifest.json": {
+      "sha256": "f9344679b2d7081d03b34aefc112a64837e868d58527fd944951f5345ef27167",
+      "size": 1050
+    }
+  },
+  "commands": [
+    {
+      "argv": [
+        "nm",
+        "-D",
+        "--defined-only",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "output": "native-exports.txt",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/tirust/lib/libmadloop_tirust.so"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "output": "dynamic-section.txt",
+      "returncode": 0
+    },
+    {
+      "argv": [
+        "python",
+        "-m",
+        "unittest",
+        "tests.unit_tests.various.test_tirust_install",
+        "tests.unit_tests.various.test_ninjars_install",
+        "tests.unit_tests.various.test_rust_dependency_notices",
+        "tests.unit_tests.various.test_tirust_process_checks",
+        "tests.unit_tests.various.test_ninjars_integration_boundaries",
+        "-q"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+      "output": "unit-tests.log",
+      "returncode": 0
+    }
+  ],
+  "installer_command": [
+    "env",
+    "CARGO_NET_OFFLINE=true",
+    "python",
+    "bin/madgraph",
+    ".tirust-build/install-tirust.mg5"
+  ],
+  "post_install_changes": [
+    {
+      "native_artifacts_unchanged": true,
+      "published_configuration_unchanged": true,
+      "record": "configuration-transaction-audit.json",
+      "source_sha256": {
+        "madgraph/interface/madgraph_interface.py": "29c06f709fd6c5d60e4dbdf08a9497232dbe1a61e41b704f91e8c5e20a8a9dc9",
+        "madgraph/various/tirust_install.py": "352052637afbd82ab84f27508eda1bdfd9abc6115409adc23f8262e94c38d370",
+        "tests/unit_tests/various/test_tirust_install.py": "e92c4526030d6fa242b8be00a477c354376e6c0ebb58ff18d9b8492e0fca61db"
+      }
+    }
+  ],
+  "recorded_utc": "2026-11-09T20:15:52.670904+00:00",
+  "schema_version": 1,
+  "scope": "CLI installation, source/notice preservation, native ABI smoke and linkage audit; process numerical/relocation validation is recorded separately",
+  "source_sha256": {
+    "madgraph/interface/loop_interface.py": "dfa44594ca78dd9afebaa53bddd5248e96f4d7108d233fca29503b764d42e7a2",
+    "madgraph/interface/madgraph_interface.py": "fe595ab41a5997bb2c08450f1f487f33ca8c26284bc7eec81878c040d56e00a7",
+    "madgraph/various/banner.py": "75a63aa51c5224fa9d3d3cf7c69f1e2ae5f070cf2310a3fb7bcef40493796f13",
+    "madgraph/various/ninjars_install.py": "628cb57dfce7e1c70ce0ef8e5062fddb462c21ba4c905073187a6eb3a1d48fd3",
+    "madgraph/various/process_checks.py": "5a9682c482d7d8fad907f3bfd74aaac1871f4a03fa532c874dfe85b53536c4a7",
+    "madgraph/various/rust_dependency_notices.py": "ebbe06f17d5687b86c331098ac517ff967d522015b939ad716bd9c67947680c1",
+    "madgraph/various/tirust_install.py": "687b47be05580bc287bb58529e73c0197f3207f1ed9c10228bfe4166de5381a6"
+  },
+  "status": "passed"
+}

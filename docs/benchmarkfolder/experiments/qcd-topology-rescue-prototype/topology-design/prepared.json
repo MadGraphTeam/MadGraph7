@@ -1,0 +1,213 @@
+{
+  "changes": [
+    "14 generated QP call sites pass explicit LOOPNUM/CTMODE to private routines",
+    "Private helper gates the three original threshold branches by static eligibility",
+    "No DP entry point or standalone original diagnostic is changed",
+    "REF_NORMALIZATION and unconditional observer events remain outside eligibility guards; clamp events remain inside their branches"
+  ],
+  "compiler_executed": false,
+  "direction_summary": {
+    "4": {
+      "classifications": {
+        "complement_of_single_leg": 96,
+        "composite": 235,
+        "direct_single_leg": 146
+      },
+      "detailed_classifications": {
+        "complement_of_single_leg:Z": 32,
+        "complement_of_single_leg:massless": 64,
+        "composite": 235,
+        "direct_single_leg:Z": 32,
+        "direct_single_leg:massless": 114
+      },
+      "groups": 116,
+      "literal_support_sizes": {
+        "1": 146,
+        "2": 114,
+        "3": 121,
+        "4": 96
+      },
+      "pairs": 477,
+      "targets": 19
+    },
+    "5": {
+      "classifications": {
+        "complement_of_single_leg": 26,
+        "composite": 235,
+        "direct_single_leg": 216
+      },
+      "detailed_classifications": {
+        "complement_of_single_leg:Z": 3,
+        "complement_of_single_leg:massless": 23,
+        "composite": 235,
+        "direct_single_leg:Z": 61,
+        "direct_single_leg:massless": 155
+      },
+      "groups": 116,
+      "literal_support_sizes": {
+        "1": 216,
+        "2": 147,
+        "3": 88,
+        "4": 26
+      },
+      "pairs": 477,
+      "targets": 19
+    }
+  },
+  "graph_summary": {
+    "by_n": {
+      "2": {
+        "composite": 20,
+        "single_massless": 4
+      },
+      "3": {
+        "composite": 62,
+        "single_Z": 27,
+        "single_massless": 58
+      },
+      "4": {
+        "composite": 93,
+        "single_Z": 25,
+        "single_massless": 68
+      },
+      "5": {
+        "composite": 60,
+        "single_Z": 12,
+        "single_massless": 48
+      }
+    },
+    "classification_modulo_conservation": {
+      "composite": 235,
+      "single_Z": 64,
+      "single_massless": 178
+    },
+    "forward_arc_subset_sizes": {
+      "1": 220,
+      "2": 167,
+      "3": 68,
+      "4": 22
+    },
+    "groups": 116,
+    "literal_difference_subset_sizes": {
+      "1": 146,
+      "2": 114,
+      "3": 121,
+      "4": 96
+    },
+    "pairs": 477,
+    "single_leg_counts": {
+      "1": 33,
+      "2": 33,
+      "3": 64,
+      "4": 56,
+      "5": 56
+    }
+  },
+  "inputs": {
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/Cards/proc_card_mg5.dat": "10ab3ee9d3e17ffdb1e379feaa85972024c2ffca7d2d5a06293fab715e57d954",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/evidence-index.json": "6a2e48f62ee48ebd2a892da18f797249e686be660225e9d05c66415f98e8f5ac",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/derive_routing.py": "d5f0fd7c2e105871de1e60ad7fcdfc2c807be129e4414bda316a062c0509b502",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/evidence-index.json": "03dcf0b638a32edbd8362fa8cf6d12148250f276f095a53b7579e392aae4ad90",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/routing-modes.json": "54f5b404270fed3879d758d24a0991f0ae2975efb0add8eafcfad34cef8de414",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-trace/design/topology/audit_routing.py": "76715c3dd6d5f5ce1adcd746075b0e5f7c98695fbefc67605cc9901449783815",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-trace/design/topology/routing.json": "1198fbb0fc62de9a4bf23abafb704aa4a4b75f4e7df12bac605970d14e6a1fde"
+  },
+  "native_executed": false,
+  "outputs": {
+    "CT_interface.f": {
+      "bytes": 84566,
+      "sha256": "e10b55b425f52ff8913468f49c4092d9453e9ab7a1c9fb5ff3c8eecc6dbd950b"
+    },
+    "TIRUST_interface.f": {
+      "bytes": 24292,
+      "sha256": "4e4fcfb40d2c05f628db220f4435ffa9ed950cacd0ed900e4b542befad5be290"
+    },
+    "shell_classes.f": {
+      "bytes": 28643,
+      "sha256": "21e0f4cb1e36276c480b8cae722af01aa3efc3bb0e4245c2f6d490acc2d4d8dc"
+    }
+  },
+  "private_entry_points": [
+    "QK_MP_NINJARS_CLASSIFIED",
+    "QK_MP_TIRUST_CLASSIFIED",
+    "QK_MP_TIRUST_DIAGNOSTIC",
+    "QK_MP_BUILD_CLASSIFIED",
+    "QK_PAIR_CLASS"
+  ],
+  "producer_graph_sources": {
+    "Source/DHELAS/FFV1P0_3.f": {
+      "bytes": 1298,
+      "sha256": "414f1ded5d33c50edfed38aec24ca40437b4658723403397695666b16ee25766"
+    },
+    "Source/DHELAS/FFV1_1.f": {
+      "bytes": 2470,
+      "sha256": "c5d397a99f812f0c6ee618363d46e58fa9f8cba2c02b7c132ea3c4585fb29ba4"
+    },
+    "Source/DHELAS/FFV1_2.f": {
+      "bytes": 2473,
+      "sha256": "049b56435f003413c851707c119fcd98f24a35a5f9e83599d783bb550350b062"
+    },
+    "Source/DHELAS/FFV2_5_1.f": {
+      "bytes": 3603,
+      "sha256": "c04676a86a9f2b1520a848f94b2ceccc79293252daf670ac79fc4ce34437e038"
+    },
+    "Source/DHELAS/FFV2_5_2.f": {
+      "bytes": 3634,
+      "sha256": "a6e6fa905dd5005ed935441e7d1130278afa4cac57ac8ba6d0cf4a78dc25995b"
+    },
+    "Source/DHELAS/MP_FFV1P0_3.f": {
+      "bytes": 1313,
+      "sha256": "a24bf5902529b983a61c494a993797e2731f67e9d7d198a21ebb52c58489f2f1"
+    },
+    "Source/DHELAS/MP_FFV1_1.f": {
+      "bytes": 2485,
+      "sha256": "481a7ff498a673be927545650d6f6ae3967019950f7d48c9ff352bf5df4ada2d"
+    },
+    "Source/DHELAS/MP_FFV1_2.f": {
+      "bytes": 2488,
+      "sha256": "a8fe4ea5ddba2317533ae8128c67505b981667bc2514b69f716a29ec6081c986"
+    },
+    "Source/DHELAS/MP_FFV2_5_1.f": {
+      "bytes": 3618,
+      "sha256": "0e35828f1a9ae0ff1225a8182db97c60ceda09c7213638c5344ad6adf17531c6"
+    },
+    "Source/DHELAS/MP_FFV2_5_2.f": {
+      "bytes": 3649,
+      "sha256": "f3fc36c8c77a3cb4e91ad358df5f1eb3b6c043c6dbea98e2332315db2675f963"
+    },
+    "Source/DHELAS/MP_VVV1P0_1.f": {
+      "bytes": 1904,
+      "sha256": "97acea4bdf5bdaec7a6b0cd83d588d9abf0bc926d9c7727122e9af352596361d"
+    },
+    "Source/DHELAS/VVV1P0_1.f": {
+      "bytes": 1887,
+      "sha256": "cf5506184046b62491abe108e8422f85461ebab0d389ec675cdc5b852bb9681d"
+    },
+    "Source/DHELAS/aloha_functions.f": {
+      "bytes": 87869,
+      "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+    },
+    "SubProcesses/P0_uux_zgg/CT_interface.f": {
+      "bytes": 70163,
+      "sha256": "091cd7efe6ab18b2eb8cd5d31c834a48ceee9c69875834eaca9da3d5b3809363"
+    },
+    "SubProcesses/P0_uux_zgg/TIRUST_interface.f": {
+      "bytes": 12246,
+      "sha256": "90aa42f27796c7b8762ccfc5c7240a3dc90e21a399078a51031355eda15846d0"
+    },
+    "SubProcesses/P0_uux_zgg/helas_calls_ampb_1.f": {
+      "bytes": 25821,
+      "sha256": "3eaa865b92e37552e7de056f4b63861c3736b004d9d113e1d40d0b46200e7e92"
+    },
+    "SubProcesses/P0_uux_zgg/loop_CT_calls_1.f": {
+      "bytes": 18872,
+      "sha256": "f49561ab2c444c44eb862cc6a43b9d0e55d79520472d23e727919d81bbf3312f"
+    },
+    "SubProcesses/P0_uux_zgg/mp_helas_calls_ampb_1.f": {
+      "bytes": 26509,
+      "sha256": "138b9f55da144b18572fa102f1d49a9168002a6a91412f392154697f179925b9"
+    }
+  },
+  "schema": 1,
+  "script_sha256": "b7ea5035296667b73e0d81a5f619fc0ad2813474fe87e0122c4444fef3779cfb"
+}

@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "report_commit": "bd8eb72a179a2a6a4385af07d13507f94c52df95",
+  "required_input_files_verified": 4693,
+  "required_input_bytes_verified": 287811678,
+  "total_git_files_verified": 4695,
+  "compact_archive_verified": true,
+  "original_pdf_sha256": "f5cc86a70738dfc719b34a1e7686b57934fe1b421c7774275f2498ee0044d2df",
+  "reconstruction": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/report-bd8-reconstruction",
+  "pdf_recompiled": false,
+  "numerical_execution": false
+}
