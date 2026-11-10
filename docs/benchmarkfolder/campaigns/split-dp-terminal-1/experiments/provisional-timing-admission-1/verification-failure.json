@@ -1,0 +1,11 @@
+{
+  "cause": "Root temporarily applied the strict metadata version type guards to the live installer source",
+  "expected_frozen_source_sha256": "352052637afbd82ab84f27508eda1bdfd9abc6115409adc23f8262e94c38d370",
+  "failure": "ValueError: Candidate exporter/source bytes changed after preregistration",
+  "fixed_source_sha256": "4397d9f60e146354154cde942c20e01a086cf25797e41ddea6ac5054a563663e",
+  "label": "shared-host-1",
+  "native_measurement_started": false,
+  "resolution": "Retain proposed patch separately; restore exact frozen source before separately reviewing admission",
+  "returncode": 1,
+  "stage": "source-only verification, before native admission"
+}

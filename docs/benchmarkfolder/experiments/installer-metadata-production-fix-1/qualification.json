@@ -1,0 +1,13 @@
+{
+  "observation": "Transcribed from completed tool session24942; no raw pytest log captured",
+  "passed": 27,
+  "promotion_pending": true,
+  "reported_seconds": 0.79,
+  "returncode": 0,
+  "scope": "Real production metadata-reader code and mocked installer tests; no native installation/build or amplitude qualification",
+  "source_sha256": "4397d9f60e146354154cde942c20e01a086cf25797e41ddea6ac5054a563663e",
+  "subtests_passed": 37,
+  "temporarily_restored_to_frozen_campaign_source": true,
+  "test_command": "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider tests/unit_tests/various/test_tirust_install.py",
+  "tests_sha256": "e29c11ed4c57011025215f6735ad56c85972c3be04711fae6afb58feb558b6b7"
+}
