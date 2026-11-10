@@ -178,6 +178,10 @@ int main(int argc, char **argv) {
   if (argc == 5) {
     const char *ids[1] = {argv[4]};
     rusticol_virtual_selection selection = {ids, 1, NULL, 0, NULL, 0, NULL, 0, NULL};
+    /* The first selected call forms the selection's column set once (a
+     * Born-interfered process's selection template and its executor); the
+     * ratio compares the calls after it. */
+    evaluate(handle, &request, &selection, "one helicity (auto, first call)");
     double summed = evaluate(handle, &request, NULL, "summed (auto)");
     double one = evaluate(handle, &request, &selection, "one helicity (auto)");
     printf("one helicity / summed call: %.3f\n", one / summed);

@@ -448,7 +448,9 @@ The walkthrough steps, in order:
    PROCESS MOMENTA.txt [HELICITY]`, which the walkthrough calls with
    `SYMBOLICA_LICENSE` unset): open, `auto` and the other backend, the
    unchecked setting, the correlated call and one helicity against the summed
-   call (loop-induced and Born-interfered processes alike). In a source checkout without the
+   call (loop-induced and Born-interfered processes alike; after one first
+   selected call, which forms a Born-interfered process's selection once). In
+   a source checkout without the
    wheel's SDK, pass `LOOP_SDK_CFLAGS` and `LOOP_SDK_LIBS` (the Makefile's
    comment).
 

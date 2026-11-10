@@ -193,7 +193,9 @@ The one-loop example client
 squared-order axes and evaluates it with `reduction = "auto"` and the other
 backend, in the unchecked setting, the declared colour and spin correlations
 and one helicity against the summed call (loop-induced and Born-interfered
-processes alike); it needs no Symbolica licence. `examples/python/loop_walkthrough.py` writes its
+processes alike; the first selected call forms a Born-interfered process's
+selection template and its executor once, so the ratio is taken after it); it
+needs no Symbolica licence. `examples/python/loop_walkthrough.py` writes its
 momenta file and runs it.
 
 ## What the wheel provides
