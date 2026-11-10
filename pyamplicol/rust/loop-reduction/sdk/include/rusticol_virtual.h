@@ -152,9 +152,10 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
  * NinjaRS from its original exact inputs, at the call's own arithmetic, after
  * the TIRust call; a point NinjaRS fails too fails with both reasons. In
  * double-double and arbitrary precision every point the fallback serves is
- * guarded (m-lit lit-fallback-guard): its NinjaRS value runs the
- * reduction-direction check (reversed re-test frame, cached masters) in the
- * call's arithmetic, and a point whose relative estimate of the outputs the
+ * guarded (m-lit lit-fallback-guard): its NinjaRS value runs a rotation
+ * re-test (the point rotated exactly by the recommended checks' rotation and
+ * evaluated again) in the call's arithmetic, and a point whose relative
+ * estimate of the outputs the
  * call returns exceeds the guard's limit (the reduction target, never below
  * 1e-5) is RUSTICOL_VIRTUAL_FAILED with one reason naming the fallback, the
  * arithmetic, the estimate and the limit; a point within it keeps the
@@ -202,7 +203,8 @@ int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
   int unchecked);
 /* Kinematics improvement of later evaluations (the Python API's
  * kinematics_improvement=; m-lit lit-psimprove; additive, ABI version 2 kept):
- * "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to 1; the
+ * "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to 1,
+ * finished by the projection where MadLoop leaves the point inexact; the
  * default, also for NULL), "rescaling" (ImprovePSPoint 1), "projection" (the
  * frame-independent minimal-norm projection) or "off". Before a double-double
  * or arbitrary-precision evaluation (a binary64 one only under

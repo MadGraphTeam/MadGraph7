@@ -152,23 +152,37 @@ fn binary64_madloop_variants_and_the_default_chain() {
         }]
     );
     // A generic frame: ORIG refuses (200), MadLoop's fallback PSMC produces
-    // the point.
+    // the point; THE FINISH (the projection) continues from it only where
+    // PSMC's point misses exactness (USER 2026-11-10 ~19:20).
     let (legs, m2) = binary64_point(2, &[173.0], 1);
     let out = improve(&legs, 2, &m2, Variant::ZShift, true, &tolerances);
-    assert_eq!(
-        out.record.attempts,
-        vec![
-            Attempt {
-                step: "z-shift",
-                code: 200
-            },
-            Attempt {
-                step: "rescaling",
-                code: 0
-            }
-        ]
-    );
-    assert_eq!(out.record.produced, Some(Variant::Rescaling));
+    let psmc = improve(&legs, 2, &m2, Variant::Rescaling, false, &tolerances);
+    let mut expected = vec![
+        Attempt {
+            step: "z-shift",
+            code: 200,
+        },
+        Attempt {
+            step: "rescaling",
+            code: 0,
+        },
+    ];
+    if psmc.record.exactness.as_ref().unwrap().exact {
+        assert_eq!(out.record.produced, Some(Variant::Rescaling));
+        assert_eq!(out.legs, psmc.legs);
+    } else {
+        expected.push(Attempt {
+            step: "projection",
+            code: 0,
+        });
+        assert_eq!(out.record.produced, Some(FINISH));
+        assert!(
+            out.record.exactness.as_ref().unwrap().exact,
+            "{:?}",
+            out.record
+        );
+    }
+    assert_eq!(out.record.attempts, expected);
     // Forced ORIG there: refused, evaluated as given.
     let out = improve(&legs, 2, &m2, Variant::ZShift, false, &tolerances);
     assert_eq!(out.record.status, Status::NotImproved);
@@ -181,6 +195,56 @@ fn binary64_madloop_variants_and_the_default_chain() {
     );
     assert_eq!(out.legs, legs);
     assert_eq!(out.record.warning_kind(), Some(WARNING_NOT_IMPROVED));
+}
+
+/// THE FINISH from the input when both MadLoop variants refuse: a 2 -> 2
+/// point whose massless final state 4 has a negative energy (p3 = p1 + p2 -
+/// p4 massive; formed in binary64): ORIG refuses (404), PSMC (every energy
+/// put on its shell, positive) refuses, the projection projects the input
+/// itself (bitwise the projection selected alone) and the point is exact.
+/// Forced ORIG (no chain): evaluated as given.
+#[test]
+fn the_finish_projects_the_input_when_both_madloop_variants_refuse() {
+    let tolerances = Tolerances::default();
+    let (e, a, s, c) = (250.0, 50.3, 0.6, 0.8);
+    let legs = vec![
+        [e, 0.0, 0.0, e],
+        [e, 0.0, 0.0, -e],
+        [2.0 * e + a, 0.0, -a * s, -a * c],
+        [-a, 0.0, a * s, a * c],
+    ];
+    let m2 = vec![0.0, 0.0, 4.0 * e * e + 4.0 * e * a, 0.0];
+    let out = improve(&legs, 2, &m2, Variant::ZShift, true, &tolerances);
+    let attempts = &out.record.attempts;
+    assert_eq!(attempts.len(), 3, "{:?}", out.record);
+    assert_eq!(
+        attempts[0],
+        Attempt {
+            step: "z-shift",
+            code: 404
+        }
+    );
+    assert_eq!(attempts[1].step, "rescaling");
+    assert_ne!(attempts[1].code, 0, "{:?}", out.record);
+    assert_eq!(
+        attempts[2],
+        Attempt {
+            step: "projection",
+            code: 0
+        }
+    );
+    assert_eq!(out.record.produced, Some(FINISH));
+    assert!(
+        out.record.exactness.as_ref().unwrap().exact,
+        "{:?}",
+        out.record
+    );
+    assert_eq!(out.record.warning_kind(), None);
+    let alone = improve(&legs, 2, &m2, Variant::Projection, true, &tolerances);
+    assert_eq!(out.legs, alone.legs);
+    let forced = improve(&legs, 2, &m2, Variant::ZShift, false, &tolerances);
+    assert_eq!(forced.record.status, Status::NotImproved);
+    assert_eq!(forced.legs, legs);
 }
 
 #[test]
@@ -684,7 +748,6 @@ mod exact_points {
                 );
                 assert_exact(&out, n_initial, &m2, Arithmetic::DoubleDouble, &record);
             } else {
-                assert_eq!(record.attempts.len(), 2, "{name}: {record:?}");
                 assert_ne!(record.attempts[0].code, 0);
                 assert_eq!(
                     record.attempts[1],
@@ -694,9 +757,36 @@ mod exact_points {
                     },
                     "{name}"
                 );
-                assert_eq!(record.produced, Some(Variant::Rescaling));
+                // THE FINISH where PSMC's point misses exactness (its
+                // (x² - x) p₁ wherever x ≠ 1): the projection, exact.
+                let (psmc, psmc_record) = improve_exact(
+                    &input,
+                    n_initial,
+                    &masses,
+                    Arithmetic::DoubleDouble,
+                    Variant::Rescaling,
+                    false,
+                    &Tolerances::default(),
+                );
+                if psmc_record.exactness.as_ref().unwrap().exact {
+                    assert_eq!(record.attempts.len(), 2, "{name}: {record:?}");
+                    assert_eq!(record.produced, Some(Variant::Rescaling));
+                    assert_eq!(out, psmc, "{name}");
+                } else {
+                    assert_eq!(
+                        record.attempts[2..],
+                        [Attempt {
+                            step: "projection",
+                            code: 0
+                        }],
+                        "{name}: {record:?}"
+                    );
+                    assert_eq!(record.produced, Some(FINISH), "{name}");
+                    assert_eq!(record.warning_kind(), None, "{name}");
+                }
+                assert_exact(&out, n_initial, &m2, Arithmetic::DoubleDouble, &record);
             }
-            // 'rescaling': PSMC first.
+            // 'rescaling': PSMC first (and the finish where it is inexact).
             let (_, record) = improve_exact(
                 &input,
                 n_initial,
@@ -707,13 +797,106 @@ mod exact_points {
                 &Tolerances::default(),
             );
             assert_eq!(
-                record.attempts,
-                vec![Attempt {
+                record.attempts[0],
+                Attempt {
                     step: "rescaling",
                     code: 0
-                }],
+                },
                 "{name}"
             );
+            assert!(
+                record.exactness.as_ref().unwrap().exact,
+                "{name}: {record:?}"
+            );
+        }
+    }
+
+    /// THE FINISH (USER 2026-11-10 ~19:20 'Projection after MadLoop';
+    /// DECISIONS 2026-11-10 19:20 (F1)) in every extended carrier: a point
+    /// ORIG makes exact (beams along z) is MadLoop's bit for bit (the forced
+    /// ORIG's); elsewhere the projection continues from the dispatch's point
+    /// (bitwise the projection of PSMC's point) and the produced point is
+    /// exact, with no warning.
+    #[test]
+    fn the_finish_continues_from_madloops_point() {
+        for (name, legs, m2, n_initial, _) in sets() {
+            let input = binary64(&legs);
+            let masses = masses_of(&m2);
+            for arithmetic in &CARRIERS[1..] {
+                let arithmetic = *arithmetic;
+                let run = |variant, fallback, point: &[Leg]| {
+                    improve_exact(
+                        point,
+                        n_initial,
+                        &masses,
+                        arithmetic,
+                        variant,
+                        fallback,
+                        &Tolerances::default(),
+                    )
+                };
+                let (out, record) = run(DEFAULT_VARIANT, true, &input);
+                let (orig, orig_record) = run(Variant::ZShift, false, &input);
+                if orig_record
+                    .exactness
+                    .as_ref()
+                    .is_some_and(|exactness| exactness.exact)
+                {
+                    assert_eq!(out, orig, "{name} {arithmetic:?}");
+                    assert_eq!(record, orig_record_with_chain(&orig_record));
+                    continue;
+                }
+                let (psmc, psmc_record) = run(Variant::Rescaling, false, &input);
+                if psmc_record
+                    .exactness
+                    .as_ref()
+                    .is_some_and(|exactness| exactness.exact)
+                {
+                    // (PSMC exact: x = 1, the decay at rest.)
+                    assert_eq!(out, psmc, "{name} {arithmetic:?}");
+                    assert_eq!(record.produced, Some(Variant::Rescaling));
+                    continue;
+                }
+                assert_eq!(record.produced, Some(FINISH), "{name} {arithmetic:?}");
+                assert_eq!(record.warning_kind(), None, "{name} {arithmetic:?}");
+                assert_exact(&out, n_initial, &m2, arithmetic, &record);
+                assert!(record.moved < 1e-13, "{name} {arithmetic:?}: {record:?}");
+                if psmc_record.status == Status::Improved {
+                    // The projection of PSMC's point: bitwise in MPFR (its
+                    // values round-trip through exact rationals); in
+                    // double-double within the carrier's rounding (a
+                    // DoubleFloat's (hi, lo) split need not survive the
+                    // round trip, so the projection's own rounding differs).
+                    let (projected, projected_record) = run(Variant::Projection, true, &psmc);
+                    assert_eq!(record.scale, psmc_record.scale);
+                    if arithmetic == Arithmetic::DoubleDouble {
+                        let scale = out.iter().fold(r(0), |acc, leg| &acc + &leg[0].abs());
+                        let worst = out
+                            .iter()
+                            .zip(&projected)
+                            .flat_map(|(a, b)| a.iter().zip(b).map(|(x, y)| (x - y).abs()))
+                            .fold(r(0), |acc, d| if d > acc { d } else { acc });
+                        let n = out.len() as f64;
+                        assert!(
+                            (&worst / &scale).to_f64() <= 2.0 * n * unit_roundoff(arithmetic),
+                            "{name}: {}",
+                            (&worst / &scale).to_f64()
+                        );
+                    } else {
+                        assert_eq!(out, projected, "{name} {arithmetic:?}");
+                        assert_eq!(record.iterations, projected_record.iterations);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The record of the public chain where ORIG produced an exact point:
+    /// the forced ORIG's with the chain flag.
+    fn orig_record_with_chain(forced: &Record) -> Record {
+        Record {
+            fallback: true,
+            ..forced.clone()
         }
     }
 
@@ -912,8 +1095,14 @@ mod exact_points {
             &loose,
         );
         assert!(record.attempts[0].code > 1000, "{record:?}");
-        // Both refusing: evaluated as given, typed, both codes.
+        // Both MadLoop variants refusing: THE FINISH runs from the input;
+        // the projection refusing too (IS_CLOSE at MadLoop's 1e-2: the
+        // heavy shells are far): evaluated as given, typed, every code.
         let generic_point = generic(&legs);
+        let admitted = Tolerances {
+            close: Tolerances::default().close,
+            ..loose
+        };
         let (out, record) = improve_exact(
             &binary64(&generic_point),
             2,
@@ -921,10 +1110,10 @@ mod exact_points {
             dd,
             Variant::ZShift,
             true,
-            &loose,
+            &admitted,
         );
         assert_eq!(record.status, Status::NotImproved);
-        assert_eq!(record.attempts.len(), 2);
+        assert_eq!(record.attempts.len(), 3, "{record:?}");
         assert_eq!(
             record.attempts[0],
             Attempt {
@@ -933,7 +1122,15 @@ mod exact_points {
             }
         );
         assert!(record.attempts[1].code > 1000, "{record:?}");
+        assert_eq!(
+            record.attempts[2],
+            Attempt {
+                step: "projection",
+                code: CODE_NOT_CLOSE
+            }
+        );
         assert_eq!(out, binary64(&generic_point));
+        assert!(record.warning().unwrap().contains("projection 999"));
     }
 
     #[test]

@@ -26,10 +26,14 @@ chooses the effective backend once per call and carrier, never per point:
   precision; ``fallback_guarded``) every point the fallback serves is
   GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and
   11:53): NinjaRS before 71eddb15 (pin 5b6a8f57) returned finite, badly wrong values as
-  success at near-planar 2 -> 3 points of rank-n pentagon families, so the
-  fallback's value runs the reduction-direction re-reduction (the
-  cached-master check of ``stability.REDUCTION``, never its rescaled
-  variant) at the call's own carrier, and the point fails typed (one
+  success at near-planar 2 -> 3 points of rank-n pentagon families, and in
+  the extended carriers it still loses digits ~1/Gram at a nearly
+  degenerate 2 -> 2 (sub-)box (its cut stage), so the fallback's value runs a
+  ROTATION RE-TEST (``guard_rotation``: the recommended checks' rotation
+  of the evaluated point, exact, at the call's own carrier; DECISIONS
+  2026-11-10 18:54 (c) / 19:20 (c): it sees the double-double near-forward
+  misses of the cached reduction-direction check, with no false rejection
+  on the regular double-double sets), and the point fails typed (one
   reason, ``text("rejected")``, naming the fallback, TIRust's failure, the
   carrier, the estimate and the limit) when the check's relative estimate
   exceeds the guard's limit, the call's target never below 1e-5
@@ -40,9 +44,9 @@ chooses the effective backend once per call and carrier, never per point:
   DECISIONS 2026-11-09 14:30 Q7); the
   estimate is in the point's record (``VirtualReduction.guard_estimate``),
   an accepted point keeps the fallback's value bitwise and its public
-  estimate is the call's checks' own. The call's own cached reduction check
-  is reused; beside other checks the guard's runs in addition, on the
-  served points only (``with_fallback``). A binary64 fallback point is
+  estimate is the call's checks' own. The call's own checks are reused
+  when their first rotation is the guard's; otherwise the guard's runs in
+  addition, on the served points only (``with_fallback``). A binary64 fallback point is
   served unguarded (its protection is NinjaRS's own conditioning bound,
   m-lit lit-ninja-planar). Points TIRust serves run nothing more;
 * an explicit backend that cannot serve the call is refused typed
@@ -497,7 +501,7 @@ def fallback_estimate(
 
 def _guard_sectors(estimate: Any) -> list[tuple[float, float, float]]:
     """Per sector of one output's estimate (a ``StabilityEstimate`` of the
-    reduction-direction check alone) its magnitude (the largest |Laurent
+    guard's rotation re-test alone) its magnitude (the largest |Laurent
     coefficient|, ``stability.relative``'s scale), its largest absolute
     estimate E and its largest term scale S (NaN where a value is not a
     number: a NaN budget is no estimate, and ``max`` would pass over it)."""
@@ -518,45 +522,70 @@ def _guard_sectors(estimate: Any) -> list[tuple[float, float, float]]:
 
 def _guard_estimate(result: Any) -> float:
     """The guard's estimate of one point (``fallback_estimate``) from the
-    cached reduction-direction check of every output the call returns
-    (``stability.REDUCTION``: alone, ``StabilityEstimate.subset`` of the
+    rotation re-test of every output the call returns (the guard's rotation,
+    ``guard_rotation``, the first rotation of the checks that ran:
+    ``stability.ROTATION`` 0 alone, ``StabilityEstimate.subset`` of the
     point's checks when they ran others too): the summed value (one output)
     or each resolved, correlated or selected output (DECISIONS 2026-11-09
     14:30 Q7: the guard decides on the returned outputs, never on the
     point's sum over rows the call does not return). NaN when an output has
     no such estimate."""
 
-    from .stability import REDUCTION
+    from .stability import ROTATION
 
+    check = ROTATION.format(0)
     outputs = []
     roundoff = math.nan
     for output in _outputs(result):
         estimate = getattr(output, "stability", None)
-        if estimate is None or REDUCTION not in estimate.budgets:
+        if estimate is None or check not in estimate.budgets:
             return math.nan
-        if set(estimate.budgets) != {REDUCTION}:
-            estimate = estimate.subset([REDUCTION])
+        if set(estimate.budgets) != {check}:
+            estimate = estimate.subset([check])
         roundoff = estimate.roundoff
         outputs.append(_guard_sectors(estimate))
     return fallback_estimate(outputs, roundoff)
 
 
-def _reduction_check(checks: Any) -> Any:
-    """The fallback guard's checks: the cached reduction-direction check
-    alone, of the caller's checks' type (``VirtualStabilityChecks`` or
+def guard_rotation() -> Any:
+    """The fallback guard's rotation re-test (``reduction_policy::
+    FALLBACK_CHECK``; DECISIONS 2026-11-10 18:54 (c) / 19:20 (c)): the
+    recommended checks' rotation, ``stability.default_rotation`` at the
+    native policy's ``fallback_rotation`` (``FALLBACK_ROTATION``, 0; the
+    native SDKs' ``v2_stability::default_rotation``), applied exactly to
+    the point the fallback evaluated (the caller's exact inputs, improved
+    in the call's carrier)."""
+
+    from .stability import default_rotation
+
+    return default_rotation(int(policy()["fallback_rotation"]))
+
+
+def _guard_check(checks: Any) -> Any:
+    """The fallback guard's checks: its rotation (``guard_rotation``) alone,
+    of the caller's checks' type (``VirtualStabilityChecks`` or
     ``stability.StabilityChecks``; None: the latter)."""
 
+    rotation = guard_rotation()
     if checks is None:
         from .stability import StabilityChecks
 
-        return StabilityChecks(reduction_direction=True)
+        return StabilityChecks(rotations=(rotation,))
     return replace(
         checks,
-        rotations=(),
-        reduction_direction=True,
+        rotations=(rotation,),
+        reduction_direction=False,
         rescaled=False,
         cross_backend=False,
     )
+
+
+def _carries_guard(checks: Any) -> bool:
+    """Whether ``checks`` run the guard's rotation first (its estimate,
+    ``stability.ROTATION`` 0, is then the guard's: reused)."""
+
+    rotations = tuple(getattr(checks, "rotations", ()) or ())
+    return bool(rotations) and rotations[0] == guard_rotation()
 
 
 def with_fallback(
@@ -584,19 +613,20 @@ def with_fallback(
     arbitrary precision, USER 2026-11-09 ~11:53; a binary64 fallback point
     is served unguarded, with no estimate) every point the fallback SERVED
     is GUARDED (m-lit lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and
-    11:53): the cached reduction-direction re-reduction
-    (``stability.REDUCTION``: every loop numerator reduced a second time in
-    the reversed frame, its coefficients and the cached masters reused;
-    never the rescaled variant) runs at the call's carrier (never
-    escalated, USER 2026-11-08 ~20:55) and its relative estimate
+    11:53; its check since DECISIONS 2026-11-10 19:20 (c)): the rotation
+    re-test (``guard_rotation``: the point the fallback evaluated, rotated
+    exactly by the recommended checks' rotation and evaluated again, the
+    outputs compared, ``stability.ROTATION`` 0) runs at the call's carrier
+    (never escalated, USER 2026-11-08 ~20:55) and its relative estimate
     (``_guard_estimate``) is recorded in the point's record
     (``VirtualReduction.guard_estimate``). When the call's checks run that
-    cached check they are reused (no second re-reduction); without checks
-    the fallback's evaluation runs it and the public result stays what an
-    evaluation without checks returns; beside other checks (rotations
-    only, or the rescaled variant: ``RECOMMENDED_CHECKS``, every default
-    rescue level) the served points are evaluated once more with the cached
-    check alone. The guard decides on the outputs the call RETURNS
+    rotation first they are reused (no second rotated evaluation:
+    ``RECOMMENDED_CHECKS``); without checks the fallback's evaluation runs
+    it and the public result stays what an evaluation without checks
+    returns; beside other checks (another rotation first, e.g. every
+    default rescue level's ``euler:0.1,0.2,0.3``, or the reduction checks
+    alone) the served points are evaluated once more with the guard's
+    rotation alone. The guard decides on the outputs the call RETURNS
     (DECISIONS 2026-11-09 14:30, RULING Q7: a point's summed value, or each
     output of a resolved, correlated or selected call, whose evaluation
     dresses the selected rows only, USER 2026-11-08 'only the selected
@@ -640,22 +670,22 @@ def with_fallback(
         return results, failures, records
     indices = sorted(failures)
     # The fallback's checks (a fallback point's cross-backend check is not
-    # run, m-lit R6) and how the guard's cached re-reduction runs beside
-    # them: reused, carried by the fallback's evaluation, or once more.
+    # run, m-lit R6) and how the guard's rotation re-test runs beside them:
+    # reused, carried by the fallback's evaluation, or once more.
     plain = (
         replace(checks, cross_backend=False)
         if checks is not None and checks.cross_backend
         else checks
     )
     enabled = plain is not None and bool(plain.rotations or plain.reduction_direction)
-    reused = enabled and plain.reduction_direction and not plain.rescaled
+    reused = enabled and _carries_guard(plain)
     target = choice.target if choice.target is not None else default_target()
     checking = fallback_guarded(carrier)
     with running(fallback, choice.target, choice.unchecked):
         # Without the call's checks the fallback's evaluation carries the
         # guard's check.
         merged = checking and not enabled
-        again, still = run(indices, _reduction_check(plain) if merged else plain)
+        again, still = run(indices, _guard_check(plain) if merged else plain)
         still = dict(still)
         served = [local for local in range(len(indices)) if local not in still]
         guarded: dict[int, float] = {}
@@ -663,7 +693,7 @@ def with_fallback(
             guarded = {local: _guard_estimate(again[local]) for local in served}
         elif checking and served:
             chosen = [indices[local] for local in served]
-            found, missed = run(chosen, _reduction_check(plain))
+            found, missed = run(chosen, _guard_check(plain))
             for k, local in enumerate(served):
                 if k in missed:
                     # The guard's check fails the point (as the fallback's

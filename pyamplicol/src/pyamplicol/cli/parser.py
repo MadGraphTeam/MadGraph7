@@ -907,8 +907,9 @@ def _add_kinematics_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "improve the input points to exact energy-momentum conservation "
             "and exact on-shell externals in each carrier above binary64: "
-            "'z-shift' (MadLoop's ImprovePSPoint 2 with its fallback to 1; "
-            "the default), 'rescaling' (MadLoop's ImprovePSPoint 1), "
+            "'z-shift' (MadLoop's ImprovePSPoint 2 with its fallback to 1, "
+            "finished by the projection where MadLoop leaves the point "
+            "inexact; the default), 'rescaling' (MadLoop's ImprovePSPoint 1), "
             "'projection' (the frame-independent minimal-norm projection) or "
             "'off'"
         ),

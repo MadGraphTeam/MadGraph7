@@ -653,9 +653,10 @@ impl Runtime {
     /// The kinematics improvement of later evaluations (m-lit
     /// lit-psimprove; the Python API's `kinematics_improvement=`):
     /// `"z-shift"` (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to
-    /// 1; the default), `"rescaling"` (ImprovePSPoint 1, with the fallback to
-    /// 2), `"projection"` (the frame-independent minimal-norm projection) or
-    /// `"off"`. Before anything is evaluated in a carrier above binary64
+    /// 1, finished by the projection where MadLoop leaves the point inexact;
+    /// the default), `"rescaling"` (ImprovePSPoint 1, with the fallback to 2
+    /// and the same finish), `"projection"` (the frame-independent
+    /// minimal-norm projection) or `"off"`. Before anything is evaluated in a carrier above binary64
     /// (double-double, arbitrary precision), each point's momenta are moved
     /// onto exact energy-momentum conservation and the external shells in
     /// that carrier's arithmetic, from the caller's exact inputs, in the
@@ -1949,9 +1950,9 @@ impl Evaluation {
                     reduction,
                     momenta.len(),
                     arithmetic,
-                    // The fallback's points run with the guard's cached
-                    // check in the call's carrier (one evaluation per
-                    // served point, as the Python API's).
+                    // The fallback's points run with the guard's rotation
+                    // re-test in the call's carrier (the point and its
+                    // rotation, as the Python API's).
                     |native, indices| match indices {
                         None => Ok(native
                             .evaluate_extended(&momenta, &scales, poles.v2(), arithmetic.v2())?

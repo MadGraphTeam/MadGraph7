@@ -24,15 +24,24 @@
 //!   components), iterated in the carrier until the residual is at the
 //!   carrier's rounding level or stops decreasing (no iteration cap).
 //!
-//! THE CHAIN of each selection ([`improve`]): MadLoop's dispatch exactly for
-//! the two MadLoop variants (`IMPROVE_PS_POINT_PRECISION`: IS_PHYSICAL, then
-//! the selected variant, on a refusal code the other one, both refusing ->
-//! evaluated as given with a typed warning); the projection alone, with no
-//! MadLoop variant after it (DECISIONS 2026-11-10 02:29). The produced
-//! point's EXACTNESS RECORD measures its shell and conservation defects in
-//! the carrier against the carrier's rounding level; above it the record
-//! carries a typed warning naming the variant and the residual. A record,
-//! never a fallback (DECISIONS 2026-11-10 01:56 (3)).
+//! THE CHAIN of each selection ([`improve`]): for the two MadLoop variants
+//! MadLoop's dispatch (`IMPROVE_PS_POINT_PRECISION`: IS_PHYSICAL, then the
+//! selected variant, on a refusal code the other one) and THE FINISH
+//! ([`FINISH`], USER 2026-11-10 ~19:20 'Projection after MadLoop';
+//! DECISIONS 2026-11-10 19:20 (F1)): when the dispatch leaves a physical
+//! input inexact (its produced point misses the exactness check, e.g.
+//! PSMC's (x² - x) p₁ in a frame whose beams are not along z, or both
+//! variants refuse), the projection continues from the dispatch's point; a
+//! point a MadLoop variant makes exact (ORIG with beams along z) is
+//! MadLoop's, bit for bit. Evaluated as given, with a typed warning naming
+//! every attempt, only when IS_PHYSICAL fails (MadLoop's input test) or the
+//! projection refuses too; on a refusal of the finish after a produced
+//! point, that point stands with its exactness record. The projection
+//! selection runs alone, with no MadLoop variant after it (DECISIONS
+//! 2026-11-10 02:29); a forced variant (`fallback` false) runs alone. The
+//! produced point's EXACTNESS RECORD measures its shell and conservation
+//! defects in the carrier against the carrier's rounding level; above it
+//! the record carries a typed warning naming the variant and the residual.
 //!
 //! TOLERANCES. improve_ps.inc's precision literals are quadruple-precision
 //! values; here each is derived from the carrier's unit roundoff `u`
@@ -129,6 +138,16 @@ pub const SETTINGS: [&str; 4] = ["z-shift", "rescaling", "projection", OFF];
 /// constant every surface reads (the Python API, the run card and CLI, the
 /// native SDKs).
 pub const DEFAULT_VARIANT: Variant = Variant::ZShift;
+
+/// THE FINISH of the public MadLoop chains: the variant that continues from
+/// a point MadLoop's dispatch leaves inexact (USER 2026-11-10 ~19:20
+/// "Projection after MadLoop": keep MadLoop's chain and, only when it
+/// leaves the point inexact, finish with the frame-independent projection;
+/// DECISIONS 2026-11-10 19:20 (F1), amending 01:56 (1) / (3) for that
+/// case). In a frame whose beams are not along z ORIG refuses (code 200)
+/// and PSMC leaves its conservation residual, which a nearly degenerate
+/// loop amplifies ~1/Gram where no rotation or rescaling check sees it.
+pub const FINISH: Variant = Variant::Projection;
 
 /// The binary64 switch's default: off (USER ~01:56; DECISIONS 2026-11-10
 /// 01:56 (2)). What counts as a double-precision evaluation is the CARRIER
@@ -482,8 +501,9 @@ impl Status {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Record {
     pub requested: Variant,
-    /// Whether MadLoop's fallback to the other MadLoop variant ran on a
-    /// refusal (the public chain), or the requested variant alone.
+    /// Whether the public chain ran (MadLoop's fallback to the other
+    /// MadLoop variant on a refusal, then [`FINISH`] on an inexact
+    /// outcome), or the requested variant alone.
     pub fallback: bool,
     pub status: Status,
     /// The variant that produced the point.
@@ -599,6 +619,7 @@ pub fn policy_json() -> serde_json::Value {
     serde_json::json!({
         "settings": SETTINGS,
         "default": DEFAULT_VARIANT.name(),
+        "finish": FINISH.name(),
         "off": OFF,
         "binary64_default": DEFAULT_BINARY64,
         "setting_refusal": SETTING_REFUSAL,
@@ -626,9 +647,10 @@ pub struct Improved<T> {
 /// `legs` are physical momenta (the `n_initial` initial states first),
 /// `masses2` the target squared mass of every leg (exactly the masses the
 /// evaluation's external shells use; a leg without a bound mass takes its
-/// own `p²`). With `fallback` the MadLoop selections run MadLoop's dispatch
-/// (the public chain); without it the requested variant runs alone (a
-/// forced variant: its refusal is reported with its code).
+/// own `p²`). With `fallback` the MadLoop selections run the public chain
+/// (MadLoop's dispatch, then [`FINISH`] where it leaves a physical input
+/// inexact); without it the requested variant runs alone (a forced variant:
+/// its refusal is reported with its code).
 pub fn improve<T: PsReal>(
     legs: &[[T; 4]],
     n_initial: usize,
@@ -665,6 +687,8 @@ pub fn improve<T: PsReal>(
         };
     }
     let mut produced: Option<(Vec<[T; 4]>, Variant)> = None;
+    // Whether MadLoop's input test passed (the finish's condition).
+    let mut physical = false;
     match variant {
         Variant::ZShift | Variant::Rescaling => {
             // improve_ps.inc IMPROVE_PS_POINT_PRECISION.
@@ -674,6 +698,7 @@ pub fn improve<T: PsReal>(
                     code: CODE_NOT_PHYSICAL,
                 });
             } else {
+                physical = true;
                 let mut chain = vec![variant];
                 if fallback {
                     chain.extend(variant.madloop_fallback());
@@ -717,6 +742,47 @@ pub fn improve<T: PsReal>(
                 }
                 Err(code) => record.attempts.push(Attempt {
                     step: Variant::Projection.name(),
+                    code,
+                }),
+            }
+        }
+    }
+    // THE FINISH of the public MadLoop chain (USER 2026-11-10 ~19:20,
+    // DECISIONS 19:20 (F1)): when MadLoop's dispatch leaves a physical input
+    // inexact (its produced point misses the exactness check, or both MadLoop
+    // variants refuse), the projection continues from the dispatch's point
+    // (the produced one, else the input). A point a MadLoop variant makes
+    // exact is untouched (bit for bit MadLoop's); on the projection's refusal
+    // the dispatch's outcome stands (its typed warning names every attempt).
+    if fallback && physical {
+        let inexact = produced
+            .as_ref()
+            .is_none_or(|(point, _)| !ctx.exactness(point, masses2, n_initial).exact);
+        if inexact {
+            let start = produced
+                .as_ref()
+                .map_or(legs, |(point, _)| point.as_slice());
+            let (outcome, iterations) = ctx.projection(start, masses2, n_initial);
+            record.iterations = Some(iterations);
+            // IS_CLOSE against the caller's input (the projection tests its
+            // own start).
+            let outcome = outcome.and_then(|point| {
+                if ctx.is_close(legs, &point) {
+                    Ok(point)
+                } else {
+                    Err(CODE_NOT_CLOSE)
+                }
+            });
+            match outcome {
+                Ok(point) => {
+                    record.attempts.push(Attempt {
+                        step: FINISH.name(),
+                        code: 0,
+                    });
+                    produced = Some((point, FINISH));
+                }
+                Err(code) => record.attempts.push(Attempt {
+                    step: FINISH.name(),
                     code,
                 }),
             }

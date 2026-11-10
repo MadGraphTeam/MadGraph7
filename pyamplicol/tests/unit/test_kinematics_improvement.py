@@ -20,10 +20,12 @@ loop-induced helicity selections; a rescue stack binary64 -> double-double
 per-point NinjaRS fallback) records the variant that produced its point and
 returns the values of the explicitly pre-improved exact point evaluated with
 the improvement off, bitwise; the stability rotations act on the improved
-point; binary64 is untouched unless switched on; ``"off"`` records
-``"off"``; an exactly physical point is passed unchanged; a frame whose
-beams are not along z takes MadLoop's fallback (PSMC, with the typed
-exactness warning) under the default and is exact with ``"projection"``.
+point (the summed and resolved routes and a rescue level's checks);
+binary64 is untouched unless switched on; ``"off"`` records ``"off"``; an
+exactly physical point is passed unchanged; a frame whose beams are not
+along z takes MadLoop's fallback (PSMC) under the default and THE FINISH
+(the projection continues from PSMC's inexact point, USER 2026-11-10
+~19:20, DECISIONS 19:20 (F1)): exact, as with ``"projection"``.
 The loop SDK (C ABI) in double-double and at 32 digits gives the Python
 API's records and values; the tree runtime's higher-precision modes, its
 correlated default and the binary64 switch through the native tree runtime.
@@ -239,6 +241,15 @@ EXACT = [
 CALL = {"mu_r2": "8315.06", "poles": "none", "on_failure": "return"}
 
 
+def _recommended():
+    """``RECOMMENDED_CHECKS``: one rotation, the rescaled reduction-direction
+    check."""
+
+    from pyamplicol.api import VirtualStabilityChecks
+
+    return VirtualStabilityChecks(1, True, rescaled=True)
+
+
 def _same(a, b) -> None:
     assert repr(a.values) == repr(b.values)
 
@@ -315,16 +326,21 @@ def test_the_summed_route_in_double_double_and_arbitrary_precision(gg):
 
 
 @pytest.mark.loop_physics
-def test_an_exact_point_is_passed_unchanged_and_a_rotated_frame_falls_back(gg):
+def test_an_exact_point_is_passed_unchanged_and_a_rotated_frame_is_finished(gg):
     """An exactly physical input is evaluated as given (status "exact",
     bitwise the improvement off); in a frame whose beams are not along z the
-    default chain records ORIG's refusal (200) and PSMC producing the point
-    with the typed exactness warning (a record, not a failure: the value is
-    returned), and "projection" is exact there."""
+    default chain records ORIG's refusal (200), PSMC producing a point that
+    misses exactness (its (x^2 - x) p1 residual, far above double-double's
+    rounding) and THE FINISH, the projection continuing from PSMC's point
+    (USER 2026-11-10 ~19:20 'Projection after MadLoop'; DECISIONS 19:20
+    (F1)): exact, no warning, the value of that point with the improvement
+    off; PSMC alone (``fallback=False``) keeps the typed exactness warning.
+    "projection" is exact there too."""
 
     from pyamplicol import Runtime
 
     runtime = Runtime.load(gg, process="gg")
+    backend = runtime._backend
     call = {**CALL, "arithmetic": "double-double"}
     found = runtime.evaluate([EXACT], **call)
     assert found.diagnostics[0].kinematics.status == "exact"
@@ -332,12 +348,27 @@ def test_an_exact_point_is_passed_unchanged_and_a_rotated_frame_falls_back(gg):
     rotated = _rotated(_beam_point())
     found = runtime.evaluate([rotated], **call)
     record = found.diagnostics[0].kinematics
-    assert record.attempts == (("z-shift", 200), ("rescaling", 0)), record
-    assert record.produced == "rescaling"
-    if not record.exact:
-        assert record.warning == "kinematics-inexact"
-        assert "rescaling" in record.warning_text
+    assert record.attempts == (
+        ("z-shift", 200),
+        ("rescaling", 0),
+        ("projection", 0),
+    ), record
+    assert record.produced == "projection" and record.exact, record
+    assert record.warning is None
     assert found.values[0] is not None and found.diagnostics[0].status == "success"
+    improved, _ = backend.improved_points(
+        [rotated], arithmetic="double-double", mu_r2=CALL["mu_r2"]
+    )
+    _same(found, runtime.evaluate(improved, kinematics_improvement="off", **call))
+    _psmc, (alone,) = backend.improved_points(
+        [rotated],
+        arithmetic="double-double",
+        mu_r2=CALL["mu_r2"],
+        variant="rescaling",
+        fallback=False,
+    )
+    assert alone.produced == "rescaling" and not alone.exact, alone
+    assert alone.warning == "kinematics-inexact" and "rescaling" in alone.warning_text
     projected = runtime.evaluate([rotated], kinematics_improvement="projection", **call)
     record = projected.diagnostics[0].kinematics
     assert record.produced == "projection" and record.exact and record.warning is None
@@ -370,6 +401,18 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
                 improved, kinematics_improvement="off", **call
             ).values
         )
+        # The resolved route's stability rotations act on the improved
+        # point, never on the binary64 one rotated then lifted (DECISIONS
+        # 2026-11-10 18:54 (b)): values and estimates are the pre-improved
+        # point's with the same checks.
+        checked = {**call, "stability_checks": _recommended()}
+        found = runtime.evaluate_resolved([point], **checked)
+        reference = runtime.evaluate_resolved(
+            improved, kinematics_improvement="off", **checked
+        )
+        assert repr(found.values) == repr(reference.values)
+        assert found.stability[0] is not None
+        assert repr(found.stability) == repr(reference.stability)
         many = runtime.evaluate_correlated_many([point], requests, **call)
         reference = runtime.evaluate_correlated_many(
             improved, requests, kinematics_improvement="off", **call
@@ -402,6 +445,27 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
         **{k: v for k, v in CALL.items()},
     )
     assert repr(rescued.values[0]) == repr(direct.values[0])
+    # Each level's checks (one rotation and the rescaled re-reduction) act on
+    # the point improved in that level's carrier (DECISIONS 2026-11-10 18:54
+    # (b)): the level's estimate is that of its pre-improved point with the
+    # level's checks, the improvement off.
+    for level, digits in (
+        (policy.levels[1], {}),
+        (policy.levels[2], {"precision": 40}),
+    ):
+        (attempt,) = [a for a in attempts if a.arithmetic == level.arithmetic]
+        at, _ = backend.improved_points(
+            [point], arithmetic=level.arithmetic, **digits, mu_r2=CALL["mu_r2"]
+        )
+        checked = runtime.evaluate(
+            at,
+            arithmetic=level.arithmetic,
+            **digits,
+            stability_checks=level.checks,
+            kinematics_improvement="off",
+            **CALL,
+        )
+        assert attempt.estimate == checked.stability[0].relative, level
 
 
 @pytest.mark.loop_physics

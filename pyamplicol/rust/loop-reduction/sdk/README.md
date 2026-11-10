@@ -123,11 +123,12 @@ enabled binary64 monitoring's own evaluations, is evaluated again on NinjaRS
 from its original exact inputs, in the call's own arithmetic, after the TIRust
 call (the per-point fallback; none on a TIR-only artifact); a point NinjaRS
 fails too fails with both reasons. In double-double and arbitrary precision
-every point the fallback serves is guarded (m-lit lit-fallback-guard): the
-reduction-direction re-test (reversed frame, cached masters) of the outputs
-the call returns (the summed |A|^2, or each resolved, correlated or selected
-output, of the call's rows only), in the call's own arithmetic, within the
-fallback's own evaluation of the point, each output's relative estimate
+every point the fallback serves is guarded (m-lit lit-fallback-guard): a
+rotation re-test (the point and its spin sources rotated exactly by the
+recommended checks' rotation and evaluated again on the fallback;
+`reduction_policy::FALLBACK_CHECK`) of the outputs the call returns (the
+summed |A|^2, or each resolved, correlated or selected output, of the call's
+rows only), in the call's own arithmetic, each output's relative estimate
 against its own magnitude (a vanishing output's against the largest returned
 output), and a point whose estimate exceeds the target below, never below
 1e-5, has status Failed with

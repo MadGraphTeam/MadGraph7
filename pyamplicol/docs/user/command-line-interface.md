@@ -452,7 +452,7 @@ a Born-interfered process, falling back to NinjaRS with the reason recorded
 where TIRust cannot serve the call; on TIRust a point it refuses or fails is
 evaluated again on NinjaRS (the per-point fallback, recorded in that point's
 lane diagnostic), and in double-double and arbitrary precision each point it
-serves is guarded by its reduction-direction check in the evaluation's
+serves is guarded by a rotation re-test in the evaluation's
 arithmetic: a point whose estimate exceeds the target (never below 1e-5)
 fails with the reason (the estimate is in the lane's `reduction` record,
 `guard_estimate`; [Python API](python-api.md), "Near-planar NinjaRS
@@ -465,7 +465,8 @@ of each point's result, default 1e-5; it sets the calibrated acceptance of
 TIRust's checked method choice and, never below 1e-5, is the fallback
 guard's threshold).
 `--kinematics-improvement VARIANT` (`z-shift`, `rescaling`, `projection` or `off`; default
-`z-shift`, MadLoop's `ImprovePSPoint = 2` with its fallback to 1) and
+`z-shift`, MadLoop's `ImprovePSPoint = 2` with its fallback to 1, finished by
+the projection where MadLoop leaves the point inexact) and
 `--[no-]kinematics-improvement-binary64` (default off) set the improvement
 of the input points to exact conservation and on-shell externals before a
 double-double or arbitrary-precision evaluation (binary64 only with the
