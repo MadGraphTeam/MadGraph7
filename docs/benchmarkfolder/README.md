@@ -251,6 +251,13 @@ this successor performs no new preparation builds or model probes. The failed
 attempt1 capsule and all its unexecuted rows remain visible. Broad CMS accuracy,
 an independent finite-term oracle and performance remain open.
 
+The [rank-two threshold geometry audit](experiments/ew-threshold-rank2-geometry-audit-1/README.md)
+checks 72 contraction identities from two closed historical tensor cases.
+It reproduces supplied-invariant recurrence consistency, while retaining the
+different momentum-derived geometry and missing independent pinch controls.
+Ten pure tests and independent replay pass. This does not resolve the current
+EW threshold refusal or justify relaxing production conditioning guards.
+
 The bounded [closed QCD n3 investigation](experiments/invariant-symmetry-qcd-n3-target-analysis/portable-analysis2/index.json)
 retains the same 1,200 rows and 4,800 coefficient values as its prior closed
 result, including 28 finite-only `1e-8` target-miss points. Born and pole

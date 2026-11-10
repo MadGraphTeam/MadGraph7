@@ -1,0 +1,93 @@
+{
+  "NRS_units_for_raw_IREGI_rank2_order": [
+    5,
+    6,
+    8,
+    11,
+    7,
+    9,
+    12,
+    10,
+    13,
+    14
+  ],
+  "audit_source": {
+    "bytes": 21583,
+    "path": "docs/benchmarkfolder/experiments/ew-threshold-rank2-geometry-audit-1/audit.py",
+    "sha256": "7532093cd49185021aa7bef26a30e575dcad41657a74088abf111326f17fae19"
+  },
+  "component_order": [
+    "tt",
+    "tx",
+    "ty",
+    "tz",
+    "xx",
+    "xy",
+    "xz",
+    "yy",
+    "yz",
+    "zz"
+  ],
+  "proof_scope": "Allquantities are unprojected library moments before amplitude-level normalization. Components means no multinomial factors; numerator oddsign appliedonlytoNRS asfrozen replay shows. No dimensional trace identity or epsilon expansion is used.",
+  "raw_IREGI_component_indices": [
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "schema": "rank2-static-source-proof-1",
+  "sources": [
+    {
+      "bytes": 41008,
+      "excerpts": [
+        {
+          "first_line": 342,
+          "last_line": 351,
+          "text": "pub struct Context {\n    state: Mutex<State>,\n}\n\nfn settings((n, rank): Key) -> ReductionSettings {\n    let mut s = ReductionSettings::new(n, rank);\n    s.convention = Convention::MadLoop;\n    s.tensor_weights = TensorWeights::Components;\n    s.invariants = InvariantInput::SuppliedInvariants;\n    s.scale_input = ScaleInput::MuSquared;"
+        }
+      ],
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/source/lib.rs",
+      "sha256": "59184358f8c2f91b1ac38397e76f8accc6e4ffce8aaa529bdde2acbaee985871"
+    },
+    {
+      "bytes": 5081,
+      "excerpts": [
+        {
+          "first_line": 12,
+          "last_line": 16,
+          "text": "  integer, parameter :: mapping(0:34) = [1,2,3,4,5,6,7,10,8,11,13,9,12,14,15, &\n       16,17,20,26,18,21,27,23,29,32,19,22,28,24,30,33,25,31,34,35]\n  integer, parameter :: cumulative(0:3) = [1,5,15,35]\n  character(len=1024) :: filename\n  character(len=64) :: magic"
+        },
+        {
+          "first_line": 97,
+          "last_line": 119,
+          "text": "      enddo\n      if (degree>rank.or.mapping(i)>nc) stop 13\n      unit=cmplx(0.0_q,0.0_q,kind=q)\n      ! TIRust MadLoop moments already have this sign. Apply it only to NRS.\n      unit(i+1)=cmplx(real((-1)**degree,q),0.0_q,kind=q)\n      call ninjars_tensor_evaluate(unit,n,rank,s,p,masses,mu2,result,r1,ns,pole_mode=0)\n      write(*,'(A,4I6)') 'NRS_UNIT ',i,degree,mapping(i),ns\n      if (ns/=NINJARS_SUCCESS) then\n        call ninjars_error_message(error)\n        write(*,'(A,A)') 'NRS_ERROR ',trim(error)\n      else\n        ! The finite result already includes R1; never add it a second time.\n        do k=0,2\n          if (.not.ieee_is_finite(real(result(k),q)).or..not.ieee_is_finite(aimag(result(k)))) stop 14\n          write(*,'(A,2I4,2ES45.35E4)') 'NRS_RESULT ',i,k,result(k)\n        enddo\n        write(*,'(A,I4,2ES45.35E4)') 'NRS_R1 ',i,r1\n        if (ts==TIRUST_SUCCESS) then\n          mapped=[raw(mapping(i),4),raw(mapping(i),1)+raw(mapping(i),2),raw(mapping(i),3)]\n          do k=0,2\n            write(*,'(A,2I4,4ES45.35E4)') 'COMPARE ',i,k,mapped(k),result(k)\n          enddo\n        endif"
+        }
+      ],
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/replay.f90",
+      "sha256": "44f8702d46b6d5b2e5f77d107f4ac958b52a9cccccb5388b2250125b5f830fde"
+    },
+    {
+      "bytes": 7410,
+      "excerpts": [
+        {
+          "first_line": 1,
+          "last_line": 57,
+          "text": "Numbered source excerpts; full source-file SHA-256 precedes each selection.\n\n.tirust-build/pole-development/crates/iregi-rust/src/direct/exec.rs\nSHA256 255b250f6997cfd08f017a9962ac79e6a4a87421f1f2d9f7ddb6a8bc1129eace\n\n 1534:                     self.geometry[geometry.m0 as usize] = self.masses[origin].clone();\n 1535:                     for i in 0..momenta {\n 1536:                         let member = members[i + 1];\n 1537:                         self.geometry[geometry.f as usize + i] = cadd(\n 1538:                             &csub(d(origin, member), &self.masses[member]),\n 1539:                             &self.masses[origin],\n 1540:                         );\n 1541:                         for a in 0..4 {\n 1542:                             self.geometry[geometry.p as usize + 4 * i + a] =\n 1543:                                 csub(&self.shifts[member][a], &self.shifts[origin][a]);\n 1544:                         }\n 1545:                     }\n 1546:                     for a in 0..4 {\n 1547:                         self.geometry[geometry.origin as usize + a] = self.shifts[origin][a].clone();\n\n 1623:                         for i in 0..size {\n 1624:                             for j in 0..size {\n 1625:                                 let (mi, mj) = (members[i + 1], members[j + 1]);\n 1626:                                 self.matrix[i * size + j] =\n 1627:                                     csub(&cadd(d(origin, mi), d(origin, mj)), d(mi, mj));\n 1628:                                 self.rhs[i * size + j] =\n 1629:                                     if i == j { self.one.clone() } else { self.zero.clone() };\n 1630:                             }\n 1631:                         }\n 1632:                         for value in &self.matrix[..size * size] {\n\n 1696:                             let mut zs = self.zero.clone();\n 1697:                             let mut zf = self.zero.clone();\n 1698:                             for i in 0..size {\n 1699:                                 let value = self.rhs[j * size + i].clone();\n 1700:                                 zs = cadd(&zs, &value);\n 1701:                                 cfma(&mut zf, &value, &self.geometry[geometry.f as usize + i]);\n 1702:                                 self.geometry[geometry.zinv as usize + j * size + i] = value;\n 1703:                             }\n 1704:                             self.geometry[geometry.zs as usize + j] = zs;\n 1705:                             self.geometry[geometry.zf as usize + j] = zf;\n\n 3338:             // 4. Translation along the nonzero origin axes.\n 3339:             let origin = geometry.origin as usize;\n 3340:             for axis in 0..4 {\n 3341:                 let shift = &self.geometry[origin + axis];\n 3342:                 if shift.re.is_zero() && shift.im.is_zero() {\n 3343:                     continue;\n 3344:                 }\n 3345:                 let t = csub(&self.zero, shift);\n 3346:                 self.tpow[0] = self.one.clone();\n 3347:                 for k in 1..=rank {\n 3348:                     self.tpow[k] = cmul(&self.tpow[k - 1], &t);\n 3349:                 }\n 3350:                 for (others, line) in &table.lines[axis] {\n 3351:                     let others = usize::from(*others);\n 3352:                     if others > rank {"
+        }
+      ],
+      "path": "docs/benchmarkfolder/experiments/ew-threshold-geometry-supplement/source-excerpts.txt",
+      "sha256": "84c31c46e7cf68244b2564480d2cc5116c905aa649593f52bd0c2d70e7a4501a"
+    }
+  ],
+  "summary": {
+    "bytes": 184927,
+    "path": "docs/benchmarkfolder/experiments/ew-threshold-rank2-geometry-audit-1/summary.json",
+    "sha256": "fdc98ecc5a776cc398b850018f7a4069a5e019c51fff722fcb18ac2b454a4845"
+  }
+}

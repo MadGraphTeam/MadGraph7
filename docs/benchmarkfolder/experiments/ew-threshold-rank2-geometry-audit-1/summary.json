@@ -1,0 +1,4805 @@
+{
+  "arithmetic": "Exact rational operations on decoded retained binary128 values;80decimal digits for norms,55significant digits for displayed rational values.",
+  "full_rank2_resolution": false,
+  "independent_integral_oracle": false,
+  "limits": [
+    "Neither geometry is declared uniquely correct; no input or native integral is changed.",
+    "Tiny signed-affine routing defects are retained, not treated as exact denominator equivalence.",
+    "Residuals include retained tensor rounding, conditioning and pinch provenance; they cannot isolate a box error.",
+    "FormalS metric contraction stays2*A*p_j; only momentum-pair contractions use suppliedS.",
+    "Metric coefficient comes from an orthogonal normal, not a four-dimensional trace; no dimensional trace or Laurent-mixing inference is used.",
+    "No full tensor geometry prediction is attempted; no Gram guard is relaxed.",
+    "Current EW status420 is an availability/refusal failure; this historical group5 audit does not prove the current failed group/cause."
+  ],
+  "native_execution": false,
+  "normalization": "Convention::MadLoop; TensorWeights::Components. No offdiagonal factor2, odd rank minus sign exactly once, masses already squared. Finite raw4; merged single raw1+raw2; double raw3. No real projection or2/(16*pi^2). NRS finite already contains R1.",
+  "pinch_provenance": "Historical256-bit TIRust triangles; compared box TIRust private512 and NinjaRS256, all returned at113bits. Regather preserves triangleS coefficients; no bubble RHS or NRS triangles available as independent vectors.",
+  "production_change": false,
+  "records": [
+    {
+      "group": 5,
+      "historical_box_status": 0,
+      "identity_rows": [
+        {
+          "absolute_residual_L2": "3.3014489838873361836184993838919620693591263045779451486787168270157501363800462E-19",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0.017257163214930997940585171235103642088374333628888308262931516344653855663472097",
+          "relative_to_largest_uncancelled_term": "1.9130890417904278319078570973667904058460912141978207065955759366329249774399604E-17",
+          "relative_to_rhs": "2.7126156190495104037703137346126145178002634294482885894097395559425958493743981E-17",
+          "residual_vector": [
+            [
+              "1.537563424551308925664577622817996714920116422553588274e-19",
+              "-1.925051889833650018365349334418424208489249653212727778e-19"
+            ],
+            [
+              "-9.141961711112633008857088034777330329945202216080098593e-20",
+              "1.103450295399708366021112231508267193870537632882558523e-19"
+            ],
+            [
+              "-1.013711241751053269443861477739550842025030298081306954e-19",
+              "1.211567772159251412600190631190921386524829808226851108e-19"
+            ],
+            [
+              "-3.426191268830770914591331953699693975606658371861799145e-20",
+              "4.042119767584261728822695387301776397225440136249958197e-20"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.012170721722247365888053009321450206988827857752096694629628949316898451515836192",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "3.8735271808121457665938554700935049658621948611119307355152536200146047416107898E-36",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0.054528676237942525940052656365576264975718351756586181248466695734392668107381657",
+          "relative_to_largest_uncancelled_term": "7.1036515977566330803829049874202177477458718708183731047882814687576131017870721E-35",
+          "relative_to_rhs": "2.4741687070082738877727585360613719755628011644255088755608820792323233860684362E-34",
+          "residual_vector": [
+            [
+              "1.821294863484637831699726885700953938376214389908600270e-36",
+              "4.649676209981344277839053632028482274346346336192099745e-37"
+            ],
+            [
+              "1.974871813463525925085472265605708342996636460830895209e-36",
+              "-2.171822633340946659663616167048871191903555420038506919e-36"
+            ],
+            [
+              "-2.906402959345054639284947664015590319440912408208676982e-37",
+              "1.392229299366993489891173295542126520141693032855684919e-36"
+            ],
+            [
+              "4.779348258414594496777939480589293125825951951101739677e-37",
+              "-7.763857420539529900793554994270118696086711325038915933e-37"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.015655873303385015582626484423410435852520910998426292902030378821976989256548122",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "2.8853550598808217037989076379647924575033755031126296766812238036087814132108087E-19",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0.28191032105945821405513757936014771179063286569598290933552304946419272383492887",
+          "relative_to_largest_uncancelled_term": "1.0235010371515508530362694066941559863222891331573416441559119700388782578336045E-18",
+          "relative_to_rhs": "3.7745132012123394853879709940040093727441103892304453023242026192466772735433167E-18",
+          "residual_vector": [
+            [
+              "1.561070554156878982965954475335705575968511207336336307e-19",
+              "-1.439646974869992341943380875456272555499793159407736132e-19"
+            ],
+            [
+              "-9.266469591207382602861292896443050742579989072818538419e-20",
+              "8.573025602401797715810117762220684279932952119112391198e-20"
+            ],
+            [
+              "-1.002057473773511242285815204301779900640605702854749619e-19",
+              "9.926820729442531704033012681111476876770123947023299438e-20"
+            ],
+            [
+              "-3.274776393215567870092344172610995015849251909085241038e-20",
+              "3.540174920592568553470402126029022022136904504708046123e-20"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.076443104211533073128111386584679790435424088457180478066893794834951306188559253",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "2.3807820942714268257516383674050257637542416434526721516897282037704489443234567E-36",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0.017257163214930997940585171235103642088374333628888308262931516344653855663472097",
+          "relative_to_largest_uncancelled_term": "1.3795906457044807438369833042412364813571912747211224354716499922056973161186354E-34",
+          "relative_to_rhs": "1.9561552294137961543331802921917259599153001764669656764402507246865796235769236E-34",
+          "residual_vector": [
+            [
+              "2.049748747380827198353248880943176154070048493620308731e-36",
+              "4.216620663901354366297836345199278505566077975087498140e-37"
+            ],
+            [
+              "5.474741429250911581017973704625901642034301923826557741e-37",
+              "-6.957200898755211071294535248590006723303490939348231050e-37"
+            ],
+            [
+              "1.315510245535528610894493212646573758563025808851885044e-37",
+              "1.181368715507421538842122418504978176805150479610289331e-37"
+            ],
+            [
+              "-6.758784183676477240742873058788153481949484058566373927e-37",
+              "1.304858048132691531688048103431971490302683076894736896e-37"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.012170721722247365888053009321450206988827857752096694629628949316898451515836192",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "3.8215115333967300213336870783106332865487532986319258875724414908427442926868897E-36",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0.054528676237942525940052656365576269204198101936187188148484652865511078022973560",
+          "relative_to_largest_uncancelled_term": "7.0082602348920017679860602986313515288786891890256052178447128831293849327195528E-35",
+          "relative_to_rhs": "2.4409443404032060980429684731032535660279173673112253377311232057671024826134249E-34",
+          "residual_vector": [
+            [
+              "2.919308646595402413282807912795645886898389164146511264e-36",
+              "5.541422227593531922715181763977277541770563166865247718e-37"
+            ],
+            [
+              "5.042695428547624350930375598293190606083925560000183158e-37",
+              "-1.504602189803650367239298467992207546925882131434262927e-36"
+            ],
+            [
+              "5.696476578421201146385903152642396822211051879411738934e-37",
+              "8.191668240257682222636846465392582356853015651491299723e-37"
+            ],
+            [
+              "-1.448733212192266865341240860175400540799303906443431787e-36",
+              "4.025389938398244421046643440072248180139924574739960187e-37"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.015655873303385015582626484423410435852520910998426292902030378821976989256548122",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "8.9328491290836771995994454494539085256952940807817027083548832641050277609098744E-36",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0.28191032105945821405513757936014772592042975522889941318889208582708809959647255",
+          "relative_to_largest_uncancelled_term": "3.1686846708956192793118760616953388017418719014243915772303869956259647374149129E-35",
+          "relative_to_rhs": "1.1685617978522602085362072732488071566842395492314343949716295159381630570874223E-34",
+          "residual_vector": [
+            [
+              "5.961093071927957347989147331789059405193752131987041468e-37",
+              "-2.832855685794993728038530831874794843570326720911736802e-37"
+            ],
+            [
+              "-3.654312181721692186307570532455994136718663414904217673e-36",
+              "-3.957841795140508634293429502289744366397145917250859651e-36"
+            ],
+            [
+              "2.781293803968970233296687394244180265033879284845183297e-36",
+              "4.637931517194883576434057842883437896179399111693330515e-36"
+            ],
+            [
+              "-4.562287010474942076079696899637242796769353154553801593e-36",
+              "5.303023651737976291596962064424840773694469019713783388e-37"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.076443104211533073128111386584679790435424088457180478066893794834951306188559253",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "4.3083213067559763631921751275739748218235505967323625510300352068923456499805193E-20",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0.0029258053006288061655844077283698620336934344953837420944152469727968897951592305",
+          "relative_to_largest_uncancelled_term": "1.4725249509357453126039866680788480136442425055551645505137552974709445268719689E-17",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "1.347530817198131449747401130109720493983076444904471439e-20",
+              "-2.948700094807843616151539484964450595531562170746905704e-20"
+            ],
+            [
+              "-7.807106507859837286166371391301106531332650183993581215e-21",
+              "1.708370258111612198861713447066807017521274978036366233e-20"
+            ],
+            [
+              "-8.407008614540035821188169399836860378452556226848783752e-21",
+              "1.839642313360144185276199910007365116702621339916612862e-20"
+            ],
+            [
+              "-2.731464197460510548613994845567010831166632565366768355e-21",
+              "5.977057173922720663736713205131005260130954529585586960e-21"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "9.6538884645161349474965421056798687344234147333908296419378804714875829625209491E-37",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0.0094217652612217739613215225808519507010483679447777439911495950370806871210583690",
+          "relative_to_largest_uncancelled_term": "1.0246369121771412344006565943280973934827336902947000919374433461231491589348195E-34",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-2.183015639451350222403909200411232901315565678632873353e-37",
+              "5.615275591389612282045321829462500760181880235898964003e-37"
+            ],
+            [
+              "-4.449451982162166422580640480880491275573788162598715463e-38",
+              "4.906757298195319033199735289518058689750094596516386868e-37"
+            ],
+            [
+              "-2.755425199252654628852989395555376663501253528951823704e-39",
+              "-5.667411950165232386050749177826089196969942757977129854e-37"
+            ],
+            [
+              "5.070243141642610503886867448296604210555412238939485237e-38",
+              "-4.990498154809452655374773642440169251399167296792980032e-38"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "4.3083213067559762987511759553035419389535207522893888964945224809825862179714140E-20",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0.048710019259365392699844042599340341478247857213694121986792329401107150265908573",
+          "relative_to_largest_uncancelled_term": "8.8448359747417317558533589408632541523885817687313609042064611544486404113502761E-19",
+          "relative_to_rhs": "3.1196099575810428532172704047069250337107369240981777833832137428759692983179188E-18",
+          "residual_vector": [
+            [
+              "1.347530817198131503752386436625077991305439137463363430e-20",
+              "-2.948700094807843518433871713325927146783264353547526182e-20"
+            ],
+            [
+              "-7.807106507859837896936628760488988110466208105521041345e-21",
+              "1.708370258111612250076148103832809435444506229053817571e-20"
+            ],
+            [
+              "-8.407008614540036459034025135255610368686571222257445882e-21",
+              "1.839642313360144053248646153355528535986930606563338471e-20"
+            ],
+            [
+              "-2.731464197460510749220651736900979209805860342197868677e-21",
+              "5.977057173922720435157711537881028863753350278006665541e-21"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.013810448630881613932101499868839779004788998228017971893333836120558889778705865",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "4.1152793877535023363694528917970050351057493337413148538954928569661881352861977E-37",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0.0029258053006288060794179815932503347265982235921493429044651105295660859858539309",
+          "relative_to_largest_uncancelled_term": "1.4065458787941418168882902223027197625552412145735635832662457319847297172690284E-34",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-1.637360320460221356126404777049282478625051324660492026e-37",
+              "4.901061149724840012688570233668451621946292234736451617e-38"
+            ],
+            [
+              "1.522427726927187798968655439235124793956674611743444886e-39",
+              "3.010250816606417019692879593392574868450543309613309118e-37"
+            ],
+            [
+              "1.922308048867618966306445727966390645671727346020921564e-38",
+              "-1.090139219648345264612515997536375892904050721322551332e-37"
+            ],
+            [
+              "8.294826720190104120258467909401608660266888410344500046e-39",
+              "-1.928806170465330846951701433551871488994082216202934826e-37"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "7.6058136524042908817679921301731334235795923498728227383697552239765313190551981E-37",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0.0094217652612217739613215225808519514316684080164697862687850865455614915049653527",
+          "relative_to_largest_uncancelled_term": "8.0725993925028033525577408150382412688256663843053402294852031028434237438554196E-35",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-1.630359721349152000299415745307866007133491714133062139e-37",
+              "4.405940311405101159760388017838583891919758713044468168e-37"
+            ],
+            [
+              "-8.979912549179802106495052136865554803223793811723155919e-38",
+              "4.269500588707930422544488480434451968173829896651651911e-37"
+            ],
+            [
+              "-1.604992496674104133737240438784883206696259684728844213e-38",
+              "-2.779578380203118420289422181331310191554443563132103398e-37"
+            ],
+            [
+              "1.227021866707894825160820277089194022235721011529170381e-38",
+              "-2.996017871792592471617284248921787870453141116322682451e-37"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "2.5047048707892482138263431997272635222289123580350504678671860956318170601510863E-36",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0.048710019259365392699844042599340343919672052090570803179566692280746779642739900",
+          "relative_to_largest_uncancelled_term": "5.1420732507874606536446012817730581205976746179337803490323327188646657292301440E-35",
+          "relative_to_rhs": "1.8136303444831364872818803055015966679984840432830744405727369553040000199092237E-34",
+          "residual_vector": [
+            [
+              "1.182056190574208972985541675519827675051393114858351379e-37",
+              "1.590986008383315083157170156964702468824175764026417382e-36"
+            ],
+            [
+              "-4.835948535210029919114287175460712139727459440955400219e-37",
+              "3.691569144031484643825366375535953840534388034368662348e-37"
+            ],
+            [
+              "-4.195068450349806966272741969004655676122148800548468319e-37",
+              "-1.595432381404531114903000017519905271882296117109696513e-36"
+            ],
+            [
+              "-1.889477287039869230461446379139954220276538328317255435e-37",
+              "-7.753095587284969987658212574089122794310041806290870092e-37"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.013810448630881613932101499868839779004788998228017971893333836120558889778705865",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "2.2666864703486436333479784002302635163181003724952831803992831082946166196686587E-20",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0.017257163214930997940585171235103642088374333628888308262931516344653855663472097",
+          "relative_to_largest_uncancelled_term": "1.3134757098359557273532931006792631478820171637589346367554998507855790711537604E-18",
+          "relative_to_rhs": "1.8624092490795132005946534438620140571660767241368537727599295002244052012973796E-18",
+          "residual_vector": [
+            [
+              "-1.016219401902633807772126058986414856445724585473795652e-20",
+              "-3.924764694622116103419399882942225815372801582088030499e-21"
+            ],
+            [
+              "-1.646941914118633195456697568304085603846023953660888445e-20",
+              "7.413399540659715826779615627264866851969549230111370715e-21"
+            ],
+            [
+              "-7.427422510496471101033699237480626865500328011943448207e-21",
+              "1.194175054050040387559751675648957670702013744025048000e-21"
+            ],
+            [
+              "2.257090007553336297425820792660483084743962363025220006e-21",
+              "-2.688013427942963572363118065287317516854097654538988545e-21"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.012170721722247365888053009321450206988827857752096694629628949316898451515836192",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "2.4977622418393331813864396569149003945242375358796802276418518680724907866489592E-20",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0.054528676237942526015290322068554629185454531280828633202748047326143484752335556",
+          "relative_to_largest_uncancelled_term": "4.5806397920610490386651558075787619082792281789839945891846037351287192873399998E-19",
+          "relative_to_rhs": "1.5954154670498531434293948437136370422914386187323555567179678645641627762597538E-18",
+          "residual_vector": [
+            [
+              "-1.273874589823246907886909601420295647250727541311506669e-20",
+              "-2.417956467344480359706003175004876304787786540817554152e-21"
+            ],
+            [
+              "-1.769443721971893192043851936483283277737240637895785537e-20",
+              "7.362134837969188916229494523894713614501660046600819193e-21"
+            ],
+            [
+              "-8.746571612513017018093026831329809162591567740745213113e-21",
+              "1.138971145059275566430509897569551850210955195056732225e-21"
+            ],
+            [
+              "1.828494212250056771453726195496636831485548154966472138e-21",
+              "-2.705949355914701248280032768997079652605701415814117874e-21"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.015655873303385015582626484423410435852520910998426292902030378821976989256548122",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "8.7709122585073327451105313300627503083607918378886375720871971905159494579423656E-19",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0.28191032105945821444411226126031341918364382309398536190207793085881333895338701",
+          "relative_to_largest_uncancelled_term": "3.1112419813311637554324947255468703951291519082912247912295499742680202891966724E-18",
+          "relative_to_rhs": "1.1473778241967381421314782498220905969091600397787946323122039509468962337583576E-17",
+          "residual_vector": [
+            [
+              "-2.239468505564665171427088500809583144135265337988957039e-19",
+              "2.482608966149577288346224127154890906492820578871022197e-19"
+            ],
+            [
+              "1.042779601875367630805634550584768264355359201784011661e-19",
+              "-1.350231915627802820752243467528487340329104003683277060e-19"
+            ],
+            [
+              "4.255110755374486506781251627093309881992314178996901304e-19",
+              "-5.095107707776280227141061313812959166418628552801640452e-19"
+            ],
+            [
+              "2.801684871925523421820198887823090669075514083388163252e-19",
+              "-3.305191619289778217094495907345542961061915787413324434e-19"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.076443104211533073128111386584679790435424088457180478066893794834951306188559253",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "3.2411850038926906466722987922428532781812102491879694836411990156190164968316079E-19",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0.017257163214930997940585171235103642088374333628888308262931516344653855663472097",
+          "relative_to_largest_uncancelled_term": "1.8781679025254849175930492439854071664345301961089393616732891963121332897498568E-17",
+          "relative_to_rhs": "2.6631000838413669836029075383207005769388392194925086851452470319130295226099074E-17",
+          "residual_vector": [
+            [
+              "-1.639185364741572409192616327028291833735456861303332956e-19",
+              "1.885804242887429008532882396574841675644625564237724478e-19"
+            ],
+            [
+              "7.495019796994000795005745895993347533150041811045838761e-20",
+              "-1.029316299993111319148157058408587234090613467309120473e-19"
+            ],
+            [
+              "9.394370166460886176330585575711068971342038095743383629e-20",
+              "-1.199626021618751086553589476127045687958989537087548439e-19"
+            ],
+            [
+              "3.651900269586104705970888898362510385809339714807257637e-20",
+              "-4.310921110378558349717987034215423561843735555295345698e-20"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.012170721722247365888053009321450206988827857752096694629628949316898451515836192",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "2.4977622418393331887547299917368993221217323404567983935076356206915650467605662E-20",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0.054528676237942526015290322068554633413934281460429645937144680506163004905783282",
+          "relative_to_largest_uncancelled_term": "4.5806397920610490521778446223036337088784490661851005963403939666714991586557815E-19",
+          "relative_to_rhs": "1.5954154670498531481358013098600340018207002986495234482223248527421782817589756E-18",
+          "residual_vector": [
+            [
+              "-1.273874589823246798085531290344230158057241951249080466e-20",
+              "-2.417956467344480270531401413783418554342702991142486181e-21"
+            ],
+            [
+              "-1.769443721971893235674542388503863758251202210720485191e-20",
+              "7.362134837969188872570841489705005122731543781153949580e-21"
+            ],
+            [
+              "-8.746571612513017807040030095035144777502976449942931454e-21",
+              "1.138971145059276126899803850340154289338915719832617253e-21"
+            ],
+            [
+              "1.828494212250056964629840972834510779647609408652338751e-21",
+              "-2.705949355914701526340357072858778843440048276701296800e-21"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.015655873303385015582626484423410435852520910998426292902030378821976989256548122",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "1.1245466188594294575989559625675643905417261468387908993316419633374319837440535E-18",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0.28191032105945821444411226126031343331344071262690188525148113072726435541094739",
+          "relative_to_largest_uncancelled_term": "3.9890225183428076806061193030733616165598494032677139201469896724165087040819652E-18",
+          "relative_to_rhs": "1.4710896822656341168876275645793892751534907802720575039725249703377976139465272E-17",
+          "residual_vector": [
+            [
+              "-3.800539059721544205090909218707413858227890940936141200e-19",
+              "3.922255941019569695606831357052214424182619247957650693e-19"
+            ],
+            [
+              "1.969426560996105909367456551477640858670532303451757700e-19",
+              "-2.207534475867982681934517646791644336909019380939178836e-19"
+            ],
+            [
+              "5.257168229147997781599313624172838880740438951443130492e-19",
+              "-6.087789780720533383311065021777579718698697433604867239e-19"
+            ],
+            [
+              "3.129162511247080215619484441700368006066271868943879390e-19",
+              "-3.659209111349035102641855672773101989110643490869809731e-19"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.076443104211533073128111386584679790435424088457180478066893794834951306188559253",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "4.1126508161925864860806541253102329665453691898692420373667728982268539922742380E-37",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0.0029258053006288061241198911228928053452788752810081508613045420639673454764541280",
+          "relative_to_largest_uncancelled_term": "1.4056474691971836776342701312994004458483257177056579961337038011445187160612723E-34",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-1.622871521177051284645281711684946629240223284666227727e-37",
+              "3.210030320145975047686014633931261840952527700834484869e-38"
+            ],
+            [
+              "1.084337019815527133407536796949019054809320843484386466e-37",
+              "-3.405278278684749317736084222688983680341276950800933946e-37"
+            ],
+            [
+              "-3.707773242317230212307060153366705887754485745120378153e-38",
+              "-7.932768357016006990073756270427987436500248770432059843e-38"
+            ],
+            [
+              "-4.300071513991751157362898599133916488502657804792637702e-38",
+              "-6.736206460725983316534952278358620528746817192830925591e-38"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "8.0990378844473191654634526402977946029185194797273547709534040830337820584397399E-37",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0.0094217652612217739665340970784221540080445767794884430121402567970805103989980291",
+          "relative_to_largest_uncancelled_term": "8.5960938952506558117681861511838484208393809826989308260240446740909312638784495E-35",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-3.444827785421519549319173903874550356009036490615634932e-37",
+              "-4.144928171960292947729614566087892024031047816295261880e-38"
+            ],
+            [
+              "1.833654384300934316646626743633660315134488114025614190e-37",
+              "-7.006701964272905533207080031545013039262280271080251834e-37"
+            ],
+            [
+              "-7.594047258658138897743371481113207901319330517780871841e-38",
+              "-2.778026970863375860082399986479571337498758983227537451e-38"
+            ],
+            [
+              "-4.525330655915144723517216584046331068515680441633821117e-38",
+              "-4.908716921481772457817571327319101522994145461194158525e-38"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "1.1179515737828255141396841662778056393719768358774274402771734481457793091286832E-19",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0.048710019259365392726792772176858624115723502454180549985070212852129422502720765",
+          "relative_to_largest_uncancelled_term": "2.2951162631040817389196503553660243284353421311435761266510471947431914941866006E-18",
+          "relative_to_rhs": "8.0949692777030309781335328886329998792292089939242118932203572120971847473449290E-18",
+          "residual_vector": [
+            [
+              "-1.742656761198763256589432537396949189637085257125712141e-20",
+              "3.813324408898310636718076711727275947897322110881647483e-20"
+            ],
+            [
+              "9.842672546866334812618719968317378985184262422206719102e-21",
+              "-2.153797827975014671352883893765483436018040564970438396e-20"
+            ],
+            [
+              "3.529080211022345576510562484545263991349191815012464283e-20",
+              "-7.722420162874850850813779869215632922030768726397158018e-20"
+            ],
+            [
+              "2.265383227976499178070404974003638085279968208371783856e-20",
+              "-4.957167326977896643285099382398530143726122375194511987e-20"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.013810448630881613932101499868839779004788998228017971893333836120558889778705865",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "4.3083213067559767313731215798897314819779185471791287007294089462371347798157504E-20",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0.0029258053006288060810366780553330416462697063694314711483879873034991348643237303",
+          "relative_to_largest_uncancelled_term": "1.4725249509357454809950917887605310326019747370372828327235447022808799766144970E-17",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-1.347530817198131588759717795532503524807564885196860108e-20",
+              "2.948700094807843857111607706171117196085263385144196200e-20"
+            ],
+            [
+              "7.807106507859838168826331193105123071829174478418967548e-21",
+              "-1.708370258111612359865211252835816609800479915128350151e-20"
+            ],
+            [
+              "8.407008614540036348159887465730812547993826856289327350e-21",
+              "-1.839642313360144342515794854682403937919571146937783329e-20"
+            ],
+            [
+              "2.731464197460510583487067164599747543404719163559012449e-21",
+              "-5.977057173922720829636982952765314089328616704615339873e-21"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "7.1758674267445986319245343524015141438124634250942548784460985555076982241195841E-37",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0.0094217652612217739665340970784221547386646168511804856939899568643472040640733320",
+          "relative_to_largest_uncancelled_term": "7.6162664084607676055813589537355961851364962520875365368557882246128372423605637E-35",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-2.892171867319322087555791685702853710510196380258521388e-37",
+              "-1.623828097180546649519360704090694821218000549269229315e-37"
+            ],
+            [
+              "1.583879446385665873472883059574266150487635180559246048e-37",
+              "-6.017166033954330405893119472907682501685188832368705037e-37"
+            ],
+            [
+              "-1.216475544704515543823556081504348035476073745957727065e-37",
+              "1.602979988421821860885457263665580734512555833208611251e-39"
+            ],
+            [
+              "-4.202400686989211807757166263117203534109663854679730908e-38",
+              "3.463595319355582156141874744397315757271198755576629885e-38"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "1.4870591673589320791602274653864450391328131740859510614466769901571148986468588E-19",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0.048710019259365392726792772176858626557147697331057232528558071889898448353949711",
+          "relative_to_largest_uncancelled_term": "3.0528815015260289330694665606307260599718701879082555720453145856959539721634482E-18",
+          "relative_to_rhs": "1.0767638380940873743618163336569180373053099459740017087078996433934272113642454E-17",
+          "residual_vector": [
+            [
+              "-3.090187578396894797363168768771772728214230650013238151e-20",
+              "6.762024503706154421127622369061021257958315844171218885e-20"
+            ],
+            [
+              "1.764977905472617259814159839912792579531992364353495432e-20",
+              "-3.862168086086626933818343780519279139014209336310303802e-20"
+            ],
+            [
+              "4.369781072476349200866891312568353122462742475014251773e-20",
+              "-9.562062476234995159496711397075327747874754543650232379e-20"
+            ],
+            [
+              "2.538529647722550254877714749976852443705885568242870376e-20",
+              "-5.554873044370168743937514140120130796720225856646876351e-20"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0.013810448630881613932101499868839779004788998228017971893333836120558889778705865",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        }
+      ],
+      "maxima": [
+        {
+          "absolute_witness_j": 2,
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "3.3014489838873361836184993838919620693591263045779451486787168270157501363800462E-19",
+          "maximum_relative_to_uncancelled_term": "1.9130890417904278319078570973667904058460912141978207065955759366329249774399604E-17",
+          "slot": 0,
+          "zero_rhs_rows": 0
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "4.3083213067559763631921751275739748218235505967323625510300352068923456499805193E-20",
+          "maximum_relative_to_uncancelled_term": "1.4725249509357453126039866680788480136442425055551645505137552974709445268719689E-17",
+          "slot": 1,
+          "zero_rhs_rows": 2
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "0",
+          "maximum_relative_to_uncancelled_term": null,
+          "slot": 2,
+          "zero_rhs_rows": 3
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "8.9328491290836771995994454494539085256952940807817027083548832641050277609098744E-36",
+          "maximum_relative_to_uncancelled_term": "1.3795906457044807438369833042412364813571912747211224354716499922056973161186354E-34",
+          "slot": 0,
+          "zero_rhs_rows": 0
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "2.5047048707892482138263431997272635222289123580350504678671860956318170601510863E-36",
+          "maximum_relative_to_uncancelled_term": "1.4065458787941418168882902223027197625552412145735635832662457319847297172690284E-34",
+          "slot": 1,
+          "zero_rhs_rows": 2
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "0",
+          "maximum_relative_to_uncancelled_term": null,
+          "slot": 2,
+          "zero_rhs_rows": 3
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "8.7709122585073327451105313300627503083607918378886375720871971905159494579423656E-19",
+          "maximum_relative_to_uncancelled_term": "3.1112419813311637554324947255468703951291519082912247912295499742680202891966724E-18",
+          "slot": 0,
+          "zero_rhs_rows": 0
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "1.1179515737828255141396841662778056393719768358774274402771734481457793091286832E-19",
+          "maximum_relative_to_uncancelled_term": "2.2951162631040817389196503553660243284353421311435761266510471947431914941866006E-18",
+          "slot": 1,
+          "zero_rhs_rows": 2
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "0",
+          "maximum_relative_to_uncancelled_term": null,
+          "slot": 2,
+          "zero_rhs_rows": 3
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "1.1245466188594294575989559625675643905417261468387908993316419633374319837440535E-18",
+          "maximum_relative_to_uncancelled_term": "1.8781679025254849175930492439854071664345301961089393616732891963121332897498568E-17",
+          "slot": 0,
+          "zero_rhs_rows": 0
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "1.4870591673589320791602274653864450391328131740859510614466769901571148986468588E-19",
+          "maximum_relative_to_uncancelled_term": "1.4725249509357454809950917887605310326019747370372828327235447022808799766144970E-17",
+          "slot": 1,
+          "zero_rhs_rows": 2
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "0",
+          "maximum_relative_to_uncancelled_term": null,
+          "slot": 2,
+          "zero_rhs_rows": 3
+        }
+      ],
+      "pinch_bindings": [
+        {
+          "exact_S_masses_scale_match": true,
+          "group": 8,
+          "omitted": 1,
+          "permutation": [
+            2,
+            3,
+            4
+          ],
+          "routing": {
+            "affine_defects": [
+              [
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "-1.232595164407830945955825883254353483864385054857848445e-32"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "-1.540743955509788682444782354067941854830481318572310556e-32"
+              ]
+            ],
+            "eta": 1,
+            "exact_affine_routing": false,
+            "max_absolute_affine_defect": "1.540743955509788682444782354067941854830481318572310556e-32",
+            "translation_box_minus_eta_triangle": [
+              "-358.23811157469111776663339696824550628662109375",
+              "207.550213809096675277032773010432720184326171875",
+              "223.49847971025377546538948081433773040771484375",
+              "72.61537646810333435673436354997708340743819413894682518"
+            ]
+          },
+          "slots": [
+            {
+              "S_based_coefficients": [
+                [
+                  "0.000003634570875207212586675303465000864391393122730799408749",
+                  "0.000009336797823317750556377760113120064786777504581650469572"
+                ],
+                [
+                  "-7.226259711655147846780124612797368753897941314074186919e-7",
+                  "0.000006635430230665997257819346001114140399993254825760585941"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "4.2788699330568771584635785558502596079003335082346419654733913084297764433110223E-38",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "1.791796050060164447130108153100582362178148163410139867e-39",
+                  "2.627365236725783459873523705781440445526958961163970478e-38"
+                ],
+                [
+                  "-1.414994600089527870155497419310624573045268322152721342e-38",
+                  "-3.061268489977708126024593321379575828382178107092281400e-38"
+                ]
+              ],
+              "scalar": [
+                "0.000004247854620237528015473611457444213152660100611411579217",
+                "-0.00002599144622320381469320952154649934027638449441086164314"
+              ],
+              "slot": 0
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 1
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 2
+            }
+          ],
+          "status": 0,
+          "stored_rank": 2
+        },
+        {
+          "exact_S_masses_scale_match": true,
+          "group": 196,
+          "omitted": 2,
+          "permutation": [
+            3,
+            4,
+            1
+          ],
+          "routing": {
+            "affine_defects": [
+              [
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "-1.540743955509788682444782354067941854830481318572310556e-32"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "-1.540743955509788682444782354067941854830481318572310556e-32"
+              ]
+            ],
+            "eta": 1,
+            "exact_affine_routing": false,
+            "max_absolute_affine_defect": "1.540743955509788682444782354067941854830481318572310556e-32",
+            "translation_box_minus_eta_triangle": [
+              "-596.712805747969952108178404159843921661376953125",
+              "347.45703812106194163789041340351104736328125",
+              "204.462275731568315251251988229341804981231689453125",
+              "-10.45684036798230654342849270432670796332514184771503002"
+            ]
+          },
+          "slots": [
+            {
+              "S_based_coefficients": [
+                [
+                  "-0.000001463171879037773852189517438930591721047156744088043916",
+                  "0.000002381421643308611028047522367710980835874599037970814416"
+                ],
+                [
+                  "-0.000002907781919418006128002130543661119617624390323507930396",
+                  "0.000001255910151905880801371247003736218826396548242902994132"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "1.5448232296832906272631526555035982421302770102484621577408515260105228403331518E-38",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "-1.462468587410535542605834903028518330686381028219190858e-38",
+                  "-4.293273249389971165644756193017726876885498645443127571e-39"
+                ],
+                [
+                  "1.955952404033784274779250731800284774677378275012272030e-40",
+                  "2.509181437971074647806595282973201336878697381945627608e-39"
+                ]
+              ],
+              "scalar": [
+                "0.000006068619849422615524811799179238614337993582859507572887",
+                "-0.000007816501120950920857211007141215510383961278018811668982"
+              ],
+              "slot": 0
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 1
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 2
+            }
+          ],
+          "status": 0,
+          "stored_rank": 3
+        },
+        {
+          "exact_S_masses_scale_match": true,
+          "group": 4,
+          "omitted": 3,
+          "permutation": [
+            2,
+            1,
+            4
+          ],
+          "routing": {
+            "affine_defects": [
+              [
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "-3.081487911019577364889564708135883709660962637144621112e-33"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "-3.081487911019577364889564708135883709660962637144621112e-33"
+              ]
+            ],
+            "eta": -1,
+            "exact_affine_routing": false,
+            "max_absolute_affine_defect": "3.081487911019577364889564708135883709660962637144621112e-33",
+            "translation_box_minus_eta_triangle": [
+              "-358.23811157469111776663339696824550628662109375",
+              "207.550213809096675277032773010432720184326171875",
+              "223.49847971025377546538948081433773040771484375",
+              "72.61537646810333435673436354997705875553490598232790606"
+            ]
+          },
+          "slots": [
+            {
+              "S_based_coefficients": [
+                [
+                  "-0.000002427019731581981203513899704247407559782690793081248853",
+                  "0.000002241516994013411229883334682780575952521698861014784822"
+                ],
+                [
+                  "-0.000002048888651717501739623719793168216286765514950893093506",
+                  "3.668538934475248100042951697208560082679384079231229841e-7"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "7.4671639331877163919183053453298563443547423503741861716786584403028350959189191E-38",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "2.517526266062534799300134785094125607662805452253292870e-38",
+                  "-5.748234649709545137026497906239531109663384074726587427e-38"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "3.500535692229692133918370449949326993790714981386004669e-38",
+                  "-2.030922692789967055218466191747672197900673481146837078e-38"
+                ]
+              ],
+              "scalar": [
+                "0.00001030202406608661424372031823005453159100024717542694436",
+                "-0.000006015575343440991677245704978299832412951938510212052635"
+              ],
+              "slot": 0
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 1
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 2
+            }
+          ],
+          "status": 0,
+          "stored_rank": 2
+        },
+        {
+          "exact_S_masses_scale_match": true,
+          "group": 16,
+          "omitted": 4,
+          "permutation": [
+            1,
+            2,
+            3
+          ],
+          "routing": {
+            "affine_defects": [
+              [
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "-2.157041537713704155422695295695118596762673846001234779e-32"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "-2.157041537713704155422695295695118596762673846001234779e-32"
+              ]
+            ],
+            "eta": 1,
+            "exact_affine_routing": false,
+            "max_absolute_affine_defect": "2.157041537713704155422695295695118596762673846001234779e-32",
+            "translation_box_minus_eta_triangle": [
+              "0",
+              "0",
+              "0",
+              "2.157041537713704155422695295695118596762673846001234779e-32"
+            ]
+          },
+          "slots": [
+            {
+              "S_based_coefficients": [
+                [
+                  "0.0001238059793731589202781223208934269375090207405027707911",
+                  "-0.0001217216807871445638549007253144437090473614563785571574"
+                ],
+                [
+                  "-0.00001205775960812972328090858538577402955964434303846424792",
+                  "0.00002638508629701682477697671228866536432060357709660749646"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "1.7582739132903885277289241317222402270133625500095492573288471817371765011116980E-36",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "-1.085638280023257197110681120209359402429379867261742261e-36",
+                  "5.888876194476344414813097622950564225186178904754119881e-37"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "3.601010063403613993230184661574908163919213029880673395e-37",
+                  "1.198522138301832781484678054479973705940687006669981692e-36"
+                ]
+              ],
+              "scalar": [
+                "-0.00009969046015689947371630515012187887912711515309563060154",
+                "0.00006895150819311091430094730073711297171308326872885083724"
+              ],
+              "slot": 0
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0.00001205775960812972328090858538577403370801207920928125942",
+                  "-0.00002638508629701682477697671228866536533714852787676976092"
+                ],
+                [
+                  "-1.810908639458871203962478636636522674624122140781928549e-39",
+                  "-4.576530639039531184395365117988466868580799207258082097e-39"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "6.2100711346953211732977356061812502786156912804115882998886147931692875083782849E-37",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "-2.498362344320598433074617826575998316795304718310863387e-37",
+                  "-4.003183467063335943523934009208968115992347704561118470e-37"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "1.234851133076748100055770877892894774319342058685506286e-37",
+                  "3.843544445251902881996878139723085572850712303698935883e-37"
+                ]
+              ],
+              "scalar": [
+                "-0.00001205775960812972328090858538577403185460002539250747878",
+                "0.00002638508629701682477697671228866537217238193501639118490"
+              ],
+              "slot": 1
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 2
+            }
+          ],
+          "status": 0,
+          "stored_rank": 2
+        }
+      ],
+      "point": 1,
+      "private512_box_status": 0,
+      "rank2_decompositions": [
+        {
+          "backend": "tir",
+          "metric_coefficient": [
+            "0.000002518807678187363644148164769633275041895262109881343308",
+            "-0.000001478101456562325217425999117859203489786511662433826461"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "2.9124140370108061766712124100032103014401922317397225303411231322742501058789924E-39",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "-6.840977401034291744361818548852308091674562171878170226e-54",
+              "3.204778338021928559637030942911874439181763963963680253e-54"
+            ],
+            [
+              "8.973704353609561900136859378000849278183261899733963155e-40",
+              "-4.203892461318890059229659269020038924286587486496656204e-40"
+            ],
+            [
+              "-1.430901403927464325814660522135577870672031254543900451e-39",
+              "6.703313801999381343461564809483041732080223899140578414e-40"
+            ],
+            [
+              "1.839209120214277032028685419043789980853272090005800647e-39",
+              "-8.616104398567272668247298636261510723972227146799936970e-40"
+            ],
+            [
+              "-4.857201110490703506762938060818196311590558823958366113e-40",
+              "-1.110334300497428530277253610840075261656658133054169663e-40"
+            ],
+            [
+              "3.295547471300729007955318796392416115598534359458768413e-40",
+              "1.512352826961164909715260465443156488859640888837383617e-40"
+            ],
+            [
+              "-4.241493020112365414917555250353985427738284500511835656e-40",
+              "-3.790812708232196682005423871600152403213096921633691188e-41"
+            ],
+            [
+              "1.840032899933652588281445776023960085656760148101343508e-40",
+              "-1.999920200546075511926963642878221472896219635630145833e-40"
+            ],
+            [
+              "-2.356218878420596876566729405357546266645006274317395257e-40",
+              "7.541249763556903051376826772253223557346870464210420213e-42"
+            ],
+            [
+              "3.017168210556982508707481941876792607748310152776105859e-40",
+              "3.110254501043536089987597473003893104862306887428707314e-40"
+            ]
+          ],
+          "slot": 0
+        },
+        {
+          "backend": "tir",
+          "metric_coefficient": [
+            "6.008192335426806491321430238671138679694222830793769598e-41",
+            "4.541380833290977038793977351763302182857827482608839094e-41"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "2.8994667187903213912627607752595355454066522118823430035992890459730272999546176E-40",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "-1.123621533044273133510633680190020779064571040250859134e-55",
+              "-7.618186144635312776497717162482179406183452024414821907e-55"
+            ],
+            [
+              "1.473919127603663164805896821731921615385032896509055975e-41",
+              "9.993213858941551878604149748248864020585964992488735500e-41"
+            ],
+            [
+              "-2.350236720374336201798634549046126994816604125699949871e-41",
+              "-1.593467221232352067002019950128996366678407827290621945e-40"
+            ],
+            [
+              "3.020876769643661849318874289817757194111361990760916510e-41",
+              "2.048163093563927279024290378561663910466427118411552570e-40"
+            ],
+            [
+              "-3.541993169911244764676640309811936363772234167593794367e-42",
+              "2.795223001339094465145669744296053199547648809228252251e-41"
+            ],
+            [
+              "-4.958099137299502523124816083075742599294910971824048812e-42",
+              "-1.038249391455446289586580977632454346464826274618944306e-41"
+            ],
+            [
+              "-8.820077849455390228152205247726437880180713574885705794e-42",
+              "3.108629960941736311498582952555712641680889253746090277e-41"
+            ],
+            [
+              "2.481769457410749924063216453278689396912241214957599600e-41",
+              "-3.796019332073355367431676633449157220425751211802307009e-41"
+            ],
+            [
+              "-7.673483058414101577638120073243423015617886607631502301e-42",
+              "2.050297848034999739556032317562393139051980069205084871e-41"
+            ],
+            [
+              "-2.127570140419636683810882865028830866871819698406010809e-41",
+              "1.000796330734184720424560536025339043706477580779992924e-41"
+            ]
+          ],
+          "slot": 1
+        },
+        {
+          "backend": "tir",
+          "metric_coefficient": [
+            "0",
+            "0"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "0",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "slot": 2
+        },
+        {
+          "backend": "nrs",
+          "metric_coefficient": [
+            "0.000002518807678187363842700348594653484168396698138982583836",
+            "-0.000001478101456562325388351262374114848294834219032038268805"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "9.1987932726122124801544479872847629904358433162717935269269388387977395724853034E-40",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "7.750757857958485603195561107403381324565782752449919893e-55",
+              "-3.163640810353378450916319562088548894202935897071841552e-55"
+            ],
+            [
+              "-1.016711581640652602113416581277810415307282729433698663e-40",
+              "4.149929995212739594568638745075786721589924035443032662e-41"
+            ],
+            [
+              "1.621196745771712452691476812922938511387570093540270736e-40",
+              "-6.617267989180172803089810917334169298026842074062030223e-41"
+            ],
+            [
+              "-2.083805237943699538534622945988891101210490816222407011e-40",
+              "8.505505413019312859884842692205894309368156395913825593e-41"
+            ],
+            [
+              "-1.190483737517228112948174937222480182927108575186572860e-40",
+              "2.049414551627944511664073279566933312872488362135012087e-40"
+            ],
+            [
+              "1.103422141970611036258577103554705428430232599306000467e-40",
+              "2.219748295019411238878455032293173575184687796695039814e-41"
+            ],
+            [
+              "-8.095259646485891316567812887350831243960765558909701926e-41",
+              "3.044130148762324888749439335229602674732568698127483900e-40"
+            ],
+            [
+              "-4.920129659992527179492743330253180970780948981093793871e-41",
+              "-5.918715412154995979083305732151234341528439155811803689e-40"
+            ],
+            [
+              "-3.382852790611695354933402915341494469164461360358259872e-41",
+              "2.298655856568833905763233165458491854152078437219302074e-40"
+            ],
+            [
+              "1.682496703516488581655307228733401475566310876677276813e-40",
+              "3.869300860527048303778422099205850112336388705127897399e-40"
+            ]
+          ],
+          "slot": 0
+        },
+        {
+          "backend": "nrs",
+          "metric_coefficient": [
+            "1.763859861418668634101176786204612073057728644251277466e-23",
+            "-3.859721554574470118597955564496379954736201384662357963e-23"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "1.7195739827020172864761004965846049863552328437167613631367039275433221296567245E-40",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "1.203444302435045172702906751491890813170592324224007226e-55",
+              "-4.608931759236103228960705600473047249589147630887298604e-56"
+            ],
+            [
+              "-1.578627254996521153011212735401046039804623742973725400e-41",
+              "6.045801435785205380056863574130185178664726425524954462e-42"
+            ],
+            [
+              "2.517198992124223259403354058923179076965669353474953398e-41",
+              "-9.640328476892280783963610080808878772457289522461534058e-42"
+            ],
+            [
+              "-3.235481725716273497368633262284536890087306296217588177e-41",
+              "1.239119621232878017885885154072920737370845260856526669e-41"
+            ],
+            [
+              "1.794952363464639303719401834841811678505227881765836447e-41",
+              "-6.977678350573515759926248350855649313813552360012986691e-41"
+            ],
+            [
+              "-3.796413492605839952501282108227525414486571070822225507e-43",
+              "2.633354984675236441818854362576920840321213497736091356e-41"
+            ],
+            [
+              "2.485371202259602717487101103416854847746878717109634492e-41",
+              "-7.727677630270032468417103803296691276701986464828316563e-41"
+            ],
+            [
+              "-4.442752046864917342514219806798626856018938127964433764e-41",
+              "9.343328932781681062125592358028338414471070081888564500e-41"
+            ],
+            [
+              "1.825253965285376196416416833474312865846431412256188679e-41",
+              "-5.084487964484877726456006944962411357190630512921864480e-41"
+            ],
+            [
+              "2.647799683400290073237842322408542206581225165106729023e-41",
+              "-2.365650582208169911131103243275918061363118194922827398e-41"
+            ]
+          ],
+          "slot": 1
+        },
+        {
+          "backend": "nrs",
+          "metric_coefficient": [
+            "0",
+            "0"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "0",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "slot": 2
+        }
+      ]
+    },
+    {
+      "group": 5,
+      "historical_box_status": 1,
+      "identity_rows": [
+        {
+          "absolute_residual_L2": "0.00016713768113393516214917726197167640010022410503427530649766887908044340912188644",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "10127725499825.508030810960733271914744699417997911684348410472437586172075432852",
+          "relative_to_largest_uncancelled_term": "1.6502982938944662366657433071589356946937875388804888631112730639163486051548593E-17",
+          "relative_to_rhs": "0.0000082551214245965295585957165241423743963700206117261401954939746011900674623764216",
+          "residual_vector": [
+            [
+              "0.00001420012825664089027760820861106612035995683540070402427",
+              "-0.0001665333624602687734019418027301150037613602040004720063"
+            ],
+            [
+              "-1.461608239279901858494067213712485336249032514598453282e-12",
+              "1.714115021692874216086511797352259292442758482984720233e-11"
+            ],
+            [
+              "-1.573918973224946316417191870833914242915785585317042054e-12",
+              "1.845831018732753345003363085155538541519445148230763084e-11"
+            ],
+            [
+              "-5.299647519654867300697109737726907799548914836889525715e-13",
+              "6.215231986037219930397688718487453753812274418402631765e-12"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "20.246544240517218593281939218145753126802233981158065471325014368556914351669142",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "2.0296002902952313271171385216666233075368761776023841349912364842978181487212962E-21",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "20255450999651.132473590996487237139129511727926905796833368593111384543907852226",
+          "relative_to_largest_uncancelled_term": "1.0020020242107608089701190948731329392470047900176722685653431433013591322605837E-34",
+          "relative_to_rhs": "5.0113860321865198376446569783547933408450808572386332864470104322857430427145501E-23",
+          "residual_vector": [
+            [
+              "9.326172703492995229807123719857761277192021743360139338e-23",
+              "2.027456433227829965801548344493501467756897712078854963e-21"
+            ],
+            [
+              "1.600611881991265690761081166511985270130478491597052349e-29",
+              "-2.175348132329225415808119757515418103872019744515261468e-29"
+            ],
+            [
+              "2.282554730890482595707477954347153638275996001977749773e-29",
+              "-1.803371106709653379123645626326849394231884806358641478e-28"
+            ],
+            [
+              "6.151451215551884951017620792322810903873347757398848499e-30",
+              "3.913608471688057882453333759437605902621120871676370073e-29"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "40.499779447437530875995662749887417168928502911592414709020168870824412810776754",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "0.00015813364082930056753689807008448671700602263534987994321871047003758822796801570",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "20255455050701.092783307835552384490791373876060724223027248975358667646632820970",
+          "relative_to_largest_uncancelled_term": "7.8069656017837604835224357062477707425413497559394425994979304740537773087460536E-18",
+          "relative_to_rhs": "7.8071228043607696638542463927788457579495596270000447303061387823239548739367562E-11",
+          "residual_vector": [
+            [
+              "0.00001420012825664091865867785454834576831587475205973691802",
+              "-0.0001574947768004531715170371165408976173991588146921571181"
+            ],
+            [
+              "-1.461608239279903240926327281048762928092750506133604289e-12",
+              "1.628665803518909925383260460719959713736198919222876492e-11"
+            ],
+            [
+              "-1.573918973224946411877885623548631358851219845886855136e-12",
+              "1.772829212756918446101768087666121915665344909781231691e-11"
+            ],
+            [
+              "-5.299647519654861514642630226230265026206291213566749893e-13",
+              "6.054207991133569018773279324599263716505107991443451075e-12"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "2025504.7191133329195983401790459755364440589168340296279993953757193941750666462",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "7.8411266103905207177304980991397301609101728120023207748513703583637368961166072E-22",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "10127725499825.507714548858603604746182573413690536377241263327561045939563937904",
+          "relative_to_largest_uncancelled_term": "7.7422384823972735106817673725675041073710789534486968208366551975977685505608712E-35",
+          "relative_to_rhs": "3.8728222047389807557864416553989532375292102837730950440406561183587175650408798E-23",
+          "residual_vector": [
+            [
+              "6.759674833934516486549793170936553272801048329554255419e-23",
+              "7.811935386417924848090620930578381195109493745544683650e-22"
+            ],
+            [
+              "5.916680277253092619165171505115963514806279114990671172e-30",
+              "1.220979678984451436162457769787190297397877303399446861e-29"
+            ],
+            [
+              "8.974669638964864654572585940079166548416678457192478032e-30",
+              "-6.246164652265611620123689129741473229068117330032644304e-29"
+            ],
+            [
+              "2.438624962985238943336393352563086278733082826803236932e-30",
+              "2.655827453336230961264498587827415025579324552112240154e-29"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "20.246544240517218593281939218145753126802233981158065471325014368556914351669142",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "1.5682253220802841776386605179259159996062851601139617292843945930278659666390604E-21",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "20255450999651.132473590996487237138508908835218677447893071503545477069437835965",
+          "relative_to_largest_uncancelled_term": "7.7422384824079914760768508702883136708864986527463422167237048890332768427339846E-35",
+          "relative_to_rhs": "3.8721823759944145953828272665608619955098168839603318131626607310128320239338193E-23",
+          "residual_vector": [
+            [
+              "1.351934966786862369772937648703576536867172537177174146e-22",
+              "1.562387077285773504092293355932577234502629721797234873e-21"
+            ],
+            [
+              "1.183336055450653581471443874955230933083125372591085607e-29",
+              "2.441959357908528402531682561615150861494220504826545938e-29"
+            ],
+            [
+              "1.794933927793006676339193168921796085856057001764440485e-29",
+              "-1.249232930457568249709316263527280460978227051892842170e-28"
+            ],
+            [
+              "4.877249925970556246211694520675113145819201211065138126e-30",
+              "5.311654906667150129740500026531891469785223919363355917e-29"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "40.499779447437530875995662749887417168928502911592414709020168870824412810776754",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "1.5682256137279541708161606527870634590651253294731799105920892975314448169189779E-21",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "20255455050701.092783307835552384489496818794482615320775653614818312903661212149",
+          "relative_to_largest_uncancelled_term": "7.7422383738235191922325834704400648486154761382240857699110114014272831624247134E-35",
+          "relative_to_rhs": "7.7423942730404833781660816589173857464860933800222180705817023388546032194860958E-28",
+          "residual_vector": [
+            [
+              "1.351935021295093408496860022868015027594556553795171794e-22",
+              "1.562387369551596626342150042916622734320167931170788076e-21"
+            ],
+            [
+              "1.183336259951891207030727506675561547721823821184456983e-29",
+              "2.441960755436094193575326194383267357900315929007273093e-29"
+            ],
+            [
+              "1.794934205216679141139858640019979955702609706240727382e-29",
+              "-1.249233103739897945520969350907166709029544413577609183e-28"
+            ],
+            [
+              "4.877250438149448421912404528039989470544956801041025634e-30",
+              "5.311656124785463126867908737348013408544921584494529446e-29"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "2025504.7191133329195983401790459755364440589168340296279993953757193941750666462",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "0.0000045200389879633249550283347531228098274377886336487591910967649535819500894237910",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "306958397213.64151635858848310242958128063723042347529718171821767446391258141223",
+          "relative_to_largest_uncancelled_term": "1.4725249509357453157049967881759507714659055814824209840303792297120003119799582E-17",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "2.124242615863273866076190215371090047186729450286055940e-13",
+              "-0.000004520038987963265107294668832261500782021693928215266622"
+            ],
+            [
+              "-2.186466525838208846375287927504079020040754242250495023e-20",
+              "4.652441236637634557830274490695243171944011961164503284e-13"
+            ],
+            [
+              "-2.354475745863009101560514155670779854830398754803432262e-20",
+              "5.009937230352447997458506060316982087632550339098905558e-13"
+            ],
+            [
+              "-7.927912274342625190039225469683893259118840119810874978e-21",
+              "1.686929369817692231016871238573384211519882760288940467e-13"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "1.6299729710230916297984641855291276921988419684014304904587421560193707646812694E-23",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "613916794427.28636023028478005792759139260676769376205489993492049310051930622505",
+          "relative_to_largest_uncancelled_term": "2.6550389007417016867447449601640328326166033083785477451933036760808804227829155E-35",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-1.941553862275183257122856632708667163071115875538557600e-30",
+              "1.629972971022739148361517599239906879749170831226881686e-23"
+            ],
+            [
+              "-2.586327584844579412444397986300018302967283019130293653e-37",
+              "-8.764648456036175474210968817731804651269727420016269880e-30"
+            ],
+            [
+              "1.759665085442670852677626690122058647213711512078690661e-37",
+              "-5.183470325607715364465490260850918595088174613773999726e-30"
+            ],
+            [
+              "1.601126465531529601143713631652696510560836742384900247e-38",
+              "-2.729465960143464692992115140433158084151488169342041400e-30"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "0.0000045200389879633249504465842617986323489471221995914793819573977563124769849968938",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "613916917210.64809722655336738478334717259376996523088162082234828165646959295353",
+          "relative_to_largest_uncancelled_term": "7.3626232821539960356963478798810474110627127435116226901950086960717414630953224E-18",
+          "relative_to_rhs": "7.3626249065820448933208534303676032031413134624625641782631837713270387897731987E-11",
+          "residual_vector": [
+            [
+              "2.124242615863273858045295235745644893827741912358930365e-13",
+              "-0.000004520038987963265102712918340938003040357927461397688019"
+            ],
+            [
+              "-2.186466525838208861032926130086510074503569195514570702e-20",
+              "4.652441236637634517679657100134617263876891756978722121e-13"
+            ],
+            [
+              "-2.354475745863009094620810944488376237120811004212205081e-20",
+              "5.009937230352447975495992688780215365886158895457860378e-13"
+            ],
+            [
+              "-7.927912274342625188291887091796544720599962533124321377e-21",
+              "1.686929369817692218701202424532433665932009691945369484e-13"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "61391.678176114840946625496595214192035126499149498324044638039209915381934144456",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "1.4762197232353417210643476007376795514036286391426795235098074043857254218971806E-24",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "306958397213.64150731851050717577966974774800094785809596793535613437000902765290",
+          "relative_to_largest_uncancelled_term": "4.8091850121562245000051343172808658048446574810652958115826262285019870994591913E-36",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-6.571415525479722382357334335497571324608198138361594645e-31",
+              "1.476219723229357723214372791345973224033615134707071623e-24"
+            ],
+            [
+              "-1.286003006854134210466343141344572415814039640033736417e-37",
+              "-3.199615940493110815054084283497704156429523017125593618e-30"
+            ],
+            [
+              "5.693668820383442731616425739838283255444429627875911783e-40",
+              "-2.643113865422880888327908074630000559393113944729813701e-30"
+            ],
+            [
+              "6.327532479662793387648706448326164314240925451059386130e-38",
+              "-1.093764485257268599511362845823528705829428041115069003e-31"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "2.9524394464710766962665736626638881674833075599841270060590055010595924342496519E-24",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "613916794427.28636023028478005792755843030247339653072532949726463065519798901049",
+          "relative_to_largest_uncancelled_term": "4.8091850121568388577883408174537265737333628282567798568670279735067853603021313E-36",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-1.314283105095954216891137992653011860773612107397521770e-30",
+              "2.952439446459108700566625569273421305575185305484356546e-24"
+            ],
+            [
+              "-2.572006013708287214421609732311383476473079503156946101e-37",
+              "-6.399231880986242757808443904358708364790207680515687573e-30"
+            ],
+            [
+              "1.138733764074351271285970152746597284269218746156320523e-39",
+              "-5.286227730845772397065439983192449529665772861457472310e-30"
+            ],
+            [
+              "1.265506495932549528078915398395646628726135427957659592e-37",
+              "-2.187528970514477263841949135952032283131439139227865623e-31"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "2.9524438856447020469219315098082960469714264312956630819613794553520990924270651E-24",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "613916917210.64809722655336738478330793628617517222303203453543912031889957420658",
+          "relative_to_largest_uncancelled_term": "4.8091912812229200296394391321569847824561085790417955217592122272263398720859775E-36",
+          "relative_to_rhs": "4.8091923422829403726235302330587292391683743264620025815300163308830745965215608E-29",
+          "residual_vector": [
+            [
+              "-1.314283385232742033115423682089891755849090274614943145e-30",
+              "2.952443885632734065261588614308777753751399737475902886e-24"
+            ],
+            [
+              "-2.572006306746718644266355227683463694739497938608960942e-37",
+              "-6.399233006747709345057035757167922880008993963342524017e-30"
+            ],
+            [
+              "1.138732746133127138481252172473795251039149385242803890e-39",
+              "-5.286228511241441933537162043426189688492619138971762165e-30"
+            ],
+            [
+              "1.265506630332003426551340714537560055156725425154318882e-37",
+              "-2.187528025448610652286330619794754974080971553300575372e-31"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "61391.678176114840946625496595214192035126499149498324044638039209915381934144456",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "6.3995146214167160877027558786451000751350921076260056892805546585050230795832087E-12",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "10127725499825.507887599614057652383144915405238225992679649674277783626734935189",
+          "relative_to_largest_uncancelled_term": "6.3188073388511312749772645365526527867121808661572310270962539603962136953032803E-25",
+          "relative_to_rhs": "3.1607935385882099398383218595130237887850573024994262498300071794839453902221262E-13",
+          "residual_vector": [
+            [
+              "8.584330996859364489883025295575033861693783973803127107e-19",
+              "1.916546179960748520683777875045133360226352396576641259e-19"
+            ],
+            [
+              "5.392331311677884762731821017510226998239337484657241453e-12",
+              "1.149927846056571009093897372115126647115989281909798154e-12"
+            ],
+            [
+              "3.173135384241569585814046954852924656708993757571535161e-12",
+              "6.766788846495063295496758391544763395101327157908212791e-13"
+            ],
+            [
+              "-1.622843273594439048893371706331760035184705031996525810e-13",
+              "-3.460752988323254584832942056922245103924961331442996192e-14"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "20.246544240517218593281939218145753126802233981158065471325014368556914351669142",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "6.3980393503122370463588438171944949790375629244757088539977354429448145240105190E-10",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "20255450999651.132521425937501849402954876467715883718509021435603528622490780682",
+          "relative_to_largest_uncancelled_term": "3.1586753365414736785609829369451995321897510835437996821194688139288203612409605E-23",
+          "relative_to_rhs": "1.5797714055741724764715277603434094221523816775605516300795658100694994881297882E-11",
+          "residual_vector": [
+            [
+              "1.908670606595905233315598227215716278687702415736903944e-19",
+              "1.988885469411030342662118222235892108226863601121647899e-16"
+            ],
+            [
+              "2.730961879186516933534435460045239897812819775908805131e-12",
+              "4.236046174451490651857139743181842736906557316627862388e-10"
+            ],
+            [
+              "3.072649464675779923732718968448207678992266820162537857e-13",
+              "4.555930055847961460221871685439226740723179701404689367e-10"
+            ],
+            [
+              "-1.103985632120157747361653039030608668982091187866815675e-12",
+              "1.494471320365525149144246715620667393720853423694094299e-10"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "40.499779447437530875995662749887417168928502911592414709020168870824412810776754",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "0.00045404400131125034951826791435968050208962728273417122768783854398058939299899355",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "20255455050701.092831142786134240891151337104687215681407136720223178525099663359",
+          "relative_to_largest_uncancelled_term": "2.2415887481902547111673144979279399359573690775817153040734069207635433902244361E-17",
+          "relative_to_rhs": "2.2416338852570466819514367952216836970863372579931455955322217331720021373370859E-10",
+          "residual_vector": [
+            [
+              "-2.320208627873582786077524510390366588657295266143737275e-12",
+              "2.721040980051379938543022290474921332353221060131572668e-11"
+            ],
+            [
+              "0.000008788666079407060921633043696312074993987516295137536182",
+              "-0.0001030695960693968317722028075897700645379869093841241099"
+            ],
+            [
+              "0.00003151165650150275402188770159154216163000479810712378995",
+              "-0.0003695549897720976906127197014335490343713766398720815554"
+            ],
+            [
+              "0.00002044214097464940513536279512158386196593249570219290344",
+              "-0.0002397365569803959843563486697749105354183330939851353737"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "2025504.7191133329195983401790459755364440589168340296279993953757193941750666462",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "0.00016911142436020649790958361273723299871379736876772330554015580725403195718227302",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "10127725499825.507569388987254771984568428324141527563761375440315997220087293265",
+          "relative_to_largest_uncancelled_term": "1.6697868081349573455275851197265194054470537192985518444152339391120071088065170E-17",
+          "relative_to_rhs": "0.0000083526068622506995464453262991182437154885523182649686555090462818805413056282475",
+          "residual_vector": [
+            [
+              "-0.00001436753883094271120252597990914823596375213546362918604",
+              "0.0001684747674878931958313399735282427117552562791113413470"
+            ],
+            [
+              "1.770681079762215385255127073711925012597121685049432666e-7",
+              "-0.000002033520553139571248470894603098619445003167191171392420"
+            ],
+            [
+              "-8.894009470816285840276815906854688231085144785531662718e-8",
+              "0.000001021490173853015305788889162199824673666579885553032951"
+            ],
+            [
+              "-1.571594342207998977243096339714304098090155824944366285e-7",
+              "0.000001804933910460421298874284159256570511438541409921214640"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "20.246544240517218593281939218145753126802233981158065471325014368556914351669142",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "6.3980393503122309423591824250255342016158158182356568261452914442482241640612992E-10",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "20255450999651.132521425937501849402336447910937338731816478614078690603600446255",
+          "relative_to_largest_uncancelled_term": "3.1586753365414706650513545918145425292808376907566056188849904857169512607422257E-23",
+          "relative_to_rhs": "1.5797714055741709693029098881845363263652852406554716358673545110535716081538829E-11",
+          "residual_vector": [
+            [
+              "1.909091786573248803602592931912362025061107283038096626e-19",
+              "1.988880797052999548980764315933519761518050196826858609e-16"
+            ],
+            [
+              "2.730961879186392858862013570069764077493245428800357506e-12",
+              "4.236046174451504901626534723071492832790844591996346340e-10"
+            ],
+            [
+              "3.072649464677130106269400701909911411456100219293133037e-13",
+              "4.555930055847945953553524266857015625493369675335446186e-10"
+            ],
+            [
+              "-1.103985632119990464181774614589411744059975653963150106e-12",
+              "1.494471320365505937320704999862936253720913953035799394e-10"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "40.499779447437530875995662749887417168928502911592414709020168870824412810776754",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "0.00048044630740118377630103203045925325585900054600090549133635545057636992025125107",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "20255455050701.092831142786134240889856782023109106776098341301832899577595801202",
+          "relative_to_largest_uncancelled_term": "2.3719353931994448443653812964768101922707229921824259214389724066468870721763606E-17",
+          "relative_to_rhs": "2.3719831549516197334623791171692891380084623008277163449022035014085543906502059E-10",
+          "residual_vector": [
+            [
+              "-0.00001427319761816456994590198500485654001549239760175350495",
+              "0.0001583433290226316383637267913988488513859661182103930942"
+            ],
+            [
+              "0.000008853223563855480566226916656476701392221066752829872274",
+              "-0.0001038110223959260114135292507993630445674663602744108597"
+            ],
+            [
+              "0.00003146653914500642022629307412522823467238129302367419994",
+              "-0.0003690368285874307413597081920162694214335378906285957253"
+            ],
+            [
+              "0.00002037486557270945087719568212497042056164006388365575310",
+              "-0.0002389639162177382371572586872560901314385134190227626811"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "2025504.7191133329195983401790459755364440589168340296279993953757193941750666462",
+          "slot": 0,
+          "slot_name": "finite"
+        },
+        {
+          "absolute_residual_L2": "3.8823303142250584215718334853072844035869464040962238170996350852474662804702258E-23",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "306958397213.64151196884586486316567926803432847238709978003131334692541847934040",
+          "relative_to_largest_uncancelled_term": "1.2647741027664331676292997030037566749218076688817261114228605592631138371328078E-34",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-4.992329717783252968085191967443310062086337886774926342e-31",
+              "-3.882330314225034943682135003121005396070655948991687829e-23"
+            ],
+            [
+              "-1.205640204902892160336218186683330953590336283952679806e-37",
+              "3.997894221420811992292683488609331680720338351207710094e-30"
+            ],
+            [
+              "5.657835048715847897101976528269291426090227199989146339e-38",
+              "3.917694813298876809127608374839049897503353257706715217e-31"
+            ],
+            [
+              "-3.696924215753798227339295066313186611355955266906836038e-38",
+              "1.357906287564727196688304252804826921470693448342955983e-30"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "7.7646606284501185160411312617995282217157173518950931676048966067840578666995922E-23",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "613916794427.28636049087751950605111370970215803882009205945076522400015014094322",
+          "relative_to_largest_uncancelled_term": "1.2647741027664265662521224564795171946941558427880067404351637355855842870569214E-34",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-9.984659435566448238458592863949352106264620460691074811e-31",
+              "-7.764660628450071560261729910638397080145729834934879153e-23"
+            ],
+            [
+              "-2.411280409615134316690434711049021094982776589596569271e-37",
+              "7.995788443166667664753136881879401354101661888185618766e-30"
+            ],
+            [
+              "1.131567009918104752672835863766857452823352719479398338e-37",
+              "7.835389627725686408291256328334984787351464278582916615e-31"
+            ],
+            [
+              "-7.393848429284397189264115044480281900267770185618829988e-38",
+              "2.715812575394144101498812411873562215784150135208514203e-30"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "0.000012279114164052825766351596919589216973370798000259409224755200557790600660201967",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "613916917210.64809748714615895145589187668307785904025989206845512696139227082078",
+          "relative_to_largest_uncancelled_term": "2.0001263721226951653030376181662625842159694742456892632273957083980075958764116E-17",
+          "relative_to_rhs": "2.0001268134139653593771222243224808527881901819156799713000844973919451335649575E-10",
+          "residual_vector": [
+            [
+              "-3.470877130013620680502031875954645293858268713831379800e-20",
+              "7.385455800026506856069242498422797107794888929205919687e-13"
+            ],
+            [
+              "1.314724448893279247394426880463320028666800765104291075e-13",
+              "-0.000002797517441298067393502106644382243754433372102431302003"
+            ],
+            [
+              "4.713931113164704003102109542492434723681224041168367837e-13",
+              "-0.00001003047027630527668935538018508358519933663807337607917"
+            ],
+            [
+              "3.058006640303713050421127270375187147128177916373159545e-13",
+              "-0.000006506935289030566963618541242742417564615148230798402962"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "61391.678176114840946625496595214192035126499149498324044638039209915381934144456",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "0.0000045740358702850235324743670230190919298663088452809220855236912817854297642195769",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "306958397213.64150744880687689984068202153015551897603564797242851659701795995085",
+          "relative_to_largest_uncancelled_term": "1.4901158957712166675194253924568577062176358802650945697408412389342016288050667E-17",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-2.149286099263757210173073475741323292439808099432018262e-13",
+              "0.000004573327402628928396431391585034156165207276181508072153"
+            ],
+            [
+              "2.648737290237980324548857647192146856773507646951286572e-15",
+              "-5.636077410057213929287627054371818187584915881073294952e-8"
+            ],
+            [
+              "-1.330530822077949012153594437091117451306923158443606122e-15",
+              "2.831150804323302442591885125693787025619175242531685317e-8"
+            ],
+            [
+              "-2.350995590195721319345665167975755248193801389585556210e-15",
+              "5.002532031349824015837327023605641255657358019475472057e-8"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "9.1053209040738308093650285850462472594609899886203715871230978697781417408628815E-23",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "613916794427.28636049087751950605109415396633799262135822395464006214974637075750",
+          "relative_to_largest_uncancelled_term": "1.4831522751496065820836021904604975928065828669666891200822844841986311191509752E-34",
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "-3.684093407908452238959707982693557508003613555980492877e-31",
+              "-9.105317476146229529738736592564623624475737752641924983e-23"
+            ],
+            [
+              "-1.856314832499162556685539602477858217161248889657771920e-33",
+              "3.950114998405792784247094964483963273613944279033783477e-26"
+            ],
+            [
+              "2.019897182564953138166365102049476388892818315578137083e-33",
+              "-4.297523639291036267549574005271209007251111178024595112e-26"
+            ],
+            [
+              "2.502365204785361706726757181691475828413149944705394159e-33",
+              "-5.324718960492223869725556375354976064910005513236744499e-26"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "0.000013075453106493336356644971805938041430269694387194902553348142573634242714950476",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "613916917210.64809748714615895145585264037548306603239365092379525889234839524449",
+          "relative_to_largest_uncancelled_term": "2.1298408204651032916284024511353427651698714228166033389859545040348053438057866E-17",
+          "relative_to_rhs": "2.1298412903754919920972731316970354874575287065825903238989156104198726558369298E-10",
+          "residual_vector": [
+            [
+              "-2.135173295422022019795546151796443331160685613971109994e-13",
+              "0.000004543297676684372370758715833628976055866345765128337269"
+            ],
+            [
+              "1.324381807154977713288340986642468354375849117802342204e-13",
+              "-0.000002818066711676896773457354091817947300984393796004960715"
+            ],
+            [
+              "4.707181863086499245100692411476442120738017511389647739e-13",
+              "-0.00001001610898194785137612210516135814174830780629058711916"
+            ],
+            [
+              "3.047942698568268471606830004845718467627694857249806280e-13",
+              "-0.000006485520875875921877763136730981398337346308104744407477"
+            ]
+          ],
+          "rhs_exactly_zero": false,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "61391.678176114840946625496595214192035126499149498324044638039209915381934144456",
+          "slot": 1,
+          "slot_name": "single"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 2,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 3,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        },
+        {
+          "absolute_residual_L2": "0",
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "j": 4,
+          "largest_uncancelled_term_L2": "0",
+          "relative_to_largest_uncancelled_term": null,
+          "relative_to_rhs": null,
+          "residual_vector": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "rhs_exactly_zero": true,
+          "rhs_policy": "Same retained TIRust-S triangle coefficients, explicitly regathered in box-pinch coordinates; no q recurrence conversion or independent pinch oracle.",
+          "rhs_scale": "0",
+          "slot": 2,
+          "slot_name": "double"
+        }
+      ],
+      "maxima": [
+        {
+          "absolute_witness_j": 2,
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "0.00016713768113393516214917726197167640010022410503427530649766887908044340912188644",
+          "maximum_relative_to_uncancelled_term": "1.6502982938944662366657433071589356946937875388804888631112730639163486051548593E-17",
+          "slot": 0,
+          "zero_rhs_rows": 0
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "0.0000045200389879633249550283347531228098274377886336487591910967649535819500894237910",
+          "maximum_relative_to_uncancelled_term": "1.4725249509357453157049967881759507714659055814824209840303792297120003119799582E-17",
+          "slot": 1,
+          "zero_rhs_rows": 2
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "tir",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "0",
+          "maximum_relative_to_uncancelled_term": null,
+          "slot": 2,
+          "zero_rhs_rows": 3
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "1.5682256137279541708161606527870634590651253294731799105920892975314448169189779E-21",
+          "maximum_relative_to_uncancelled_term": "7.7422384824079914760768508702883136708864986527463422167237048890332768427339846E-35",
+          "slot": 0,
+          "zero_rhs_rows": 0
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "2.9524438856447020469219315098082960469714264312956630819613794553520990924270651E-24",
+          "maximum_relative_to_uncancelled_term": "4.8091912812229200296394391321569847824561085790417955217592122272263398720859775E-36",
+          "slot": 1,
+          "zero_rhs_rows": 2
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "tir",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "0",
+          "maximum_relative_to_uncancelled_term": null,
+          "slot": 2,
+          "zero_rhs_rows": 3
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "0.00045404400131125034951826791435968050208962728273417122768783854398058939299899355",
+          "maximum_relative_to_uncancelled_term": "2.2415887481902547111673144979279399359573690775817153040734069207635433902244361E-17",
+          "slot": 0,
+          "zero_rhs_rows": 0
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "0.000012279114164052825766351596919589216973370798000259409224755200557790600660201967",
+          "maximum_relative_to_uncancelled_term": "2.0001263721226951653030376181662625842159694742456892632273957083980075958764116E-17",
+          "slot": 1,
+          "zero_rhs_rows": 2
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "nrs",
+          "geometry": "exact_shift_cartesian",
+          "maximum_absolute_L2": "0",
+          "maximum_relative_to_uncancelled_term": null,
+          "slot": 2,
+          "zero_rhs_rows": 3
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "0.00048044630740118377630103203045925325585900054600090549133635545057636992025125107",
+          "maximum_relative_to_uncancelled_term": "2.3719353931994448443653812964768101922707229921824259214389724066468870721763606E-17",
+          "slot": 0,
+          "zero_rhs_rows": 0
+        },
+        {
+          "absolute_witness_j": 4,
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "0.000013075453106493336356644971805938041430269694387194902553348142573634242714950476",
+          "maximum_relative_to_uncancelled_term": "2.1298408204651032916284024511353427651698714228166033389859545040348053438057866E-17",
+          "slot": 1,
+          "zero_rhs_rows": 2
+        },
+        {
+          "absolute_witness_j": 2,
+          "backend": "nrs",
+          "geometry": "formal_supplied_S",
+          "maximum_absolute_L2": "0",
+          "maximum_relative_to_uncancelled_term": null,
+          "slot": 2,
+          "zero_rhs_rows": 3
+        }
+      ],
+      "pinch_bindings": [
+        {
+          "exact_S_masses_scale_match": true,
+          "group": 8,
+          "omitted": 1,
+          "permutation": [
+            2,
+            3,
+            4
+          ],
+          "routing": {
+            "affine_defects": [
+              [
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "2.068507270503203485542829454197352177388534594261415252e-32"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "2.068507288870302717141071766208860571486123310178064577e-32"
+              ]
+            ],
+            "eta": 1,
+            "exact_affine_routing": false,
+            "max_absolute_affine_defect": "2.068507288870302717141071766208860571486123310178064577e-32",
+            "translation_box_minus_eta_triangle": [
+              "-173.3000000000021145751816220581531524658203125",
+              "0.00001783763521634173455292053656062734035003813914954662323",
+              "0.00001920828834291342574781824570351318470784462988376617432",
+              "0.000006467750843917843523369471961197612026662613604807968914"
+            ]
+          },
+          "slots": [
+            {
+              "S_based_coefficients": [
+                [
+                  "0.00001664844678645848265159916314487351917788493340685653587",
+                  "6.973668606066887901694606279960042733910499276490198392e-12"
+                ],
+                [
+                  "0.00001664847689816359845621036856556913601992757653151481543",
+                  "1.394733442266728355726490886988532520853171139046067940e-11"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "1.8044863718389239261566594730342616252545367149383281660950223831644154046026192E-44",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "-1.757953356299645005042562247769931751020367079789714315e-44",
+                  "-5.019297167026052886837851841578886075651323098113560265e-51"
+                ],
+                [
+                  "-4.071499272097495407124523888779647979716505607688766189e-45",
+                  "2.456021485483555351395263541000393323635540526774276523e-51"
+                ]
+              ],
+              "scalar": [
+                "-0.0005238189952452365261848136985272254627803534747810836157",
+                "-0.0001046050521701855104739774672137854758237670467502788005"
+              ],
+              "slot": 0
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 1
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 2
+            }
+          ],
+          "status": 0,
+          "stored_rank": 2
+        },
+        {
+          "exact_S_masses_scale_match": true,
+          "group": 196,
+          "omitted": 2,
+          "permutation": [
+            3,
+            4,
+            1
+          ],
+          "routing": {
+            "affine_defects": [
+              [
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "2.068507288870302717141071766208860571486123310178064577e-32"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "2.068507288870302717141071766208860571486123310178064577e-32"
+              ]
+            ],
+            "eta": 1,
+            "exact_affine_routing": false,
+            "max_absolute_affine_defect": "2.068507288870302717141071766208860571486123310178064577e-32",
+            "translation_box_minus_eta_triangle": [
+              "-346.60000000000269437805400229990482330322265625",
+              "0.00002986174663763417482344793979498476232947723474353551865",
+              "0.00001757224636423355697014650911996769266920637164730578661",
+              "-5.865670496777426139991619226652260076420354768316785745e-7"
+            ]
+          },
+          "slots": [
+            {
+              "S_based_coefficients": [
+                [
+                  "-7.399294011747201686232310356734706685425123378624254910e-13",
+                  "0.01949200466528093357252387741032834983279805753983950584"
+                ],
+                [
+                  "-0.00001664841223516414064009036487030082582579072011807072281",
+                  "0.05846635522021121698707471577431446813605438881297571042"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "9.4068637836935956042474381229197442532078733385683188382709275920236071399796111E-41",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "-1.806940822936346778489166898900118243188826265002998809e-44",
+                  "-9.404147854761423583998662534414265556910975348028910172e-41"
+                ],
+                [
+                  "3.095217950102744659064253393803090392729682102252181711e-46",
+                  "2.260223545562021959129662671169573932067474535865033632e-42"
+                ]
+              ],
+              "scalar": [
+                "0.00001664841334505828712050921720695857007164245062378152007",
+                "-0.1169327182372232471635439051561909348567138186289136873"
+              ],
+              "slot": 0
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 1
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                1
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 2
+            }
+          ],
+          "status": 0,
+          "stored_rank": 3
+        },
+        {
+          "exact_S_masses_scale_match": true,
+          "group": 4,
+          "omitted": 3,
+          "permutation": [
+            2,
+            1,
+            4
+          ],
+          "routing": {
+            "affine_defects": [
+              [
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "1.836709923159824231201150839409758871591664932456386752e-40"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "1.836709923159824231201150839409758871591664932456386752e-40"
+              ]
+            ],
+            "eta": -1,
+            "exact_affine_routing": false,
+            "max_absolute_affine_defect": "1.836709923159824231201150839409758871591664932456386752e-40",
+            "translation_box_minus_eta_triangle": [
+              "-173.3000000000021145751816220581531524658203125",
+              "0.00001783763521634173455292053656062734035003813914954662323",
+              "0.00001920828834291342574781824570351318470784462988376617432",
+              "0.000006467750843917843523369472002567757436726683315664557998"
+            ]
+          },
+          "slots": [
+            {
+              "S_based_coefficients": [
+                [
+                  "-0.00001664837694394067975742437215246743559980887287407219395",
+                  "0.03898399536019981100899436019907315085275377822537774152"
+                ],
+                [
+                  "-0.00001664847837802211758417694945902051002754155509895450334",
+                  "0.03898401093287934427734901046310666387190779193630690480"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "7.3404782560574574642091868690810244857102124124561129586979148105456274480789029E-41",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "4.511038270057985812485205721171364409571262431094297911e-44",
+                  "-7.257602652520568754749970306071993519101828445237668750e-41"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "2.232546110986811404324784182518103579686000237010213208e-44",
+                  "1.099908828971894835999893967670048494998569221912361250e-41"
+                ]
+              ],
+              "scalar": [
+                "0.0005571158219353483000675277612049374060815142546575252951",
+                "-0.2337994410152785784637461979302595657580343599503134727"
+              ],
+              "slot": 0
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 1
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 2
+            }
+          ],
+          "status": 0,
+          "stored_rank": 2
+        },
+        {
+          "exact_S_masses_scale_match": true,
+          "group": 16,
+          "omitted": 4,
+          "permutation": [
+            1,
+            2,
+            3
+          ],
+          "routing": {
+            "affine_defects": [
+              [
+                "0",
+                "0",
+                "0",
+                "0"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "2.499262436650428990491456459293278428847295881045020987e-33"
+              ],
+              [
+                "0",
+                "0",
+                "0",
+                "2.499262436650428990491456459293278428847295881045020987e-33"
+              ]
+            ],
+            "eta": 1,
+            "exact_affine_routing": false,
+            "max_absolute_affine_defect": "2.499262436650428990491456459293278428847295881045020987e-33",
+            "translation_box_minus_eta_triangle": [
+              "0",
+              "0",
+              "0",
+              "-2.499262436650428990491456459293278428847295881045020987e-33"
+            ]
+          },
+          "slots": [
+            {
+              "S_based_coefficients": [
+                [
+                  "1112.911997399435112313995365396258332955311488732309576",
+                  "-12343.24739273702552939039898112251689653265262701241814"
+                ],
+                [
+                  "-0.00001664841445495249150497739925918274911207787386194249054",
+                  "354.2508838783224408415755481694233304005684004237117445"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "1.3644090052514107121864183095434428463560679613386005972833261594923588793516288E-35",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "7.649045516904657973919026476262595712872492267509159589e-39",
+                  "9.201151466392840766879899642331061346500167845631367618e-36"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "2.139655335277893749692079903107887268190270857706011931e-37",
+                  "-1.007244584478745833717121881374325941422032755347213584e-35"
+                ]
+              ],
+              "scalar": [
+                "-1112.911964102606202409012355441459780024544187413507797",
+                "11634.74562498038064770724788478367091615664184009773918"
+              ],
+              "slot": 0
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0.00001664841445495249150497739919795787314987725405083257612",
+                  "-354.2508838783224408415755481694228685125800132813659585"
+                ],
+                [
+                  "-4.771659612441757274151595491503630773384886428151860466e-41",
+                  "1.323594376958486255170605926528562280203423823117965597e-32"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "3.4508544982674102345070594489447816855252104791382351667438420855629366792158159E-37",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "-2.781921205390051188915194595334734447558219758858611839e-44",
+                  "3.399778881572939586444615251802438911584750245421597911e-37"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "-5.706747381680792045444399922368173333211901596763690655e-45",
+                  "-5.915237312424506643210705983957624891976740772637071561e-38"
+                ]
+              ],
+              "scalar": [
+                "-0.00001664841445495249150497739919795787491765719854785409933",
+                "354.2508838783224408415755481694228642477377152625635801"
+              ],
+              "slot": 1
+            },
+            {
+              "S_based_coefficients": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "coefficient_axes": [
+                0,
+                2
+              ],
+              "native_vector_reconstruction_L2": "0",
+              "native_vector_reconstruction_residual": [
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ],
+                [
+                  "0",
+                  "0"
+                ]
+              ],
+              "scalar": [
+                "0",
+                "0"
+              ],
+              "slot": 2
+            }
+          ],
+          "status": 0,
+          "stored_rank": 2
+        }
+      ],
+      "point": 2,
+      "private512_box_status": 0,
+      "rank2_decompositions": [
+        {
+          "backend": "tir",
+          "metric_coefficient": [
+            "0.000008324223763193885583846150594979973023738782613725296518",
+            "-0.03897918371842672382129068519666120059919811340904016827"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "7.6901212915548704475909675976597069164823259766143461057932963852808647851284310E-33",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "7.554156939527716418058631081055892405255147353413035540e-43",
+              "-1.012568051141247300144391923205294550837181982097671488e-41"
+            ],
+            [
+              "-2.066451437579834790860930050618443242517533007123443874e-34",
+              "2.769895729833157037077130329808083376601613563034667386e-33"
+            ],
+            [
+              "3.297162687481528622009612955715504354279599393294983953e-34",
+              "-4.419555515571685497582738830586608383395836625421180537e-33"
+            ],
+            [
+              "-4.194164715408920009833103584856031138290019991485990177e-34",
+              "5.621907548445239966231417896175547831430484425379455248e-33"
+            ],
+            [
+              "5.533312720223107955414637722065185344697924319524025343e-40",
+              "-7.186827937314594239563114103817413278381435351625600032e-37"
+            ],
+            [
+              "-7.982897121960510580527452691617672882760115728331699762e-40",
+              "2.706188023664819686347115823884940860080821027160187862e-37"
+            ],
+            [
+              "1.448754717032784011415961966313477342986073393559257712e-40",
+              "-7.902810140306729969623644906439830853405058864696083738e-37"
+            ],
+            [
+              "1.138759769239770096340870375476088702367719902189311279e-39",
+              "9.660670868049276661399006563552222151741239482600188593e-37"
+            ],
+            [
+              "-5.947558229782330450909495548191837096402528978463672856e-41",
+              "-5.172019209055971246203320239345885105298162922507015498e-37"
+            ],
+            [
+              "-1.691335625568128120240528284574501647596986819406372510e-39",
+              "-2.473944187539796546565906898927129402814887849172798328e-37"
+            ]
+          ],
+          "slot": 0
+        },
+        {
+          "backend": "tir",
+          "metric_coefficient": [
+            "-2.851682254624493933364847189816071164622998516956447029e-47",
+            "-5.668102776584349805117664909413791972867314544843302499e-40"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "3.9603925609197406377527445595623015808129104988262607809562497917325056166393941E-33",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "3.480359845022892777040348164644075926473546864918968312e-49",
+              "5.229191080245588881633240959357104244168958951845121026e-42"
+            ],
+            [
+              "-9.520578752355535243092756718547726858167666255143192498e-41",
+              "-1.430453392967064662575469136139874128916236788951590671e-33"
+            ],
+            [
+              "1.519072573138239247569038470074658473509714377288332824e-40",
+              "2.282384897946650448219803304267516943409048104476574198e-33"
+            ],
+            [
+              "-1.932340375739362625970889943096750660299145304635680314e-40",
+              "-2.903313883265487463994950177437729301942153611125599585e-33"
+            ],
+            [
+              "-1.032915679571415466016064301693510189920078560196250562e-47",
+              "-1.260408992868073580260304698458267615016866541910633841e-40"
+            ],
+            [
+              "1.077063291649428788758878721156425340242006938459430640e-47",
+              "1.879019069203649252046781246052940569266898569115988672e-40"
+            ],
+            [
+              "-5.862887960092727221952814698871182265881066840990769021e-48",
+              "-2.690364191653683024275965169512841999479618928001349005e-41"
+            ],
+            [
+              "-8.074208465758241534348142190457457529923577036784765345e-48",
+              "-2.787409382007285618943287748097741397276611809128682379e-40"
+            ],
+            [
+              "-2.235119067391808496527758937738541108090433256903393522e-48",
+              "1.612540274556158814286103149007593418186999675857776268e-41"
+            ],
+            [
+              "1.875140124597468547221282002385696702177171732523916780e-47",
+              "4.100110285677815088019924856149580054735167940557767431e-40"
+            ]
+          ],
+          "slot": 1
+        },
+        {
+          "backend": "tir",
+          "metric_coefficient": [
+            "0",
+            "0"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "0",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "slot": 2
+        },
+        {
+          "backend": "nrs",
+          "metric_coefficient": [
+            "0.8337637960504536526812544633965568432338058744461424299",
+            "-9.614445116023742198011422434087175605084198346163698127"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "7.9010693320446968065463809665966924876269829463995705808611244064023163895491224E-32",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "1.396169145915702485013225805249890284536811927498458794e-41",
+              "-1.033846262008833476455218632037702920650519848353771525e-40"
+            ],
+            [
+              "-3.819242520102233602450033354217058516922323524887406262e-33",
+              "2.828102608225257161682255373891621308524065576052356196e-32"
+            ],
+            [
+              "6.093859116466478192354410232659289574200647097999370036e-33",
+              "-4.512428517133318572734952588321058351375721554446414577e-32"
+            ],
+            [
+              "-7.751709972958408977059361542795695488789204386408585694e-33",
+              "5.740046901317525820654342895496330834766483803804950281e-32"
+            ],
+            [
+              "2.151681116624383297309258918943860592270080955409284573e-35",
+              "3.709770301240859988901913279770112840615639594411999396e-35"
+            ],
+            [
+              "-9.741936052624255524668570875610570779891582940360733589e-36",
+              "-6.746706200726187253844287425882492911306455337510178133e-35"
+            ],
+            [
+              "2.237122490821285345064689580130899420968823355604545614e-35",
+              "-1.263042079053850183538037871544202314448233794004581810e-36"
+            ],
+            [
+              "-2.369043018653741643513824652256538518450707798276733890e-35",
+              "1.208518476318504443414303604147447232665254005511645931e-34"
+            ],
+            [
+              "1.421335782128035800477197527701804753066965943996194987e-35",
+              "-1.478040414321494913383500350842492105209968487692031963e-35"
+            ],
+            [
+              "2.173632981985042619070507465384831760709113796793768147e-36",
+              "-1.579496540288852451137971387343090554429738615472694224e-34"
+            ]
+          ],
+          "slot": 0
+        },
+        {
+          "backend": "nrs",
+          "metric_coefficient": [
+            "1.247241484340343548559817313958661811442553087403565751e-8",
+            "-0.2653924789251280080363388255783374519580667991788541854"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "7.3905044104549614647083632875136231802217969595355753815264732930716527301902152E-33",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "2.003001472733377608666815436646321897341331737185553454e-49",
+              "-9.758200771613569093842234019571600628569066609714176884e-42"
+            ],
+            [
+              "-5.479241834541490922473157733985190463791059984459001425e-41",
+              "2.669371072664343642911383400367267857901249125349063403e-33"
+            ],
+            [
+              "8.742500019189555773588320975662061031345079284514517853e-41",
+              "-4.259161642875314394599404745622072427001214198187749037e-33"
+            ],
+            [
+              "-1.112092079778961175655970204700424975861916476460997176e-40",
+              "5.417878088819411341524643426150917233443102704370338325e-33"
+            ],
+            [
+              "-4.227590709565487351238465002213004658270160435747662153e-43",
+              "-7.015299418986527273178280309456417321468482777969713457e-36"
+            ],
+            [
+              "2.563896324973720791524148813805400886061534051038617659e-43",
+              "4.087920047248571148143360435270042846907789492291896834e-36"
+            ],
+            [
+              "-3.884623490203458076684202626169279037965135747689288964e-43",
+              "-6.577173737344473387244855543893310873100780852560531229e-36"
+            ],
+            [
+              "2.581011560848655703954567901337445231463326082869316836e-43",
+              "4.814694137308158503291343135096200704524338311458620131e-36"
+            ],
+            [
+              "-2.288805570400071104130648123274281536209085008101585940e-43",
+              "-3.927250474021279830532770810556796170548528032309920072e-36"
+            ],
+            [
+              "1.646581151718304380661505767690996073128731694210082503e-43",
+              "2.200595523477597156317843332126197045343515897444483612e-36"
+            ]
+          ],
+          "slot": 1
+        },
+        {
+          "backend": "nrs",
+          "metric_coefficient": [
+            "0",
+            "0"
+          ],
+          "momentum_matrix_antisymmetric_residual": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "reconstruction_L2": "0",
+          "reconstruction_residual_by_unique_component": [
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "0"
+            ]
+          ],
+          "slot": 2
+        }
+      ]
+    }
+  ],
+  "schema": "closed-ew-rank2-contraction-diagnostic-1",
+  "scientific_acceptance": false,
+  "scope": "Historical conditional geometry/recurrence residuals only, not independent accuracy or current stress-failure adjudication.",
+  "sources": {
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/artifact-index.json": {
+      "bytes": 46312,
+      "sha256": "0e3618c3f3af70961397a8423b6616d309defbff03559e6f3f8995a283cdce50"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/execution.json": {
+      "bytes": 600,
+      "sha256": "7c4287927254cf0dc76510ed488509117ff2a38c1fd2beeddd160ea0d627d985"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/summary.json": {
+      "bytes": 11689,
+      "sha256": "296539397d0560e8a2beffedb862dd56af821876bf0a986d31600d721bc9f36c"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/analyze.py": {
+      "bytes": 9364,
+      "sha256": "897c3d7e6ca95ac7e6831d4d1280e1d307de427c5b9f4a95d4c4a45da73b694e"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/execution.json": {
+      "bytes": 22955,
+      "sha256": "d456c600402dfca901aa9cb2ca1a8e1d92c0e8c1a3143e26f1f1d2fbdbfa7ceb"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/output.log": {
+      "bytes": 163396,
+      "sha256": "be7ed8a39b84514506f7ca8ba4769581fb26faafbeebdc06338563c7f41f9ae6"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/replay.f90": {
+      "bytes": 5081,
+      "sha256": "44f8702d46b6d5b2e5f77d107f4ac958b52a9cccccb5388b2250125b5f830fde"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/selected-inputs.dat": {
+      "bytes": 5481,
+      "sha256": "a357490c15bc615869b3b11677788efb74d1529814056108aa2b57e2c06244e9"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/selected-inputs.json": {
+      "bytes": 59613,
+      "sha256": "6463588a04fefc53fcf13630598e38065b9bbc0956a87c6e89c634a83bd073f2"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/source-manifest.json": {
+      "bytes": 9045,
+      "sha256": "c0fb0f55457a751079a4bb313498fbd5b40245d172e514672899352c4bfb5d63"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/replay-forward/summary.json": {
+      "bytes": 321570,
+      "sha256": "d7a42e54cd5eedcc149c9cdd06653f6eab890e989f63b879bdf8880a75263264"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/higher-precision/source/lib.rs": {
+      "bytes": 41008,
+      "sha256": "59184358f8c2f91b1ac38397e76f8accc6e4ffce8aaa529bdde2acbaee985871"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/input-consistency/audit.py": {
+      "bytes": 4090,
+      "sha256": "0cbb8734403893b1644cb6782db8697a1a91130e8e2a16f224ba4b0b3a6a2d63"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/trace.json": {
+      "bytes": 5122843,
+      "sha256": "03fbfd3795a468661162c0e574a7de6878065efbab79ca9d0f80e743f29e787f"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-geometry-supplement/evidence-index.json": {
+      "bytes": 1085,
+      "sha256": "237fb39d7e7204260e2601fa7111813eaff2d6333ea72e04a019f7885c657ea1"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-geometry-supplement/source-excerpts.txt": {
+      "bytes": 7410,
+      "sha256": "84c31c46e7cf68244b2564480d2cc5116c905aa649593f52bd0c2d70e7a4501a"
+    }
+  },
+  "sources_unchanged": true,
+  "transverse_metric_freedom": "Three external Gram contractions leave a transverse tensor component; contraction residuals alone do not determine the full tensor.",
+  "unavailable_control": {
+    "audited": false,
+    "group": 24,
+    "pinches": [
+      {
+        "matches": [],
+        "omitted": 1
+      },
+      {
+        "matches": [
+          {
+            "group": 191,
+            "permutation": [
+              4,
+              1,
+              3
+            ]
+          }
+        ],
+        "omitted": 2
+      },
+      {
+        "matches": [],
+        "omitted": 3
+      },
+      {
+        "matches": [
+          {
+            "group": 25,
+            "permutation": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "group": 25,
+            "permutation": [
+              3,
+              2,
+              1
+            ]
+          },
+          {
+            "group": 26,
+            "permutation": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "group": 26,
+            "permutation": [
+              3,
+              2,
+              1
+            ]
+          }
+        ],
+        "omitted": 4
+      }
+    ],
+    "point": 2,
+    "reason": "No retained successful rank1 pinch match for omitted1 or3; omit4 also ambiguous. No synthetic pinch is substituted."
+  }
+}

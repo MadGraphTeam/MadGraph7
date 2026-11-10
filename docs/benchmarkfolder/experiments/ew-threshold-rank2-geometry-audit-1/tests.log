@@ -1,0 +1,16 @@
+test_affine_defect_is_not_exact_routing (test_audit.PureTests.test_affine_defect_is_not_exact_routing) ... ok
+test_component_weights_no_offdiagonal_factor_two (test_audit.PureTests.test_component_weights_no_offdiagonal_factor_two) ... ok
+test_every_pinch_permutation_reversal_and_translation (test_audit.PureTests.test_every_pinch_permutation_reversal_and_translation) ... ok
+test_exact_geometry_formal_equals_cartesian_with_metric (test_audit.PureTests.test_exact_geometry_formal_equals_cartesian_with_metric) ... ok
+test_explicit_singular_refusal_and_zero_scale (test_audit.PureTests.test_explicit_singular_refusal_and_zero_scale) ... ok
+test_metric_piece_not_transformed_by_supplied_gram (test_audit.PureTests.test_metric_piece_not_transformed_by_supplied_gram) ... ok
+test_nonzero_origin_and_odd_sign (test_audit.PureTests.test_nonzero_origin_and_odd_sign) ... ok
+test_slot_selection_and_already_squared_mass (test_audit.PureTests.test_slot_selection_and_already_squared_mass) ... ok
+test_unmatched_and_swapped_pinch_reject (test_audit.PureTests.test_unmatched_and_swapped_pinch_reject) ... ok
+test_unused_coordinate_and_decomposition_residuals_retained (test_audit.PureTests.test_unused_coordinate_and_decomposition_residuals_retained) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.012s
+
+OK
+Native/process guard active. Allfixtures synthetic. Closed full-data replay verified separately by run_pure.py --check and independent read-only reviewer.
