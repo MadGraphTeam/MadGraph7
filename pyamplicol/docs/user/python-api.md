@@ -421,13 +421,27 @@ points):
 An explicit `reduction="ninjars"` without stability checks (and the native
 SDKs' NinjaRS calls without monitoring) was exposed to this hazard until the
 conditioning bound (NinjaRS 71eddb15); the guard does not cover explicit
-calls. A value the bound does not flag is no more verified than before:
-e.g. at near-forward g g > h h points NinjaRS returns the suppressed
-helicity rows of `evaluate_resolved` far off in every arithmetic (a
-systematic error of 2 -> 2 boxes, which neither the bound nor the guard's
-cached check sees; `workspace/reports/engine-v2/m-lit/lit-fallback-guard-report.md`
-§0); stability checks with the rescaled variant or a rescue stack are the
-tools for such calls.
+calls. A value the bound does not flag is no more verified than before,
+and the guard's estimate is no proven bound either. Measured at
+near-forward g g > h h points (`workspace/tmp/lit-fallback-guard/fix5/probe15.json`):
+
+* the inputs' own consistency: given as binary64 texts (gluon legs off
+  shell by up to 5.2e-13 GeV^2, Higgs legs by up to 2.0e-10 GeV^2,
+  momentum conservation missed by up to 9.9e-14 GeV), the +- helicity
+  rows of `evaluate_resolved` (1e-13 to 1e-21 of the ++ rows) move far
+  from those of the exact point nearby on NinjaRS (1.1e-4 to 9.3e11, the
+  same in double-double and at 60 and 80 digits) and little on TIRust
+  (2.2e-11 to 2.3e-6); on the exact on-shell, momentum-conserving points
+  the two backends agree to 3e-37 or better at 60 to 80 digits. This is
+  no reduction error and no check sees it: rows suppressed that strongly
+  are defined only to the inputs' consistency, so give exactly on-shell,
+  momentum-conserving momenta (exact decimal texts) where they matter.
+  The summed |A|^2 is not affected (within 1.2e-9);
+* on the exact points, double-double `"auto"` serves the +- rows of one
+  point 1.8e-5 and 2.0e-5 off with the guard's estimate 9.3e-6, inside
+  the limit 1e-5 (and rejects a point whose rows are 4.5e2 to 7.4e2 off,
+  estimate 0.61).
+
 `"tirust"` is served in every arithmetic (binary64, double-double and
 arbitrary precision, also on every level of a rescue stack). An explicit
 backend that cannot serve the call is refused before any point is evaluated

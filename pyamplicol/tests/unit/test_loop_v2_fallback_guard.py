@@ -1404,8 +1404,10 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     ABI's decimal record); the resolved call rejects point 2 on its
     suppressed +- rows' own estimates, and ``on_failure="raise"`` raises
     ``EvaluationError`` with the guard's reason. (Accuracy is not this
-    test's claim: those +- rows are far off TIRust's at points 0 and 1 too,
-    with small cached estimates: the report's guard-miss finding.) 16
+    test's claim: on these binary64 texts the +- rows are defined only to
+    the inputs' own shell and momentum-conservation defect, to which NinjaRS
+    and TIRust respond differently; on the exact points nearby the two
+    agree, ``tmp/lit-fallback-guard/fix5/probe15.json``, report §0.) 16
     digits at the target 1e-6 (the limit stays 1e-5): point 1 is accepted
     and point 2 rejected typed on every route
     (estimates 1.6e-6..3.7e-6 and 3.8e-3..1.8e-2 at NinjaRS 5b6a8f57 and 71eddb15,
@@ -1489,8 +1491,10 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
         assert served, (route, lanes_of(result))
         if route == "resolved":
             # Point 2's suppressed +- rows (1.3e-21 of its ++ rows) have
-            # estimates 3.2e-5 / 3.1e-5 on their own magnitudes (fix3/
-            # probe9.json; the summed estimate is 8.2e-11): rejected.
+            # estimates 2.9e-5 / 2.9e-5 on their own magnitudes at the
+            # folded artifact (fix5/probe15.json; 3.2e-5 / 3.1e-5 before
+            # lit-fold, fix3/probe9.json; the summed estimate is 2.7e-11):
+            # rejected.
             assert rejected == [2], lanes_of(result)
         theirs = by_key(explicit[route])
         for key, evaluation in by_key(result).items():
