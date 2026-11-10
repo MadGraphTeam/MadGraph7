@@ -1,0 +1,300 @@
+{
+  "binding_sha256": "81f995352ddaad1cfa0595d79ad170ecf89a178923c92041071801a1aa48067e",
+  "candidate_matrix": {
+    "libgcc_s.so.1": [
+      {
+        "candidate": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgcc_s.so.1",
+        "directory": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib",
+        "matches_expected_bytes": false,
+        "present": true,
+        "resolved_path": "/nix/store/wy205ik03yp1vl55il5i332nbc285n0i-gfortran-15.2.0-libgcc/lib/libgcc_s.so.1",
+        "sha256": "ae2a657067061213fe4233f0c1c1fe4f77d7d5913f6f3dc6a3fd323f138b71b8"
+      },
+      {
+        "candidate": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libgcc_s.so.1",
+        "directory": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+        "matches_expected_bytes": false,
+        "present": true,
+        "resolved_path": "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+        "sha256": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d"
+      },
+      {
+        "candidate": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libgcc_s.so.1",
+        "directory": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib",
+        "present": false
+      },
+      {
+        "candidate": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1",
+        "directory": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+        "matches_expected_bytes": true,
+        "present": true,
+        "resolved_path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+        "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+      },
+      {
+        "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libgcc_s.so.1",
+        "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+        "present": false
+      },
+      {
+        "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libgcc_s.so.1",
+        "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier",
+        "present": false
+      },
+      {
+        "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libgcc_s.so.1",
+        "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib",
+        "present": false
+      }
+    ],
+    "libquadmath.so.0": [
+      {
+        "candidate": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libquadmath.so.0",
+        "directory": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib",
+        "matches_expected_bytes": false,
+        "present": true,
+        "resolved_path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libquadmath.so.0.0.0",
+        "sha256": "6f9f9a2633ff0f9c9c2c8a9f6df3a145be3233d9037526a7dd8ac3cd1c7e46e6"
+      },
+      {
+        "candidate": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0",
+        "directory": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+        "matches_expected_bytes": true,
+        "present": true,
+        "resolved_path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+        "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+      },
+      {
+        "candidate": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libquadmath.so.0",
+        "directory": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib",
+        "present": false
+      },
+      {
+        "candidate": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0",
+        "directory": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+        "matches_expected_bytes": false,
+        "present": true,
+        "resolved_path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+        "sha256": "58f1e90497fdb2fe3bfc1ea468829b2f3e469c28a5b2018b6693b3a53491dbd2"
+      },
+      {
+        "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libquadmath.so.0",
+        "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+        "present": false
+      },
+      {
+        "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libquadmath.so.0",
+        "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier",
+        "present": false
+      },
+      {
+        "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libquadmath.so.0",
+        "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib",
+        "present": false
+      }
+    ],
+    "libstdc++.so.6": [
+      {
+        "candidate": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libstdc++.so.6",
+        "directory": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib",
+        "matches_expected_bytes": false,
+        "present": true,
+        "resolved_path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libstdc++.so.6.0.34",
+        "sha256": "ce5851a9d16f70802f67bd7397d3cab4b78173cb604318f3e35d8b2d835fed4e"
+      },
+      {
+        "candidate": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libstdc++.so.6",
+        "directory": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+        "matches_expected_bytes": false,
+        "present": true,
+        "resolved_path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+        "sha256": "51f6b6fda41b8db2312e1c5721654c98eb78e832cef2ec779dce11932ac6e70e"
+      },
+      {
+        "candidate": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libstdc++.so.6",
+        "directory": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib",
+        "present": false
+      },
+      {
+        "candidate": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6",
+        "directory": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+        "matches_expected_bytes": true,
+        "present": true,
+        "resolved_path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+        "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+      },
+      {
+        "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libstdc++.so.6",
+        "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+        "present": false
+      },
+      {
+        "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libstdc++.so.6",
+        "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier",
+        "present": false
+      },
+      {
+        "candidate": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libstdc++.so.6",
+        "directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib",
+        "present": false
+      }
+    ]
+  },
+  "contradictory_order_pairs": [
+    {
+      "left": {
+        "after": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+        "before": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+        "soname": "libquadmath.so.0"
+      },
+      "right": {
+        "after": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+        "before": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+        "soname": "libstdc++.so.6"
+      }
+    },
+    {
+      "left": {
+        "after": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+        "before": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+        "soname": "libquadmath.so.0"
+      },
+      "right": {
+        "after": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+        "before": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+        "soname": "libgcc_s.so.1"
+      }
+    }
+  ],
+  "directory_order": [
+    "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib",
+    "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib",
+    "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib"
+  ],
+  "limitations": [
+    "No shim has been created for the actual diagnostic and no actual trace/worker was run by this audit.",
+    "dlopen or other runtime additions remain subject to the strict actual worker-map set check.",
+    "No numerical, performance or QP qualification follows from this static resolution proposal."
+  ],
+  "mechanism": [
+    "Build an isolated private directory containing exactly fifteen SONAME symlinks, each with an absolute literal target equal to the corresponding original canonical provider.",
+    "At final target execve only, set LD_LIBRARY_PATH to that one directory. Keep all host tools and Python on the existing clean host environment.",
+    "DT_RUNPATH does not supersede LD_LIBRARY_PATH; there is no DT_RPATH in the original providers or fresh executable. The one shim therefore supplies direct and transitive SONAME lookups before embedded compiler paths.",
+    "Kernel PT_INTERP remains the original absolute glibc2.40 loader; the loader SONAME alias resolves to the same pinned file. Do not change the build2 executable or original provider bytes.",
+    "Reject extra files or glibc-hwcaps subdirectories, non-symlinks, relative/indirect/wrong symlink targets, unresolved providers or altered hashes. Recheck before and after trace/native phases.",
+    "Retain the source2 expected runtime as exact resolved canonical paths and hashes. The future trace and worker maps must match those fifteen providers plus the executable without new exclusions. A successful static preflight is not a substitute for these actual runtime checks.",
+    "Keep failed run2 and source2 unchanged; new controller and attempt must use distinct additive namespaces and record a source3 binding/manifest for the shim policy."
+  ],
+  "mechanism_checks": {
+    "all_DT_NEEDED_names_are_basenames": true,
+    "all_DT_NEEDED_names_have_shim_aliases": true,
+    "all_expected_providers_and_fresh_executable_have_no_DT_RPATH": true,
+    "fresh_executable_PT_INTERP_is_original_pinned_loader": true,
+    "fresh_executable_has_no_setuid_or_setgid_bit": true,
+    "original_provider_count": 15
+  },
+  "native_or_compiler_or_loader_calls": 0,
+  "necessary_order_constraints": [
+    {
+      "after": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib",
+      "before": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+      "soname": "libquadmath.so.0"
+    },
+    {
+      "after": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+      "before": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+      "soname": "libquadmath.so.0"
+    },
+    {
+      "after": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib",
+      "before": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+      "soname": "libstdc++.so.6"
+    },
+    {
+      "after": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+      "before": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+      "soname": "libstdc++.so.6"
+    },
+    {
+      "after": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib",
+      "before": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+      "soname": "libgcc_s.so.1"
+    },
+    {
+      "after": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+      "before": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib",
+      "soname": "libgcc_s.so.1"
+    }
+  ],
+  "permutations_tested": 5040,
+  "prior_static_audit_index_sha256": "1dd2b40762df401685288e3579705a22c6a22d7020970ea90e7afe800dd2b3b6",
+  "proposed_shim_pins": {
+    "ld-linux-x86-64.so.2": {
+      "canonical_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+    },
+    "libc.so.6": {
+      "canonical_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+      "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+    },
+    "libcollier.so": {
+      "canonical_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+    },
+    "libdl.so.2": {
+      "canonical_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+      "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+    },
+    "libgcc_s.so.1": {
+      "canonical_path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+      "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+    },
+    "libgfortran.so.5": {
+      "canonical_path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+      "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+    },
+    "libm.so.6": {
+      "canonical_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+      "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+    },
+    "libmadloop_tirust.so": {
+      "canonical_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+    },
+    "libmvec.so.1": {
+      "canonical_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+      "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+    },
+    "libninja.so.0": {
+      "canonical_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0",
+      "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+    },
+    "libpthread.so.0": {
+      "canonical_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+      "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+    },
+    "libquadmath.so.0": {
+      "canonical_path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+      "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+    },
+    "librt.so.1": {
+      "canonical_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+      "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+    },
+    "libstdc++.so.6": {
+      "canonical_path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+      "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+    },
+    "libutil.so.1": {
+      "canonical_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+      "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+    }
+  },
+  "schema": "qcd-n3-donor-closure-resolution-proposal-1",
+  "static_only": true,
+  "successful_directory_orders": []
+}

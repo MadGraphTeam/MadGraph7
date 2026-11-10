@@ -1,0 +1,10 @@
+{
+  "fresh_executable_sha256": "ed6a51fff0312b06a45cd97a409aafa7d2447eef5ae7800579b44c0c904b8474",
+  "missing_versioned_symbols": [],
+  "original_provider_count": 15,
+  "passed": true,
+  "prior_reader_sha256": "606fd9133fe3b3f9be08fc82f9c5f1090bd4303fc831306b8a98c4922fba7ac9",
+  "schema": "qcd-n3-original-provider-interface-check-1",
+  "static_only": true,
+  "versioned_import_count": 1142
+}

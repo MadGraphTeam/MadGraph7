@@ -1,0 +1,13 @@
+{
+  "errors": 0,
+  "failures": 0,
+  "fixture_bytes_executable": false,
+  "helper_source_sha256": "00d0f9968fe33f962f27b06f71555624413175effbbd54dda2422a3b65e4692a",
+  "log": "test_canonical_path_symlink_rejected (test_shim.ShimTests.test_canonical_path_symlink_rejected) ... ok\ntest_changed_hash_pin (test_shim.ShimTests.test_changed_hash_pin) ... ok\ntest_dangling_alias (test_shim.ShimTests.test_dangling_alias) ... ok\ntest_duplicate_provider_rejected (test_shim.ShimTests.test_duplicate_provider_rejected) ... ok\ntest_empty_closure_rejected (test_shim.ShimTests.test_empty_closure_rejected) ... ok\ntest_extra_file (test_shim.ShimTests.test_extra_file) ... ok\ntest_extra_hwcaps_directory (test_shim.ShimTests.test_extra_hwcaps_directory) ... ok\ntest_invalid_hash (test_shim.ShimTests.test_invalid_hash) ... ok\ntest_missing (test_shim.ShimTests.test_missing) ... ok\ntest_mutated_provider (test_shim.ShimTests.test_mutated_provider) ... ok\ntest_path_traversal_soname (test_shim.ShimTests.test_path_traversal_soname) ... ok\ntest_positive (test_shim.ShimTests.test_positive) ... ok\ntest_regular_copy_even_with_correct_hash (test_shim.ShimTests.test_regular_copy_even_with_correct_hash) ... ok\ntest_relative_alias_even_to_correct_provider (test_shim.ShimTests.test_relative_alias_even_to_correct_provider) ... ok\ntest_shim_root_symlink_rejected (test_shim.ShimTests.test_shim_root_symlink_rejected) ... ok\ntest_unknown_metadata_rejected (test_shim.ShimTests.test_unknown_metadata_rejected) ... ok\ntest_wrong_provider (test_shim.ShimTests.test_wrong_provider) ... ok\n\n----------------------------------------------------------------------\nRan 17 tests in 0.013s\n\nOK\n",
+  "native_or_compiler_or_loader_calls": 0,
+  "passed": true,
+  "schema": "qcd-n3-private-shim-fixture-tests-1",
+  "seconds": 0.012726746033877134,
+  "test_count": 17,
+  "test_source_sha256": "655aeed34e58330cc01da45be71133ec2dad474f8ce2b1e3992655522e041c30"
+}

@@ -1,0 +1,300 @@
+{
+  "all_passed": true,
+  "audit_sha256": "c34b0ef22402fbde7f0fc4d9236454dff7d44d12fd5b52d3becce5e985e98198",
+  "checks": [
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+      "sha256": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+      "sha256": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libquadmath.so.0.0.0",
+      "sha256": "6f9f9a2633ff0f9c9c2c8a9f6df3a145be3233d9037526a7dd8ac3cd1c7e46e6"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libstdc++.so.6.0.34",
+      "sha256": "ce5851a9d16f70802f67bd7397d3cab4b78173cb604318f3e35d8b2d835fed4e"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+      "sha256": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [
+        "6023187b99d19874a17cb411cdc17bff52de0c51"
+      ],
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+      "sha256": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [
+        "0fc9ba30a7b9cd2461e00da735b7d368d66c4e3d"
+      ],
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+      "sha256": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [
+        "88e38181cfb794bd32d91b7906b8c39a1a252fb5"
+      ],
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+      "sha256": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [
+        "077471559762b6705feee61ef4153c33c106dca1"
+      ],
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+      "sha256": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [
+        "aa1eb6dad4c6a80cd97ff49213134c69040b0f79"
+      ],
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+      "sha256": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [
+        "a61f8d704a69b88c129057796d755260479cc36c"
+      ],
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+      "sha256": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [
+        "64f83989cd8c758f812385aa4f8b03692650b978"
+      ],
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+      "sha256": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [
+        "eeedeaa8a632670fe5f507277ab8ffe1913ed78c"
+      ],
+      "resolved_path": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1",
+      "sha256": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/nix/store/wy205ik03yp1vl55il5i332nbc285n0i-gfortran-15.2.0-libgcc/lib/libgcc_s.so.1",
+      "sha256": "ae2a657067061213fe4233f0c1c1fe4f77d7d5913f6f3dc6a3fd323f138b71b8"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+      "sha256": "58f1e90497fdb2fe3bfc1ea468829b2f3e469c28a5b2018b6693b3a53491dbd2"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+      "sha256": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/check",
+      "sha256": "c18c9dbdea3fe11e16c693d6cd2712090259139ad4fa25a2663bb6b7988536ca"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qcd-n3-genuine-qp-diagnostic/build2/diagnostic",
+      "sha256": "ed6a51fff0312b06a45cd97a409aafa7d2447eef5ae7800579b44c0c904b8474"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+      "sha256": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92"
+    },
+    {
+      "matched_fields": [
+        "soname",
+        "needed",
+        "rpath",
+        "runpath",
+        "version_requirements"
+      ],
+      "passed": true,
+      "program_note_build_ids": [],
+      "resolved_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0",
+      "sha256": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+    }
+  ],
+  "elf_count": 21,
+  "native_or_compiler_or_loader_calls": 0,
+  "reader_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/adaptive-qp-rescue-private-release-build/elf_metadata.py",
+  "reader_sha256": "3327e253c4ea1b581b252fc9547f9b7c3f71f610c131e8c23b0dc1039b26f73a",
+  "schema": "qcd-n3-run2-static-metadata-crosscheck-1"
+}
