@@ -1392,7 +1392,7 @@ impl V2Executor {
     /// columns to the tree program and `plan_components` replaces its plan
     /// Born components (an observable column set's plan).
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None, fourier=None))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None, fourier=None, overlay=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         plan: Bound<'_, PyAny>,
@@ -1406,6 +1406,7 @@ impl V2Executor {
         columns: Option<String>,
         plan_components: Option<Vec<Option<usize>>>,
         fourier: Option<String>,
+        overlay: Option<String>,
     ) -> PyResult<Self> {
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
@@ -1430,10 +1431,20 @@ impl V2Executor {
         };
         // The stored plan: its binary member as bytes (M-FINAL MF-8G-1 item
         // 5), a plan JSON as text, or a stored member of either
-        // (`program_bytes`); `load_with` reads either form.
+        // (`program_bytes`); `load_with` reads either form. With `overlay`
+        // (a column set's seed records, `native_observables.with_overlay`)
+        // the plan with them, without forming the merged plan JSON.
         let plan = {
             let data = program_bytes(&plan)?;
-            Arc::new(LoopProgramV4::load_with(&data, policy).map_err(error)?)
+            Arc::new(
+                match &overlay {
+                    Some(overlay) => {
+                        LoopProgramV4::load_overlaid(&data, overlay.as_bytes(), policy)
+                    }
+                    None => LoopProgramV4::load_with(&data, policy),
+                }
+                .map_err(error)?,
+            )
         };
         // The program's JSON text, a binary tree program (`loop_v2::trees::
         // binary`, M-FINAL MF-8G-1) or a stored member (`program_bytes`).

@@ -1913,10 +1913,10 @@ class StoredColumns:
         self.families = (None, None) if parts is None or template else parts.families
         self._native: dict[tuple[str, int | None, int, bool], Any] = {}
         self._plans: dict[bool, str] = {}
-        # A formed set (the selection template, a resolved selection) builds
-        # one executor per plan and derives the others (``_executor``), so
-        # it keeps no copy of its plan JSON (u u~ > g g g g g at full colour:
-        # 66 MB).
+        # A formed set (the selection template, a resolved selection) loads
+        # its plan as the stored plan with its seed records (``_source``),
+        # never as a merged plan JSON (u u~ > g g g g g at full colour: a
+        # 66 MB JSON and its parse, the selected call's memory peak).
         self._formed = template or subset is not None
         self.last_report: dict[str, Any] | None = None
 
@@ -1952,9 +1952,27 @@ class StoredColumns:
                 plan = json.loads(found)
                 plan["families"] = [plan["families"][f] for f in kept]
                 found = json.dumps(plan, separators=(",", ":"))
-            if not self._formed:
-                self._plans[twin] = found
+            self._plans[twin] = found
         return found
+
+    def _source(self, twin: bool) -> tuple[Any, str | None]:
+        """The executor's plan argument and seed records (``V2Executor``'s
+        ``overlay``): a formed set's stored plan (or companion's) with its
+        overlay, the native load of what ``_plan`` merges as JSON; any other
+        set's plan JSON (``_plan``)."""
+
+        from .native_trees import executor_program
+
+        if not self._formed:
+            return self._plan(twin), None
+        process = self.observables.process
+        if twin:
+            plan, overlay = process.scaleless.plan, self.set.companion_overlay_json
+        else:
+            plan, overlay = process.plan, self.set.overlay_json
+        if overlay is None:
+            raise ValueError("the column set stores no companion seeds")
+        return executor_program(plan), overlay
 
     def _executor(self, arithmetic: str, digits: int | None, points: int, twin: bool):
         lanes = self.lanes
@@ -1987,8 +2005,9 @@ class StoredColumns:
             if twin:
                 trees = process.scaleless.trees
                 sources = self.observables.stored.record["sources"]
+                plan, overlay = self._source(True)
                 found = native.V2Executor(
-                    self._plan(True),
+                    plan,
                     arithmetic,
                     digits,
                     lanes=lanes,
@@ -2005,10 +2024,12 @@ class StoredColumns:
                         }
                     ),
                     plan_components=list(self.set.companion_components),
+                    overlay=overlay,
                 )
             else:
+                plan, overlay = self._source(False)
                 found = native.V2Executor(
-                    self._plan(False),
+                    plan,
                     arithmetic,
                     digits,
                     lanes=lanes,
@@ -2016,6 +2037,7 @@ class StoredColumns:
                     trees=process.trees.executor_argument(),
                     columns=self.set.columns_json,
                     plan_components=list(self.set.plan_components),
+                    overlay=overlay,
                 )
             self._native[key] = found
         return found

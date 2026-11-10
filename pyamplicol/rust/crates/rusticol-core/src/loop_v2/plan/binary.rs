@@ -327,6 +327,15 @@ impl PlanModel {
         })
     }
 
+    /// The model with a column set's seed records
+    /// (`LoopProgramV4::load_overlaid`): bounded as a plan JSON's, no longer
+    /// by its member alone.
+    pub(super) fn overlay_seeds(&mut self, overlay: super::SeedOverlayFile) -> RusticolResult<()> {
+        self.file.overlay_seeds(overlay)?;
+        self.member = None;
+        Ok(())
+    }
+
     /// The plan JSON, byte-identical to the exporter's.
     pub fn json(&self) -> Vec<u8> {
         json::write(&self.file)
@@ -1676,8 +1685,14 @@ thread_local! {
 /// (M-FINAL MF-8G-1 item 5; the JSON load is sequential too). The model and
 /// its bounds are those of any thread count.
 pub fn read_binary_bounded(member: &[u8], policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
+    read_bounded(|| read_binary_with(member, policy))
+}
+
+/// `read` (a read of a binary member) within the caller's thread bound
+/// ([`read_binary_bounded`]).
+pub(super) fn read_bounded<T>(read: impl FnOnce() -> RusticolResult<T>) -> RusticolResult<T> {
     if rayon::current_thread_index().is_some() {
-        return read_binary_with(member, policy);
+        return read();
     }
     struct Reset;
     impl Drop for Reset {
@@ -1687,7 +1702,7 @@ pub fn read_binary_bounded(member: &[u8], policy: FormPolicy) -> RusticolResult<
     }
     SEQUENTIAL.with(|sequential| sequential.set(true));
     let _reset = Reset;
-    read_binary_with(member, policy)
+    read()
 }
 
 /// Whether the reader found the global thread pool up when it first needed
@@ -2464,6 +2479,68 @@ mod tests {
                 [Err(_), Err(_)] => {}
                 _ => panic!("byte {at}: one and four threads disagree"),
             }
+        }
+    }
+
+    /// A column set's seed records on a decoded member give the model of the
+    /// merged plan JSON (`native_observables.with_overlay`: a field the
+    /// overlay lacks keeps the plan's, a null one is removed, other keys
+    /// are not read), and a removed required field is refused as that
+    /// JSON's load refuses it.
+    #[test]
+    fn seed_overlays_equal_the_merged_plan_json() {
+        let mut file = parallel_plan();
+        file.column_rows = Some(vec![Some(vec![0]), None]);
+        let mut model = PlanModel { file, member: None };
+        let member = model.binary().unwrap();
+        let base: serde_json::Value = serde_json::from_slice(&model.json()).unwrap();
+        let merged = |overlay: &serde_json::Value| {
+            let mut merged = base.clone();
+            for key in [
+                "seed_classes",
+                "seeds",
+                "columns",
+                "column_rows",
+                "column_weights",
+                "born_components",
+            ] {
+                match overlay.get(key) {
+                    None => {}
+                    Some(serde_json::Value::Null) => {
+                        merged.as_object_mut().unwrap().remove(key);
+                    }
+                    Some(value) => merged[key] = value.clone(),
+                }
+            }
+            serde_json::to_vec(&merged).unwrap()
+        };
+        let overlaid = |overlay: &serde_json::Value| {
+            let mut decoded = PlanModel::from_binary(&member)?;
+            decoded.overlay_seeds(serde_json::from_value(overlay.clone()).unwrap())?;
+            Ok::<_, crate::RusticolError>(decoded)
+        };
+        for overlay in [
+            serde_json::json!({}),
+            serde_json::json!({
+                "seed_classes": [{"columns": [[[0, "1/2", "0"]], [[1, "3", "-1/4"]]]}],
+                "seeds": [{"classes": [[0, "1", "2/3"]]}],
+                "columns": 2,
+                "column_rows": null,
+                "column_weights": [0, 0],
+                "born_components": 2,
+                "families": [],
+            }),
+            serde_json::json!({"columns": 3, "column_rows": [[1], null, [0]]}),
+        ] {
+            let decoded = overlaid(&overlay).unwrap();
+            assert_eq!(decoded.member, None, "bounded as a plan JSON");
+            let expected = PlanModel::from_json(&merged(&overlay)).unwrap();
+            assert_eq!(decoded.json(), expected.json(), "{overlay}");
+        }
+        for key in ["seed_classes", "seeds", "columns", "born_components"] {
+            let overlay = serde_json::json!({ key: null });
+            assert!(PlanModel::from_json(&merged(&overlay)).is_err(), "{key}");
+            assert!(overlaid(&overlay).is_err(), "{key}");
         }
     }
 

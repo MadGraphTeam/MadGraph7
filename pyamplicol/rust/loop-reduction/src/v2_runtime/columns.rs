@@ -24,16 +24,6 @@ use super::*;
 
 /// The stored observables record's schema (`native_observables.SCHEMA`).
 const OBSERVABLES_SCHEMA: u32 = 2;
-/// The seed records a set's plan takes from its overlay
-/// (`native_observables.SEED_FIELDS`).
-const SEED_FIELDS: [&str; 6] = [
-    "seed_classes",
-    "seeds",
-    "columns",
-    "column_rows",
-    "column_weights",
-    "born_components",
-];
 /// The column-set kinds (`native_observables.KINDS`).
 pub const COLUMN_SETS: [&str; 2] = ["correlated", "resolved"];
 /// The formed column sets of the selections (lit-fc-hel (G5)): the
@@ -134,41 +124,6 @@ pub struct ColumnValues<N> {
 
 /// One evaluated point: per requested column its values, or the failures.
 pub type ColumnPoint<N> = Result<Vec<ColumnValues<N>>, Vec<String>>;
-
-/// The plan JSON of a column set (`native_observables.with_overlay`): the
-/// process (or companion) plan with the set's seed records, a field the
-/// overlay lacks keeping the plan's and a null field removed; the plan
-/// itself when the set stores no seed records of its own (`null`). A stored
-/// binary plan member (M-FINAL MF-8G-1 item 5) is overlaid as its JSON.
-fn plan_of(base: &[u8], overlay: &[u8]) -> RusticolResult<Vec<u8>> {
-    use rusticol_core::loop_v2::plan::binary::{PlanModel, is_binary};
-    use serde_json::value::RawValue;
-    let overlay: Option<BTreeMap<String, Box<RawValue>>> =
-        serde_json::from_slice(overlay).map_err(|e| invalid(format!("column seeds: {e}")))?;
-    let Some(overlay) = overlay else {
-        return Ok(base.to_vec());
-    };
-    let json;
-    let base = if is_binary(base) {
-        json = PlanModel::from_binary(base)?.json();
-        &json[..]
-    } else {
-        base
-    };
-    let mut merged: BTreeMap<String, Box<RawValue>> =
-        serde_json::from_slice(base).map_err(|e| invalid(format!("column plan: {e}")))?;
-    for key in SEED_FIELDS {
-        let Some(value) = overlay.get(key) else {
-            continue;
-        };
-        if value.get() == "null" {
-            merged.remove(key);
-        } else {
-            merged.insert(key.to_owned(), value.clone());
-        }
-    }
-    serde_json::to_vec(&merged).map_err(|e| invalid(format!("column plan: {e}")))
-}
 
 impl Observables {
     /// The stored observables of a process (`artifact.read_native_process`'s
@@ -873,7 +828,11 @@ impl V2Runtime {
             .get_mut(kind)
             .ok_or_else(|| invalid(format!("the process stores no {kind} columns")))?;
         if !twin && set.runner.is_none() {
-            let plan = Arc::new(LoopProgramV4::load(&plan_of(&base, &set.overlay)?)?);
+            let plan = Arc::new(LoopProgramV4::load_overlaid(
+                &base,
+                &set.overlay,
+                rusticol_core::loop_v2::plan::FormPolicy::Rule,
+            )?);
             let mut trees = TreeProgram::load_with_components(
                 &process.trees_json,
                 &process.evaluators,
@@ -890,7 +849,11 @@ impl V2Runtime {
             else {
                 return Err(invalid("the column set stores no companion seeds"));
             };
-            let plan = Arc::new(LoopProgramV4::load(&plan_of(&base, overlay)?)?);
+            let plan = Arc::new(LoopProgramV4::load_overlaid(
+                &base,
+                overlay,
+                rusticol_core::loop_v2::plan::FormPolicy::Rule,
+            )?);
             let mut trees = TreeProgram::load_with_components(
                 &stored.trees_json,
                 &stored.evaluators,
@@ -1415,28 +1378,4 @@ fn summed<A: Arith>(
             })
         })
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_set_plan_takes_the_overlay_seed_fields_only() {
-        let base =
-            br#"{"families":[1,2],"seeds":[3],"columns":[4],"big":123456789012345678901234567890}"#;
-        // `null`: the process plan's own seed records serve the set.
-        assert_eq!(plan_of(base, b"null").unwrap(), base.to_vec());
-        let overlay = br#"{"seeds":[30],"columns":[40,41],"column_rows":null,"families":[9]}"#;
-        let merged: BTreeMap<String, serde_json::Value> =
-            serde_json::from_slice(&plan_of(base, overlay).unwrap()).unwrap();
-        // Seed fields replaced, a null field removed, other fields kept
-        // (the overlay's non-seed fields are ignored), large integers intact.
-        assert_eq!(merged["seeds"], serde_json::json!([30]));
-        assert_eq!(merged["columns"], serde_json::json!([40, 41]));
-        assert!(!merged.contains_key("column_rows"));
-        assert_eq!(merged["families"], serde_json::json!([1, 2]));
-        let text = String::from_utf8(plan_of(base, overlay).unwrap()).unwrap();
-        assert!(text.contains("123456789012345678901234567890"));
-    }
 }
