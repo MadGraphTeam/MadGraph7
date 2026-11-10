@@ -1515,6 +1515,11 @@ class MadgraphProcess:
             nb_core = os.cpu_count() or 1
 
         log_path = os.path.join(self.run_path, "compile_subprocesses.log")
+        # --hel_recycling: the build of a recycled subprocess is for the good
+        # helicities and vanishing amplitudes at the parameters of this run
+        # (a CPU build: a cuda/hip one ignores them, see below)
+        if any(not b.startswith(("cuda", "hip")) for b in resolved):
+            self.update_hel_recycling(madmatrix_data, nb_core)
         # --hel_recycling is a CPU build: on a cuda/hip device the same output
         # compiles the plain matrix element (see backend/gpu/SigmaKin.cc)
         recycled = [
@@ -1596,6 +1601,35 @@ class MadgraphProcess:
         for path in paths:
             logger.info(f"Compiling the AmpliCol matrix elements in {path}, see {log_path}")
             self.make_subprocesses(path, [], nb_core, log_path)
+
+    # what an --hel_recycling subprocess keeps of its generation, to be
+    # rewritten for other parameters (madmatrix/hel_recycling_filter.py)
+    HR_RECIPE = "HelRecyclingRecipe.json"
+
+    def update_hel_recycling(self, madmatrix_data: list, nb_core: int) -> None:
+        """--hel_recycling: the recycled build of a subprocess is for the good
+        helicities and the vanishing amplitudes of the parameters it was made
+        at. Measure them again at this run's param_card (the one the launch
+        question settled, and each point of a scan), and have a subprocess
+        whose filter changed rebuilt for the new one, under that filter's own
+        library name: a library this process has loaded already (an earlier
+        point of the scan) would otherwise be the one it gets again. A run at
+        the parameters the build is for measures nothing; one whose filter
+        comes out the same rewrites and rebuilds nothing."""
+        pdirs = sorted({
+            meta["path"] for meta in madmatrix_data
+            if os.path.isfile(os.path.join(meta["path"], self.HR_RECIPE))
+        })
+        if not pdirs:
+            return
+        from madmatrix import hel_recycling_filter
+        me_paths = hel_recycling_filter.update(
+            ".", [self.param_card_path], pdirs, nb_core=nb_core,
+            subprocesses_json=os.path.join("SubProcesses", "subprocesses.json"),
+            log=logger)
+        for meta in self.subprocess_data:
+            if meta.get("path") in me_paths:
+                meta["me_path"] = me_paths[meta["path"]]
 
     def hel_recycling_make_args(self) -> list[str]:
         """HRMAXMB=... and HRNOBLAS=... for make (madmatrix.mk), from the hidden

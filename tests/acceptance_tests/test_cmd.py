@@ -2421,6 +2421,172 @@ class TestCmdShell2(unittest.TestCase,
                                      'call %d (%s), event %d: alone %r, after the '
                                      'other libraries %r' % (ncall, proc, i, a, b))
 
+    # b b~ > t t~ QCD=0: the photon, Z, W and Higgs diagrams. The Higgs one is
+    # proportional to ymb, which is a parameter of the card (the b mass is
+    # MB): at ymb = 0 its amplitude vanishes at every helicity, at the
+    # default card only at half of them.
+    _HR_CARD_PROCESS = 'b b~ > t t~ QCD=0'
+
+    @staticmethod
+    def _hr_card_with(card, block, code, value):
+        """The text of param_card `card` with the entry `code` of `block` set to
+        `value` (a number, or a scan:[...] string)."""
+        out, current = [], None
+        for line in open(card).read().split('\n'):
+            words = line.split('#')[0].split()
+            if words and words[0].lower() == 'block':
+                current = words[1].lower()
+            elif current == block and words[:-1] == [str(code)]:
+                line = '    %s %s # changed' % (code, value)
+            out.append(line)
+        return '\n'.join(out)
+
+    def test_madmatrix_hel_recycling_launch_parameters(self):
+        """--hel_recycling: a run at other parameters than the output's must get
+        a recycled build for those (madmatrix/hel_recycling_filter.update, what
+        the mg7 launch runs on its param_card).
+
+        The recycled build drops the amplitudes that vanish at the parameters
+        it is measured at. Measured at ymb = 0 it drops the Higgs diagram at
+        every helicity, which is wrong at the default card (checked first, so
+        that the comparison is known to see it); measured again there it is
+        right again. A card at which the filter comes out the same rewrites
+        nothing, and the card it was measured at measures nothing. Each build
+        is compared with the plain matrix element at its card, event by event."""
+        import glob
+        from madmatrix import hel_recycling_filter as hrf
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrcard'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % self._HR_CARD_PROCESS)
+        self.do('output standalone %s -f' % dirs['plain'])
+        self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        found = sorted(d for d in os.listdir(pjoin(dirs['recycled'], 'SubProcesses'))
+                       if re.match(r'P\d+_', d))
+        self.assertEqual(len(found), 1, found)
+        pdir = 'SubProcesses/' + found[0]
+        recycled = pjoin(dirs['recycled'], pdir)
+        self.assertEqual(sorted(d for d in os.listdir(pjoin(dirs['plain'], 'SubProcesses'))
+                                if re.match(r'P\d+_', d)), found)
+        default = root + '_default.dat'
+        shutil.copy(pjoin(dirs['plain'], 'Cards', 'param_card.dat'), default)
+        ymb0 = root + '_ymb0.dat'
+        with open(ymb0, 'w') as fsock:
+            fsock.write(self._hr_card_with(default, 'yukawa', 5, '0.000000e+00'))
+        mt = root + '_mt.dat'
+        with open(mt, 'w') as fsock:
+            fsock.write(self._hr_card_with(default, 'mass', 6, '1.750000e+02'))
+
+        def me(output, card):
+            proc_dir = pjoin(output, pdir)
+            shutil.copy(card, pjoin(output, 'Cards', 'param_card.dat'))
+            exe = pjoin(proc_dir, 'check_sa.exe')
+            if os.path.exists(exe):
+                os.remove(exe)
+            subprocess.call(['make', 'BACKEND=scalar', 'FPTYPE=d', 'USEBUILDDIR=1', '-j4'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(exe), 'no check_sa.exe in %s' % proc_dir)
+            out = pjoin(proc_dir, 'me.bin')
+            subprocess.call(['./check_sa.exe', 'perf', '--dump-me', out, '16', '32', '1'],
+                            stdout=devnull, stderr=subprocess.STDOUT, cwd=proc_dir)
+            return array.array('d', open(out, 'rb').read())
+
+        def worst(card):
+            plain, values = me(dirs['plain'], card), me(dirs['recycled'], card)
+            self.assertEqual(len(plain), len(values))
+            self.assertTrue(any(plain))
+            return max(abs(a - b) / abs(a) for a, b in zip(plain, values))
+
+        def update(card):
+            return hrf.update(dirs['recycled'], [card], [pdir])
+
+        output_zeros = len(hrf.read_state(recycled)['zero_perhel'])
+        self.assertEqual(update(default), {})          # the output's own card
+        self.assertLessEqual(worst(default), 1e-12)
+
+        tags = update(ymb0)
+        self.assertRegex(tags.get(pdir, ''), r'^_hr[0-9a-f]{8}$')
+        self.assertGreater(len(hrf.read_state(recycled)['zero_perhel']), output_zeros)
+        self.assertLessEqual(worst(ymb0), 1e-12)
+        self.assertTrue(glob.glob(pjoin(dirs['recycled'], 'lib',
+                                        'libmadmatrix_*_%s%s_scalar_d.so'
+                                        % (found[0], tags[pdir]))))
+        # that build at the default card: the Higgs diagram is missing
+        self.assertGreater(worst(default), 1e-8)
+
+        self.assertEqual(update(default), {pdir: ''})  # back to the output's own
+        self.assertEqual(len(hrf.read_state(recycled)['zero_perhel']), output_zeros)
+        self.assertLessEqual(worst(default), 1e-12)
+        stamp = os.path.getmtime(pjoin(recycled, 'HelRecycling.inc'))
+        self.assertEqual(update(default), {})          # measured there already
+        self.assertEqual(update(mt), {})               # the same filter
+        self.assertEqual(os.path.getmtime(pjoin(recycled, 'HelRecycling.inc')), stamp)
+        self.assertLessEqual(worst(mt), 1e-12)
+
+    def test_mg7_hel_recycling_param_scan(self):
+        """--hel_recycling through the mg7 launch: a scan whose points need
+        other recycled builds must give, at every point, the cross section of
+        the plain matrix element.
+
+        ymb = 0, 4.7, 0: the first point drops the Higgs diagram, the second
+        needs it back and the third goes back to the first. The libraries of a
+        point stay loaded in the process while the next one is built, so each
+        build has a library name of its own (the third finds the first's)."""
+        import glob as _glob
+        import json as _json
+        from tests.acceptance_tests.test_cmd_madevent import _mg7_datadir_or_skip
+        _mg7_datadir_or_skip(self)
+        root = self.out_dir + '_hrscan'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % self._HR_CARD_PROCESS)
+        self.do('output mg7 %s -f' % dirs['plain'])
+        self.do('output mg7 %s -f --hel_recycling=True' % dirs['recycled'])
+        xsec = {}
+        for name, path in dirs.items():
+            toml = pjoin(path, 'Cards', 'run_card.toml')
+            lines, section = [], None
+            settings = {('run', 'seed'): '4242', ('run', 'precision'): '"all64"',
+                        ('generation', 'events'): '2000', ('madnis', 'enable'): 'false'}
+            for line in open(toml).read().split('\n'):
+                found = re.match(r'^\[(\w+)\]', line)
+                if found:
+                    section = found.group(1)
+                key = line.split('=')[0].strip()
+                if (section, key) in settings:
+                    line = '%s = %s' % (key, settings.pop((section, key)))
+                lines.append(line)
+            self.assertEqual(settings, {}, 'not in the run_card')
+            with open(toml, 'w') as fsock:
+                fsock.write('\n'.join(lines))
+            card = pjoin(path, 'Cards', 'param_card.dat')
+            text = self._hr_card_with(card, 'yukawa', 5, 'scan:[0.0, 4.7, 0.0]')
+            with open(card, 'w') as fsock:
+                fsock.write(text)
+            log = pjoin(path, 'generate_events.log')
+            with open(log, 'w') as fsock:
+                status = subprocess.call([sys.executable, pjoin(path, 'bin', 'generate_events'),
+                                          '-f'], cwd=path, stdout=fsock,
+                                         stderr=subprocess.STDOUT)
+            self.assertEqual(status, 0, 'mg7 failed, see %s' % log)
+            infos = sorted(_glob.glob(pjoin(path, 'Events', 'run_*', 'info.json')))
+            self.assertEqual(len(infos), 3, infos)
+            xsec[name] = [float(_json.load(open(info))['process']['mean']) for info in infos]
+        for point, (a, b) in enumerate(zip(xsec['plain'], xsec['recycled'])):
+            self.assertLessEqual(abs(a - b), 1e-10 * abs(a),
+                                 'scan point %d: plain %r, recycled %r' % (point + 1, a, b))
+        # one library per filter: the third point reused the first's
+        libs = [lib for lib in _glob.glob(pjoin(dirs['recycled'], 'lib', 'libmadmatrix_*.so'))
+                if 'common' not in os.path.basename(lib)]
+        self.assertEqual(len(libs), 2, libs)
+
     def test_standalone_cpp_perf_alpha_s_from_param_card(self):
         """check_sa.exe 'perf' mode must use the alpha_s of the param card,
         as the 'matrix' mode does.

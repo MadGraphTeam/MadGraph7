@@ -124,6 +124,57 @@ def regenerate_process_in_model(
     return rw_dir
 
 
+def launch_param_cards(base_card: str, launches: list, out_dir: str) -> "list[str] | None":
+    """The param_card of each launch ("set BLOCK ID VALUE" lines, resolved
+    and without scans), base_card with its values set, written into out_dir;
+    None when one of them cannot be written as a param_card value."""
+    from madgraph.models.check_param_card import ParamCard
+    paths = []
+    for index, launch in enumerate(launches):
+        card = ParamCard(base_card)
+        try:
+            for block, param_id, value in launch.sets:
+                lhacode = tuple(int(i) for i in str(param_id).split())
+                card[block.lower()].get(lhacode).value = float(value)
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return None
+        path = os.path.join(out_dir, "launch_%d_param_card.dat" % index)
+        card.write(path)
+        paths.append(path)
+    return paths
+
+
+def update_hel_recycling(directory: str, cards: list, launches: list, base_card: str) -> None:
+    """madtrex_driver.hel_recycling_update: make the --hel_recycling
+    subprocesses of directory right at cards and at the param_card of every
+    launch (madmatrix/hel_recycling_filter.update(): measured at all of them,
+    rebuilt only if that changes the build). A launch that is no param_card
+    value has the subprocesses built without recycling, which is right at
+    any parameters."""
+    from madmatrix import hel_recycling_filter
+    pdirs = _driver._recycled_subprocesses(directory)
+    if not pdirs:
+        return
+    json_path = os.path.join(directory, "SubProcesses", "subprocesses.json")
+    with tempfile.TemporaryDirectory() as card_dir:
+        launch_cards = launch_param_cards(base_card, launches, card_dir)
+        if launch_cards is None:
+            logger.warning(
+                "MadtRex: a launch sets a parameter no param_card can hold; the "
+                "--hel_recycling subprocesses of %s are built without recycling "
+                "for this reweighting", directory)
+            hel_recycling_filter.update(directory, None, pdirs,
+                                        subprocesses_json=json_path, log=logger)
+            return
+        all_cards = list(cards) + launch_cards
+        if all_cards:
+            hel_recycling_filter.update(directory, all_cards, pdirs,
+                                        subprocesses_json=json_path, log=logger)
+
+
+_driver.hel_recycling_update = update_hel_recycling
+
+
 def run_parameter_reweighting(*args, regenerate=regenerate_process_in_model, **kwargs):
     """madtrex_driver.run_parameter_reweighting(), with "change model"
     support (see regenerate_process_in_model())."""

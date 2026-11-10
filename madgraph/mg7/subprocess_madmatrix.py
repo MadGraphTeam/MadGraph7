@@ -413,8 +413,11 @@ class MadgraphSubprocess:
 
     def load_surrogate(self, me_path_format: str, member_meta: dict):
         """The [surrogate] of one matrix element of the subprocess."""
+        # without the --hel_recycling filter tag of a library rebuilt for other
+        # parameters (madmatrix/hel_recycling_filter.py): it is the same process
         name = re.sub(
-            r"^libmadmatrix_(.*)_\{device\}\.so$", r"\1", os.path.basename(me_path_format)
+            r"^libmadmatrix_(.*)_\{device\}\.so$", r"\1",
+            re.sub(r"_hr[0-9a-f]{8}(?=_\{device\})", "", os.path.basename(me_path_format))
         )
         # PDG ids for each flavor index of the matrix element
         flavors = member_meta["flavors"]

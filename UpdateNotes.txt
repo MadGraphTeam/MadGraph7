@@ -5,6 +5,16 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
+       vanish, which the recycled matrix element is built for, are now measured again at
+       the param_card a run is launched with (after the launch question, and at each point
+       of a scan), and at the cards of a MadtRex parameter reweighting. They were only
+       measured at generation, at the output's default card: a coupling set to zero at
+       launch was still evaluated, and an amplitude that vanishes at the default card but
+       not at the launch card was silently dropped. The probe build is kept in .hrprobe,
+       so that a new card costs a run of it (milliseconds); a card at which the filter
+       comes out the same rewrites and recompiles nothing, and a build for another filter
+       than the output's has its own library name (lib..._P*_hr<hash>_*.so).
    OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
        light jets starts from now also includes the core-process scale of the clustering
        (madevent's central factorisation scale for scalefact = 1), so it no longer drops

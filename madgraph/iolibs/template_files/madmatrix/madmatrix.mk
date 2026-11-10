@@ -842,7 +842,12 @@ processid_short=$(shell basename $(CURDIR))
 # (subprocesses.json itself stays agnostic to BACKEND and FPTYPE -- see me_lib_format in
 # madmatrix/output.py -- since a given process directory can be compiled for several of
 # each without regenerating the JSON).
-MADMATRIX_LIB = madmatrix$(LIBTAG)_%(model)s_$(processid_short)_$(BACKEND)_$(FPTYPE)
+# HRTAG (HelRecyclingTag.mk, written by madmatrix/hel_recycling_filter.py): a
+# --hel_recycling build for other parameters than the output's own is named after
+# its filter, so that a process that has loaded the library of one filter loads the
+# other one too, rather than the one it already has under the same name.
+-include HelRecyclingTag.mk
+MADMATRIX_LIB = madmatrix$(LIBTAG)_%(model)s_$(processid_short)$(HRTAG)_$(BACKEND)_$(FPTYPE)
 objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
 # The spin-density matrices for MadSpin (backend/common/Density.h): C++ backends,
 # and only in the builds madmatrix/density.py asks for (DENSITY=1, the scalar
