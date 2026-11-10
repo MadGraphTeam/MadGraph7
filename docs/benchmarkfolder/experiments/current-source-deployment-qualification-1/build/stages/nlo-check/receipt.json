@@ -1,0 +1,84 @@
+{
+  "actual_cap_seconds": 300.0,
+  "cap_seconds": 300,
+  "child_pid": 2065318,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 1934290,
+        "pid": 2065318,
+        "process_group": 2065318,
+        "session": 2065318,
+        "start_time_ticks": 238749717,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2065318,
+        "pid": 2065326,
+        "process_group": 2065318,
+        "session": 2065318,
+        "start_time_ticks": 238749720,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2065326,
+        "pid": 2065327,
+        "process_group": 2065318,
+        "session": 2065318,
+        "start_time_ticks": 238749721,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2065318,
+        "pid": 2065365,
+        "process_group": 2065318,
+        "session": 2065318,
+        "start_time_ticks": 238749744,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2065365,
+        "pid": 2065391,
+        "process_group": 2065318,
+        "session": 2065318,
+        "start_time_ticks": 238749749,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2065391,
+        "pid": 2065392,
+        "process_group": 2065318,
+        "session": 2065318,
+        "start_time_ticks": 238749749,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2065392,
+        "pid": 2065398,
+        "process_group": 2065318,
+        "session": 2065318,
+        "start_time_ticks": 238749751,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "command": [
+    "/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make",
+    "-C",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z",
+    "SHELL=/home/external/.nix-profile/bin/bash",
+    "-j2",
+    "-f",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/proposal/adapter-check.mk",
+    "adapter-check"
+  ],
+  "console_sha256": "b87f392abb97c41a2fb81213ad65260b4adc50465541567518a9e03aafad4199",
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "deadline_monotonic": 2387796.16187156,
+  "label": "nlo-check",
+  "returncode": 0,
+  "status": "passed"
+}

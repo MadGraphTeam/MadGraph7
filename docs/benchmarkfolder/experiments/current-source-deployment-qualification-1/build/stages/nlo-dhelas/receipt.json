@@ -1,0 +1,250 @@
+{
+  "actual_cap_seconds": 300.0,
+  "cap_seconds": 300,
+  "child_pid": 2061452,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 1934290,
+        "pid": 2061452,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238748948,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061452,
+        "pid": 2061462,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238748951,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2061469,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238748953,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061469,
+        "pid": 2061472,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238748954,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2061600,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749004,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2061599,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749004,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061599,
+        "pid": 2061610,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749006,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061600,
+        "pid": 2061608,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749006,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2061752,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749028,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2061711,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749022,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061711,
+        "pid": 2061717,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749023,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061752,
+        "pid": 2061757,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749029,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2061822,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749040,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2061855,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749045,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061855,
+        "pid": 2061868,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749046,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061822,
+        "pid": 2061829,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749041,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2061945,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749062,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2061909,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749055,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061909,
+        "pid": 2061976,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749068,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061945,
+        "pid": 2061948,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749063,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2062083,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749084,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2062062,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749082,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2062083,
+        "pid": 2062087,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749085,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2062177,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749099,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2061462,
+        "pid": 2062239,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749106,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2062239,
+        "pid": 2062308,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749107,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2062177,
+        "pid": 2062185,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749100,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2061452,
+        "pid": 2062526,
+        "process_group": 2061452,
+        "session": 2061452,
+        "start_time_ticks": 238749123,
+        "state": "D"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "command": [
+    "/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make",
+    "-C",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/Source",
+    "SHELL=/home/external/.nix-profile/bin/bash",
+    "-j2",
+    "libdhelas"
+  ],
+  "console_sha256": "772220f4839ee4a802533c6978d63ac0cdf443d71213aac65cbb3456cca1de32",
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "deadline_monotonic": 2387788.488760449,
+  "label": "nlo-dhelas",
+  "returncode": 0,
+  "status": "passed"
+}

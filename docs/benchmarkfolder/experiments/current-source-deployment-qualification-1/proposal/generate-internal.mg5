@@ -1,0 +1,15 @@
+set automatic_html_opening False --no_save
+set auto_update 0 --no_save
+set output_dependencies internal --no_save
+set nb_core 2 --no_save
+set fortran_compiler /nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran --no_save
+set cpp_compiler /nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/g++ --no_save
+set heptools_install_dir /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/unused-heptools --no_save
+set ninja None --no_save
+set collier None --no_save
+set ninjars /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/source-prefixes/ninjars/lib --no_save
+set tirust /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/source-prefixes/tirust/lib --no_save
+import model loop_sm
+generate u u~ > z [virt=QCD]
+output standalone /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/standalone-original -f
+quit

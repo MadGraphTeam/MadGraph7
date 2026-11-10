@@ -1,0 +1,635 @@
+{
+  "all_stage_receipts": "build/build-result.json:stages (12 child records and 3 pure-action records)",
+  "bound_artifact_path_count": 1871,
+  "build_admitted_sha256": "75ab86f7a9acc9c0a0359b3aa2a7c9293a8d36ef6fd74f8f1768cfe8970da49b",
+  "build_result_sha256": "8b54b3ecd0e8daf7f670fc883b26913ccde810dc39a3d6c819cba975c9ffbd58",
+  "claim": "BUILD ONLY: two relocated virtual diagnostic executables; no amplitude or Monte Carlo evaluation",
+  "exporter_inventory": "afb6e0bea64ea0932751ff4869c206bcea9477d40a39a54bb99d0f06d85b75a6",
+  "native_evaluations": 0,
+  "omitted": [
+    "all native executables, libraries, objects and Fortran modules",
+    "full exported output trees and original source.tar",
+    "runtime amplitude results: none produced"
+  ],
+  "proposal_source_index_sha256": "3b8ffa3555351ce73e98d1103514944bce6d1e9eff4c6d519b609526649782bd",
+  "protected_unchanged_as_recorded": true,
+  "provider_path_count": 13,
+  "pure_stage_count": 3,
+  "retained_inputs": {
+    ".tirust-build/current-source-deployment-1/preparation.json": {
+      "path": "build/preparation.json",
+      "retained": true,
+      "sha256": "fb37c7ab81e2417fc0785d2b38b67e06bb1cadffd4ee758beb88d898b4fa9778"
+    },
+    ".tirust-build/current-source-deployment-1/source.tar": {
+      "reason": "source archive omitted; exact revision and file inventory retained",
+      "retained": false,
+      "sha256": "6de07b711f5164e6b1171f34332bbc1fac3dd840094f484b2b2988d3f7069edb"
+    },
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/manifest.json": {
+      "path": "inputs/docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/manifest.json",
+      "retained": true,
+      "sha256": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/process_cleanup.py": {
+      "path": "inputs/docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/process_cleanup.py",
+      "retained": true,
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/run.py": {
+      "path": "inputs/docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/run.py",
+      "retained": true,
+      "sha256": "726f629210a155b894f423ad76fa1de9d96b1f98270d4aceba2ba240250d6901"
+    },
+    "docs/benchmarkfolder/qualification/madloop-adapter/release/generate-release-internal.mg5": {
+      "path": "inputs/docs/benchmarkfolder/qualification/madloop-adapter/release/generate-release-internal.mg5",
+      "retained": true,
+      "sha256": "4dcec9501eab5957eb906a788e748325868d2a934d3a13e0e550f31c64ffd649"
+    },
+    "docs/benchmarkfolder/qualification/madloop-adapter/release/generate-release-nlo.mg5": {
+      "path": "inputs/docs/benchmarkfolder/qualification/madloop-adapter/release/generate-release-nlo.mg5",
+      "retained": true,
+      "sha256": "7893a0cd3cb0c837496d289698accea1884074e900cdcfab03e4f95615bd6f4e"
+    },
+    "docs/benchmarkfolder/qualification/madloop-adapter/release/run-release-internal.py": {
+      "path": "inputs/docs/benchmarkfolder/qualification/madloop-adapter/release/run-release-internal.py",
+      "retained": true,
+      "sha256": "0b3cff030d5d33f3e89ee16fd1506e1777d6b2f3df7e434fa8b0186a419cb6ca"
+    },
+    "docs/benchmarkfolder/qualification/madloop-adapter/release/run-release-nlo.py": {
+      "path": "inputs/docs/benchmarkfolder/qualification/madloop-adapter/release/run-release-nlo.py",
+      "retained": true,
+      "sha256": "1f8784dc6a2a2ee3c7b1ae391aeadb98b562863e4dfaee8c000112dad35e8253"
+    }
+  },
+  "revision": "0fcd2cd873d61d134837e1d9e87afb13a47824fd",
+  "runtime_qualification": "deferred; no runtime-result retained",
+  "schema": "tirust-current-source-deployment-build-only-v1",
+  "scope_limits": [
+    "only backends 1/8/9 deployment; optional IREGI explicitly excluded",
+    "bound compiled inputs and recorded link topology; not universal export hermeticity",
+    "ldd is diagnostic resolution only; actual PT_INTERP requires a separate runtime supplement",
+    "all timing fields diagnostic; no performance acceptance claim"
+  ],
+  "selected_text": {
+    "generated/nlo/Cards/ident_card.dat": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/Cards/ident_card.dat",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493"
+    },
+    "generated/nlo/Cards/param_card.dat": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/Cards/param_card.dat",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "6be683746584d447b8968e92e8809e06f960600be55b38f8e362347828625085"
+    },
+    "generated/nlo/Source/make_opts": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/Source/make_opts",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "6097249cfc1383ef9d62d82e1d387f25538a45cbdfed16d4ac55992166e38e0b"
+    },
+    "generated/nlo/Source/makefile": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/Source/makefile",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "de88e97a7d75e135a18afcc24c63512b6e8fce4f22be0a6031220bdd8523b928"
+    },
+    "generated/nlo/SubProcesses/MadLoopParams.dat": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/MadLoopParams.dat",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92"
+    },
+    "generated/nlo/SubProcesses/MadLoopParams.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/MadLoopParams.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/CT_interface.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/CT_interface.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "d7c7a98858e83f03f4d03831b52900fe2962ac2fee5ae28177b4cdfa7135e6d4"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/MadLoopCommons.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/MadLoopCommons.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "4811e1802130c2296c798b84067777ddf03a047633c1f8dff9e839838ac994b5"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/MadLoopParamReader.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/MadLoopParamReader.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/MadLoopParams.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/MadLoopParams.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/TIRUST_interface.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/TIRUST_interface.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "402d6277b91ec73c1ff00bc7a993a7d2fe09ad4600996d92256ec838b1e2791f"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/TIR_interface.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/TIR_interface.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "2cf323dc721e1170c0157315d4e976b5f88d8230e5dac5542ccfe004e4171519"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/born_matrix.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/born_matrix.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "71a08bb95e2d2684dc0022d335b90b9fdb3c8a3e101bfe3d49251580e8bb864b"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/check_sa.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/check_sa.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "ac94b7e42fea53ed61e500fda154ed24b58ab8753924f72820149632b6855084"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/check_sa_born_splitOrders.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/check_sa_born_splitOrders.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "70127a7a4bf124daae55e677163ac868ac0bfac74fbad012b0cc490e37baa2a9"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/coef_construction_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/coef_construction_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "d60af349083bf7be147a367db796faf3af0dd0e71eb6ebac034a7dc140ca0b00"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/coef_specs.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/coef_specs.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/coupl.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/coupl.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "c57d2ba9b8a562f7e62cc3b2a594bd21d13618fe060650a997f74ab39556ebbe"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/f2py_wrapper.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/f2py_wrapper.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "57c24d23e4cfd062604f21e9c94d07a9a8c0c16d3d5c26226825aa22ed0b8551"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/global_specs.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/global_specs.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "d1a87243aa2f6fa6ddd649c6f9e628e1e15af039a9eb72f9a2e2d01b99c2b1e9"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/helas_calls_ampb_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/helas_calls_ampb_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "379cb9687e9c177950c7d36a63cba43685752c7f2993e859c1a089bb77f88920"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/improve_ps.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/improve_ps.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "a306e955265fe6e4488a1dcbb6fb09a1853f2bf407087799964c690adcf00970"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/loop_CT_calls_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/loop_CT_calls_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "6074177d768fc7fae9d1a19eca47253bf56efd3a1fef9ac93366294210d7b0d4"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/loop_matrix.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/loop_matrix.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "4610ff3ec9ec1a6de16c155eb4e017ddb6d89816ba82ceb1fce190b5f7214803"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/loop_max_coefs.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/loop_max_coefs.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "8b3fa018f86835df977018e4edb50a5cbe7cbde15a07bcfb447201dfdb8adb00"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/loop_num.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/loop_num.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "280af44d66f7012fed02641fe2098e17f03c4bb4fed3a731ef2560c4b5476a6e"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/makefile": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/makefile",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "9aae9ceaef7e33e7f57bcd42c0652739b678ced79ccce1fc324348c01b9d67b5"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_coef_construction_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_coef_construction_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "4b1ed13e47c32f9f51c85b15db594bb317cb5fbe6047194ce3414cf84aa99255"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_compute_loop_coefs.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_compute_loop_coefs.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "c0ab2ef58abb7651eb22364f9425dfebd8e1fb69fdc21a4bf621bb768f3fc355"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_coupl.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_coupl.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "eac1190bd719b391ae2cd33eb09e6c9723e8a93498d111185f533de6bca82cbd"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_coupl_same_name.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_coupl_same_name.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "788066236c0284f0487c09ad7944726a581070bc896d1e9c222d58ef5a7354bb"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_helas_calls_ampb_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/mp_helas_calls_ampb_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "3b49b06fc4456ae8b9c53674012501fc111d350b928e5257aae0d388bcd0384d"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/nexternal.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/nexternal.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "86f44c2998099fa966d3aa25fe0b56a641ee6f6b84dacdc65e3349b885b2abdd"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/ngraphs.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/ngraphs.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "94c23a3253b5ccdeda8798029cc3ae7d2b6e4d79c82735676ed9af1712e2b2e6"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/nsqso_born.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/nsqso_born.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "3b38ec895740e951986695a1de84d502519179591cff87fd84460bd597fda484"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/nsquaredSO.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/nsquaredSO.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/pmass.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/pmass.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "0beacdaee18697d60521073d3a773ca4c3b0d29e30dd24980ca23d5b3b24882e"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/polynomial.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/polynomial.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "5fbe6a8c8923c48e38e30b80978da3e4d8d5a7c55cb7664133340126a62281a0"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/process_info.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/process_info.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "a2163706175ae47c77e94b49ffd225a0335bed2f42f67185fd104f817719d920"
+    },
+    "generated/nlo/SubProcesses/P0_uux_z/V0_uux_z/unique_id.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z/unique_id.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "d60a49c61df4c28973b15a4f965abf3b8fd524c9f59fa91b630abdae15124a2e"
+    },
+    "generated/nlo/lib/mninjars.f90": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/mninjars.f90",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "9f20fb4280ba6d86a0323ce5bb4f4b358c15168166dbdb4e220e172952fbdbb7"
+    },
+    "generated/nlo/lib/mtirust.f90": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/mtirust.f90",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "generated/nlo/lib/ninjars-NOTICES.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/ninjars-NOTICES.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "6d82540c9a7bd21647da949b892f956603bf69f6ec90dca1d390f17e69de2352"
+    },
+    "generated/nlo/lib/ninjars-config.json": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/ninjars-config.json",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "ebb9ebfec9c71041fc3e441e2546524025080a13692b522d5495bef710be8d56"
+    },
+    "generated/nlo/lib/ninjars-dependency-provenance.json": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/ninjars-dependency-provenance.json",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "231dd32ac82cf432835410970024eb48f47023a4709a10b7cadc67720e0dbaae"
+    },
+    "generated/nlo/lib/ninjars-link-before.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/ninjars-link-before.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "ef7dc598f2fee7b363feabeaf30bd352dbc67456f2ba8ea5b176d70ec9ed9abe"
+    },
+    "generated/nlo/lib/ninjars-native-libs.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/ninjars-native-libs.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+    },
+    "generated/nlo/lib/ninjars.h": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/ninjars.h",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "c2d536f6664cb3dd6aec64277234ee807f1a8599612b7f638e166ac1f88ae0ce"
+    },
+    "generated/nlo/lib/tirust-NOTICES.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/tirust-NOTICES.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435"
+    },
+    "generated/nlo/lib/tirust-config.json": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/tirust-config.json",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9"
+    },
+    "generated/nlo/lib/tirust-dependency-provenance.json": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/tirust-dependency-provenance.json",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "5a328ed1a6cab615b5afc9952e758e3417f705578186d7914258d885f6851f78"
+    },
+    "generated/nlo/lib/tirust-link-before.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/tirust-link-before.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+    },
+    "generated/nlo/lib/tirust-native-libs.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/tirust-native-libs.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62"
+    },
+    "generated/nlo/lib/tirust.h": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/lib/tirust.h",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+    },
+    "generated/standalone/Cards/MadLoopParams.dat": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/Cards/MadLoopParams.dat",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "e782503a95c9a709fd1f7a28a737f44e016e9574c6799668e393287da05f0d92"
+    },
+    "generated/standalone/Cards/ident_card.dat": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/Cards/ident_card.dat",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493"
+    },
+    "generated/standalone/Cards/param_card.dat": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/Cards/param_card.dat",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "6f1f578e858e1aa603fbe9445e4a5f425ce69cc677977610ed64535d63fd1c31"
+    },
+    "generated/standalone/Source/make_opts": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/Source/make_opts",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "d494c68fc32d2d369e843760e2029c83abcfe2adeace22c519de1b9db775c210"
+    },
+    "generated/standalone/Source/makefile": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/Source/makefile",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16"
+    },
+    "generated/standalone/SubProcesses/MadLoopParams.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/MadLoopParams.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+    },
+    "generated/standalone/SubProcesses/MadLoop_makefile_definitions": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/MadLoop_makefile_definitions",
+      "receipt_hash_source": "export_inventory",
+      "sha256": "437e0acefabbe9ebef18784260e30a4a690760661621341840abe80f5959242f"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/CT_interface.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/CT_interface.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "251f949774fadf2fc2600e19d140c52717a1263d070a441867c931902afbf524"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/MadLoopCommons.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/MadLoopCommons.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "4811e1802130c2296c798b84067777ddf03a047633c1f8dff9e839838ac994b5"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/MadLoopParamReader.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/MadLoopParamReader.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/MadLoopParams.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/MadLoopParams.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/TIRUST_interface.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/TIRUST_interface.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "c740fdb22e1347ff2c3f6bcacc2a4d22085fd94bf3ca022e24da3f821cfb9bda"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/TIR_interface.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/TIR_interface.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "b471a849c9d0643c6e59ea27aea33787217a3fb9edf55bd70179d54dee05d604"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/born_matrix.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/born_matrix.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "758194bf6f386468644e100bb0635678a67458467df7e4bd44de00b662a2accd"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/check_sa.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check_sa.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "7264637df4f759c778076c3c7291cdd9efc16ad462ca355f4305e6e3ee751b72"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/check_sa_born_splitOrders.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check_sa_born_splitOrders.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "46797bff79153e2f220ff727eb070f6118b8e1ea591ba2cfcdf49c659009a5a4"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/coef_construction_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/coef_construction_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "e2dbc5804c7f21139b46aa3cb6a49b97806f51e2d489e94e3e9f0f88760f3c1d"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/coef_specs.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/coef_specs.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/coupl.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/coupl.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "c57d2ba9b8a562f7e62cc3b2a594bd21d13618fe060650a997f74ab39556ebbe"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/f2py_wrapper.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/f2py_wrapper.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "4446bfff3ee103cd3b5b94f30ec0956d19eb9460b38aa83242bdf3fdc75abe3f"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/global_specs.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/global_specs.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "d1a87243aa2f6fa6ddd649c6f9e628e1e15af039a9eb72f9a2e2d01b99c2b1e9"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/helas_calls_ampb_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/helas_calls_ampb_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "39bca1f364326fd30b86523086a2afbdcbd7c6dafe6833867ee142ea3a275e70"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/improve_ps.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/improve_ps.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "d511a2b32b286067c387fc2fc9b1e3d53600f8f7aaf107a53b98e18ec9a53260"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/loop_CT_calls_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/loop_CT_calls_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "d50fc3af772e5a0ed1eefd5da1ccd0e0559f64b3d802fa6c720a89ce2b1470a3"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/loop_matrix.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/loop_matrix.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "52edff907d7b1ab4f5a81ddc1512dbee5206431649498279eb32699053d85c54"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/loop_max_coefs.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/loop_max_coefs.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "8b3fa018f86835df977018e4edb50a5cbe7cbde15a07bcfb447201dfdb8adb00"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/loop_num.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/loop_num.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "f5e9c6fd567af848947ce72969e176e3b106492b33e384fb9476a665621af318"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/makefile": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/makefile",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "6e9df153a21910b6766497eac85ccd4e5e54eb421dd5fcdce21ee8ecb5e607fa"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/mg5_citation.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/mg5_citation.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/mp_coef_construction_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/mp_coef_construction_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "e8ae21dcd448eefc7d9862ba793f7299b6fe7eeccd30f84c6d49547916f799b6"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/mp_compute_loop_coefs.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/mp_compute_loop_coefs.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "1d4347179afa33dbc29266fc17d66901c961a0385b12bae1c7fc447ca69b62b3"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/mp_coupl.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/mp_coupl.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "eac1190bd719b391ae2cd33eb09e6c9723e8a93498d111185f533de6bca82cbd"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/mp_coupl_same_name.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/mp_coupl_same_name.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "788066236c0284f0487c09ad7944726a581070bc896d1e9c222d58ef5a7354bb"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/mp_helas_calls_ampb_1.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/mp_helas_calls_ampb_1.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "8fb8e264c3b3940c36bcc492e36267bb06053019f12394b12147c247afab69fa"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/nexternal.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/nexternal.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "86f44c2998099fa966d3aa25fe0b56a641ee6f6b84dacdc65e3349b885b2abdd"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/ngraphs.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/ngraphs.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "94c23a3253b5ccdeda8798029cc3ae7d2b6e4d79c82735676ed9af1712e2b2e6"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/nsqso_born.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/nsqso_born.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "3b38ec895740e951986695a1de84d502519179591cff87fd84460bd597fda484"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/nsquaredSO.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/nsquaredSO.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/pmass.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/pmass.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "0beacdaee18697d60521073d3a773ca4c3b0d29e30dd24980ca23d5b3b24882e"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/polynomial.f": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/polynomial.f",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "fa136ecc78cf1023c41a761ea149aa002432e658f01feb3a5f9c7bcb94791aa6"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/process_info.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/process_info.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "a2163706175ae47c77e94b49ffd225a0335bed2f42f67185fd104f817719d920"
+    },
+    "generated/standalone/SubProcesses/P0_uux_z/unique_id.inc": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/unique_id.inc",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "d60a49c61df4c28973b15a4f965abf3b8fd524c9f59fa91b630abdae15124a2e"
+    },
+    "generated/standalone/lib/mninjars.f90": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/mninjars.f90",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "9f20fb4280ba6d86a0323ce5bb4f4b358c15168166dbdb4e220e172952fbdbb7"
+    },
+    "generated/standalone/lib/mtirust.f90": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/mtirust.f90",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "generated/standalone/lib/ninjars-NOTICES.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/ninjars-NOTICES.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "6d82540c9a7bd21647da949b892f956603bf69f6ec90dca1d390f17e69de2352"
+    },
+    "generated/standalone/lib/ninjars-config.json": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/ninjars-config.json",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "ebb9ebfec9c71041fc3e441e2546524025080a13692b522d5495bef710be8d56"
+    },
+    "generated/standalone/lib/ninjars-dependency-provenance.json": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/ninjars-dependency-provenance.json",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "231dd32ac82cf432835410970024eb48f47023a4709a10b7cadc67720e0dbaae"
+    },
+    "generated/standalone/lib/ninjars-link-before.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/ninjars-link-before.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "ef7dc598f2fee7b363feabeaf30bd352dbc67456f2ba8ea5b176d70ec9ed9abe"
+    },
+    "generated/standalone/lib/ninjars-native-libs.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/ninjars-native-libs.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+    },
+    "generated/standalone/lib/ninjars.h": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/ninjars.h",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "c2d536f6664cb3dd6aec64277234ee807f1a8599612b7f638e166ac1f88ae0ce"
+    },
+    "generated/standalone/lib/tirust-NOTICES.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/tirust-NOTICES.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "2f98ec5fcddcf7073d93f9d8785b63f6069857f51bf544e0a734594ec6d43435"
+    },
+    "generated/standalone/lib/tirust-config.json": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/tirust-config.json",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9"
+    },
+    "generated/standalone/lib/tirust-dependency-provenance.json": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/tirust-dependency-provenance.json",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "5a328ed1a6cab615b5afc9952e758e3417f705578186d7914258d885f6851f78"
+    },
+    "generated/standalone/lib/tirust-link-before.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/tirust-link-before.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+    },
+    "generated/standalone/lib/tirust-native-libs.txt": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/tirust-native-libs.txt",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "427b2008cc8090df3b03a5d0f2b150338e334e3c58d746bfc8e7fedd239dbe62"
+    },
+    "generated/standalone/lib/tirust.h": {
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/lib/tirust.h",
+      "receipt_hash_source": "bound_artifact_map",
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+    }
+  },
+  "selected_text_path_count": 110,
+  "source_directory": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1",
+  "stage_count": 15,
+  "subprocess_stage_count": 12,
+  "verification_scopes": {
+    "external_build_root": "optional fresh read-only rehash of the 1871 bound original artifact paths plus selected inventory-only text; no loading or execution",
+    "external_providers": "separate optional fresh read-only rehash of recorded Nix/local provider bytes; no initialization claim",
+    "portable": "rehash retained packet bytes and cross-check recorded receipts only; external artifacts/providers are not read"
+  }
+}

@@ -1,0 +1,177 @@
+{
+  "actual_cap_seconds": 600.0,
+  "cap_seconds": 600,
+  "child_pid": 1967548,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 1934290,
+        "pid": 1967548,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238735923,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1967548,
+        "pid": 1968664,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238736121,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1968664,
+        "pid": 1968666,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238736122,
+        "state": "D"
+      },
+      {
+        "parent_pid": 1967548,
+        "pid": 1969427,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238736445,
+        "state": "Z"
+      },
+      {
+        "parent_pid": 1967548,
+        "pid": 1969447,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238736450,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1969447,
+        "pid": 1969451,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238736451,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1969447,
+        "pid": 1969650,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238736512,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1967548,
+        "pid": 1981396,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737877,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1981396,
+        "pid": 1981427,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737888,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1981427,
+        "pid": 1981449,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737895,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1981396,
+        "pid": 1981520,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737906,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1981520,
+        "pid": 1981560,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737915,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1967548,
+        "pid": 1981629,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737927,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1981629,
+        "pid": 1981633,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737928,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1981633,
+        "pid": 1981673,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737935,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1981629,
+        "pid": 1981743,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737954,
+        "state": "S"
+      },
+      {
+        "parent_pid": 1981743,
+        "pid": 1981745,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737955,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1981745,
+        "pid": 1981746,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737955,
+        "state": "R"
+      },
+      {
+        "parent_pid": 1981745,
+        "pid": 1981747,
+        "process_group": 1967548,
+        "session": 1967548,
+        "start_time_ticks": 238737955,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "command": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/mg/bin/madgraph",
+    "--plain",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/proposal/generate-nlo.mg5"
+  ],
+  "console_sha256": "a83b4d51b162e79788e9bdfbadd16dc4387479f28a484fdae914fc85e6279507",
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "deadline_monotonic": 2387956.845762266,
+  "label": "generate-nlo",
+  "returncode": 0,
+  "status": "passed"
+}

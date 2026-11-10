@@ -1,0 +1,154 @@
+{
+  "actual_cap_seconds": 300.0,
+  "cap_seconds": 300,
+  "child_pid": 2059808,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 1934290,
+        "pid": 2059808,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748593,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2059808,
+        "pid": 2059814,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748595,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2059814,
+        "pid": 2059819,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748600,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2059808,
+        "pid": 2060109,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748664,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2060109,
+        "pid": 2060161,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748671,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2060109,
+        "pid": 2060163,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748671,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2060163,
+        "pid": 2060177,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748673,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2060161,
+        "pid": 2060174,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748673,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2060109,
+        "pid": 2060299,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748690,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2060109,
+        "pid": 2060261,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748685,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2060261,
+        "pid": 2060269,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748686,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2060299,
+        "pid": 2060311,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748694,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2060109,
+        "pid": 2060472,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748714,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2060109,
+        "pid": 2060315,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748694,
+        "state": "S"
+      },
+      {
+        "parent_pid": 2060315,
+        "pid": 2060321,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748695,
+        "state": "R"
+      },
+      {
+        "parent_pid": 2059808,
+        "pid": 2060572,
+        "process_group": 2059808,
+        "session": 2059808,
+        "start_time_ticks": 238748729,
+        "state": "D"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "command": [
+    "/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin/make",
+    "-C",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/Source",
+    "SHELL=/home/external/.nix-profile/bin/bash",
+    "-j2",
+    "libmodel"
+  ],
+  "console_sha256": "6c7c483780c44fd38e513930985c54f1af20f9564044411701820e9434a02f13",
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "deadline_monotonic": 2387784.786837043,
+  "label": "nlo-model",
+  "returncode": 0,
+  "status": "passed"
+}

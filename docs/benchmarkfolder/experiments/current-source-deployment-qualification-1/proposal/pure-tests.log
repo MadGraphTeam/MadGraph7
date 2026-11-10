@@ -1,0 +1,12 @@
+test_historical_driver_schema_and_comparison (__main__.SmokeTest.test_historical_driver_schema_and_comparison) ... ok
+test_launch_failure_retains_attempt_and_partial_result (__main__.SmokeTest.test_launch_failure_retains_attempt_and_partial_result) ... ok
+test_loader_rejects_link_back_to_original_prefix (__main__.SmokeTest.test_loader_rejects_link_back_to_original_prefix) ... ok
+test_loader_requires_prebound_observed_provider (__main__.SmokeTest.test_loader_requires_prebound_observed_provider) ... ok
+test_refuses_bad_precision_and_numeric_disagreement (__main__.SmokeTest.test_refuses_bad_precision_and_numeric_disagreement) ... ok
+test_rejects_nonfinite_duplicate_status_and_changed_point (__main__.SmokeTest.test_rejects_nonfinite_duplicate_status_and_changed_point) ... ok
+test_timeout_retains_pid_cleanup_and_output (__main__.SmokeTest.test_timeout_retains_pid_cleanup_and_output) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.010s
+
+OK

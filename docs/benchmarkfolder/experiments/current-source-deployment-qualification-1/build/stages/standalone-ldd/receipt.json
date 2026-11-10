@@ -1,0 +1,30 @@
+{
+  "actual_cap_seconds": 60.0,
+  "cap_seconds": 60,
+  "child_pid": 2069279,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 1934290,
+        "pid": 2069279,
+        "process_group": 2069279,
+        "session": 2069279,
+        "start_time_ticks": 238750577,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "command": [
+    "/run/current-system/sw/bin/ldd",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check"
+  ],
+  "console_sha256": "0eb787853091d87c22ae264fba35939dad78858237d5ef1f03aaab618b215306",
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "deadline_monotonic": 2387564.753509517,
+  "label": "standalone-ldd",
+  "returncode": 0,
+  "status": "passed"
+}

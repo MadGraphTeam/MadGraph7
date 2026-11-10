@@ -1,0 +1,94 @@
+make: Entering directory '/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z'
+/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -O -ffixed-line-length-132 -fno-automatic -c -I../../../lib/ check_sa.f -I ../../../lib/ -I ../../../lib/
+check_sa.f:542:132:
+
+  542 |  101  Z(K)=Z(K-1)+PO2LOG-2.*LOG(DFLOAT(K-2))
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 101 at (1)
+check_sa.f:544:132:
+
+  544 |  102  Z(K)=(Z(K)-LOG(DFLOAT(K-1)))
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 102 at (1)
+check_sa.f:556:132:
+
+  556 |  105  XMT=XMT+ABS(XM(I))
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 105 at (1)
+check_sa.f:574:132:
+
+  574 |  202  Q(1,I)=Q(4,I)*S*SIN(F)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 202 at (1)
+check_sa.f:578:132:
+
+  578 |  203  R(I)=0.
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 203 at (1)
+check_sa.f:580:132:
+
+  580 |       DO 204 K=1,4
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: Shared DO termination label 204 at (1)
+check_sa.f:581:132:
+
+  581 |  204  R(K)=R(K)+Q(K,I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 204 at (1)
+check_sa.f:584:132:
+
+  584 |  205  B(K)=-R(K)/RMAS
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 205 at (1)
+check_sa.f:593:132:
+
+  593 |  206  P(K,I)=X*(Q(K,I)+B(K)*(Q(4,I)+A*BQ))
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 206 at (1)
+check_sa.f:594:132:
+
+  594 |  207  P(4,I)=X*(G*Q(4,I)+BQ)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 207 at (1)
+check_sa.f:616:132:
+
+  616 |  301  P2(I)=P(4,I)**2
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 301 at (1)
+check_sa.f:626:132:
+
+  626 |  303  G0=G0+P2(I)/E(I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 303 at (1)
+check_sa.f:637:132:
+
+  637 |  306  P(K,I)=X*P(K,I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 306 at (1)
+check_sa.f:638:132:
+
+  638 |  307  P(4,I)=E(I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 307 at (1)
+check_sa.f:645:132:
+
+  645 |  308  WT3=WT3+V(I)**2/E(I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 308 at (1)
+check_sa.f:540:8:
+
+  540 |       Z(2)=PO2LOG
+      |        1
+Warning: Array reference at (1) is out of bounds (2 > 1) in dimension 1
+check_sa.f:166:4:
+
+  166 |  976      CONTINUE
+      |    1
+......
+  337 |           OPEN(69, FILE='result.dat', ERR=976, ACTION='WRITE')
+      |                                                                                                                                    2
+Warning: Legacy Extension: Label at (1) is not in the same block as the GOTO statement at (2)
+/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -O -ffixed-line-length-132 -fno-automatic -o check check_sa.o ../../../Source/mg5_citation.f ../libMadLoop.a -L../../../lib/ -lcts -ldhelas -lmodel /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a -lgcc_s -L../../../lib/ -lninjars -ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc -lgcc_s -L../../../lib/ -ltirust -lmadloop_tirust -Wl,-rpath,'$ORIGIN:$ORIGIN/../lib:$ORIGIN/../../lib:$ORIGIN/../../../lib' -lstdc++
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: warning: 2759c6e58623ef3d-x86_64.o: missing .note.GNU-stack section implies executable stack
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+make: Leaving directory '/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/nlo/SubProcesses/P0_uux_z/V0_uux_z'

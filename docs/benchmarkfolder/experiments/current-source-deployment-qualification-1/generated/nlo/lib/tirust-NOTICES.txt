@@ -1,0 +1,12 @@
+tirust Rust dependency notices
+
+Original upstream notice, license, copyright, author and README documents are
+preserved byte for byte in tirust-dependency-notices.tar.gz.
+tirust-dependency-provenance.json records the actual locked Cargo package identities,
+source declarations, source document paths and SHA256 hashes.
+
+These records preserve upstream statements without interpreting their terms.
+Symbolica runtime rights are not included or transferred by this notice bundle absent
+a separate written agreement. Packaging these documents does not grant any
+additional license or change any upstream terms. Consult the complete original
+documents, including Symbolica License.md and the oneloop README where present.

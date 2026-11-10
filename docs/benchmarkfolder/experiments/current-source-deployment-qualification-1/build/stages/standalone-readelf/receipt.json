@@ -1,0 +1,31 @@
+{
+  "actual_cap_seconds": 60.0,
+  "cap_seconds": 60,
+  "child_pid": 2067819,
+  "cleanup": {
+    "events": [],
+    "observed_owned_processes": [
+      {
+        "parent_pid": 1934290,
+        "pid": 2067819,
+        "process_group": 2067819,
+        "session": 2067819,
+        "start_time_ticks": 238750374,
+        "state": "R"
+      }
+    ],
+    "scope": "Only observed descendants with matching process-start/session identities",
+    "survivors": []
+  },
+  "command": [
+    "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/readelf",
+    "-d",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/current-source-deployment-1/relocated/standalone/SubProcesses/P0_uux_z/check"
+  ],
+  "console_sha256": "fca76f8fbdd2ac59ff18a093ecc76b63d265289b9730dd2d7d95f638d32c3e09",
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust",
+  "deadline_monotonic": 2387562.724310564,
+  "label": "standalone-readelf",
+  "returncode": 0,
+  "status": "passed"
+}
