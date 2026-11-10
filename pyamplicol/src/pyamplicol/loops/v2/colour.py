@@ -668,6 +668,17 @@ def _vertex_label(name: str) -> Label:
     return ("leg", int(match.group(1))) if match else ("dummy", name)
 
 
+class BlockColourFlowError(ValueError):
+    """Two blocks of one block current (external mask, field, coupling
+    orders) and one word whose colour flows differ beyond their sign: the
+    word names one colour content of the current, so the seeds cannot read
+    the blocks by it (pure-electroweak u u~ > d d~ s s~ with QCD loops).
+    Generation refuses the request naming the blocks."""
+
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "block-colour-flow"
+
+
 class SeedColour:
     """Generic seed classes of skeleton contents (a ``skeletons.ColourModel``).
 
@@ -746,7 +757,7 @@ class SeedColour:
             if first is not block and replace(first.colour_flow, sign=1) != replace(
                 block.colour_flow, sign=1
             ):
-                raise ValueError(
+                raise BlockColourFlowError(
                     f"blocks {first.id} and {block.id} of word {key.word} and "
                     "field current differ in colour flow"
                 )
@@ -3423,6 +3434,7 @@ def certify_leading_colour(
 __all__ = [
     "COMPRESSION_THEOREMS",
     "SYMMETRIC_GROUP_FFT",
+    "BlockColourFlowError",
     "BlockName",
     "BornBasis",
     "ColourNetwork",

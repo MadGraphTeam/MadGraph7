@@ -416,6 +416,7 @@ def test_internal_and_engine_errors_keep_their_keys():
     from pyamplicol.api.errors import GenerationError
     from pyamplicol.loops.v2.artifact import _not_storable
     from pyamplicol.loops.v2.catalogue import LoopKernelCatalogueError
+    from pyamplicol.loops.v2.colour import BlockColourFlowError
     from pyamplicol.loops.v2.conventions import FermionSignError, ReadingSignError
     from pyamplicol.loops.v2.ct_recursion import (
         AnomalousVetoError,
@@ -445,6 +446,7 @@ def test_internal_and_engine_errors_keep_their_keys():
         LoopKernelCatalogueError: "loop-kernel-catalogue",
         CountertermCompletenessError: "counterterm-completeness",
         ProbeFailure: "loop-induced-probe",
+        BlockColourFlowError: "block-colour-flow",
     }
     assert sorted(internal.values()) == sorted(listed_internal_keys())
     for cls, key in internal.items():
@@ -467,6 +469,44 @@ def test_internal_and_engine_errors_keep_their_keys():
     )
     assert isinstance(refused, NativeExportRefused)
     assert refused.key == feature and str(refused).startswith(f"{feature}: ")
+
+
+@pytest.mark.loop_physics
+def test_blocks_of_one_word_with_different_colour_flows_refuse_typed(tmp_path):
+    """Pure-electroweak u u~ > d d~ s s~ (QCD = 0, QED = 4) with QCD loops:
+    two blocks of one block current and word differ in colour flow
+    (``colour.SeedColour``), which the seeds cannot read by the word;
+    generation refuses with the listed internal key ``block-colour-flow``
+    (m-lit lit-ew-blocks E7; an untyped ValueError before). About 10 s."""
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.loops.v2.refusals import LoopEngineRefusal
+
+    text = f"""
+action = "generate"
+[model]
+source = "loop_qcd_qed_sm_Gmu"
+restriction = "default"
+[process]
+entries = [{{expression = "u u~ > d d~ s s~", name = "p"}}]
+loop_coupling_orders = ["QCD"]
+coupling_order_policy = "explicit"
+max_coupling_orders = {{ QCD = 0, QED = 4 }}
+[loop.preparation]
+fixed_parameters = {{MB = "0", MTA = "0", WT = "0", WZ = "0", WW = "0", WH = "0"}}
+[generation]
+output = {json.dumps(str(tmp_path / "out"))}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+"""
+    generator = _generator(text, tmp_path / "card.toml")
+    with pytest.raises(GenerationError) as refused:
+        generator.generate(_processes("u u~ > d d~ s s~"), tmp_path / "out")
+    assert isinstance(refused.value, LoopEngineRefusal)
+    assert refused.value.key == "block-colour-flow"
+    assert "differ in colour flow" in str(refused.value)
+    assert not (tmp_path / "out").exists()
 
 
 @pytest.mark.loop_fast

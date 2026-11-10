@@ -15,7 +15,7 @@ exact point), with mu_R^2 the squared invariant mass of the initial state
 PROBE_REDUCTION`` (NinjaRS) at every carrier. The checks and their
 criteria are the existing ones; nothing here is a new threshold:
 
-* **Poles, Born-interfered** (``born_rows``): per point, squared-order
+* **Poles, Born-interfered** (``born_interfered_rows``): per point, squared-order
   sector and pole coefficient the renormalised virtual (poles "all") against
   Catani's prediction of the requested corrections (QCD and QED summed per
   sector, formed natively, ``NativeExecutor(catani=True)``): in binary64 with
@@ -24,9 +24,13 @@ criteria are the existing ones; nothing here is a new threshold:
   double-double (no checks) iff |pole - Catani| <= ``CATANI_DD_FLOOR``
   |Catani| (``catani_dd_comparison``). A sector the operators do not predict
   is listed with its reason (``poles.UNPREDICTED_REASONS``), never as a
-  pass. A binary64 point whose relative estimate exceeds the default target
-  accuracy (``stability.RESCUE_TARGET``, the built-in rescue's level
-  criterion) is out of the binary64 scope.
+  pass; a sector they predict without a pole row at a point is "not run"
+  (an applicable check that did not run). A binary64 point whose relative
+  estimate exceeds the default target accuracy (``stability.RESCUE_TARGET``,
+  the built-in rescue's level criterion) is out of the binary64 scope. When
+  binary64 evaluated a point and the double-double run is refused, the
+  undecided pole and Ward rows keep binary64's verdict (never a pass) and
+  say that double-double was refused.
 * **Ward, Born-interfered**: ``ward.ward_check`` on every external gluon and
   photon leg (``ward.gauge_legs``) and both factors (``ward.WARD_FACTORS``),
   its tree-level Born part included, with ``ward.ward_row``'s criteria.
@@ -224,9 +228,11 @@ def _sector_name(sector: Any) -> str:
 
 
 def _short(value: float | None) -> float | None:
-    if value is None:
-        return None
-    return float(f"{value:.3g}") if value == value and value != float("inf") else value
+    """``induced._short`` with an infinite ratio kept a float."""
+
+    from .induced import _short as short
+
+    return short(value, infinite=float("inf"))
 
 
 def _carrier_name(carrier: Any) -> str:
@@ -321,13 +327,16 @@ def _unpredicted_rows(
     index: int,
     judged: Sequence[Any] = (),
 ) -> list[CheckRow]:
-    """A row per sector without Catani's prediction, with its reason: the
-    sectors the operators do not predict and every other sector of
-    ``sectors`` without a pole row (``judged``), never omitted."""
+    """A row per sector without a pole row, with its reason, never omitted:
+    "no prediction" for the sectors the operators do not predict
+    (``poles.UNPREDICTED_REASONS``) or where no prediction could be formed,
+    "not run" for a sector they predict that got no pole row at this point
+    (``judged``): an applicable check that did not run (exit code 3)."""
 
     unpredicted = slice_.unpredicted_sectors()
     rows = []
     for sector in sectors:
+        verdict = NO_PREDICTION
         if sector in unpredicted:
             reason = (
                 f"{unpredicted[sector]}: the requested corrections' operators do "
@@ -339,21 +348,21 @@ def _unpredicted_rows(
                 "full-colour request with two coloured legs (dipoles.correlator)"
             )
         elif sector not in judged:
+            verdict = NOT_RUN
             reason = (
-                "no prediction or pole coefficients formed for this sector at "
-                "this point"
+                "an applicable check did not run: the operators predict this "
+                "sector's poles, but no prediction or pole coefficients were "
+                "formed for it at this point"
             )
         else:
             continue
         rows.append(
-            CheckRow(
-                "poles", _sector_name(sector), index, None, NO_PREDICTION, reason=reason
-            )
+            CheckRow("poles", _sector_name(sector), index, None, verdict, reason=reason)
         )
     return rows
 
 
-def born_rows(
+def born_interfered_rows(
     target: Any,
     points: Sequence[tuple[Any, Any]],
     carriers: Sequence[Any],
@@ -389,6 +398,11 @@ def born_rows(
                 )
             except FailedPoints as error:
                 refusal = f"{_carrier_name(carrier)} refused: {error}"
+                if evaluated:
+                    # The earlier carrier's rows stay (never a pass) and say
+                    # that this carrier was refused.
+                    for key in pending:
+                        decided[key] = _refused(decided[key], refusal)
                 continue
             sectors = list(result.components["virtual"])
             formed = result.ir_poles is not None
@@ -458,6 +472,14 @@ def _with(row: CheckRow, **changes: Any) -> CheckRow:
     from dataclasses import replace
 
     return replace(row, **changes)
+
+
+def _refused(row: CheckRow, refusal: str) -> CheckRow:
+    """``row`` (an earlier carrier's undecided or failed row) with a later
+    carrier's refusal added to its reason; the verdict is kept."""
+
+    reason = refusal if row.reason is None else f"{row.reason}; {refusal}"
+    return _with(row, reason=reason)
 
 
 def _ward_row(row: Mapping[str, Any], carrier: str, index: int) -> CheckRow:
@@ -549,8 +571,8 @@ def _born_ward_rows(
         except FailedPoints as error:
             fallback = f"{name} refused: {error}"
             for key in pending:
-                decided.setdefault(
-                    key,
+                earlier = decided.get(key)
+                decided[key] = (
                     CheckRow(
                         "ward",
                         f"leg {key[0]}",
@@ -558,7 +580,9 @@ def _born_ward_rows(
                         name,
                         FAIL,
                         reason=fallback,
-                    ),
+                    )
+                    if earlier is None
+                    else _refused(earlier, fallback)
                 )
             continue
         for key in pending:
@@ -765,7 +789,7 @@ def check_request(
                 target, compiled, probe, native, points, carriers, memo=memo
             )
         else:
-            rows = born_rows(target, points, carriers)
+            rows = born_interfered_rows(target, points, carriers)
     return ProcessCheck(
         process,
         expression,
@@ -797,7 +821,7 @@ __all__ = [
     "CheckReport",
     "CheckRow",
     "ProcessCheck",
-    "born_rows",
+    "born_interfered_rows",
     "catani_comparison",
     "catani_dd_comparison",
     "check_request",

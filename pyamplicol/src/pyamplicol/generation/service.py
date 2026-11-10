@@ -3431,10 +3431,12 @@ class GenerationBackend:
         seed: int,
         precision=None,
         stored=None,
+        sqrt_s=None,
     ):
         """``pyamplicol check`` of a one-loop request (``loop_service.
         check_loop_requests``; ``stored``: an artifact input's manifest, the
-        model and processes the regeneration must match): one
+        model and processes the regeneration must match; ``sqrt_s``: the
+        points' energy, None the validation convention): one
         ``checks.ProcessCheck`` per process."""
 
         if not self._loop_execution_enabled:
@@ -3452,6 +3454,7 @@ class GenerationBackend:
             seed=seed,
             precision=precision,
             stored=stored,
+            sqrt_s=sqrt_s,
         )
 
     def generate(
