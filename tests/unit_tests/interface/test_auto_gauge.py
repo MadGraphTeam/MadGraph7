@@ -16,6 +16,7 @@
 (MadGraphCmd.apply_automatic_gauge and fd_gauge_criterion)."""
 
 from __future__ import absolute_import
+import glob
 import os
 import shutil
 import tempfile
@@ -61,7 +62,7 @@ class TestAutomaticGauge(unittest.TestCase):
     def gauge_lines(self):
         """the history lines about the gauge, with the process lines"""
         return [line for line in self.cmd.history
-                if line.startswith(('set gauge', '# FD gauge', 'generate',
+                if line.startswith(('set gauge', '# FD gauge', '# --gauge', 'generate',
                                     'add process'))]
 
     # ------------------------------------------------------------------
@@ -126,33 +127,70 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertEqual(len(self.cmd._curr_amps), 2)
         self.assertEqual(self.gauge_lines(), ['generate p p > t t~'])
 
-    def test_add_process_keeps_fd(self):
-        """a process added to one that needs the FD gauge is generated in the
-        FD gauge too (correct for it as well); a polarised one brings the
-        whole output back to the unitary gauge, every process again"""
+    def lines_gauges(self):
+        """(process id, gauge of the process, gauge of its model)"""
+        return [(amp.get('process').get('id'), amp.get('process').get_gauge(),
+                 amp.get('process').get('model')._curr_gauge)
+                for amp in self.cmd._curr_amps]
+
+    def test_add_process_mixes_gauges(self):
+        """a process that does not need the FD gauge added to one that does:
+        the session goes back to the unitary gauge, the first line is
+        generated with --gauge=FD, and the proc_card says so"""
 
         self.do('generate p p > w+ w-')
         self.assertGauge('FD', automatic=True)
         self.do('add process p p > t t~')
-        self.assertGauge('FD', automatic=True)
-        self.assertEqual(len(self.cmd._curr_amps), 3)
-        self.assertEqual([amp.get('process').get('id') for amp in self.cmd._curr_amps],
-                         [1, 2, 2])
-        self.do('add process p p > w+{0} w-')
-        self.assertGauge('unitary', automatic=False)
-        self.assertEqual(len(self.cmd._curr_amps), 4)
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertEqual(self.cmd._auto_fd_lines, set([0]))
+        self.assertTrue(self.cmd.automatic_fd_gauge_in_use())
+        self.assertEqual(self.lines_gauges(), [(1, 'FD', 'FD'), (2, '', 'unitary'),
+                                               (2, '', 'unitary')])
         self.assertEqual(self.gauge_lines(),
-                         ['generate p p > w+ w-', 'add process p p > t t~',
-                          'add process p p > w+{0} w-'])
+                         [mg_interface.MadGraphCmd.AUTO_LINE_COMMENT,
+                          'generate p p > w+ w- --gauge=FD',
+                          'add process p p > t t~'])
+        # a polarised one stays in the unitary gauge, the rest is kept
+        self.do('add process p p > w+{0} w-')
+        self.assertEqual(self.cmd._auto_fd_lines, set([0]))
+        self.assertEqual(self.lines_gauges()[-1], (3, '', 'unitary'))
 
-    def test_add_process_switches_to_fd(self):
-        """a process that needs the FD gauge added to one that does not"""
+    def test_add_process_needing_fd(self):
+        """a process that needs the FD gauge added to one that does not: only
+        that line is generated (again) in the FD gauge"""
 
         self.do('generate p p > t t~')
         self.assertGauge('unitary', automatic=False)
+        first = list(self.cmd._curr_amps)
         self.do('add process p p > w+ w-')
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertEqual(self.cmd._auto_fd_lines, set([1]))
+        self.assertEqual(self.lines_gauges(), [(1, '', 'unitary'), (1, '', 'unitary'),
+                                               (2, 'FD', 'FD')])
+        # the first line is not generated again
+        self.assertIs(self.cmd._curr_amps[0], first[0])
+        self.assertIn('add process p p > w+ w- --gauge=FD', self.cmd.history)
+
+    def test_single_gauge_output_fallback(self):
+        """an output writing every matrix element into one library gets one
+        gauge: FD when every process can be, unitary otherwise"""
+
+        self.do('generate p p > t t~')
+        self.do('add process p p > w+ w-')
+        self.cmd._export_format = 'pythia8'
+        self.cmd._export_dir = None
+        self.cmd.single_gauge_for_output([])
         self.assertGauge('FD', automatic=True)
+        self.assertEqual(self.cmd._auto_fd_lines, set())
         self.assertEqual(len(self.cmd._curr_amps), 3)
+
+        self.do('generate p p > w+{0} w-')
+        self.do('add process p p > w+ w-')
+        self.assertEqual(self.cmd._auto_fd_lines, set([1]))
+        self.cmd._export_format = 'pythia8'
+        self.cmd.single_gauge_for_output([])
+        self.assertGauge('unitary', automatic=False)
+        self.assertEqual(self.cmd._auto_fd_lines, set())
 
     def test_decay_chain(self):
         """a decay chain is generated again as a decay chain"""
@@ -235,14 +273,17 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertFalse(is_gauge('set gauge_fake 1'))
 
     def test_amplicol_process_survives_the_revert(self):
-        """an [amplicol] process added after an automatic FD choice sends
-        the session back to the unitary gauge and is kept across it"""
+        """an [amplicol] process added after an automatic FD choice: the
+        session goes back to the unitary gauge, the first line keeps the FD
+        gauge, and the [amplicol] process is kept"""
 
         self.do('generate p p > w+ w-')
         self.assertGauge('FD', True)
         self.do('add process g g > g g [amplicol]')
-        self.assertGauge('unitary', False)
+        self.assertEqual(self.cmd.options['gauge'], 'unitary')
+        self.assertEqual(self.cmd._auto_fd_lines, set([0]))
         self.assertEqual(len(self.cmd._curr_amps), 1)
+        self.assertEqual(self.cmd._curr_amps[0].get('process').get_gauge(), 'FD')
         self.assertEqual(len(self.cmd._curr_amplicol_defs), 1)
 
     def test_explicit_gauge_wins(self):
@@ -284,8 +325,9 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertEqual(self.cmd.options['gauge'], 'unitary')
         self.assertFalse(self.cmd._auto_gauge_active)
         self.assertEqual(aloha.unitary_gauge, True)
-        # the amplitudes are gone with the model, as after 'set gauge'
-        self.assertEqual(len(self.cmd._curr_amps), 0)
+        # the processes generated again in the unitary gauge
+        self.assertGauge('unitary', automatic=False)
+        self.assertEqual(len(self.cmd._curr_amps), 1)
         self.assertNotIn('set gauge FD', self.cmd.history)
 
     def test_model_without_feynman_gauge(self):
@@ -564,3 +606,61 @@ class TestProcessGauge(unittest.TestCase):
 
         self.do('generate p p > w+ w-, w+ > e+ ve --gauge=FD')
         self.assertEqual(set(self.gauges()), set([('FD', 'FD')]))
+
+
+class TestProcessGaugeOutput(unittest.TestCase):
+    """What an output of processes in two gauges looks like."""
+
+    def setUp(self):
+        self.cmd = master_interface.MasterCmd()
+        self.cmd.no_notification()
+        self.path = tempfile.mkdtemp(prefix='process_gauge')
+        self.do('set auto_gauge False')
+        self.do('import model sm')
+        self.do('generate p p > w+ w- --gauge=FD')
+        self.do('add process p p > t t~')
+
+    def tearDown(self):
+        self.cmd.exec_cmd('set gauge unitary', precmd=True, postcmd=True)
+        aloha.unitary_gauge = True
+        shutil.rmtree(self.path, ignore_errors=True)
+
+    def do(self, line):
+        self.cmd.exec_cmd(line, precmd=True, postcmd=True)
+
+    def test_madevent_output(self):
+        """the FD P directory links Source/DHELAS_FD, the others DHELAS"""
+
+        out = pjoin(self.path, 'MIX')
+        self.do('output madevent %s -f' % out)
+        self.assertEqual(aloha.unitary_gauge, True)
+        helas_fd = pjoin(out, 'Source', 'DHELAS_FD')
+        self.assertTrue(os.path.exists(pjoin(helas_fd, 'aloha_functions.f')))
+        with open(pjoin(helas_fd, 'aloha_functions.f')) as fsock:
+            self.assertIn('DEFINE_GAUGE_DIR', fsock.read().upper())
+        with open(pjoin(out, 'Source', 'DHELAS', 'aloha_functions.f')) as fsock:
+            self.assertNotIn('DEFINE_GAUGE_DIR', fsock.read().upper())
+        with open(pjoin(helas_fd, 'makefile')) as fsock:
+            self.assertIn('libdhelas_fd', fsock.read())
+        with open(pjoin(out, 'Source', 'makefile')) as fsock:
+            self.assertIn('libdhelas_fd', fsock.read())
+        pdirs = [os.path.basename(p) for p in
+                 glob.glob(pjoin(out, 'SubProcesses', 'P*'))]
+        for pdir in pdirs:
+            makefile = pjoin(out, 'SubProcesses', pdir, 'makefile')
+            with open(makefile) as fsock:
+                self.assertEqual('dhelas_fd' in fsock.read(), 'wpwm' in pdir, pdir)
+        with open(pjoin(out, 'SubProcesses', 'proc_characteristics')) as fsock:
+            text = fsock.read()
+        self.assertIn('gauge = unitary', text)
+        self.assertIn('=FD', text)
+        with open(pjoin(out, 'citations.log')) as fsock:
+            self.assertIn('Hagiwara:2024xdh', fsock.read())
+        with open(pjoin(out, 'Cards', 'proc_card_mg5.dat')) as fsock:
+            self.assertIn('generate p p > w+ w- --gauge=FD', fsock.read())
+
+    def test_unsupported_output_refused(self):
+        """a format writing every matrix element into one library"""
+
+        self.assertRaises(madgraph.InvalidCmd, self.do,
+                          'output pythia8 %s -f' % pjoin(self.path, 'PY8'))

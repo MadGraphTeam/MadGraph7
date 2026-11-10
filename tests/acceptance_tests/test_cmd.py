@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 import array
 import random
+import glob
 import subprocess
 import unittest
 import os
@@ -2000,6 +2001,51 @@ class TestCmdShell2(unittest.TestCase,
         for x, y in zip(a, b):
             self.assertLessEqual(abs(x - y), atol + rtol * max(abs(x), abs(y)),
                                  'matrix-element mismatch: %s vs %s' % (x, y))
+
+    def standalone_fortran_values(self, lines, out_dir):
+        """Matrix element of check_sa at its default point for every P
+        directory of a standalone_fortran output of `lines`."""
+
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        self.cmd = Cmd.MasterCmd()
+        for line in ['set auto_gauge False', 'import model sm'] + lines:
+            self.do(line)
+        self.do('output standalone_fortran %s -f' % out_dir)
+        devnull = open(os.devnull, 'w')
+        subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                        cwd=pjoin(out_dir, 'Source'))
+        values = {}
+        me_re = re.compile(r'Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)')
+        for pdir in sorted(glob.glob(pjoin(out_dir, 'SubProcesses', 'P*'))):
+            subprocess.call(['make', 'check'], stdout=devnull, stderr=devnull,
+                            cwd=pdir)
+            out = subprocess.Popen('./check', stdout=subprocess.PIPE, cwd=pdir,
+                                   shell=True).communicate()[0].decode()
+            values[os.path.basename(pdir).split('_', 1)[1]] = \
+                                        float(me_re.search(out).group('value'))
+        return values
+
+    def test_standalone_fortran_two_gauges(self):
+        """--gauge=FD on one process line: its P directory links the FD
+        HELAS library and gives the FD value, the other the unitary one"""
+
+        mixed = self.standalone_fortran_values(
+            ['generate u u~ > w+ w- --gauge=FD', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'MIXED'))
+        self.assertTrue(os.path.exists(pjoin(self.tmpdir, 'MIXED', 'lib',
+                                             'libdhelas_fd.a')))
+        fd = self.standalone_fortran_values(
+            ['set gauge FD', 'generate u u~ > w+ w-'], pjoin(self.tmpdir, 'FD'))
+        unitary = self.standalone_fortran_values(
+            ['generate u u~ > w+ w-', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'UNITARY'))
+        self.assertEqual(sorted(mixed), ['gg_ttx', 'uux_wpwm'])
+        self.assertAlmostEqual(mixed['uux_wpwm'] / fd['uux_wpwm'], 1., places=12)
+        self.assertAlmostEqual(mixed['gg_ttx'] / unitary['gg_ttx'], 1., places=12)
+        # the two gauges differ at the width level for W pairs: a real check
+        self.assertNotAlmostEqual(mixed['uux_wpwm'] / unitary['uux_wpwm'], 1.,
+                                  places=6)
 
     def test_standalone_cpp_fd_output_consistency(self):
         """test the standalone (madmatrix) output in FD gauge against standalone_fortran

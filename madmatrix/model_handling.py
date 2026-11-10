@@ -9,6 +9,7 @@ import sys
 
 import glob
 import math
+import contextlib
 import re
 
 # AV - create a plugin-specific logger
@@ -1861,8 +1862,11 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             os.makedirs(os.path.join(self.dir_path, self.include_dir))
         if not os.path.isdir(os.path.join(self.dir_path, self.cc_file_dir)):
             os.makedirs(os.path.join(self.dir_path, self.cc_file_dir))
+        # helamps_suffix: the header of the other gauge of an output whose
+        # processes are in two gauges (HelAmps_sm_fd.h, see below)
+        suffix = getattr(self, 'helamps_suffix', '')
         model_h_file = os.path.join(self.dir_path, self.include_dir,
-                                    'HelAmps_%s.h' % self.model_name)
+                                    'HelAmps_%s%s.h' % (self.model_name, suffix))
         model_cc_file = os.path.join(self.dir_path, self.cc_file_dir,
                                      'HelAmps_%s.%s' % (self.model_name, self.cc_ext))
         replace_dict = {}
@@ -1917,6 +1921,17 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                 '#include "mgOnGpuConfig.h"',
                 '#include "mgOnGpuConfig.h"\n#ifdef MADARITH_DOUBLEEXPANSION\n#include "Arithmetics/Double.h"\n#endif'
             )
+        if suffix:
+            # its own include guard, and its own namespace inside madmatrix:
+            # the routines and ALOHAOBJ differ from those of the session
+            # gauge under the same names, and both end up in one process
+            name = 'HelAmps_%s' % self.model_name
+            file_h = file_h.replace('%s_H' % name, '%s%s_H' % (name, suffix))
+            file_h = file_h.replace('namespace madmatrix\n{',
+                'namespace madmatrix\n{\ninline namespace gauge%s\n{' % suffix, 1)
+            head, sep, tail = file_h.rpartition('} // end namespace')
+            file_h = head + '} // end inline namespace gauge%s\n' % suffix + \
+                     sep + tail
         writers.CPPWriter(model_h_file).writelines(file_h, formatting=False)
         logger.info('Created file %s in directory %s' \
                     % (os.path.split(model_h_file)[-1], os.path.split(model_h_file)[0] ) )
@@ -2948,6 +2963,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.write(template % replace_dict)
         ff.close()
 
+    def helamps_header(self):
+        """HelAmps_<model>.h, or HelAmps_<model>_fd.h for the FD processes of
+        an output whose processes are in two gauges."""
+
+        gauge = self.matrix_elements[0].get('processes')[0].get_gauge()
+        return 'HelAmps_%s%s.h' % (self.model_name,
+                                   '_' + gauge.lower() if gauge else '')
+
     # AV - overload the export_cpp.OneProcessExporterCPP method (add debug printout and truncate last \n)
     # [*NB export_cpp.UFOModelConverterGPU.write_process_h_file is not called!*]
     def write_process_h_file(self, writer):
@@ -2955,9 +2978,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.write_process_h_file')
         replace_dict = super().write_process_h_file(False)
         try:
-            replace_dict['helamps_h'] = open(pjoin(self.path, os.pardir, os.pardir,'src','HelAmps_%s.h' % self.model_name)).read()
+            replace_dict['helamps_h'] = open(pjoin(self.path, os.pardir, os.pardir,'src',self.helamps_header())).read()
         except FileNotFoundError:
-            replace_dict['helamps_h'] = "\n#include \"../../src/HelAmps_%s.h\"" % self.model_name
+            replace_dict['helamps_h'] = "\n#include \"../../src/%s\"" % self.helamps_header()
 
         replace_dict['process_file_name'] = self.name.upper()
 
@@ -2973,7 +2996,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Write the class member definition (.cc) file for the process described by matrix_element"""
         replace_dict = super().write_process_cc_file(False)
         ###replace_dict['hel_amps_def'] = '\n#include \"../../src/HelAmps_%s.cu\"' % self.model_name
-        replace_dict['hel_amps_h'] = '#include \"HelAmps_%s.h\"' % self.model_name # AV
+        replace_dict['hel_amps_h'] = '#include \"%s\"' % self.helamps_header() # AV
         if writer:
             file = self.read_template_file(self.process_template_cc) % replace_dict
             # Write the file
@@ -3244,6 +3267,25 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
 
         super().__init__(*args,**opts)
 
+
+    @contextlib.contextmanager
+    def gauge_cache(self, gauge, model):
+        """helas_call_writers.HelasCallWriter.gauge_cache, with the flavored
+        couplings of that model known, and the ordered coupling list (which
+        format_coupling leaves on the model it writes with) handed back to
+        the session model for its Parameters."""
+
+        session = self['model']
+        for interaction in model.get('interactions'):
+            for coupling in interaction['couplings'].values():
+                if isinstance(coupling, base_objects.FLV_Coupling):
+                    self.flv_couplings_map[coupling.name] = coupling
+        with super().gauge_cache(gauge, model):
+            yield self
+        if hasattr(model, 'cudacpp_wanted_ordered_couplings'):
+            session.cudacpp_wanted_ordered_couplings = \
+                                        model.cudacpp_wanted_ordered_couplings
+            del model.cudacpp_wanted_ordered_couplings
 
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting of CPPProcess.cc)
     # [GPUFOHelasCallWriter.format_coupling is called by GPUFOHelasCallWriter.get_external_line/generate_helas_call]

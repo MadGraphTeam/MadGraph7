@@ -4281,6 +4281,10 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # the 'generate'/'add process' lines of the session with the process
         # number each was given, to generate them again in another gauge
         self._process_lines = []
+        # the amplitudes of each process line, (start, end) in _curr_amps, and
+        # the lines generated in the FD gauge by the automatic choice
+        self._line_ranges = []
+        self._auto_fd_lines = set()
         self._auto_gauge_replay = False
         # models the FD gauge was given up on (import_ufo could not check
         # their goldstone content): not tried again
@@ -4455,6 +4459,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         if args[0] == 'process':
             # Rejoin line
             line = ' '.join(args[1:])
+            first_amp = len(self._curr_amps)
 
             # the '{...}' syntax selects particle polarizations -> remember it so
             # the polarization paper is cited at output time
@@ -4506,8 +4511,8 @@ This implies that with decay chains:
                 set_process_gauge(myprocdef, self._line_gauge)
                 if backend:
                     self.add_backend_process(myprocdef, backend, warning_duplicate)
-                    # kept for the replay of an automatic change of gauge,
-                    # which it rules out (processes_prefer_fd_gauge)
+                    self._line_ranges.append((first_amp, first_amp))
+                    # kept for the replay of an automatic change of gauge
                     if not self._auto_gauge_replay:
                         self._process_lines.append((raw_line, nb_proc))
                         self.apply_automatic_gauge()
@@ -4626,6 +4631,7 @@ This implies that with decay chains:
             logger.info("Total: %i processes with %i diagrams" % \
                   (len(self._curr_amps), ndiags))        
 
+            self._line_ranges.append((first_amp, len(self._curr_amps)))
             if not self._auto_gauge_replay:
                 self._process_lines.append((raw_line, nb_proc))
                 self.apply_automatic_gauge()
@@ -4683,6 +4689,7 @@ This implies that with decay chains:
                                       for pol in leg.get('polarization'))):
                 del self._curr_amps[nb_amps:]
                 self._curr_proc_defs.pop(-1)
+                self._line_ranges.pop(-1)
                 raise self.InvalidCmd('--gauge=FD: the FD gauge is not available '
                     'for this process (spin above one, bound state or '
                     'propagator polarisation).')
@@ -4731,7 +4738,39 @@ This implies that with decay chains:
         return twin
 
     # the outputs that write each subprocess in its own gauge
-    MIXED_GAUGE_FORMATS = []
+    MIXED_GAUGE_FORMATS = ['madevent', 'standalone_fortran', 'standalone', 'mg7']
+
+    def single_gauge_for_output(self, args):
+        """Lines put in the FD gauge by the automatic choice, for an output
+        that writes every matrix element into one library: the whole output
+        in the FD gauge when every process can be (it is correct for all of
+        them), else in the unitary gauge."""
+
+        if not self._auto_fd_lines or (
+                self._export_format in self.MIXED_GAUGE_FORMATS and
+                '--postpone_model' not in args):
+            return
+        capable = all(self.line_can_be_fd(k)
+                      for k in range(len(self._process_lines)))
+        gauge = 'FD' if capable else 'unitary'
+        logger.info('The output %s has one gauge for all its processes: the %s '
+                    'gauge (the automatic choice had put only some of them in '
+                    'the FD gauge).' % (self._export_format, gauge))
+        export_format, export_dir = self._export_format, self._export_dir
+        self.switch_gauge_and_regenerate(gauge)
+        self._export_format, self._export_dir = export_format, export_dir
+
+    def line_can_be_fd(self, k):
+        """Whether the processes of the k-th process line can be generated
+        in the FD gauge (diagrams, no exclusion, no polarised leg)."""
+
+        start, end = self._line_ranges[k]
+        amps = self._curr_amps[start:end]
+        if not amps or _fd_gauge_excluded(amps):
+            return False
+        return not any(leg.get('polarization')
+                       for amp in iter_tree_amplitudes(amps)
+                       for leg in amp.get('process').get('legs'))
 
     def refuse_unsupported_mixed_gauge(self, args):
         """Refuse an output of processes in two gauges in a format that
@@ -4739,11 +4778,59 @@ This implies that with decay chains:
 
         if len(self.gauges_in_use()) < 2:
             return
+        if '--postpone_model' in args or aloha.npwave != [0]:
+            raise self.InvalidCmd('--postpone_model and P-wave onia are not '
+                                  'available for processes in two gauges.')
         if self._export_format not in self.MIXED_GAUGE_FORMATS:
             raise self.InvalidCmd('The processes are in two gauges (--gauge=), '
                 'which the output %s does not support (only %s). Use "set gauge" '
                 'for the whole output.' % (self._export_format,
                 ', '.join(self.MIXED_GAUGE_FORMATS) or 'none yet'))
+
+    def set_exporter_gauges(self, exporter):
+        """Tell the exporter of an output in two gauges which HELAS library
+        each gauge gets (gauge_libraries; the writers follow in _export)."""
+
+        other = sorted(self.gauges_in_use() - set([self.options['gauge']]))
+        if not other:
+            return
+        if self._me_curr_exporter:
+            raise self.InvalidCmd('--me_exporter= is not available for processes '
+                                  'in two gauges.')
+        exporter.gauge_libraries = dict((gauge, ('_' + gauge.upper(),
+                                                 '_' + gauge.lower()))
+                                        for gauge in other)
+
+    def writer_in_gauge(self, matrix_element):
+        """(helas writer, aloha.gauge_scope) of a matrix element or group of
+        an output in two gauges; the session writer and no scope otherwise."""
+
+        if getattr(self._curr_exporter, 'gauge_writers', None) or \
+                        getattr(self._curr_exporter, 'gauge_models', None):
+            return self._curr_exporter.export_processes_in_gauge(
+                                    matrix_element, self._curr_helas_model)
+        return self._curr_helas_model, aloha.gauge_scope('')
+
+    def lorentz_of_other_gauges(self, wanted_lorentz):
+        """For an output in two gauges, the Lorentz structures (with their
+        tags) used by each gauge, '' for the session gauge; {} otherwise.
+        The P1N routines of the helicity recycling (added to wanted_lorentz
+        by finalize) go with the gauge of the structure they derive from."""
+
+        if not getattr(self._curr_exporter, 'gauge_libraries', None):
+            return {}
+        by_gauge = {'': []}
+        for me in self._curr_matrix_elements.get_matrix_elements():
+            gauge = me.get('processes')[0].get_gauge()
+            by_gauge.setdefault(gauge, []).extend(me.get_used_lorentz())
+        recycled = [l for l in wanted_lorentz if 'P1N' in l[1]]
+        for gauge, lorentz in by_gauge.items():
+            names = set((name, tuple(t for t in flag if t != 'P1N'))
+                        for name, flag, out in lorentz)
+            lorentz.extend(l for l in recycled if (l[0], tuple(
+                t for t in l[1] if t != 'P1N')) in names)
+            by_gauge[gauge] = misc.make_unique(lorentz)
+        return by_gauge
 
     def gauges_in_use(self):
         """The gauges of the generated processes, the session one included."""
@@ -4766,17 +4853,18 @@ This implies that with decay chains:
 
     # the lines written into the history (the proc_card of the output) when
     # the FD gauge is chosen automatically
-    AUTO_GAUGE_COMMENT = '# FD gauge chosen automatically: purely electroweak ' \
-                         'process with massive vector bosons (help set gauge)'
+    AUTO_GAUGE_COMMENT = '# FD gauge chosen automatically: massive vector ' \
+                         'propagators on non-conserved currents (help set gauge)'
     AUTO_GAUGE_LINE = 'set gauge FD'
 
     def apply_automatic_gauge(self):
-        """Pick the FD gauge for a purely electroweak tree-level process with
-        massive vector bosons (fd_gauge_criterion), and the unitary gauge back
-        when a later 'add process' breaks that, unless the user chose the
-        gauge ('set gauge X', see set2_gauge) or turned the automatic choice
-        off ('set auto_gauge False').  Runs at the end of every 'generate' and
-        'add process'."""
+        """Choose the gauge of each process line (fd_gauge_criterion on its
+        diagrams): the whole output in the FD gauge when every line needs
+        it ('set gauge FD' in the proc_card), else the unitary gauge with the
+        lines that need it generated with --gauge=FD, as if the user had
+        typed it.  Unless the user chose ('set gauge X', '--gauge=X' on a
+        line) or turned it off ('set auto_gauge False').  Runs at the end of
+        every 'generate' and 'add process'."""
 
         if self._auto_gauge_replay or not self.options.get('auto_gauge', True):
             return
@@ -4788,46 +4876,89 @@ This implies that with decay chains:
             # gauge was imported since): nothing of ours is in use
             self._auto_gauge_active = False
         if current not in ['unitary', 'FD'] or \
-                    (current == 'FD' and not self.automatic_fd_gauge_in_use()):
+                (current == 'FD' and not self._auto_gauge_active):
             # Feynman/axial are imposed by the model or by a loop interface,
             # and an FD gauge that is not ours (configuration file) is kept
             return
-        wanted = 'FD' if self.processes_prefer_fd_gauge() else 'unitary'
-        if wanted == current:
+        target = self.automatic_gauge_target()
+        if target == (current, self._auto_fd_lines):
             return
         if self.postponed_export_pending():
             # an 'output --postpone_model' is waiting for its model: the
             # processes written in it fix the gauge until the model is written
             if not self._auto_gauge_freeze_logged:
                 logger.info('An output is waiting for its model (--postpone_model): '
-                            'the %s gauge of the processes written in it is kept, '
-                            'the %s gauge would have been chosen otherwise.',
-                            current, wanted)
+                            'the gauge of the processes written in it is kept.')
                 self._auto_gauge_freeze_logged = True
             return
-        if wanted == 'FD':
+        gauge, tags = target
+        if gauge == 'FD' or tags:
             model = self._curr_model
             if 1 not in model.get('gauge') or \
                               model.get('name') in self._fd_unverified_models:
                 # no goldstone boson in the model: no FD gauge to switch to
                 return
-            logger.info('Purely electroweak process with massive vector bosons: '
-                        'generating it in the FD gauge (Feynman-diagram gauge, '
-                        'arXiv:2203.10440, 2405.01256), whose precision does not '
-                        'degrade with the energy as the unitary gauge does for '
-                        'such processes. Type "set gauge unitary" (before '
-                        '"generate") to keep the unitary gauge.', '$MG:BOLD')
-        else:
-            logger.info('The processes are no longer purely electroweak: back '
-                        'to the unitary gauge (the FD gauge had been chosen '
-                        'automatically). Type "set gauge FD" to keep it.')
-        self.switch_gauge_and_regenerate(wanted)
+        if gauge == 'FD':
+            logger.info('The processes have a massive vector propagator ending on '
+                        'a current that is not conserved: generating them in the '
+                        'FD gauge (Feynman-diagram gauge, arXiv:2203.10440, '
+                        '2405.01256), whose precision does not degrade with the '
+                        'energy as the unitary gauge does. Type "set gauge '
+                        'unitary" (before "generate") to keep the unitary gauge.',
+                        '$MG:BOLD')
+        elif tags - self._auto_fd_lines:
+            names = [self._process_lines[k][0].split(None, 1)[-1]
+                     for k in sorted(tags - self._auto_fd_lines)]
+            logger.info('%s: a massive vector propagator ends on a current that '
+                        'is not conserved, generated in the FD gauge '
+                        '(arXiv:2203.10440, 2405.01256), the other processes in '
+                        'the unitary gauge. Add "--gauge=unitary" to the line, or '
+                        'type "set gauge unitary", to keep the unitary gauge.'
+                        % '; '.join(names), '$MG:BOLD')
+        elif current == 'FD' or self._auto_fd_lines:
+            logger.info('Back to the unitary gauge for the processes that do not '
+                        'need the FD gauge (chosen automatically).')
+        self.switch_gauge_and_regenerate(gauge, tags)
+
+    def automatic_gauge_target(self):
+        """(session gauge, lines to generate with --gauge=FD) the automatic
+        choice wants: see apply_automatic_gauge."""
+
+        lines = self._process_lines
+        if not lines or len(self._line_ranges) != len(lines) or \
+                                                   self.has_onium_amplitude():
+            return 'unitary', set()
+        explicit = [self.split_gauge_option(self.split_arg(line))[0]
+                    for line, nb in lines]
+        wants = [gauge == 'FD' if gauge else self.line_prefers_fd_gauge(k)
+                 for k, gauge in enumerate(explicit)]
+        if all(wants) and not any(explicit):
+            return 'FD', set()
+        return 'unitary', set(k for k, want in enumerate(wants)
+                              if want and not explicit[k])
+
+    def line_prefers_fd_gauge(self, k):
+        """Whether the processes of the k-th process line want the FD gauge:
+        fd_gauge_criterion, and no polarised leg (the split of a cross
+        section into polarisations is defined in the unitary gauge)."""
+
+        start, end = self._line_ranges[k]
+        amps = self._curr_amps[start:end]
+        if not amps:
+            return False    # [amplicol]: no diagram
+        for amp in iter_tree_amplitudes(amps):
+            for leg in amp.get('process').get('legs'):
+                if leg.get('polarization'):
+                    return False
+        return fd_gauge_criterion(amps)
 
     def automatic_fd_gauge_in_use(self):
-        """Whether the FD gauge in use was picked by apply_automatic_gauge
-        (a later 'import model' may have left the FD gauge on its own)."""
+        """Whether an FD gauge in use was picked by apply_automatic_gauge: for
+        the whole output (a later 'import model' may have left the FD gauge
+        on its own), or for some process lines."""
 
-        return self._auto_gauge_active and self.options['gauge'] == 'FD'
+        return (self._auto_gauge_active and self.options['gauge'] == 'FD') or \
+               bool(self._auto_fd_lines)
 
     def postponed_export_pending(self):
         """Whether an 'output --postpone_model' is waiting for its model
@@ -4874,18 +5005,25 @@ This implies that with decay chains:
 
         return import_ufo.FD_GAUGE_UNVERIFIED not in model.get('limitations')
 
-    def switch_gauge_and_regenerate(self, gauge):
-        """Reload the model in the given gauge and generate the processes of
-        the session again, as 'set gauge' followed by the 'generate' and
-        'add process' lines of the user would do.
+    def switch_gauge_and_regenerate(self, gauge, tags=frozenset()):
+        """Generate the processes of the session again with the session model
+        in `gauge` and the lines `tags` (indices in _process_lines) with
+        --gauge=FD, as 'set gauge' and the 'generate'/'add process' lines of
+        the user would do.
 
         An FD gauge the model cannot be trusted in (no goldstone boson, or a
         goldstone phase convention that nothing fixes: import_ufo tags the
-        model) is given up on the spot: the model goes back to the unitary
-        gauge and the switch is not tried again for that model."""
+        model) is given up on the spot: the unitary gauge everywhere, and the
+        switch is not tried again for that model."""
 
+        tags = set(tags)
         lines = list(self._process_lines)
         generate_info = self._generate_info
+        if gauge == 'unitary' and tags:
+            try:
+                self.model_for_gauge('FD')
+            except self.InvalidCmd:
+                tags = set()
         if self.options['gauge'] != gauge:
             self.do_set('gauge %s' % gauge, log=False)
         if gauge == 'FD' and \
@@ -4898,39 +5036,86 @@ This implies that with decay chains:
             self._fd_unverified_models.add(self._curr_model.get('name'))
             gauge = 'unitary'
             self.do_set('gauge unitary', log=False)
+        # a reload of the model cleans the process state (clean_process)
+        old_tags = self._auto_fd_lines if self._curr_amps else set()
+        self._process_lines = lines
         self._auto_gauge_active = (gauge == 'FD')
-        self.record_automatic_gauge(gauge)
-        if self._curr_amps:
-            # the model was not reloaded (already in that gauge): the
-            # amplitudes are still there
+        self._auto_fd_lines = tags
+        self.record_automatic_gauge(gauge, tags)
+        if self._curr_amps and tags == old_tags:
+            # the model was not reloaded (already in that gauge) and every
+            # line is in its gauge already: the amplitudes are still there
             return
+
+        if self._curr_amps and tags - old_tags == set([len(lines) - 1]) and \
+                                    old_tags <= tags:
+            # only the last line changes, to the FD gauge: generate it alone
+            start, end = self._line_ranges[-1]
+            del self._curr_amps[start:]
+            del self._line_ranges[-1]
+            self._curr_proc_defs.pop(-1)
+            redo = lines[-1:]
+            first = len(lines) - 1
+        else:
+            self._curr_amps = diagram_generation.AmplitudeList()
+            self._curr_proc_defs = base_objects.ProcessDefinitionList()
+            self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
+            self._line_ranges = []
+            redo = lines
+            first = 0
+        self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+        self._done_export = False
 
         # the process lines again, with the process numbers they had
         aloha.npwave = [0]
         nb_history = len([l for l in self.history
                             if l.startswith(('generate', 'add process'))])
         with misc.TMP_variable(self, '_auto_gauge_replay', True):
-            for line, nb_proc in lines:
+            for k, (line, nb_proc) in enumerate(redo, first):
+                if k in tags:
+                    line = '%s --gauge=FD' % line
                 MadGraphCmd.do_add(self, line, counter=nb_proc - nb_history)
         self._process_lines = lines
         self._generate_info = generate_info
 
-    def record_automatic_gauge(self, gauge):
-        """Write the automatic choice into the history, i.e. into the
-        proc_card of the output, as the 'set gauge FD' line the user would
-        have typed ahead of the process lines: the card then reproduces the
-        same code explicitly, and the tools reading it (reweighting) run in
-        the gauge of the sample.  Dropped again when the choice goes back to
-        the unitary gauge."""
+    # appended to the process lines of the history (the proc_card) that the
+    # automatic choice generates in the FD gauge
+    AUTO_LINE_OPTION = ' --gauge=FD'
+    AUTO_LINE_COMMENT = '# --gauge=FD chosen automatically for the processes ' \
+                        'that need it (help set auto_gauge)'
 
-        for line in [self.AUTO_GAUGE_COMMENT, self.AUTO_GAUGE_LINE]:
+    def record_automatic_gauge(self, gauge, tags=frozenset()):
+        """Write the automatic choice into the history, i.e. into the
+        proc_card of the output, as the user would have typed it: 'set gauge
+        FD' ahead of the process lines for the whole output, '--gauge=FD' on
+        the lines `tags`.  The card then reproduces the same code explicitly,
+        and the tools reading it (reweighting) run in the gauge of the
+        sample.  Dropped again when the choice goes back to unitary."""
+
+        for line in [self.AUTO_GAUGE_COMMENT, self.AUTO_GAUGE_LINE,
+                     self.AUTO_LINE_COMMENT]:
             while line in self.history:
                 self.history.remove(line)
-        if gauge != 'FD':
-            return
-        index = self.history_process_start()
-        self.history.insert(index, self.AUTO_GAUGE_LINE)
-        self.history.insert(index, self.AUTO_GAUGE_COMMENT)
+        start = self.history_process_start()
+        k = 0
+        for index in range(start, len(self.history)):
+            line = self.history[index]
+            if not line.startswith(('generate', 'add process')):
+                continue
+            if k < len(self._process_lines) and \
+                    self.split_gauge_option(self.split_arg(
+                                    self._process_lines[k][0]))[0] is None:
+                if line.endswith(self.AUTO_LINE_OPTION):
+                    line = line[:-len(self.AUTO_LINE_OPTION)]
+                if k in tags:
+                    line += self.AUTO_LINE_OPTION
+                self.history[index] = line
+            k += 1
+        if gauge == 'FD':
+            self.history.insert(start, self.AUTO_GAUGE_LINE)
+            self.history.insert(start, self.AUTO_GAUGE_COMMENT)
+        elif tags:
+            self.history.insert(start, self.AUTO_LINE_COMMENT)
 
     def history_process_start(self):
         """Index in the history of the first process line of the current
@@ -6787,6 +6972,8 @@ This implies that with decay chains:
         self._generate_info = ""
         # the process lines to replay on an automatic change of gauge
         self._process_lines = []
+        self._line_ranges = []
+        self._auto_fd_lines = set()
         self._auto_gauge_freeze_logged = False
         # Reset the diagrams kept for an 'auto' merge_quartic_vertices, they
         # describe the amplitudes just dropped
@@ -6950,6 +7137,11 @@ This implies that with decay chains:
             line = perturbation_couplings_re.group("proc")+\
                      perturbation_couplings_re.group("rest")
 
+        if LoopOption != 'tree' and self._auto_fd_lines:
+            # FD lines chosen automatically next to a loop process: the loop
+            # outputs have one gauge, the unitary one
+            self.refuse_automatic_gauge_change('a loop process')
+            self.switch_gauge_and_regenerate('unitary')
         if LoopOption != 'tree' and self.options['gauge'] in ['FD','axial']:
             if self.options['gauge'] == 'FD' and self.automatic_fd_gauge_in_use():
                 # ours, for a previous tree-level process: step aside
@@ -11932,9 +12124,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 logger.info('Back to the unitary gauge (the FD gauge had been '
                             'chosen automatically): the processes have to be '
                             'generated again.')
-            self._auto_gauge_active = False
-            self.record_automatic_gauge('unitary')
-            self.do_set('gauge unitary', log=False)
+            self.switch_gauge_and_regenerate('unitary')
 
     def set2_gauge(self, args, log=True):
         """Set the gauge to be used in the model. Options are:
@@ -13265,6 +13455,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # of the massless vectors itself) has no room for: an FD gauge chosen
         # automatically steps aside; one asked for with 'set gauge' is kept
         # and the option is dropped with a warning (helas_call_writers)
+        self.single_gauge_for_output(args)
         self.refuse_unsupported_mixed_gauge(args)
         if self.automatic_fd_gauge_in_use() and \
                 str(line_options.get('axial_gauge', False)).strip().lower() \
@@ -13500,6 +13691,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self._curr_exporter.pass_information_from_cmd(self)
         if self._me_curr_exporter:
             self._me_curr_exporter.pass_information_from_cmd(self)
+        self.set_exporter_gauges(self._curr_exporter)
         
         if options['output'] == 'Template':
             self._curr_exporter.copy_template(self._curr_model)
@@ -13593,6 +13785,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                                                                       options=options)
         else:
             raise Exception('unable to associate an helas format')
+
+        if getattr(self._curr_exporter, 'gauge_libraries', None):
+            # an output in two gauges: a writer per gauge for Fortran, one
+            # writer used in both gauges for C++ (its coupling indices)
+            if self._curr_exporter.exporter == 'v4':
+                self._curr_exporter.gauge_writers = dict(
+                    (gauge, helas_call_writers.FortranUFOHelasCallWriter(
+                                    self.model_for_gauge(gauge), options=options))
+                    for gauge in self._curr_exporter.gauge_libraries)
+            else:
+                self._curr_exporter.gauge_models = dict(
+                    (gauge, self.model_for_gauge(gauge))
+                    for gauge in self._curr_exporter.gauge_libraries)
 
         # Define the helas call  writer if a second exporter is needed
         self._me_curr_helas_model = False
@@ -13863,15 +14068,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 matrix_elements = self._curr_matrix_elements.get_matrix_elements()
 
             for me_number, me in enumerate(self._curr_matrix_elements):
-                calls = calls + \
-                    self._curr_exporter.generate_subprocess_directory(\
-                        me, self._curr_helas_model, me_number)               
+                writer, scope = self.writer_in_gauge(me)
+                with scope:
+                    calls = calls + \
+                        self._curr_exporter.generate_subprocess_directory(\
+                            me, writer, me_number)
         
         # ungroup mode
         else:
             for nb,me in enumerate(matrix_elements[:]):
-                new_calls = self._curr_exporter.generate_subprocess_directory(\
-                            me, self._curr_helas_model, nb)
+                writer, scope = self.writer_in_gauge(me)
+                with scope:
+                    new_calls = self._curr_exporter.generate_subprocess_directory(\
+                                me, writer, nb)
                 if  isinstance(new_calls, int):
                     if new_calls ==0:
                         matrix_elements.remove(me)
@@ -13969,6 +14178,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 self.previous_lorentz = wanted_lorentz
                 self.previous_couplings = wanted_couplings
             else:
+                # an output in two gauges: the routines of the other one go
+                # to their own library (gauge_libraries)
+                other_lorentz = self.lorentz_of_other_gauges(wanted_lorentz)
+                if other_lorentz:
+                    wanted_lorentz = other_lorentz.pop('')
                 for npwave in aloha.npwave:
                     aloha.dual_mode = npwave
                     self._curr_exporter.convert_model(self._curr_model,
@@ -13976,6 +14190,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                                    wanted_couplings,
                                                    npwave=npwave)
                 aloha.dual_mode = 0
+                for gauge, lorentz in sorted(other_lorentz.items()):
+                    with aloha.gauge_scope(gauge):
+                        self._curr_exporter.write_aloha_library(
+                            self.model_for_gauge(gauge), lorentz, gauge=gauge)
                 if hasattr(self, '_me_curr_exporter') and self._me_curr_exporter:
                     self._me_curr_exporter.convert_model(self._curr_model, 
                                                wanted_lorentz,
@@ -14065,8 +14283,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # cited too.
 
         # optional generation choices: gauge, polarization, TauDecay
+        gauge = str(self.options.get('gauge', 'unitary'))
+        if 'FD' in self.gauges_in_use():
+            gauge = 'FD'    # some processes in the FD gauge (--gauge=FD)
         pairs += citation.optional_generation_pairs(
-            gauge=str(self.options.get('gauge', 'unitary')),
+            gauge=gauge,
             polarization=getattr(self, '_uses_polarization', False),
             taudecay=getattr(self, '_uses_taudecay', False))
 

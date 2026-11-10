@@ -2060,6 +2060,9 @@ class ProcCharacteristic(ConfigFile):
         self.add_param('single_color', True)
         self.add_param('nlo_mixed_expansion', True)
         self.add_param('gauge', 'U')
+        # the P directories written in another gauge than 'gauge', as
+        # 'P1_uux_wpwm=FD' (an output whose processes are in two gauges)
+        self.add_param('gauge_of_dirs', [], typelist=str)
         # single power of alpha_s in |M|^2 when it is the same for every diagram
         # (a "single value of alpha_s" process); -1 when it is not uniform. Used
         # to reconstruct the LO reweighting info for systematics on outputs that
@@ -5631,7 +5634,9 @@ class RunCardLO(RunCard):
         # here pick strategy 2 if only one QCD color flow
         # and for pure multi-jet case
         jet_id = [21] + list(range(1, self['maxjetflavor']+1))
-        if proc_characteristic['gauge'] != 'FD' and proc_characteristic['single_color']:
+        fd_somewhere = proc_characteristic['gauge'] == 'FD' or any(
+            d.endswith('=FD') for d in proc_characteristic['gauge_of_dirs'])
+        if not fd_somewhere and proc_characteristic['single_color']:
             self['sde_strategy'] = 2
             #for pure lepton final state go back to sde_strategy=1
             pure_lepton=True

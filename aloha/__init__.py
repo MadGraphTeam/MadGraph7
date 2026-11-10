@@ -26,12 +26,13 @@ class gauge_scope(object):
     of an output that mixes gauges run each matrix element in its own."""
 
     def __init__(self, gauge):
+        # '' or None: the gauge of the session, nothing to change
         self.value = GAUGE_VALUES[gauge] if gauge in GAUGE_VALUES else gauge
 
     def __enter__(self):
         global unitary_gauge
         self.old = unitary_gauge
-        if self.value != self.old:
+        if self.value not in ('', None) and self.value != self.old:
             from aloha import aloha_lib
             aloha_lib.KERNEL.clean()
             unitary_gauge = self.value
