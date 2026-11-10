@@ -2999,7 +2999,9 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(rc['phasespace']['mode'], 'flat')
 
     def test_create_default_for_process(self):
-        """process dependent defaults: lepton collider drops jet cuts"""
+        """process dependent defaults: a lepton collider has no PDF and a
+        lower energy, but keeps the jet cuts, as madevent does (without them
+        e+ e- > j j j j is infrared divergent: non-finite integral in mg7)"""
         class PC(dict):
             def __init__(self):
                 super().__init__(ninitial=2, loop_induced=False, colored_pdgs=[])
@@ -3013,7 +3015,9 @@ class TestRunCardMG7(unittest.TestCase):
         rc.create_default_for_process(PC(), '', [proc([11, -11])])
         self.assertIs(rc['beam']['leptonic'], True)
         self.assertEqual(rc['beam']['e_cm'], 1000.0)
-        self.assertFalse([k for k in rc['cuts'] if k.startswith('jet')])
+        self.assertEqual(rc['cuts']['jet-pt'], {'min': 20.0})
+        self.assertEqual(rc['cuts']['jet-eta_abs'], {'max': 5.0})
+        self.assertEqual(rc['cuts']['jet-delta_r'], {'min': 0.4})
 
 
 class TestPhotonPDFDefault(unittest.TestCase):
@@ -3062,6 +3066,12 @@ class TestPhotonPDFDefault(unittest.TestCase):
         self.assertEqual(self.lo_card([2, 22])['lhaid'], 335900)
         # the user choice wins
         self.assertEqual(self.lo_card([22, 22], lhaid=331900)['lhaid'], 331900)
+
+    def test_lo_photon_photon_is_not_upc(self):
+        # a a > X takes both photons from the proton; gamma-UPC is opt-in
+        rc = self.lo_card([22, 22])
+        self.assertEqual((rc['lpp1'], rc['lpp2']), (1, 1))
+        self.assertNotIn(rc['pdlabel'], ('edff', 'chff'))
 
     def test_nlo(self):
         # plain sm has a massive b: 4-flavour set

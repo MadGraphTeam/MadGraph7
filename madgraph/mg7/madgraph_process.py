@@ -725,12 +725,17 @@ class MadgraphProcess:
         if beam_args["dynamical_scale_choice"] == "mlm":
             self.mlm_clustering = True
             self.scale_kwargs = {}
-            if not self.is_decay and beam_args["mlm_shower_start"] == "hardest_scale":
-                # the non-jet particles' pt_clust at the hardest scale of the
-                # event instead of e_cm (the cm_energy of the MLMClustering),
-                # as gridpack_setup.configure_mlm_shower_start does
+            if not self.is_decay:
+                # where the shower of the particles that are not light partons
+                # starts: the hardest scale of the event (max of the
+                # core-process scale the clustering gives them, mu_F and the
+                # light partons' pt_clust), or e_cm (the cm_energy of the
+                # MLMClustering) for "collider_energy"; as
+                # gridpack_setup.configure_mlm_shower_start does
                 cfg = self.event_generator_config
-                cfg.mlm_hardest_shower_scale = True
+                cfg.mlm_hardest_shower_scale = (
+                    beam_args["mlm_shower_start"] == "hardest_scale"
+                )
                 cfg.mlm_collider_energy = self.e_cm
                 cfg.mlm_max_jet_flavor = int(beam_args["max_jet_flavor"])
         elif beam_args["dynamical_scale_choice"] in dynamical_scales:
@@ -783,12 +788,27 @@ class MadgraphProcess:
                 fact_scale2=self.decaying_mass,
                 scale_factor=1.,
             )
+
+        if self.is_decay or self.leptonic:
+            # No parton densities, so no PDF set to read (or download): alpha_s
+            # is the 2-loop running of the param card's alpha_s(m_Z), as madevent
+            # does without a PDF (Source/setrun.f, lpp1 = lpp2 = 0: asmz from
+            # the param card, nloop = 2). The [beam] pdf1/pdf2 of a lepton
+            # collider are not used.
+            self.pdf_set = None
+            self.pdf_set2 = None
             self.pdf_grid = None
             self.pdf_grid2 = None
             self.lhapdf = None
             self.pdf_dir = None
             self.pdf_dir2 = None
-            self.fixed_alphas_info = self.write_fixed_alphas_info()
+            if self.is_decay:
+                self.fixed_alphas_info = self.write_fixed_alphas_info()
+            else:
+                fixed = ([float(beam_args["ren_scale"])]
+                         if beam_args["fixed_ren_scale"] else [])
+                self.fixed_alphas_info = self.write_fixed_alphas_info(
+                    scales=fixed, nodes_per_decade=50, split_thresholds=True)
             self.alphas_grid = ms.AlphaSGrid(self.fixed_alphas_info)
             for context in self.contexts:
                 self.alphas_grid.initialize_globals(context)
@@ -807,7 +827,7 @@ class MadgraphProcess:
         # otherwise beam 2 shares the first one.
         self.pdf_grid2 = None
         self.pdf_dir2 = self.pdf_dir
-        if self.pdf_set2 != pdf_set and not self.leptonic:
+        if self.pdf_set2 != pdf_set:
             self.pdf_dir2 = self.ensure_pdf_set(self.pdf_set2).find_set(self.pdf_set2)
             if self.pdf_dir2 is None:
                 raise RuntimeError(self._no_pdf_message(self.pdf_set2))
@@ -1030,10 +1050,9 @@ class MadgraphProcess:
         # nominal PDF *set* to describe and no PDF variation to compute, so
         # has_pdf gates the nominal-set metadata and the member list below.
         # The alpha_s grid is a separate matter: the mu_R variations always need
-        # one, so its .info file has to be recorded whatever has_pdf says.
-        # init_beam() skips the PDF lookup for a decay only -- leptonic beams
-        # still resolve a set and take alpha_s from it -- so the path follows
-        # self.pdf_dir, and falls back to the constant grid written for a decay.
+        # one, so its .info file has to be recorded whatever has_pdf says. It
+        # is the PDF set's with beam densities, else the param-card grid that
+        # init_beam() wrote (a decay, leptonic beams).
         if self.pdf_dir is not None:
             info_path = os.path.join(self.pdf_dir, self.pdf_set, f"{self.pdf_set}.info")
         else:
@@ -1261,40 +1280,61 @@ class MadgraphProcess:
             for label, value in rows:
                 logger.info("systematics, %s %s", label, value)
 
-    # the scale below which the alpha_s of a decay is frozen (write_fixed_alphas_info)
+    # the scale below which the param-card alpha_s is frozen (write_fixed_alphas_info)
     ALPHAS_FREEZE_SCALE = 1.0
 
-    def write_fixed_alphas_info(self) -> str:
-        """Write a minimal LHAPDF ``.info`` with the alpha_s of a decay.
+    # the quark masses at which the 2-loop running changes its number of
+    # flavours (Alphas_Runner and Source/alfas_functions.f)
+    ALPHAS_THRESHOLDS = (1.42, 4.7)
 
-        A decay has no beams, so there is no PDF set to take alpha_s from --
-        and demanding one (possibly downloading it) just to evaluate a coupling
-        would be absurd. The renormalisation scale of a decay is fixed at the
-        decaying mass, so only alpha_s(M) matters. Like the Fortran decay
-        matrix elements (Source/alfas_functions.f, ``nloop = 2``) it is the
-        2-loop running from the alpha_s(m_Z) of the param card up to M -- not
-        alpha_s(m_Z) itself, which overshoots alpha_s(125 GeV) by 4.7% (and
-        h > g g, which goes like alpha_s^2, by 9.7%).
+    def write_fixed_alphas_info(self, scales=None, nodes_per_decade=4,
+                                split_thresholds=False) -> str:
+        """Write a minimal LHAPDF ``.info`` with the alpha_s of a run without
+        parton densities: a decay, or leptonic beams.
 
-        The grid carries the running over the whole scale range and has a node
-        exactly at the decaying mass, so the interpolation returns alpha_s(M)
-        untouched. Below ALPHAS_FREEZE_SCALE (or wherever the running stops
-        being defined, closer to the Landau pole) alpha_s is frozen at its last
-        value: a light decaying particle (the muon, ...) has no QCD to speak
-        of, and its widths must not fail on a coupling they do not use.
+        There is no PDF set to take alpha_s from -- and demanding one (possibly
+        downloading it) just to evaluate a coupling would be absurd. Like
+        madevent without a PDF (Source/setrun.f and alfas_functions.f,
+        ``nloop = 2``) it is the 2-loop running from the alpha_s(m_Z) of the
+        param card -- not alpha_s(m_Z) itself, which overshoots
+        alpha_s(125 GeV) by 4.7% (and h > g g, which goes like alpha_s^2, by
+        9.7%).
+
+        The grid carries the running from 1 GeV to 100 TeV with
+        ``nodes_per_decade`` nodes per decade, plus a node exactly at each of
+        ``scales`` (default: the decaying mass, the one scale of a decay), so
+        the interpolation returns alpha_s there untouched. A collision with a
+        dynamical scale reads the grid between its nodes, hence the denser
+        grid init_beam() asks for, which also has ``split_thresholds``: the
+        c and b thresholds get a doubled node, which AlphaSGrid (as LHAPDF)
+        reads as the boundary between two subgrids, so that the cubic
+        interpolation does not smooth the kink of the running there. With 50
+        nodes per decade the grid is then within 1e-5 of the running above
+        2 GeV and 4e-6 above 10 GeV (2e-4 between 1 and 1.2 GeV); with 20 and
+        no split, 6e-4 at the b threshold. Below ALPHAS_FREEZE_SCALE (or wherever the
+        running stops being defined, closer to the Landau pole) alpha_s is
+        frozen at its last value: a light decaying particle (the muon, ...)
+        has no QCD to speak of, and its widths must not fail on a coupling
+        they do not use.
         """
         # SMINPUTS entry 3 is alpha_s(m_Z), the same value the Fortran
         # parameter setup feeds to G.
         alpha_s_mz = float(self.param_card.get_value("sminputs", 3))
         runner = Alphas_Runner(alpha_s_mz, 2, cmass=1.42, bmass=4.7)
-        mass = float(self.decaying_mass)
+        decay = scales is None
+        if decay:
+            scales = [float(self.decaying_mass)]
+        scales = sorted(set(float(q) for q in scales if q > 0))
         path = os.path.join(self.run_path, "fixed_alphas.info")
         # AlphaSGrid interpolates in log(q^2) across the grid, so give it a
-        # comfortable number of nodes rather than the bare minimum of three:
-        # 1 GeV to 100 TeV, and the decaying mass.
-        nodes = [10 ** (i / 4.0) for i in range(0, 21)]
+        # comfortable number of nodes rather than the bare minimum of three.
+        nodes = [10 ** (i / float(nodes_per_decade))
+                 for i in range(0, 5 * nodes_per_decade + 1)]
+        exact = sorted(set(scales + (list(self.ALPHAS_THRESHOLDS)
+                                     if split_thresholds else [])))
         q_values = sorted(
-            [q for q in nodes if abs(q / mass - 1) > 1e-9] + [mass]
+            [q for q in nodes if all(abs(q / s - 1) > 1e-9 for s in exact)]
+            + exact
         )
 
         def running(q):
@@ -1322,15 +1362,30 @@ class MadgraphProcess:
                     frozen = min(values)
                 value = values[frozen]
             values[q] = value
+        if split_thresholds:
+            # a subgrid needs two intervals at least: its first and last
+            # derivatives are one-sided
+            for threshold in self.ALPHAS_THRESHOLDS:
+                if threshold not in values:
+                    continue
+                index = q_values.index(threshold)
+                edges = [i for i, (q1, q2) in
+                         enumerate(zip(q_values, q_values[1:])) if q1 == q2]
+                below = index - max([e + 1 for e in edges if e < index] + [0])
+                above = min([e for e in edges if e > index]
+                            + [len(q_values) - 1]) - index
+                if below >= 2 and above >= 2:
+                    q_values.insert(index, threshold)
         alpha_s_values = [values[q] for q in q_values]
-        if frozen is not None and mass < frozen:
+        if decay and frozen is not None and scales[0] < frozen:
             logger.info(
                 "decay mode: alpha_s frozen below %g GeV at alpha_s(%g GeV) = "
                 "%.6g (decaying mass %g GeV)", frozen, frozen, values[frozen],
-                mass,
+                scales[0],
             )
         with open(path, "w") as f:
-            f.write("SetDesc: 2-loop running alpha_s of a decay (no beams)\n")
+            f.write("SetDesc: 2-loop running alpha_s from the param card "
+                    "(no parton densities)\n")
             f.write(
                 "AlphaS_Qs: [%s]\n" % ", ".join(f"{q:.12g}" for q in q_values)
             )
@@ -1338,11 +1393,18 @@ class MadgraphProcess:
                 "AlphaS_Vals: [%s]\n"
                 % ", ".join(f"{a:.12g}" for a in alpha_s_values)
             )
-        logger.info(
-            "decay mode: alpha_s(mu = %g GeV) = %.6g (2-loop running from "
-            "alpha_s(m_Z) = %g, as madevent)",
-            mass, values[mass], alpha_s_mz,
-        )
+        if decay:
+            logger.info(
+                "decay mode: alpha_s(mu = %g GeV) = %.6g (2-loop running from "
+                "alpha_s(m_Z) = %g, as madevent)",
+                scales[0], values[scales[0]], alpha_s_mz,
+            )
+        else:
+            logger.info(
+                "no PDF: alpha_s is the 2-loop running of alpha_s(m_Z) = %g "
+                "from the param card, as madevent (the [beam] pdf sets are "
+                "not used)", alpha_s_mz,
+            )
         return path
 
     def needs_systematics_matrix_elements(self) -> bool:

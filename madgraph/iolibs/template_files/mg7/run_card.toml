@@ -64,7 +64,8 @@ leptonic = %(beam.leptonic)s
 # none. It brings ISR and, for the collider-specific sets, beamstrahlung;
 # "leptonic" on its own means monochromatic beams.
 lepton_density = %(beam.lepton_density)s
-# "set beam.pdf X" sets both beams
+# "set beam.pdf X" sets both beams; a leptonic run has no PDF and takes
+# alpha_s from the param card (2-loop running of alpha_s(m_Z), as madevent)
 pdf1 = %(beam.pdf1)s
 pdf2 = %(beam.pdf2)s
 fixed_ren_scale = %(beam.fixed_ren_scale)s

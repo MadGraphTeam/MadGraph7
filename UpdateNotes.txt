@@ -5,6 +5,13 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
+       light jets starts from now also includes the core-process scale of the clustering
+       (madevent's central factorisation scale for scalefact = 1), so it no longer drops
+       below the hard process when mu_F does: mg7 clustering_mean without the pdf ladder
+       (beam.pdf_reweighting = false puts mu_F at the softest clustering scale, about
+       40 GeV for t tbar + 1 jet instead of 210 GeV), madevent scalefact < 1. Samples with
+       the default settings are unchanged (mu_F is the core-process scale there).
    OM: MLM (mg7 and madevent): the shower of the particles that are not light jets
        (leptons, photons, top and other heavy quarks) now starts from the hardest scale of
        the event, the larger of mu_F and the light jets' pt_clust, and no longer from the
@@ -255,6 +262,21 @@ ANNOUNCEMENT:
        list for good, and a later import of e.g. loop_sm then grouped mdl_MW under
        ('aEWM1','Gf') instead of ('aEWM1',), reordering mp_intparam_definition.inc.
        Each instance now works on its own copy.
+   NC+DdE+LM+HS+LS: gamma-UPC 1.8 with forward neutron tagging in ultraperipheral
+       collisions, at LO and NLO.
+       - new pdlabel edf<y>n<z>n / chf<y>n<z>n: EDFF / ChFF with the neutron tags <y>, <z>
+         of beam 1 and beam 2 among i (0n+Xn), x (Xn), 0, 1, 2, 3, 4. Pb208, Au197 and O16
+         (up to 2n) are supported. The tag of a proton beam is ignored.
+       - edp/edm (chp/chm) in place of edf (chf) give the upper/lower neutron-emission
+         cross sections, for the uncertainty estimate.
+       - new photoabsorption and 1n-4n emission cross sections for Pb208, Au197, O16 (and U238,
+         not enabled yet), and a new interpolation of the photon-photon luminosity grid.
+   HS+OM: Bug fix (gamma-UPC): at LO, a run with a regular pdlabel followed by a run with a
+       gamma-UPC pdlabel in the same output kept the dummy library and stopped. libgammaUPC is
+       now built by Source/makefile only, which follows the pdlabel; under 'make -j' it was
+       also compiled twice at once ("Cannot rename module file").
+   HS+OM: Bug fix (gamma-UPC): an error inside gamma-UPC now stops with a non-zero exit status
+       (it used to report success).
 
 
 3.8.2 (XX/XX/XX):

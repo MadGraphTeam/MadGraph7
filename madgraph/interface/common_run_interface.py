@@ -151,7 +151,7 @@ class HelpToCmd(object):
         logger.info("              We then either stop at the N-body decay or when the estimated error is lower than M.")
         logger.info("        default: 4.0025")
         logger.info("  --min_br=X: All channel which are estimated below this value will not be integrated numerically.")
-        logger.info("        default: precision (decimal part of the body_decay options) divided by four")
+        logger.info("        default: precision (decimal part of the body_decay options) divided by five")
         logger.info("  --precision_channel=X: requested numerical precision for each channel")
         logger.info("        default: 0.01")
         logger.info("  --path=X: path for param_card")
@@ -3233,6 +3233,16 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         #2 Prepare Rivet setup environments
         rivet_path = self.options['rivet_path']
         yoda_path = self.options['yoda_path']
+        # Rivet links against rivet, yoda and a full fastjet installation
+        # (fjcore, the fallback without fastjet-config, is not enough)
+        for key, what in [('rivet_path', 'rivet'), ('yoda_path', 'yoda'),
+                          ('fastjet', 'fastjet-config')]:
+            value = self.options[key]
+            if not value or value in ['None', 'NA'] or \
+                         (key == 'fastjet' and not misc.which(value)):
+                raise self.InvalidCmd('Rivet requires %s, but option %s is "%s":'
+                    ' install it (install rivet) or set %s in '
+                    'mg5_configuration.txt.' % (what, key, value, key))
         fastjet_path = subprocess.Popen([self.options['fastjet'], '--prefix'],
                          stdout = subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
 

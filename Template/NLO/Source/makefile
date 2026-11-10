@@ -51,7 +51,9 @@ $(LIBDIR)libpdf.a: PDF
 	rm -f $(LIBDIR)libpdf.a
 	cd PDF; make	
 
-ifneq (,$(filter edff chff, $(pdlabel)))
+# gamma-UPC pdlabels (edff, chff, edpf, edf1n2n, ...) all start with ed or ch,
+# a prefix no other pdlabel uses (checked in tests/unit_tests/various/test_gamma_upc.py)
+ifneq (,$(filter ed% ch%, $(pdlabel)))
 $(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC
 	cd PDF/gammaUPC; make ; cd ../../
 else
