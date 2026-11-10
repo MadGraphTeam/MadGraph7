@@ -1051,7 +1051,10 @@ def test_single_helicities_equal_madloop_per_helicity(
     equal on h and -h, MadLoop within its own spread on them. The
     leading-colour selection of the same IDs is the leading-colour resolved
     row (the identities above), so this ties single-helicity selections to
-    MadLoop's labels and normalisation."""
+    MadLoop's labels and normalisation; at full colour (lit-fc-hel) the
+    single-helicity selection of the first point's largest-Born helicity
+    and of its parity image is its resolved entry exactly, so it equals
+    MadLoop's row through the selection too."""
 
     import argparse
     import math
@@ -1129,6 +1132,26 @@ def test_single_helicities_equal_madloop_per_helicity(
                 else:
                     error = abs(a - b) / max(abs(a), abs(b))
                     assert error <= 1e-12, (p, ident, keys[c], a, b, error)
+        if i:
+            continue
+        # The full-colour selection (lit-fc-hel): the largest-Born helicity
+        # and its parity image, each its resolved entry exactly.
+        largest = max(ids, key=lambda ident: abs(exact[ident][0]))
+        image = lc.helicity_id(
+            tuple(enumerate(-h for h in madloop[largest]["helicity"]))
+        )
+        for ident in (largest, image):
+            one = runtime.evaluate(
+                [reference["points"][p]],
+                mu_r2=[str(Fraction(reference["mu_r"][p]) ** 2)],
+                arithmetic="double-double",
+                helicities=[ident],
+            )
+            selected = [
+                Decimal(str(one.born_values[0][0])) * average,
+                *(Decimal(str(x)) * average for x in one.values[0][0]),
+            ]
+            assert selected == exact[ident], (p, ident, selected, exact[ident])
 
 
 # ------------------------------------------------------------------ public route
