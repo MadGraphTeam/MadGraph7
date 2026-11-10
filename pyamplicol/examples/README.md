@@ -71,7 +71,7 @@ These three showcase cards print colorized terminal tables by default. Add
 | `evaluate_pp_4j_member.toml` | Evaluate the non-generated member `u~ g > u~ g g g` through its representative |
 | `group_pp_4j.toml` | Numerical `group-processes` analysis of the generated representatives |
 | `loop_uux_ttxgg_generate.toml` | One-loop: generate `u u~ > t t~ g g`, NLO QCD virtual (Born-interfered), full colour |
-| `loop_uux_ttxgg_lc_generate.toml` | One-loop: the same at leading colour, for the Born-interfered helicity selection |
+| `loop_uux_ttxgg_lc_generate.toml` | One-loop: the same at leading colour, for its colour-flow selection (the helicity selection runs at every accuracy) |
 | `loop_uux_ttxgg_check.toml` | One-loop: `pyamplicol check` (Catani poles, Ward identities of both gluons) of its artifact |
 | `loop_uux_ttxgg_evaluate.toml` | One-loop: evaluate with poles and the recommended stability checks |
 | `loop_uux_ttxgg_profile.toml` | One-loop: time per point and per stage (trees, dressing, scatter, reduction, rest) |
@@ -440,8 +440,9 @@ The walkthrough steps, in order:
 5. **Correlated evaluation**: `evaluate_correlated_many` with the declared
    colour histories T_i.T_j and a spin vector (transverse to the leg's
    momentum) on the declared vector leg.
-6. **Helicity selection**: one helicity against the summed call (only the
-   selected rows are formed).
+6. **Helicity selection**: one helicity (the largest at the first point)
+   against the summed call, at the artifact's colour accuracy (only the
+   selected rows are formed: their trees, loop links and reduction lanes).
 7. **Partial weights per squared coupling order**: `evaluate_orders`, one
    evaluation viewed per sector and Born order, and its explicit sum checked
    against the correlated route's `"born"` total at the same settings summed
@@ -453,8 +454,10 @@ The walkthrough steps, in order:
 8. **The native SDK** (`make -C native loop`, then `native/loop_client ARTIFACT
    PROCESS MOMENTA.txt [HELICITY]`, which the walkthrough calls with
    `SYMBOLICA_LICENSE` unset): open, `auto` and the other backend, the
-   unchecked setting, the correlated call and, for a loop-induced process, one
-   helicity against the summed call. In a source checkout without the
+   unchecked setting, the correlated call and one helicity against the summed
+   call (loop-induced and Born-interfered processes alike; after one first
+   selected call, which forms a Born-interfered process's selection once). In
+   a source checkout without the
    wheel's SDK, pass `LOOP_SDK_CFLAGS` and `LOOP_SDK_LIBS` (the Makefile's
    comment).
 
@@ -469,9 +472,10 @@ and at the CI smoke test's one point.
 
 `loop_sm` with `restriction = "no_b_mass"` and `WT = 0` (the top is an
 external, on-shell state; a coloured particle's width breaks gauge invariance
-in a fixed-width propagator). Full colour by default; the leading-colour
-variant `loop_uux_ttxgg_lc_generate.toml` serves the Born-interfered helicity
-selection, which exists at leading colour only (`--lc-card`). One squared
+in a fixed-width propagator). Full colour by default, whose helicity
+selection keeps some helicity rows with every colour component; the optional
+leading-colour variant `loop_uux_ttxgg_lc_generate.toml` (`--lc-card`) adds
+its colour-flow selection. One squared
 order (QCD^10): its partial is the value. Colour histories T_1.T_5 and
 T_3.T_5 and a spin vector on gluon 5.
 
@@ -481,7 +485,9 @@ s at two points (every pole and Ward row passes in binary64). Per point, one
 pinned core, a batch of 8: NinjaRS (`auto`) 22-23 ms checked and unchecked;
 TIRust 26 ms with all 8 points refused (an ill-conditioned Gram matrix, a
 typed refusal: the explicit backend has no fallback) and 47-49 ms unchecked;
-at leading colour one helicity 4.9 ms against 7.6 ms summed (0.65). The
+one helicity (h42, the largest at the first point) 12.7 ms against 22.0 ms summed
+(0.58; the reduction, 5.8 ms, is the summed call's: the selected row's seeds
+reduce the same lanes), at leading colour 4.9 ms against 7.5 ms (0.66). The
 whole walkthrough at two points (fresh workspace, both generations included):
 67 s, peak 0.77 GiB; at one point (the CI smoke test): 73 s.
 
@@ -497,9 +503,12 @@ four virtual sectors (QCD^6 QED^4, QCD^4 QED^6, QCD^2 QED^8, QED^10), each
 printed apart by `loop_uux_ddxepem_orders.toml` and the walkthrough's step 7.
 The process has no external gluon, photon or massive vector: its Ward and
 Goldstone rows read "not applicable" and `check` decides on the pole check
-alone. Colour correlations only (no vector leg); no helicity selection (an
-electroweak model runs at full colour, where a Born-interfered process has
-none). Generation threshold of this example: at most 10 minutes and 8 GiB.
+alone. Colour correlations only (no vector leg); the helicity selection at
+full colour (an electroweak model runs at full colour, where a selection keeps
+some helicity rows with every colour component): one helicity (h22, the
+largest at the first point) 64.0 ms against 108.2 ms summed per point, one
+pinned core, a batch of 8 (0.59; the reduction, 23 ms, is the summed call's).
+Generation threshold of this example: at most 10 minutes and 8 GiB.
 
 Measured (2026-11-09, after the loop-block colour fix lit-ew-blocks, on a
 shared host at load ~160-210): generation 223-232 s, peak 7.65-8.37 GiB

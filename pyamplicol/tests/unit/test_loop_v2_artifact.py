@@ -1143,10 +1143,11 @@ def test_correlated_and_resolved_calls_split_the_poles(full_colour):
 
 @pytest.mark.loop_physics
 def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
-    """Undeclared colour histories and spin classes, helicity selectors and
-    direct R2 are refused (a rescue policy outside ``evaluate``:
-    ``test_loop_v2_rescue.py``); the Born metric ("born") and resolved output
-    need no declaration."""
+    """Undeclared colour histories and spin classes, colour-flow selectors
+    (full colour has no flows) and direct R2 are refused (a rescue policy
+    outside ``evaluate``: ``test_loop_v2_rescue.py``); the Born metric
+    ("born"), the resolved output and a helicity selection (every colour
+    accuracy, lit-fc-hel) need no declaration."""
 
     from pyamplicol import Runtime
 
@@ -1163,13 +1164,18 @@ def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
     total = resolved.total()
     for a, b in zip(total.values[0][0], inclusive.values[0][0], strict=True):
         assert abs(a - b) <= 1e-12 * abs(b)
+    # A full-colour helicity selection is served (USER 2026-11-09 ~19:53,
+    # lit-fc-hel): one row is its resolved entry (bitwise up to the sign of
+    # a zero).
+    one = runtime.evaluate([point], mu_r2="1000000", helicities=["h0"])
+    assert list(one.values[0][0]) == list(resolved.values[0][0][0][0])
     with pytest.raises(EvaluationError, match="spin-correlation class was not"):
         runtime.set_spin_correlation_vectors({3: [1, 0, 0, 0]})
     for call in (
         lambda: runtime.evaluate_correlated(
             [point], mu_r2="1000000", color_correlation="T12"
         ),
-        lambda: runtime.evaluate([point], mu_r2="1000000", helicities=["h0"]),
+        lambda: runtime.evaluate([point], mu_r2="1000000", color_flows=["1"]),
         lambda: runtime.evaluate([point], mu_r2="1000000", r2_strategy="direct"),
     ):
         with pytest.raises(CompatibilityError):

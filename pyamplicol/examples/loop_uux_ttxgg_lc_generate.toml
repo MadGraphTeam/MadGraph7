@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 # Loop example: u u~ > t t~ g g at leading colour, for the Born-interfered
-# run-time helicity selection (served at leading colour only).
+# run-time colour-flow selection (helicity selection runs at every accuracy).
 
 schema_version = 1
 action = "generate"

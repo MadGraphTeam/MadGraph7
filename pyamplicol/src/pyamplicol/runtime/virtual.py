@@ -457,15 +457,17 @@ def v2_options(
         raise ValueError("on_failure must be 'raise' or 'return'")
     if helicities or color_flows:
         # ``evaluate`` and ``evaluate_resolved`` take them (Born-interfered:
-        # at leading colour, ``loops.v2.selection``; loop-induced: helicities
-        # at full colour, ``V2InducedObservablesRuntime``) and remove them before this
-        # check; the correlated evaluations reach it.
+        # helicities at every colour accuracy, colour flows at leading
+        # colour, ``loops.v2.selection``; loop-induced: helicities at full
+        # colour, ``V2InducedObservablesRuntime``) and remove them before
+        # this check; the correlated evaluations reach it (the v2 rule of
+        # both process types, MQ-SELECT and lit-sdk-b).
         raise CompatibilityError(
             "v2 correlated virtual evaluations take no helicity or colour-flow "
-            "selection, as in the tree engine; select with evaluate or "
-            "evaluate_resolved (Born-interfered processes at leading colour, "
-            "color.accuracy='lc'; loop-induced processes select helicities at "
-            "full colour)"
+            "selection; select with evaluate or evaluate_resolved "
+            "(Born-interfered processes select helicities at every colour "
+            "accuracy and colour flows at leading colour, color.accuracy='lc'; "
+            "loop-induced processes select helicities at full colour)"
         )
     v2_r2_strategy(r2_strategy)
     if stability is not None:
@@ -645,7 +647,11 @@ class V2ObservablesRuntime:
         from pyamplicol.loops.v2.observables import NativeObservables
 
         with self._lock:
-            if key[0] == lc.SELECTION:
+            if key[0] == lc.SELECTION or (
+                key[0] == "resolved" and not isinstance(key[1], str)
+            ):
+                # An evaluation-time selection, or a resolved selection's
+                # own columns (``_resolved_key``).
                 if self._selections is None:
                     self._selections = lc.SelectionCache()
                 return self._selections.get(key, lambda: self._selection_columns(key))
@@ -670,17 +676,26 @@ class V2ObservablesRuntime:
             return found
 
     def _selection_columns(self, key: tuple[Any, ...]) -> Any:
-        """A leading-colour selection's native runner: a loaded process's
-        column set formed from its stored records, or a slice's one-column
-        executor."""
+        """A selection's native runner: a loaded process's column set formed
+        from its stored records, or a slice's executor of the selection's
+        column (a resolved selection: of its kept resolved columns)."""
 
         from pyamplicol.loops.v2.observables import NativeObservables
 
-        _kind, column = key
+        kind, column = key
         options = {"member": self._member, **self._native_options}
         stored = getattr(self._observables, "native_columns", None)
         if stored is not None:
             return stored(*key, **options)
+        if kind == "resolved":
+            resolution, rows, basis = column
+            columns = [
+                item
+                for item in self._observables.resolved_columns(resolution)
+                if (rows is None or item.key[0] in rows)
+                and (basis is None or item.key[1] in basis)
+            ]
+            return NativeObservables(self._observables, columns, **options)
         return NativeObservables(self._observables, [column], **options)
 
     def _run(
@@ -1227,18 +1242,15 @@ class V2ObservablesRuntime:
         *,
         resolved: bool = False,
     ) -> None:
-        """Refuse a selection the process cannot serve: at NLC and full
-        colour every helicity and colour is contracted
-        (``selection.require_leading_colour``)."""
+        """Refuse a selection the process cannot serve: helicity rows are
+        selectable at every colour accuracy, colour flows at leading colour
+        only (NLC and full colour contract the colour,
+        ``selection.require_colour_flows``)."""
 
         from pyamplicol.loops.v2 import selection as lc
 
-        lc.require_leading_colour(
-            self._observables.slice.request.accuracy,
-            helicities,
-            color_flows,
-            resolved=resolved,
-        )
+        del helicities, resolved
+        lc.require_colour_flows(self._observables.slice.request.accuracy, color_flows)
 
     def _resolution(self, color_resolution: str | None) -> tuple[Any, tuple[Any, ...]]:
         """(the resolved column set's key, its colour components) of
@@ -1256,13 +1268,20 @@ class V2ObservablesRuntime:
         return "helicity", (None,)
 
     def _resolved_key(
-        self, resolution: Any, kept: frozenset[Any] | None
+        self,
+        resolution: Any,
+        kept: frozenset[Any] | None,
+        basis: frozenset[int] | None = None,
     ) -> tuple[Any, ...]:
-        """The native column set of ``evaluate_resolved``: every helicity row
-        (a selection keeps its ``kept`` rows from it)."""
+        """The native column set of ``evaluate_resolved``: every resolved
+        column, or a selection's kept rows' (and at leading colour the kept
+        basis elements') columns only, so an unselected row's column is
+        neither formed, dressed nor reduced (lit-fc-hel (G3); its own column
+        set, kept among the runtime's evaluation-time selections)."""
 
-        del kept
-        return ("resolved", resolution)
+        if kept is None and basis is None:
+            return ("resolved", resolution)
+        return ("resolved", (resolution, kept, basis))
 
     def _colour_ids(
         self, components: Sequence[Any]
@@ -1525,7 +1544,7 @@ class V2ObservablesRuntime:
             rows = tuple(sorted(self._member.row(row) for row in rows))
         resolution, components = self._resolution(color_resolution)
         helicity_ids = tuple(f"h{i}" for i in range(len(rows)))
-        kept = None
+        kept = basis = None
         if helicities or color_flows:
             self._require_selection(helicities, color_flows, resolved=True)
             self._refuse_member_selection()
@@ -1552,7 +1571,7 @@ class V2ObservablesRuntime:
             ).entries
 
         entries, failures, served = self._run(
-            self._resolved_key(resolution, kept),
+            self._resolved_key(resolution, kept, basis),
             python,
             points,
             scales,
@@ -1816,7 +1835,10 @@ class V2InducedObservablesRuntime(V2ObservablesRuntime):
         return choice, tuple(range(len(self._observables.slice.amplitude)))
 
     def _resolved_key(
-        self, resolution: Any, kept: frozenset[Any] | None
+        self,
+        resolution: Any,
+        kept: frozenset[Any] | None,
+        basis: frozenset[int] | None = None,
     ) -> tuple[Any, ...]:
         """A resolved helicity selection's columns read, so dress, the
         selected rows only (the executor's row mask, as

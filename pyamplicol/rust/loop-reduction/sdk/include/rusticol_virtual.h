@@ -326,9 +326,16 @@ int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *
  * Every process: a NULL selection, or one without selectors whose
  * color_resolution is NULL or "contracted", is rusticol_virtual_evaluate
  * (values and diagnostics, its monitoring included).
- * Born-interfered processes: a color_resolution is
- * refused with the Python API's text; selectors at NLC and full colour with
- * its text; a leading-colour selection is served by the Python API only (both
+ * Born-interfered processes (lit-fc-hel): helicity IDs and helicity_by_point
+ * are served at every colour accuracy as for a loop-induced process (ordinary:
+ * the selected rows' value per point; resolved: the selected rows in the
+ * accuracy's resolved layout, one contracted component at NLC / full colour,
+ * one "basis-<b>" component per Born basis element at leading colour); only
+ * the selected rows' trees, links, lanes and resolved columns are formed
+ * (the Python API's stored path, one Rust formation), binary64 bitwise the
+ * Python API's; a color_resolution is refused with the Python API's text,
+ * colour flows at NLC and full colour with its text, and a leading-colour
+ * colour-flow selection is the Python API's (color_flows=; all
  * RUSTICOL_VIRTUAL_RUNTIME_ERROR). */
 typedef struct {
   const char *const *helicity_ids; /* global helicity IDs */
