@@ -1,0 +1,36 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 5985,
+      "sha256": "a27683e53ccce952a651fa1a6a8a8adc384c891577a3242a5318e353ecd80db9"
+    },
+    "classifier.py": {
+      "bytes": 12025,
+      "sha256": "7ccdd5319624d650dde3885365508d5bdbbdad46b5209777e4b5d876f969d9af"
+    },
+    "test_classifier.py": {
+      "bytes": 13014,
+      "sha256": "85e91243f73944bf88bec5dec2116704b534cce8e9c04257ea830ce9c4fccbd9"
+    }
+  },
+  "inputs": {
+    "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/manifest.json": "4a27dda7a0977cd1b0ed0d779b30c403da50968bf494aa96d31cf18fc9fe2076",
+    "docs/benchmarkfolder/experiments/reduction-latch-lifecycle/source-proposal1/loop_matrix.candidate.f": "b37926358e421ba1de350eb0a6cb0ce9eab5127b171365eeb682439e0b6c9c5f",
+    "docs/benchmarkfolder/experiments/reduction-latch-lifecycle/source-proposal1/loop_matrix.original.f": "2846f4d35755abfb7a8709a5bb1560983b3676535fd43b39cd62acac1be6185c",
+    "docs/benchmarkfolder/stability_appendix_c/source5/pilot.py": "22b06cda2303d9d2fd42aed418aa4518db0d9e834678862330ffa0d6600e9eef",
+    "docs/benchmarkfolder/stability_appendix_c/source5/stability_worker.f": "371f8ccb72a5ee3dc1bad628cc855e239c7d0c26d5f30b5ff652f15afc564cc9",
+    "docs/benchmarkfolder/stability_appendix_c/source5/test_pilot.py": "aac3ef54ca0e731bcd6c17d137381a7f26856595c150ea48d5180420bf974b8d",
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ece7c4e855b50f13822f441d7be227631293acbc9ed345a2f1a154f0329757a2",
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b"
+  },
+  "schema": "madloop-current-source-stability-classifier-proposal-v1",
+  "scope": "Source-only additive proposal; no historical reclassification, new raw runs, native execution or canonical promotion.",
+  "validation": {
+    "actual_closed_source_fixture_static_check": "lifecycle candidate passes, original rejected; no journal reclassification",
+    "actual_current_source_workers_qualified": 0,
+    "independent_review": "Core classification semantics reviewed; proposed provenance/static checks strengthened following review; final root review remains required before integration or numerical execution.",
+    "native_evaluations": 0,
+    "pure_tests": 19,
+    "reported_seconds": 0.524
+  }
+}

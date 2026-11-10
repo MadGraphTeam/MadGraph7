@@ -1,0 +1,110 @@
+{
+  "accuracy_or_performance_qualification": false,
+  "files": {
+    "README.md": {
+      "bytes": 5245,
+      "sha256": "131c4d34f0fdd5bd37962f55751d963efa4c9b10c0608279f89e55b72297df75"
+    },
+    "cms/audit.py": {
+      "bytes": 21118,
+      "sha256": "918b47d26ca110bfcf50d13a8af8ad13690e52ef9d201ce50467fda9248c20ae"
+    },
+    "cms/summary.json": {
+      "bytes": 101617,
+      "sha256": "876f1c635d6f8f417b496c4b526713d53292b87fbf209af5d9c7bd12d07ef70c"
+    },
+    "ew/README.md": {
+      "bytes": 3322,
+      "sha256": "4cb7ef6ba000a15e8532eb4e08c4dfd0a0198684bb6d5f7b0682782dd03c12e5"
+    },
+    "ew/recompute.py": {
+      "bytes": 8790,
+      "sha256": "3979ce55e6289e74b48cb49f84be9501a46f06f8cf1e05128ea70a75c22c376f"
+    },
+    "ew/summary.json": {
+      "bytes": 49669,
+      "sha256": "474571f992f56c7b3b064d5f49280e075929d9f4f2c26d92f515db5432848762"
+    }
+  },
+  "guard_or_threshold_changes": false,
+  "input_files": {
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/cms_actual_mp_matrices.dat": {
+      "bytes": 192792,
+      "sha256": "1cd23bdb9c4d10ad560a503ff74e215ed0153240b9c93c3d32acdaf9f9b30ea9"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/specification.json": {
+      "bytes": 963,
+      "sha256": "6fc95a335a41f22f006327857bb5d66c2e5f5de8985798d0b6e499cee7561830"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/summary.json": {
+      "bytes": 1206,
+      "sha256": "a7d6b63f22c07f53ca3675d4decdb12626b05f24946c6f3bf0fda1a3957acb08"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/actual-matrix-trace/trace-insertion.f": {
+      "bytes": 561,
+      "sha256": "42192f133cd7d83727e9d17b591e5778d78bf02f8d2dad68394272540bc9925b"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_audit.json": {
+      "bytes": 70967,
+      "sha256": "73774fe4c767f79d99c35e2e238eeccdcdac1a0dee7e3681d9379c9653a7d0c2"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_probe.dat": {
+      "bytes": 201684,
+      "sha256": "c6fe2063ac98c1dd3b95597e8874ce534ec61271d1b9692dfec69b302c3f12ba"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/direct-qp/cms_mp_shell_probe.f": {
+      "bytes": 1629,
+      "sha256": "ac3e285fb275da0dfe71042590a152900ff6d850c344341ea5c27e20653ec2e1"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_onshell_probe.dat": {
+      "bytes": 585,
+      "sha256": "bd4ee84764a69fe15501fe877205cb8d008ee364cf577059b6b34919b8e44a6f"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_onshell_probe.f": {
+      "bytes": 7251,
+      "sha256": "d2c6ed193369662555a12c38a6cfb506bd95449220bc31aa906b7bab759b8f19"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/inputs/baseline/cms_ew_n2_epem_mupmum/cms_onshell_probe.json": {
+      "bytes": 927,
+      "sha256": "328c42c7aefce8c11590477e133db97a7a1ab9672d9a44e723ca1811b4692026"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum.dat": {
+      "bytes": 8142,
+      "sha256": "a0b0bf140915a5b65600eda9dc6ca87f7e4749f6d3b1cab3ecf4b28616051b60"
+    },
+    "docs/benchmarkfolder/experiments/complex-mass/points/cms_ew_n2_epem_mupmum.json": {
+      "bytes": 22713,
+      "sha256": "e27239fb2ef0e8b136a4c5f9b6d60aa5c6cf58bdd9cbf88a6da68b9b6d69f042"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/MadLoopParams.dat": {
+      "bytes": 14622,
+      "sha256": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/ct-qp-transport/sources/CT_interface.f.original": {
+      "bytes": 69917,
+      "sha256": "ac240d6ffc2f7e1a15a72e61a325a53d0acf776f65b9329e4e9518cd85f3da0a"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/selected-inputs.dat": {
+      "bytes": 5481,
+      "sha256": "a357490c15bc615869b3b11677788efb74d1529814056108aa2b57e2c06244e9"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/tensor-replay/selected-inputs.json": {
+      "bytes": 59482,
+      "sha256": "6e13ab1cbfbd88e746c83bb725a547343330375acea741ce1caef2fd16822305"
+    },
+    "docs/benchmarkfolder/experiments/ew-threshold-adjudication/trace.json": {
+      "bytes": 5122843,
+      "sha256": "03fbfd3795a468661162c0e574a7de6878065efbab79ca9d0f80e743f29e787f"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": {
+      "bytes": 34634,
+      "sha256": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16"
+    }
+  },
+  "native_or_compiler_executions": 0,
+  "payload_bytes": 189761,
+  "payload_files": 6,
+  "production_changes": false,
+  "schema": "closed-invariant-classification-pure-audit-v1",
+  "scope": "Two closed CMS forward points and two closed EW group5 inputs; source-bound arithmetic/scale/provenance diagnostics only."
+}
