@@ -1,0 +1,133 @@
+{
+  "analyzer_sha256": "602fec89e78ccd22105d21fb323e93608ab35ce0e86b01c751dfeb2933c329ed",
+  "bulk": [
+    {
+      "caller_input_words_unchanged": true,
+      "changed_matrix_pairs": 144,
+      "config": "historical-flags",
+      "failed_pairs": 0,
+      "frames": 2688,
+      "halting_and_rounding_unchanged": true,
+      "ieee_state_parity_passed": true,
+      "matrix_policy_passed": true,
+      "pairs": 1344,
+      "precision": "dp",
+      "problems": {},
+      "rounding_support": {
+        "1": 1,
+        "2": 1,
+        "3": 1,
+        "4": 1
+      },
+      "skipped_flags": []
+    },
+    {
+      "caller_input_words_unchanged": true,
+      "changed_matrix_pairs": 72,
+      "config": "historical-flags",
+      "failed_pairs": 0,
+      "frames": 2688,
+      "halting_and_rounding_unchanged": true,
+      "ieee_state_parity_passed": true,
+      "matrix_policy_passed": true,
+      "pairs": 1344,
+      "precision": "qp",
+      "problems": {},
+      "rounding_support": {
+        "1": 1,
+        "2": 1,
+        "3": 1,
+        "4": 1
+      },
+      "skipped_flags": []
+    },
+    {
+      "caller_input_words_unchanged": true,
+      "changed_matrix_pairs": 144,
+      "config": "supplemental-O3",
+      "failed_pairs": 0,
+      "frames": 2688,
+      "halting_and_rounding_unchanged": true,
+      "ieee_state_parity_passed": true,
+      "matrix_policy_passed": true,
+      "pairs": 1344,
+      "precision": "dp",
+      "problems": {},
+      "rounding_support": {
+        "1": 1,
+        "2": 1,
+        "3": 1,
+        "4": 1
+      },
+      "skipped_flags": []
+    },
+    {
+      "caller_input_words_unchanged": true,
+      "changed_matrix_pairs": 72,
+      "config": "supplemental-O3",
+      "failed_pairs": 0,
+      "frames": 2688,
+      "halting_and_rounding_unchanged": true,
+      "ieee_state_parity_passed": true,
+      "matrix_policy_passed": true,
+      "pairs": 1344,
+      "precision": "qp",
+      "problems": {},
+      "rounding_support": {
+        "1": 1,
+        "2": 1,
+        "3": 1,
+        "4": 1
+      },
+      "skipped_flags": []
+    }
+  ],
+  "command_exits": {
+    "-8": 32,
+    "0": 92
+  },
+  "controller_exit_basis": "Frozen run.py returns after completed passed=true",
+  "execution_sha256": "bc0049e3c2212f71d3372ff772ec1b47737ff73b9fc4c205530691ab8ba4dc91",
+  "expected_controller_exit": 0,
+  "fixture_passed": true,
+  "fixture_status": "complete",
+  "full_adapter_qualified": false,
+  "mutations": [
+    {
+      "detected_matrix_failure": true,
+      "failed_pairs": 360,
+      "mutation": "no-finite",
+      "pairs": 1344,
+      "problems": {
+        "IEEE state differs": 120,
+        "matrix policy differs": 360
+      }
+    },
+    {
+      "detected_matrix_failure": true,
+      "failed_pairs": 72,
+      "mutation": "no-equality",
+      "pairs": 1344,
+      "problems": {
+        "matrix policy differs": 72
+      }
+    }
+  ],
+  "new_native_execution": false,
+  "owned_commands_reaped": 124,
+  "performance_eligible": false,
+  "physical_amplitude": false,
+  "protected_inputs_unchanged": 139,
+  "reducers": false,
+  "schema": "ew-invariant-fixture-retained-reparse-v2",
+  "scope": "Extracted local components and synthetic inputs, not full adapter transport",
+  "semantic_reparse_matches_execution": true,
+  "traps": {
+    "matching_returned_invalid_pairs": 32,
+    "matching_sigfpe_inexact_pairs": 16,
+    "mismatched": 0,
+    "pairs": 48,
+    "post_call_evidence_for_trapped_calls": false,
+    "supported": 48
+  }
+}

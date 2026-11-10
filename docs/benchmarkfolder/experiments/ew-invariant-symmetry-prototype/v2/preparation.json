@@ -1,0 +1,22 @@
+{
+  "candidate_sha256": "177a7973ea9182978097d5256fab0f0c93c1d4c799919203f7855631bee294ad",
+  "compiled": false,
+  "derivation_patch_sha256": "c8a8c654287e8f168551a18c7f83e7b86f9d0db7d42808219873ab37beb82714",
+  "dp_format": "IEEE binary64",
+  "dp_integer_kind": "C_INT64_T",
+  "finite_classification": "TRANSFER to same-width integer, then integer exponent-mask test",
+  "native_executed": false,
+  "numerical_parity_qualified": false,
+  "original_body_recovered_by_removing_exact_insertions": true,
+  "original_path": "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/prepared/ew_n3_epem_ttxa/TIRUST_interface.f.original",
+  "original_sha256": "e60570ec599263807165f2f289add2076a4c5b71b9e09fe0de83306e9ab2f7ff",
+  "performance_eligible": false,
+  "qp_format": "IEEE binary128, 113 significand bits",
+  "qp_integer_kind": "SELECTED_INT_KIND(33)",
+  "rejected_v1_path": "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/TIRUST_interface.f",
+  "rejected_v1_sha256": "a30b838fc2839034a2599d2bf3c04df35ec674847afeadaf111127142dfccbb3",
+  "schema": "ew-invariant-integer-classification-source-v2",
+  "single_integer_per_real_no_multiword_endian_selection": true,
+  "v1_to_v2_patch_sha256": "5b553203f36603e933716867c559c2a386e01409fa35883c058a8e72d2f9eaee",
+  "whole_matrix_finite_before_floating_comparison": true
+}

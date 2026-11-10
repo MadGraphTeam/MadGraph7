@@ -1,0 +1,225 @@
+{
+  "binary_payloads": 0,
+  "codec": "gzip;mtime=0;filename-empty;level=6",
+  "dependency_cache_payloads": 0,
+  "evidence": {
+    "build.json": {
+      "payload": "evidence/build.json.gz",
+      "raw_bytes": 1659163,
+      "raw_sha256": "bd0b33f69a552851feac60e61573442bfefad5c17f45dd9713d40d6a9ac6094a"
+    },
+    "commands.json": {
+      "payload": "evidence/commands.json.gz",
+      "raw_bytes": 16956,
+      "raw_sha256": "370d07308e6561b1ce2bfc126c239e17408cc3c78d9a19ec81399dd999932c8b"
+    },
+    "logs/candidate-loader-list.txt": {
+      "payload": "evidence/logs/candidate-loader-list.txt.gz",
+      "raw_bytes": 1841,
+      "raw_sha256": "12d8b212f97742689573bdfab890b0aabd88a98171129637d36f33358f865f34"
+    },
+    "logs/compile-adapter.txt": {
+      "payload": "evidence/logs/compile-adapter.txt.gz",
+      "raw_bytes": 0,
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/link-candidate.txt": {
+      "payload": "evidence/logs/link-candidate.txt.gz",
+      "raw_bytes": 314,
+      "raw_sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "private-link.map": {
+      "payload": "evidence/private-link.map.gz",
+      "raw_bytes": 31160074,
+      "raw_sha256": "f27a25282d486183c5967f0a163a087cbfe1092570001f0cae788c192c36991f"
+    },
+    "source/TIRUST_interface.f": {
+      "payload": "evidence/source/TIRUST_interface.f.gz",
+      "raw_bytes": 15135,
+      "raw_sha256": "177a7973ea9182978097d5256fab0f0c93c1d4c799919203f7855631bee294ad"
+    },
+    "source/controller-delta.patch": {
+      "payload": "evidence/source/controller-delta.patch.gz",
+      "raw_bytes": 2559,
+      "raw_sha256": "7d5c2c86aaa186dd118599b8488609a5acc0bf2757881aac1cf26fb61f8b5cb7"
+    },
+    "source/derivation.patch": {
+      "payload": "evidence/source/derivation.patch.gz",
+      "raw_bytes": 3925,
+      "raw_sha256": "c8a8c654287e8f168551a18c7f83e7b86f9d0db7d42808219873ab37beb82714"
+    },
+    "source/plan.json": {
+      "payload": "evidence/source/plan.json.gz",
+      "raw_bytes": 13885,
+      "raw_sha256": "74cc1ba21a3f2da38b6f26d7f80d6fa443a9be08b2955032aeb292d2c698e184"
+    },
+    "source/run.py": {
+      "payload": "evidence/source/run.py.gz",
+      "raw_bytes": 15752,
+      "raw_sha256": "c442152caf1f7d29cd9511eba259cc442461730baeab17fb19ee4d3126d5593d"
+    },
+    "source/v1-to-v2.patch": {
+      "payload": "evidence/source/v1-to-v2.patch.gz",
+      "raw_bytes": 4027,
+      "raw_sha256": "5b553203f36603e933716867c559c2a386e01409fa35883c058a8e72d2f9eaee"
+    }
+  },
+  "files": {
+    "README.md": {
+      "bytes": 2662,
+      "sha256": "b21e4e92f46c561633de30f1cfdad5273868a2683f20e0a478dc2bae902bdec4"
+    },
+    "evidence/build.json.gz": {
+      "bytes": 156881,
+      "sha256": "64f0f50f6762640585c7d7086dca9f3be05c2b381b6e6e262537e09d32b03b3e"
+    },
+    "evidence/commands.json.gz": {
+      "bytes": 2406,
+      "sha256": "b479cd54d22c45fa6f2cd8b83e68887d0a5ddc5776e682391731df828bd9c13d"
+    },
+    "evidence/logs/candidate-loader-list.txt.gz": {
+      "bytes": 520,
+      "sha256": "6e1edbcc255ea2b989b5393dbd93a2fcee2ec448e221b8a63d8c03abb4838aed"
+    },
+    "evidence/logs/compile-adapter.txt.gz": {
+      "bytes": 20,
+      "sha256": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83"
+    },
+    "evidence/logs/link-candidate.txt.gz": {
+      "bytes": 220,
+      "sha256": "5cf62c3dd635b249e4ea739713255d0a56ed80351cfd2ac0432c9cf03d825417"
+    },
+    "evidence/private-link.map.gz": {
+      "bytes": 1813182,
+      "sha256": "cd9de22fe2d5a4d196f90e2bbada1b164b60848e3bf6d17a88ff113bac15f8a2"
+    },
+    "evidence/source/TIRUST_interface.f.gz": {
+      "bytes": 2894,
+      "sha256": "029f59f5a46f6f3f3a044abfac32f71d5bb1645221ff365f3a69381452e63131"
+    },
+    "evidence/source/controller-delta.patch.gz": {
+      "bytes": 1232,
+      "sha256": "0296347c45f644c6a0f6b6fd108d60c2fdc6842e6dfbbc4129447d65b7c6f81e"
+    },
+    "evidence/source/derivation.patch.gz": {
+      "bytes": 958,
+      "sha256": "7bcfb92dd11b929a052d0a6daa2f29d9fd27aa479a2b989822c8f3f502c7363f"
+    },
+    "evidence/source/plan.json.gz": {
+      "bytes": 3594,
+      "sha256": "fcfe13bb406257ce3afc6a0d98c38e673226786f0f62039579e357ec778e29e2"
+    },
+    "evidence/source/run.py.gz": {
+      "bytes": 5379,
+      "sha256": "8f8ab73a8ee28b80b890eeef15d560662fce273482d0e668d4f65b850e509ae6"
+    },
+    "evidence/source/v1-to-v2.patch.gz": {
+      "bytes": 988,
+      "sha256": "f23e15d30405509e5b95e63db7b9b162ac17679f291ea61f3e7325dfbaf00499"
+    },
+    "package.py": {
+      "bytes": 15261,
+      "sha256": "198bebedfc5669f8f1b8f0b5c8981474508b8514e463f8c40beb1b0e63862def"
+    },
+    "packaging-start.json": {
+      "bytes": 243,
+      "sha256": "eab1b201a58ba3d39734dfbd2e9e6654ac815c20bbeda1e4f5b0ac734ca0b0a4"
+    },
+    "summary.json": {
+      "bytes": 4685,
+      "sha256": "2240e4e5ebcb8a00f679a4abb2a64db44fc3efe2a9cdf8648827d0b5fe39e359"
+    }
+  },
+  "manifest_sha256": "bd0b33f69a552851feac60e61573442bfefad5c17f45dd9713d40d6a9ac6094a",
+  "repository_bindings": {
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/build-qualification/attempts/continuation-2/build.json.gz": {
+      "bytes": 5053420,
+      "sha256": "9f51b5409b1fd5d7cf458c899e23546402e939364b9d116385a91aa09104fed7"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/build-qualification/index.json": {
+      "bytes": 28325,
+      "sha256": "eefd95d7deafbcb74852e2e1ec5fcb527f0d2fd19f1dce75eb85a28063068041"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-qualification-1/index.json": {
+      "bytes": 73151,
+      "sha256": "9f934ced6cfe06d2f01252b8a86d6c5f50cd7bd29890fd2bf78b9e5db40769e2"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-qualification-1/payloads/c308d6bdf48db24bc428e0c556618e4191fe07535720708f954b62331376f8b4.gz": {
+      "bytes": 3164261,
+      "sha256": "cb22aa0c33e2f376511345aa2ce48bd902f5fd24e40f7464c90a914cf5fd0fbb"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/prepared/ew_n3_epem_ttxa/TIRUST_interface.f.original": {
+      "bytes": 12164,
+      "sha256": "e60570ec599263807165f2f289add2076a4c5b71b9e09fe0de83306e9ab2f7ff"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/build-proposal/run.py": {
+      "bytes": 15749,
+      "sha256": "0e42cc72bd7d19d6b5a84b047d8dbee147166bd66cb70290791cd8417e4acf9e"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/build-qualification-1/index.json": {
+      "bytes": 8401,
+      "sha256": "8fef690cc62dda4b9617aeeb9aa804a54a928920fc334673337e7e243feafdb0"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/fortran-fixtures/index.json": {
+      "bytes": 2219,
+      "sha256": "c6196525f5b9c976536b3d35487d4e17761011b0578f913ee5e89e05bd9c4af0"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/fortran-fixtures/qualification-1/index.json": {
+      "bytes": 57277,
+      "sha256": "7dd35563870fbf0499a7735460e3d1fa68d0b96187175b824b0160bd5793db30"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/index.json": {
+      "bytes": 2353,
+      "sha256": "c08669ea552198877c44d5dd9dd7bf29f8ea94fac34e9ac25bf155961c6afd64"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/README.md": {
+      "bytes": 3933,
+      "sha256": "339c382752c92c253c68309d96f5853d61293aec2489da58ec229819eeebcccf"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/TIRUST_interface.f": {
+      "bytes": 15135,
+      "sha256": "177a7973ea9182978097d5256fab0f0c93c1d4c799919203f7855631bee294ad"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/build-proposal/README.md": {
+      "bytes": 1603,
+      "sha256": "c95f3b8299d19024a5f6443e8c8449f9ab047a65ecae302c7b4f1008ec46f3f0"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/build-proposal/controller-delta.patch": {
+      "bytes": 2559,
+      "sha256": "7d5c2c86aaa186dd118599b8488609a5acc0bf2757881aac1cf26fb61f8b5cb7"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/build-proposal/plan.json": {
+      "bytes": 13885,
+      "sha256": "74cc1ba21a3f2da38b6f26d7f80d6fa443a9be08b2955032aeb292d2c698e184"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/build-proposal/run.py": {
+      "bytes": 15752,
+      "sha256": "c442152caf1f7d29cd9511eba259cc442461730baeab17fb19ee4d3126d5593d"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/derivation.patch": {
+      "bytes": 3925,
+      "sha256": "c8a8c654287e8f168551a18c7f83e7b86f9d0db7d42808219873ab37beb82714"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/index.json": {
+      "bytes": 3225,
+      "sha256": "d3c1e4212669d66846195bf65af0a05153ce406c87ac12cb30cc58a612b3bb93"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/preparation.json": {
+      "bytes": 1338,
+      "sha256": "baf9dd82f3ec122fe386d58b941e3060077bc6f4789689c5cfff26c5769232a1"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/prepare.py": {
+      "bytes": 6920,
+      "sha256": "04d74151fc8fcc7b2b4f8f7af80acbb45445e6de70d2b41a17b7cd1b8d71a3e5"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/source-review.json": {
+      "bytes": 1148,
+      "sha256": "5540df1e2769f9a88246f35d5cdf70b8378d3957fb5aa040164e06e31def0c67"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/v1-to-v2.patch": {
+      "bytes": 4027,
+      "sha256": "5b553203f36603e933716867c559c2a386e01409fa35883c058a8e72d2f9eaee"
+    }
+  },
+  "schema": "ew-invariant-portable-build-v2"
+}

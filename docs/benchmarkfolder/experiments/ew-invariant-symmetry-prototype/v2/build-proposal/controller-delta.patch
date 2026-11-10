@@ -1,0 +1,41 @@
+--- frozen-v1/build-proposal/run.py
++++ private-v2/build-proposal/run.py
+@@ -14,12 +14,12 @@
+ sys.dont_write_bytecode = True
+ HERE = Path(__file__).resolve().parent
+ PROPOSAL = HERE.parent
+-ROOT = PROPOSAL.parents[3]
++ROOT = PROPOSAL.parents[4]
+ CAUSE = ROOT / "docs/benchmarkfolder/experiments/dp-rescue-cause-observer"
+ CASE, SUB = "ew_n3_epem_ttxa", "SubProcesses/P0_epem_ttxa"
+ ADAPTER = SUB + "/TIRUST_interface.f"
+ OBJECT = SUB + "/TIRUST_interface.o"
+-CANDIDATE_SHA = "a30b838fc2839034a2599d2bf3c04df35ec674847afeadaf111127142dfccbb3"
++CANDIDATE_SHA = "177a7973ea9182978097d5256fab0f0c93c1d4c799919203f7855631bee294ad"
+ ORIGINAL_SHA = "e60570ec599263807165f2f289add2076a4c5b71b9e09fe0de83306e9ab2f7ff"
+ ANCHORS = {
+     "build": (ROOT / ".tirust-build/dp-rescue-cause-observer/cause-2-qualified/build/build.json",
+@@ -98,7 +98,7 @@
+     for path, expected in HELPERS.values():
+         protected[str(path)] = preparation.pin(path, expected)
+     plan = {
+-        "schema": "ew-invariant-adapter-build-proposal-v1", "case": CASE, "candidate": candidate,
++        "schema": "ew-invariant-adapter-build-proposal-v2", "case": CASE, "candidate": candidate,
+         "original_adapter": arm["sources"][ADAPTER], "anchors": anchor_pins,
+         "original_executable": arm["executable"], "original_driver": arm["objects"][SUB + "/check_sa.o"],
+         "unchanged_observer_support": arm["extra_objects"], "compiler": compiler,
+@@ -119,12 +119,12 @@
+ 
+ 
+ def compile_private(args, plan, arm, protected, environment, preparation, helper, lifecycle):
+-    work = ROOT / ".tirust-build/ew-invariant-symmetry-prototype" / args.label / "build"
++    work = ROOT / ".tirust-build/ew-invariant-symmetry-prototype-v2" / args.label / "build"
+     need(not work.exists() and work.resolve() == work, "Private build attempt exists or path aliases")
+     need(not any(os.environ.get(k) for k in ("LD_PRELOAD", "LD_AUDIT", "LD_DEBUG")), "Ambient loader interception")
+     build = helper.Build(work, lifecycle, preparation)
+     old_affinity, handlers, error, created = os.sched_getaffinity(0), {}, None, False
+-    record = {"schema": "ew-invariant-adapter-build-v1", "status": "started", "cpu": args.cpu, "jobs": 1,
++    record = {"schema": "ew-invariant-adapter-build-v2", "status": "started", "cpu": args.cpu, "jobs": 1,
+               "seconds_cap": 180, "plan_sha256": helper.digest(HERE / "plan.json"),
+               "builder_sha256": helper.digest(__file__), "candidate": plan["candidate"],
+               "anchors": plan["anchors"], "protected_before": protected,

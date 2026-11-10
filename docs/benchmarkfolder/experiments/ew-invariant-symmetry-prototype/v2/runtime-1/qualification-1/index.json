@@ -1,0 +1,815 @@
+{
+  "binary_payloads": 0,
+  "codec": "gzip;mtime=0;filename-empty;level=6",
+  "evidence": {
+    "original/cause-public.txt": {
+      "payload": "evidence/original/cause-public.txt.gz",
+      "raw_bytes": 63939,
+      "raw_sha256": "da136a1e0f69b09155aaa7f0619de4fe92125b93cfc806edc09cf041e5f0fd32",
+      "replay_path": ".tirust-build/dp-rescue-cause-observer/cause-2-qualified/controller-native/attempt1/ew_n3_epem_ttxa/original/cause-public.txt"
+    },
+    "original/points.dat": {
+      "payload": "evidence/original/points.dat.gz",
+      "raw_bytes": 48556,
+      "raw_sha256": "56294e1d42f0524d9d04ac451cf0f5a098dace5dd10d2a4970b27286ed0e955f",
+      "replay_path": ".tirust-build/dp-rescue-cause-observer/cause-2-qualified/controller-native/attempt1/ew_n3_epem_ttxa/original/points.dat"
+    },
+    "original/points.json": {
+      "payload": "evidence/original/points.json.gz",
+      "raw_bytes": 83781,
+      "raw_sha256": "e602b1f613126c3c5fc40f3e5b5fa908e545d3fbe14f14dbc7ddc41faadb604a",
+      "replay_path": ".tirust-build/dp-rescue-cause-observer/cause-2-qualified/controller-native/attempt1/ew_n3_epem_ttxa/original/points.json"
+    },
+    "original/warmup.dat": {
+      "payload": "evidence/original/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "e68cfb74289854fb0e31ff6d587b48bd3935ed6332457aa3885b395de5e9456a",
+      "replay_path": ".tirust-build/dp-rescue-cause-observer/cause-2-qualified/controller-native/attempt1/ew_n3_epem_ttxa/original/warmup.dat"
+    },
+    "reference/baseline-1/dimensions.dat": {
+      "payload": "evidence/reference/baseline-1/dimensions.dat.gz",
+      "raw_bytes": 37,
+      "raw_sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/baseline-1/raw/dimensions.dat"
+    },
+    "reference/baseline-1/ready.json": {
+      "payload": "evidence/reference/baseline-1/ready.json.gz",
+      "raw_bytes": 91,
+      "raw_sha256": "06594d7d4ee175dab45d93dd270c6bdfb9ce210273d71c547f608f980c327590",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/baseline-1/raw/ready.json"
+    },
+    "reference/baseline-1/warmup.dat": {
+      "payload": "evidence/reference/baseline-1/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "734579db0d9178383f19aedbc882633f7d0f9c532c9f07630d5191d02c9a82b1",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/baseline-1/raw/warmup.dat"
+    },
+    "reference/candidate-1/dimensions.dat": {
+      "payload": "evidence/reference/candidate-1/dimensions.dat.gz",
+      "raw_bytes": 37,
+      "raw_sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-1/raw/dimensions.dat"
+    },
+    "reference/candidate-1/ready.json": {
+      "payload": "evidence/reference/candidate-1/ready.json.gz",
+      "raw_bytes": 90,
+      "raw_sha256": "9df850b6ad4d98059e2592cb89e5c6ba2469027187f4b7e063c782ed864bd713",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-1/raw/ready.json"
+    },
+    "reference/candidate-1/warmup.dat": {
+      "payload": "evidence/reference/candidate-1/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "734579db0d9178383f19aedbc882633f7d0f9c532c9f07630d5191d02c9a82b1",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-1/raw/warmup.dat"
+    },
+    "reference/candidate-6/dimensions.dat": {
+      "payload": "evidence/reference/candidate-6/dimensions.dat.gz",
+      "raw_bytes": 37,
+      "raw_sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-6/raw/dimensions.dat"
+    },
+    "reference/candidate-6/ready.json": {
+      "payload": "evidence/reference/candidate-6/ready.json.gz",
+      "raw_bytes": 90,
+      "raw_sha256": "d2104d3495b68a9d18afa85a956a89215af28071b886e1a348a9bb62a94bd099",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-6/raw/ready.json"
+    },
+    "reference/candidate-6/warmup.dat": {
+      "payload": "evidence/reference/candidate-6/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "bb4d4d00e0656db777fb05447832e337f00fd392e9271d54f08db1e635a5264b",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-6/raw/warmup.dat"
+    },
+    "reference/candidate-7/dimensions.dat": {
+      "payload": "evidence/reference/candidate-7/dimensions.dat.gz",
+      "raw_bytes": 37,
+      "raw_sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-7/raw/dimensions.dat"
+    },
+    "reference/candidate-7/ready.json": {
+      "payload": "evidence/reference/candidate-7/ready.json.gz",
+      "raw_bytes": 90,
+      "raw_sha256": "be94985efab38578d15fd34c75a9f48181aa4471f994f0e189cfe3c9862ca9eb",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-7/raw/ready.json"
+    },
+    "reference/candidate-7/warmup.dat": {
+      "payload": "evidence/reference/candidate-7/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "32c675e87c8abdd0d0cafbfe02190976ca9c01bcb59084e3dbf009d1fa40800a",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-7/raw/warmup.dat"
+    },
+    "reference/candidate-8/dimensions.dat": {
+      "payload": "evidence/reference/candidate-8/dimensions.dat.gz",
+      "raw_bytes": 37,
+      "raw_sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-8/raw/dimensions.dat"
+    },
+    "reference/candidate-8/ready.json": {
+      "payload": "evidence/reference/candidate-8/ready.json.gz",
+      "raw_bytes": 89,
+      "raw_sha256": "cfdc3f3de10b0d448392d1ddb5f680cb3eb2ba2d1161b45af67bb59513a88e63",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-8/raw/ready.json"
+    },
+    "reference/candidate-8/warmup.dat": {
+      "payload": "evidence/reference/candidate-8/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "7237a39df98c7d0eb78594e39df0eb11e92012f28d08bff7596a276ee8b7faef",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-8/raw/warmup.dat"
+    },
+    "reference/candidate-9/dimensions.dat": {
+      "payload": "evidence/reference/candidate-9/dimensions.dat.gz",
+      "raw_bytes": 37,
+      "raw_sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/raw/dimensions.dat"
+    },
+    "reference/candidate-9/ready.json": {
+      "payload": "evidence/reference/candidate-9/ready.json.gz",
+      "raw_bytes": 90,
+      "raw_sha256": "2e1f3e22837283de124010f9c07a139f41bcb3c9910e64b625b1a24b42430253",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/raw/ready.json"
+    },
+    "reference/candidate-9/warmup.dat": {
+      "payload": "evidence/reference/candidate-9/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "e68cfb74289854fb0e31ff6d587b48bd3935ed6332457aa3885b395de5e9456a",
+      "replay_path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/raw/warmup.dat"
+    },
+    "run/Cards/ident_card.dat": {
+      "payload": "evidence/run/Cards/ident_card.dat.gz",
+      "raw_bytes": 389,
+      "raw_sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/Cards/ident_card.dat"
+    },
+    "run/Cards/param_card.dat": {
+      "payload": "evidence/run/Cards/param_card.dat.gz",
+      "raw_bytes": 4538,
+      "raw_sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/Cards/param_card.dat"
+    },
+    "run/MadLoop5_resources/ML5_0_ColorDenomFactors.dat": {
+      "payload": "evidence/run/MadLoop5_resources/ML5_0_ColorDenomFactors.dat.gz",
+      "raw_bytes": 20400,
+      "raw_sha256": "5b1b66de3934131c2044ca4ebab42df9d23a3f47ec2e3d890ee27a5eeb3d8e8a",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/MadLoop5_resources/ML5_0_ColorDenomFactors.dat"
+    },
+    "run/MadLoop5_resources/ML5_0_ColorNumFactors.dat": {
+      "payload": "evidence/run/MadLoop5_resources/ML5_0_ColorNumFactors.dat.gz",
+      "raw_bytes": 22112,
+      "raw_sha256": "4b6d2c1f832aa48ad1e040c8fc91a111ae4f6d832bdb4bff4d0aada1c0da4703",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/MadLoop5_resources/ML5_0_ColorNumFactors.dat"
+    },
+    "run/MadLoop5_resources/ML5_0_HelConfigs.dat": {
+      "payload": "evidence/run/MadLoop5_resources/ML5_0_HelConfigs.dat.gz",
+      "raw_bytes": 400,
+      "raw_sha256": "0754c409fe7f8c86e09071dd6a8afc5969e97266773b8c6d6ed5f79f9c0c7425",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/MadLoop5_resources/ML5_0_HelConfigs.dat"
+    },
+    "run/MadLoop5_resources/MadLoopParams.dat": {
+      "payload": "evidence/run/MadLoop5_resources/MadLoopParams.dat.gz",
+      "raw_bytes": 14623,
+      "raw_sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/MadLoop5_resources/MadLoopParams.dat"
+    },
+    "run/MadLoop5_resources/ident_card.dat": {
+      "payload": "evidence/run/MadLoop5_resources/ident_card.dat.gz",
+      "raw_bytes": 389,
+      "raw_sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/MadLoop5_resources/ident_card.dat"
+    },
+    "run/MadLoop5_resources/param_card.dat": {
+      "payload": "evidence/run/MadLoop5_resources/param_card.dat.gz",
+      "raw_bytes": 4538,
+      "raw_sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/MadLoop5_resources/param_card.dat"
+    },
+    "run/cause-public.txt": {
+      "payload": "evidence/run/cause-public.txt.gz",
+      "raw_bytes": 63939,
+      "raw_sha256": "c1b093f88d1e745a6fa163180277c79688584305ad04f9986165218f2e542c66",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/cause-public.txt"
+    },
+    "run/dimensions.dat": {
+      "payload": "evidence/run/dimensions.dat.gz",
+      "raw_bytes": 37,
+      "raw_sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/dimensions.dat"
+    },
+    "run/execution.json": {
+      "payload": "evidence/run/execution.json.gz",
+      "raw_bytes": 11659,
+      "raw_sha256": "e30aa7656186613884156a03118ea476c518fe341bc0b23d790fdd951a34750f",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/execution.json"
+    },
+    "run/param.log": {
+      "payload": "evidence/run/param.log.gz",
+      "raw_bytes": 936,
+      "raw_sha256": "0ddf802d9b642d098b8831a5c2896a974250efe4003282e3548c356002d84635",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/param.log"
+    },
+    "run/points.dat": {
+      "payload": "evidence/run/points.dat.gz",
+      "raw_bytes": 48556,
+      "raw_sha256": "56294e1d42f0524d9d04ac451cf0f5a098dace5dd10d2a4970b27286ed0e955f",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/points.dat"
+    },
+    "run/points.json": {
+      "payload": "evidence/run/points.json.gz",
+      "raw_bytes": 83781,
+      "raw_sha256": "e602b1f613126c3c5fc40f3e5b5fa908e545d3fbe14f14dbc7ddc41faadb604a",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/points.json"
+    },
+    "run/process-maps.txt": {
+      "payload": "evidence/run/process-maps.txt.gz",
+      "raw_bytes": 13961,
+      "raw_sha256": "5bf8baceefa791665deb00a75d9a6c93a5c08d0f47c89cacfb36f8a84e8eef1c",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/process-maps.txt"
+    },
+    "run/protocol.raw": {
+      "payload": "evidence/run/protocol.raw.gz",
+      "raw_bytes": 97,
+      "raw_sha256": "60eede1566d78ebd83ee9a770c6999cfc0b778664413bd130726e9e62bbbddbb",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/protocol.raw"
+    },
+    "run/qualification.json": {
+      "payload": "evidence/run/qualification.json.gz",
+      "raw_bytes": 12138,
+      "raw_sha256": "95ef387372667b0aaa18e9399abdf0ed17759d3a937cddc0beafbf422cc1fb7d",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/qualification.json"
+    },
+    "run/results.json": {
+      "payload": "evidence/run/results.json.gz",
+      "raw_bytes": 1676324,
+      "raw_sha256": "803e76b3d767e0a108a9056b1251edc6769b7abf3c27816cf05ce9c58cab6d55",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/results.json"
+    },
+    "run/stdout.log": {
+      "payload": "evidence/run/stdout.log.gz",
+      "raw_bytes": 4054,
+      "raw_sha256": "7f13e6fea8b0794385feba703ba2a18ed0135a0f750a5ce343bfeaf7b97e1315",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/stdout.log"
+    },
+    "run/warmup.dat": {
+      "payload": "evidence/run/warmup.dat.gz",
+      "raw_bytes": 36219,
+      "raw_sha256": "f69a4ab5636ada444c152c27c8b842589d23f43203eb9494b64068a7daedaa08",
+      "replay_path": ".tirust-build/ew-invariant-symmetry-prototype-v2/runtime-1/attempt1/warmup.dat"
+    },
+    "source/docs/benchmarkfolder/experiments/dp-rescue-cause-observer/analyze.py": {
+      "payload": "evidence/source/docs/benchmarkfolder/experiments/dp-rescue-cause-observer/analyze.py.gz",
+      "raw_bytes": 35648,
+      "raw_sha256": "473475dfdde70df2f721ca782f3ac1719ab08b92b72a9eadd4e8bbe216aed10b",
+      "replay_path": "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/analyze.py"
+    },
+    "source/docs/benchmarkfolder/experiments/dp-rescue-cause-observer/protocol.py": {
+      "payload": "evidence/source/docs/benchmarkfolder/experiments/dp-rescue-cause-observer/protocol.py.gz",
+      "raw_bytes": 16464,
+      "raw_sha256": "b668433b0fe6d397d3416d408b17a1f7f54f2f8b24c9cc063c1a5710423d38ec",
+      "replay_path": "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/protocol.py"
+    },
+    "source/docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/runtime-1/run.py": {
+      "payload": "evidence/source/docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/runtime-1/run.py.gz",
+      "raw_bytes": 9634,
+      "raw_sha256": "1234c24917827e456fdc8c985c4e0e89a5bc31c7acfd05be5136e175e10cad09",
+      "replay_path": "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/runtime-1/run.py"
+    },
+    "source/prepared.json": {
+      "payload": "evidence/source/prepared.json.gz",
+      "raw_bytes": 550400,
+      "raw_sha256": "d38bb8d1e3a0a53accb481a8bb46f95c2b9b042436af8f351c54c81e8aa35b82",
+      "replay_path": null
+    },
+    "source/tools/tirust_benchmark.py": {
+      "payload": "evidence/source/tools/tirust_benchmark.py.gz",
+      "raw_bytes": 96372,
+      "raw_sha256": "fa8a3f0567160661054b1c267e4ea496fa250ccee38d59852e09e3c13ec8d0b6",
+      "replay_path": "tools/tirust_benchmark.py"
+    },
+    "source/tools/tirust_benchmark_warmup.py": {
+      "payload": "evidence/source/tools/tirust_benchmark_warmup.py.gz",
+      "raw_bytes": 7041,
+      "raw_sha256": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d",
+      "replay_path": "tools/tirust_benchmark_warmup.py"
+    },
+    "source/tools/tirust_benchmark_worker.py": {
+      "payload": "evidence/source/tools/tirust_benchmark_worker.py.gz",
+      "raw_bytes": 18869,
+      "raw_sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57",
+      "replay_path": "tools/tirust_benchmark_worker.py"
+    }
+  },
+  "files": {
+    "README.md": {
+      "bytes": 2944,
+      "sha256": "d9f579b0094cdf89b4699a06e117bf03e144c94f155637b6ed92196d1811879e"
+    },
+    "evidence/original/cause-public.txt.gz": {
+      "bytes": 17875,
+      "sha256": "c52c5a6ea612c7b6bc78c0f2b209c2dc301e4d4ef7a58403f19514ee3b59bb05"
+    },
+    "evidence/original/points.dat.gz": {
+      "bytes": 14046,
+      "sha256": "b5fbce6715d330ac2ef3aaaf15479900f08913284f4cb9fa006182529616dd7d"
+    },
+    "evidence/original/points.json.gz": {
+      "bytes": 14723,
+      "sha256": "128879073b9c9f7a11c5b763b9b84f8d7d6eedd179b60630e97652a5e5624bc6"
+    },
+    "evidence/original/warmup.dat.gz": {
+      "bytes": 7490,
+      "sha256": "69489807fe7c3d2bf8e1fddb49058938871c93e57669b3a1f4165252227943a1"
+    },
+    "evidence/reference/baseline-1/dimensions.dat.gz": {
+      "bytes": 28,
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29"
+    },
+    "evidence/reference/baseline-1/ready.json.gz": {
+      "bytes": 84,
+      "sha256": "2167e9b6d3340f888be63a5edbfbc5885eae841b73910eaa4f846fe1a492e1f0"
+    },
+    "evidence/reference/baseline-1/warmup.dat.gz": {
+      "bytes": 7588,
+      "sha256": "2ef2a7d038003524663e81e082c23f49d632797eaae0594f8c8812a6d38a71c0"
+    },
+    "evidence/reference/candidate-1/dimensions.dat.gz": {
+      "bytes": 28,
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29"
+    },
+    "evidence/reference/candidate-1/ready.json.gz": {
+      "bytes": 85,
+      "sha256": "64e3036980902c051d84e1799fcd1e36c801237c720adc4f0e3025809d11ea88"
+    },
+    "evidence/reference/candidate-1/warmup.dat.gz": {
+      "bytes": 7588,
+      "sha256": "2ef2a7d038003524663e81e082c23f49d632797eaae0594f8c8812a6d38a71c0"
+    },
+    "evidence/reference/candidate-6/dimensions.dat.gz": {
+      "bytes": 28,
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29"
+    },
+    "evidence/reference/candidate-6/ready.json.gz": {
+      "bytes": 85,
+      "sha256": "c7e24c2d0ddc7057aa52971ebb411e28be53caef773784d8ffe1f6e3b944ab49"
+    },
+    "evidence/reference/candidate-6/warmup.dat.gz": {
+      "bytes": 7620,
+      "sha256": "2c24b1fe0b1f9058af94c35036e29cb6762131dd1053096b0337ab5bdbe382e3"
+    },
+    "evidence/reference/candidate-7/dimensions.dat.gz": {
+      "bytes": 28,
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29"
+    },
+    "evidence/reference/candidate-7/ready.json.gz": {
+      "bytes": 85,
+      "sha256": "0ba8a92ac414b4ba284c0a2cdf7bb54ddc10f2644094a4d12fbacd5588c988ab"
+    },
+    "evidence/reference/candidate-7/warmup.dat.gz": {
+      "bytes": 7633,
+      "sha256": "d7ca506908505b37f2e44e8709917111cb10d5270b0ec89d27bd3b8705589f5c"
+    },
+    "evidence/reference/candidate-8/dimensions.dat.gz": {
+      "bytes": 28,
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29"
+    },
+    "evidence/reference/candidate-8/ready.json.gz": {
+      "bytes": 84,
+      "sha256": "067aa954f6fe506418cf257d8a667c591ddeecc25cb19e97533d2a4b59e715aa"
+    },
+    "evidence/reference/candidate-8/warmup.dat.gz": {
+      "bytes": 7600,
+      "sha256": "8d0b6a8b611a31705c865e46ffa64b8fddc77fcd64d0fa9ff4d8ced542768df1"
+    },
+    "evidence/reference/candidate-9/dimensions.dat.gz": {
+      "bytes": 28,
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29"
+    },
+    "evidence/reference/candidate-9/ready.json.gz": {
+      "bytes": 82,
+      "sha256": "cc4958977fbb8111bc43934b28f83fc6868959da0e4195414422f433dcf20659"
+    },
+    "evidence/reference/candidate-9/warmup.dat.gz": {
+      "bytes": 7490,
+      "sha256": "69489807fe7c3d2bf8e1fddb49058938871c93e57669b3a1f4165252227943a1"
+    },
+    "evidence/run/Cards/ident_card.dat.gz": {
+      "bytes": 164,
+      "sha256": "ee26f6d0de9ca022e4a2a383ab97a45d86c4b54edae1f5de79c28bf1b3e183a9"
+    },
+    "evidence/run/Cards/param_card.dat.gz": {
+      "bytes": 757,
+      "sha256": "dfae8ac50aaec87b4e8e25f0db567aa2db963d45395b73669022217a2a893439"
+    },
+    "evidence/run/MadLoop5_resources/ML5_0_ColorDenomFactors.dat.gz": {
+      "bytes": 81,
+      "sha256": "7ff14e8c02992f394ffc9d35fd2b92620f5307d361c2ecbd470fb75b159891ba"
+    },
+    "evidence/run/MadLoop5_resources/ML5_0_ColorNumFactors.dat.gz": {
+      "bytes": 111,
+      "sha256": "3d3e9791ce6890b18d6468ff18e8bddb5194837d5ee3cc619530b32028b0be61"
+    },
+    "evidence/run/MadLoop5_resources/ML5_0_HelConfigs.dat.gz": {
+      "bytes": 96,
+      "sha256": "741b229f9844b3f8267745dec693f28fb7ca3739e656ac8171d5eedb793cc51c"
+    },
+    "evidence/run/MadLoop5_resources/MadLoopParams.dat.gz": {
+      "bytes": 4825,
+      "sha256": "01964d08ef58f251a8025ef30041a954aba0e119c56a5bc25a9bcb573acb95e6"
+    },
+    "evidence/run/MadLoop5_resources/ident_card.dat.gz": {
+      "bytes": 164,
+      "sha256": "ee26f6d0de9ca022e4a2a383ab97a45d86c4b54edae1f5de79c28bf1b3e183a9"
+    },
+    "evidence/run/MadLoop5_resources/param_card.dat.gz": {
+      "bytes": 757,
+      "sha256": "dfae8ac50aaec87b4e8e25f0db567aa2db963d45395b73669022217a2a893439"
+    },
+    "evidence/run/cause-public.txt.gz": {
+      "bytes": 18070,
+      "sha256": "5f060048656b8a5385b3d480060e0ca42999ec70225f1649dfb0aa1ef22e9867"
+    },
+    "evidence/run/dimensions.dat.gz": {
+      "bytes": 28,
+      "sha256": "5840d218e9981cd8905d3d4ec6d2bf320e418c31ccb19146741768bc90c7ba29"
+    },
+    "evidence/run/execution.json.gz": {
+      "bytes": 2704,
+      "sha256": "c86977f5e20325219c3b393ab687aec91adbe81b48c4d888e244825ccfe9a6f8"
+    },
+    "evidence/run/param.log.gz": {
+      "bytes": 183,
+      "sha256": "9376c3120049be5a0ddb95727aa0fc42401929aed3a4756693cdb41deaf10e6e"
+    },
+    "evidence/run/points.dat.gz": {
+      "bytes": 14046,
+      "sha256": "b5fbce6715d330ac2ef3aaaf15479900f08913284f4cb9fa006182529616dd7d"
+    },
+    "evidence/run/points.json.gz": {
+      "bytes": 14723,
+      "sha256": "128879073b9c9f7a11c5b763b9b84f8d7d6eedd179b60630e97652a5e5624bc6"
+    },
+    "evidence/run/process-maps.txt.gz": {
+      "bytes": 1594,
+      "sha256": "a9ea4d6fd7d7397a879b8b9a9993f691824dcf3c16911c78082e861ffab6ae9d"
+    },
+    "evidence/run/protocol.raw.gz": {
+      "bytes": 60,
+      "sha256": "82dc9e8205b2cfccf05bfcb6591c4a38b3ee7e78bb84cc97d95a70ea167630ce"
+    },
+    "evidence/run/qualification.json.gz": {
+      "bytes": 2827,
+      "sha256": "9237f5b4fd34e763fe1e4dbaa2fcce221c6e637b555a4e0e99d11f9e43bb04e7"
+    },
+    "evidence/run/results.json.gz": {
+      "bytes": 127121,
+      "sha256": "292485a6b09d20a83d507a525d45bb263ac426ef78bc3f35209c87b02b9fc80d"
+    },
+    "evidence/run/stdout.log.gz": {
+      "bytes": 889,
+      "sha256": "12f6634b9502feebcb6759fbc2ab773d25467f24c777213ae3d712cd6e5e62fe"
+    },
+    "evidence/run/warmup.dat.gz": {
+      "bytes": 7650,
+      "sha256": "f7cbfef927dd12c5ed30b69f0844b386799717746d900e001ffa44e421e72e5c"
+    },
+    "evidence/source/docs/benchmarkfolder/experiments/dp-rescue-cause-observer/analyze.py.gz": {
+      "bytes": 9906,
+      "sha256": "90c62fd06ea68f4ffb07cfd967619f625a4d2bb719e313b0b4ab922cb5985b99"
+    },
+    "evidence/source/docs/benchmarkfolder/experiments/dp-rescue-cause-observer/protocol.py.gz": {
+      "bytes": 5594,
+      "sha256": "fc03504761afd5446aa9a1868864b1c551175a004d28189bee8b53bce6f10f34"
+    },
+    "evidence/source/docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/runtime-1/run.py.gz": {
+      "bytes": 3356,
+      "sha256": "07e2d6016f44bd1525a8bf8d04bb08a1b296f34dd894c9843fe8fda8f09538b5"
+    },
+    "evidence/source/prepared.json.gz": {
+      "bytes": 103446,
+      "sha256": "e44693cd944933984171e4a106a8780e93f7122394195a79531fd6e580b0422a"
+    },
+    "evidence/source/tools/tirust_benchmark.py.gz": {
+      "bytes": 23934,
+      "sha256": "bb5f257125246766f70a061a4905f2e2fa94eb084ab0c039d0f7d7b56f4c5fbb"
+    },
+    "evidence/source/tools/tirust_benchmark_warmup.py.gz": {
+      "bytes": 2493,
+      "sha256": "2b6b62ff29d89d3b7c73e2d99b0885b4300dc823dff9ebe2fa01e4fd5fb08a57"
+    },
+    "evidence/source/tools/tirust_benchmark_worker.py.gz": {
+      "bytes": 5913,
+      "sha256": "9e548d65dd773c79d5323c41c7a1a5c537a28e80953ab53f04503a906024a684"
+    },
+    "package.py": {
+      "bytes": 17904,
+      "sha256": "f92252796cdc4f4dd7573f395c68fdfe9fddb8c97476130d02035b201af7bddc"
+    },
+    "packaging-start.json": {
+      "bytes": 307,
+      "sha256": "4645ea53d92e69666b5b34b6e91bbf5d12cae0aa0f682581741be15838b7d1cf"
+    },
+    "summary.json": {
+      "bytes": 3473,
+      "sha256": "0fb4b028a42b9e3ad3ce71bf7d4ba970df4ce64dc02284121ed4014c5f28fd2a"
+    }
+  },
+  "new_native_execution": false,
+  "performance_eligible": false,
+  "repository_bindings": {
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/baseline-1/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/baseline-1/raw/ready.json": {
+      "bytes": 91,
+      "sha256": "06594d7d4ee175dab45d93dd270c6bdfb9ce210273d71c547f608f980c327590"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/baseline-1/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "734579db0d9178383f19aedbc882633f7d0f9c532c9f07630d5191d02c9a82b1"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/campaign-manifest.json": {
+      "bytes": 377839,
+      "sha256": "1237c563b16a13e2c98327b494a4e5d0b8dec8eb6c7020d632b9b86839143a31"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-1/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-1/raw/ready.json": {
+      "bytes": 90,
+      "sha256": "9df850b6ad4d98059e2592cb89e5c6ba2469027187f4b7e063c782ed864bd713"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-1/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "734579db0d9178383f19aedbc882633f7d0f9c532c9f07630d5191d02c9a82b1"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-6/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-6/raw/ready.json": {
+      "bytes": 90,
+      "sha256": "d2104d3495b68a9d18afa85a956a89215af28071b886e1a348a9bb62a94bd099"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-6/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "bb4d4d00e0656db777fb05447832e337f00fd392e9271d54f08db1e635a5264b"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-7/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-7/raw/ready.json": {
+      "bytes": 90,
+      "sha256": "be94985efab38578d15fd34c75a9f48181aa4471f994f0e189cfe3c9862ca9eb"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-7/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "32c675e87c8abdd0d0cafbfe02190976ca9c01bcb59084e3dbf009d1fa40800a"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-8/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-8/raw/ready.json": {
+      "bytes": 89,
+      "sha256": "cfdc3f3de10b0d448392d1ddb5f680cb3eb2ba2d1161b45af67bb59513a88e63"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-8/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "7237a39df98c7d0eb78594e39df0eb11e92012f28d08bff7596a276ee8b7faef"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/candidate-inputs.json": {
+      "bytes": 755929,
+      "sha256": "fc0862070204446c49042f5192fd6eeac3bd3d765f734e7766539b3bb3a9b5c6"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/candidate-output.txt": {
+      "bytes": 4054,
+      "sha256": "7f13e6fea8b0794385feba703ba2a18ed0135a0f750a5ce343bfeaf7b97e1315"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/inputs-after.json": {
+      "bytes": 9403,
+      "sha256": "3d7fc863295f993b4b8dc984f929c2091a07f92f8cf4d0156892f901fcbd996b"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/raw/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/raw/observation.json": {
+      "bytes": 105704,
+      "sha256": "3dd2905e9c245b28af634ec0e6bec253293c9a18f821811b0ca1023fad4d1bec"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/raw/ready.json": {
+      "bytes": 90,
+      "sha256": "2e1f3e22837283de124010f9c07a139f41bcb3c9910e64b625b1a24b42430253"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/raw/warmup.dat": {
+      "bytes": 36219,
+      "sha256": "e68cfb74289854fb0e31ff6d587b48bd3935ed6332457aa3885b395de5e9456a"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/candidate-9/result.json": {
+      "bytes": 376971,
+      "sha256": "2e76fbc661d82f8ab2f3f3ff0fb1c31d35a8c26be56450a9f3a8e12471cf66a6"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/specification.json": {
+      "bytes": 52985,
+      "sha256": "1bb34896b5ebf3e7ec7a83be732213ad5e689c2815150b79c4bb851ee72e9273"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/tirust_benchmark.py": {
+      "bytes": 96372,
+      "sha256": "fa8a3f0567160661054b1c267e4ea496fa250ccee38d59852e09e3c13ec8d0b6"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/tirust_benchmark_campaign.py": {
+      "bytes": 35784,
+      "sha256": "1e116cf8e392648e6966e332959eaec586532552799a9bf59a0fd5beab901a9a"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/tirust_benchmark_compiler.py": {
+      "bytes": 8272,
+      "sha256": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/tirust_benchmark_numerical.py": {
+      "bytes": 6906,
+      "sha256": "1d4ca057aecef040457a46dc06c23185ba31cd53bf67df1c5fa6805c99c0128f"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/tirust_benchmark_warmup.py": {
+      "bytes": 7041,
+      "sha256": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/tirust_benchmark_worker.f": {
+      "bytes": 7825,
+      "sha256": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/tirust_benchmark_worker.py": {
+      "bytes": 18869,
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/inputs/candidate/ew_n3_epem_ttxa/compilation-process.log": {
+      "bytes": 13969,
+      "sha256": "47775b52df073201a3fe0bfdb9a479b4d10bf831c05f39315734ec39303df447"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/points/ew_n3_epem_ttxa.dat": {
+      "bytes": 48556,
+      "sha256": "56294e1d42f0524d9d04ac451cf0f5a098dace5dd10d2a4970b27286ed0e955f"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/points/ew_n3_epem_ttxa.json": {
+      "bytes": 83781,
+      "sha256": "e602b1f613126c3c5fc40f3e5b5fa908e545d3fbe14f14dbc7ddc41faadb604a"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/analyze.py": {
+      "bytes": 35648,
+      "sha256": "473475dfdde70df2f721ca782f3ac1719ab08b92b72a9eadd4e8bbe216aed10b"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/controller/build-plan.json": {
+      "bytes": 260789,
+      "sha256": "20137ff143ca65980df1e53d487294d2677a886c5de7eb0d573eb827994b9b7c"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/controller/native-inputs.json": {
+      "bytes": 1694572,
+      "sha256": "386cf528491a499a4ebbc9b6a9988e85430644dd1d06654c8846e91d0b868011"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/controller/run.py": {
+      "bytes": 34631,
+      "sha256": "6a0512b620f0f9723af8811bbbd128f3b1f0990aac64e3aaf1da60ec7e5cab10"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-qualification-1/index.json": {
+      "bytes": 73151,
+      "sha256": "9f934ced6cfe06d2f01252b8a86d6c5f50cd7bd29890fd2bf78b9e5db40769e2"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-qualification-1/payloads/56294e1d42f0524d9d04ac451cf0f5a098dace5dd10d2a4970b27286ed0e955f.gz": {
+      "bytes": 14046,
+      "sha256": "b5fbce6715d330ac2ef3aaaf15479900f08913284f4cb9fa006182529616dd7d"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-qualification-1/payloads/da136a1e0f69b09155aaa7f0619de4fe92125b93cfc806edc09cf041e5f0fd32.gz": {
+      "bytes": 17875,
+      "sha256": "c52c5a6ea612c7b6bc78c0f2b209c2dc301e4d4ef7a58403f19514ee3b59bb05"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-qualification-1/payloads/e602b1f613126c3c5fc40f3e5b5fa908e545d3fbe14f14dbc7ddc41faadb604a.gz": {
+      "bytes": 14723,
+      "sha256": "128879073b9c9f7a11c5b763b9b84f8d7d6eedd179b60630e97652a5e5624bc6"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/numerical-qualification-1/payloads/e68cfb74289854fb0e31ff6d587b48bd3935ed6332457aa3885b395de5e9456a.gz": {
+      "bytes": 7490,
+      "sha256": "69489807fe7c3d2bf8e1fddb49058938871c93e57669b3a1f4165252227943a1"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/preparation/source-1/snapshot.json": {
+      "bytes": 1428288,
+      "sha256": "2aa5e87ead00c163d0f987dbef257654a8a22ec748f7d3f71be68aeaa64e7759"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/prepared/ew_n3_epem_ttxa/TIRUST_interface.f.original": {
+      "bytes": 12164,
+      "sha256": "e60570ec599263807165f2f289add2076a4c5b71b9e09fe0de83306e9ab2f7ff"
+    },
+    "docs/benchmarkfolder/experiments/dp-rescue-cause-observer/protocol.py": {
+      "bytes": 16464,
+      "sha256": "b668433b0fe6d397d3416d408b17a1f7f54f2f8b24c9cc063c1a5710423d38ec"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/fortran-fixtures/qualification-1/index.json": {
+      "bytes": 57277,
+      "sha256": "7dd35563870fbf0499a7735460e3d1fa68d0b96187175b824b0160bd5793db30"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/TIRUST_interface.f": {
+      "bytes": 15135,
+      "sha256": "177a7973ea9182978097d5256fab0f0c93c1d4c799919203f7855631bee294ad"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/build-proposal/plan.json": {
+      "bytes": 13885,
+      "sha256": "74cc1ba21a3f2da38b6f26d7f80d6fa443a9be08b2955032aeb292d2c698e184"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/build-proposal/run.py": {
+      "bytes": 15752,
+      "sha256": "c442152caf1f7d29cd9511eba259cc442461730baeab17fb19ee4d3126d5593d"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/build-qualification-1/index.json": {
+      "bytes": 9858,
+      "sha256": "9749d31821172abb1cb5d8da6c45568b7728af4afcef7b0a6833f3d3bc74bb4e"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/MadLoopParams.inc": {
+      "bytes": 1853,
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/README.md": {
+      "bytes": 1389,
+      "sha256": "62b99404680e37ef97b085a6965029cbedce7d06b9e898187c516c23c199ccfb"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/analyze.py": {
+      "bytes": 9356,
+      "sha256": "602fec89e78ccd22105d21fb323e93608ab35ce0e86b01c751dfeb2933c329ed"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/driver.f90.in": {
+      "bytes": 8340,
+      "sha256": "63a997af034ceadcffe1798ed9fa017ef1d52cb147455a123c678a9ac9d0867c"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/driver_dp.f90": {
+      "bytes": 8294,
+      "sha256": "bee5e8752f449addc4da9ca0921dbbbfdd7f56d90e283f02e46ce0115a0b3abd"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/driver_qp.f90": {
+      "bytes": 8296,
+      "sha256": "5217b38c53ae39a52ff4861c6b447df11a7a01a77a08f8aa559fa9b123bc44a5"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/mutation-no-equality.f": {
+      "bytes": 9190,
+      "sha256": "d5e0d44a23e64f869d7a7b38c19f7f2a7c482d8d3dcb6e7ce24048894d12f24d"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/mutation-no-finite.f": {
+      "bytes": 9034,
+      "sha256": "b1e28c771338d80a677d914bdfc0ef245fba76c3ea8348f1ac7c1d9b0f9d30b8"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/prepare.py": {
+      "bytes": 5473,
+      "sha256": "296dfa2545939ae75be28975c70117dbadf7d0ccae8b08b514423e38fc6eeb41"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/index.json": {
+      "bytes": 58233,
+      "sha256": "62368b50b659f388a031f35528bd0cda6ae54c82ed751dd39c49a3df3db97300"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/run.py": {
+      "bytes": 12248,
+      "sha256": "828c9d206788e0c80069f8c64bc33aa6f903b5166cdfc42d04fc8fba46d27ba2"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/shared-kinematics.f": {
+      "bytes": 4921,
+      "sha256": "9e105cc63c8a8ebafe3322f00b51cdbeac69bc05beba34e1fb908460af7e3128"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/source-inputs.json": {
+      "bytes": 4073,
+      "sha256": "22658b0e817e4c7fd9d62fa4581ca00ad3e2e57940b525cc6a9190f3de9b54fb"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/toolchain-anchors.json": {
+      "bytes": 85273,
+      "sha256": "12866c01581dd4a76abf9c364b16bf11b109e9cbc4ae202f5083e3c8362021c3"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/wrappers.f": {
+      "bytes": 9486,
+      "sha256": "25671f758d3fabb775a1a048785eb3b0713afbe9c4f63d820c9817b3dd4f411e"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/index.json": {
+      "bytes": 3225,
+      "sha256": "d3c1e4212669d66846195bf65af0a05153ce406c87ac12cb30cc58a612b3bb93"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/runtime-1/run.py": {
+      "bytes": 9634,
+      "sha256": "1234c24917827e456fdc8c985c4e0e89a5bc31c7acfd05be5136e175e10cad09"
+    },
+    "docs/benchmarkfolder/experiments/qcd-n4-cache-occupancy/build.py": {
+      "bytes": 17522,
+      "sha256": "dbf4099342243a0d868b5be451f60123bfcb268fd0f1fe5f0bd012dd7c2acbaf"
+    },
+    "docs/benchmarkfolder/experiments/qcd-n4-cache-occupancy/prepare.py": {
+      "bytes": 19380,
+      "sha256": "86c4172aec2203700ea2481f2180de96f4be4265e552eefc2e12ad9ccc5d75c7"
+    },
+    "tools/tirust_benchmark.py": {
+      "bytes": 96372,
+      "sha256": "fa8a3f0567160661054b1c267e4ea496fa250ccee38d59852e09e3c13ec8d0b6"
+    },
+    "tools/tirust_benchmark_warmup.py": {
+      "bytes": 7041,
+      "sha256": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d"
+    },
+    "tools/tirust_benchmark_worker.py": {
+      "bytes": 18869,
+      "sha256": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+    }
+  },
+  "schema": "ew-v2-portable-runtime-v1"
+}

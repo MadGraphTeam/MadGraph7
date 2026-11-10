@@ -1,0 +1,68 @@
+{
+  "driver_and_analyzer_unchanged": true,
+  "files": {
+    "MadLoopParams.inc": {
+      "bytes": 1853,
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+    },
+    "README.md": {
+      "bytes": 1389,
+      "sha256": "62b99404680e37ef97b085a6965029cbedce7d06b9e898187c516c23c199ccfb"
+    },
+    "analyze.py": {
+      "bytes": 9356,
+      "sha256": "602fec89e78ccd22105d21fb323e93608ab35ce0e86b01c751dfeb2933c329ed"
+    },
+    "driver.f90.in": {
+      "bytes": 8340,
+      "sha256": "63a997af034ceadcffe1798ed9fa017ef1d52cb147455a123c678a9ac9d0867c"
+    },
+    "driver_dp.f90": {
+      "bytes": 8294,
+      "sha256": "bee5e8752f449addc4da9ca0921dbbbfdd7f56d90e283f02e46ce0115a0b3abd"
+    },
+    "driver_qp.f90": {
+      "bytes": 8296,
+      "sha256": "5217b38c53ae39a52ff4861c6b447df11a7a01a77a08f8aa559fa9b123bc44a5"
+    },
+    "mutation-no-equality.f": {
+      "bytes": 9190,
+      "sha256": "d5e0d44a23e64f869d7a7b38c19f7f2a7c482d8d3dcb6e7ce24048894d12f24d"
+    },
+    "mutation-no-finite.f": {
+      "bytes": 9034,
+      "sha256": "b1e28c771338d80a677d914bdfc0ef245fba76c3ea8348f1ac7c1d9b0f9d30b8"
+    },
+    "plan.json": {
+      "bytes": 45921,
+      "sha256": "83401e62657d078b6fa116ae719b2e503346ccdb9e8b0561fd7df93bbf9bca37"
+    },
+    "prepare.py": {
+      "bytes": 5473,
+      "sha256": "296dfa2545939ae75be28975c70117dbadf7d0ccae8b08b514423e38fc6eeb41"
+    },
+    "run.py": {
+      "bytes": 12248,
+      "sha256": "828c9d206788e0c80069f8c64bc33aa6f903b5166cdfc42d04fc8fba46d27ba2"
+    },
+    "shared-kinematics.f": {
+      "bytes": 4921,
+      "sha256": "9e105cc63c8a8ebafe3322f00b51cdbeac69bc05beba34e1fb908460af7e3128"
+    },
+    "source-inputs.json": {
+      "bytes": 4073,
+      "sha256": "22658b0e817e4c7fd9d62fa4581ca00ad3e2e57940b525cc6a9190f3de9b54fb"
+    },
+    "toolchain-anchors.json": {
+      "bytes": 85273,
+      "sha256": "12866c01581dd4a76abf9c364b16bf11b109e9cbc4ae202f5083e3c8362021c3"
+    },
+    "wrappers.f": {
+      "bytes": 9486,
+      "sha256": "25671f758d3fabb775a1a048785eb3b0713afbe9c4f63d820c9817b3dd4f411e"
+    }
+  },
+  "numerical_reducer": false,
+  "prior_failed_index_sha256": "7dd35563870fbf0499a7735460e3d1fa68d0b96187175b824b0160bd5793db30",
+  "schema": "ew-invariant-components-source-v2"
+}

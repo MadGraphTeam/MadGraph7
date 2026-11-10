@@ -1,0 +1,12 @@
+{
+  "cause": "Frozen plan preserves stale v1 size fields on seven changed v2 source inputs; source hashes match. Two index inputs have no size field.",
+  "command": "python3 -I -B docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/package.py --package",
+  "error": "ValueError: Frozen repository source changed",
+  "exit_code": 1,
+  "failed_helper_sha256": "2f65928656d75b5a40030bf804c8d80d58dc5f6d6bfb009c87b44a3ba0df0a07",
+  "frozen_sources_changed": false,
+  "gzip_outputs_created": false,
+  "new_native_execution": false,
+  "root_authorized_correction": "Preserve frozen plan; bind authoritative hashes and current frozen source-index byte sizes; record stale copied fields explicitly; no rerun.",
+  "stage": "before-packaging-start"
+}

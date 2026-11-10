@@ -1,0 +1,7 @@
+{
+  "cause": "Fixture pins mix absolute system paths with repository-relative source paths; reused verifier requires absolute paths.",
+  "error": "RuntimeError: Unsafe recorded absolute path",
+  "native_launched": false,
+  "source_sha256": "89b217d6d8406596e1d207d895cfdc303ce559791268e4004c91b3d79789bce0",
+  "stage": "prepare"
+}
