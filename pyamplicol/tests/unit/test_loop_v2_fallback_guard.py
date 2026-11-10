@@ -1048,7 +1048,12 @@ def test_the_guard_on_improved_near_forward_points(hh, loop_native):
             elif _tirust(loop_native):
                 exact = str(truth.values[p][0].finite)
                 value = ((found.values[p][0].finite,),)
-                assert _error(value, exact) <= _limit(TARGET), (carrier, digits, p, lane)
+                assert _error(value, exact) <= _limit(TARGET), (
+                    carrier,
+                    digits,
+                    p,
+                    lane,
+                )
         found = runtime.evaluate(points, **call)
         for lane in found.diagnostics:
             record = lane.kinematics
