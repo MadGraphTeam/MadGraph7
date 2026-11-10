@@ -1405,10 +1405,12 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     ABI's decimal record); the resolved call rejects point 2 on its
     suppressed +- rows' own estimates, and ``on_failure="raise"`` raises
     ``EvaluationError`` with the guard's reason. (Accuracy is not this
-    test's claim: on these binary64 texts the +- rows are defined only to
-    the inputs' own shell and momentum-conservation defect, to which NinjaRS
-    and TIRust respond differently; on the exact points nearby the two
-    agree, ``tmp/lit-fallback-guard/fix5/probe15.json``, report §0.) 16
+    test's claim: on these binary64 texts NinjaRS's +- rows move 1.1e-4 ..
+    9.3e11 from the exact point's in response to the texts' shell and
+    momentum-conservation defect, while TIRust's at 80 digits stay within
+    2.3e-6; on the exact points nearby the two agree at 60 and 80 digits;
+    the cause is under investigation (F-GH),
+    ``tmp/lit-fallback-guard/fix5/probe15.json``, report §0.) 16
     digits at the target 1e-6 (the limit stays 1e-5): point 1 is accepted
     and point 2 rejected typed on every route
     (estimates 1.6e-6..3.7e-6 and 3.8e-3..1.8e-2 at NinjaRS 5b6a8f57 and 71eddb15,

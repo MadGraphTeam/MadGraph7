@@ -431,16 +431,19 @@ near-forward g g > h h points (`workspace/tmp/lit-fallback-guard/fix5/probe15.js
   rows of `evaluate_resolved` (1e-13 to 1e-21 of the ++ rows) move far
   from those of the exact point nearby on NinjaRS (1.1e-4 to 9.3e11, the
   same in double-double and at 60 and 80 digits) and little on TIRust
-  (2.2e-11 to 2.3e-6); on the exact on-shell, momentum-conserving points
-  the two backends agree to 3e-37 or better at 60 to 80 digits. On the
-  binary64 texts the rows are well defined (TIRust's stay within 2.3e-6
-  of the exact point's); NinjaRS's response to the texts' shell and
-  momentum-conservation defect is what moves them, and no check sees it,
-  the fallback guard's included (`"auto"` double-double serves two such
-  points 1.1e-4 and 2.1e4 off with estimates 5.7e-10 and 1.5e-7). The
-  cause is under investigation (F-GH). Exactly on-shell,
-  momentum-conserving momenta (exact decimal texts) avoid it. The summed
-  |A|^2 is not affected at these points (within 1.2e-9);
+  at 80 digits (2.2e-11 to 2.3e-6); on the exact on-shell,
+  momentum-conserving points the two backends agree to 3e-37 or better
+  at 60 to 80 digits. On the binary64 texts the rows are well defined
+  (TIRust's at 80 digits stay within 2.3e-6 of the exact point's);
+  NinjaRS's response to the texts' shell and momentum-conservation
+  defect is what moves them, and neither the reduction-direction check
+  (the fallback guard's included) nor, by construction, a rotation
+  re-test sees it (`"auto"` double-double serves two such points 1.1e-4
+  and 2.1e4 off with estimates 5.7e-10 and 1.5e-7). The cause is under
+  investigation (F-GH). Exactly on-shell, momentum-conserving momenta
+  (exact decimal texts) avoid this response (double-double's own
+  rounding error remains, next item). The summed |A|^2 is not affected
+  at these points (within 1.2e-9);
 * on the exact points, double-double `"auto"` serves the +- rows of one
   point 1.8e-5 and 2.0e-5 off with the guard's estimate 9.3e-6, inside
   the limit 1e-5 (and rejects a point whose rows are 4.5e2 to 7.4e2 off,
