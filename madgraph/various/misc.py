@@ -394,11 +394,14 @@ def default_f2py():
     environment), else f2pyX.Y, f2pyX or f2py on the PATH -- which may
     belong to another Python, whose modules this one cannot import. None
     when there is none."""
-    for name in ('f2py%d.%d' % sys.version_info[:2], 'f2py%d' % sys.version_info[0], 'f2py'):
+    # f2py-X.Y is the MacPorts name (/opt/local/bin/f2py-3.12)
+    names = ('f2py%d.%d' % sys.version_info[:2], 'f2py-%d.%d' % sys.version_info[:2],
+             'f2py%d' % sys.version_info[0], 'f2py')
+    for name in names:
         path = os.path.join(os.path.dirname(sys.executable), name)
         if os.path.isfile(path) and os.access(path, os.X_OK):
             return path
-    for name in ('f2py%d.%d' % sys.version_info[:2], 'f2py%d' % sys.version_info[0], 'f2py'):
+    for name in names:
         if which(name):
             return name
     return None

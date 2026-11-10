@@ -2805,6 +2805,89 @@ class TestCmdShell2(unittest.TestCase,
         mg_cmd.exec_cmd('generate tata(1|1S0) > Jpsi(1|3S11) a / z h')
         self.assertTrue(mg_cmd._curr_amps[0].get('diagrams'))
 
+    def test_onia_density_matrix(self):
+        """Spin-density matrices of onia (output standalone_fortran
+        --density, the input of MadSpin's spin correlations): the onium leg
+        has its J_z open. The trace is the summed |M|^2, and production and
+        decay contract over J_z into the full correlation: e+ e- > J/psi >
+        mu+ mu- goes as 1 + cos^2(theta) and gamma gamma > chi_c2 > gamma
+        gamma as 1 + 6 cos^2(theta) + cos^4(theta) (helicity-2 dominance at
+        LO), theta between beam and decay axis, the beams along a generic
+        direction so that the density matrices are not diagonal."""
+
+        import glob
+        import importlib.util
+        import math
+        import numpy
+        import madgraph.interface.master_interface as MGCmd
+
+        f2py = misc.default_f2py()
+        if not f2py:
+            raise unittest.SkipTest('no f2py')
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        M = 3.1  # onium_mass of both bound states, = 2 m_c (no reshuffling)
+
+        def module(proc, pos, menum):
+            out = '%s_density%d' % (self.out_dir, menum)
+            if os.path.isdir(out):
+                shutil.rmtree(out)
+            mg_cmd.exec_cmd('generate %s' % proc)
+            mg_cmd.exec_cmd('output standalone_fortran %s --prefix=int --density=%d -f' % (out, pos))
+            card = pjoin(out, 'Cards', 'onia_card.dat')
+            text = re.sub(r'(?m)^(\s*445\s+)[0-9.Ee+-]+(\s+# mass)', r'\g<1>3.1\2', open(card).read())
+            open(card, 'w').write(text)
+            sp = pjoin(out, 'SubProcesses')
+            subprocess.check_call(['make', 'all_matrix%dpy.so' % menum, 'MENUM=%d' % menum,
+                                   'F2PY=%s' % f2py], cwd=sp, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL)
+            lib = [f for f in glob.glob(pjoin(sp, 'all_matrix%dpy*.so' % menum)) if os.path.getsize(f)][0]
+            spec = importlib.util.spec_from_file_location('all_matrix%dpy' % menum, lib)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.initialise(pjoin(out, 'Cards', 'param_card.dat'))
+            return mod
+
+        def density(mod, pdgs, moms, pos, hel):
+            p = numpy.asfortranarray(numpy.array(moms, float).T)
+            inter = mod.py_get_density(pdgs, -1, p, [pos], hel, 0.118, 0.0)
+            n = len(hel)
+            rho = numpy.zeros((n, n), complex)
+            k = 0
+            for i in range(n):
+                for j in range(i, n):
+                    rho[i, j] = inter[k]
+                    rho[j, i] = numpy.conj(inter[k])
+                    k += 1
+            total = mod.smatrixhel(pdgs, -1, p, 0.118, 0.0, -1)
+            self.assertLess(abs(numpy.trace(rho).real / total - 1), 1e-12)
+            return rho
+
+        beam = numpy.array([0.36, -0.48, 0.80])
+        beam = beam / numpy.linalg.norm(beam)
+        rng = numpy.random.default_rng(3)
+        cases = [('e+ e- > Jpsi(1|3S11) / z h', 'Jpsi(1|3S11) > mu+ mu- / z h', [-11, 11, 443],
+                  [443, -13, 13], 1, lambda c: 1 + c * c),
+                 ('a a > chic2(1|3P21)', 'chic2(1|3P21) > a a', [22, 22, 445], [445, 22, 22], 2,
+                  lambda c: 1 + 6 * c * c + c ** 4)]
+        for k, (production, decay, ppdg, dpdg, J, shape) in enumerate(cases):
+            hel = list(range(-J, J + 1))
+            prod = module(production, 3, 2 * k + 2)
+            dec = module(decay, 1, 2 * k + 1)
+            rho_p = density(prod, ppdg, [[M / 2] + list(M / 2 * beam), [M / 2] + list(-M / 2 * beam),
+                                         [M, 0., 0., 0.]], 3, hel)
+            ratios = []
+            for i in range(5):
+                u = rng.normal(size=3)
+                u = u / numpy.linalg.norm(u)
+                rho_d = density(dec, dpdg, [[M, 0., 0., 0.], [M / 2] + list(M / 2 * u),
+                                            [M / 2] + list(-M / 2 * u)], 1, hel)
+                ratios.append(numpy.sum(rho_p * rho_d).real / shape(beam @ u))
+            for r in ratios[1:]:
+                self.assertLess(abs(r / ratios[0] - 1), 1e-12, (production, ratios))
+
     def test_leptonium_decay_without_photon_vertex(self):
         """A leptonium decaying without a photon vertex: ortho-ditauonium into
         nu_e nubar_e through the Z. The Coulomb LDME takes alpha from the

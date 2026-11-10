@@ -15,6 +15,7 @@ include ../make_opts
 
 NPWAVE = __npwave__
 LIBRARY	= libdhelas$(NPWAVE).$(libext)
+LIBRARY_SHARED = libdhelas$(NPWAVE).$(dylibext)
 LIBDIR  = ../../lib/
 
 BASIC_OBJS = dual_variables.o aloha_functions.o
@@ -34,6 +35,12 @@ $(ALOHARoutine): aloha_functions.o dual_variables.o
 
 $(LIBDIR)$(LIBRARY): $(BASIC_OBJS) $(ALOHARoutine)
 	$(call CREATELIB, $@, $^)
+
+# Shared library (the python modules of a standalone output)
+$(LIBDIR)$(LIBRARY_SHARED): $(BASIC_OBJS) $(ALOHARoutine)
+	$(FC) -shared -o $@ $^ $(LDFLAGS)
+
+shared:  $(LIBDIR)$(LIBRARY_SHARED)
 
 clean:
 	$(RM) *.o $(LIBDIR)$(LIBRARY)

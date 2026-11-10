@@ -58,6 +58,10 @@ ANNOUNCEMENT:
        - Bug fix: madevent stopped with "No Phase Space" for an onium decaying into
          massive particles (e.g. "etab(1|1S01) > c c~ g"): the symmetry program of
          the survey did not read the onia card and saw the decaying onium at zero mass.
+       - spin-density matrices of onia ("output standalone_fortran --density=<legs>", the
+         input of MadSpin's spin correlations): a bound state is one leg with its J_z
+         open, outgoing or incoming, S and P waves; the python (f2py) library of an onia
+         output takes the PDG code of the bound state and reads the onia card.
        - Bug fix: a leptonium process without a photon vertex (e.g. "tata(1|3S1) > vt vt~")
          did not compile: the Coulomb LDME took alpha from the photon coupling GC_3, which
          is declared only when an amplitude uses it. It now uses GAL(1), the QED coupling

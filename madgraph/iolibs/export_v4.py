@@ -5787,6 +5787,12 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                           'helreset_setup' : '\n'.join(helreset_setup),
                           'flavormapping': flavor_text,
                           'setpara_for_each_matrix':setpara_for_each_matrix,
+                          # a bound state needs its LDMEs and masses: the onia
+                          # card next to the param card given to INITIALISE
+                          'onia_init_decl': '      INTEGER I_ONIA' if getattr(self, 'f2py_has_onia', False) else '',
+                          'onia_init': ('      I_ONIA = INDEX(PATH, \'/\', BACK=.TRUE.)\n'
+                                        '      CALL SETONIA(PATH(1:I_ONIA)//\'onia_card.dat\')')
+                                       if getattr(self, 'f2py_has_onia', False) else '',
                           'nhel': all_nhel,
                           'f2py_prefix': f2py_prefix,
                           'idens_value': all_iden,
@@ -5843,14 +5849,27 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         template = pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f2py')
         destination = pjoin(self.dir_path, 'SubProcesses', 'makefile')
 
+        # The library links one HELAS library for all its matrix elements:
+        # DHELAS, or for P-wave bound states the dual numbers DHELAS<n>, whose
+        # routines have the same names but other types, so the two cannot be
+        # in one library.
+        npwave = sorted(getattr(self, 'f2py_npwave', None) or {0})
+        if len(npwave) > 1:
+            raise MadGraph5Error('The python (f2py) library of this output would mix '
+                'matrix elements with %s P-wave bound states, which need different '
+                'HELAS libraries (DHELAS and DHELAS<n>). Write them to separate '
+                'outputs.' % ' and '.join(str(n) for n in npwave))
+        text = open(template,'r').read()
+        if npwave[0]:
+            n = npwave[0]
+            text = re.sub(r'Source/DHELAS(?![0-9])', 'Source/DHELAS%i' % n, text)
+            text = re.sub(r'-ldhelas(?![0-9])', '-ldhelas%i' % n, text)
+            text = re.sub(r'libdhelas(?![0-9])', 'libdhelas%i' % n, text)
         # Add file in SubProcesses
         if model['running_elements']:
-            text = open(template,'r').read()
             text = text.replace('LINKLIBS_ME =  -L../lib/', 'LINKLIBS_ME =  -L../lib/ -lrunning ')
             text = text.replace('LINKLIBS_ALL =  -L../lib/', 'LINKLIBS_ALL =  -L../lib/ -lrunning ')
-            open(destination, 'w').write(text)
-        else:
-             shutil.copy(template, destination)
+        open(destination, 'w').write(text)
 
     def create_MA5_cards(self,*args,**opts):
         """ Overload the function of the mother so as to bypass this in StandAlone."""
@@ -5962,9 +5981,29 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             # GET_FLAVOR_INDEX does not tabulate (see write_f2py_splitter).
             nflav = self._build_flav_table_flat(matrix_element)[0]
             #iden = matrix_element.get_denominator_factor()
+            onia_me = matrix_element.get_nonia() > 0
+            if onia_me:
+                # all_matrix.f then also reads the onia card (LDMEs, masses)
+                self.f2py_has_onia = True
+            # the HELAS library of this matrix element: DHELAS, or the dual
+            # numbers DHELAS<n> of n P-wave bound states (write_f2py_makefile)
+            if not hasattr(self, 'f2py_npwave'):
+                self.f2py_npwave = set()
+            self.f2py_npwave.add(matrix_element.get_npwave() if onia_me else 0)
             for proc in matrix_element.get('processes'):
-                ids = [l.get('id') for l in proc.get('legs_with_decays')]
-                iden = compute_iden_from_pdgs(ids, ninitial, self.model)
+                if onia_me:
+                    # The matrix element of a bound state takes the physical
+                    # legs: the two constituents of an onium are one leg with
+                    # the PDG code of the bound state, as in the event record
+                    # (and in check_sa_onia.f). Its denominator (spin and
+                    # colour averages, identical particles) is the one of the
+                    # matrix element: compute_iden_from_pdgs knows only the
+                    # particles of the model.
+                    ids = matrix_element.get_physical_pdgs(proc)
+                    iden = matrix_element.get_denominator_factor()
+                else:
+                    ids = [l.get('id') for l in proc.get('legs_with_decays')]
+                    iden = compute_iden_from_pdgs(ids, ninitial, self.model)
                 self.prefix_info[(tuple(ids), proc.get('id'))] = [proc_prefix,
                         proc.get_tag(), ncomb, iden, ninitial, nflav]
 
@@ -6643,7 +6682,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     'dens_pos': 'if(nincoming.eq.2) then \n       POS(1) = 3 \n        else \n       POS(1) =1 \n        endif',
                         'dens_allow_hel': 'ALLOW_HEL(1) = +1 \n       ALLOW_HEL(2) = -1'}
 
-        if 'density' in self.cmd_options:
+        if 'density' in self.cmd_options and matrix_element.get_nonia() == 0:
             replace_dict['use_density'] = '.true.'
             changing = [int(i) for i in self.cmd_options['density'].split(',')]
             replace_dict['dens_nchanging'] = len(changing)

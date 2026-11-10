@@ -273,6 +273,10 @@ C
       INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
       INTEGER %(proc_prefix)sDENOM
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
+C     the colour vector and LDME factor of the last call (GET_ALL_INTER)
+      COMPLEX*16 LAST_JAMP(NCOLOR)
+      REAL*8 LAST_LDME
+      COMMON/%(proc_prefix)sONIA_LAST_JAMP/LAST_JAMP, LAST_LDME
 C
 C COLOR DATA
 C
@@ -292,6 +296,8 @@ C ----------
       CALL %(proc_prefix)sRESHUFFLE_MOMENTA(P,PMASS_RESH,P_RESH)
       IF (RESH_FAILED) THEN
         %(proc_prefix)sMATRIX = 0D0
+        LAST_JAMP = (0D0,0D0)
+        LAST_LDME = 0D0
         RETURN
       ENDIF
 C     A bound state (almost) at rest is put exactly at rest: with a tiny
@@ -409,6 +415,8 @@ C           Store amplitudes for reuse
 
       CALL %(proc_prefix)sGET_MATRIX(JAMP,COLSUM)
       %(proc_prefix)sMATRIX = COLSUM*LDME
+      LAST_JAMP = JAMP
+      LAST_LDME = LDME
 %(amp2_lines)s
       END
 
@@ -470,6 +478,198 @@ C
         ENDDO
         MATRIX = MATRIX+REAL(ZTEMP*DCONJG(JAMP(I)))/%(proc_prefix)sDENOM
       ENDDO
+      END
+
+
+      SUBROUTINE %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)
+C     Spin-density matrix of the legs POS, summed over the helicities of
+C     the other legs, as in matrix_standalone_v4.inc. A bound state is one
+C     leg, whose helicity is its J_z (outgoing: eps*, incoming: eps), so
+C     the density of an onium is in its J_z. INTER(I<=J) in the order of
+C     GET_ALL_INTER; Sum_I INTER(I,I) is the |M|^2 of SMATRIX, LDMEs and
+C     averages included.
+      use model_object
+      implicit none
+CF2PY INTENT(IN) :: P(0:3,%(nexternal)d)
+CF2PY INTENT(IN) :: POS(N_CHANGING)
+CF2PY INTENT(IN) :: N_CHANGING
+CF2PY INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
+CF2PY INTENT(IN) :: N_COMB
+CF2PY INTENT(IN) :: FLAVOR(%(nexternal)d)
+CF2PY INTENT(IN) :: ALPHAS
+CF2PY INTENT(IN) :: SCALE2
+CF2PY INTENT(OUT) :: INTER(N_COMB*(N_COMB+1)/2)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER THISNHEL(NEXTERNAL)
+      INTEGER N_CHANGING, N_COMB
+      INTEGER POS(*)
+      INTEGER ALLOW_HEL(*)
+      INTEGER FLAVOR(NEXTERNAL)
+      DOUBLE PRECISION ALPHAS, SCALE2
+      DOUBLE COMPLEX INTER(*)
+      INTEGER NINTER
+      INTEGER NB_NHEL
+      DOUBLE COMPLEX, ALLOCATABLE :: TMP_INTER(:)
+      PARAMETER (NB_NHEL=%(ncomb)d)
+      INTEGER    NINITIAL
+      PARAMETER (NINITIAL=%(nincoming)d)
+      INTEGER I,IHEL,IPART,JJ
+      DOUBLE PRECISION PI
+      DOUBLE PRECISION POLFACT
+      INTEGER NHEL(NEXTERNAL,NB_NHEL)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+      DOUBLE PRECISION BEAMPOL(2)
+      COMMON/TO_BEAMPOL/BEAMPOL
+      include 'coupl.inc'
+
+      ninter = N_COMB*(N_COMB+1)/2
+      allocate(TMP_INTER(NINTER))
+      DO I=1, NINTER
+        INTER(I) = 0
+      enddo
+      IF (ALPHAS.ne.0d0) then
+          pi = 3.141592653589793d0
+          G = 2* DSQRT(ALPHAS*pi)
+          call UPDATE_AS_PARAM()
+      ENDIF
+C     a new phase-space point: the projectors and the amplitudes that
+C     MATRIX caches over the helicities of one point are recomputed
+      CALL %(proc_prefix)sONIA_NEW_POINT()
+      DO IHEL =1, NB_NHEL
+        THISNHEL(:) = NHEL(:, IHEL)
+        DO IPART=1,N_CHANGING
+            if(THISNHEL(POS(IPART)).NE.ALLOW_HEL(IPART)) GOTO 10
+        ENDDO
+        TMP_INTER(:) = 0
+        call %(proc_prefix)sGET_ALL_INTER(P, THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
+        POLFACT = 1D0
+        IF (NINITIAL.EQ.2) THEN
+          DO JJ=1,NINITIAL
+            IF (ABS(BEAMPOL(JJ)).LE.1D0) CYCLE
+            IF (THISNHEL(JJ).EQ.INT(SIGN(1D0,BEAMPOL(JJ)))) THEN
+              POLFACT = POLFACT*ABS(BEAMPOL(JJ))
+            ELSE
+              POLFACT = POLFACT*(2D0-ABS(BEAMPOL(JJ)))
+            ENDIF
+          ENDDO
+        ENDIF
+        do I = 1, NINTER
+           INTER(I) = INTER(I) + POLFACT*TMP_INTER(I)
+        enddo
+ 10   enddo
+      deallocate(TMP_INTER)
+      return
+      end
+
+      SUBROUTINE %(proc_prefix)sGET_ALL_INTER(P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)
+C     The interference terms of the N_COMB helicity combinations of the
+C     legs POS, at the helicities NHEL of the other legs: the colour
+C     vectors come from MATRIX (projectors, reshuffling and LDMEs
+C     included, the LDME factor as SQRT on each side).
+      implicit none
+CF2PY INTENT(IN) :: P(0:3,%(nexternal)d)
+CF2PY INTENT(IN) :: NHEL(%(nexternal)d)
+CF2PY INTENT(IN) :: POS(N_CHANGING)
+CF2PY INTENT(IN) :: N_CHANGING
+CF2PY INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
+CF2PY INTENT(IN) :: N_COMB
+CF2PY INTENT(IN) :: FLAVOR(%(nexternal)d)
+CF2PY INTENT(OUT) :: INTER(N_COMB*(N_COMB+1)/2)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL)
+      INTEGER N_CHANGING, N_COMB
+      INTEGER POS(*)
+      INTEGER ALLOW_HEL(*)
+      INTEGER FLAVOR(NEXTERNAL)
+      DOUBLE COMPLEX INTER(*)
+      INTEGER IC(NEXTERNAL)
+      DOUBLE COMPLEX, ALLOCATABLE, SAVE :: JAMP(:,:)
+      INTEGER, SAVE :: S_NCOMB = 0
+      INTEGER I,J,SOL,N
+      INTEGER FLAV_IDX
+      INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+      REAL*8 T, %(proc_prefix)sMATRIX
+      COMPLEX*16 LAST_JAMP(NCOLOR)
+      REAL*8 LAST_LDME
+      COMMON/%(proc_prefix)sONIA_LAST_JAMP/LAST_JAMP, LAST_LDME
+
+      if (allocated(jamp) .and. S_NCOMB.ne.N_COMB) then
+           deallocate(jamp)
+      endif
+      if (.not.allocated(jamp)) then
+        S_NCOMB=N_COMB
+        allocate(jamp(ncolor, N_COMB))
+      endif
+      IC(:)=1
+      FLAV_IDX = %(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)
+      IF (FLAV_IDX.EQ.0) THEN
+         DO I = 1, N_COMB*(N_COMB+1)/2
+            INTER(I) = (0d0, 0d0)
+         ENDDO
+         RETURN
+      ENDIF
+      do I = 1, N_COMB
+         do N = 1, N_CHANGING
+            NHEL(POS(N)) = ALLOW_HEL((I-1)*N_CHANGING+N)
+         enddo
+         T = %(proc_prefix)sMATRIX(P,NHEL,IC,FLAV_IDX)
+         JAMP(:,I) = LAST_JAMP(:)*SQRT(LAST_LDME)
+      enddo
+      SOL = 0
+      DO I = 1, N_COMB
+         DO J= I, N_COMB
+           SOL = SOL +1
+           call %(proc_prefix)sGET_INTER(JAMP(1,I), JAMP(1,J), INTER(SOL))
+         ENDDO
+      ENDDO
+      RETURN
+      END
+
+      SUBROUTINE %(proc_prefix)sGET_INTER(JAMP_1,JAMP_2, INTER)
+CF2PY INTENT(OUT) :: INTER
+CF2PY INTENT(IN) :: JAMP_1
+CF2PY INTENT(IN) :: JAMP_2
+      INTEGER I,J
+      INTEGER NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d)
+      INTEGER CF_INDEX
+      INTEGER %(proc_prefix)sCF(NCOLOR*(NCOLOR+1)/2)
+      INTEGER %(proc_prefix)sDENOM, IDEN
+      %(den_factor_line)s
+      common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
+      COMPLEX*16 JAMP_1(NCOLOR),JAMP_2(NCOLOR),INTER
+      CALL %(proc_prefix)sINIT_CF()
+      INTER = (0.D0,0.D0)
+      CF_INDEX = 0
+      DO I = 1, NCOLOR
+         DO J=I, NCOLOR
+          CF_INDEX = CF_INDEX +1
+          INTER = INTER + %(proc_prefix)sCF(CF_INDEX) * (JAMP_1(J) * DCONJG(JAMP_2(I)) +JAMP_1(I) * DCONJG(JAMP_2(J)))
+        ENDDO
+      ENDDO
+      INTER = INTER/ (2d0*%(proc_prefix)sDENOM*IDEN)
+      END
+
+
+      SUBROUTINE %(proc_prefix)sONIA_NEW_POINT()
+C     Forget the projectors and amplitudes cached for the previous point
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER I
+      INCLUDE 'onia.inc'
+      LOGICAL IS_PROJ_COMPUTED(NONIA,-1:1)
+      COMMON/%(proc_prefix)sIS_PROJ_COMPUTED/IS_PROJ_COMPUTED
+      LOGICAL IS_JAMP_COMPUTED(4**NONIA,3**(NEXTERNAL-NONIA))
+      COMMON/%(proc_prefix)sIS_JAMP_COMPUTED/IS_JAMP_COMPUTED
+      IS_PROJ_COMPUTED = .FALSE.
+      IS_JAMP_COMPUTED = .FALSE.
       END
 
 %(color_init_routine)s

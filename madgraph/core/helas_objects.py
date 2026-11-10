@@ -5663,6 +5663,44 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     first = None
         return leg_map
 
+    def get_physical_pdgs(self, proc=None):
+        """The PDG codes of the physical legs of a process of this matrix
+        element (the first one by default): the two constituents of an
+        onium are one leg, with the PDG code of the bound state, as in the
+        event record."""
+
+        proc = proc or self.get('processes')[0]
+        pdgs = []
+        open_onium = False
+        for leg in proc.get('legs'):
+            if leg.get('onium'):
+                open_onium = not open_onium
+                if open_onium:
+                    pdgs.append(leg.get('onium').get('id'))
+            else:
+                pdgs.append(leg.get('id'))
+        return pdgs
+
+    def get_physical_helicities(self):
+        """The helicities of every physical leg, the J_z = -J..J of an
+        onium (the index of NHEL for that leg in the onia templates)."""
+
+        hel_per_part = self.get_helicity_per_particle()
+        onia_first = dict(self.get_onia_pairs())
+        onia_second = set(onia_first.values())
+        external_wfs = self.get_external_wavefunctions()
+        out = []
+        for i, wf in enumerate(external_wfs):
+            number = wf.get('number')
+            if number in onia_second:
+                continue
+            if number in onia_first:
+                j = wf.get('onium').get('J')
+                out.append(list(range(-j, j + 1)))
+            else:
+                out.append(hel_per_part[i])
+        return out
+
     def get_nexternal_ninitial(self, constituents=False):
         """Gives (number or external particles, number of
         incoming particles). A bound state is one particle, its two

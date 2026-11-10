@@ -117,7 +117,9 @@ C     ROUTINE FOR F2PY to read the benchmark point.
       IMPLICIT NONE
       CHARACTER*512 PATH
 CF2PY INTENT(IN) :: PATH
+%(onia_init_decl)s
       CALL SETPARA(PATH)  !first call to setup the paramaters
+%(onia_init)s
       RETURN
       END
 
