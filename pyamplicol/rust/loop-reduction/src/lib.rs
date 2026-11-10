@@ -28,6 +28,7 @@ pub use ninjars::fast::{C64, FastInput, FastStatus};
 use ninjars::fast::{
     CMom, FastAmplitude, FastMaster, FastMasters, FastNumerator, FastOptions, FastResult,
 };
+use ninjars::lane_check::{LaneCheck, LaneReference, ReferenceRequest};
 use ninjars::{Amplitude, Numerator, Real, Result};
 pub use ninjars::{
     AmplitudeInput, Complex, EvaluationStatus, FourMomentum, SamplingScaleProvider,
@@ -36,7 +37,6 @@ pub use ninjars::{
 use ninjars_graph::{CoefficientEvaluator, PolynomialCoefficientPlan, TensorCoefficientPlan};
 pub use ninjars_symbolica::PoleSelection;
 pub use ninjars_symbolica::SymbolicaSamplingScales;
-use ninjars::lane_check::{LaneCheck, LaneReference, ReferenceRequest};
 use ninjars_symbolica::{
     HigherPrecisionReference, LiftToFloat, OneLoopNativeMasters, PolynomialNumerator,
     SymbolicaAmplitudeKernels, SymbolicaCuts, SymbolicaHighCuts, SymbolicaMasters,

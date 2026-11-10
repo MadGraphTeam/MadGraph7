@@ -31,10 +31,11 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `1c47878fe78a0a76250572bd5f10e09aa7e03e33` (the lane conditioning
-  estimate: the S-matrix consistency and the box Gram conditioning of every
-  lane, exported, and the typed refusal of lanes near a degenerate 2 -> 2
-  (sub-)box in every carrier; on main `5fe7f392`, which merged the box
+- NinjaRS `df11f2a9456cd677596d4728a4561f2350612fe3` (the lane conditioning
+  screen: the S-matrix consistency and the box Gram conditioning of every
+  lane, exported, and the measured decision of the families it flags, refused
+  typed only when a higher-precision evaluation on consistent kinematics
+  shows a deviation beyond `2^-17`, in every carrier; on main `5fe7f392`, which merged the box
   mu-expansion's conditioning bound (typed refusal of near-planar lanes, the
   binary64 engines deciding a flagged lane a posteriori) on
   main `98e223da` = main `b3a29c85`, PRs #7-#12 and #14, the 0BSD relicence,
