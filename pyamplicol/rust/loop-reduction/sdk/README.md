@@ -140,7 +140,8 @@ TIRust's checked method choice, as the Python API's `reduction_target=`.
 backends' own acceptance and refusal checks, as the Python API's
 `reduction_unchecked=` (`reduction_policy::UNCHECKED_RECORD`: TIRust's gates
 and method choice as method selection without the acceptance pass, plain PV
-at gate 0 as its last resort; NinjaRS's zero stability thresholds); `"auto"`
+at gate 0 as its last resort; NinjaRS's zero stability thresholds, its box
+mu-expansion's conditioning bound active); `"auto"`
 keeps its backend and per-point fallback; each result records `"unchecked"`
 in its `"reduction"` diagnostics; any other value is an invalid argument. It
 is a timing and benchmark mode with no accuracy certificate (measured
