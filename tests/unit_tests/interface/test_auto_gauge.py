@@ -193,6 +193,37 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertGauge('unitary', False)
         self.assertFalse(mg_interface.fd_gauge_criterion(self.cmd._curr_amps)[0])
 
+    def test_auto_gauge_not_in_the_proc_card(self):
+        """the default auto_gauge True is not dumped into the history (MadSpin
+        and the reweighting replay the 'set' lines of the proc_card with
+        their own auto_gauge False); a choice of the user is"""
+
+        self.assertFalse([l for l in self.cmd.history
+                          if l.startswith('set auto_gauge')])
+        self.do('set auto_gauge False')
+        self.assertIn('set auto_gauge False', list(self.cmd.history))
+
+    def test_madspin_skips_the_gauge_lines(self):
+        """MadSpin runs the 'set' lines of the proc_card but the gauge ones"""
+
+        import MadSpin.interface_madspin as interface_madspin
+        is_gauge = interface_madspin.set_line_is_gauge
+        self.assertTrue(is_gauge('set gauge FD'))
+        self.assertTrue(is_gauge('set auto_gauge True'))
+        self.assertFalse(is_gauge('set complex_mass_scheme True'))
+        self.assertFalse(is_gauge('set gauge_fake 1'))
+
+    def test_amplicol_process_survives_the_revert(self):
+        """an [amplicol] process added after an automatic FD choice sends
+        the session back to the unitary gauge and is kept across it"""
+
+        self.do('generate p p > w+ w-')
+        self.assertGauge('FD', True)
+        self.do('add process g g > g g [amplicol]')
+        self.assertGauge('unitary', False)
+        self.assertEqual(len(self.cmd._curr_amps), 1)
+        self.assertEqual(len(self.cmd._curr_amplicol_defs), 1)
+
     def test_explicit_gauge_wins(self):
         """'set gauge unitary' keeps the unitary gauge, 'set gauge FD' the FD
         one whatever the process, 'set gauge default' hands the choice back"""

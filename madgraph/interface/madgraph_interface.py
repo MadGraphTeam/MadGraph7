@@ -241,7 +241,6 @@ def fd_gauge_criterion(amplitudes):
     gauge; a mixed process benefits as well and can ask for 'set gauge FD').
     """
 
-    electroweak_only = True
     massive_vector = False
     for amp in iter_tree_amplitudes(amplitudes):
         if isinstance(amp, loop_diagram_generation.LoopAmplitude):
@@ -278,7 +277,7 @@ def fd_gauge_criterion(amplitudes):
                 if not massive_vector and any(is_massive_vector(leg.get('id'))
                                               for leg in vertex.get('legs')):
                     massive_vector = True
-    return electroweak_only, massive_vector
+    return True, massive_vector
 
 
 def split_backend_line(line):
@@ -4424,7 +4423,13 @@ This implies that with decay chains:
                 line, backend = split_backend_line(line)
                 myprocdef = self.extract_process(line, proc_number=nb_proc)
                 if backend:
-                    return self.add_backend_process(myprocdef, backend, warning_duplicate)
+                    self.add_backend_process(myprocdef, backend, warning_duplicate)
+                    # kept for the replay of an automatic change of gauge,
+                    # which it rules out (processes_prefer_fd_gauge)
+                    if not self._auto_gauge_replay:
+                        self._process_lines.append((raw_line, nb_proc))
+                        self.apply_automatic_gauge()
+                    return
                 # 'left [treextree] right': hidden order selecting the
                 # interference, minimal orders of the right-hand process
                 diagram_generation.prepare_interference_process(myprocdef)
@@ -6748,9 +6753,7 @@ This implies that with decay chains:
                 logger.info('Loop process: back to the unitary gauge (the FD '
                             'gauge, chosen automatically for a previous process, '
                             'is only supported for tree-level amplitudes).')
-                generate_info = self._generate_info
                 self.switch_gauge_and_regenerate('unitary')
-                self._generate_info = generate_info
             else:
                 raise Exception('Gauge %s is only supported/validated for tree level amplitude'% self.options['gauge'])
 
@@ -8099,8 +8102,10 @@ This implies that with decay chains:
                         self.do_set('gauge unitary', log= False)
                         # the model again, in the unitary gauge (an FD gauge
                         # chosen automatically for a previous process is a
-                        # common way to get here)
-                        return self.do_import(line, force=force, options=options)
+                        # common way to get here), without the interface
+                        # switching of the master command
+                        return MadGraphCmd.do_import(self, line, force=force,
+                                                     options=options)
             if self._curr_model:
                 self._curr_model._curr_gauge = self.options['gauge']
 
@@ -10022,6 +10027,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         # user's choice (set2_gauge) and keep the automatic
                         # FD gauge out; a gauge picked for a process is
                         # recorded as 'set gauge FD' (record_automatic_gauge)
+                        continue
+                    if key == 'auto_gauge' and self.options[key]:
+                        # the default as well: MadSpin and the reweighting
+                        # run the 'set' lines of the proc_card with their
+                        # own auto_gauge False
                         continue
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))

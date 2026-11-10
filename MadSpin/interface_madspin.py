@@ -866,6 +866,14 @@ def ms_phase(obj, name):
         ms_phase_add(obj, name, time.time() - start)
 
 
+def set_line_is_gauge(line):
+    """Whether a 'set' line of the proc_card chooses the gauge ('set gauge X',
+    'set auto_gauge X'): MadSpin runs its matrix elements in its own gauge
+    and skips those in both passes over the proc_card (do_import_events)."""
+
+    return line.split()[:2] in (['set', 'gauge'], ['set', 'auto_gauge'])
+
+
 class MadSpinInterface(extended_cmd.Cmd):
     """Basic interface for madspin"""
 
@@ -1264,7 +1272,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         complex_mass = False   
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         for line in self.banner.proc_card:
-            if line.startswith('set'):
+            if line.startswith('set') and not set_line_is_gauge(line):
                 try:
                     self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False,
                                          postcmd=False)
@@ -1309,7 +1317,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                         key = line.split()[1]
                         if key in self.multiparticles_ms:
                             del self.multiparticles_ms[key]            
-            elif line.startswith('set') and not line.startswith('set gauge'):
+            elif line.startswith('set') and not set_line_is_gauge(line):
                 try:
                     self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False,
                                          postcmd=False)

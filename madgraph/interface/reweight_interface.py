@@ -2647,7 +2647,10 @@ class ReweightInterface(extended_cmd.Cmd):
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         has_ew = re.compile(r'''set\s+EWscheme\s*(\w*)''')
         for line in self.banner.proc_card:
-            if line.startswith('set'):
+            # 'set gauge X' is run: the matrix elements must be the ones of
+            # the sample; the automatic choice stays off (auto_gauge False)
+            if line.startswith('set') and \
+                                    line.split()[:2] != ['set', 'auto_gauge']:
                 try:
                     mgcmd.exec_cmd(line, printcmd=False, precmd=False,
                                    postcmd=False)
@@ -3256,7 +3259,10 @@ class DensityInterface(ReweightInterface):
         complex_mass = False   
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         for line in self.banner.proc_card:
-            if line.startswith('set'):
+            # 'set gauge X' is run: the matrix elements must be the ones of
+            # the sample; the automatic choice stays off (auto_gauge False)
+            if line.startswith('set') and \
+                                    line.split()[:2] != ['set', 'auto_gauge']:
                 try:
                     mgcmd.exec_cmd(line, printcmd=False, precmd=False,
                                    postcmd=False)
