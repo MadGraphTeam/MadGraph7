@@ -427,9 +427,11 @@ reduction_unchecked = false
 # exact energy-momentum conservation and exact on-shell externals, in each
 # carrier above binary64 (double-double, arbitrary precision) before anything
 # is evaluated there: "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own
-# fallback to ImprovePSPoint 1; beams along z are improved exactly, other
-# frames by the fallback, whose residual the record's typed warning names),
-# "rescaling" (MadLoop's ImprovePSPoint 1, with the fallback to 2),
+# fallback to ImprovePSPoint 1, finished by the projection where MadLoop leaves
+# the point inexact; beams along z are improved exactly by MadLoop, other
+# frames by the fallback and the projection),
+# "rescaling" (MadLoop's ImprovePSPoint 1, with the fallback to 2 and the
+# same finish),
 # "projection" (the frame-independent minimal-norm projection, exact in every
 # frame) or "off". Every result records the variant that produced its point.
 # Default absent: "z-shift" (MadLoop's default); tree and loop evaluations.

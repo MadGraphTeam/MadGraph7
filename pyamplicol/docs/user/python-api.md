@@ -1110,19 +1110,33 @@ and not kept while the warnings are muted; the typed warnings are also
 issued as Python warnings. The tree binary64 switch runs the native tree
 runtime's binary64 code (the C ABI's: the same values bit for bit). Its typed warnings
 (`"kinematics-not-improved"`: evaluated as given; `"kinematics-inexact"`: the
-produced point misses exactness, e.g. MadLoop's rescaling in a frame whose
-beams are not along z) are records, not failures. The default is exact
-wherever the beams lie along the z axis; in other frames MadLoop's chain
-produces the rescaling's point, which keeps a conservation residual of the
-input's own order (flagged by `"kinematics-inexact"`): use
-`kinematics_improvement="projection"` there for exact consistency in every
-frame. Near forward, backward and thresholds that residual matters: NinjaRS
-amplifies an input's shell or conservation defect by about the inverse box
-Gram determinant (F-GH), which the improvement removes. Two hazards remain
-after it: binary64 `"auto"` near-forward points served by the NinjaRS
-fallback carry no estimate, and TIRust at 32-40 digits can serve suppressed
-resolved rows of boosted near-forward points badly off (use at least 60
-digits there).
+produced point misses exactness) are records, not failures. The default is
+exact in every frame: where the beams lie along the z axis it is MadLoop's
+z-shift bit for bit; in other frames MadLoop's chain produces the
+rescaling's point, which keeps a conservation residual of the input's own
+order, and the chain finishes it with the projection (USER 2026-11-10
+"Projection after MadLoop"). Near forward, backward and thresholds that
+matters: NinjaRS amplifies an input's shell or conservation defect by about
+the inverse box Gram determinant, and no rotation check sees it (a rotation
+keeps the defect), which the improvement removes.
+
+**Near-forward accuracy.** At a nearly degenerate 2 -> 2 (sub-)box
+(forward, backward or threshold kinematics: a small transverse momentum or
+a pair near its threshold) a binary64 call WITHOUT stability checks can be
+far off with no estimate (NinjaRS's binary64 engine and oneloop's binary64
+box integral; g g > z z at sqrt(s) = 500 GeV and theta = 1e-4 is off by a
+factor 1e18), as in 1.0.2. Request the recommended checks
+(`stability_checks=VirtualStabilityChecks(1, True, rescaled=True)`) there,
+which flag such values, and the rescue (`stability=VirtualRescuePolicy()`),
+which evaluates them in double-double or arbitrary precision on the
+promoted, improved point (within 1e-5 on the points measured). An estimate
+is an estimate, not a bound: at W+ W- production at 1 TeV with pT = 4.9 GeV
+the binary64 estimate 9.2e-6 accepts a value 4.8e-5 off. Resolved outputs
+far below the point's largest (suppressed helicity rows of a boosted
+near-forward point, 1e-13 .. 1e-21 of the largest) need about
+log10(largest / output) + the conditioning + the target's digits of working
+precision: TIRust at 20-32 digits can serve them badly off, which the
+recommended checks flag; use 60 digits or more there.
 
 `evaluate_correlated` always uses retained Symbolica evaluator states through
 the separate Python exact executor, including at its default precision 16.

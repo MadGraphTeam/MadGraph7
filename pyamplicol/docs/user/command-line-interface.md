@@ -465,7 +465,8 @@ of each point's result, default 1e-5; it sets the calibrated acceptance of
 TIRust's checked method choice and, never below 1e-5, is the fallback
 guard's threshold).
 `--kinematics-improvement VARIANT` (`z-shift`, `rescaling`, `projection` or `off`; default
-`z-shift`, MadLoop's `ImprovePSPoint = 2` with its fallback to 1) and
+`z-shift`, MadLoop's `ImprovePSPoint = 2` with its fallback to 1, finished by
+the projection where MadLoop leaves the point inexact) and
 `--[no-]kinematics-improvement-binary64` (default off) set the improvement
 of the input points to exact conservation and on-shell externals before a
 double-double or arbitrary-precision evaluation (binary64 only with the

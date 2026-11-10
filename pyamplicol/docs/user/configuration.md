@@ -1090,29 +1090,40 @@ kinematics_improvement_binary64 = false  # true: also improve binary64 evaluatio
   lie along the z axis, take the closed-form E / pz shifts that restore
   conservation. Where it refuses (beams off the z axis, massive or one
   initial state, a negative energy) MadLoop's own fallback runs
-  `"rescaling"`, and where that refuses too the point is evaluated as given
-  with a typed warning. Exact on points whose beams are along z. A final
-  state of small |pz| moves by about sqrt(2 E dE) rather than by the input's
-  defect (up to about 1e-8 relative on values; MadLoop behaves so), and one
-  whose given energy lies below its transverse mass keeps a shell defect of
-  the input's order (MadLoop takes |E^2 - pT^2 - m^2|), which the record
-  flags with `kinematics-inexact`.
+  `"rescaling"`. Where the point MadLoop's chain produces misses exactness
+  (the rescaling's residual below, or a shell defect the z-shift keeps) or
+  both variants refuse, the chain FINISHES with `"projection"`, continuing
+  from MadLoop's point (USER 2026-11-10 "Projection after MadLoop"); only if
+  the projection refuses too is the point evaluated as given (typed), or,
+  after a produced point, used with the `kinematics-inexact` record. So the
+  default is exact in every frame: on points whose beams are along z it is
+  MadLoop's z-shift bit for bit, elsewhere the projection of MadLoop's
+  point. A final state of small |pz| moves by about sqrt(2 E dE) rather than
+  by the input's defect (up to about 1e-8 relative on values; MadLoop
+  behaves so), and one whose given energy lies below its transverse mass
+  keeps a shell defect of the input's order after the z-shift (MadLoop takes
+  |E^2 - pT^2 - m^2|), which the finish removes.
 * `"rescaling"` is MadLoop's `ImprovePSPoint = 1` (after PSMC; the fallback
-  is `"z-shift"`): the last particle balances the 3-momentum, every
-  3-momentum is scaled (particle 1 by x^2, the others by x, x from Newton on
-  the energy balance) and every energy is put on its shell. As MadLoop codes
-  it, it leaves the 3-momentum conservation residual (x^2 - x) p1, of the
-  input's own order, wherever x differs from 1: its points are on their
-  shells but not exactly conserving (the record says so, below). It is what
-  the default produces in a frame whose beams are not along z.
+  is `"z-shift"`, the finish `"projection"` as above): the last particle
+  balances the 3-momentum, every 3-momentum is scaled (particle 1 by x^2, the
+  others by x, x from Newton on the energy balance) and every energy is put
+  on its shell. As MadLoop codes it, it leaves the 3-momentum conservation
+  residual (x^2 - x) p1, of the input's own order, wherever x differs from
+  1: its points are on their shells but not exactly conserving. In a frame
+  whose beams are not along z the default's MadLoop step produces this
+  point, and near forward, backward or a threshold NinjaRS amplifies its
+  residual about as the inverse box Gram determinant, where no rotation or
+  rescaling check can see it (a rotation keeps the residual): g g > z z at
+  theta 1e-4, rotated and boosted, was returned 5.3 off at double-double,
+  met at estimate 1.6e-7, before the finish. The finish removes it.
 * `"projection"`: the frame-independent minimal-norm projection of the
   external momenta onto the shells and the four conservation equations
   (Gauss-Newton `x <- x - J^T (J J^T)^-1 c(x)`, Euclidean on the
   components), iterated in the carrier until the residual is at the
   carrier's rounding or stops decreasing (two to three steps from a binary64
-  input). Exact in every frame; not part of MadLoop's chain (on its refusal
-  the point is evaluated as given, typed). Select it for points whose beams
-  are not along the z axis.
+  input). Exact in every frame. Selected, it runs alone from the given point
+  (on its refusal the point is evaluated as given, typed); it is also the
+  finish of both MadLoop selections.
 * `"off"`: no improvement in any carrier (each result records `"off"`).
 
 The shells are exactly the masses the evaluation binds for the external
@@ -1128,9 +1139,10 @@ variants (`IS_PHYSICAL`: a conservation defect above 1e-6 of the summed
 energies or a shell defect sqrt(|p^2 - m^2|) above 1e-2 of a leg's
 |E| + |px| + |py| + |pz|; the defect's magnitude is tested, where MadLoop's
 own test is signed): an input failing it is evaluated as given with the typed
-warning (code 1). Every variant refuses a move above 1e-2 of the summed
-components (`IS_CLOSE`, code 999), so `"projection"` projects a grossly
-inconsistent input only within that bound. These two bounds concern the
+warning (code 1), with no finish (the input is not a physical point to
+MadLoop's bounds). Every variant refuses a move above 1e-2 of the summed
+components (`IS_CLOSE`, code 999; the finish against the caller's input), so
+`"projection"` projects a grossly inconsistent input only within that bound. These two bounds concern the
 input, not the carrier, and are MadLoop's (1e-6, 1e-2 and 1e-2). They are
 overridable at the improvement's own entry, not by an evaluation setting:
 `pyamplicol.kinematics.improve(points, n_initial, masses2, arithmetic,
@@ -1152,8 +1164,9 @@ shell and conservation defects relative to the point's scale against the
 carrier's rounding bounds. Two typed warnings are records, not failures (the
 value is returned as computed, `on_failure` is unaffected and no rescue
 escalates on them): `kinematics-not-improved` (no variant could; evaluated
-as given) and `kinematics-inexact` (the produced point misses exactness,
-e.g. the rescaling's residual; the point is used).
+as given) and `kinematics-inexact` (the produced point misses exactness:
+the projection stopped at its rounding floor, or the finish refused after a
+MadLoop point; the point is used).
 
 What counts as a double-precision evaluation is the carrier: binary64
 evaluations are improved only with `kinematics_improvement_binary64 = true`

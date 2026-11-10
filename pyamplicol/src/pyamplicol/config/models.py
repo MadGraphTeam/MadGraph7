@@ -1433,7 +1433,8 @@ class EvaluationConfig:
     reduction_unchecked: bool = field(default=False, metadata=_setting("bool"))
     # The kinematics improvement of the input points (m-lit lit-psimprove;
     # ``pyamplicol.kinematics``): "z-shift" (MadLoop's ImprovePSPoint 2 with
-    # its fallback to 1), "rescaling" (ImprovePSPoint 1), "projection" (the
+    # its fallback to 1, finished by the projection where MadLoop leaves the
+    # point inexact), "rescaling" (ImprovePSPoint 1), "projection" (the
     # frame-independent minimal-norm projection) or "off"; None: the native
     # default (MadLoop's, "z-shift"). It applies above binary64; binary64
     # evaluations only with ``kinematics_improvement_binary64`` (None: the

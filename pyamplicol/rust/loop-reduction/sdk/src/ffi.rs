@@ -360,7 +360,8 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction_unchecked(
 /// The kinematics improvement of the handle's later evaluations, the Python
 /// API's `kinematics_improvement=` (m-lit lit-psimprove; additive, ABI
 /// version 2 kept): `"z-shift"` (MadLoop's ImprovePSPoint 2 with MadLoop's
-/// own fallback to 1; the default, also for NULL), `"rescaling"`
+/// own fallback to 1, finished by the projection where MadLoop leaves the
+/// point inexact; the default, also for NULL), `"rescaling"`
 /// (ImprovePSPoint 1), `"projection"` (the frame-independent minimal-norm
 /// projection) or `"off"`. Before a double-double or arbitrary-precision
 /// evaluation (and a binary64 one under
