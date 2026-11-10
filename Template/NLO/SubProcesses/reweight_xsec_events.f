@@ -15,7 +15,7 @@ c     Compile with makefile_rwgt
      $     ,wgtmumax,wgtpdfmin,wgtpdfmax,saved_weight
      $     ,xsecPDFr_acc(0:maxPDFs,maxPDFsets),xsecScale_acc(maxscales
      $     ,maxscales,maxdynscales)
-      logical AddInfoLHE,unweighted
+      logical unweighted
       character*9 ch1
       character*10 MonteCarlo
       character*20 parm(20)
@@ -115,7 +115,6 @@ c     start with central member of the first set
 
       ifile=34
       open (unit=ifile,file=event_file,status='old')
-      AddInfoLHE=.true.
       unweighted=.true.
       call read_lhef_header(ifile,maxevt,MonteCarlo)
       call read_lhef_init(ifile,
@@ -337,29 +336,13 @@ c     Dummy subroutine (normally used with vegas/mint when resuming plots)
 
 
       subroutine set_cms_stuff(icountevts)
+      use fks_phase_space_data,only: ybst_til_tolab,ybst_til_tocm,sqrtshat,shat,sqrtshat_ev,shat_ev,
+     $     sqrtshat_cnt,shat_cnt,tau_ev,ycm_ev,tau_cnt,ycm_cnt,xbjrk_ev,xbjrk_cnt
       implicit none
       include "run.inc"
 
       integer icountevts
 
-      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
-      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
-     #sqrtshat,shat
-
-      double precision sqrtshat_ev,shat_ev
-      common/parton_cms_ev/sqrtshat_ev,shat_ev
-
-      double precision sqrtshat_cnt(-2:2),shat_cnt(-2:2)
-      common/parton_cms_cnt/sqrtshat_cnt,shat_cnt
-
-      double precision tau_ev,ycm_ev
-      common/cbjrk12_ev/tau_ev,ycm_ev
-
-      double precision tau_cnt(-2:2),ycm_cnt(-2:2)
-      common/cbjrk12_cnt/tau_cnt,ycm_cnt
-
-      double precision xbjrk_ev(2),xbjrk_cnt(2,-2:2)
-      common/cbjorkenx/xbjrk_ev,xbjrk_cnt
 
 c     rapidity of boost from \tilde{k}_1+\tilde{k}_2 c.m. frame to lab frame --
 c     same for event and counterevents
@@ -398,7 +381,7 @@ c     do the same as above for the counterevents
       use extra_weights
       implicit none
       include 'nexternal.inc'
-      integer i,idum,j,k,momenta_conf(2),ii,n_proc
+      integer i,idum,j,k,momenta_conf(2),ii,n_proc,ios
       icontr=n_ctr_found
       iwgt=1
       n_proc=1
@@ -409,6 +392,16 @@ c     do the same as above for the counterevents
      $        ,(bjx(j,i),j=1 ,2),(scales2(j,i),j=1,3),g_strong(i)
      $        ,(momenta_conf(j),j=1 ,2),itype(i),nFKS(i),idum,idum,idum
      $        ,wgts(1,i),bias_wgt(i)
+c The optional suffix preserves native provenance through offline reweighting.
+         native_ids(:,i)=0
+         event_nFKS(i)=nFKS(i)
+         read(n_ctr_str(i),*,iostat=ios)(wgt(j,i),j=1,3),
+     $        (wgt_ME_tree(j,i),j=1,2),idum,(pdg(j,i),j=1,nexternal),
+     $        orderstag(i),QCDpower(i),(bjx(j,i),j=1,2),
+     $        (scales2(j,i),j=1,3),g_strong(i),(momenta_conf(j),j=1,2),
+     $        itype(i),nFKS(i),idum,idum,idum,wgts(1,i),bias_wgt(i),
+     $        native_ids(:,i),event_nFKS(i)
+         if(ios.gt.0)stop 'Malformed native reweight provenance'
          do ii=1,2
             do j=1,nexternal
                do k=0,3
@@ -664,4 +657,3 @@ c     reset the default dynamical_scale_choice
       endif
       return
       end
-      

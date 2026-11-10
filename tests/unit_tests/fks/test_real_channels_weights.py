@@ -22,7 +22,9 @@ class TestRealChannelsWeights(unittest.TestCase):
         cls.path = pathlib.Path(cls.directory.name)
         includes = {
             'nexternal.inc': 'integer nexternal,nincoming\nparameter(nexternal=5,nincoming=2)',
-            'nFKSconfigs.inc': 'integer fks_configs\nparameter(fks_configs=3)',
+            # Auxiliary native aliases are not additional integration sectors.
+            'nFKSconfigs.inc': ('integer fks_configs,FKS_INTEGRATED\n'
+                                'parameter(fks_configs=4,FKS_INTEGRATED=3)'),
             'run.inc': 'double precision real_channels_x0\ncommon /c_real_channels_x0/ real_channels_x0',
             'coupl.inc': 'double precision g,testmass(5)\ncommon /test_coupl/ g,testmass',
             'pmass.inc': 'pmass=testmass',
@@ -183,6 +185,20 @@ common /c_get_real_diagram_weights/ get_real_diagram_weights''',
 
 
 SUPPORT = r'''
+module fks_phase_space
+interface
+ subroutine generate_momenta_real_channels(ndim,config,fks,x,p,jac)
+ integer ndim,config,fks
+ double precision x(99),p(0:3,5),jac
+ end subroutine
+end interface
+end module
+module fks_phase_space_data
+double precision xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
+common /fksvariables/ xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt
+double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+common /parton_cms_stuff/ ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+end module
 module extra_weights
 integer, parameter :: cpower_pos=2
 integer :: QCD_power,orders_tag,amp_pos
