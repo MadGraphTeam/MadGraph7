@@ -1,0 +1,9 @@
+{
+  "compiler_or_native_execution": false,
+  "correction": "Add repository root to sys.path before importing the private module; use a new ignored directory.",
+  "error": "ModuleNotFoundError: No module named madgraph",
+  "exit_code": 1,
+  "runner_sha256": "cfa719d691acc5ad9a28c770bb50ab963820da9d405829665d3635eb47798b72",
+  "stage": "private module import",
+  "tests_executed": 0
+}

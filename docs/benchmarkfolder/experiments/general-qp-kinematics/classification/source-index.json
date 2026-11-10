@@ -1,0 +1,60 @@
+{
+  "excluded": "Exploratory probe/pickle and private copied UFO are regenerated or unused; not portable evidence.",
+  "files": {
+    "README.md": {
+      "bytes": 5254,
+      "sha256": "fb55c97d4520970516cc3637357cac58e968575e9e7a082824c34f5370a1c856"
+    },
+    "base/madgraph/loop/loop_exporters.py": {
+      "bytes": 218323,
+      "sha256": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74"
+    },
+    "generated/qcd_n3_identity.f": {
+      "bytes": 39358,
+      "sha256": "2e1080dd22ecdf68a116a900304614010d0804f1d43554f5f4d3784ec618f6fe"
+    },
+    "generated/qcd_n3_identity.json": {
+      "bytes": 656613,
+      "sha256": "b540d3160e8eb216cdd0c675aaabcccf7e46b551d72aef8055e7ea5b99329710"
+    },
+    "implementation.patch": {
+      "bytes": 15139,
+      "sha256": "354dc8a39c58cd336a06882825fb9cc1cdf613a43bcd24554a6b8338d9f82182"
+    },
+    "preparation.json": {
+      "bytes": 562,
+      "sha256": "668c60a8bbe47adb33dd0e98a523e3f9a215c2a3a3322fe189700318a5db6122"
+    },
+    "prepare.py": {
+      "bytes": 2315,
+      "sha256": "374e63b0c5ad2cc47607beb31ed9cbde2917d7e87e1a8c10137624376e6c33c6"
+    },
+    "review.json": {
+      "bytes": 1031,
+      "sha256": "0b0f9034aba8d666e3ca7d581e6fd1c422147895adb4008c3525a362700f168f"
+    },
+    "source-tests.json": {
+      "bytes": 6281,
+      "sha256": "970872f8fd2acea352e24e06f1a93450d138110f29a2873bcf0932dfcf2700a6"
+    },
+    "src/madgraph/loop/kinematic_identity.py": {
+      "bytes": 14060,
+      "sha256": "d19887a2cb032d18afeceb2395d66aac95954989cd73c68492bc9263da5b6e84"
+    },
+    "src/madgraph/loop/loop_exporters.py": {
+      "bytes": 218647,
+      "sha256": "7049b9608de68ad28de9e6c285877ad66bf595861c54202c80d2dd515f2f4b88"
+    },
+    "test_generation.py": {
+      "bytes": 15504,
+      "sha256": "8755b3b9ca11f0beaa3ffb4238a6ab2bb1754faf68dbcc1fa2f251e99ba73592"
+    }
+  },
+  "scope": "Private source prototype, not production or native qualification.",
+  "source_only": true,
+  "tests": {
+    "amplitude_executed": false,
+    "compiler_executed": false,
+    "passed": 9
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "changes_after_initial_review": [
+    "Added all-shift finiteness as defensive hardening.",
+    "Removed possible normalization overflow-to-zero-residual path.",
+    "Changed policy1 from global/historical shift normalization to pair-local normalization."
+  ],
+  "confirmed": [
+    "Explicit group/direction/policy forwarding is consistent through both adapter chains.",
+    "Generated ID=LOOPNUM precedes paired helper calls; numerator context and classification ID agree for generated calls.",
+    "Original public adapter entries and DP helper code remain unchanged.",
+    "External targets use physical real MP model masses; internal complex denominator masses remain unchanged.",
+    "Unknown/composite/off-shell/unsupported entries retain computed invariants.",
+    "Policy0 exits before all new arithmetic and delegates the exact original matrix helper.",
+    "Pair-local normalization avoids hard common-shift dilution; closure division and massless square ranges are guarded."
+  ],
+  "helper_sha256": "6efbb6f9ff433bae325eb844a09681013d096de5bc0ee1d28b563135978c7745",
+  "limits": [
+    "No consumer compiler or native execution.",
+    "Numerical soft-leg/extreme-scale/CMS acceptance and performance remain unqualified.",
+    "Existing invariant arithmetic precedes checks and retains its possible caller-visible exceptions.",
+    "No effective-coordinate/Born/model-epoch certificate is inferred or implemented."
+  ],
+  "reviewer": "/root/tirust_contract/fortran_bridge/adapter_audit",
+  "source_only": true,
+  "verdict": "No remaining actionable source-review issue found within the stated scalar optimized-export scope."
+}

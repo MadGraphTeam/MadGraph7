@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "scope": "Source routing/cache semantics only; counts.json separately binds actual retained native records.",
+  "sources": {
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/loop_matrix.f": {
+      "anchors": [
+        {
+          "excerpt_start_line": 924,
+          "line": 926,
+          "needle": "C     Make sure we start with empty caches",
+          "text": "      ENDDO\n\nC     Make sure we start with empty caches\n      IF (AUTOMATIC_CACHE_CLEARING) THEN\n        CALL ML5_0_CLEAR_CACHES()\n      ENDIF\n\nC     Now make sure to turn on the global COLLIER cache if applicable\n      CALL ML5_0_SET_COLLIER_GLOBAL_CACHE(.TRUE.)\n\n      IF (IMPROVEPSPOINT.GE.0) THEN\n"
+        },
+        {
+          "excerpt_start_line": 961,
+          "line": 963,
+          "needle": " 200  CONTINUE",
+          "text": "C     MadLoop jumps to this label during stability checks when it\nC      recomputes a rotated PS point\n 200  CONTINUE\nC     For the computation of a rotated version of this PS point we\nC      must reset the all MadLoop cache since this changes the\nC      definition of the loop denominators.\nC     We don't check for AUTOMATIC_CACHE_CLEARING here because the\nC      Lorentz test should anyway be disabled if the flag is turned\nC      off.\n      CALL ML5_0_CLEAR_CACHES()\n 208  CONTINUE\n"
+        },
+        {
+          "excerpt_start_line": 1106,
+          "line": 1108,
+          "needle": " 300  CONTINUE",
+          "text": "C     MadLoop jumps to this label during stability checks when it\nC      recomputes the same PS point with a different CTMode\n 300  CONTINUE\n\nC     Make sure that the loop calls are performed since this is new\nC      evaluation.\n      CTCALL_REQ_SO_DONE=.FALSE.\n\nC     Free cache when using IREGI\n      IF(IREGIRECY.AND.MLREDUCTIONLIB(I_LIB).EQ.3) THEN\n        CALL IREGI_FREE_PS()\n"
+        },
+        {
+          "excerpt_start_line": 1794,
+          "line": 1796,
+          "needle": "C     Make sure that we finish by emptying caches",
+          "text": "      ENDIF\n\nC     Make sure that we finish by emptying caches\n      IF (AUTOMATIC_CACHE_CLEARING) THEN\n        CALL ML5_0_CLEAR_CACHES()\n      ENDIF\n\nC     Now make sure to turn off the global COLLIER cache if applicable\n      CALL ML5_0_SET_COLLIER_GLOBAL_CACHE(.FALSE.)\n\n      END\n"
+        },
+        {
+          "excerpt_start_line": 1440,
+          "line": 1442,
+          "needle": "CTMODE=BASIC_CT_MODE+1",
+          "text": "          EVAL_DONE(2)=.TRUE.\n          IF(LOOPLIBS_DIRECTEST(MLREDUCTIONLIB(I_LIB)))THEN\n            CTMODE=BASIC_CT_MODE+1\n            GOTO 300\n          ELSE\nC           If some TIR library would not support the loop direction\nC            test (they all do for now), then we would just copy the\nC            answer from mode 1 and carry on.\n            STAB_INDEX=STAB_INDEX+1\n            IF(DOING_QP_EVALS)THEN\n              DO I=0,NSQUAREDSO\n"
+        }
+      ],
+      "bytes": 100824,
+      "sha256": "2846f4d35755abfb7a8709a5bb1560983b3676535fd43b39cd62acac1be6185c"
+    },
+    ".tirust-build/physical-stress/outputs/candidate/qcd_n3_uux_zgg/SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.f": {
+      "anchors": [
+        {
+          "excerpt_start_line": 272,
+          "line": 274,
+          "needle": "      DO H=1,NCOMB",
+          "text": "\n      DPW_COPIED = .FALSE.\n      DO H=1,NCOMB\n        IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1)\n     $   .AND.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED).OR.(GOODHEL(H)\n     $   .GT.-HELOFFSET.AND.GOODHEL(H).NE.0)))) THEN\n\nC         Handle the possible requirement of specific polarizations\n          IF ((.NOT.CHECKPHASE)\n     $     .AND.HELDOUBLECHECKED.AND.POLARIZATIONS(0,0)\n     $     .EQ.0.AND.(.NOT.ML5_0_IS_HEL_SELECTED(H))) THEN\n"
+        }
+      ],
+      "bytes": 13490,
+      "sha256": "f1cb3605c429ae40750127660b69f37870f61b40546e9a6389655f338d6b7469"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-prototype/topology-design/TIRUST_interface.f": {
+      "anchors": [
+        {
+          "excerpt_start_line": 90,
+          "line": 92,
+          "needle": "CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5",
+          "text": "      CACHE_ENABLED=TIRUSTGLOBALCACHE.EQ.\n     $ -1.OR.NLOOPLINE.LE.TIRUSTGLOBALCACHE\n      CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5\n      CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS\n     $ ,MASSES,SCALE,RAW(1:NC,1:4),STATUS,MAX(0,LOOPPOLEMODE)\n     $ ,TIRUSTCOMPUTEFINITE,CHECK_PASS,CACHE_ENABLED)\n      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      DO I=0,NC-1\n        K=TIRUST_MAP(I)\n        DO J=1,4\n          IF(J.EQ.4.AND..NOT.TIRUSTCOMPUTEFINITE) CYCLE\n"
+        },
+        {
+          "excerpt_start_line": 245,
+          "line": 247,
+          "needle": "CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5",
+          "text": "      CACHE_ENABLED=TIRUSTGLOBALCACHE.EQ.\n     $ -1.OR.NLOOPLINE.LE.TIRUSTGLOBALCACHE\n      CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5\nC QOBS_BEGIN 31\n      IF(QO_IS_ACTIVE()) CALL QO_PUT('NATIVE_SCALE',0,0,\n     $ TRANSFER(SCALE,(/0_8/),2))\n      CALL QO_MARK('NATIVE_BEGIN',0,0,0)\nC QOBS_END 31\n      CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS\n     $ ,MASSES,SCALE,RAW(1:NC,1:4),STATUS,MAX(0,LOOPPOLEMODE)\n     $ ,TIRUSTCOMPUTEFINITE,CHECK_PASS,CACHE_ENABLED)\n"
+        },
+        {
+          "excerpt_start_line": 556,
+          "line": 558,
+          "needle": "CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5",
+          "text": "      CACHE_ENABLED=TIRUSTGLOBALCACHE.EQ.\n     $ -1.OR.NLOOPLINE.LE.TIRUSTGLOBALCACHE\n      CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5\nC QOBS_BEGIN 31\n      IF(QO_IS_ACTIVE()) CALL QO_PUT('NATIVE_SCALE',0,0,\n     $ TRANSFER(SCALE,(/0_8/),2))\n      CALL QO_MARK('NATIVE_BEGIN',0,0,0)\nC QOBS_END 31\n      CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS\n     $ ,MASSES,SCALE,RAW(1:NC,1:4),STATUS,MAX(0,LOOPPOLEMODE)\n     $ ,TIRUSTCOMPUTEFINITE,CHECK_PASS,CACHE_ENABLED)\n"
+        }
+      ],
+      "bytes": 24292,
+      "sha256": "4e4fcfb40d2c05f628db220f4435ffa9ed950cacd0ed900e4b542befad5be290"
+    },
+    "vendor/tirust/mtirust.f90": {
+      "anchors": [
+        {
+          "excerpt_start_line": 272,
+          "line": 274,
+          "needle": "write(text,'(ES64.39E4)',iostat=io_status) value",
+          "text": "    io_status = 1\n    if (.not.ieee_is_finite(value)) return\n    write(text,'(ES64.39E4)',iostat=io_status) value\n    if (io_status /= 0) return\n    do k=1,record_size\n      record(k) = text(k:k)\n    enddo\n  end subroutine\n\n  subroutine unpack(record,value,io_status)\n    character(kind=c_char), intent(in) :: record(record_size)\n"
+        }
+      ],
+      "bytes": 15997,
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "vendor/tirust/src/lib.rs": {
+      "anchors": [
+        {
+          "excerpt_start_line": 196,
+          "line": 198,
+          "needle": "let cache_key = if mode.cache && !mode.check {",
+          "text": "\n    fn mp_records(&mut self, key: Key, records: [&[u8]; 4], mode: Mode) -> Result<(i32, Vec<u8>)> {\n        let cache_key = if mode.cache && !mode.check {\n            let key_bytes = qp_cache_key(key, records, mode);\n            if let Some(values) = self.qp_cache.entries.get(&key_bytes) {\n                self.qp_cache.hits += 1;\n                return Ok((SUCCESS, values.to_vec()));\n            }\n            self.qp_cache.misses += 1;\n            Some(key_bytes)\n        } else {\n"
+        },
+        {
+          "excerpt_start_line": 335,
+          "line": 337,
+          "needle": "fn qp_cache_key(key: Key, records: [&[u8]; 4], mode: Mode) -> Vec<u8> {",
+          "text": "    }\n}\nfn qp_cache_key(key: Key, records: [&[u8]; 4], mode: Mode) -> Vec<u8> {\n    let mut bytes = Vec::with_capacity(16 + records.iter().map(|x| x.len()).sum::<usize>());\n    bytes.extend_from_slice(&(key.0 as u32).to_le_bytes());\n    bytes.extend_from_slice(&key.1.to_le_bytes());\n    bytes.push(mode.poles as u8);\n    bytes.push(u8::from(mode.finite));\n    bytes.extend_from_slice(&113u32.to_le_bytes());\n    bytes.extend_from_slice(&MP_BITS.to_le_bytes());\n    for record in records {\n"
+        },
+        {
+          "excerpt_start_line": 310,
+          "line": 312,
+          "needle": "fn clear(&mut self) {",
+          "text": "        }\n    }\n    fn clear(&mut self) {\n        *self = Self::new(self.budget);\n    }\n    fn insert(&mut self, key: Vec<u8>, values: &[u8]) {\n        // Account for owned payloads plus a conservative allowance for the\n        // hash table and entry metadata. No eviction makes timing predictable.\n        let cost = (key.capacity() + values.len() + 256) as u64;\n        if cost > self.budget.saturating_sub(self.bytes) {\n            self.not_stored += 1;\n"
+        }
+      ],
+      "bytes": 46218,
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "files": {
+    "README.md": "8b8303ebf3e43b43aeed0b4b26ce5f35887a926504a9bf84df69b22a74afb32f",
+    "case-manifest.json": "c8e6c633a2e919f67e3ee5ba1f119ce9dce1ad642299e2cad658a38ce140c855",
+    "cases.dat": "2600534f2e8a23a6c6a14725c68a5cb23fd144d57f6fd912e303862e10d92155",
+    "cms/MadLoopParams.inc": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+    "cms/model_context.f": "94e01c4438b1e482d72f4651164f6c888e488a3696121c2a7a000f6910e7a2bb",
+    "cms/mp_coupl.inc": "ce7e38e6d3ccd39e27ef2fb302a74043d24bee1544b65280d6348374168ae1b1",
+    "driver.f90": "45c7a07a4ad4120eda114f8ac4879060d928ec19379cf0d4141a36c9983cdaea",
+    "matrix.f": "20d786023ea15266348b27f4e3c0aad37a843d79bf8f160cd061d2ed3552837b",
+    "model_context.f.in": "b7fc7cb2cc2e12e99ff77fbe489b01e18a0deb1f812e0e458d4bd41102e205f8",
+    "off_shell.f": "cfa8e11c73d33cf50f2e395e70150e4cd099faa37785e827de481e06b6c2ae84",
+    "prepare.py": "2bfd518cbdcf7d4087a789c3141e1ce7e18de1f39a3518f41f62b7d731957f5a",
+    "protocol.json": "e83b301aa4235ab81dfb59b2da039177eba6a23651539a4cc03b954c2b844dd0",
+    "real/MadLoopParams.inc": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+    "real/model_context.f": "b96b25235e0391963f751bb53694fc2832a3764e23e2199841ee0a8261eb8a42",
+    "real/mp_coupl.inc": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+    "run.py": "1f22c2f2e19588b87f1bc805a694e3fb4d5459d1ffc6f570d16e6f407aacb929"
+  }
+}

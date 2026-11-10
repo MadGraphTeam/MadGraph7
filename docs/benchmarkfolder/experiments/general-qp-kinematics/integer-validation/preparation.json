@@ -1,0 +1,16 @@
+{
+  "case_count": 8325,
+  "compiler_executed": false,
+  "counts": {
+    "invalid_qcd": 4413,
+    "known_n2": 192,
+    "known_qcd": 1908,
+    "n1_or_unknown_boundary": 96,
+    "reversed_pairs": 1908
+  },
+  "input_index_sha256": "97f5100a4f7a679e53a6508f669b54d4f71aa2a40868f90e435f4d932cced533",
+  "integer_execution": false,
+  "note": "known_n2 is a subset count; N1 is a serialization boundary, not physical process qualification.",
+  "oracle_sha256": "54f5b404270fed3879d758d24a0991f0ae2975efb0add8eafcfad34cef8de414",
+  "source_only": true
+}
