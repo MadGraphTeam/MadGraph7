@@ -1,0 +1,221 @@
+{
+  "all_cross_backend_input_payloads_equal": true,
+  "all_original_numerators_finite": true,
+  "bindings": {
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/analyze.py": "b05ef9cca0d1a3788331b9a5ae065b8d63fa52b08c1b59e9ea3d408a2eb00826",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/attempt1/backend-8/execution.json": "34e42d864af88fbb0bcbdff282dcba0a47eee0fb039d2b5fd64404096b28313f",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/attempt1/backend-8/observed.log": "455664b31647e7f283b7f3807db4b64eb20950a30e3b64635c83ec825384972c",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/attempt1/backend-8/trace.dat": "777e033099a798d71e551090502e918484f8a0744356cbbe2108f43004a41b69",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/attempt1/backend-9/execution.json": "c606e96b60b84ac7e8fedb863f0c60be88de2a71c903be2ba4480528490b23d8",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/attempt1/backend-9/observed.log": "b6813cc20768cdfdd7c4f4559f7d4a079d49868ecc7fa2e41fb39324af6475f5",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/attempt1/backend-9/trace.dat": "e3abdfb2742e08365a7167c0c770345eb8a8eaca0e958dd5d524c131459271c5",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer-native/decode_trace.py": "2af77229f2345892afb578b2279b77b92a68a9608a41851e70a068a7f384611f",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/evidence-index.json": "03dcf0b638a32edbd8362fa8cf6d12148250f276f095a53b7579e392aae4ad90",
+    "docs/benchmarkfolder/experiments/qcd-loop-kinematics-observer/routing-modes.json": "54f5b404270fed3879d758d24a0991f0ae2975efb0add8eafcfad34cef8de414"
+  },
+  "by_backend_mode": {
+    "8:4": {
+      "all_targets_took_massless_clamp": true,
+      "calls": 116,
+      "clamped_pairs_by_literal_class": {
+        "complement_of_single_leg": 64,
+        "composite": 19,
+        "direct_single_leg": 114
+      },
+      "refused_groups": [
+        42,
+        46,
+        56,
+        57,
+        60,
+        61,
+        67,
+        68,
+        69,
+        72
+      ],
+      "stable": 106,
+      "statuses": {
+        "0": 106,
+        "1": 10
+      },
+      "target_count": 19,
+      "targets_with_computed_nonzero_supplied_zero": 19,
+      "targets_with_nonzero_cartesian_supplied_zero": 19
+    },
+    "8:5": {
+      "all_targets_took_massless_clamp": true,
+      "calls": 116,
+      "clamped_pairs_by_literal_class": {
+        "complement_of_single_leg": 23,
+        "composite": 19,
+        "direct_single_leg": 155
+      },
+      "refused_groups": [
+        42,
+        46,
+        56,
+        57,
+        60,
+        61,
+        67,
+        68,
+        69,
+        72
+      ],
+      "stable": 106,
+      "statuses": {
+        "0": 106,
+        "1": 10
+      },
+      "target_count": 19,
+      "targets_with_computed_nonzero_supplied_zero": 19,
+      "targets_with_nonzero_cartesian_supplied_zero": 19
+    },
+    "9:4": {
+      "all_targets_took_massless_clamp": true,
+      "calls": 116,
+      "clamped_pairs_by_literal_class": {
+        "complement_of_single_leg": 64,
+        "composite": 19,
+        "direct_single_leg": 114
+      },
+      "refused_groups": [
+        10,
+        38,
+        41,
+        42,
+        44,
+        46,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        81,
+        82,
+        84,
+        91,
+        92,
+        94,
+        105,
+        106,
+        108
+      ],
+      "stable": 85,
+      "statuses": {
+        "0": 85,
+        "1": 31
+      },
+      "target_count": 19,
+      "targets_with_computed_nonzero_supplied_zero": 19,
+      "targets_with_nonzero_cartesian_supplied_zero": 19
+    },
+    "9:5": {
+      "all_targets_took_massless_clamp": true,
+      "calls": 116,
+      "clamped_pairs_by_literal_class": {
+        "complement_of_single_leg": 23,
+        "composite": 19,
+        "direct_single_leg": 155
+      },
+      "refused_groups": [
+        10,
+        38,
+        41,
+        42,
+        44,
+        46,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        81,
+        82,
+        84,
+        91,
+        92,
+        94,
+        105,
+        106,
+        108
+      ],
+      "stable": 85,
+      "statuses": {
+        "0": 85,
+        "1": 31
+      },
+      "target_count": 19,
+      "targets_with_computed_nonzero_supplied_zero": 19,
+      "targets_with_nonzero_cartesian_supplied_zero": 19
+    }
+  },
+  "calls": 464,
+  "cross_backend_payload_differences": [],
+  "limits": [
+    "Clamps and S/Cartesian inconsistencies are observed associations, not a repaired-input acceptance proof.",
+    "The physical host remains rejected420; no threshold or working-precision setting changed.",
+    "Exact Cartesian arithmetic treats recorded binary128 coordinates as fixed data.",
+    "Native status is the public Fortran wrapper status and may include transport errors.",
+    "Ordinary control points used the unchanged automatic DP path and contain no QP group calls."
+  ],
+  "native_executed_by_analyzer": false,
+  "schema": 1,
+  "scope": "Offline exact analysis after full trace validation and exact unobserved-host parity.",
+  "trace_summaries": {
+    "8": {
+      "calls": 232,
+      "native_statuses": {
+        "0": 212,
+        "1": 20
+      },
+      "outcomes": {
+        "native_refusal": 20,
+        "stable": 212
+      },
+      "points": 3,
+      "taken_clamp_branches": {
+        "3": 788
+      }
+    },
+    "9": {
+      "calls": 232,
+      "native_statuses": {
+        "0": 170,
+        "1": 62
+      },
+      "outcomes": {
+        "native_refusal": 62,
+        "stable": 170
+      },
+      "points": 3,
+      "taken_clamp_branches": {
+        "3": 788
+      }
+    }
+  },
+  "unordered_pair_rows": 1908
+}
