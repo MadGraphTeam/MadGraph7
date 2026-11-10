@@ -5355,6 +5355,41 @@ C
         self.assertIn('Q Qx > w+ w-', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
+    def test_check_gauge_complex_mass_scheme(self):
+        """`check gauge` in the complex-mass scheme runs its axial step, and
+        the four gauges agree once the external W has a zero width.
+
+        Every ALOHA writer refused a custom denominator with a complex mass,
+        including the axial gauge (P.PBar) P^2 of a massless vector that has
+        none; `check gauge` stopped there. With the width of an external
+        particle the gauges differ by O(width/mass) (docs/auto-fd-gauge.md),
+        so the card sets it to zero."""
+
+        import aloha
+        import madgraph.models.write_param_card as write_param_card
+        import madgraph.models.check_param_card as check_param_card
+
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+
+        self.do('set complex_mass_scheme True')
+        self.do('import model sm')
+        card = pjoin(self.tmpdir, 'param_card_cms.dat')
+        write_param_card.ParamCardWriter(self.cmd._curr_model, card)
+        param_card = check_param_card.ParamCard(card)
+        param_card['decay'].get((24,)).value = 0.
+        param_card.write(card)
+
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check gauge %s w+ w- > w+ w-' % card)
+        self.do('set complex_mass_scheme False')
+
+        log = '\n'.join(cm.output)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
     def test_check_gauge_epem_aa_includes_axial(self):
         """Test `check gauge e+ e- > a a` includes axial gauge and succeeds."""
 

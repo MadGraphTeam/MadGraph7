@@ -877,9 +877,13 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 # Qualified: the local variable is also called denom. Without coupling (one): 1 / ( P^2 - m^2 ).
                 coup_args = '%s, %s, ' % (ccoeff, coup_vertex) if has_coup else ''
                 propagator = lambda mass: 'madmatrix::denom( %sdP%s, %s )' % (coup_args, self.outgoing, mass)
-                if not aloha.complex_mass:
+                # a custom denominator is the same with a complex mass, as long
+                # as it does not use the width (check_complex_mass_denominator)
+                if not aloha.complex_mass or self.routine.denominator:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.routine.denominator:
+                        if aloha.complex_mass:
+                            self.check_complex_mass_denominator()
                         # the P1N routines of the amplitude split carry the
                         # identity propagator, as the integer 1
                         if str(self.routine.denominator) == '1':
@@ -906,8 +910,6 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                             out.write('    const cxtype_amp_sv %s = %s / denden%s;\n' % (denomname, coeff_vertex, denomsuffix))
                             out.write('#endif\n')
                 else:
-                    if self.routine.denominator:
-                        raise Exception('modify denominator are not compatible with complex mass scheme')
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if arith_doubleexpansion:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
