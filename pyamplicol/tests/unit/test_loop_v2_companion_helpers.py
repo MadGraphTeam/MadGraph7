@@ -26,7 +26,8 @@ registered whole, which changes no program that compiled before.
 * nightly: M-SM row JJ04 (the same request with [QCD, QED] corrections)
   stored equals MadLoop (``required/msm/uux_ddxg_ew.json``) in the
   fixture's metric and tolerance, and its stored selections equal the
-  in-memory ones.
+  in-memory ones within the two binary64 evaluations' own estimates (the
+  1e-12 bound is below this request's binary64 accuracy).
 """
 
 from __future__ import annotations
@@ -105,29 +106,45 @@ def _sector(order) -> tuple:
     return tuple(sorted((name, power) for name, power in order if power))
 
 
-def _stored(artifact: Path, poles: str, points, scales, parameters=None):
-    """{sector: [Laurent per point]} of the stored process' selection."""
+def _stored(artifact: Path, poles: str, points, scales, parameters, checks):
+    """{sector: [(Laurent, absolute estimate or None) per point]} of the
+    stored process' selection (``checks``: the stability checks or None)."""
 
     from pyamplicol import Runtime
 
     runtime = Runtime.load(artifact, process="p", model_parameters=parameters)
-    result = runtime.evaluate(points, mu_r2=scales, poles=poles)
+    result = runtime.evaluate(
+        points, mu_r2=scales, poles=poles, stability_checks=checks
+    )
     return {
         _sector(sector.order): [
-            [float(x) for x in result.values[i][j]] for i in range(len(points))
+            (
+                [float(x) for x in result.values[i][j]],
+                None
+                if checks is None
+                else [float(x) for x in result.stability[i].absolute[j]],
+            )
+            for i in range(len(points))
         ]
         for j, sector in enumerate(result.sectors)
     }
 
 
-def _companion_selections_equal(artifact, slice_, points, scales, parameters=None):
+def _companion_selections_equal(
+    artifact, slice_, points, scales, parameters=None, estimated=False
+):
     """The stored process has its companion, and its "all", "uv" and "ir"
     selections equal the in-memory slice's with Python point inputs, per
-    point, sector and Laurent coefficient, on the sector's scale (the largest
-    in-memory coefficient); returns the worst relative difference per
-    selection."""
+    point, sector and Laurent coefficient: within ``TOLERANCE`` of the
+    sector's scale (the largest in-memory coefficient), or with
+    ``estimated`` within the two binary64 evaluations' own absolute
+    estimates (recommended stability checks), E_stored + E_in-memory.
+    Returns the worst difference per selection, on the sector's scale (and
+    with ``estimated`` on the estimate)."""
 
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
     from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
 
     execution = json.loads(
         (artifact / "processes" / "p" / "execution.json").read_text()
@@ -135,25 +152,40 @@ def _companion_selections_equal(artifact, slice_, points, scales, parameters=Non
     assert execution["scaleless_plan_sha256"] is not None
     assert slice_.scaleless is not None
     memory = NativeExecutor(slice_, forward=False, inputs="python")
+    public = VirtualStabilityChecks(1, True, rescaled=True) if estimated else None
     worst = {}
     for poles in SELECTIONS:
-        stored = _stored(artifact, poles, points, scales, parameters)
-        found = memory.evaluate(points, scales, parameters=parameters, poles=poles)
-        worst[poles] = 0.0
+        stored = _stored(artifact, poles, points, scales, parameters, public)
+        found = memory.evaluate(
+            points,
+            scales,
+            parameters=parameters,
+            poles=poles,
+            stability=RECOMMENDED_CHECKS if estimated else None,
+        )
+        worst[poles] = [0.0, 0.0]
         for i, result in enumerate(found):
             virtual = {
-                _sector(sector): [
-                    float(getattr(x, "real", x)) for x in laurent.coefficients
-                ]
+                _sector(sector): (
+                    [float(getattr(x, "real", x)) for x in laurent.coefficients],
+                    None
+                    if not estimated
+                    else result.stability.absolute[sector].coefficients,
+                )
                 for sector, laurent in result.components["virtual"].items()
             }
             assert set(virtual) == set(stored), (poles, i)
-            for sector, theirs in virtual.items():
-                mine = stored[sector][i]
+            for sector, (theirs, their_error) in virtual.items():
+                mine, my_error = stored[sector][i]
                 scale = max(map(abs, theirs))
                 for k, (a, b) in enumerate(zip(mine, theirs, strict=True)):
-                    assert abs(a - b) <= TOLERANCE * scale, (poles, i, sector, k, a, b)
-                    worst[poles] = max(worst[poles], abs(a - b) / scale)
+                    bound = (
+                        my_error[k] + their_error[k] if estimated else TOLERANCE * scale
+                    )
+                    assert abs(a - b) <= bound, (poles, i, sector, k, a, b, bound)
+                    worst[poles][0] = max(worst[poles][0], abs(a - b) / scale)
+                    if estimated and bound:
+                        worst[poles][1] = max(worst[poles][1], abs(a - b) / bound)
     return worst
 
 
@@ -218,7 +250,8 @@ def test_jj04_stored_equals_madloop(loop_native, tmp_path, monkeypatch):
     finite part and both poles of every sector at the fixture's four points
     equal MadLoop in the fixture's metric within its tolerance, and the
     stored "all" / "uv" / "ir" selections equal the in-memory ones with
-    Python point inputs. Cost: about 3-4 min of generation at ~10 GB."""
+    Python point inputs within the evaluations' own binary64 estimates
+    (recommended stability checks). Cost: about 3.5 min at ~10 GB."""
 
     fixture = _madloop()
     assert set(JJ04_FIXED.items()) <= set(fixture["fixed_parameters"].items())
@@ -233,7 +266,12 @@ def test_jj04_stored_equals_madloop(loop_native, tmp_path, monkeypatch):
     points, scales = _points()
     # MW is derived in the G_mu scheme (the fixture records its value).
     parameters = {k: v for k, v in fixture["parameters"].items() if k != "MW"}
-    stored = _stored(artifact, "all", points, scales, parameters)
+    stored = {
+        sector: [laurent for laurent, _ in rows]
+        for sector, rows in _stored(
+            artifact, "all", points, scales, parameters, None
+        ).items()
+    }
     couplings = {
         "QCD": float(fixture["parameters"]["aS"]),
         "EW": float(fixture["derived_parameters"]["alpha"]),
@@ -260,7 +298,13 @@ def test_jj04_stored_equals_madloop(loop_native, tmp_path, monkeypatch):
                 error = _fixture_metric(a, loop[key], unit)
                 assert error <= fixture["tolerance"], (i, loop["QCD"], key, a)
                 worst = max(worst, error)
+    print(f"JJ04 vs MadLoop: worst {worst:.2e} (fixture metric)")
+    # The 1e-12 bound of the CI-tier tests is below this request's binary64
+    # accuracy (stored 'uv' at point 1, QCD^4 QED^4: 1.1e-12 of the sector,
+    # estimated 3.8e-11): the bound is the evaluations' own estimates.
     selections = _companion_selections_equal(
-        artifact, slice_, points, scales, parameters
+        artifact, slice_, points, scales, parameters, estimated=True
     )
-    print(f"JJ04 vs MadLoop: worst {worst:.2e}; stored vs in-memory {selections}")
+    print(
+        f"JJ04 stored vs in-memory (Python inputs), worst per selection: {selections}"
+    )
