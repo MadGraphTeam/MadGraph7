@@ -1,0 +1,17 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 11853,
+      "sha256": "934efad4645ae9bb8353a44511d1c6b030c64f9fcb166c62987cd4cfe24fc624"
+    },
+    "source-bindings.json": {
+      "bytes": 4995,
+      "sha256": "086c848fae0d49f118e14cfd4941af2d07631e4c5b0e04e9dbdc03d23baee8cc"
+    },
+    "verify.py": {
+      "bytes": 1641,
+      "sha256": "0d2d5947ae968f1714520578b952641de42bfe4b3ad7afda5cd50751c3b75e32"
+    }
+  },
+  "schema": 1
+}

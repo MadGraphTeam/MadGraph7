@@ -1,0 +1,50 @@
+{
+  "models": {
+    "ew": [
+      {
+        "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generated-rank6-poles-1/ew/point.dat",
+        "sha256": "fc55234684a4b02a742c428c4d0f4756e8b80565f80e61ed6397e150bbcaad4b",
+        "source": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/point.dat"
+      },
+      {
+        "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generated-rank6-poles-1/ew/schedule.dat",
+        "sha256": "51ce0c45ac16bafff8e1e80210c5e370572600289742adfad5641d9fd1f6f9d0",
+        "source": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/schedule.dat"
+      },
+      {
+        "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generated-rank6-poles-1/ew/nominal/param_card.dat",
+        "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8",
+        "source": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/nominal/param_card.dat"
+      },
+      {
+        "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generated-rank6-poles-1/ew/nominal/ident_card.dat",
+        "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40",
+        "source": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/ew/nominal/ident_card.dat"
+      }
+    ],
+    "qcd": [
+      {
+        "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generated-rank6-poles-1/qcd/point.dat",
+        "sha256": "2cd9700542723d26c96217d270a9bc585a06d11bc49e7b7f7432744655da05f4",
+        "source": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/qcd/point.dat"
+      },
+      {
+        "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generated-rank6-poles-1/qcd/schedule.dat",
+        "sha256": "1b162ba3b7f540ce6866999783f98d443f7023edf21c2169a8480f2e1dde8905",
+        "source": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/qcd/schedule.dat"
+      },
+      {
+        "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generated-rank6-poles-1/qcd/nominal/param_card.dat",
+        "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+        "source": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/qcd/nominal/param_card.dat"
+      },
+      {
+        "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/generated-rank6-poles-1/qcd/nominal/ident_card.dat",
+        "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+        "source": "docs/benchmarkfolder/experiments/generated-rank6-poles-proposal/attempt1/materialized/qcd/nominal/ident_card.dat"
+      }
+    ]
+  },
+  "schema": 1,
+  "scope": "input copies only; no native execution"
+}

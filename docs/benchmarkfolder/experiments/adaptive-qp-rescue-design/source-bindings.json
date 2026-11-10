@@ -1,0 +1,120 @@
+{
+  "compiler_executed": false,
+  "descendants_spawned": false,
+  "files": {
+    ".tirust-build/bridge-poles/src/lib.rs": {
+      "anchors": [
+        "const MP_BITS: u32 = 256;"
+      ],
+      "bytes": 40960,
+      "sha256": "1eab09d61652e4dfade900a22f8c63a071b4fecee2e7454e8144f934f17e34e0"
+    },
+    ".tirust-build/ew-threshold-512/src/lib.rs": {
+      "anchors": [
+        "const MP_BITS: u32 = 512;"
+      ],
+      "bytes": 41008,
+      "sha256": "59184358f8c2f91b1ac38397e76f8accc6e4ffce8aaa529bdde2acbaee985871"
+    },
+    ".tirust-build/pole-development/crates/iregi-rust/src/direct.rs": {
+      "anchors": [
+        "pub fn last_conditions(&self) -> &[Option<f64>]",
+        "use it to choose a working precision for a retry."
+      ],
+      "bytes": 29753,
+      "sha256": "71f78f5b1ed56890371a5adb9081753e2a28306847957bf1a315e39189689b46"
+    },
+    ".tirust-build/pole-development/crates/iregi-rust/src/direct/exec.rs": {
+      "anchors": [
+        "if condition.clone().pow(power) < threshold {",
+        "self.failed_condition = Some(condition.clone().pow(power).to_f64());",
+        "ill-conditioned Gram matrix for {members:?}: conditioning {:e}",
+        "oneloop::NativeEvaluator::with_binary_precision(",
+        "madloop_pole_kernels::ScalarPoleEvaluator::with_binary_precision("
+      ],
+      "bytes": 191421,
+      "sha256": "255b250f6997cfd08f017a9962ac79e6a4a87421f1f2d9f7ddb6a8bc1129eace"
+    },
+    ".tirust-build/pole-development/crates/iregi-rust/src/direct/poles.rs": {
+      "anchors": [
+        "pub fn set_input_precision(&mut self, bits: u32)",
+        "pub fn last_conditions(&self) -> &[Option<f64>]"
+      ],
+      "bytes": 7387,
+      "sha256": "dee900330fea61ff4a05626b28a5195e209e3538a29332b70af8f9dec7908a9b"
+    },
+    ".tirust-build/pole-development/crates/iregi-rust/src/types.rs": {
+      "anchors": [
+        "pub enum LaneStatus {",
+        "Unstable(String)"
+      ],
+      "bytes": 35767,
+      "sha256": "a29dc5f68edae92c5f35acc49ac8b2c64dbc8a38dd078df98d13769a801103e0"
+    },
+    "docs/benchmarkfolder/experiments/general-kinematics-rescue-design/evidence-index.json": {
+      "anchors": [],
+      "bytes": 532,
+      "sha256": "d3be1d91e162bccce2b3afee30f0739c57c81c01eb4dabdf49d31695833f337e"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-comparison/evidence-index.json": {
+      "anchors": [],
+      "bytes": 1218,
+      "sha256": "9102583bbe668322ed284a2970c24e538a5f737a485b57e0484fc0d78acc8b9c"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-design/evidence-index.json": {
+      "anchors": [],
+      "bytes": 796,
+      "sha256": "51f45d9e6f2c13227dc504fa284cba967f947db0f073dfb18bb9bf924c28c298"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-native/evidence-index.json": {
+      "anchors": [],
+      "bytes": 1550,
+      "sha256": "d5b67551d3c9353dbd472a0d272710b63bf220bdcab6e186944713ed07e9b14c"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-runner2/source-index.json": {
+      "anchors": [],
+      "bytes": 1384,
+      "sha256": "69f76225a439dd325c4c08369a46ae5654102f1a95c19d6c3e7ca83682f0a3f4"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-native/RESULTS.md": {
+      "anchors": [],
+      "bytes": 7897,
+      "sha256": "c8484de056393c2e1064eedecaa53beedc406d759ea031735212fa3585fa960b"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-native/analysis1/guard-source-audit.json": {
+      "anchors": [],
+      "bytes": 74317,
+      "sha256": "a517240ae860dd9ed1cd88d0f58dbbb33d56ebe38726aab5df7e4316ffec4ca0"
+    },
+    "docs/benchmarkfolder/experiments/qcd-topology-rescue-native/evidence-index.json": {
+      "anchors": [],
+      "bytes": 11569,
+      "sha256": "c7d185c4991fdfacf5c76710d1790b7ccf31c5c2ec0f9270cc4f72ec3dfdfc32"
+    },
+    "vendor/tirust/mtirust.f90": {
+      "anchors": [
+        "ios = clear_cache(context)",
+        "TIRust returned an invalid or nonfinite binary128 output record."
+      ],
+      "bytes": 15997,
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "vendor/tirust/src/lib.rs": {
+      "anchors": [
+        "const MP_BITS: u32 = 256;",
+        "fn mp_records(",
+        "Float::parse(text, Some(113))",
+        "fn qp_cache_key(",
+        "value.set_prec(MP_BITS)"
+      ],
+      "bytes": 46218,
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    }
+  },
+  "native_executed": false,
+  "production_changed": false,
+  "runner2_execution_status_at_freeze": "authorized but not launched; main campaign owns numerical lock",
+  "schema": 1,
+  "scope": "Source-only bounded256-to512 conditioning retry design; not apply-ready or qualified.",
+  "source_identity": "Current bridge hashes are distinct from the historical49af bridge used by retained QCD evidence. Historical direct-engine hashes are cross-checked against the frozen guard audit."
+}

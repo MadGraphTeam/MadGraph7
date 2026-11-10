@@ -1,0 +1,18 @@
+test_decimal_binary128_rounding (__main__.BinaryTransport.test_decimal_binary128_rounding) ... ok
+test_double_promotions (__main__.BinaryTransport.test_double_promotions) ... ok
+test_known_binary128_patterns (__main__.BinaryTransport.test_known_binary128_patterns) ... ok
+test_absent_native_metadata_is_clean (__main__.ObserverText.test_absent_native_metadata_is_clean) ... ok
+test_duplicate_json_key (__main__.ObserverText.test_duplicate_json_key) ... ok
+test_fenv_and_health_tampering (__main__.ObserverText.test_fenv_and_health_tampering) ... ok
+test_missing_extra_and_duplicate_records (__main__.ObserverText.test_missing_extra_and_duplicate_records) ... ok
+test_native_lengths (__main__.ObserverText.test_native_lengths) ... ok
+test_unknown_key_and_wrong_schema (__main__.ObserverText.test_unknown_key_and_wrong_schema) ... ok
+test_valid_fabricated_frame (__main__.ObserverText.test_valid_fabricated_frame) ... ok
+test_fixed_coverage_budget (__main__.SourceSchedule.test_fixed_coverage_budget) ... ok
+test_materialized_fresh_copies_and_call_order (__main__.SourceSchedule.test_materialized_fresh_copies_and_call_order) ... ok
+test_missing_records_and_bare_stop_rejected (__main__.SourceSchedule.test_missing_records_and_bare_stop_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.014s
+
+OK

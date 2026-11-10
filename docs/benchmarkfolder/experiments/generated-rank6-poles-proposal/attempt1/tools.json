@@ -1,0 +1,14 @@
+{
+  "gcc": {
+    "path": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/gcc",
+    "sha256": "3c48a46fb1dc134c0f10c2da6ec1a8d34a381b93c2ac588b7d19dd3e804eeeef"
+  },
+  "gfortran": {
+    "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae"
+  },
+  "python": {
+    "path": "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13",
+    "sha256": "b62e17653c7f9b57b7888b94e7eeaf5bce5bd3538002daff47f17cad1d984799"
+  }
+}
