@@ -1,0 +1,68 @@
+{
+  "active_current_payload_reads": false,
+  "closed_diagnostic_source_only_smoke": {
+    "bound_paths": 215,
+    "native_execution": false,
+    "quadrature_execution": false,
+    "roles": 5,
+    "stored_python_executed": false
+  },
+  "default_plan": {
+    "current_results_claimed": false,
+    "status": "source-only-no-ingestion"
+  },
+  "independent_successor_review": {
+    "agent": "statistics",
+    "full11_tests": 2,
+    "native_or_typst_execution": false,
+    "observed_seconds": 16.97,
+    "passed": true,
+    "source_review": "passed; no additional diagnostic/Typst blocker"
+  },
+  "native_calls": 0,
+  "preserved_predecessor_index_sha256": "6c751312efb3ae4e3ec3df4ae45b59c77e28d00e09c0c391eb1783494dac1dfb",
+  "required_after_promotion": [
+    "actual closed checkpoint selection/dossier replay",
+    "new report build input/context/PDF drift checks",
+    "matching existing builder verify-only invocation after separate rendering admission"
+  ],
+  "review_fixes": [
+    "bytecode-free exact source replay",
+    "explicit historical stress manifest with current stress gate open",
+    "retained completed historical disclosures",
+    "nullable/failed comparison display and baseline status",
+    "strict SHA-256 pins before reads",
+    "safe generator pin path"
+  ],
+  "schema": "madloop-tirust-private-current-report-source-validation-v1",
+  "scope": "source-only synthetic fixtures; no actual current-campaign checkpoint ingestion",
+  "successor_regression": {
+    "all_lanes_passing_with_terminal_exit1_still_failed": true,
+    "full66_lanes_replayed": true,
+    "legitimate_full11_checkpoint_passes": true,
+    "original_synthetic_raw_repository_deleted_before_ingestion": true,
+    "supervisor_order_differs_from_frozen_configuration_order": true
+  },
+  "syntax_check": {
+    "native_or_typst_execution": false,
+    "python_sources_parsed": true
+  },
+  "tests": [
+    {
+      "command": "source tools/tirust_env.sh && python3 -B docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-2/test_current_refresh.py",
+      "observed_output": "Ran 24 tests in 26.670s; OK",
+      "passed": true,
+      "synthetic_only": true,
+      "tests": 24
+    },
+    {
+      "command": "source tools/tirust_env.sh && python3 -B -m unittest discover -s docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-2 -p test_campaign_report_diagnostics.py -v",
+      "observed_output": "Ran 13 tests in 0.216s; OK",
+      "passed": true,
+      "result_origin": "executed in successor2 namespace",
+      "synthetic_only": true,
+      "tests": 13
+    }
+  ],
+  "typst_execution": false
+}

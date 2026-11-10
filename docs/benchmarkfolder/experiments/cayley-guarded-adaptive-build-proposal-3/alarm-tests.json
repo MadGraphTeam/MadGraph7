@@ -1,0 +1,16 @@
+{
+  "schema": "guarded-build3-alarm-ownership-tests-v1",
+  "argv": [
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3",
+    "-I",
+    "-B",
+    "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/test_alarm_ownership.py"
+  ],
+  "returncode": 0,
+  "stdout": "",
+  "stderr": "...\n----------------------------------------------------------------------\nRan 3 tests in 0.010s\n\nOK\n",
+  "elapsed_seconds": 0.11660524969920516,
+  "source_sha256": "5356004c2d91fbd74655d7c54d9ecdb19446917c597cb5bc22e81764d147b520",
+  "test_Popen_killpg_wait_mocked": true,
+  "compiler_linker_loader_reducer_executed": false
+}

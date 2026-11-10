@@ -1,0 +1,188 @@
+{
+  "copies": {
+    "attempt1/copy-cache.log.gz": {
+      "encoding": "gzip-utf8",
+      "origin": ".tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/copy-cache.log",
+      "origin_bytes": 0,
+      "origin_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "attempt1/execution.json.gz": {
+      "encoding": "gzip-utf8",
+      "origin": ".tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/execution.json",
+      "origin_bytes": 754280,
+      "origin_sha256": "59167eec84a767f0712b6905285a99564458ff0667427de87ce1921534b46632"
+    },
+    "attempt1/release-build.log.gz": {
+      "encoding": "gzip-utf8",
+      "origin": ".tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/release-build.log",
+      "origin_bytes": 273420,
+      "origin_sha256": "7ea452558263c98b91781e979f843c8cf236d951b89450cbbc436275945e8a3d"
+    },
+    "elf_metadata.py": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/adaptive-qp-rescue-private-release-build/elf_metadata.py",
+      "origin_bytes": 7235,
+      "origin_sha256": "3327e253c4ea1b581b252fc9547f9b7c3f71f610c131e8c23b0dc1039b26f73a"
+    },
+    "original-gram.rs.gz": {
+      "encoding": "gzip-utf8",
+      "origin": ".tirust-build/pole-development/crates/iregi-rust/src/direct/exec/gram.rs",
+      "origin_bytes": 113008,
+      "origin_sha256": "4565a5075e6abae10dc062be4119a206855fa533eeab09ea1767cdd4e9631858"
+    },
+    "proposal3/README.md": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/README.md",
+      "origin_bytes": 3963,
+      "origin_sha256": "e93391cef0a04261d68e9dba4f6dbdcfc55d6717557e75c612053a2103f49549"
+    },
+    "proposal3/alarm-tests.json": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/alarm-tests.json",
+      "origin_bytes": 661,
+      "origin_sha256": "7b7bf72df42781a262b93475a4199f20709d20557354286a05f6543c0526ec5d"
+    },
+    "proposal3/build.py": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/build.py",
+      "origin_bytes": 7417,
+      "origin_sha256": "d6f4f47c72161775fe76ec47712791be50b5efe81d2eb3bbe88dfca862dd9c2f"
+    },
+    "proposal3/build.py.delta.patch": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/build.py.delta.patch",
+      "origin_bytes": 679,
+      "origin_sha256": "0520fe7b2a96b4979d3bdede9cd469033dfa89ad7cf35e31d3fe01f8cb6394fd"
+    },
+    "proposal3/cargo-version.log": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/cargo-version.log",
+      "origin_bytes": 36,
+      "origin_sha256": "f4f564f8936fa8eb53bca8bbe50666489252bbcbeaae0cb0dd54682444697e52"
+    },
+    "proposal3/failed-attempt1/closure.json": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/failed-attempt1/closure.json",
+      "origin_bytes": 271606,
+      "origin_sha256": "5ca1dc862fc8912e1afcddde96a1f1c0561fdb42a143b67e7dc7c9584cb304bd"
+    },
+    "proposal3/failed-attempt1/copy-cache.log.gz": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/failed-attempt1/copy-cache.log.gz",
+      "origin_bytes": 20,
+      "origin_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "proposal3/failed-attempt1/execution.json.gz": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/failed-attempt1/execution.json.gz",
+      "origin_bytes": 37031,
+      "origin_sha256": "140481082cc7f1ff560c3f5ee814d5aedf89a04e16359c977591adceef4f48f1"
+    },
+    "proposal3/failed-attempt1/release-build.log.gz": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/failed-attempt1/release-build.log.gz",
+      "origin_bytes": 17616,
+      "origin_sha256": "78f6e7ecb71e09e7b929d0531addea5b22fbb7490eb1b4cb1e63c485050824ac"
+    },
+    "proposal3/failed-attempt2/closure.json": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/failed-attempt2/closure.json",
+      "origin_bytes": 277120,
+      "origin_sha256": "a6408c2dab73f9eea5350b3bd31be7d4ebe15a1e4b575332522335061efadc54"
+    },
+    "proposal3/failed-attempt2/copy-cache.log.gz": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/failed-attempt2/copy-cache.log.gz",
+      "origin_bytes": 20,
+      "origin_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "proposal3/failed-attempt2/execution.json.gz": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/failed-attempt2/execution.json.gz",
+      "origin_bytes": 38153,
+      "origin_sha256": "c3deb997457ea69a2d6e828fa9ab4498c27c00b5c270adaf55b8d3a7be23169d"
+    },
+    "proposal3/failed-attempt2/release-build.log.gz": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/failed-attempt2/release-build.log.gz",
+      "origin_bytes": 17125,
+      "origin_sha256": "5fd753cb2360be5703c774d8f9225434283321e2e774011bdda074fc8e695356"
+    },
+    "proposal3/guard.patch": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/guard.patch",
+      "origin_bytes": 426,
+      "origin_sha256": "41803af300a83683479df8df20c1769733e63cae2981bbc2cf4497a046ade96d"
+    },
+    "proposal3/old-release-execution.json": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/old-release-execution.json",
+      "origin_bytes": 196617,
+      "origin_sha256": "171b2e6d972fd24e013c0d5a1edaca346426a4c9df2680209de5733036fbfb14"
+    },
+    "proposal3/plan.json": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/plan.json",
+      "origin_bytes": 14287,
+      "origin_sha256": "e7e633a519dd3c17ba413cbdcd49625415790520d42c35f3a6ce2b2c26899ab6"
+    },
+    "proposal3/rustc-version.log": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/rustc-version.log",
+      "origin_bytes": 66,
+      "origin_sha256": "9a7bdd50adc0281404c42a934b62dd706a1524407c7b790c95907a55cc000d5a"
+    },
+    "proposal3/source-audit.json": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/source-audit.json",
+      "origin_bytes": 1114,
+      "origin_sha256": "6c0abda9bf86cc5340b09a1464a182b30d5b2b881a103055f751409317609503"
+    },
+    "proposal3/source-copies.json": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/source-copies.json",
+      "origin_bytes": 313630,
+      "origin_sha256": "13bcb83414b98f5c4c0e389b137f86bce2a23754b29d8177722e2c2f8bcd2399"
+    },
+    "proposal3/source-index.json": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/source-index.json",
+      "origin_bytes": 3352,
+      "origin_sha256": "39d6ba2bd3c7aef5c8f5008360661c988a93d86ab1265cb3bc815707233b9e72"
+    },
+    "proposal3/test_alarm_ownership.py": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/test_alarm_ownership.py",
+      "origin_bytes": 3110,
+      "origin_sha256": "5356004c2d91fbd74655d7c54d9ecdb19446917c597cb5bc22e81764d147b520"
+    },
+    "proposal3/verify_source.py": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/verify_source.py",
+      "origin_bytes": 7519,
+      "origin_sha256": "838b40675487a4c6cb03a47f2327cecf70a9a6c90aaad76d1972c600cb0524ac"
+    },
+    "proposal3/verify_source.py.delta.patch": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/cayley-guarded-adaptive-build-proposal-3/verify_source.py.delta.patch",
+      "origin_bytes": 4014,
+      "origin_sha256": "d8e43127a9e91e9746692834a456bc637ca77bc07e1317f7d77de3ff76b58e3a"
+    },
+    "reader-origin-index.json": {
+      "encoding": "exact",
+      "origin": "docs/benchmarkfolder/experiments/qcd-topology-rescue-higher-precision-design/evidence-index.json",
+      "origin_bytes": 796,
+      "origin_sha256": "51f45d9e6f2c13227dc504fa284cba967f947db0f073dfb18bb9bf924c28c298"
+    }
+  },
+  "current_DSO_read_count": 1,
+  "historical_paths_required_by_default_verifier": false,
+  "inspection": "Existing pure ELF byte reader; no loader, ldd, ctypes, subprocess, debugger or new compiler/test process.",
+  "library": {
+    "bytes": 69162336,
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/cayley-guarded-adaptive-build-proposal-3/attempt1/runtime/libmadloop_tirust_adaptive_private.so",
+    "sha256": "69722452c234f494f0aa436fa24bbabfeae59100c03b05a1f0b76336cc17886b"
+  },
+  "native_payloads_retained": false,
+  "schema": "portable-guarded-build-bindings-v1"
+}
