@@ -2080,7 +2080,7 @@ dependencies = [
 
 [[package]]
 name = "pyamplicol"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "symbolica",
 ]
@@ -2365,7 +2365,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-capi"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "gmp-mpfr-sys",
  "rusticol-core",
@@ -2375,7 +2375,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-core"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "bincode",
  "brotli",
@@ -2442,7 +2442,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-python"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "flate2",
  "gmp-mpfr-sys",

@@ -35,39 +35,77 @@ Version 1.0.1 uses published Symbolica 3.0.0, SymJIT 2.26.4 and
 ufo-model-loader 1.0.0, as recorded in the dependency lockfiles. No local
 dependency source patches or unpublished wheels are needed.
 
-## In development: loop-induced processes
+## 1.0.3 release
 
-The development branch (`loop_induced_tir_support`, not released) adds
-loop-induced one-loop processes: processes without a Born amplitude within
-their coupling-order limits (`g g > h`, `g g > z z`, `h > g g`), served as
-|A_loop|^2 at full colour and evaluated as `VirtualEvaluation` results with
-`contribution = "loop-induced"` (empty Born fields, poles `"all"` or
-`"none"`, which vanish; zeros reported within their absolute estimate), see
+Version `1.0.3` adds loop-induced one-loop processes: processes without a
+Born amplitude within their coupling-order limits (`g g > h`, `g g > z z`,
+`h > g g`), served as |A_loop|^2 at full colour and evaluated as
+`VirtualEvaluation` results with `contribution = "loop-induced"` (empty Born
+fields, poles `"all"` or `"none"`, which vanish; zeros are reported within
+their absolute estimate), see
 [Configuration](configuration.md#processes-and-multiparticles) and the
 [Python API](python-api.md#one-loop-virtuals-and-loop-induced-processes).
 `process.loop_induced` routes them (`"include"` serves both kinds of a mixed
-multiparticle request as separate contributions), and `[loop] reduction`
-selects the reduction backend (`"auto"`: TIRust for loop-induced processes,
-at a target accuracy of 1e-5 relative per point (`reduction_target`), a point
-it refuses or fails evaluated again on NinjaRS and recorded per point;
-NinjaRS for Born-interfered processes; `"ninjars"` and `"tirust"` without a
-fallback; TIRust serves every arithmetic). The Python API's stability rescue
-is a stack of (precision, backend) levels; its loop-induced default runs
-TIRust then NinjaRS in binary64 before double-double and arbitrary
-precision. `pyamplicol self-test` also
-evaluates a shipped loop-induced artifact (`g g > h`) against MadLoop. The
-native SDKs (C, C++, Fortran, Rust, UMAMI) open loop-induced processes directly
-with empty Born counts and the Python API's values, and take the reduction
-backend per call (`rusticol_virtual_set_reduction`; `"auto"` with the
-per-point NinjaRS fallback, no rescue stack), the target accuracy
-(`rusticol_virtual_set_reduction_target`) and the unchecked setting
-(`rusticol_virtual_set_reduction_unchecked`: no backend acceptance or refusal
-checks, off by default, as the Python API's `reduction_unchecked=`); they also serve the
-helicity-resolved and the colour- and spin-correlated outputs (the correlated
-history `"born"` is |A|^2 itself), with the Python API's values, and monitor
-binary64 stability for both process types (`rusticol_virtual_set_stability_checks`:
-rotations, the reduction-direction and rescaled checks, the cross-backend check;
-off by default), each point's estimate equal to the Python API's.
+multiparticle request as separate contributions). Leading and next-to-leading
+colour are refused for loop-induced processes. The native SDKs (C, C++,
+Fortran, Rust, UMAMI) open loop-induced processes directly with empty Born
+counts and the Python API's values, including the helicity-resolved and the
+colour- and spin-correlated outputs (the correlated history `"born"` is
+|A|^2 itself).
+
+The one-loop numerators are reduced by one of two backends, selected by
+`[loop] reduction` (the generation default) and `evaluation.reduction` (CLI
+`--loop-reduction`, Python `reduction=`, the SDKs' `set_reduction`):
+NinjaRS (integrand reduction) and TIRust (tensor-integral reduction, built
+into the native extension by default). `"auto"`, the default, takes TIRust
+for loop-induced and NinjaRS for Born-interfered processes; on TIRust a point
+it refuses or fails is evaluated again on NinjaRS and recorded per point. In
+double-double and arbitrary precision each point this fallback serves is
+guarded by a rotation re-test of the promoted, improved point. The guard's
+estimate is an estimate, not a bound: strongly suppressed helicity rows near
+exactly forward kinematics can be served beyond their own 1e-5 (see
+[Python API](python-api.md), "Near-forward accuracy"). An explicitly
+requested backend that cannot serve a call is refused, never switched; every
+lane records the requested and effective backend and the reason. TIRust's
+target accuracy is `evaluation.reduction_target` (default 1e-5 relative per
+point). `evaluation.reduction_unchecked = true` (Python
+`reduction_unchecked=`, CLI `--reduction-unchecked`) is a timing mode
+without the backends' acceptance and refusal checks and without an accuracy
+certificate; it is off by default, so the backends' own checks stay on.
+
+The input kinematics of double-double and arbitrary-precision evaluations are
+improved to exact energy-momentum conservation and exact on-shell external
+momenta in the working arithmetic with MadLoop's algorithms
+(`evaluation.kinematics_improvement`: `"z-shift"`, the default, MadLoop's
+variant 2 with its fallback to variant 1, finished by a frame-independent
+projection only when the produced point is not exact; `"rescaling"`,
+`"projection"` or `"off"`). Binary64 evaluations are improved only with
+`kinematics_improvement_binary64 = true` (default false). Points whose beams
+lie along the z axis keep MadLoop's values bit for bit. See
+[Configuration](configuration.md#kinematics-improvement-of-the-input-points).
+
+Binary64 stability checks (rotations, the reduction-direction and rescaled
+checks, the cross-backend check) are available in the Python API and every
+native SDK (`rusticol_virtual_set_stability_checks`), off by default; the
+recommended checks are one rotation with the reduction-direction and
+rescaled checks. The Python API's stability rescue is a stack of
+(precision, backend) levels; for loop-induced processes its default runs
+TIRust then NinjaRS in binary64 before double-double and arbitrary precision.
+Full-colour and next-to-leading-colour Born-interfered virtuals take a
+run-time helicity selection (`helicities=`) in the Python API and the native
+SDKs.
+
+`pyamplicol check` runs the pole (Catani; finiteness for loop-induced
+processes), Ward and Goldstone checks of a one-loop run card or artifact,
+regenerated in memory, escalating undecided rows to double-double and
+arbitrary precision. Ward rows of a request with electroweak loop
+corrections and an on-shell zero-width external massive quark read "not
+applicable": the identity of that check is not guaranteed there. See
+[Command-line interface](command-line-interface.md#check). Four one-loop
+examples ship with the package (`loop_uux_ttxgg`, `loop_uux_ddxepem`,
+`loop_gg_zgg` and `loop_gg_epemmpmm`, the last two loop-induced), see
+[Examples](../../examples/README.md#one-loop-examples) and
+[Build a wheel from a checkout and run the loop examples](installation.md#build-a-wheel-from-a-checkout-and-run-the-loop-examples).
 
 In 1.0.2, storing a one-loop request whose Born couplings, as its scaleless
 companion evaluates them, read a model helper function (e.g. `u u~ > d d~ g`
@@ -75,6 +113,24 @@ with QCD corrections and explicit coupling-order caps that keep both Born
 orders, QCD^3 and QCD QED^2) failed with `Could not create evaluator: function
 value_N(..) is not in a parameter map`, so nothing was stored and no value was
 wrong; such requests now store.
+
+Version `1.0.3` uses the Python dependencies of 1.0.2 (Symbolica 3.0.3
+from PyPI, SymJIT 2.28.3, ufo-model-loader 1.0.1). The native code builds
+Symbolica at the head of symbolica-dev/symbolica#163 (`dfe6bd97`), NinjaRS
+and oneloopmaster at newer commits of their `main` branches, and TIRust
+([huashengshao/TIRust](https://github.com/huashengshao/TIRust)) at a pinned
+commit, linked by the default cargo feature `tir`; see
+[dependencies/README.md](../../dependencies/README.md). With Python Symbolica
+3.0.3 from PyPI, results of the Python API can depend on what else was
+generated in the same Python process (about 1e-30 relative normally, amplified
+at nearly degenerate 2 -> 2 kinematics): generate each artifact in a fresh
+process where that matters. A Symbolica Community build with
+symbolica-dev/symbolica#163, or a Symbolica release that contains it, is not
+affected. Process artifacts load only in the version that wrote them:
+artifacts written by 1.0.2 are refused by 1.0.3, regenerate them.
+
+Version `1.0.2` was not published on PyPI and has no tag; its content is part
+of 1.0.3.
 
 ## 1.0.2 release
 
