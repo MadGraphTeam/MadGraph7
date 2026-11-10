@@ -3835,6 +3835,21 @@ class Event(list):
         return tag, order
     
     @staticmethod
+    def rest_sqrts(tot_mom, sqrts):
+        """The energy of the frame where the final-state momenta tot_mom sum to
+        rest: sqrts, unless tot_mom^2 differs from sqrts^2 beyond the 1e-6 of
+        the Lorentz map but within the precision of the event record, which
+        keeps 11 digits: in a strongly boosted event (a light system of a few
+        TeV along the beam, e.g. an onium with a soft jet) E^2 - p^2 then loses
+        up to ~1e-10 E^2. The final state's own invariant mass is used there,
+        instead of stopping on "p1^2 != p2^2"; any other event is unchanged."""
+        m2 = tot_mom.mass_sqr
+        diff = abs(m2 - sqrts ** 2)
+        if diff > 1e-6 * max(abs(m2), sqrts ** 2) and diff <= 1e-9 * tot_mom.E ** 2 and m2 > 0:
+            return math.sqrt(m2)
+        return sqrts
+
+    @staticmethod
     def mass_shuffle_frame(momenta, sqrts):
         """The per-event half of ``mass_shuffle``: everything the RAMBO
         reshuffling jacobian needs that does *not* depend on the new masses.
@@ -3857,6 +3872,7 @@ class Event(list):
         """
         oldm = [p.mass_sqr for p in momenta]
         tot_mom = sum(momenta, FourMomentum())
+        sqrts = Event.rest_sqrts(tot_mom, sqrts)
         lor = tot_mom.get_lorentz_map(FourMomentum(sqrts, 0, 0, 0))
         boosted = [p.apply_lorentzmap(lor) for p in momenta]
         return ([p.E for p in boosted], oldm, [p.norm_sq for p in boosted])
@@ -3918,12 +3934,14 @@ class Event(list):
         three-momentum is scaled by in the frame where the momenta sum to rest
         (0 on the failure paths, where jac is 0 too)."""
 
-        if not new_sqrts:
-            new_sqrts = sqrts
-        
         oldm = [p.mass_sqr for p in momenta]
         newm = [m**2 for m in new_mass]
         tot_mom = sum(momenta, FourMomentum())
+        # sqrts at the precision of the event record (rest_sqrts)
+        rest = Event.rest_sqrts(tot_mom, sqrts)
+        if not new_sqrts or new_sqrts == sqrts:
+            new_sqrts = rest
+        sqrts = rest
         # Momenta that already sum to rest -- a decay generated at rest, i.e.
         # every MadSpin decay reshuffle -- need neither map: both boosts would
         # have a zero velocity, which _apply_boost_beta skips, so the numbers

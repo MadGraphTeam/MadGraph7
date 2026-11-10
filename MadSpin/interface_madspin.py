@@ -4039,10 +4039,16 @@ class MadSpinInterface(extended_cmd.Cmd):
                             # has no branch of its own is never generated for,
                             # never decayed, and never has a virtuality drawn.
                             name = self.model.get_particle(particle.pdg).get_name()
+                            # a bound state decays on its mass shell
+                            # (_mass_window): no virtuality is drawn, so
+                            # there is no Breit-Wigner tail to account for
+                            onia = getattr(self, 'onia', None)
+                            onium = bool(onia) and (onia.is_onium(particle.pdg) or
+                                                    onia.is_onium(-particle.pdg))
                             bw_trunc_per_pdg[particle.pdg] = (
                                 madspin.bw_retained_fraction(
                                     mass, width, self._resolved_bw_cut())
-                                if name in self.list_branches else 1.0)
+                                if name in self.list_branches and not onium else 1.0)
                         event_trunc *= bw_trunc_per_pdg[particle.pdg]
             if pol_weights:
                 pol_layouts.add(tuple(pol_sequence))

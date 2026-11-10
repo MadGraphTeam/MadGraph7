@@ -81,6 +81,17 @@ ANNOUNCEMENT:
          used by MadSpin), which has the interference between J = 0, 1, 2. MadSpin warns
          when the 3PJ[8] LDMEs of the events break <O(3PJ[8])> = (2J+1) <O(3P0[8])>, or
          when only some J were generated.
+       - Bug fix: MadSpin stopped ("No Lorentz transformation exists: p1^2 != p2^2") on a
+         strongly boosted event of a 2 -> 2 production, e.g. g g > Jpsi(1|3S11) g with a soft
+         jet: the event record keeps 11 digits, so the final-state invariant mass of a light
+         system of several TeV along the beam differs from sqrt(s) of the incoming partons by
+         more than the 1e-6 its reshuffling allowed. Within the precision of the record the
+         reshuffling now works at the final state's own invariant mass (Event.rest_sqrts);
+         every other event is unchanged.
+       - Bug fix: after a 2 -> 2 production MadSpin scaled the cross section of the decayed
+         onia by the Breit-Wigner truncation of their width (0.979 for BW_cut = 15), although an
+         onium decays on its mass shell and no virtuality is drawn: the decayed cross section is
+         now the production one times the branching ratio (test_madspin_onium_decay_2to2).
        - Bug fix: in an ungrouped output (standalone_fortran, or madevent with
          group_subprocesses False), Fock states with the same diagrams but a different
          J, L, S, colour or hadron shared one matrix element, that of the first: e.g.

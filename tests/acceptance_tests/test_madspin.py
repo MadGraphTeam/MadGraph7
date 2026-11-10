@@ -89,7 +89,7 @@ class TestMadSpin(unittest.TestCase):
         text = re.sub(r'(?m)^(\s*443\s+)[0-9.Ee+-]+(\s+# mass for)', r'\g<1>3.1\2', open(card).read())
         open(card, 'w').write(text)
         with open(pjoin(self.run_dir, 'Cards', 'param_card.dat'), 'a') as fsock:
-            fsock.write('\nDECAY  443  9.29e-05\n')
+            fsock.write('\nDECAY  443  9.26e-05\n')
         madgraph('launch.mg', ['launch %s' % self.run_dir, 'set nevents 400',
                                'set pdlabel nn23lo1', 'set iseed 31'])
         events = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
@@ -135,7 +135,7 @@ class TestMadSpin(unittest.TestCase):
         # BR = Gamma_LO(J/psi > mu+ mu-) / Gamma = 4 e_c^2 alpha^2 |R(0)|^2 / M^2 / Gamma
         alpha, M = 1 / 132.507, 3.1
         r2 = 1.16 * 4 * math.pi / 18
-        br = 4 * (2. / 3) ** 2 * alpha ** 2 * r2 / M ** 2 / 9.29e-05
+        br = 4 * (2. / 3) ** 2 * alpha ** 2 * r2 / M ** 2 / 9.26e-05
         self.assertLess(abs(cross / production / br - 1), 1e-3, (cross, production, br))
 
         cross, m2, err, n = decay('none', 'none')
@@ -166,7 +166,7 @@ class TestMadSpin(unittest.TestCase):
                                'generate g g > Jpsi(1|3PJ8)',
                                'output madevent %s -f -nojpeg' % self.run_dir])
         with open(pjoin(self.run_dir, 'Cards', 'param_card.dat'), 'a') as fsock:
-            fsock.write('\nDECAY  443  9.29e-05\n')
+            fsock.write('\nDECAY  443  9.26e-05\n')
         madgraph('launch.mg', ['launch %s' % self.run_dir, 'set nevents 3000',
                                'set pdlabel nn23lo1', 'set iseed 21'])
         events = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
@@ -209,8 +209,59 @@ class TestMadSpin(unittest.TestCase):
         # BR of the J/psi: its LO partial width at its own onium_mass (3.1)
         alpha, M = 1 / 132.507, 3.1
         r2 = 1.16 * 4 * math.pi / 18
-        br = 4 * (2. / 3) ** 2 * alpha ** 2 * r2 / M ** 2 / 9.29e-05
+        br = 4 * (2. / 3) ** 2 * alpha ** 2 * r2 / M ** 2 / 9.26e-05
         self.assertLess(abs(cross / production / br - 1), 1e-3, (cross, production, br))
+
+    def test_madspin_onium_decay_2to2(self):
+        """MadSpin after a 2 -> 2 onium production, g g > J/psi g with a soft
+        jet: every event is decayed (the momentum reshuffling of a strongly
+        boosted event works at the precision of the event record), and the
+        cross section is the production one times the BR line of the DECAY
+        block, with no Breit-Wigner truncation (the onium decays on shell)."""
+
+        if not misc.default_f2py():
+            raise unittest.SkipTest('no f2py')
+
+        def madgraph(name, lines):
+            script = pjoin(self.path, name)
+            with open(script, 'w') as fsock:
+                fsock.write('set automatic_html_opening False\n' + '\n'.join(lines) + '\n')
+            subprocess.call([pjoin(MG5DIR, 'bin', 'madgraph'), script], cwd=self.path,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+
+        madgraph('output.mg', ['import model sm_onia-c_mass',
+                               'generate g g > Jpsi(1|3S11) g',
+                               'output madevent %s -f -nojpeg' % self.run_dir])
+        card = pjoin(self.run_dir, 'Cards', 'onia_card.dat')
+        text = re.sub(r'(?m)^(\s*443\s+)[0-9.Ee+-]+(\s+# mass for)', r'\g<1>3.1\2', open(card).read())
+        open(card, 'w').write(text)
+        with open(pjoin(self.run_dir, 'Cards', 'param_card.dat'), 'a') as fsock:
+            fsock.write('\nDECAY  443  9.26e-05\n   5.961e-02  2  13  -13\n')
+        madgraph('launch.mg', ['launch %s' % self.run_dir, 'set nevents 2000', 'set ptj 5',
+                               'set pdlabel nn23lo1', 'set iseed 41'])
+        events = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        production = lhe_parser.EventFile(events).cross
+        shutil.copy(events, pjoin(self.path, 'psig.lhe.gz'))
+        script = pjoin(self.path, 'ms_psig')
+        with open(script, 'w') as fsock:
+            fsock.write('import psig.lhe.gz\nset spinmode madspin\nset seed 11\n'
+                        'decay Jpsi > mu+ mu-\nlaunch\n')
+        subprocess.call([pjoin(MG5DIR, 'MadSpin', 'madspin'), script], cwd=self.path,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL)
+        out = pjoin(self.path, 'psig_decayed.lhe.gz')
+        self.assertTrue(os.path.exists(out))
+        events = lhe_parser.EventFile(out)
+        self.assertLess(abs(events.cross / production / 5.961e-02 - 1), 1e-6)
+        n = 0
+        for event in events:
+            n += 1
+            psi = [p for p in event if p.pdg == 443]
+            self.assertEqual(len(psi), 1)
+            self.assertEqual(psi[0].status, 2)
+            self.assertEqual(len([p for p in event if abs(p.pdg) == 13]), 2)
+        self.assertEqual(n, 2000)
 
     def _get_single_decayed_lhe_path(self):
         decayed_events = glob.glob(pjoin(self.run_dir, 'Events', '*decayed*', '*.lhe.gz'))

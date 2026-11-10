@@ -15319,6 +15319,53 @@ class TestOniaSpinTransfer(unittest.TestCase):
         out = reg.unpack(reg.apply_transfer(plan, reg.pack(np.kron(r1, r2))), 9)
         self.assertTrue(np.allclose(out, np.kron(r1, np.eye(3) * 1.5 / 3), atol=1e-12))
 
+    def test_p_to_s_wave_against_shao_chao(self):
+        """The trace over L_z of a 3PJ density (the L = 1 > L_H = 0 transfer) is
+        the J/psi density of an E1 decay chi_cJ > J/psi gamma, eq. (19) of
+        arXiv:1209.4610 (Shao, Chao): with eq. (17) there (the mu+ mu- angular
+        coefficients of a J/psi density) it must give the closed forms of their
+        eq. (18) for chi_c1 and chi_c2, for any density matrix, the
+        off-diagonal (lambda_phi, lambda_thetaphi) and T-odd ones included."""
+        np = self.np
+
+        def jpsi_lambdas(r):
+            # eq. (17), r in the order J_z = -1, 0, +1
+            N = np.trace(r).real
+            d = N + r[1, 1].real
+            return np.array([(N - 3 * r[1, 1].real) / d, 2 * r[2, 0].real / d,
+                             math.sqrt(2) * (r[2, 1].real - r[0, 1].real) / d,
+                             -2 * r[2, 0].imag / d, -math.sqrt(2) * (r[2, 1].imag + r[0, 1].imag) / d])
+
+        def chi1(r):
+            # eq. (18), chi_c1; r[J_z + 1, J'_z + 1]
+            R = lambda a, b: r[a + 1, b + 1]  # noqa: E731
+            N = np.trace(r).real
+            d = 3 * N - R(0, 0).real
+            return np.array([(-N + 3 * R(0, 0).real) / d, -2 * R(1, -1).real / d,
+                             -math.sqrt(2) * (R(1, 0).real - R(-1, 0).real) / d,
+                             2 * R(1, -1).imag / d, math.sqrt(2) * (R(1, 0).imag + R(-1, 0).imag) / d])
+
+        def chi2(r):
+            # eq. (18), chi_c2; r[J_z + 2, J'_z + 2]
+            R = lambda a, b: r[a + 2, b + 2]  # noqa: E731
+            N = np.trace(r).real
+            d = 6 * N + 3 * (R(1, 1) + R(-1, -1)).real + 4 * R(0, 0).real
+            s6 = math.sqrt(6)
+            return np.array([
+                (6 * N - 9 * (R(1, 1) + R(-1, -1)).real - 12 * R(0, 0).real) / d,
+                (2 * s6 * (R(2, 0) + R(-2, 0)).real + 6 * R(1, -1).real) / d,
+                (6 * (R(2, 1) - R(-2, -1)).real + s6 * (R(1, 0) - R(-1, 0)).real) / d,
+                (2 * s6 * (R(0, 2) - R(0, -2)).imag - 6 * R(1, -1).imag) / d,
+                (6 * (R(1, 2) + R(-1, -2)).imag + s6 * (R(0, 1) + R(0, -1)).imag) / d])
+
+        for J, closed in ((1, chi1), (2, chi2)):
+            hels = list(range(-J, J + 1))
+            for trial in range(5):
+                rho = self.random_density(2 * J + 1)
+                out = self.om.spin_transfer(self.psi_3pj8[J], self.psi, rho, hels, [-1, 0, 1],
+                                            renormalise=False)
+                self.assertTrue(np.allclose(jpsi_lambdas(out), closed(rho), atol=1e-12), (J, trial))
+
     def test_hqss_ldmes(self):
         """The 3PJ[8] LDMEs of the onia card checked against
         <O(3PJ[8])> = (2J+1) <O(3P0[8])>."""
@@ -15330,3 +15377,56 @@ class TestOniaSpinTransfer(unittest.TestCase):
         self.assertEqual([o[0] for o in out], ['Jpsi(1|3P28)'])
         self.assertAlmostEqual(out[0][2], 5 * 0.0343, 14)
         self.assertEqual(reg.onia_masses(card % '0.2'), {9943003: 3.3})
+
+
+class TestMassShuffleRecordPrecision(unittest.TestCase):
+    """Event.mass_shuffle and mass_shuffle_frame map the final state to its
+    rest frame. In a strongly boosted event of the record (11 digits), e.g.
+    g g > J/psi g with a soft jet and the system at several TeV along the beam,
+    the final-state invariant mass differs from sqrt(s) of the incoming partons
+    by more than the 1e-6 of the Lorentz map: the reshuffling then works at the
+    final state's own invariant mass (Event.rest_sqrts) instead of stopping
+    MadSpin; any other event is unchanged."""
+
+    @staticmethod
+    def rounded(p):
+        return lhe_parser.FourMomentum(*[float('%.11e' % x) for x in (p.E, p.px, p.py, p.pz)])
+
+    def event(self, eta=8.0):
+        # g g > J/psi g at sqrt(shat) = 14.5 GeV (pT = 5 GeV), boosted by rapidity eta
+        M, rs = 3.1, 14.5
+        Epsi = (rs ** 2 + M ** 2) / (2 * rs)
+        k = rs - Epsi
+        pt = 5.0
+        pz = math.sqrt(k * k - pt * pt)
+        moms = [lhe_parser.FourMomentum(rs / 2, 0, 0, rs / 2), lhe_parser.FourMomentum(rs / 2, 0, 0, -rs / 2),
+                lhe_parser.FourMomentum(Epsi, -pt, 0, -pz), lhe_parser.FourMomentum(k, pt, 0, pz)]
+        ch, sh = math.cosh(eta), math.sinh(eta)
+        boosted = [lhe_parser.FourMomentum(ch * p.E + sh * p.pz, p.px, p.py, sh * p.E + ch * p.pz) for p in moms]
+        return [self.rounded(p) for p in boosted], M
+
+    def test_boosted_event_of_the_record(self):
+        moms, M = self.event()
+        sqrts = (moms[0] + moms[1]).mass
+        final = moms[2:]
+        tot = final[0] + final[1]
+        # the record's rounding is beyond the tolerance of the Lorentz map ...
+        self.assertGreater(abs(tot.mass_sqr - sqrts ** 2), 1e-6 * sqrts ** 2)
+        self.assertLess(abs(tot.mass_sqr - sqrts ** 2), 1e-9 * tot.E ** 2)
+        self.assertAlmostEqual(lhe_parser.Event.rest_sqrts(tot, sqrts) ** 2, tot.mass_sqr, delta=1e-9 * tot.mass_sqr)
+        # ... and the reshuffling at unchanged masses leaves the event as it was
+        new, jac = lhe_parser.Event.mass_shuffle([lhe_parser.FourMomentum(p) for p in final], sqrts, [M, 0.])
+        self.assertLess(abs(jac - 1), 1e-5)
+        for a, b in zip(new, final):
+            self.assertLess(abs(a.E - b.E) / b.E, 1e-5)
+        frame = lhe_parser.Event.mass_shuffle_frame([lhe_parser.FourMomentum(p) for p in final], sqrts)
+        self.assertEqual(len(frame[0]), 2)
+
+    def test_other_events_unchanged(self):
+        moms, M = self.event(eta=0.3)
+        sqrts = (moms[0] + moms[1]).mass
+        tot = moms[2] + moms[3]
+        self.assertEqual(lhe_parser.Event.rest_sqrts(tot, sqrts), sqrts)
+        # a genuine mismatch is still refused
+        self.assertRaises(ValueError, lhe_parser.Event.mass_shuffle,
+                          [lhe_parser.FourMomentum(p) for p in moms[2:]], sqrts * 1.01, [M, 0.])

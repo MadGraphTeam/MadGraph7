@@ -478,7 +478,7 @@ class OniaRegistry(object):
                 raise ms.InvalidCmd(
                     "MadSpin: %s (pdg %d) is a bound state, with no width in the model. Add its "
                     "total width to the param_card of the events (a DECAY block, e.g. 'DECAY %d "
-                    "9.29e-05' for the J/psi), with optional BR lines; without BR lines MadSpin "
+                    "9.26e-05' for the J/psi), with optional BR lines; without BR lines MadSpin "
                     "computes the LO partial width of each decay." % (fock.get('name'), pdg, pdg))
         # The colour-octet Fock states of a decaying hadron decay as the hadron
         # (its colour-singlet decay, its width), with the spin density of the
