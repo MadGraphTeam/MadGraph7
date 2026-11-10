@@ -1,0 +1,259 @@
+--- a/docs/benchmarkfolder/README.md
++++ b/docs/benchmarkfolder/README.md
+@@ -49,6 +49,14 @@
+ Every timed call contributes its final accepted reducer and precision to the
+ returned histogram; this does not count every internal rescue attempt. The
+ final traversal retains all Born and Laurent coefficients and split orders.
++The worker suppresses Fortran unit 6 for post-READY timed `RUN` batches;
++stdout diagnostics from those batches are unobserved. The current ordinary
++numerical matrix instead uses the final steady warmup-only traversal, completed
++before that redirection, so its console diagnostics are retained. The numerical
++parser checks statuses and coefficients without attributing or gating every
++console warning per call. Internal retry counts and hardware FPE flags remain
++unobserved; accepted statuses and independent coefficient agreement remain the
++numerical evidence.
+ Raw files survive failed parses and commands. `cold_seconds` includes initial
+ evaluation and warmup; it excludes loading the parameter card.
+ 
+@@ -100,7 +108,7 @@
+ do not supply the pending runtime-campaign measurements.
+ The standalone pole diagnostic is described in `POLES.md`.
+ 
+-The current PDF presents closed evidence for the older measured candidate
++The [archived 19-page PDF](history/report-before-invariant-symmetry-qualification/benchmark.pdf) presents closed evidence for the older measured candidate
+ `split-dp-terminal-1`: all eleven processes, all six lanes per process,
+ and 100 saved points per lane pass the `3e-6` criterion. The complete matrix
+ contains 66 lanes. The `1e-8` misses in QCD three- and four-particle cases
+@@ -119,13 +127,25 @@
+ recorded in [the user amendment](PLAN-AMENDMENT-2026-11-10.md). The new current-source
+ registration is `invariant-symmetry-1`, at revision `2c13246ffa63`, with numerical
+ identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
+-Its fresh eleven-process numerical matrix and precise timing remain pending;
+-the older 66 lanes do not qualify this source. Use the runnable
+-[current-source local timing handoff](campaigns/invariant-symmetry-1/timing-handoff-3/LOCAL_TIMING_TODO.md)
++Its numerical report requires a separately sealed terminal eleven-process
++checkpoint and immutable current-source selection/dossier. Partial live outputs
++and the older 66 lanes cannot qualify this source. Precise timing remains
++deferred. Use the runnable
++[current-source local timing handoff](campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md)
+ for fresh installation, local registration, numerical replay, timing and a
+-separate local PDF. Its tests are not a local measurement. The preserved
++separate local PDF. Handoff 4 binds the tracked `bin/madgraph` launcher;
++handoff 3 remains preserved as its predecessor. Its tests are not a local measurement. The preserved
+ [handoff 2](campaigns/split-dp-terminal-1/timing-handoff-2/LOCAL_TIMING_TODO.md)
+ belongs to the older source; the historical quiet-window controller remains unrun.
++
++The production QP adapters receive denominator masses already formed as
++`M2L=M**2` in complex DP by the optimized callers; Ninja, NinjaRS and TIRust
++share those DP values. TIRust widens them exactly but does not yet reconstruct
++them from the MP model. The low-level `mtirust` `tensor_mp` entry accepts genuine
++complex-QP masses, and its 113-to-256-bit transport and contraction remain QP.
++Scale construction also differs: TIRust uses `REAL(MU_R,QP)**2`, whereas NinjaRS
++uses `REAL(MU_R**2,QP)`. Native scalar inputs across adapters are therefore not
++claimed bit-identical; the retained backend-8 scale discrepancy stays explicit.
+ 
+ The experimental adaptive-precision bridge is an isolated development build,
+ not a private repository or the installed backend used in this campaign. It
+@@ -134,10 +154,31 @@
+ and [release Fortran runtime](experiments/adaptive-qp-release-fortran-qualification-v2/runtime1/evidence-index.json)
+ now supply bounded transport, dispatch and cache proofs. A separate
+ [fixed-mode physical replay diagnostic](experiments/adaptive-qp-physical-replay-qualification-1/README.md)
+-is retained; it does not establish independent physical truth, checked stability,
+-per-call precision or performance. Adaptive-bridge production promotion and
+-broader stress qualification remain open. Actual backend 8/9 real-Z Born controls
+-are also retained, with unchecked fixed-QP status 120 explicit.
++is retained with unchecked fixed-QP status 120. The separate
++[masked checked replay](experiments/adaptive-qp-checked-trap-proposal-1/qualification-1/evidence-index.json)
++accepts its threshold point with status 323 and serves 600 QP requests, while
++both trapped workers fail with SIGFPE; its combined trap gate remains false.
++The fixed-mode result and the checked result have distinct stability scopes.
++Neither establishes independent physical truth, per-call working precision or
++performance. Actual backend 8/9 real-Z Born controls also retain their unchecked
++fixed-QP status 120.
++
++A later [guarded private release build](experiments/cayley-guarded-adaptive-build-qualification-1/evidence-index.json)
++completed successfully and produced DSO SHA-256
++`69722452c234f494f0aa436fa24bbabfeae59100c03b05a1f0b76336cc17886b`.
++The compilation package preserves the prior 4 GiB allocation failure, the
++separate 600-second timeout and the earlier `c5de24e6…` library's identity.
++Build success establishes source and compilation provenance. The separately
++[closed guarded physical replay](experiments/cayley-guarded-adaptive-physical-qualification-1/evidence-index.json),
++index SHA-256 `715f436c704fe1cf1f7de9c2f15a2ca1b17ba8f7453956196ceb88bc4828cd90`,
++retains masked checked and fixed-QP outputs bit-identical to their respective
++old adaptive answers, alongside two trapped SIGFPE failures at the later
++Gram-indicator and MPFR dilogarithm sites. Combined trap qualification remains
++failed; actual register operands and the precise IEEE exception subtype were
++not captured. Its rejected-original comparison remains a nonreference
++diagnostic rather than independent truth. The main installed `eb3d67fd…`
++bridge is distinct from both private builds. No adaptive production promotion,
++general physical-stress qualification or performance acceptance follows.
+ 
+ The [symmetric-invariant Fortran template is promoted](experiments/ew-invariant-symmetry-prototype/v2/promotion-qualification-1/index.json).
+ Four tests pass, including three compiled recording-fixture methods and one
+@@ -147,13 +188,56 @@
+ that no raw pytest log was captured. Earlier ABI/interface rows retain their
+ original test scope.
+ 
+-Threshold, soft/collinear, complex-mass and higher-rank accuracy limitations
+-remain open. The [additive finite audit](experiments/generated-rank6-poles-proposal/attempt1/common-input-proposal/finite-audit-1/README.md)
+-distinguishes the worst finite residual, approximately `0.0013285038`, from an
+-aggregate residual of one caused by analytically zero UV terms with tiny COLLIER
+-noise. The original diagnostic is preserved. Native-DP/rescued timing cohorts
+-and all precise performance gates remain unqualified; the separately passed
+-functional cache-lifecycle checks are unchanged.
++The [all-component independent Feynman-parameter check](experiments/rank6-feynman-parameter-all-components-qualification-1/index.json)
++corroborates all 210 finite Cartesian components of one retained synthetic
++N=6/rank-six fixture. All 420 real/imaginary point estimates pass both `3e-6`
++and `1e-8`, with maximum TIRust residual `9.625e-20`. The analytic-tail-only
++classification separately gives 420 agreements at `3e-6`, and 357 agreements
++plus 63 inconclusive parts at `1e-8`. It excludes finite node, weight and
++arithmetic error; there is no whole-program floating-point certificate.
++The earlier seven-component calculation, both native answers and every
++COLLIER disagreement remain preserved. This fixture corroboration does not
++qualify physical high-rank amplitudes or general kinematics, stability rescues,
++threshold, soft/collinear or complex-mass stress. Those physical gates remain open.
++
++The [current-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
++index SHA-256 `212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964`,
++passes exact parity across four workers, 76 checked native-DP physical calls
++and 96 separate DP/QP tensor-key requests. Its full registered source/native
++identity matches this current campaign. Physical-QP rescues, rank-six, EW,
++loop-induced, poles-only and runtime remain outside that lifecycle scope.
++Native-DP/rescued timing cohorts and all precise performance gates remain
++unqualified. Complete delivery remains false.
++
++A separate [current physical-stress preparation/preflight snapshot](experiments/physical-stress-current-portable-4-preflight-1/evidence-index.json),
++index `49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22`,
++verifies eight fresh CLI exports, full builds and mass preflights. It contains
++zero amplitude evaluations and all 24 planned two-point streams remain
++unexecuted in that snapshot. It does not describe later native execution;
++current numerical stress remains pending a separate terminal execution capsule.
++Preparation and runtime linking do not qualify
++numerical stress accuracy. The EW analytic oracle has not been requalified for
++these physical inputs.
++
++The separately closed [current CMS attempt-1 retention capsule](experiments/current-cms-replay-retention-1/evidence-index.json),
++index `7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed`,
++retains successful fresh source1 preparation/preflight and a failed native
++orchestrator (exit 1). Private-link validation rejected a generated external
++directory symlink before any RUN-stage physics loader, worker or amplitude
++evaluation. All six planned 21-point streams, including 42 order outcomes per
++final stream, remain unexecuted in this attempt; its result is failed rather
++than prepared or passed. A future mechanical successor needs its own explicitly
++admitted capsule, preserves this failed ancestry and identifies inherited setup
++separately from fresh exports/builds. Broad CMS accuracy remains open.
++
++The bounded [closed QCD n3 investigation](experiments/invariant-symmetry-qcd-n3-target-analysis/portable-analysis2/index.json)
++retains the same 1,200 rows and 4,800 coefficient values as its prior closed
++result, including 28 finite-only `1e-8` target-miss points. Born and pole
++comparisons pass `1e-8`; the largest CutTools/TIRust symmetric finite residual
++is approximately `2.806420647e-6` at point 93 and the largest non-CutTools pair
++residual is approximately `8.595156396e-8` at point 39. This seven-input offline
++analysis supplies no independent truth claim, new native/QP evaluation or main
++checkpoint replacement or new QP result.
+ 
+ The feature branch is `madloop_tirust`, based on `madloop_ninjars` at the frozen
+ baseline. The intended future PR target is `madloop_ninjars`.
+@@ -169,21 +253,30 @@
+ 
+ ## Build the report
+ 
+-The canonical report uses the explicit immutable closed-evidence selection.
+-Its selected dossier binds the checkpoint inventories and excludes active
+-numerical directories before opening them. To reproduce or verify this snapshot:
++The report uses an explicit immutable closed-evidence selection. Its selected
++dossier binds the checkpoint inventories and excludes active numerical
++directories before opening them. The old 19-page PDF and complete 4,294-input
++ledger are preserved under
++[report-before-invariant-symmetry-qualification](history/report-before-invariant-symmetry-qualification/README.md).
++Reconstruct its original renderer inputs from the pinned Git commit to
++reproduce that historical PDF; current helpers do not replace those inputs.
++
++A current-source render requires terminal full11 closure, a separately sealed
++checkpoint, a new immutable selection/dossier, source promotion review and
++rendering admission. With the actual admitted dossier path assigned explicitly:
+ 
+ ```sh
+ source tools/tirust_env.sh
+-python3 -B docs/benchmarkfolder/build_report.py --campaign split-dp-terminal-1 \
+-  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-1.json
+-python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign split-dp-terminal-1 \
+-  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed11-provisional-1.json
+-PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider \
+-  tests/unit_tests/various/test_tirust_report.py \
+-  docs/benchmarkfolder/test_intermediate_report.py \
+-  docs/benchmarkfolder/test_campaign_report*.py
++current_report_dossier=campaigns/invariant-symmetry-1/report-snapshots/closed11-coverage-1.json
++python3 -B docs/benchmarkfolder/build_report.py --campaign invariant-symmetry-1 \
++  --campaign-report "$current_report_dossier"
++python3 -B docs/benchmarkfolder/build_report.py --verify-only --campaign invariant-symmetry-1 \
++  --campaign-report "$current_report_dossier"
+ ```
++
++The filename above is the planned selection workflow's output, not a claim
++that an active numerical campaign has closed. Dossier creation and report
++building never launch new numerical measurements.
+ 
+ For a future refresh, close the selected runs, create a new selection and dossier
+ path, and preserve this report's ledger/PDF before rebuilding. Do not overwrite
+@@ -232,26 +325,30 @@
+ the registered exporter anchor and each observed revision are displayed
+ separately, with one exact exporter file inventory required throughout.
+ 
+-After the included run directories are closed and their outputs no longer
+-change, retain a **new** dossier and render the selected report explicitly:
++After current full11 closure and root's immutable checkpoint seal, prepare a
++new explicit selection and dossier with the source-reviewed successor workflow.
++For the documented full checkpoint destination and planned new filenames:
+ 
+ ```sh
+ source tools/tirust_env.sh
+-python3 tools/tirust_benchmark.py summarize --campaign split-dp-terminal-1
+-PYTHONDONTWRITEBYTECODE=1 python3 docs/benchmarkfolder/campaign_report.py \
+-  --campaign split-dp-terminal-1 \
+-  --output campaigns/split-dp-terminal-1/report-snapshots/closed-1.json
+-python3 docs/benchmarkfolder/build_report.py --campaign split-dp-terminal-1 \
+-  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed-1.json
+-python3 docs/benchmarkfolder/build_report.py --verify-only \
+-  --campaign split-dp-terminal-1 \
+-  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed-1.json
+-PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider \
+-  tests/unit_tests/various/test_tirust_report.py \
+-  docs/benchmarkfolder/test_intermediate_report.py \
+-  docs/benchmarkfolder/test_campaign_report.py \
+-  docs/benchmarkfolder/test_campaign_report_numerical.py
++python3 -B docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-5/generate_selection.py \
++  --root docs/benchmarkfolder \
++  --checkpoint campaigns/invariant-symmetry-1/numerical-retention-1/sealed-1/index.json \
++  --current-lifecycle-index experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json \
++  --current-lifecycle-sha256 212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964 \
++  --output campaigns/invariant-symmetry-1/report-snapshots/closed11-coverage-selection-1.json
++python3 -B docs/benchmarkfolder/campaign_report.py \
++  --campaign invariant-symmetry-1 \
++  --selection campaigns/invariant-symmetry-1/report-snapshots/closed11-coverage-selection-1.json \
++  --output campaigns/invariant-symmetry-1/report-snapshots/closed11-coverage-1.json
+ ```
++
++The canonical collector command above requires root's prior source promotion.
++Before that promotion, the private successor collector accepts the same
++arguments with `--root docs/benchmarkfolder` for staging. Both outputs are
++append-once; use the actual sealed checkpoint path if root selects a different
++retention destination. These preparation commands are not evidence that the
++currently active campaign has closed. Rendering requires separate admission.
+ 
+ Do not freeze a dossier while its included run directories are active:
+ `results.json` and worker logs may still grow. The collector ignores later new
+@@ -283,7 +380,9 @@
+ soft/collinear and complex-mass stress cases remain separate unresolved gates.
+ Complete delivery additionally requires the installed ABI and Fortran checks,
+ separate subprocess/event cache lifecycle qualification, precision cohorts and
+-resolution of retained stress failures. The cache lifecycle criterion stays
+-pending until a separate frozen native proof is bound; public-call parity alone
+-does not establish it. A passing eight-process runtime gate alone cannot
+-complete the integration goal.
++resolution of retained stress failures. The separately frozen current-source
++cache lifecycle proof is closed in its stated native-DP and tensor-key scope;
++public-call parity alone was insufficient, and the historical full-source proof
++was not reused for changed source. That scoped lifecycle pass does not close
++the physical stress or performance gates. A passing eight-process runtime gate
++alone cannot complete the integration goal.

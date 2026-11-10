@@ -1,0 +1,539 @@
+{
+  "active_current_payload_reads": false,
+  "actual_current_numerical_checkpoint_ingested": false,
+  "campaign_binding": {
+    "id": "invariant-symmetry-1",
+    "manifest_sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0"
+  },
+  "canonical_files_modified": false,
+  "canonical_source_baselines": {
+    "README.md": {
+      "bytes": 18162,
+      "sha256": "eea3c8829d36d2356d635306f644a11532e6a7d00a87c7458ee9ab40a34072fb"
+    },
+    "benchmark.typ": {
+      "bytes": 26076,
+      "sha256": "71ccba8b8757ca307215a7f7982cc020d470c3b04789ba8ee489e01e4884dfdc"
+    },
+    "campaign-report.typ": {
+      "bytes": 15594,
+      "sha256": "f82d323253f97a24f2b237a5adda9f904d7908a7a4fe11ef17b86251847a4ad3"
+    },
+    "campaign_report.py": {
+      "bytes": 14282,
+      "sha256": "c723d2e790d491ecd3653b210307ab2caa0562c840c5e65675d9c95f94a2c115"
+    },
+    "campaign_report_implementation.py": {
+      "bytes": 23161,
+      "sha256": "ab9deeaeefd48738ddacc0fb6ee07afe763fc66c30ba6e7a506a658c8230741e"
+    },
+    "campaign_report_lifecycle.py": {
+      "bytes": 10956,
+      "sha256": "d1e04eaf5443275e5f5f0c224b1d5efea105dfc13d05fea47be001cf47499ccc"
+    },
+    "campaign_report_provisional.py": {
+      "bytes": 12986,
+      "sha256": "659dd893cab5f08c66caf614a0dc402d539524d9e3ebf69261b2ac30a30fa606"
+    },
+    "campaign_report_qualification.py": {
+      "bytes": 19180,
+      "sha256": "a01d190caa0e9402392393517a4866f8da27fd2aa19dfb74fc93130e758b691b"
+    },
+    "campaign_report_refresh.py": {
+      "bytes": 13973,
+      "sha256": "a1acbee40ee639b875a370e70b9b04a31593e594c927a84a6c70a33df58bdb32"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    }
+  },
+  "closed_current_diagnostic_text_capsules_ingested": true,
+  "closed_guarded_diagnostics_text_replayed": false,
+  "closed_guarded_package_pins": {
+    "guarded_adaptive_build": {
+      "path": "experiments/cayley-guarded-adaptive-build-qualification-1/evidence-index.json",
+      "private_dso_sha256": "69722452c234f494f0aa436fa24bbabfeae59100c03b05a1f0b76336cc17886b",
+      "sha256": "94f7a23d4c10373353b04e876da32585bc0274852fc573e8d94b740c9fa0ae3e"
+    },
+    "guarded_adaptive_physical": {
+      "joint_gates_all_false": true,
+      "path": "experiments/cayley-guarded-adaptive-physical-qualification-1/evidence-index.json",
+      "sha256": "715f436c704fe1cf1f7de9c2f15a2ca1b17ba8f7453956196ceb88bc4828cd90",
+      "summary_sha256": "9ad2730d4c924e5f2747eb610d09ee63336437e7811ef151da4b31d1f3c9cf4a"
+    }
+  },
+  "closed_n3_investigation": {
+    "analysis_sha256": "e0dcc8460091021db3089f56b181d4b184b4f11df1302fd14b4a383bd1568778",
+    "index": "experiments/invariant-symmetry-qcd-n3-target-analysis/portable-analysis2/index.json",
+    "input_map_paths_reopened": false,
+    "scope": "bounded offline note;20boundpaths/sevenclosedinputs; no maincheckpoint, newnative/QP, truth or gate change",
+    "sha256": "79f57a8d83ea74249af83d12908de299372714cd7587d59d4ae31cfa9f63e457"
+  },
+  "current_closed_diagnostic_capsules": {
+    "current_cms": {
+      "control_binding": {
+        "proposal_index_sha256": "9c1703b96ec3933b9f8644a4850db2d9742579a109d4fdb7e72d3d776f0eba2e",
+        "supervisor_index_sha256": "edf6d8cacfe1ad72cdb94584cb6d9a49e022e976c52d0668d670b702c28c84d6"
+      },
+      "failure_scope": "Private-link validation rejected a generated external directory symlink; no physics amplitude was evaluated.",
+      "format": "cms",
+      "index": "experiments/current-cms-replay-retention-1/evidence-index.json",
+      "setup_provenance": {
+        "kind": "fresh",
+        "scope": "Actual source1 preparation/preflight; offline retention performs no export/build.",
+        "source_attempt": "current CMS attempt 1"
+      },
+      "sha256": "7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed",
+      "stage": "native_terminal",
+      "summary": "summary.json",
+      "summary_sha256": "9c48193127c4366e7da61e5c4e604cce5c145abc3545063f30fdcbbd3a74a67b",
+      "verifier_sha256": "af78d87e1c1ba85c9c4a64e8b0e4f872d4c3daff7825d1d8464b4d71e822352c"
+    },
+    "current_physical_stress": {
+      "format": "stress",
+      "index": "experiments/physical-stress-current-portable-4-preflight-1/evidence-index.json",
+      "sha256": "49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22",
+      "stage": "prepared",
+      "summary": "qualification-summary.json",
+      "summary_sha256": "6b5c2450098343b7eac059cb791697817b514fde81959c90414a9980bf9fe4d9",
+      "verifier_sha256": "3850e1dcfbd3cecfc2c11eabd090e5ae174b0d0fbad6da11b6d94557c5e72f24"
+    }
+  },
+  "current_diagnostic_default_selection": {
+    "current_cms": {
+      "index": "experiments/current-cms-replay-retention-1/evidence-index.json",
+      "sha256": "7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed"
+    },
+    "current_physical_stress": {
+      "index": "experiments/physical-stress-current-portable-4-preflight-1/evidence-index.json",
+      "sha256": "49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22"
+    }
+  },
+  "current_diagnostic_qualification_scope": {
+    "CMS": "closed native-terminal orchestrator failure exit1 after successful fresh source1 prepare/preflight;0RUNphysicsloaders/workers/amplitudes;6unexecuted streams",
+    "broad_stress_and_CMS_qualified": false,
+    "failed_ancestor_provenance_and_inherited_setup_explicit": true,
+    "future_selection_requires_exact_admitted_contract": true,
+    "future_successor_data_or_pin_admitted": false,
+    "main_full11_gate_unchanged": true,
+    "registry_defaults_do_not_choose_latest": true,
+    "stress": "immutable preparation/preflight snapshot only; 0 amplitudes and24unexecuted therein; later execution not inferred; separate terminal capsule pending"
+  },
+  "current_lifecycle_closed_text_compatibility_reviewed": false,
+  "current_selection_or_dossier_created": false,
+  "delivery_complete": false,
+  "files": {
+    "README.md": {
+      "bytes": 7134,
+      "sha256": "e486839f196e658bab3d02e15784a1364ee2b46cabe7227bf09ee229463fb282"
+    },
+    "benchmark.typ": {
+      "bytes": 27236,
+      "sha256": "f4c00908f0d398990b12669c593d9763f59878f43b4c138d14cfbf7ec6610b35"
+    },
+    "campaign-provisional.typ": {
+      "bytes": 5568,
+      "sha256": "64efa538294293bb155ce7598751d6f7bac75a3de4d17c1d613e1080dbfd3018"
+    },
+    "campaign-report.typ": {
+      "bytes": 16844,
+      "sha256": "ca9ff6d7425c1685843ec9f0ac13c273c4b8e896bf3706dac96010635bef993e"
+    },
+    "campaign_report.py": {
+      "bytes": 16416,
+      "sha256": "d23a180ad058e226b25765920f07ccf200d5bc06eceaf06391089afa31ee9540"
+    },
+    "campaign_report_checkpoint.py": {
+      "bytes": 7098,
+      "sha256": "c130fdc9c8b7c91ae3e6eb6faf2ef071d4acdd031d64e395a5218cca41a10458"
+    },
+    "campaign_report_cohorts.py": {
+      "bytes": 7456,
+      "sha256": "8f802ca7c1b15004b143017ac152917c4ae5e3a195ca426bafeafef36a8dd9ca"
+    },
+    "campaign_report_current_diagnostics.py": {
+      "bytes": 27868,
+      "sha256": "47f69f83f235c86c67684da686345c39b580d13feea8a34e5becd94bd05bba5d"
+    },
+    "campaign_report_current_lifecycle.py": {
+      "bytes": 4713,
+      "sha256": "bb450db157e04a901a92bd6ddf3ebdd3c7403528cc6cfb9d7cd5d62463a96927"
+    },
+    "campaign_report_diagnostics.py": {
+      "bytes": 40951,
+      "sha256": "0fc8eab4160407362c88560160259943d0fbeb99daf776896f09b4723d15142e"
+    },
+    "campaign_report_guarded_build.py": {
+      "bytes": 15532,
+      "sha256": "e07aa24ea0a53035a3e718e652b7eb427e104df5bef169f741e3f53cb9ca7ee3"
+    },
+    "campaign_report_guarded_physical.py": {
+      "bytes": 24708,
+      "sha256": "9ab4437bf53cb2cbd89d7c308aff000b88ae04b4aabd4ba12be3b25908e93ca3"
+    },
+    "campaign_report_implementation.py": {
+      "bytes": 26771,
+      "sha256": "c780b24bd2e7fa293cc8ff582dd36e1eaf4995cfe5aed85574734cdccd71d557"
+    },
+    "campaign_report_implementation_runtime.py": {
+      "bytes": 34493,
+      "sha256": "00712c2e828dcbc81f96509b2279e8980a9675455b39d991c1d86dc42fff1811"
+    },
+    "campaign_report_lifecycle.py": {
+      "bytes": 10956,
+      "sha256": "d1e04eaf5443275e5f5f0c224b1d5efea105dfc13d05fea47be001cf47499ccc"
+    },
+    "campaign_report_numerical.py": {
+      "bytes": 30466,
+      "sha256": "63ae9db2ef98db7269d7290b68feb5a02ae0c454e88086b0644253ebef8c4192"
+    },
+    "campaign_report_pairs.py": {
+      "bytes": 15702,
+      "sha256": "68c7f1c784fe29cf193ecac7ca226353bc808aa4217cc0e7ec76758f7ee8995f"
+    },
+    "campaign_report_provisional.py": {
+      "bytes": 12986,
+      "sha256": "659dd893cab5f08c66caf614a0dc402d539524d9e3ebf69261b2ac30a30fa606"
+    },
+    "campaign_report_qualification.py": {
+      "bytes": 19180,
+      "sha256": "a01d190caa0e9402392393517a4866f8da27fd2aa19dfb74fc93130e758b691b"
+    },
+    "campaign_report_refresh.py": {
+      "bytes": 23580,
+      "sha256": "bbd5f40726f88a8d879e53624b45436d211f483fd412c823c48b174b881db065"
+    },
+    "candidate.patch": {
+      "bytes": 154937,
+      "sha256": "4ceeef7817a09ec2090a021125b8060f4729c3477f34a057ca8ac5fe752a737d"
+    },
+    "canonical-README.patch": {
+      "bytes": 17421,
+      "sha256": "28af6c747fdde7a299b6fe253cb9520e2808686b9a523a616bbf0d6f97554216"
+    },
+    "canonical-README.proposed.md": {
+      "bytes": 25430,
+      "sha256": "9e3798d3c315d6cdca8867fadf154b43b9862565d8a9208e8d2d29403019473b"
+    },
+    "generate_selection.py": {
+      "bytes": 6911,
+      "sha256": "3447644665f371ffebcc434af069eb7b354a08e453d8da6851e4425757586b6b"
+    },
+    "style.typ": {
+      "bytes": 2962,
+      "sha256": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e"
+    },
+    "test_campaign_report_current_diagnostics.py": {
+      "bytes": 43477,
+      "sha256": "513dd7b0cb35ea6ae753557b0b8984305472127472c9692de3a71d2eccd21f46"
+    },
+    "test_campaign_report_diagnostics.py": {
+      "bytes": 27394,
+      "sha256": "cae5db832211223acc55c8611c80aed1a875cdd950e3ea295d7f980792bccc9b"
+    },
+    "test_campaign_report_guarded_build.py": {
+      "bytes": 15790,
+      "sha256": "01dfc2748ac10d51bc68c96adfd73dadc6000e3e7dfe2da24b5a1fbacb9c45e1"
+    },
+    "test_campaign_report_guarded_physical.py": {
+      "bytes": 22260,
+      "sha256": "8acf5bb75e02f9df844dbf6f87ccccde004d1cc46e78ed091ac9b32f80ae576f"
+    },
+    "test_current_refresh.py": {
+      "bytes": 25158,
+      "sha256": "6d21081a19ef4d0d94c8e8de2e773efdc1fe1d1a53246b06082a5eeb4b47fd94"
+    },
+    "validation.json": {
+      "bytes": 6261,
+      "sha256": "a1f97aed09fa7a3cf918fdb5f1b576caa190c695f568ab2e7c4bef8bdc12ca99"
+    }
+  },
+  "handoff4_dependency": {
+    "actual_local_measurements": false,
+    "canonical_index": "campaigns/invariant-symmetry-1/timing-handoff-4/index.json",
+    "launcher_proposal_source_index": "experiments/local-launcher-entrypoint-fix-1/source-index.json",
+    "launcher_proposal_source_index_sha256": "03b800e13467c95a7648821bbee3cfdff27b998628b4f617b5e8b13f040af929",
+    "preserved_handoff3_index_sha256": "b56d5c77631ff30be883c26f1382660b338e9171142f129b670b479e1d30c564",
+    "production_source_identity_unchanged": true,
+    "proposed_tool_sha256": "f823c614d6e6f171de90e0c38ca2b2014842b0f7b94b04fbbd145b87d0cd95c7",
+    "proposed_unit_test_sha256": "0e1c03bf2810fab5b78f0ae992f16e50c96a895098a268a19114481da2df86ee",
+    "receipt_schema_unchanged": true,
+    "separate_promotion_required_before_selection_generation": true,
+    "sha256": "f218a9fa65b15f79d6ea0444d31a5c16517d0cbb6341fe3c7c4cde4c43ab295a",
+    "source_only_staged_index": "experiments/local-launcher-entrypoint-fix-1/candidate-timing-handoff-4/index.json",
+    "tracked_entrypoint": "bin/madgraph",
+    "tracked_entrypoint_sha256": "375feb36e7064526010e4dd024307977f597d923ae62f9bf0b14629dbbf401c0"
+  },
+  "historical_archive_manifest_sha256": "3ac7e02340a1148f9c22d9d7cec2e0b81493c429d9b3ac264e616ff2bb5d9dec",
+  "historical_stress_manifest_sha256": "1237c563b16a13e2c98327b494a4e5d0b8dec8eb6c7020d632b9b86839143a31",
+  "inherited_closed_guarded_text_replay": {
+    "guarded_helper_sources_byte_identical_to4": true,
+    "historical_record": {
+      "bound_paths": 726,
+      "helper_sources_and_routing_byte_identical": true,
+      "reexecuted_for_successor4": false,
+      "successor3_index_sha256": "d075c7ce2e5b427c5191350b8875c6ac9da4e339c64fb18d15a7b358bffa6f6a"
+    },
+    "record_origin_index_sha256": "9521d006827d9e6e6de3e5f02fbefd18dfaa0486c66140a85e86eefcb975efaf",
+    "reexecuted_for_successor5": false,
+    "source5_existing_guarded_routing_preserved": true,
+    "source5_implementation_has_additive_current_diagnostics_routing": true
+  },
+  "inherited_current_lifecycle_closed_text_compatibility": {
+    "helper_source_byte_identical": true,
+    "reexecuted_for_successor4": false,
+    "successor3_index_sha256": "d075c7ce2e5b427c5191350b8875c6ac9da4e339c64fb18d15a7b358bffa6f6a"
+  },
+  "native_execution": false,
+  "numerical_identity_sha256": "f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8",
+  "optional_current_lifecycle_pin": {
+    "absent_selection": "pending",
+    "path": "experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json",
+    "sha256": "212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964",
+    "summary_sha256": "d6dbe30a177325100ee0eaf526d4dc418a67b7f25739ba2e8da564d8d1360bc5",
+    "validate_candidate_unchanged": true
+  },
+  "pending_separate_work": [
+    "actual current physical-stress native stage and terminal capsule",
+    "future CMS successor2 closed capsule",
+    "genuine mainfull11 checkpoint and separately admitted PDF build"
+  ],
+  "predecessor": {
+    "bytes_verified": true,
+    "path": "experiments/report-current-source-refresh-implementation-4/index.json",
+    "payloads_verified": 29,
+    "reason": "add explicit closed preparation/current CMS diagnostics plus bounded pinned N3 note; frozen4 remains ready fallback",
+    "sha256": "9521d006827d9e6e6de3e5f02fbefd18dfaa0486c66140a85e86eefcb975efaf"
+  },
+  "preserved_earlier_predecessors": [
+    {
+      "bytes_verified": true,
+      "path": "experiments/report-current-source-refresh-implementation-1/index.json",
+      "payloads_verified": 23,
+      "sha256": "6c751312efb3ae4e3ec3df4ae45b59c77e28d00e09c0c391eb1783494dac1dfb"
+    },
+    {
+      "bytes_verified": true,
+      "path": "experiments/report-current-source-refresh-implementation-2/index.json",
+      "payloads_verified": 23,
+      "sha256": "6c9786646543f50ee81cb7d06d4f1132997c212f1bb589c45cfe1fc630090f1b"
+    },
+    {
+      "bytes_verified": true,
+      "path": "experiments/report-current-source-refresh-implementation-3/index.json",
+      "payloads_verified": 29,
+      "sha256": "d075c7ce2e5b427c5191350b8875c6ac9da4e339c64fb18d15a7b358bffa6f6a"
+    }
+  ],
+  "preserved_interim4": {
+    "bytes_verified": true,
+    "path": "experiments/report-current-source-refresh-implementation-4-before-console-scope-correction-1/index.json",
+    "payloads_verified": 29,
+    "reason": "root corrected earlier broad stdout-suppression scope before final admission",
+    "sha256": "6ed05d63ff79c9a035e3d58d1c23fc0f9592d3a8c6bd20d6d7b2e4d69d5aed24",
+    "superseded_for_report_admission": true
+  },
+  "promotion_scope": {
+    "add_canonical_helpers": [
+      "campaign_report_checkpoint.py",
+      "campaign_report_current_lifecycle.py",
+      "campaign_report_diagnostics.py",
+      "campaign_report_guarded_build.py",
+      "campaign_report_guarded_physical.py",
+      "campaign_report_current_diagnostics.py"
+    ],
+    "no_change": [
+      "style.typ",
+      "campaign_report_lifecycle.py",
+      "campaign_report_provisional.py",
+      "campaign_report_qualification.py",
+      "build_report.py",
+      "native/generator/protocol files",
+      "existing NinjaRS report",
+      "all Typst sources relative to frozen implementation4",
+      "CMS/stress supervisor/protocol or native sources"
+    ],
+    "optional_documentation": [
+      {
+        "patch": "canonical-README.patch",
+        "source": "canonical-README.proposed.md",
+        "target": "README.md"
+      }
+    ],
+    "private_review_only": [
+      "README.md",
+      "generate_selection.py",
+      "test_current_refresh.py",
+      "test_campaign_report_diagnostics.py",
+      "test_campaign_report_guarded_build.py",
+      "test_campaign_report_guarded_physical.py",
+      "validation.json",
+      "candidate.patch",
+      "canonical-README.patch",
+      "canonical-README.proposed.md",
+      "index.json",
+      "test_campaign_report_current_diagnostics.py"
+    ],
+    "replace_canonical_files": [
+      "benchmark.typ",
+      "campaign-report.typ",
+      "campaign_report.py",
+      "campaign_report_implementation.py",
+      "campaign_report_refresh.py"
+    ]
+  },
+  "qualified_retainer_source_index_sha256": "da149a5cdca4872061b081db9378f9185949f76db102c49f25b621cfa3b77fb1",
+  "registered_source_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+  "schema": "madloop-tirust-private-current-report-refresh-implementation-v5",
+  "source_delta_vs_predecessor": {
+    "added_promoted_helper": "campaign_report_current_diagnostics.py",
+    "all_Typst_unchanged": true,
+    "changed_promoted_sources": [
+      "campaign_report.py",
+      "campaign_report_implementation.py",
+      "campaign_report_refresh.py"
+    ],
+    "documentation": "preparation snapshot vs later native execution, failed CMS1 and exact N3 note; fresh coverage snapshot commands",
+    "main_numerical_criteria_lifecycle_performance_unchanged": true,
+    "private_generator": "explicit admitted current role defaults/overrides; full11checkpoint still mandatory",
+    "tests": "31new synthetic admission/phase/registry/ancestry cases alongside63preserved cases"
+  },
+  "source_review_only": true,
+  "typst_execution": false,
+  "validation": {
+    "active_current_payload_reads": false,
+    "actual_current_main_checkpoint_ingested": false,
+    "all_canonical_and_frozen_predecessor_payloads_verified_unchanged": true,
+    "closed_diagnostic_integration": {
+      "active_payload_reads": false,
+      "actual_current_main_checkpoint_ingested": false,
+      "bound_paths": 4384,
+      "current_CMS_attempt1": {
+        "amplitude_evaluations": 0,
+        "final_order_outcomes": 252,
+        "index_sha256": "7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed",
+        "native_exit_code": 1,
+        "prep_preflight_passed": true,
+        "status": "failed",
+        "unexecuted_streams": 6
+      },
+      "current_stress_snapshot": {
+        "amplitude_evaluations": 0,
+        "index_sha256": "49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22",
+        "later_active_execution_inferred": false,
+        "requests_unexecuted_in_snapshot": 24,
+        "status": "prepared"
+      },
+      "n3_note": {
+        "analysis_sha256": "e0dcc8460091021db3089f56b181d4b184b4f11df1302fd14b4a383bd1568778",
+        "bound_paths": 20,
+        "historical_input_map_paths_followed": false,
+        "index_sha256": "79f57a8d83ea74249af83d12908de299372714cd7587d59d4ae31cfa9f63e457"
+      },
+      "native_process_and_DSO_loading_blocked": true,
+      "passed": true
+    },
+    "default_plan": {
+      "current_results_claimed": false,
+      "status": "source-only-no-ingestion"
+    },
+    "independent_successor_review": {
+      "agent": "/root/current_report_refresh/statistics_review",
+      "bounded_read_only_source_prose_pin_review": true,
+      "findings": "no blockers; exact closed pins, CMS failed rather than prepared, snapshot-only stress scope, fixed science/per-contract controls and explicit ancestors, unchanged full11/performance/Typst",
+      "passed": true,
+      "tests_or_proof_replay_during_review": false
+    },
+    "inherited_closed_guarded_text_replay": {
+      "guarded_helper_sources_byte_identical_to4": true,
+      "historical_record": {
+        "bound_paths": 726,
+        "helper_sources_and_routing_byte_identical": true,
+        "reexecuted_for_successor4": false,
+        "successor3_index_sha256": "d075c7ce2e5b427c5191350b8875c6ac9da4e339c64fb18d15a7b358bffa6f6a"
+      },
+      "record_origin_index_sha256": "9521d006827d9e6e6de3e5f02fbefd18dfaa0486c66140a85e86eefcb975efaf",
+      "reexecuted_for_successor5": false,
+      "source5_existing_guarded_routing_preserved": true,
+      "source5_implementation_has_additive_current_diagnostics_routing": true
+    },
+    "native_calls": 0,
+    "new_test_independent_review": {
+      "agent": "/root/current_report_refresh/diagnostic_roles",
+      "passed": true,
+      "test_sha256": "513dd7b0cb35ea6ae753557b0b8984305472127472c9692de3a71d2eccd21f46",
+      "tests": 31
+    },
+    "ordinary_observability": "current warmup-only final100 traversal precedes OPEN6(/dev/null) and retains console; parser does not attribute/gate every warning percall; subsequent postREADY timed RUN batches suppressconsole; internal retries/hardware FPE unobserved",
+    "patch_admission_checks": {
+      "candidate.patch": "git apply --check passed",
+      "canonical-README.patch": "git apply --check passed"
+    },
+    "precision_scope_note": {
+      "cross_adapter_native_scalar_inputs_bit_identical_claim": false,
+      "documentation_only": true,
+      "independent_read_only_review_passed": true,
+      "low_level_complex_QP_transport_and_contraction": "genuine QP; 113-to-256-bit transport",
+      "origin": "root independent precision-scope audit",
+      "production_denominator_masses": "optimized callers form complex-DP M2L=M**2; exactly widened by TIRust"
+    },
+    "required_after_promotion": [
+      "genuine terminal full11 checkpoint selection/dossier replay",
+      "prefer actual terminal current stress capsule once explicitly admitted; preparation role is scoped fallback",
+      "new report build input/context/PDF drift checks",
+      "matching verify-only after separately admitted render"
+    ],
+    "schema": "madloop-tirust-private-current-report-source-validation-v5",
+    "scientific_boundaries": {
+      "bootstrap_repeated_warmup_final_accounting_separate": true,
+      "broad_stress_and_CMS_remain_open": true,
+      "failed_ancestry_retained": true,
+      "future_successor_pins_or_data_admitted": false,
+      "host_checks_fullstream_agreement_separate": true,
+      "inherited_setup_not_new_CLI_builds": true,
+      "integrity_is_not_scientific_success": true,
+      "no_automatic_newer_capsule_selection": true,
+      "no_new_QP_result": true,
+      "no_repaired_geometry_EW_oracle": true,
+      "positive_launches_do_not_supply_evaluation_count": true,
+      "preparation_and_preflight_are_not_numerical_qualification": true,
+      "status120_unchecked": true,
+      "worker_starts_and_observed_amplitude_requests_separate": true
+    },
+    "scope": "source-only optional closed preparation/stress and failed CMS capsule admission, bounded offline N3 note; no actual main checkpoint or native/Typst execution",
+    "selection_or_dossier_created": false,
+    "syntax_check": {
+      "native_or_Typst_execution": false,
+      "python_sources_parsed": true
+    },
+    "tests": [
+      {
+        "command": "source tools/tirust_env.sh && python3 -B -m unittest discover -s docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-5 -p 'test_*.py'",
+        "new_current_diagnostic_tests": 31,
+        "observed_output": "Ran 94 tests in 28.186s; OK",
+        "passed": true,
+        "preserved_successor4_tests": 63,
+        "synthetic_only": true,
+        "tests": 94
+      },
+      {
+        "command": "source tools/tirust_env.sh && python3 -O -B -m unittest discover -s docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-5 -p 'test_campaign_report_current_diagnostics.py'",
+        "observed_output": "Ran 31 tests in 0.292s; OK",
+        "passed": true,
+        "scope": "optimized-Python verifier assertions remain enabled by compile optimize0; bytecode flag restored",
+        "tests": 31
+      }
+    ],
+    "typst_execution": false,
+    "unchanged_behavior": {
+      "all_Typst_sources_and_typography": true,
+      "delivery_complete": false,
+      "formal_performance_deferred_to_HuaSheng": true,
+      "guarded_adaptive_evidence_and_failed_traps": true,
+      "historical_timings_only": true,
+      "lifecycle_and_strict_historical_validators": true,
+      "main_full11_checkpoint_gate": true
+    }
+  }
+}

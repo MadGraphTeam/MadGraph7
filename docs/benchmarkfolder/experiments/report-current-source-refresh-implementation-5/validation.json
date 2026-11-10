@@ -1,0 +1,135 @@
+{
+  "active_current_payload_reads": false,
+  "actual_current_main_checkpoint_ingested": false,
+  "all_canonical_and_frozen_predecessor_payloads_verified_unchanged": true,
+  "closed_diagnostic_integration": {
+    "active_payload_reads": false,
+    "actual_current_main_checkpoint_ingested": false,
+    "bound_paths": 4384,
+    "current_CMS_attempt1": {
+      "amplitude_evaluations": 0,
+      "final_order_outcomes": 252,
+      "index_sha256": "7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed",
+      "native_exit_code": 1,
+      "prep_preflight_passed": true,
+      "status": "failed",
+      "unexecuted_streams": 6
+    },
+    "current_stress_snapshot": {
+      "amplitude_evaluations": 0,
+      "index_sha256": "49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22",
+      "later_active_execution_inferred": false,
+      "requests_unexecuted_in_snapshot": 24,
+      "status": "prepared"
+    },
+    "n3_note": {
+      "analysis_sha256": "e0dcc8460091021db3089f56b181d4b184b4f11df1302fd14b4a383bd1568778",
+      "bound_paths": 20,
+      "historical_input_map_paths_followed": false,
+      "index_sha256": "79f57a8d83ea74249af83d12908de299372714cd7587d59d4ae31cfa9f63e457"
+    },
+    "native_process_and_DSO_loading_blocked": true,
+    "passed": true
+  },
+  "default_plan": {
+    "current_results_claimed": false,
+    "status": "source-only-no-ingestion"
+  },
+  "independent_successor_review": {
+    "agent": "/root/current_report_refresh/statistics_review",
+    "bounded_read_only_source_prose_pin_review": true,
+    "findings": "no blockers; exact closed pins, CMS failed rather than prepared, snapshot-only stress scope, fixed science/per-contract controls and explicit ancestors, unchanged full11/performance/Typst",
+    "passed": true,
+    "tests_or_proof_replay_during_review": false
+  },
+  "inherited_closed_guarded_text_replay": {
+    "guarded_helper_sources_byte_identical_to4": true,
+    "historical_record": {
+      "bound_paths": 726,
+      "helper_sources_and_routing_byte_identical": true,
+      "reexecuted_for_successor4": false,
+      "successor3_index_sha256": "d075c7ce2e5b427c5191350b8875c6ac9da4e339c64fb18d15a7b358bffa6f6a"
+    },
+    "record_origin_index_sha256": "9521d006827d9e6e6de3e5f02fbefd18dfaa0486c66140a85e86eefcb975efaf",
+    "reexecuted_for_successor5": false,
+    "source5_existing_guarded_routing_preserved": true,
+    "source5_implementation_has_additive_current_diagnostics_routing": true
+  },
+  "native_calls": 0,
+  "new_test_independent_review": {
+    "agent": "/root/current_report_refresh/diagnostic_roles",
+    "passed": true,
+    "test_sha256": "513dd7b0cb35ea6ae753557b0b8984305472127472c9692de3a71d2eccd21f46",
+    "tests": 31
+  },
+  "ordinary_observability": "current warmup-only final100 traversal precedes OPEN6(/dev/null) and retains console; parser does not attribute/gate every warning percall; subsequent postREADY timed RUN batches suppressconsole; internal retries/hardware FPE unobserved",
+  "patch_admission_checks": {
+    "candidate.patch": "git apply --check passed",
+    "canonical-README.patch": "git apply --check passed"
+  },
+  "precision_scope_note": {
+    "cross_adapter_native_scalar_inputs_bit_identical_claim": false,
+    "documentation_only": true,
+    "independent_read_only_review_passed": true,
+    "low_level_complex_QP_transport_and_contraction": "genuine QP; 113-to-256-bit transport",
+    "origin": "root independent precision-scope audit",
+    "production_denominator_masses": "optimized callers form complex-DP M2L=M**2; exactly widened by TIRust"
+  },
+  "required_after_promotion": [
+    "genuine terminal full11 checkpoint selection/dossier replay",
+    "prefer actual terminal current stress capsule once explicitly admitted; preparation role is scoped fallback",
+    "new report build input/context/PDF drift checks",
+    "matching verify-only after separately admitted render"
+  ],
+  "schema": "madloop-tirust-private-current-report-source-validation-v5",
+  "scientific_boundaries": {
+    "bootstrap_repeated_warmup_final_accounting_separate": true,
+    "broad_stress_and_CMS_remain_open": true,
+    "failed_ancestry_retained": true,
+    "future_successor_pins_or_data_admitted": false,
+    "host_checks_fullstream_agreement_separate": true,
+    "inherited_setup_not_new_CLI_builds": true,
+    "integrity_is_not_scientific_success": true,
+    "no_automatic_newer_capsule_selection": true,
+    "no_new_QP_result": true,
+    "no_repaired_geometry_EW_oracle": true,
+    "positive_launches_do_not_supply_evaluation_count": true,
+    "preparation_and_preflight_are_not_numerical_qualification": true,
+    "status120_unchecked": true,
+    "worker_starts_and_observed_amplitude_requests_separate": true
+  },
+  "scope": "source-only optional closed preparation/stress and failed CMS capsule admission, bounded offline N3 note; no actual main checkpoint or native/Typst execution",
+  "selection_or_dossier_created": false,
+  "syntax_check": {
+    "native_or_Typst_execution": false,
+    "python_sources_parsed": true
+  },
+  "tests": [
+    {
+      "command": "source tools/tirust_env.sh && python3 -B -m unittest discover -s docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-5 -p 'test_*.py'",
+      "new_current_diagnostic_tests": 31,
+      "observed_output": "Ran 94 tests in 28.186s; OK",
+      "passed": true,
+      "preserved_successor4_tests": 63,
+      "synthetic_only": true,
+      "tests": 94
+    },
+    {
+      "command": "source tools/tirust_env.sh && python3 -O -B -m unittest discover -s docs/benchmarkfolder/experiments/report-current-source-refresh-implementation-5 -p 'test_campaign_report_current_diagnostics.py'",
+      "observed_output": "Ran 31 tests in 0.292s; OK",
+      "passed": true,
+      "scope": "optimized-Python verifier assertions remain enabled by compile optimize0; bytecode flag restored",
+      "tests": 31
+    }
+  ],
+  "typst_execution": false,
+  "unchanged_behavior": {
+    "all_Typst_sources_and_typography": true,
+    "delivery_complete": false,
+    "formal_performance_deferred_to_HuaSheng": true,
+    "guarded_adaptive_evidence_and_failed_traps": true,
+    "historical_timings_only": true,
+    "lifecycle_and_strict_historical_validators": true,
+    "main_full11_checkpoint_gate": true
+  }
+}
