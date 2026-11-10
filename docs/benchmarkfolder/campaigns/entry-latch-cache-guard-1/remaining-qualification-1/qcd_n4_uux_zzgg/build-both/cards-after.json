@@ -1,0 +1,10 @@
+{
+  "baseline/qcd_n4_uux_zzgg": {
+    "generation_sha256": "afb29a9246ac747295c8697268b28122585396ae7ac6e7b517f69e160cc6e514",
+    "param_card_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+  },
+  "candidate/qcd_n4_uux_zzgg": {
+    "generation_sha256": "fca5bd109801cd2bfe1211274e70b56300ad2ee603dca679309ed98769c5a591",
+    "param_card_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+  }
+}
