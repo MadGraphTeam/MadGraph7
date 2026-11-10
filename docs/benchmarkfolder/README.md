@@ -140,18 +140,21 @@ pass at both `3e-6` and `1e-8`: twelve lanes, 100 saved points each, all accepte
 results in the selected backend's DP mode. Five more successor processes now
 have [independently audited closed checkpoints](campaigns/entry-latch-cache-guard-1/QUALIFICATION_PROGRESS.md):
 the Higgs and Higgs-pair controls, QCD top-pair production, EW muon-pair production,
-and the mixed QCD/QED control. The two three-particle processes have also closed:
-all 54 completed lanes pass `3e-6`; QCD three-particle production retains `1e-8`
-target misses and TIRust uses QP rescue at 13 points. The two four-particle cases
-and precise timing remain pending.
+and the mixed QCD/QED control. Both three-particle processes and QCD four-particle
+production have also closed: all 60 completed lanes pass `3e-6`; 52 also pass
+the separate `1e-8` target. QCD three- and four-particle production retain finite
+target misses. TIRust accepts QP results at respectively 13 and 86 points in
+those processes. EW four-particle production and precise timing remain pending.
 The preceding 31-page PDF covers the `invariant-symmetry-1`
 registration, at revision `2c13246ffa63`, with numerical
 identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
 Its numerical report is bound to a sealed terminal eleven-process checkpoint
 and immutable source-specific selection/dossier. Those 66 lanes do not qualify
-the changed Fortran source. The current 33-page PDF retains that evidence and
-adds the separately bound nine-case current-source supplement. Precise timing
-remains deferred. The runnable
+the changed Fortran source. The current 34-page PDF retains that evidence and
+adds the separately bound nine-case current-source supplement and the
+current-source QCD three-particle raw stability study. Its immutable progress-2
+selection predates the QCD four-particle checkpoint. Precise timing remains
+deferred. The runnable
 [preceding-source local timing handoff](campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md)
 documents fresh installation, local registration, numerical replay, timing and a
 separate local PDF for that preceding source. Handoff 4 binds the tracked `bin/madgraph` launcher;
@@ -221,21 +224,26 @@ COLLIER disagreement remain preserved. This fixture corroboration does not
 qualify physical high-rank amplitudes or general kinematics, stability rescues,
 threshold, soft/collinear or complex-mass stress. Those physical gates remain open.
 
-The [current-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
+The [preceding-source cache lifecycle proof](experiments/subprocess-cache-lifecycle-current-qualification-2/evidence-index.json),
 index SHA-256 `212b6046a48030f26e12facfbd85b4179df0036633f14bbbc38c2788df376964`,
 passes exact parity across four workers, 76 checked native-DP physical calls
-and 96 separate DP/QP tensor-key requests. Its full registered source/native
-identity matches this current campaign. Physical-QP rescues, rank-six, EW,
-loop-induced, poles-only and runtime remain outside that lifecycle scope.
+and 96 separate DP/QP tensor-key requests. Its registered source is
+`2c13246ffa63` in `invariant-symmetry-1`; the native DSO is the unchanged
+`eb3d67fd…` installation. It has not been rerun for the successor's entry-latch
+reset and cache guard. The successor's promotion tests, fixed-mode parity and
+guard-only lifecycle measurements retain their narrower scopes. Physical-QP
+rescues, rank-six, EW, loop-induced, poles-only and runtime remain outside the
+preceding study's lifecycle scope.
 Native-DP/rescued timing cohorts and all precise performance gates remain
 unqualified. Complete delivery remains false.
 
-The [current physical-stress terminal capsule](experiments/physical-stress-current-portable-4-terminal-2/evidence-index.json),
+The [preceding-source physical-stress terminal capsule](experiments/physical-stress-current-portable-4-terminal-2/evidence-index.json),
 index `6fc2035649ba0387f0d4457784ae883592f13bb7e3b6f9c33b99e038b81f7146`,
 reuses the exact [preparation/preflight snapshot](experiments/physical-stress-current-portable-4-preflight-1/evidence-index.json),
 index `49cb1ec298bbd2f8b942b02c3e81b60b53cd2f14a5cdaa56d0fa93452c175c22`.
 Eight fresh CLI exports, full builds and mass preflights belong to that earlier
-snapshot. The terminal native stage exited 1 on a lock timeout before backend 8
+snapshot at `2c13246ffa63` (`invariant-symmetry-1`), not the successor
+`0fcd2cd873d6`. The terminal native stage exited 1 on a lock timeout before backend 8
 launched. Four threshold streams were host checked, one request was deferred
 before launch and 19 were not started. The four checked streams contain eight
 qualified final point evaluations and 12 observed warmup calls, without proving
@@ -247,7 +255,7 @@ target to the whole two-point stream. Neither the earlier preparation-only
 snapshot nor this checked subset closes numerical stress accuracy. The EW
 analytic oracle has not been requalified for these physical inputs.
 
-The separately closed [current CMS attempt-1 retention capsule](experiments/current-cms-replay-retention-1/evidence-index.json),
+The separately closed [preceding-source CMS attempt-1 retention capsule](experiments/current-cms-replay-retention-1/evidence-index.json),
 index `7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed`,
 retains successful fresh source1 preparation/preflight and a failed native
 orchestrator (exit 1). Private-link validation rejected a generated external
@@ -259,7 +267,8 @@ than prepared or passed. Its exact failed ancestry remains preserved.
 The separately admitted [CMS attempt-2 capsule](experiments/current-cms-replay-retention-2/evidence-index.json),
 index `aa39809c5d6cde25367454bb1fd9c3500b9aaa9b14b976fc1ff42bb0783714d3`,
 completes six controller requests with orchestration exit 0 but remains
-numerically incomplete. Two workers timed out during startup and four were
+numerically incomplete. Both CMS attempts bind the preceding `2c13246ffa63`
+source and are not successor stress qualification. Two workers timed out during startup and four were
 rejected during warmup; none reached READY, RUN or final traversal. All 252
 final order outcomes remain unexecuted, with zero complete final streams or
 host-qualified requests. The warmup partition has 234 accepted, eight rejected
