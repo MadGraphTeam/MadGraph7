@@ -1,0 +1,4809 @@
+{
+  "adjudication": {
+    "claims": [
+      "original sticky defect reproduced",
+      "first-call failure retained",
+      "healthy parity retained",
+      "DP/QP independent-call reset",
+      "within-call groups and jumps retain failure",
+      "automatic DP-to-QP rescue and terminal failures retained"
+    ],
+    "fresh_process_cases": 32,
+    "passed": true,
+    "scope": "Compiled source-bound software-latch stubs only; no complete host, physical amplitude, reducer, accuracy or performance qualification."
+  },
+  "caps": {
+    "compiler_commands": 4,
+    "compiler_seconds_each": 30,
+    "stub_executions": 32,
+    "stub_seconds_each": 5,
+    "total_seconds": 300
+  },
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-ffixed-line-length-none",
+        "-fno-fast-math",
+        "stub.f",
+        "-o",
+        "check"
+      ],
+      "kind": "compiler",
+      "returncode": 0,
+      "seconds": 0.13210716424509883,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-plain/check",
+        "1"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0019894870929419994,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_ROW        1     110       1       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       1       1       0\nLATCH_GROUP        2       1       2       1       1       0\nLATCH_ROW        2     110       1       0       1       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-plain/check",
+        "2"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.001453694887459278,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       2       1       0\nLATCH_GROUP        1       1       2       2       1       0\nLATCH_ROW        1     110       1       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       2       1       0\nLATCH_GROUP        2       1       2       2       1       0\nLATCH_ROW        2     110       1       0       1       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-plain/check",
+        "3"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0012243450619280338,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       4       0       1\nLATCH_GROUP        1       1       2       4       0       1\nLATCH_ROW        1     120       0       1       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       4       0       1\nLATCH_GROUP        2       1       2       4       0       1\nLATCH_ROW        2     120       0       1       0       1       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-plain/check",
+        "4"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.001756566110998392,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       5       0       1\nLATCH_GROUP        1       1       2       5       0       1\nLATCH_ROW        1     120       0       1       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       5       0       1\nLATCH_GROUP        2       1       2       5       0       1\nLATCH_ROW        2     120       0       1       0       1       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-plain/check",
+        "5"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.001456995029002428,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_ROW        1     110       1       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-plain/check",
+        "6"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0013728439807891846,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_GROUP        1       4       1       4       0       0\nLATCH_GROUP        1       4       2       4       0       0\nLATCH_GROUP        1       5       1       5       0       0\nLATCH_GROUP        1       5       2       5       0       0\nLATCH_GROUP        1       6       1       4       0       0\nLATCH_GROUP        1       6       2       4       0       0\nLATCH_ROW        1     323       0       0       0       0       6       3       2  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\nLATCH_GROUP        2       1       1       1       1       0\nLATCH_GROUP        2       1       2       1       1       0\nLATCH_GROUP        2       2       1       2       1       0\nLATCH_GROUP        2       2       2       2       1       0\nLATCH_GROUP        2       3       1       1       1       0\nLATCH_GROUP        2       3       2       1       1       0\nLATCH_GROUP        2       4       1       4       0       1\nLATCH_GROUP        2       4       2       4       0       1\nLATCH_GROUP        2       5       1       5       0       1\nLATCH_GROUP        2       5       2       5       0       1\nLATCH_GROUP        2       6       1       4       0       1\nLATCH_GROUP        2       6       2       4       0       1\nLATCH_ROW        2     420       0       1       0       0       6       3       2  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\nLATCH_GROUP        3       1       1       1       0       1\nLATCH_GROUP        3       1       2       1       0       1\nLATCH_GROUP        3       2       1       2       0       1\nLATCH_GROUP        3       2       2       2       0       1\nLATCH_GROUP        3       3       1       1       0       1\nLATCH_GROUP        3       3       2       1       0       1\nLATCH_ROW        3     219       0       1       0       1       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-plain/check",
+        "7"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0013657142408192158,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_ROW        1     410       1       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\nLATCH_GROUP        2       1       1       1       1       0\nLATCH_GROUP        2       1       2       1       1       0\nLATCH_GROUP        2       2       1       2       1       0\nLATCH_GROUP        2       2       2       2       1       0\nLATCH_GROUP        2       3       1       1       1       0\nLATCH_GROUP        2       3       2       1       1       0\nLATCH_ROW        2     410       1       0       1       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-plain/check",
+        "8"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0011966642923653126,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       0       0\nLATCH_GROUP        1       1       2       1       0       0\nLATCH_ROW        1     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       2       0       0\nLATCH_GROUP        2       1       2       2       0       0\nLATCH_ROW        2     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        3       1       1       4       0       0\nLATCH_GROUP        3       1       2       4       0       0\nLATCH_ROW        3     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        4       1       1       5       0       0\nLATCH_GROUP        4       1       2       5       0       0\nLATCH_ROW        4     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        5       1       1       1       0       0\nLATCH_GROUP        5       1       2       1       0       0\nLATCH_GROUP        5       2       1       2       0       0\nLATCH_GROUP        5       2       2       2       0       0\nLATCH_GROUP        5       3       1       1       0       0\nLATCH_GROUP        5       3       2       1       0       0\nLATCH_ROW        5     219       0       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-ffixed-line-length-none",
+        "-fno-fast-math",
+        "stub.f",
+        "-o",
+        "check"
+      ],
+      "kind": "compiler",
+      "returncode": 0,
+      "seconds": 0.1334851486608386,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-nrs/check",
+        "1"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0021993578411638737,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_ROW        1     110       1       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       1       1       0\nLATCH_GROUP        2       1       2       1       1       0\nLATCH_ROW        2     110       1       0       1       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-nrs/check",
+        "2"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.001944065559655428,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       2       1       0\nLATCH_GROUP        1       1       2       2       1       0\nLATCH_ROW        1     110       1       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       2       1       0\nLATCH_GROUP        2       1       2       2       1       0\nLATCH_ROW        2     110       1       0       1       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-nrs/check",
+        "3"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0013504847884178162,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       4       0       1\nLATCH_GROUP        1       1       2       4       0       1\nLATCH_ROW        1     120       0       1       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       4       0       1\nLATCH_GROUP        2       1       2       4       0       1\nLATCH_ROW        2     120       0       1       0       1       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-nrs/check",
+        "4"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0012322943657636642,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       5       0       1\nLATCH_GROUP        1       1       2       5       0       1\nLATCH_ROW        1     120       0       1       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       5       0       1\nLATCH_GROUP        2       1       2       5       0       1\nLATCH_ROW        2     120       0       1       0       1       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-nrs/check",
+        "5"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0021277768537402153,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_ROW        1     110       1       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-nrs/check",
+        "6"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0017499751411378384,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_GROUP        1       4       1       4       0       0\nLATCH_GROUP        1       4       2       4       0       0\nLATCH_GROUP        1       5       1       5       0       0\nLATCH_GROUP        1       5       2       5       0       0\nLATCH_GROUP        1       6       1       4       0       0\nLATCH_GROUP        1       6       2       4       0       0\nLATCH_ROW        1     323       0       0       0       0       6       3       2  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\nLATCH_GROUP        2       1       1       1       1       0\nLATCH_GROUP        2       1       2       1       1       0\nLATCH_GROUP        2       2       1       2       1       0\nLATCH_GROUP        2       2       2       2       1       0\nLATCH_GROUP        2       3       1       1       1       0\nLATCH_GROUP        2       3       2       1       1       0\nLATCH_GROUP        2       4       1       4       0       1\nLATCH_GROUP        2       4       2       4       0       1\nLATCH_GROUP        2       5       1       5       0       1\nLATCH_GROUP        2       5       2       5       0       1\nLATCH_GROUP        2       6       1       4       0       1\nLATCH_GROUP        2       6       2       4       0       1\nLATCH_ROW        2     420       0       1       0       0       6       3       2  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\nLATCH_GROUP        3       1       1       1       0       1\nLATCH_GROUP        3       1       2       1       0       1\nLATCH_GROUP        3       2       1       2       0       1\nLATCH_GROUP        3       2       2       2       0       1\nLATCH_GROUP        3       3       1       1       0       1\nLATCH_GROUP        3       3       2       1       0       1\nLATCH_ROW        3     219       0       1       0       1       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-nrs/check",
+        "7"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0013523153029382229,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_ROW        1     410       1       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\nLATCH_GROUP        2       1       1       1       1       0\nLATCH_GROUP        2       1       2       1       1       0\nLATCH_GROUP        2       2       1       2       1       0\nLATCH_GROUP        2       2       2       2       1       0\nLATCH_GROUP        2       3       1       1       1       0\nLATCH_GROUP        2       3       2       1       1       0\nLATCH_ROW        2     410       1       0       1       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/before-nrs/check",
+        "8"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.00127118406817317,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       0       0\nLATCH_GROUP        1       1       2       1       0       0\nLATCH_ROW        1     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       2       0       0\nLATCH_GROUP        2       1       2       2       0       0\nLATCH_ROW        2     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        3       1       1       4       0       0\nLATCH_GROUP        3       1       2       4       0       0\nLATCH_ROW        3     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        4       1       1       5       0       0\nLATCH_GROUP        4       1       2       5       0       0\nLATCH_ROW        4     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        5       1       1       1       0       0\nLATCH_GROUP        5       1       2       1       0       0\nLATCH_GROUP        5       2       1       2       0       0\nLATCH_GROUP        5       2       2       2       0       0\nLATCH_GROUP        5       3       1       1       0       0\nLATCH_GROUP        5       3       2       1       0       0\nLATCH_ROW        5     219       0       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-ffixed-line-length-none",
+        "-fno-fast-math",
+        "stub.f",
+        "-o",
+        "check"
+      ],
+      "kind": "compiler",
+      "returncode": 0,
+      "seconds": 0.12868157168850303,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-plain/check",
+        "1"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.002019778359681368,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_ROW        1     110       1       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       1       0       0\nLATCH_GROUP        2       1       2       1       0       0\nLATCH_ROW        2     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-plain/check",
+        "2"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0014372947625815868,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       2       1       0\nLATCH_GROUP        1       1       2       2       1       0\nLATCH_ROW        1     110       1       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       2       0       0\nLATCH_GROUP        2       1       2       2       0       0\nLATCH_ROW        2     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-plain/check",
+        "3"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0012879250571131706,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       4       0       1\nLATCH_GROUP        1       1       2       4       0       1\nLATCH_ROW        1     120       0       1       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       4       0       0\nLATCH_GROUP        2       1       2       4       0       0\nLATCH_ROW        2     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-plain/check",
+        "4"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0011544637382030487,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       5       0       1\nLATCH_GROUP        1       1       2       5       0       1\nLATCH_ROW        1     120       0       1       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       5       0       0\nLATCH_GROUP        2       1       2       5       0       0\nLATCH_ROW        2     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-plain/check",
+        "5"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0011657639406621456,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_ROW        1     110       1       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-plain/check",
+        "6"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0013049552217125893,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_GROUP        1       4       1       4       0       0\nLATCH_GROUP        1       4       2       4       0       0\nLATCH_GROUP        1       5       1       5       0       0\nLATCH_GROUP        1       5       2       5       0       0\nLATCH_GROUP        1       6       1       4       0       0\nLATCH_GROUP        1       6       2       4       0       0\nLATCH_ROW        1     323       0       0       0       0       6       3       2  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\nLATCH_GROUP        2       1       1       1       1       0\nLATCH_GROUP        2       1       2       1       1       0\nLATCH_GROUP        2       2       1       2       1       0\nLATCH_GROUP        2       2       2       2       1       0\nLATCH_GROUP        2       3       1       1       1       0\nLATCH_GROUP        2       3       2       1       1       0\nLATCH_GROUP        2       4       1       4       0       1\nLATCH_GROUP        2       4       2       4       0       1\nLATCH_GROUP        2       5       1       5       0       1\nLATCH_GROUP        2       5       2       5       0       1\nLATCH_GROUP        2       6       1       4       0       1\nLATCH_GROUP        2       6       2       4       0       1\nLATCH_ROW        2     420       0       1       0       0       6       3       2  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\nLATCH_GROUP        3       1       1       1       0       0\nLATCH_GROUP        3       1       2       1       0       0\nLATCH_GROUP        3       2       1       2       0       0\nLATCH_GROUP        3       2       2       2       0       0\nLATCH_GROUP        3       3       1       1       0       0\nLATCH_GROUP        3       3       2       1       0       0\nLATCH_ROW        3     219       0       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-plain/check",
+        "7"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0012764842249453068,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_ROW        1     410       1       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\nLATCH_GROUP        2       1       1       1       0       0\nLATCH_GROUP        2       1       2       1       0       0\nLATCH_GROUP        2       2       1       2       0       0\nLATCH_GROUP        2       2       2       2       0       0\nLATCH_GROUP        2       3       1       1       0       0\nLATCH_GROUP        2       3       2       1       0       0\nLATCH_ROW        2     219       0       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-plain/check",
+        "8"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0011697839945554733,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       0       0\nLATCH_GROUP        1       1       2       1       0       0\nLATCH_ROW        1     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       2       0       0\nLATCH_GROUP        2       1       2       2       0       0\nLATCH_ROW        2     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        3       1       1       4       0       0\nLATCH_GROUP        3       1       2       4       0       0\nLATCH_ROW        3     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        4       1       1       5       0       0\nLATCH_GROUP        4       1       2       5       0       0\nLATCH_ROW        4     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        5       1       1       1       0       0\nLATCH_GROUP        5       1       2       1       0       0\nLATCH_GROUP        5       2       1       2       0       0\nLATCH_GROUP        5       2       2       2       0       0\nLATCH_GROUP        5       3       1       1       0       0\nLATCH_GROUP        5       3       2       1       0       0\nLATCH_ROW        5     219       0       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O0",
+        "-fcheck=all",
+        "-ffixed-line-length-none",
+        "-fno-fast-math",
+        "stub.f",
+        "-o",
+        "check"
+      ],
+      "kind": "compiler",
+      "returncode": 0,
+      "seconds": 0.13966599013656378,
+      "stderr": "",
+      "stdout": ""
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-nrs/check",
+        "1"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0020519569516181946,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_ROW        1     110       1       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       1       0       0\nLATCH_GROUP        2       1       2       1       0       0\nLATCH_ROW        2     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-nrs/check",
+        "2"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0015950649976730347,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       2       1       0\nLATCH_GROUP        1       1       2       2       1       0\nLATCH_ROW        1     110       1       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       2       0       0\nLATCH_GROUP        2       1       2       2       0       0\nLATCH_ROW        2     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-nrs/check",
+        "3"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0018809870816767216,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       4       0       1\nLATCH_GROUP        1       1       2       4       0       1\nLATCH_ROW        1     120       0       1       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       4       0       0\nLATCH_GROUP        2       1       2       4       0       0\nLATCH_ROW        2     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-nrs/check",
+        "4"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.001672875601798296,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       5       0       1\nLATCH_GROUP        1       1       2       5       0       1\nLATCH_ROW        1     120       0       1       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       5       0       0\nLATCH_GROUP        2       1       2       5       0       0\nLATCH_ROW        2     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-nrs/check",
+        "5"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0017186948098242283,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_ROW        1     110       1       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-nrs/check",
+        "6"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0017160563729703426,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_GROUP        1       4       1       4       0       0\nLATCH_GROUP        1       4       2       4       0       0\nLATCH_GROUP        1       5       1       5       0       0\nLATCH_GROUP        1       5       2       5       0       0\nLATCH_GROUP        1       6       1       4       0       0\nLATCH_GROUP        1       6       2       4       0       0\nLATCH_ROW        1     323       0       0       0       0       6       3       2  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\nLATCH_GROUP        2       1       1       1       1       0\nLATCH_GROUP        2       1       2       1       1       0\nLATCH_GROUP        2       2       1       2       1       0\nLATCH_GROUP        2       2       2       2       1       0\nLATCH_GROUP        2       3       1       1       1       0\nLATCH_GROUP        2       3       2       1       1       0\nLATCH_GROUP        2       4       1       4       0       1\nLATCH_GROUP        2       4       2       4       0       1\nLATCH_GROUP        2       5       1       5       0       1\nLATCH_GROUP        2       5       2       5       0       1\nLATCH_GROUP        2       6       1       4       0       1\nLATCH_GROUP        2       6       2       4       0       1\nLATCH_ROW        2     420       0       1       0       0       6       3       2  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\nLATCH_GROUP        3       1       1       1       0       0\nLATCH_GROUP        3       1       2       1       0       0\nLATCH_GROUP        3       2       1       2       0       0\nLATCH_GROUP        3       2       2       2       0       0\nLATCH_GROUP        3       3       1       1       0       0\nLATCH_GROUP        3       3       2       1       0       0\nLATCH_ROW        3     219       0       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-nrs/check",
+        "7"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0017318259924650192,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       1       0\nLATCH_GROUP        1       1       2       1       1       0\nLATCH_GROUP        1       2       1       2       1       0\nLATCH_GROUP        1       2       2       2       1       0\nLATCH_GROUP        1       3       1       1       1       0\nLATCH_GROUP        1       3       2       1       1       0\nLATCH_ROW        1     410       1       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  1.000000000000000E+000\nLATCH_GROUP        2       1       1       1       0       0\nLATCH_GROUP        2       1       2       1       0       0\nLATCH_GROUP        2       2       1       2       0       0\nLATCH_GROUP        2       2       2       2       0       0\nLATCH_GROUP        2       3       1       1       0       0\nLATCH_GROUP        2       3       2       1       0       0\nLATCH_ROW        2     219       0       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    },
+    {
+      "argv": [
+        "/tmp/reduction-latch-stub-gks0und9/candidate-nrs/check",
+        "8"
+      ],
+      "kind": "stub",
+      "returncode": 0,
+      "seconds": 0.0015790648758411407,
+      "stderr": "",
+      "stdout": "LATCH_GROUP        1       1       1       1       0       0\nLATCH_GROUP        1       1       2       1       0       0\nLATCH_ROW        1     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        2       1       1       2       0       0\nLATCH_GROUP        2       1       2       2       0       0\nLATCH_ROW        2     110       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        3       1       1       4       0       0\nLATCH_GROUP        3       1       2       4       0       0\nLATCH_ROW        3     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        4       1       1       5       0       0\nLATCH_GROUP        4       1       2       5       0       0\nLATCH_ROW        4     120       0       0       0       0       1       0       0  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001 -1.000000000000000E+000\nLATCH_GROUP        5       1       1       1       0       0\nLATCH_GROUP        5       1       2       1       0       0\nLATCH_GROUP        5       2       1       2       0       0\nLATCH_GROUP        5       2       2       2       0       0\nLATCH_GROUP        5       3       1       1       0       0\nLATCH_GROUP        5       3       2       1       0       0\nLATCH_ROW        5     219       0       0       0       0       3       1       1  7.000000000000000E+000  1.100000000000000E+001  1.300000000000000E+001  1.700000000000000E+001  0.000000000000000E+000\n"
+    }
+  ],
+  "compiler": {
+    "invoked": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "resolved": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae"
+  },
+  "elapsed_seconds_including_cleanup": 0.5922214961610734,
+  "fragment_sha256": {
+    "before": {
+      "automatic_policy": "702273b7a33b5b70c2b6e7606723c285277e44862f1ad0fbfe3b07dc477e9499",
+      "call_initialization": "ef8dac63d1c2fb91d1f02d75c4ad047714da27f08f963a3981cfae72077f57c9",
+      "latch_common": "ae09002f1d3702f55a40046e26346e6b57b25c73988fb8e3c0df29e92adb3bd4",
+      "public_wrapper": "4776b36a366b0c5dfc1c99af55f751c1736418a3411c4bb106f602e807a12bce"
+    },
+    "candidate": {
+      "automatic_policy": "702273b7a33b5b70c2b6e7606723c285277e44862f1ad0fbfe3b07dc477e9499",
+      "call_initialization": "57d73553bc7ff9fcde77a4f08994e6bcd27cb0e218e8f6287c0e5c52fb591596",
+      "latch_common": "ae09002f1d3702f55a40046e26346e6b57b25c73988fb8e3c0df29e92adb3bd4",
+      "public_wrapper": "4776b36a366b0c5dfc1c99af55f751c1736418a3411c4bb106f602e807a12bce"
+    }
+  },
+  "observations": [
+    {
+      "case": 1,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "2922ac9ead7de823e14da873ec715c8eeab48afe1c4357c5e88620f88a387ce1",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 2,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "2922ac9ead7de823e14da873ec715c8eeab48afe1c4357c5e88620f88a387ce1",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 3,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          2,
+          4,
+          0,
+          1
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "2922ac9ead7de823e14da873ec715c8eeab48afe1c4357c5e88620f88a387ce1",
+      "rows": [
+        {
+          "integers": [
+            1,
+            120,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            120,
+            0,
+            1,
+            0,
+            1,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 4,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          2,
+          5,
+          0,
+          1
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "2922ac9ead7de823e14da873ec715c8eeab48afe1c4357c5e88620f88a387ce1",
+      "rows": [
+        {
+          "integers": [
+            1,
+            120,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            120,
+            0,
+            1,
+            0,
+            1,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 5,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "2922ac9ead7de823e14da873ec715c8eeab48afe1c4357c5e88620f88a387ce1",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 6,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          4,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          4,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          5,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          1,
+          5,
+          2,
+          5,
+          0,
+          0
+        ],
+        [
+          1,
+          6,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          6,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          4,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          4,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          5,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          5,
+          2,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          6,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          6,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          3,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          3,
+          1,
+          2,
+          1,
+          0,
+          1
+        ],
+        [
+          3,
+          2,
+          1,
+          2,
+          0,
+          1
+        ],
+        [
+          3,
+          2,
+          2,
+          2,
+          0,
+          1
+        ],
+        [
+          3,
+          3,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          3,
+          3,
+          2,
+          1,
+          0,
+          1
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "2922ac9ead7de823e14da873ec715c8eeab48afe1c4357c5e88620f88a387ce1",
+      "rows": [
+        {
+          "integers": [
+            1,
+            323,
+            0,
+            0,
+            0,
+            0,
+            6,
+            3,
+            2
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            420,
+            0,
+            1,
+            0,
+            0,
+            6,
+            3,
+            2
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        },
+        {
+          "integers": [
+            3,
+            219,
+            0,
+            1,
+            0,
+            1,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 7,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          2,
+          1,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "2922ac9ead7de823e14da873ec715c8eeab48afe1c4357c5e88620f88a387ce1",
+      "rows": [
+        {
+          "integers": [
+            1,
+            410,
+            1,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            410,
+            1,
+            0,
+            1,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 8,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          5,
+          0,
+          0
+        ],
+        [
+          5,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          2,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          5,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "2922ac9ead7de823e14da873ec715c8eeab48afe1c4357c5e88620f88a387ce1",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            3,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            4,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            5,
+            219,
+            0,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 1,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "9bb99840b336fee568aeee8a9468fdd4c85895e188f9e25c1c1b0a084b529635",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 2,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "9bb99840b336fee568aeee8a9468fdd4c85895e188f9e25c1c1b0a084b529635",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            1,
+            0,
+            1,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 3,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          2,
+          4,
+          0,
+          1
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "9bb99840b336fee568aeee8a9468fdd4c85895e188f9e25c1c1b0a084b529635",
+      "rows": [
+        {
+          "integers": [
+            1,
+            120,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            120,
+            0,
+            1,
+            0,
+            1,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 4,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          2,
+          5,
+          0,
+          1
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "9bb99840b336fee568aeee8a9468fdd4c85895e188f9e25c1c1b0a084b529635",
+      "rows": [
+        {
+          "integers": [
+            1,
+            120,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            120,
+            0,
+            1,
+            0,
+            1,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 5,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "9bb99840b336fee568aeee8a9468fdd4c85895e188f9e25c1c1b0a084b529635",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 6,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          4,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          4,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          5,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          1,
+          5,
+          2,
+          5,
+          0,
+          0
+        ],
+        [
+          1,
+          6,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          6,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          4,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          4,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          5,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          5,
+          2,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          6,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          6,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          3,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          3,
+          1,
+          2,
+          1,
+          0,
+          1
+        ],
+        [
+          3,
+          2,
+          1,
+          2,
+          0,
+          1
+        ],
+        [
+          3,
+          2,
+          2,
+          2,
+          0,
+          1
+        ],
+        [
+          3,
+          3,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          3,
+          3,
+          2,
+          1,
+          0,
+          1
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "9bb99840b336fee568aeee8a9468fdd4c85895e188f9e25c1c1b0a084b529635",
+      "rows": [
+        {
+          "integers": [
+            1,
+            323,
+            0,
+            0,
+            0,
+            0,
+            6,
+            3,
+            2
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            420,
+            0,
+            1,
+            0,
+            0,
+            6,
+            3,
+            2
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        },
+        {
+          "integers": [
+            3,
+            219,
+            0,
+            1,
+            0,
+            1,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 7,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          2,
+          1,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "9bb99840b336fee568aeee8a9468fdd4c85895e188f9e25c1c1b0a084b529635",
+      "rows": [
+        {
+          "integers": [
+            1,
+            410,
+            1,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            410,
+            1,
+            0,
+            1,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 8,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          5,
+          0,
+          0
+        ],
+        [
+          5,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          2,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          5,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "9bb99840b336fee568aeee8a9468fdd4c85895e188f9e25c1c1b0a084b529635",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            3,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            4,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            5,
+            219,
+            0,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "before"
+    },
+    {
+      "case": 1,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "23fd9810a9d4960d68d00088c3de6683a737a51638c6b963e9881f9f9deea8f7",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 2,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "23fd9810a9d4960d68d00088c3de6683a737a51638c6b963e9881f9f9deea8f7",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 3,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          4,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "23fd9810a9d4960d68d00088c3de6683a737a51638c6b963e9881f9f9deea8f7",
+      "rows": [
+        {
+          "integers": [
+            1,
+            120,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 4,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          5,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "23fd9810a9d4960d68d00088c3de6683a737a51638c6b963e9881f9f9deea8f7",
+      "rows": [
+        {
+          "integers": [
+            1,
+            120,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 5,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "23fd9810a9d4960d68d00088c3de6683a737a51638c6b963e9881f9f9deea8f7",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 6,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          4,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          4,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          5,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          1,
+          5,
+          2,
+          5,
+          0,
+          0
+        ],
+        [
+          1,
+          6,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          6,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          4,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          4,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          5,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          5,
+          2,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          6,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          6,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          3,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          3,
+          2,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          3,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          3,
+          3,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          3,
+          3,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "23fd9810a9d4960d68d00088c3de6683a737a51638c6b963e9881f9f9deea8f7",
+      "rows": [
+        {
+          "integers": [
+            1,
+            323,
+            0,
+            0,
+            0,
+            0,
+            6,
+            3,
+            2
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            420,
+            0,
+            1,
+            0,
+            0,
+            6,
+            3,
+            2
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        },
+        {
+          "integers": [
+            3,
+            219,
+            0,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 7,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          3,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          3,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "23fd9810a9d4960d68d00088c3de6683a737a51638c6b963e9881f9f9deea8f7",
+      "rows": [
+        {
+          "integers": [
+            1,
+            410,
+            1,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            219,
+            0,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 8,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          5,
+          0,
+          0
+        ],
+        [
+          5,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          2,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          5,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": false,
+      "rendered_sha256": "23fd9810a9d4960d68d00088c3de6683a737a51638c6b963e9881f9f9deea8f7",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            3,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            4,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            5,
+            219,
+            0,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 1,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "a0c104ee30a7c8187501ccd611bb32be85562f2d75ff017e5c04a8c582c8cd01",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 2,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "a0c104ee30a7c8187501ccd611bb32be85562f2d75ff017e5c04a8c582c8cd01",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 3,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          4,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "a0c104ee30a7c8187501ccd611bb32be85562f2d75ff017e5c04a8c582c8cd01",
+      "rows": [
+        {
+          "integers": [
+            1,
+            120,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 4,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          5,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "a0c104ee30a7c8187501ccd611bb32be85562f2d75ff017e5c04a8c582c8cd01",
+      "rows": [
+        {
+          "integers": [
+            1,
+            120,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 5,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "a0c104ee30a7c8187501ccd611bb32be85562f2d75ff017e5c04a8c582c8cd01",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            1,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 6,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          4,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          4,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          5,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          1,
+          5,
+          2,
+          5,
+          0,
+          0
+        ],
+        [
+          1,
+          6,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          1,
+          6,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          4,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          4,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          5,
+          1,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          5,
+          2,
+          5,
+          0,
+          1
+        ],
+        [
+          2,
+          6,
+          1,
+          4,
+          0,
+          1
+        ],
+        [
+          2,
+          6,
+          2,
+          4,
+          0,
+          1
+        ],
+        [
+          3,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          3,
+          2,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          3,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          3,
+          3,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          3,
+          3,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "a0c104ee30a7c8187501ccd611bb32be85562f2d75ff017e5c04a8c582c8cd01",
+      "rows": [
+        {
+          "integers": [
+            1,
+            323,
+            0,
+            0,
+            0,
+            0,
+            6,
+            3,
+            2
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            420,
+            0,
+            1,
+            0,
+            0,
+            6,
+            3,
+            2
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        },
+        {
+          "integers": [
+            3,
+            219,
+            0,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 7,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          1,
+          1,
+          1,
+          0
+        ],
+        [
+          1,
+          3,
+          2,
+          1,
+          1,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          3,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          3,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "a0c104ee30a7c8187501ccd611bb32be85562f2d75ff017e5c04a8c582c8cd01",
+      "rows": [
+        {
+          "integers": [
+            1,
+            410,
+            1,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            219,
+            0,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    },
+    {
+      "case": 8,
+      "groups": [
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          1,
+          4,
+          0,
+          0
+        ],
+        [
+          3,
+          1,
+          2,
+          4,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          1,
+          5,
+          0,
+          0
+        ],
+        [
+          4,
+          1,
+          2,
+          5,
+          0,
+          0
+        ],
+        [
+          5,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          1,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          2,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          5,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          5,
+          3,
+          2,
+          1,
+          0,
+          0
+        ]
+      ],
+      "ninjars_available": true,
+      "rendered_sha256": "a0c104ee30a7c8187501ccd611bb32be85562f2d75ff017e5c04a8c582c8cd01",
+      "rows": [
+        {
+          "integers": [
+            1,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            2,
+            110,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            3,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            4,
+            120,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            -1.0
+          ]
+        },
+        {
+          "integers": [
+            5,
+            219,
+            0,
+            0,
+            0,
+            0,
+            3,
+            1,
+            1
+          ],
+          "values": [
+            7.0,
+            11.0,
+            13.0,
+            17.0,
+            0.0
+          ]
+        }
+      ],
+      "version": "candidate"
+    }
+  ],
+  "schema": "madloop-reduction-latch-stub-v1",
+  "scope": "Compiled source-bound software-latch stubs only; no complete host, physical amplitude, reducer, accuracy or performance qualification.",
+  "stub_check_sha256": "c973c9b316d9bfd28cdaa5c405f8a68a7970bcc09bbbc891bdbc21047859a9e5",
+  "template_sha256": {
+    "before": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+    "candidate": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b"
+  }
+}

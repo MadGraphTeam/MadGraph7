@@ -1,0 +1,39 @@
+{
+  "all_four_workers": true,
+  "answer_order_columns": 24,
+  "candidate_executable_sha256": "12fee953c6a43538c057a50cfb9d8b23fa86ecf6d02c0aacbe20ffb22ab6daa5",
+  "comparisons": [
+    {
+      "mode": 4,
+      "points": [
+        1,
+        93,
+        39
+      ],
+      "public_input_output_status_IEEE_byte_equal": true
+    },
+    {
+      "mode": 5,
+      "points": [
+        1,
+        93,
+        39
+      ],
+      "public_input_output_status_IEEE_byte_equal": true
+    }
+  ],
+  "diagnostic_calls": 12,
+  "elapsed_seconds_including_final_guards": 61.849168880376965,
+  "native_workers_admitted": 4,
+  "original15_runtime_providers": true,
+  "passed": true,
+  "production_mutation": false,
+  "public_call_cap": 48,
+  "public_calls": 20,
+  "runner_sha256": "8df0c0b776d8f587e35644b1766129428a1d3e5ae095e8dc6635a230420cdf80",
+  "scope": "Three-point byte parity; status120/accuracy-1 unchecked, no accuracy or performance acceptance.",
+  "source_index_sha256": "c9a61e13b12c8566579d760268b739c7ec83c17198bf686f1afd9b0ef37b34c5",
+  "stage_cap_seconds": 600,
+  "stage_within_cap": true,
+  "workers_completed": 4
+}

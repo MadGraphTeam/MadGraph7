@@ -1,0 +1,28 @@
+{
+  "campaign_acceptance": false,
+  "files": {
+    "README.md": {
+      "bytes": 2893,
+      "sha256": "a4bb9e3e6573ab736dba738b098bdf5e9efeed4b714d7a2d81c79ef1c2584353"
+    },
+    "green.json": {
+      "bytes": 982,
+      "sha256": "da89492b2db7d0d3cd5b2ecd10d75cbf6c8c6221c8bed7d2520755282a635174"
+    },
+    "green.log": {
+      "bytes": 17560,
+      "sha256": "3f52260f4157255a4faab399ab354c950033c28413f87ee2a1e90b63a123c395"
+    },
+    "red.json": {
+      "bytes": 484,
+      "sha256": "13f02370a52c52218fcb084d05203358ef8210816ac0fdaea9ef554c5240b75f"
+    },
+    "red.log": {
+      "bytes": 9866,
+      "sha256": "2c55062d906b6d63b751361bb56a2f5aaa1313c9a2c3c0ace4a0893f955abe16"
+    }
+  },
+  "green_tests": 89,
+  "red_expected_failure": true,
+  "schema": "fortran-lifecycle-promotion-v1"
+}

@@ -1,0 +1,74 @@
+{
+  "bounds_flags": [],
+  "candidate_actual_command": {
+    "argv": [
+      "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+      "-c",
+      "12",
+      "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/prlimit",
+      "--as=4294967296",
+      "--",
+      "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+      "-w",
+      "-fPIC",
+      "-ffixed-line-length-132",
+      "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z",
+      "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n1_uux_z/Source/MODEL",
+      "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.benchmark-work/tirust/campaigns/invariant-symmetry-1/outputs/candidate/qcd_n1_uux_z/Source/DHELAS",
+      "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include",
+      "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include",
+      "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib",
+      "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+      "-c",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-lazy-tirust-clear-2/build/candidate-TIRUST_interface.f",
+      "-o",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-lazy-tirust-clear-2/build/candidate-TIRUST_interface.o"
+    ],
+    "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/fortran-lazy-tirust-clear-2/build",
+    "outer_loader_variables": {},
+    "target_LD_LIBRARY_PATH": null,
+    "trace": false
+  },
+  "candidate_command_sha256": "7c8c02c40410616455da0f42ca10a2ad1ed66aac935c9a3ca3dcbf52e2205283",
+  "candidate_normalized_flags": [
+    "-w",
+    "-fPIC",
+    "-ffixed-line-length-132"
+  ],
+  "fixed_line_policy": "-ffixed-line-length-132",
+  "floating_point_override_flags": [],
+  "identical_compiler_path_and_hash": true,
+  "identical_nonpath_flags": true,
+  "limitations": [
+    "Original process object bytes were bound before this experiment, without claiming individual historical object hashes.",
+    "The private controller retained exact compiler argv and clean outer LD environment but did not independently snapshot all compiler-injected environment variables at the compile instant. The post-run probe is not retroactive proof of that environment.",
+    "Current-host n1 performance observations do not satisfy the agreed local multi-process precise timing acceptance."
+  ],
+  "optimization_flags": [],
+  "original_actual_process_build_log_sha256": "84cbde31ce7273c76a52566635bddcb82520a32c82f732b8e1549fd76c6fa31c",
+  "original_adapter_compile_line": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c TIRUST_interface.f -o TIRUST_interface.o -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/include -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib -I /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+  "original_campaign_inputs_sha256": "402f15c9e56e3fdedce4382311effcc44acdab83dc66a0113f3ea8fdc7d463b1",
+  "original_effective_compiler_injected_environment": {},
+  "original_effective_recipe": {
+    "compiler": [
+      {
+        "path": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae",
+        "version": "GNU Fortran (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+      }
+    ],
+    "flags": [
+      "-w",
+      "-fPIC",
+      "-ffixed-line-length-132"
+    ]
+  },
+  "original_normalized_flags": [
+    "-w",
+    "-fPIC",
+    "-ffixed-line-length-132"
+  ],
+  "path_only_changes": "Private source/object paths and explicit -I original process directory replace the original implicit current-directory include lookup; MODEL/DHELAS/native include targets retain their order and bytes.",
+  "post_run_environment_probe_only": {},
+  "schema": "fortran-lazy-clear-compile-policy-receipt-v1"
+}

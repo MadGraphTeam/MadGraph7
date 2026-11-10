@@ -70,5 +70,11 @@
     "status": "pending",
     "evidence": "Historical n1 performance failure remains authoritative. The optimized final physics, runtime and existing-backend regression campaign is pending.",
     "path": "summary.json"
+  },
+  {
+    "name": "Independent-call failure flags and lazy event clearing",
+    "status": "pass",
+    "evidence": "Two generated-Fortran changes pass 89 combined regression tests after old-template failures. Separate three-point QCD n3 DP/QP parity and measured QCD n1 cache lifecycle are retained. Fresh successor campaign accuracy and precise runtime acceptance remain pending.",
+    "path": "experiments/fortran-lifecycle-promotion-1/README.md"
   }
 ]

@@ -1,0 +1,67 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 6015,
+      "sha256": "9ea9ea808c459c303997523d7f5d44225299efbcdd116c9c2730c7cfa0257091"
+    },
+    "bindings.json": {
+      "bytes": 50346,
+      "sha256": "5616e22fd43512df037b29a1de3af11007568edaa06f37367b1e0861c5505506"
+    },
+    "candidate.patch": {
+      "bytes": 701,
+      "sha256": "2cb915086a4e9bc6a938c641dfe7a05897de5b780f5524842cd65e1a112229d3"
+    },
+    "fixtures/MadLoopParams.dat": {
+      "bytes": 14623,
+      "sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85"
+    },
+    "fixtures/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "fixtures/points.dat": {
+      "bytes": 28953,
+      "sha256": "2ed64c5cba477ce0e7ed3a7bbd642521061b251573ed20957f8e3bc396fa5b35"
+    },
+    "lifecycle.f90": {
+      "bytes": 2785,
+      "sha256": "49807a37ceae711e9f1fa8422dd09437abb0c6884859b537b20d2ef83b8772ef"
+    },
+    "micro.f90": {
+      "bytes": 868,
+      "sha256": "841399edb5862fc4161ff3be1bf4894d048287842cadd483be3cf153e79af64a"
+    },
+    "observer.c": {
+      "bytes": 1954,
+      "sha256": "93ac9f406c7f565dd0797083ba44ccdb2c5cd2c1b2ae23839ffd038152b77b69"
+    },
+    "preparation-note.json": {
+      "bytes": 281,
+      "sha256": "b111448defbf17ff8d7455a4c9fe230af3b83b012443088a2dd7319564646123"
+    },
+    "pure-tests.log": {
+      "bytes": 1223,
+      "sha256": "57c0d2a77c7effb0459015e43d09d6593c3a40d3ccd5cec135ed8feede32b647"
+    },
+    "replacement.json": {
+      "bytes": 521,
+      "sha256": "e9687ba437231f0ca373a5d024dccbd7bfd07c872f90f92c87f2e3861b0a12b3"
+    },
+    "run.py": {
+      "bytes": 17369,
+      "sha256": "c3eae3d7213a9067a67b41817568e52b72ff9b25ba1dd0fb83485ead30627459"
+    },
+    "test_source.py": {
+      "bytes": 3976,
+      "sha256": "1bf9fb54a1d746d1d60c5f322425bca39858a564f7e7f4b8dcd043449b33fe8e"
+    },
+    "worker.f": {
+      "bytes": 7771,
+      "sha256": "e1e0334777c59a2e673722ad2fa3b631089e52c332b6bfd79621404f49cbaf17"
+    }
+  },
+  "native_executed": false,
+  "production_files_modified": false,
+  "schema": "fortran-lazy-tirust-clear-source-v1"
+}

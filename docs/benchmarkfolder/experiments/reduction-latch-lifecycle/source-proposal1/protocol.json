@@ -1,0 +1,73 @@
+{
+  "schema": "reduction-latch-lifecycle-private-source-v1",
+  "production_mutation": false,
+  "real_numerical_admission": false,
+  "candidate_executable_assignments": 2,
+  "stub": {
+    "ninjars_public_wrapper_variants": [
+      false,
+      true
+    ],
+    "cases": [
+      "forced-dp1-failure-then-healthy",
+      "forced-dp2-failure-then-healthy",
+      "forced-qp4-failure-then-healthy",
+      "forced-qp5-failure-then-healthy",
+      "within-call-group-direction-rotation-latching",
+      "automatic-rescue-terminal-failure-then-healthy",
+      "automatic-dp-only-terminal-failure-then-healthy",
+      "healthy-first-call-parity"
+    ],
+    "fresh_processes": 32,
+    "compile_commands": 4,
+    "compile_seconds_cap_each": 30,
+    "run_seconds_cap_each": 5,
+    "integral_or_SM_calls": 0
+  },
+  "representative_SM_proposal": {
+    "donor": "qcd_n3_uux_zgg",
+    "points": [
+      1,
+      93,
+      39
+    ],
+    "native_workers": [
+      {
+        "arm": "original",
+        "backend": 9,
+        "mode": 4,
+        "observed": 0
+      },
+      {
+        "arm": "candidate",
+        "backend": 9,
+        "mode": 4,
+        "observed": 0
+      },
+      {
+        "arm": "original",
+        "backend": 9,
+        "mode": 5,
+        "observed": 0
+      },
+      {
+        "arm": "candidate",
+        "backend": 9,
+        "mode": 5,
+        "observed": 0
+      }
+    ],
+    "max_public_calls": 48,
+    "diagnostic_calls": 12,
+    "compile_commands": 2,
+    "compile_seconds_cap_each": 120,
+    "trace_seconds_cap_each": 30,
+    "worker_seconds_cap_each": 90,
+    "stage_seconds_cap": 600,
+    "cpu": "12 nonexclusive",
+    "memory_bytes": 4294967296,
+    "common_numerical_lock_required": true,
+    "retry": false
+  },
+  "scope": "Stub tests establish latch control-flow behavior only; real SM parity is not yet executed or admitted. No accuracy or timing acceptance."
+}

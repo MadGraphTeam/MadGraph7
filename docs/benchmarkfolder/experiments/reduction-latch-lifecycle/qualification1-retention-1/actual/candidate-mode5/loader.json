@@ -1,0 +1,42 @@
+{
+  "argv": [
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/taskset",
+    "-c",
+    "12",
+    "/nix/store/156fzvaz2nsq2hk0fkzn9jwk90bnzyn9-util-linux-2.42.2-bin/bin/prlimit",
+    "--as=4294967296",
+    "--",
+    "/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin/python3.13",
+    "-I",
+    "-B",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/qcd-n3-genuine-qp-diagnostic/source-proposal5/exec_target.py",
+    "trace",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/diagnostic",
+    "12fee953c6a43538c057a50cfb9d8b23fa86ecf6d02c0aacbe20ffb22ab6daa5",
+    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/closed-runtime"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5",
+  "environment": {
+    "LC_ALL": "C",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1"
+  },
+  "exit_observed_unix": 1794329942.2403967,
+  "finished_unix": 1794329942.2405636,
+  "native": false,
+  "pid": 35,
+  "process_reaped": true,
+  "process_spawned": true,
+  "process_wall_seconds": 0.1724116150289774,
+  "returncode": 0,
+  "seconds_cap": 30,
+  "spawn_unix": 1794329942.0692384,
+  "started_unix": 1794329942.067706,
+  "target_loader_environment_at_execve": {
+    "LD_LIBRARY_PATH": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/closed-runtime",
+    "LD_TRACE_LOADED_OBJECTS": "1"
+  }
+}

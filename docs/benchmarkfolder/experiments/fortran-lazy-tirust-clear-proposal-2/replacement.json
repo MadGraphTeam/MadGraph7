@@ -1,0 +1,5 @@
+{
+  "old": "      USE MTIRUST, ONLY: TIRUST_CLEAR_CACHE\n      CALL TIRUST_CLEAR_CACHE()\n",
+  "new": "      USE MTIRUST, ONLY: TIRUST_CLEAR_CACHE,\n     $                  TIRUST_CONTEXT_GENERATION\nC     The shared module context may belong to another subprocess.\nC     Event clearing must not create it before any TIRust use.\n      IF(TIRUST_CONTEXT_GENERATION().GE.0) THEN\n        CALL TIRUST_CLEAR_CACHE()\n      ENDIF\n",
+  "template_sha256": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b"
+}

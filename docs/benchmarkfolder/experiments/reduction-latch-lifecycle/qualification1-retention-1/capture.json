@@ -1,0 +1,739 @@
+{
+  "actual_session": 71751,
+  "actual_terminal_code": 0,
+  "answer_order_columns": 24,
+  "closed_work_root": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1",
+  "diagnostic_calls": 12,
+  "excluded_binaries": {
+    "diagnostic": {
+      "bytes": 79365856,
+      "sha256": "12fee953c6a43538c057a50cfb9d8b23fa86ecf6d02c0aacbe20ffb22ab6daa5"
+    },
+    "loop_matrix.o": {
+      "bytes": 93528,
+      "sha256": "99cbe4d789b0da2be4d0fdf0eb5e18559e73bcc8b4c0fc9cc88f0f1ff46de98c"
+    }
+  },
+  "new_compiler_commands": 2,
+  "new_native_workers": 4,
+  "original_files": {
+    "actual/build.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 6549,
+      "logical_sha256": "a32f9d1c4be0a1c2ac00bc6640245ac2e8b797371a9ed0decc3d9411c8564960",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/build.json"
+    },
+    "actual/candidate-mode4/ML5_0_ColorDenomFactors.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 9776,
+      "logical_sha256": "acc6b53242a9be1a03ac4449cbea2e2320879ab33938bce0fd4766da2448cd5c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/ML5_0_ColorDenomFactors.dat"
+    },
+    "actual/candidate-mode4/ML5_0_ColorNumFactors.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 10720,
+      "logical_sha256": "9271f79795ad7e4fa6c4ab034c89b4414645b808a438eb3b9d630e8e0821e166",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/ML5_0_ColorNumFactors.dat"
+    },
+    "actual/candidate-mode4/ML5_0_HelConfigs.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 592,
+      "logical_sha256": "669402f3985e86bddb24d97f397ab43c031109cd78fd8b6d47ea86f828aba3bc",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/ML5_0_HelConfigs.dat"
+    },
+    "actual/candidate-mode4/MadLoopParams.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 14623,
+      "logical_sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/MadLoopParams.dat"
+    },
+    "actual/candidate-mode4/inputs.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 1560,
+      "logical_sha256": "1db228b4b82c9b82723f7bbb7c17962f0957429e0c626d6f052587e386be8daf",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/inputs.json"
+    },
+    "actual/candidate-mode4/loader.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 1810,
+      "logical_sha256": "a9c4b75db92ddbcbfd6ab5a8bd47fc097b53f9240fa7596f80ab41602d9dcb94",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/loader.json"
+    },
+    "actual/candidate-mode4/loader.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 2663,
+      "logical_sha256": "ad120aa1f26b746b5f0c82f4eba6ea8e5c1d84413513971e779905189502fcab",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/loader.log"
+    },
+    "actual/candidate-mode4/mapped-runtime.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 22318,
+      "logical_sha256": "9b4d7b44e19aaddb1e2cb3d01287dba23f4b05a9c32b017419c8cc373cb1b150",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/mapped-runtime.json"
+    },
+    "actual/candidate-mode4/maps.snapshots/complete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13663,
+      "logical_sha256": "83730dd5100968040d784e4361d4dabe2f71ed86b1f243761c3e0f3712233977",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/maps.snapshots/complete.txt"
+    },
+    "actual/candidate-mode4/maps.snapshots/first-incomplete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1689,
+      "logical_sha256": "ab199a77e6a9e17fd4c79e7a6360f8a84c3080df5e65217f477ddc697bd55033",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/maps.snapshots/first-incomplete.txt"
+    },
+    "actual/candidate-mode4/maps.snapshots/first-nonempty.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1689,
+      "logical_sha256": "ab199a77e6a9e17fd4c79e7a6360f8a84c3080df5e65217f477ddc697bd55033",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/maps.snapshots/first-nonempty.txt"
+    },
+    "actual/candidate-mode4/maps.snapshots/first-read.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1689,
+      "logical_sha256": "ab199a77e6a9e17fd4c79e7a6360f8a84c3080df5e65217f477ddc697bd55033",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/maps.snapshots/first-read.txt"
+    },
+    "actual/candidate-mode4/maps.snapshots/last-incomplete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 998,
+      "logical_sha256": "f4bad03272b3719f81d3f0764c4f250faca1076a65a38c7e9ba2d3b7b18874df",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/maps.snapshots/last-incomplete.txt"
+    },
+    "actual/candidate-mode4/maps.snapshots/last-nonempty.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13663,
+      "logical_sha256": "83730dd5100968040d784e4361d4dabe2f71ed86b1f243761c3e0f3712233977",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/maps.snapshots/last-nonempty.txt"
+    },
+    "actual/candidate-mode4/maps.snapshots/last-read.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13663,
+      "logical_sha256": "83730dd5100968040d784e4361d4dabe2f71ed86b1f243761c3e0f3712233977",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/maps.snapshots/last-read.txt"
+    },
+    "actual/candidate-mode4/maps.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13663,
+      "logical_sha256": "83730dd5100968040d784e4361d4dabe2f71ed86b1f243761c3e0f3712233977",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/maps.txt"
+    },
+    "actual/candidate-mode4/nominal/ident_card.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 460,
+      "logical_sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/nominal/ident_card.dat"
+    },
+    "actual/candidate-mode4/nominal/param_card.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 2472,
+      "logical_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/nominal/param_card.dat"
+    },
+    "actual/candidate-mode4/outputs.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 2440,
+      "logical_sha256": "c6c5a2f6fc07fd4757a06f8a0fa0e39aa35dabb8e7045d1d216b68c4b5dd114b",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/outputs.json"
+    },
+    "actual/candidate-mode4/param.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 1248,
+      "logical_sha256": "096b9ce6b50c43b806b7db1014a2dec56ebaaa0d6e7ac298d08251aa403fbf68",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/param.log"
+    },
+    "actual/candidate-mode4/parsed.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 50937,
+      "logical_sha256": "7eb40d3dd8f6e10b6886d77d65e83d1e4e19a8d7757f1866355a146acb970089",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/parsed.json"
+    },
+    "actual/candidate-mode4/points.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 1459,
+      "logical_sha256": "88f58476f62dbfc189bc468c8206ece0706854197e7520540782187a37e5c5a3",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/points.dat"
+    },
+    "actual/candidate-mode4/runtime-pretrace.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 5513,
+      "logical_sha256": "17cab8eb73f52a85f39b9a7163d5659b4c5693805b3cd56af27745ea72ce388c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/runtime-pretrace.json"
+    },
+    "actual/candidate-mode4/runtime-preworker.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 5513,
+      "logical_sha256": "17cab8eb73f52a85f39b9a7163d5659b4c5693805b3cd56af27745ea72ce388c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/runtime-preworker.json"
+    },
+    "actual/candidate-mode4/trace.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 48639,
+      "logical_sha256": "7e01afa06d112e62013c9579fe26dd5600a11f1485db6b5030f4821bade726e7",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/trace.txt"
+    },
+    "actual/candidate-mode4/worker.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 3689,
+      "logical_sha256": "f21735d9860ef2a6acb44ef5d27a72d3e905a41f87da95cdc7ddcb58d8e04ea0",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/worker.json"
+    },
+    "actual/candidate-mode4/worker.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 4111,
+      "logical_sha256": "67d3488079883994ab419165f189c9f1cd5123e6e47c43d38f9feb450fc7f41a",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode4/worker.log"
+    },
+    "actual/candidate-mode5/ML5_0_ColorDenomFactors.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 9776,
+      "logical_sha256": "acc6b53242a9be1a03ac4449cbea2e2320879ab33938bce0fd4766da2448cd5c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/ML5_0_ColorDenomFactors.dat"
+    },
+    "actual/candidate-mode5/ML5_0_ColorNumFactors.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 10720,
+      "logical_sha256": "9271f79795ad7e4fa6c4ab034c89b4414645b808a438eb3b9d630e8e0821e166",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/ML5_0_ColorNumFactors.dat"
+    },
+    "actual/candidate-mode5/ML5_0_HelConfigs.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 592,
+      "logical_sha256": "669402f3985e86bddb24d97f397ab43c031109cd78fd8b6d47ea86f828aba3bc",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/ML5_0_HelConfigs.dat"
+    },
+    "actual/candidate-mode5/MadLoopParams.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 14623,
+      "logical_sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/MadLoopParams.dat"
+    },
+    "actual/candidate-mode5/inputs.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 1560,
+      "logical_sha256": "6a32f36447cf441dec881c08f7f7c2d6a8339037d1e869e7f751106e240fd383",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/inputs.json"
+    },
+    "actual/candidate-mode5/loader.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 1809,
+      "logical_sha256": "6e960f86f6bcb6aeae559b7169adb3343ef7106e6e8c8d5da32bad31342a55c6",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/loader.json"
+    },
+    "actual/candidate-mode5/loader.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 2663,
+      "logical_sha256": "50f32d465f2c1a6680232e934c39531bb450869e495dd664253faeb74d451cd1",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/loader.log"
+    },
+    "actual/candidate-mode5/mapped-runtime.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 22317,
+      "logical_sha256": "51d915e8ce9e01ad43514a354937e85ba09b8669bf120c2a051cd89f708c46a0",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/mapped-runtime.json"
+    },
+    "actual/candidate-mode5/maps.snapshots/complete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13663,
+      "logical_sha256": "c0cb66e59fe425502882568e53a7a601ef8e716baa04cdf338a610ce56d0c686",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/maps.snapshots/complete.txt"
+    },
+    "actual/candidate-mode5/maps.snapshots/first-incomplete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1689,
+      "logical_sha256": "76351e7c75180ed8cc535300ae91134649c4b389f884cf09f2c3459ecbbf6b2a",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/maps.snapshots/first-incomplete.txt"
+    },
+    "actual/candidate-mode5/maps.snapshots/first-nonempty.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1689,
+      "logical_sha256": "76351e7c75180ed8cc535300ae91134649c4b389f884cf09f2c3459ecbbf6b2a",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/maps.snapshots/first-nonempty.txt"
+    },
+    "actual/candidate-mode5/maps.snapshots/first-read.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1689,
+      "logical_sha256": "76351e7c75180ed8cc535300ae91134649c4b389f884cf09f2c3459ecbbf6b2a",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/maps.snapshots/first-read.txt"
+    },
+    "actual/candidate-mode5/maps.snapshots/last-incomplete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1466,
+      "logical_sha256": "e5cb91beb50ec3f5135aba1e4c4d430b12e4456e39c4c0cd279155b02d268005",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/maps.snapshots/last-incomplete.txt"
+    },
+    "actual/candidate-mode5/maps.snapshots/last-nonempty.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13663,
+      "logical_sha256": "c0cb66e59fe425502882568e53a7a601ef8e716baa04cdf338a610ce56d0c686",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/maps.snapshots/last-nonempty.txt"
+    },
+    "actual/candidate-mode5/maps.snapshots/last-read.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13663,
+      "logical_sha256": "c0cb66e59fe425502882568e53a7a601ef8e716baa04cdf338a610ce56d0c686",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/maps.snapshots/last-read.txt"
+    },
+    "actual/candidate-mode5/maps.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13663,
+      "logical_sha256": "c0cb66e59fe425502882568e53a7a601ef8e716baa04cdf338a610ce56d0c686",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/maps.txt"
+    },
+    "actual/candidate-mode5/nominal/ident_card.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 460,
+      "logical_sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/nominal/ident_card.dat"
+    },
+    "actual/candidate-mode5/nominal/param_card.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 2472,
+      "logical_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/nominal/param_card.dat"
+    },
+    "actual/candidate-mode5/outputs.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 2440,
+      "logical_sha256": "169ee02139b8c03fbd48db2a15a3340766217bedc9027bafced4b9d4018ad2e4",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/outputs.json"
+    },
+    "actual/candidate-mode5/param.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 1248,
+      "logical_sha256": "096b9ce6b50c43b806b7db1014a2dec56ebaaa0d6e7ac298d08251aa403fbf68",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/param.log"
+    },
+    "actual/candidate-mode5/parsed.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 50937,
+      "logical_sha256": "1400460d961d5fb5d1c25a2f973f67e6ef2152e91d71f21bd5ed293a26213e33",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/parsed.json"
+    },
+    "actual/candidate-mode5/points.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 1459,
+      "logical_sha256": "88f58476f62dbfc189bc468c8206ece0706854197e7520540782187a37e5c5a3",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/points.dat"
+    },
+    "actual/candidate-mode5/runtime-pretrace.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 5513,
+      "logical_sha256": "17cab8eb73f52a85f39b9a7163d5659b4c5693805b3cd56af27745ea72ce388c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/runtime-pretrace.json"
+    },
+    "actual/candidate-mode5/runtime-preworker.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 5513,
+      "logical_sha256": "17cab8eb73f52a85f39b9a7163d5659b4c5693805b3cd56af27745ea72ce388c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/runtime-preworker.json"
+    },
+    "actual/candidate-mode5/trace.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 48639,
+      "logical_sha256": "590b3c0e44d7b2a705b96bfe923d417e5f78cc29d9199f3c5970d9bd919ac38e",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/trace.txt"
+    },
+    "actual/candidate-mode5/worker.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 3592,
+      "logical_sha256": "a2a15355104fd574a370a938f965aadefecdabedc4364e745c993dbfd858b1ae",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/worker.json"
+    },
+    "actual/candidate-mode5/worker.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 4111,
+      "logical_sha256": "6136e3b6040ec12873b2254c5e579ec4249909fd23c9a134d6e0612a632ae540",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/candidate-mode5/worker.log"
+    },
+    "actual/compile1.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 2495,
+      "logical_sha256": "38f342f03f6817e33bf24f0e7b9f87e6f1d6ba0f2b58e7210f7bc25376b2fda3",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/compile1.json"
+    },
+    "actual/compile1.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 0,
+      "logical_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/compile1.log"
+    },
+    "actual/compile2.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 8075,
+      "logical_sha256": "b0b652e020e8c428fc1e420e613788cf59bbdfd89fe60d595630146ad9d1b0a1",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/compile2.json"
+    },
+    "actual/compile2.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 314,
+      "logical_sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/compile2.log"
+    },
+    "actual/link.map.gz": {
+      "encoding": "gzip",
+      "logical_bytes": 30810161,
+      "logical_sha256": "687bac56e1364d62e7e6160e07491d7541c27625d99ef26be9208c67ea6092d3",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/link.map"
+    },
+    "actual/original-mode4/ML5_0_ColorDenomFactors.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 9776,
+      "logical_sha256": "acc6b53242a9be1a03ac4449cbea2e2320879ab33938bce0fd4766da2448cd5c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/ML5_0_ColorDenomFactors.dat"
+    },
+    "actual/original-mode4/ML5_0_ColorNumFactors.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 10720,
+      "logical_sha256": "9271f79795ad7e4fa6c4ab034c89b4414645b808a438eb3b9d630e8e0821e166",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/ML5_0_ColorNumFactors.dat"
+    },
+    "actual/original-mode4/ML5_0_HelConfigs.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 592,
+      "logical_sha256": "669402f3985e86bddb24d97f397ab43c031109cd78fd8b6d47ea86f828aba3bc",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/ML5_0_HelConfigs.dat"
+    },
+    "actual/original-mode4/MadLoopParams.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 14623,
+      "logical_sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/MadLoopParams.dat"
+    },
+    "actual/original-mode4/inputs.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 1553,
+      "logical_sha256": "5a35e5604aadff0212bdd2522a9de612723cb48e3cc12ce1372f9880814dc7dd",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/inputs.json"
+    },
+    "actual/original-mode4/loader.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 1803,
+      "logical_sha256": "b1b99c96eac801a8cee0070e6a53f259d7e42aa32b746068756c99f7c3353193",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/loader.json"
+    },
+    "actual/original-mode4/loader.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 2663,
+      "logical_sha256": "42c44c06f80ded3aac2b364e301398720478a3baf34a0a224ec9a552166d43b1",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/loader.log"
+    },
+    "actual/original-mode4/mapped-runtime.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 22278,
+      "logical_sha256": "46248ba9b5d7b959653d68d7c1c8a41d781a8fe14dd28d91e3117b6b95b0b5a0",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/mapped-runtime.json"
+    },
+    "actual/original-mode4/maps.snapshots/complete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13638,
+      "logical_sha256": "ef6c12cd48708b489fcb29cb88a059bc73bafe4145ec9b343dee599524941a13",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/maps.snapshots/complete.txt"
+    },
+    "actual/original-mode4/maps.snapshots/first-incomplete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1738,
+      "logical_sha256": "1cc740494256018253d4365374a42a17387b39c00114daf950dc5045fc0c4e6b",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/maps.snapshots/first-incomplete.txt"
+    },
+    "actual/original-mode4/maps.snapshots/first-nonempty.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1738,
+      "logical_sha256": "1cc740494256018253d4365374a42a17387b39c00114daf950dc5045fc0c4e6b",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/maps.snapshots/first-nonempty.txt"
+    },
+    "actual/original-mode4/maps.snapshots/first-read.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1738,
+      "logical_sha256": "1cc740494256018253d4365374a42a17387b39c00114daf950dc5045fc0c4e6b",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/maps.snapshots/first-read.txt"
+    },
+    "actual/original-mode4/maps.snapshots/last-incomplete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 929,
+      "logical_sha256": "94490d5aa748a60fad7f917150485bd9608740392a1a217f622c3bdc58868aee",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/maps.snapshots/last-incomplete.txt"
+    },
+    "actual/original-mode4/maps.snapshots/last-nonempty.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13638,
+      "logical_sha256": "ef6c12cd48708b489fcb29cb88a059bc73bafe4145ec9b343dee599524941a13",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/maps.snapshots/last-nonempty.txt"
+    },
+    "actual/original-mode4/maps.snapshots/last-read.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13638,
+      "logical_sha256": "ef6c12cd48708b489fcb29cb88a059bc73bafe4145ec9b343dee599524941a13",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/maps.snapshots/last-read.txt"
+    },
+    "actual/original-mode4/maps.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13638,
+      "logical_sha256": "ef6c12cd48708b489fcb29cb88a059bc73bafe4145ec9b343dee599524941a13",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/maps.txt"
+    },
+    "actual/original-mode4/nominal/ident_card.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 460,
+      "logical_sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/nominal/ident_card.dat"
+    },
+    "actual/original-mode4/nominal/param_card.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 2472,
+      "logical_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/nominal/param_card.dat"
+    },
+    "actual/original-mode4/outputs.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 2440,
+      "logical_sha256": "d632a65ea9f805e3c205e515f245c800624b5ac22abe29f44486016045348b6b",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/outputs.json"
+    },
+    "actual/original-mode4/param.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 1248,
+      "logical_sha256": "096b9ce6b50c43b806b7db1014a2dec56ebaaa0d6e7ac298d08251aa403fbf68",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/param.log"
+    },
+    "actual/original-mode4/parsed.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 50937,
+      "logical_sha256": "7eb40d3dd8f6e10b6886d77d65e83d1e4e19a8d7757f1866355a146acb970089",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/parsed.json"
+    },
+    "actual/original-mode4/points.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 1459,
+      "logical_sha256": "88f58476f62dbfc189bc468c8206ece0706854197e7520540782187a37e5c5a3",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/points.dat"
+    },
+    "actual/original-mode4/runtime-pretrace.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 5513,
+      "logical_sha256": "17cab8eb73f52a85f39b9a7163d5659b4c5693805b3cd56af27745ea72ce388c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/runtime-pretrace.json"
+    },
+    "actual/original-mode4/runtime-preworker.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 5513,
+      "logical_sha256": "17cab8eb73f52a85f39b9a7163d5659b4c5693805b3cd56af27745ea72ce388c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/runtime-preworker.json"
+    },
+    "actual/original-mode4/trace.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 48639,
+      "logical_sha256": "7e01afa06d112e62013c9579fe26dd5600a11f1485db6b5030f4821bade726e7",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/trace.txt"
+    },
+    "actual/original-mode4/worker.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 3680,
+      "logical_sha256": "de43f91d80d4a17c8084f2de45166560c309ac5bfd092e4dae84b7cae435bbec",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/worker.json"
+    },
+    "actual/original-mode4/worker.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 4111,
+      "logical_sha256": "67d3488079883994ab419165f189c9f1cd5123e6e47c43d38f9feb450fc7f41a",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode4/worker.log"
+    },
+    "actual/original-mode5/ML5_0_ColorDenomFactors.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 9776,
+      "logical_sha256": "acc6b53242a9be1a03ac4449cbea2e2320879ab33938bce0fd4766da2448cd5c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/ML5_0_ColorDenomFactors.dat"
+    },
+    "actual/original-mode5/ML5_0_ColorNumFactors.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 10720,
+      "logical_sha256": "9271f79795ad7e4fa6c4ab034c89b4414645b808a438eb3b9d630e8e0821e166",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/ML5_0_ColorNumFactors.dat"
+    },
+    "actual/original-mode5/ML5_0_HelConfigs.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 592,
+      "logical_sha256": "669402f3985e86bddb24d97f397ab43c031109cd78fd8b6d47ea86f828aba3bc",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/ML5_0_HelConfigs.dat"
+    },
+    "actual/original-mode5/MadLoopParams.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 14623,
+      "logical_sha256": "5300bd6d7f3c4553c3402ab7a044e8fbca3c646f451a5f586215933bfa113b85",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/MadLoopParams.dat"
+    },
+    "actual/original-mode5/inputs.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 1553,
+      "logical_sha256": "3a2f7e229db3e44e06a2bd2876f1e45e79be04c0d3357b83b54aef5d1e8291e7",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/inputs.json"
+    },
+    "actual/original-mode5/loader.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 1803,
+      "logical_sha256": "0298c27a1777f638f1d6066ecc22fb000c5dc11bae6173536f033612084b6b94",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/loader.json"
+    },
+    "actual/original-mode5/loader.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 2663,
+      "logical_sha256": "9f00b976b355c54aa272e43ba28655a1f2ced100cb6b1dffcf3f93b123520856",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/loader.log"
+    },
+    "actual/original-mode5/mapped-runtime.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 22277,
+      "logical_sha256": "066df76ce2b4de544e8d5914a733aab3d998157b9dfcbf9bacae2667e86bf441",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/mapped-runtime.json"
+    },
+    "actual/original-mode5/maps.snapshots/complete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13638,
+      "logical_sha256": "a7bc761dc14c3af09ec048cba42e63d4f2f76f73d49c92ce832aaa5e71ed5a9c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/maps.snapshots/complete.txt"
+    },
+    "actual/original-mode5/maps.snapshots/first-incomplete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 2318,
+      "logical_sha256": "d759d79e71b351aab3d8b86354d1e9a990fbaede9b8532b645689cbd1cf3dccb",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/maps.snapshots/first-incomplete.txt"
+    },
+    "actual/original-mode5/maps.snapshots/first-nonempty.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 2318,
+      "logical_sha256": "d759d79e71b351aab3d8b86354d1e9a990fbaede9b8532b645689cbd1cf3dccb",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/maps.snapshots/first-nonempty.txt"
+    },
+    "actual/original-mode5/maps.snapshots/first-read.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 2318,
+      "logical_sha256": "d759d79e71b351aab3d8b86354d1e9a990fbaede9b8532b645689cbd1cf3dccb",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/maps.snapshots/first-read.txt"
+    },
+    "actual/original-mode5/maps.snapshots/last-incomplete.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 1134,
+      "logical_sha256": "1eab2a62ac7b0b14e3a61af66ed943d20e48edb0c729e35ee1028be4c54f5110",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/maps.snapshots/last-incomplete.txt"
+    },
+    "actual/original-mode5/maps.snapshots/last-nonempty.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13638,
+      "logical_sha256": "a7bc761dc14c3af09ec048cba42e63d4f2f76f73d49c92ce832aaa5e71ed5a9c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/maps.snapshots/last-nonempty.txt"
+    },
+    "actual/original-mode5/maps.snapshots/last-read.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13638,
+      "logical_sha256": "a7bc761dc14c3af09ec048cba42e63d4f2f76f73d49c92ce832aaa5e71ed5a9c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/maps.snapshots/last-read.txt"
+    },
+    "actual/original-mode5/maps.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 13638,
+      "logical_sha256": "a7bc761dc14c3af09ec048cba42e63d4f2f76f73d49c92ce832aaa5e71ed5a9c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/maps.txt"
+    },
+    "actual/original-mode5/nominal/ident_card.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 460,
+      "logical_sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/nominal/ident_card.dat"
+    },
+    "actual/original-mode5/nominal/param_card.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 2472,
+      "logical_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/nominal/param_card.dat"
+    },
+    "actual/original-mode5/outputs.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 2440,
+      "logical_sha256": "fe1c5f07ac616ae17f58e228d256f49c710c19a6d054ba746ef622358e4697cd",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/outputs.json"
+    },
+    "actual/original-mode5/param.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 1248,
+      "logical_sha256": "096b9ce6b50c43b806b7db1014a2dec56ebaaa0d6e7ac298d08251aa403fbf68",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/param.log"
+    },
+    "actual/original-mode5/parsed.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 50937,
+      "logical_sha256": "1400460d961d5fb5d1c25a2f973f67e6ef2152e91d71f21bd5ed293a26213e33",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/parsed.json"
+    },
+    "actual/original-mode5/points.dat": {
+      "encoding": "utf-8",
+      "logical_bytes": 1459,
+      "logical_sha256": "88f58476f62dbfc189bc468c8206ece0706854197e7520540782187a37e5c5a3",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/points.dat"
+    },
+    "actual/original-mode5/runtime-pretrace.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 5513,
+      "logical_sha256": "17cab8eb73f52a85f39b9a7163d5659b4c5693805b3cd56af27745ea72ce388c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/runtime-pretrace.json"
+    },
+    "actual/original-mode5/runtime-preworker.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 5513,
+      "logical_sha256": "17cab8eb73f52a85f39b9a7163d5659b4c5693805b3cd56af27745ea72ce388c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/runtime-preworker.json"
+    },
+    "actual/original-mode5/trace.txt": {
+      "encoding": "utf-8",
+      "logical_bytes": 48639,
+      "logical_sha256": "590b3c0e44d7b2a705b96bfe923d417e5f78cc29d9199f3c5970d9bd919ac38e",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/trace.txt"
+    },
+    "actual/original-mode5/worker.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 3587,
+      "logical_sha256": "c84b9950fc1e0e540a776424cb6813092394e1b0e619f5f1f701f4f87f1f5f29",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/worker.json"
+    },
+    "actual/original-mode5/worker.log": {
+      "encoding": "utf-8",
+      "logical_bytes": 4111,
+      "logical_sha256": "6136e3b6040ec12873b2254c5e579ec4249909fd23c9a134d6e0612a632ae540",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/original-mode5/worker.log"
+    },
+    "actual/runtime-proof.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 5513,
+      "logical_sha256": "17cab8eb73f52a85f39b9a7163d5659b4c5693805b3cd56af27745ea72ce388c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/runtime-proof.json"
+    },
+    "actual/terminal.json": {
+      "encoding": "utf-8",
+      "logical_bytes": 1112,
+      "logical_sha256": "97179a4232cab569bb7c603967c027a002d7cc659fd55ab43b81121ed95eb21c",
+      "original_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/terminal.json"
+    }
+  },
+  "public_calls": 20,
+  "runner_sha256": "8df0c0b776d8f587e35644b1766129428a1d3e5ae095e8dc6635a230420cdf80",
+  "runtime_alias_nodes": {
+    "ld-linux-x86-64.so.2": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2",
+    "libc.so.6": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6",
+    "libcollier.so": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so",
+    "libdl.so.2": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2",
+    "libgcc_s.so.1": "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+    "libgfortran.so.5": "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+    "libm.so.6": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6",
+    "libmadloop_tirust.so": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+    "libmvec.so.1": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1",
+    "libninja.so.0": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0",
+    "libpthread.so.0": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0",
+    "libquadmath.so.0": "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+    "librt.so.1": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1",
+    "libstdc++.so.6": "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34",
+    "libutil.so.1": "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1"
+  },
+  "schema": "reduction-latch-qualification-closure-v1",
+  "scope": "Closed three-point original/candidate parity only. Runtime receipts are retained observations, not new provider loads. Status120 remains unchecked. No accuracy/performance acceptance.",
+  "source_index_sha256": "c9a61e13b12c8566579d760268b739c7ec83c17198bf686f1afd9b0ef37b34c5"
+}

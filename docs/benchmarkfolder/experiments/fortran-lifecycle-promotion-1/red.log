@@ -1,0 +1,130 @@
+test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) ... 
+  test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) (ninjars=False, forced_mode=1) ... FAIL
+  test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) (ninjars=False, forced_mode=2) ... FAIL
+  test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) (ninjars=False, forced_mode=4) ... FAIL
+  test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) (ninjars=False, forced_mode=5) ... FAIL
+test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) ... FAIL
+test_clear_failure_preserves_public_failure_and_local_message (tests.unit_tests.loop.test_tirust_transport_cache.QPTransportCacheTest.test_clear_failure_preserves_public_failure_and_local_message) ... ok
+test_failed_public_transport_invalidates_cached_records (tests.unit_tests.loop.test_tirust_transport_cache.QPTransportCacheTest.test_failed_public_transport_invalidates_cached_records) ... ok
+test_finite_underflow_transport_is_unchanged (tests.unit_tests.loop.test_tirust_transport_cache.QPTransportCacheTest.test_finite_underflow_transport_is_unchanged) ... ok
+test_generated_event_clear_uses_only_the_shared_existing_context (tests.unit_tests.loop.test_tirust_transport_cache.QPTransportCacheTest.test_generated_event_clear_uses_only_the_shared_existing_context) ... 
+  test_generated_event_clear_uses_only_the_shared_existing_context (tests.unit_tests.loop.test_tirust_transport_cache.QPTransportCacheTest.test_generated_event_clear_uses_only_the_shared_existing_context) (executable='generated-clear') ... FAIL
+  test_generated_event_clear_uses_only_the_shared_existing_context (tests.unit_tests.loop.test_tirust_transport_cache.QPTransportCacheTest.test_generated_event_clear_uses_only_the_shared_existing_context) (executable='generated-clear-o3') ... FAIL
+test_old_behavior_is_rejected_by_the_same_cache_assertion (tests.unit_tests.loop.test_tirust_transport_cache.QPTransportCacheTest.test_old_behavior_is_rejected_by_the_same_cache_assertion) ... ok
+
+======================================================================
+FAIL: test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) (ninjars=False, forced_mode=1)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tests/unit_tests/loop/test_tirust_reduction_latch.py", line 77, in test_live_public_entry_clears_only_independent_call_failures
+    self.assertEqual(second["integers"][2:6], [0, 0, 0, 0],
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     "A prior failed public call contaminated a healthy call")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [1, 0, 1, 0] != [0, 0, 0, 0]
+
+First differing element 0:
+1
+0
+
+- [1, 0, 1, 0]
++ [0, 0, 0, 0] : A prior failed public call contaminated a healthy call
+
+======================================================================
+FAIL: test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) (ninjars=False, forced_mode=2)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tests/unit_tests/loop/test_tirust_reduction_latch.py", line 77, in test_live_public_entry_clears_only_independent_call_failures
+    self.assertEqual(second["integers"][2:6], [0, 0, 0, 0],
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     "A prior failed public call contaminated a healthy call")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [1, 0, 1, 0] != [0, 0, 0, 0]
+
+First differing element 0:
+1
+0
+
+- [1, 0, 1, 0]
++ [0, 0, 0, 0] : A prior failed public call contaminated a healthy call
+
+======================================================================
+FAIL: test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) (ninjars=False, forced_mode=4)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tests/unit_tests/loop/test_tirust_reduction_latch.py", line 77, in test_live_public_entry_clears_only_independent_call_failures
+    self.assertEqual(second["integers"][2:6], [0, 0, 0, 0],
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     "A prior failed public call contaminated a healthy call")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [0, 1, 0, 1] != [0, 0, 0, 0]
+
+First differing element 1:
+1
+0
+
+- [0, 1, 0, 1]
++ [0, 0, 0, 0] : A prior failed public call contaminated a healthy call
+
+======================================================================
+FAIL: test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures) (ninjars=False, forced_mode=5)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tests/unit_tests/loop/test_tirust_reduction_latch.py", line 77, in test_live_public_entry_clears_only_independent_call_failures
+    self.assertEqual(second["integers"][2:6], [0, 0, 0, 0],
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     "A prior failed public call contaminated a healthy call")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [0, 1, 0, 1] != [0, 0, 0, 0]
+
+First differing element 1:
+1
+0
+
+- [0, 1, 0, 1]
++ [0, 0, 0, 0] : A prior failed public call contaminated a healthy call
+
+======================================================================
+FAIL: test_live_public_entry_clears_only_independent_call_failures (tests.unit_tests.loop.test_tirust_reduction_latch.ReductionLatchLifecycleTest.test_live_public_entry_clears_only_independent_call_failures)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tests/unit_tests/loop/test_tirust_reduction_latch.py", line 94, in test_live_public_entry_clears_only_independent_call_failures
+    self.assertEqual(automatic["rows"][2]["integers"][2:6], [0, 0, 0, 0])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [0, 1, 0, 1] != [0, 0, 0, 0]
+
+First differing element 1:
+1
+0
+
+- [0, 1, 0, 1]
++ [0, 0, 0, 0]
+
+======================================================================
+FAIL: test_generated_event_clear_uses_only_the_shared_existing_context (tests.unit_tests.loop.test_tirust_transport_cache.QPTransportCacheTest.test_generated_event_clear_uses_only_the_shared_existing_context) (executable='generated-clear')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tests/unit_tests/loop/test_tirust_transport_cache.py", line 81, in test_generated_event_clear_uses_only_the_shared_existing_context
+    self.assertEqual(result.returncode, 0, result.stdout)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : FAIL inactive local diagnostic preserved
+Note: The following floating-point exceptions are signalling: IEEE_DIVIDE_BY_ZERO
+STOP 1
+
+
+======================================================================
+FAIL: test_generated_event_clear_uses_only_the_shared_existing_context (tests.unit_tests.loop.test_tirust_transport_cache.QPTransportCacheTest.test_generated_event_clear_uses_only_the_shared_existing_context) (executable='generated-clear-o3')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/shared/external/madloop_tirust/madgraph7_madloop_tirust/tests/unit_tests/loop/test_tirust_transport_cache.py", line 81, in test_generated_event_clear_uses_only_the_shared_existing_context
+    self.assertEqual(result.returncode, 0, result.stdout)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : FAIL inactive local diagnostic preserved
+Note: The following floating-point exceptions are signalling: IEEE_DIVIDE_BY_ZERO
+STOP 1
+
+
+----------------------------------------------------------------------
+Ran 6 tests in 2.495s
+
+FAILED (failures=7)

@@ -124,16 +124,21 @@ confidence intervals or a `≤1.05` acceptance claim. Initialization, actual bat
 durations and accepted backend/precision counts are retained separately.
 
 Final precise timings are **deferred to Hua-Sheng on his local machine**, as
-recorded in [the user amendment](PLAN-AMENDMENT-2026-11-10.md). The new current-source
-registration is `invariant-symmetry-1`, at revision `2c13246ffa63`, with numerical
+recorded in [the user amendment](PLAN-AMENDMENT-2026-11-10.md). The latest generated
+Fortran resets reduction-failure flags at each independent amplitude call and
+avoids creating an unused TIRust context during event clearing. Its
+[promotion checks](experiments/fortran-lifecycle-promotion-1/README.md) pass;
+fresh campaign-wide qualification and a successor local handoff are pending.
+The published 31-page PDF covers the preceding `invariant-symmetry-1`
+registration, at revision `2c13246ffa63`, with numerical
 identity `f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8`.
-Its numerical report requires a separately sealed terminal eleven-process
-checkpoint and immutable current-source selection/dossier. Partial live outputs
-and the older 66 lanes cannot qualify this source. Precise timing remains
-deferred. Use the runnable
-[current-source local timing handoff](campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md)
-for fresh installation, local registration, numerical replay, timing and a
-separate local PDF. Handoff 4 binds the tracked `bin/madgraph` launcher;
+Its numerical report is bound to a sealed terminal eleven-process checkpoint
+and immutable source-specific selection/dossier. Those 66 lanes do not qualify
+the changed Fortran source. Precise timing remains
+deferred. The runnable
+[preceding-source local timing handoff](campaigns/invariant-symmetry-1/timing-handoff-4/LOCAL_TIMING_TODO.md)
+documents fresh installation, local registration, numerical replay, timing and a
+separate local PDF for that preceding source. Handoff 4 binds the tracked `bin/madgraph` launcher;
 handoff 3 remains preserved as its predecessor. Its tests are not a local measurement. The preserved
 [handoff 2](campaigns/split-dp-terminal-1/timing-handoff-2/LOCAL_TIMING_TODO.md)
 belongs to the older source; the historical quiet-window controller remains unrun.

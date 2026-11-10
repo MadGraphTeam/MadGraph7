@@ -1,0 +1,7 @@
+5941e992a000-5941e99f7000 r--p 00000000 00:2c 215157436                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/diagnostic
+5941e99f7000-5941ed5f2000 r-xp 000cd000 00:2c 215157436                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/diagnostic
+5941ed5f2000-5941edd44000 r--p 03cc8000 00:2c 215157436                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/diagnostic
+5941edd44000-5941eddec000 rw-p 04419000 00:2c 215157436                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/reduction-latch-lifecycle/qualification1/diagnostic
+5941eddec000-5941efaf4000 rw-p 00000000 00:00 0 
+7ffd309bf000-7ffd309e2000 rwxp 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

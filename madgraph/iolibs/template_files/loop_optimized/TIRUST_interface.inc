@@ -342,8 +342,13 @@ C     Classify every entry through integer bits before any FP comparison.
       END
 
       SUBROUTINE %(proc_prefix)sCLEAR_TIRUST_CACHE()
-      USE MTIRUST, ONLY: TIRUST_CLEAR_CACHE
-      CALL TIRUST_CLEAR_CACHE()
+      USE MTIRUST, ONLY: TIRUST_CLEAR_CACHE,
+     $                  TIRUST_CONTEXT_GENERATION
+C     The shared module context may belong to another subprocess.
+C     Event clearing must not create it before any TIRust use.
+      IF(TIRUST_CONTEXT_GENERATION().GE.0) THEN
+        CALL TIRUST_CLEAR_CACHE()
+      ENDIF
       END
 
       SUBROUTINE %(proc_prefix)sFINALIZE_TIRUST()

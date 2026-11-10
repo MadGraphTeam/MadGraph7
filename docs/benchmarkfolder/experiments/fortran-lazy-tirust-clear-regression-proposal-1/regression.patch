@@ -1,0 +1,208 @@
+--- a/tests/unit_tests/loop/test_tirust_transport_cache.py
++++ b/tests/unit_tests/loop/test_tirust_transport_cache.py
+@@ -3,6 +3,7 @@
+ No Rust library or reducer is linked.  The mock deliberately caches records
+ before Fortran validates them, including records outside binary128's range.
+ """
++import re
+ import shutil
+ import subprocess
+ import tempfile
+@@ -37,6 +38,22 @@
+         mutant = cls.work / "without_invalidation.f90"
+         mutant.write_text(source.replace(needle, "", 1))
+         cls.build(mutant, "without-invalidation")
++        # Compile only the generated clear procedure from the live template.
++        # Two prefixes exercise the shared MTIRUST state without a Rust reducer.
++        template = (Path(MG5DIR) / "madgraph/iolibs/template_files/loop_optimized/"
++                    "TIRUST_interface.inc").read_text()
++        procedure = re.search(
++            r"(?ms)^      SUBROUTINE %\(proc_prefix\)sCLEAR_TIRUST_CACHE\(\)\n.*?^      END\n",
++            template)
++        if procedure is None:
++            raise AssertionError("generated TIRust clear procedure is missing")
++        (cls.work / "generated_clear.f").write_text("\n".join(
++            procedure.group() % {"proc_prefix": prefix} for prefix in ("ctx_a_", "ctx_b_")))
++        (cls.work / "clear_driver.f90").write_text(CLEAR_DRIVER)
++        for executable, optimization in (("generated-clear", "-O0"), ("generated-clear-o3", "-O3")):
++            cls.command(["gfortran", optimization, "-fPIC", "-fcheck=all", "-frounding-math",
++                         "-ffixed-line-length-132", str(MODULE), "generated_clear.f",
++                         "clear_driver.f90", "provider.o", "-o", executable])
+ 
+     @classmethod
+     def command(cls, command):
+@@ -56,6 +73,13 @@
+         return subprocess.run([str(self.work / executable), mode], cwd=self.work,
+                               text=True, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=30)
++
++    def test_generated_event_clear_uses_only_the_shared_existing_context(self):
++        for executable in ("generated-clear", "generated-clear-o3"):
++            with self.subTest(executable=executable):
++                result = self.invoke(executable, "lifecycle")
++                self.assertEqual(result.returncode, 0, result.stdout)
++                self.assertIn("PASS generated-clear lifecycle", result.stdout)
+ 
+     def test_failed_public_transport_invalidates_cached_records(self):
+         for executable in ("actual", "actual-o3"):
+@@ -100,7 +124,7 @@
+ static struct entry entries[CAPACITY];
+ static int entry_count, error_kind, clear_fails, clear_calls, peak_entries;
+ static int64_t hits, misses;
+-static int handle;
++static int handle, context_creates, context_destroys, plan_registrations;
+ 
+ void mock_reset(int bad, int fail_clear) {
+     entry_count = clear_calls = peak_entries = 0;
+@@ -112,19 +136,25 @@
+     *clears = clear_calls;
+     *peak = peak_entries;
+ }
++void mock_context_counters(int *creates, int *destroys, int *registrations) {
++    *creates = context_creates;
++    *destroys = context_destroys;
++    *registrations = plan_registrations;
++}
+ int ml_tirust_context_create(int version, void **out) {
+     if (version != 1) return 2;
++    ++context_creates;
+     *out = &handle;
+     return 0;
+ }
+-int ml_tirust_context_destroy(void *ctx) { return 0; }
++int ml_tirust_context_destroy(void *ctx) { ++context_destroys; return 0; }
+ int ml_tirust_clear_cache(void *ctx) {
+     ++clear_calls;
+     if (clear_fails) return 3;  /* Must not become the public result. */
+     entry_count = 0;
+     return 0;
+ }
+-int ml_tirust_register_plan(void *ctx, int n, int rank) { return 0; }
++int ml_tirust_register_plan(void *ctx, int n, int rank) { ++plan_registrations; return 0; }
+ int ml_tirust_set_cache_budget(void *ctx, int64_t bytes) { return 0; }
+ int ml_tirust_supports(int n, int rank, int finite) { return 0; }
+ int ml_tirust_qp_cache_statistics(void *ctx, int64_t *out, size_t count) {
+@@ -363,3 +393,123 @@
+   end subroutine
+ end program
+ """
++
++
++CLEAR_DRIVER = r"""program generated_clear_lifecycle
++  use mtirust
++  use iso_c_binding
++  use ieee_arithmetic
++  use ieee_exceptions
++  implicit none
++  interface
++    subroutine mock_reset(bad, fail_clear) bind(C)
++      import c_int
++      integer(c_int), value :: bad, fail_clear
++    end subroutine
++    subroutine mock_counters(clears, peak) bind(C)
++      import c_int
++      integer(c_int), intent(out) :: clears, peak
++    end subroutine
++    subroutine mock_context_counters(creates, destroys, registrations) bind(C)
++      import c_int
++      integer(c_int), intent(out) :: creates, destroys, registrations
++    end subroutine
++  end interface
++  integer :: status, first_generation
++  integer(c_int) :: creates, destroys, registrations, clears, peak
++  integer(c_int64_t) :: stats(6)
++  real(KI_QTIR) :: p(0:3,1), s(1,1)
++  complex(KI_QTIR) :: m(1), coefs(1,4)
++  logical :: before(5), after(5), old_halts(size(ieee_all))
++  type(ieee_status_type) :: old_status
++  type(ieee_round_type) :: round_before, round_after
++  character(512) :: message_before, message_after
++
++  call ieee_get_status(old_status)
++  call ieee_get_halting_mode(ieee_all, old_halts)
++  call ieee_set_halting_mode(ieee_all, .false.)
++  call mock_reset(1_c_int, 0_c_int)
++  call require(tirust_context_generation() == -1, 'initially absent')
++  call tirust_set_cache_budget(-1_c_int64_t, status)
++  call require(status == TIRUST_ERROR, 'local diagnostic fixture')
++  call tirust_error_message(message_before)
++  call ieee_set_flag(ieee_divide_by_zero, .true.)
++  call ieee_get_flag(ieee_all, before)
++  call ieee_get_rounding_mode(round_before)
++  call ctx_a_clear_tirust_cache()
++  call ctx_b_clear_tirust_cache()
++  call ieee_get_flag(ieee_all, after)
++  call ieee_get_rounding_mode(round_after)
++  call require(all(before.eqv.after), 'inactive IEEE flags preserved')
++  call require(round_before == round_after, 'inactive rounding preserved')
++  call tirust_error_message(message_after)
++  call require(message_before == message_after, 'inactive local diagnostic preserved')
++  call require(tirust_context_generation() == -1, 'generated clear must not create')
++  call counts(0, 0, 0, 0)
++
++  call tirust_clear_cache(status)
++  call require(status == TIRUST_SUCCESS, 'public clear remains creating')
++  first_generation = tirust_context_generation()
++  call require(first_generation > 0, 'public clear created generation')
++  call counts(1, 0, 0, 1)
++  p = 0
++  s = 0
++  m = cmplx(1, 0, kind=KI_QTIR)
++  call seed()
++  ! B has never registered a plan, but shares A's initialized module context.
++  call ctx_b_clear_tirust_cache()
++  call check_entries(0)
++  call require(tirust_context_generation() == first_generation, 'clear preserves generation')
++  call counts(1, 0, 0, 2)
++  call tirust_register_plan(1, 0, status)
++  call require(status == TIRUST_SUCCESS, 'first registration')
++  call tirust_finalize(status)
++  call require(status == TIRUST_SUCCESS, 'first finalization')
++  call ctx_a_clear_tirust_cache()
++  call ctx_b_clear_tirust_cache()
++  call require(tirust_context_generation() == -1, 'finalized context stays absent')
++  call counts(1, 1, 1, 2)
++  call tirust_register_plan(1, 0, status)
++  call require(status == TIRUST_SUCCESS, 'recreated registration')
++  call require(tirust_context_generation() > first_generation, 'recreated epoch advances')
++  call seed()
++  call ctx_a_clear_tirust_cache()
++  call check_entries(0)
++  call counts(2, 1, 2, 3)
++  call tirust_finalize(status)
++  call require(status == TIRUST_SUCCESS, 'finalization')
++  call counts(2, 2, 2, 3)
++  call ieee_set_status(old_status)
++  call ieee_set_halting_mode(ieee_all, old_halts)
++  write(*,'(A)') 'PASS generated-clear lifecycle'
++contains
++  subroutine require(condition, description)
++    logical, intent(in) :: condition
++    character(*), intent(in) :: description
++    if (.not.condition) then
++      write(*,'(A,A)') 'FAIL ', description
++      stop 1
++    endif
++  end subroutine
++  subroutine counts(expected_creates, expected_destroys, expected_registrations, expected_clears)
++    integer, intent(in) :: expected_creates, expected_destroys, expected_registrations, expected_clears
++    call mock_context_counters(creates, destroys, registrations)
++    call mock_counters(clears, peak)
++    call require(creates == expected_creates, 'native creation count')
++    call require(destroys == expected_destroys, 'native destruction count')
++    call require(registrations == expected_registrations, 'native registration count')
++    call require(clears == expected_clears, 'native clear count')
++  end subroutine
++  subroutine check_entries(expected)
++    integer, intent(in) :: expected
++    call tirust_qp_cache_statistics(stats, status)
++    call require(status == TIRUST_SUCCESS, 'cache statistics status')
++    call require(stats(3) == expected, 'shared cached entry count')
++  end subroutine
++  subroutine seed()
++    call tirust_tensor_evaluate(1, 0, p, s, m, 1.0_KI_QTIR, coefs, status)
++    call require(status == TIRUST_SUCCESS, 'seed valid cached tensor')
++    call check_entries(1)
++  end subroutine
++end program
++"""
