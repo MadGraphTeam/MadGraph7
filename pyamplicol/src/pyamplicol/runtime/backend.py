@@ -727,8 +727,13 @@ class RusticolRuntimeBackend:
         ):
             # The binary64 default is off (the native policy's
             # ``DEFAULT_BINARY64``, USER ~01:56): the native f64 path runs as
-            # before, one branch per call, without consulting the loop
-            # extension.
+            # before, one branch per call, without loading the loop
+            # extension (a tree runtime need not have one: the binary64 tree
+            # path must not depend on it). This one restatement of the
+            # policy's default is deliberate and guarded by
+            # tests/unit/test_kinematics_improvement.py (the policy's
+            # ``binary64_default`` is asserted False beside this branch's
+            # behaviour).
             return momenta
         from pyamplicol import kinematics
 
@@ -798,26 +803,15 @@ class RusticolRuntimeBackend:
     ) -> None:
         if self._kinematics_muted:
             return
-        counts: dict[str, int] = {}
-        for record in records:
-            key = record["produced"] or record["status"]
-            counts[key] = counts.get(key, 0) + 1
-        summary = ", ".join(f"{key} {count}" for key, count in sorted(counts.items()))
-        typed = [
-            f"point {index}: {record['warning_text']}"
-            for index, record in enumerate(records)
-            if record["warning_text"]
-        ]
+        from pyamplicol import kinematics
+
         # The record of the most recent improved call (the tree C ABI's
-        # lines, ``kinematics_improvement::notes``), replaced by the next one
-        # so it stays bounded; its typed warnings are also Python warnings,
-        # as the native tree warnings are, so they are never silent.
-        self._kinematics_notes = [
-            f"kinematics-improvement: {carrier} at precision {precision} "
-            f"({records[0]['requested']}): {summary}",
-            *typed,
-        ]
-        for text in typed:
+        # lines from the one native formatter, ``kinematics_improvement::
+        # notes_json``), replaced by the next one so it stays bounded; its
+        # typed warnings are also Python warnings, as the native tree
+        # warnings are, so they are never silent.
+        self._kinematics_notes = kinematics.notes(records, carrier, precision)
+        for text in self._kinematics_notes[1:]:
             warnings.warn(text, stacklevel=4)
 
     def _on_the_fly_runtime_state_census(self) -> Mapping[str, object] | None:

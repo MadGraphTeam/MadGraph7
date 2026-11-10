@@ -5,20 +5,28 @@
 Unit tests of the Python surface of the one Rust implementation
 (``rusticol_core::kinematics_improvement`` through ``pyamplicol.kinematics``):
 the native policy (MadLoop's default variant, the binary64 switch off, the
-carrier key), the validator's one refusal text, MadLoop 1 / 2 against
-MadLoop's own ``improve_ps.inc`` built standalone in quadruple precision
-(``tests/fixtures/loop/kinematics_improvement_madloop.json``), the projection
-and the records.
+carrier key), the validator's one refusal text (also through the CLI and
+the run-card keys), MadLoop 1 / 2 against MadLoop's own ``improve_ps.inc``
+built standalone in quadruple precision
+(``tests/fixtures/loop/kinematics_improvement_madloop.json``), the
+projection and the records.
 
-Route tests on public v2 artifacts (g g > g g; loop-induced g g > h h): with
-the improvement on, each double-double and arbitrary-precision route
-(summed, resolved, colour-correlated, helicity-selected, a rescue stack)
-records the variant that produced its point and returns the values of the
-explicitly pre-improved exact point evaluated with the improvement off,
-bitwise; binary64 is untouched unless switched on; ``"off"`` records
-``"off"``; an exactly physical point is passed unchanged; a frame whose beams
-are not along z takes MadLoop's fallback (PSMC, with the typed exactness
-warning) under the default and is exact with ``"projection"``.
+Route tests on public v2 artifacts (g g > g g, Born-interfered, full colour;
+g g > h h, loop-induced): with the improvement on, each double-double and
+arbitrary-precision route (summed, also 'arbitrary' at 16 digits by the
+carrier key; resolved; colour-correlated; the Born-interfered and the
+loop-induced helicity selections; a rescue stack binary64 -> double-double
+-> arbitrary precision, the loop-induced one with a NinjaRS level and the
+per-point NinjaRS fallback) records the variant that produced its point and
+returns the values of the explicitly pre-improved exact point evaluated with
+the improvement off, bitwise; the stability rotations act on the improved
+point; binary64 is untouched unless switched on; ``"off"`` records
+``"off"``; an exactly physical point is passed unchanged; a frame whose
+beams are not along z takes MadLoop's fallback (PSMC, with the typed
+exactness warning) under the default and is exact with ``"projection"``.
+The loop SDK (C ABI) in double-double and at 32 digits gives the Python
+API's records and values; the tree runtime's higher-precision modes, its
+correlated default and the binary64 switch through the native tree runtime.
 """
 
 from __future__ import annotations
@@ -39,6 +47,7 @@ MADLOOP = ROOT / "tests" / "fixtures" / "loop" / "kinematics_improvement_madloop
 # -------------------------------------------------------------- the policy
 
 
+@pytest.mark.loop_fast
 def test_the_policy_is_madloops_default_and_the_carrier_key(loop_native):
     """DECISIONS 2026-11-10 01:56 (1), (2) and 02:29 (G3) (a): MadLoop's
     default variant above binary64, off in binary64, keyed on the carrier
@@ -64,6 +73,39 @@ def test_the_policy_is_madloops_default_and_the_carrier_key(loop_native):
     assert str(refused.value) == policy["binary64_refusal"]
 
 
+@pytest.mark.loop_fast
+def test_the_cli_and_run_card_keys_resolve_through_the_native_validator(loop_native):
+    """``evaluate``, ``profile`` and ``check`` take the two settings
+    (``--kinematics-improvement``, ``--[no-]kinematics-improvement-binary64``)
+    into the run card's ``evaluation`` keys; an unknown variant is refused
+    when the configuration resolves, with the native policy's one refusal
+    text (no argparse ``choices`` restating the values). Here, not in
+    test_cli_parser.py: resolving validates through the native extension,
+    which the source-contracts job does not build."""
+
+    from pyamplicol.cli import parse_cli
+    from pyamplicol.config import ConfigurationError
+
+    for command, value, switch, expected in (
+        ("evaluate", "projection", "--kinematics-improvement-binary64", True),
+        ("profile", "off", "--no-kinematics-improvement-binary64", False),
+        ("check", "rescaling", "--kinematics-improvement-binary64", True),
+    ):
+        effective = (
+            parse_cli((command, "--kinematics-improvement", value, switch))
+            .resolve()
+            .effective
+        )
+        assert effective.evaluation.kinematics_improvement == value, command
+        assert effective.evaluation.kinematics_improvement_binary64 is expected
+    default = parse_cli(("evaluate",)).resolve().effective
+    assert default.evaluation.kinematics_improvement is None
+    assert default.evaluation.kinematics_improvement_binary64 is None
+    with pytest.raises(ConfigurationError) as refused:
+        parse_cli(("evaluate", "--kinematics-improvement", "orig")).resolve()
+    assert kinematics.policy()["setting_refusal"] in str(refused.value)
+
+
 # -------------------------------------------------- MadLoop's improve_ps.inc
 
 
@@ -71,6 +113,7 @@ def _fixture() -> dict:
     return json.loads(MADLOOP.read_text())
 
 
+@pytest.mark.loop_fast
 def test_madloop_variants_match_madloops_quadruple_build(loop_native):
     """MadLoop 1 (PSMC) and 2 (ORIG), each alone (no fallback), through the
     Python binding at 40 digits against MadLoop 3.7.0's ``improve_ps.inc``
@@ -114,6 +157,7 @@ def test_madloop_variants_match_madloops_quadruple_build(loop_native):
             assert worst < Fraction(1, 10**30), (case["name"], mode, float(worst))
 
 
+@pytest.mark.loop_fast
 def test_the_projection_is_exact_and_moves_by_the_inputs_defect(loop_native):
     """The frame-independent projection (DECISIONS 01:30 (A)) on the
     fixture's generic-frame inputs: exact to the carrier's rounding in
@@ -201,18 +245,23 @@ def _same(a, b) -> None:
 
 @pytest.mark.loop_physics
 def test_the_summed_route_in_double_double_and_arbitrary_precision(gg):
-    """The default (MadLoop's ORIG on beams along z) in double-double and at
-    32 digits: the record names the producer, the point is exact, and the
-    value is that of the pre-improved point with the improvement off,
-    bitwise. Binary64 is untouched (no record, the unimproved values)
-    unless the binary64 switch is on."""
+    """The default (MadLoop's ORIG on beams along z) in double-double, at 32
+    digits and 'arbitrary' at 16 digits (above binary64 by the carrier key,
+    DECISIONS 2026-11-10 02:29 (G3) (a)): the record names the producer, the
+    point is exact, and the value is that of the pre-improved point with the
+    improvement off, bitwise. Binary64 is untouched (no record, the
+    unimproved values) unless the binary64 switch is on."""
 
     from pyamplicol import Runtime
 
     runtime = Runtime.load(gg, process="gg")
     backend = runtime._backend
     point = _beam_point()
-    for carrier, digits in (("double-double", {}), ("arbitrary", {"precision": 32})):
+    for carrier, digits in (
+        ("double-double", {}),
+        ("arbitrary", {"precision": 32}),
+        ("arbitrary", {"precision": 16}),
+    ):
         call = {**CALL, "arithmetic": carrier, **digits}
         found = runtime.evaluate([point], **call)
         (record,) = [lane.kinematics for lane in found.diagnostics]
@@ -296,35 +345,37 @@ def test_an_exact_point_is_passed_unchanged_and_a_rotated_frame_falls_back(gg):
 
 @pytest.mark.loop_physics
 def test_the_resolved_correlated_and_rescue_routes(gg):
-    """Resolved and colour-correlated in double-double, and a rescue stack
-    (binary64 -> double-double -> 40 digits): each level improves the
-    original inputs in its own carrier (its record), the values equal the
-    pre-improved point's with the improvement off."""
+    """Resolved and colour-correlated in double-double and at 32 digits, and
+    a rescue stack (binary64 -> double-double -> 40 digits): each level
+    improves the original inputs in its own carrier (its record), the values
+    equal the pre-improved point's with the improvement off."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+    from pyamplicol.correlators import CorrelatedRequest
 
     runtime = Runtime.load(gg, process="gg")
     backend = runtime._backend
     point = _beam_point()
-    call = {**CALL, "arithmetic": "double-double"}
-    improved, _ = backend.improved_points(
-        [point], arithmetic="double-double", mu_r2=CALL["mu_r2"]
-    )
-    found = runtime.evaluate_resolved([point], **call)
-    assert found.diagnostics[0].kinematics.produced == "z-shift"
-    assert repr(found.values) == repr(
-        runtime.evaluate_resolved(improved, kinematics_improvement="off", **call).values
-    )
-    from pyamplicol.correlators import CorrelatedRequest
-
     requests = {"born": CorrelatedRequest("born", {})}
-    many = runtime.evaluate_correlated_many([point], requests, **call)
-    reference = runtime.evaluate_correlated_many(
-        improved, requests, kinematics_improvement="off", **call
-    )
-    assert many["born"].diagnostics[0].kinematics.produced == "z-shift"
-    assert repr(many["born"].values) == repr(reference["born"].values)
+    for carrier, digits in (("double-double", {}), ("arbitrary", {"precision": 32})):
+        call = {**CALL, "arithmetic": carrier, **digits}
+        improved, _ = backend.improved_points(
+            [point], arithmetic=carrier, **digits, mu_r2=CALL["mu_r2"]
+        )
+        found = runtime.evaluate_resolved([point], **call)
+        assert found.diagnostics[0].kinematics.produced == "z-shift", carrier
+        assert repr(found.values) == repr(
+            runtime.evaluate_resolved(
+                improved, kinematics_improvement="off", **call
+            ).values
+        )
+        many = runtime.evaluate_correlated_many([point], requests, **call)
+        reference = runtime.evaluate_correlated_many(
+            improved, requests, kinematics_improvement="off", **call
+        )
+        assert many["born"].diagnostics[0].kinematics.produced == "z-shift"
+        assert repr(many["born"].values) == repr(reference["born"].values)
     # A rescue stack whose binary64 level never meets its target: every
     # level's attempt records its own carrier's improvement.
     policy = VirtualRescuePolicy(
@@ -349,6 +400,132 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
         precision=40,
         kinematics_improvement="off",
         **{k: v for k, v in CALL.items()},
+    )
+    assert repr(rescued.values[0]) == repr(direct.values[0])
+
+
+@pytest.mark.loop_physics
+def test_the_born_interfered_helicity_selection(gg):
+    """The Born-interfered helicity selection (lit-fc-hel, full colour; the
+    ordinary and the resolved route) in double-double and at 32 digits: the
+    record names the producer and the selected rows' values are those of
+    the pre-improved point with the improvement off, bitwise (the
+    improvement adds kinematics only: the same rows are formed, USER
+    2026-11-08 ~22:34)."""
+
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(gg, process="gg")
+    backend = runtime._backend
+    point = _beam_point()
+    for carrier, digits in (("double-double", {}), ("arbitrary", {"precision": 32})):
+        call = {**CALL, "arithmetic": carrier, **digits}
+        improved, _ = backend.improved_points(
+            [point], arithmetic=carrier, **digits, mu_r2=CALL["mu_r2"]
+        )
+        found = runtime.evaluate([point], helicities=["h1"], **call)
+        assert found.diagnostics[0].kinematics.produced == "z-shift", carrier
+        _same(
+            found,
+            runtime.evaluate(
+                improved, helicities=["h1"], kinematics_improvement="off", **call
+            ),
+        )
+        resolved = runtime.evaluate_resolved([point], helicities=["h1"], **call)
+        assert resolved.diagnostics[0].kinematics.produced == "z-shift"
+        assert repr(resolved.values) == repr(
+            runtime.evaluate_resolved(
+                improved, helicities=["h1"], kinematics_improvement="off", **call
+            ).values
+        )
+
+
+@pytest.fixture(scope="module")
+def li(loop_sm_ufo, loop_native, tmp_path_factory):
+    """g g > h h (loop-induced) through the public Generator (process ``p``),
+    the helper and options of the loop-induced observables tests."""
+
+    from tests.unit.loop_v2_induced_observables_rows import generate
+
+    return generate(tmp_path_factory.mktemp("ki-li"), "li_gg_hh", "g g > h h")
+
+
+def _higgs_point() -> list[list[str]]:
+    """g g > h h with beams along z, the Higgs momenta formed in binary64
+    (their shells missed by binary64 rounding)."""
+
+    e, mh, c, phi = 300.0, 125.0, 0.43, 2.1
+    q = math.sqrt(e * e - mh * mh)
+    s = math.sqrt(1 - c * c)
+    p3 = [e, q * s * math.cos(phi), q * s * math.sin(phi), q * c]
+    p4 = [e, -p3[1], -p3[2], -p3[3]]
+    return [
+        [str(x) for x in leg] for leg in ([e, 0.0, 0.0, e], [e, 0.0, 0.0, -e], p3, p4)
+    ]
+
+
+@pytest.mark.loop_physics
+def test_the_loop_induced_selection_and_rescue_stack(li):
+    """Loop-induced g g > h h: the helicity-selected route in double-double
+    and at 32 digits (the record; the selected row's value of the
+    pre-improved point with the improvement off, bitwise), and a rescue
+    stack binary64 "auto" (TIRust where served) -> binary64 NinjaRS (the
+    loop-induced default stack's NinjaRS level) -> double-double "auto"
+    (TIRust with the per-point NinjaRS fallback at that carrier) -> 40
+    digits: the binary64
+    levels have no record (the switch is off), every higher level improves
+    the ORIGINAL inputs in its own carrier, and the last level's value is
+    the pre-improved point's at 40 digits."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+
+    runtime = Runtime.load(li, process="p")
+    backend = runtime._backend
+    point = _higgs_point()
+    base = {"mu_r2": "15625", "poles": "none", "on_failure": "return"}
+    for carrier, digits in (("double-double", {}), ("arbitrary", {"precision": 32})):
+        call = {**base, "arithmetic": carrier, **digits}
+        improved, _ = backend.improved_points(
+            [point], arithmetic=carrier, **digits, mu_r2=base["mu_r2"]
+        )
+        found = runtime.evaluate([point], helicities=["h0"], **call)
+        record = found.diagnostics[0].kinematics
+        assert record.produced == "z-shift" and record.exact, (carrier, record)
+        _same(
+            found,
+            runtime.evaluate(
+                improved, helicities=["h0"], kinematics_improvement="off", **call
+            ),
+        )
+    policy = VirtualRescuePolicy(
+        (
+            VirtualRescueLevel("double", target=1e-300),
+            VirtualRescueLevel("double", reduction="ninjars", target=1e-300),
+            VirtualRescueLevel("double-double", target=1e-300),
+            VirtualRescueLevel("arbitrary", precision=40),
+        )
+    )
+    rescued = runtime.evaluate([point], stability=policy, **base)
+    attempts = rescued.rescue[0].attempts
+    assert [a.arithmetic for a in attempts] == [
+        "double",
+        "double",
+        "double-double",
+        "arbitrary",
+    ], attempts
+    assert attempts[0].kinematics is None and attempts[1].kinematics is None
+    assert attempts[2].kinematics.produced == "z-shift"
+    assert attempts[3].kinematics.produced == "z-shift"
+    improved40, _ = backend.improved_points(
+        [point], arithmetic="arbitrary", precision=40, mu_r2=base["mu_r2"]
+    )
+    direct = runtime.evaluate(
+        improved40,
+        arithmetic="arbitrary",
+        precision=40,
+        kinematics_improvement="off",
+        **base,
     )
     assert repr(rescued.values[0]) == repr(direct.values[0])
 
@@ -385,6 +562,7 @@ def _top_point() -> list[list[float]]:
     return [[e, 0.0, 0.0, e], [e, 0.0, 0.0, -e], p3, [e, -p3[1], -p3[2], -p3[3]]]
 
 
+@pytest.mark.loop_physics
 def test_the_tree_higher_precision_modes_and_the_binary64_switch(tree):
     """The tree runtime's higher-precision modes (precision 32 / 50, the
     resolved route, the correlated default 'arbitrary' at 16 digits: the
@@ -446,6 +624,7 @@ def test_the_tree_higher_precision_modes_and_the_binary64_switch(tree):
     assert runtime.take_warnings() == ()
 
 
+@pytest.mark.loop_physics
 def test_the_tree_correlated_default_is_improved_at_16_digits(tree):
     """``evaluate_correlated``'s default carrier ('arbitrary' at precision
     16) is above binary64 by the carrier key (DECISIONS 2026-11-10 02:29
@@ -490,7 +669,8 @@ def _json_of(getter, result) -> dict:
 def test_the_loop_sdk_improves_like_the_python_api(gg):
     """The C ABI (``rusticol_virtual_set_kinematics_improvement[_binary64]``,
     additive, ABI version 2 kept) improves each call's points in its carrier
-    exactly as the Python API: in double-double the diagnostics record
+    exactly as the Python API: in double-double and at 32 digits the
+    diagnostics record
     (``"kinematics"``) names the producer and the decimal values equal the
     Python API's on the same exact inputs; ``"off"`` records ``"off"``; a
     binary64 call has no record unless the binary64 switch is on; another
@@ -522,12 +702,12 @@ def test_the_loop_sdk_improves_like_the_python_api(gg):
         poles="all",
     )
 
-    def call(setting=None, binary64=None, arithmetic="double-double"):
+    def call(setting=None, binary64=None, arithmetic="double-double", digits=0):
         handle = _open(sdk, gg, "gg")
         try:
             assert (
                 sdk.rusticol_virtual_set_arithmetic(
-                    handle, arithmetic.encode(), ctypes.c_uint32(0)
+                    handle, arithmetic.encode(), ctypes.c_uint32(digits)
                 )
                 == 0
             ), _error(sdk)
@@ -582,6 +762,24 @@ def test_the_loop_sdk_improves_like_the_python_api(gg):
     assert record["exactness"]["conservation"] == mine.conservation
     assert record["moved"] == mine.moved
     want = [x for lc in python.values[0] for x in _laurent(lc)]
+    assert _agree(want, decimal["virtual"]), (want, decimal["virtual"])
+    # Arbitrary precision (32 digits): the same improved point and values as
+    # the Python API's at that carrier.
+    python32 = runtime.evaluate(
+        [exact],
+        arithmetic="arbitrary",
+        precision=32,
+        mu_r2=str(Decimal(8315.06)),  # noqa: RUF032
+        poles="all",
+    )
+    diagnostics, decimal = call(arithmetic="arbitrary", digits=32)
+    (record,) = diagnostics["kinematics"]
+    mine = python32.diagnostics[0].kinematics
+    assert (record["status"], record["produced"]) == (mine.status, mine.produced)
+    assert record["exactness"]["shell"] == mine.shell
+    assert record["exactness"]["conservation"] == mine.conservation
+    assert record["moved"] == mine.moved
+    want = [x for lc in python32.values[0] for x in _laurent(lc)]
     assert _agree(want, decimal["virtual"]), (want, decimal["virtual"])
     diagnostics, _ = call("off")
     assert diagnostics["kinematics"][0]["status"] == "off"

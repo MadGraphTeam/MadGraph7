@@ -94,9 +94,10 @@ class KinematicsSettings:
     def records(self, carrier: str) -> bool:
         """Whether results in ``carrier`` carry a kinematics record: every
         evaluation the settings reach (binary64 only under the switch), also
-        when the setting is ``"off"`` (the record then reads ``"off"``)."""
+        when the setting is ``"off"`` (the record then reads ``"off"``; the
+        native key, ``kinematics_reaches``)."""
 
-        return carrier != "double" or self.binary64
+        return bool(_native().kinematics_reaches(self.binary64, carrier))
 
 
 def resolve(
@@ -194,21 +195,24 @@ def _exact_decimal(text: str) -> str:
 
 def off_record(setting: str) -> dict[str, Any]:
     """The record of a point the settings reach but do not improve (the
-    setting ``"off"``)."""
+    setting ``"off"``; the native record, ``kinematics_off_record``, the
+    loop SDK's)."""
 
-    return {
-        "requested": setting,
-        "fallback": True,
-        "status": "off",
-        "produced": None,
-        "attempts": [],
-        "exactness": None,
-        "iterations": None,
-        "scale": None,
-        "moved": 0.0,
-        "warning": None,
-        "warning_text": None,
-    }
+    return dict(json.loads(_native().kinematics_off_record(setting)))
+
+
+def notes(
+    records: Sequence[Mapping[str, Any]], carrier: str, precision: int
+) -> list[str]:
+    """The tree runtimes' warnings-channel lines of one call's records (the
+    native formatter, ``kinematics_improvement::notes_json``, the tree C
+    ABI's): a summary line and every typed warning."""
+
+    return list(
+        _native().kinematics_notes(
+            [json.dumps(dict(record)) for record in records], carrier, precision
+        )
+    )
 
 
 # A leg-mass provider: (v2 Precision, a caller-order point, its mu_R^2, the
@@ -324,6 +328,7 @@ __all__ = [
     "default_setting",
     "improve",
     "initial_count",
+    "notes",
     "off_record",
     "policy",
     "resolve",

@@ -1131,7 +1131,13 @@ own test is signed): an input failing it is evaluated as given with the typed
 warning (code 1). Every variant refuses a move above 1e-2 of the summed
 components (`IS_CLOSE`, code 999), so `"projection"` projects a grossly
 inconsistent input only within that bound. These two bounds concern the
-input, not the carrier, and are MadLoop's; MadLoop's precision literals
+input, not the carrier, and are MadLoop's (1e-6, 1e-2 and 1e-2). They are
+overridable at the improvement's own entry, not by an evaluation setting:
+`pyamplicol.kinematics.improve(points, n_initial, masses2, arithmetic,
+digits, variant, tolerances={"fourmom": ..., "onshell": ..., "close": ...})`
+(Rust: `kinematics_improvement::Tolerances`) returns the improved exact
+point, which an evaluation then takes with `kinematics_improvement = "off"`;
+the runtimes and the SDKs run MadLoop's values. MadLoop's precision literals
 (its Newton convergence, consistency and "beams along z" thresholds,
 quadruple-precision values) are derived from the carrier's unit roundoff.
 

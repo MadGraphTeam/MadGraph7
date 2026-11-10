@@ -896,10 +896,13 @@ def _add_kinematics_options(parser: argparse.ArgumentParser) -> None:
     """The kinematics improvement options (m-lit lit-psimprove;
     ``pyamplicol.kinematics``)."""
 
+    # No ``choices``: the value is validated by the native policy (its one
+    # refusal text, ``pyamplicol.kinematics.setting_value``) when the
+    # evaluation configuration is resolved, as on every other surface.
     parser.add_argument(
         "--kinematics-improvement",
         dest="evaluation.kinematics_improvement",
-        choices=("z-shift", "rescaling", "projection", "off"),
+        metavar="VARIANT",
         default=argparse.SUPPRESS,
         help=(
             "improve the input points to exact energy-momentum conservation "

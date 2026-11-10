@@ -687,13 +687,17 @@ class Runtime:
         evaluator state. Explicit ``arithmetic`` selects double, DoubleFloat or
         arbitrary precision. Virtual runtimes retain their loaded arithmetic
         and R2 defaults when omitted, and accept scalar or per-point positive
-        ``mu_r2``; exact inputs are forwarded unchanged, except that a virtual
-        evaluation above binary64 first improves each point to exact
+        ``mu_r2``; exact inputs are forwarded unchanged, except that an
+        evaluation in a carrier above binary64 (a virtual in double-double or
+        arbitrary precision, at any digit count; a tree at a precision other
+        than 16, and the tree correlated paths in their carrier, by default
+        ``"arbitrary"`` also at 16 digits) first improves each point to exact
         conservation and on-shell externals in its carrier
         (``kinematics_improvement``, default MadLoop's ``"z-shift"``;
-        ``kinematics_improvement_binary64`` for binary64, default off;
-        docs/user/configuration.md, "Kinematics improvement of the input
-        points") and records it per lane. ``stability`` (a
+        ``kinematics_improvement_binary64`` for binary64 evaluations, default
+        off; docs/user/configuration.md, "Kinematics improvement of the
+        input points") and records it (virtuals per lane, trees in the
+        warnings channel, ``take_warnings``). ``stability`` (a
         ``VirtualRescuePolicy``) runs the built-in stability rescue of a v2
         virtual runtime for this call, replacing a load-time default policy;
         with neither policy there are no hidden precision retries
@@ -1191,6 +1195,10 @@ class Runtime:
         its Laurent coefficients, the Born per Born order, and the explicit
         sums ``sum_orders()`` / ``sum_born_orders()``; nothing is evaluated
         twice and no order is summed silently.
+
+        Both: ``kinematics_improvement`` / ``kinematics_improvement_binary64``
+        as in :meth:`evaluate` (the tree runtime's points above binary64,
+        or in binary64 under the switch, are improved first).
         """
 
         if self.contribution_kind != "tree":
@@ -1208,6 +1216,10 @@ class Runtime:
                     ),
                 )
             )
+        kinematics_options = self._kinematics_options(
+            virtual_options.pop("kinematics_improvement", None),
+            virtual_options.pop("kinematics_improvement_binary64", None),
+        )
         if virtual_options:
             raise CompatibilityError(
                 "tree evaluate_orders takes no virtual options: "
@@ -1236,6 +1248,7 @@ class Runtime:
                 name="color-flow",
             ),
             precision=precision,
+            **kinematics_options,
         )
         if not isinstance(result, TreeOrderEvaluation):
             raise EvaluationError(
@@ -1249,6 +1262,8 @@ class Runtime:
         *,
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         precision: int | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> TreeGradedEvaluation:
         """Return tree values split by power of N_c: ``values[point][degree]``.
 
@@ -1259,7 +1274,8 @@ class Runtime:
         term is evaluated at N_c = 3 and summed over the selected helicities;
         the degrees of a point sum to :meth:`evaluate` up to rounding. The
         same split per helicity is the contracted colour axis of
-        :meth:`evaluate_resolved`. Precision follows :meth:`evaluate`.
+        :meth:`evaluate_resolved`. Precision and the kinematics improvement
+        follow :meth:`evaluate`.
         """
 
         if self.contribution_kind != "tree":
@@ -1273,7 +1289,11 @@ class Runtime:
                 "color.graded and full colour"
             )
         resolved = self.evaluate_resolved(
-            momenta, helicities=helicities, precision=precision
+            momenta,
+            helicities=helicities,
+            precision=precision,
+            kinematics_improvement=kinematics_improvement,
+            kinematics_improvement_binary64=kinematics_improvement_binary64,
         )
         if not isinstance(resolved, ResolvedEvaluation):
             raise EvaluationError("tree runtime returned an invalid resolved result")
@@ -1527,18 +1547,24 @@ class Runtime:
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> _pyamplicol.GradedCorrelatedEvaluation:
         """:meth:`evaluate_correlated` split by power of N_c (tree artifacts
         graded by N_c: ``color.accuracy = "strict-lc"`` or ``"strict-nlc"``,
         or full colour with ``color.graded``). ``values[point][degree]`` is
-        the N_c^degree term at N_c = 3; the degrees sum to ``total``."""
+        the N_c^degree term at N_c = 3; the degrees sum to ``total``. The
+        kinematics improvement follows :meth:`evaluate_correlated`."""
 
         if self.contribution_kind != "tree":
             raise CompatibilityError("graded correlations are implemented for trees")
         digits = _validate_precision(16 if precision is None else precision)
         carrier = "arbitrary" if arithmetic is None else arithmetic
+        options = self._kinematics_options(
+            kinematics_improvement, kinematics_improvement_binary64
+        )
         return self._correlator_evaluator().evaluate_graded(
-            self._tree_improved(momenta, digits, carrier, {}),
+            self._tree_improved(momenta, digits, carrier, options),
             color_correlation=color_correlation,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
