@@ -1,0 +1,37 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 5206,
+      "sha256": "176251e1d18fd45849618f5db63ca56a1c41c82e9d081819a3b0c59d9ca502f9"
+    },
+    "evidence.json.gz": {
+      "bytes": 3274569,
+      "sha256": "7f4764f753807e48eb51823bc533d462a1277b600a7e507a011d5f9c175bfe4c"
+    },
+    "inventory.json": {
+      "bytes": 70822,
+      "sha256": "5e846932e9e5840f472564f12e0fe356fb76b45e7fdd0ba28ae574ae616d0e2f"
+    },
+    "qualification.json": {
+      "bytes": 1189,
+      "sha256": "646349194aa0b2cdfd240a8822a492f5ab6c86406b6c228d676795ff04f7d4d9"
+    },
+    "results.json": {
+      "bytes": 25225,
+      "sha256": "2b2b1200fbeb7d18fb02b0c2f1e713469cd8545bb11e0b9a1c2a9291d4617810"
+    },
+    "test_verify.py": {
+      "bytes": 4547,
+      "sha256": "e62f354793de0511769d04c5579e9f087193a225ae76b5373925c49a2c065122"
+    },
+    "tests.log": {
+      "bytes": 1134,
+      "sha256": "7e5bc025bde9aa094505ee6998950e5001fd23414c8236aa3c2cb4e48db48457"
+    },
+    "verify.py": {
+      "bytes": 15299,
+      "sha256": "081d032c171a52f9f63498b55d2ef9a44d92c40298317c895e12780cdfde9725"
+    }
+  },
+  "schema": "tirust-portable-preparation-index-v1"
+}

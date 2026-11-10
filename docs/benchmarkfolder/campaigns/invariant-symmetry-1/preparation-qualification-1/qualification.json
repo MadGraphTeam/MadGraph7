@@ -1,0 +1,34 @@
+{
+  "created_utc": "2026-11-10T08:56:28.829547+00:00",
+  "in_place": {
+    "amplitude_evaluations": 0,
+    "cases": 11,
+    "native_runtime_revalidated": false,
+    "physical_cards": 22,
+    "retained_paths": 316,
+    "stages": 5,
+    "status": "passed",
+    "total_preparation_seconds": 1170.633709,
+    "unique_text_contents": 241
+  },
+  "native_commands_executed": 0,
+  "python": "3.13.12 (main, Feb  3 2026, 17:53:27) [GCC 15.2.0]",
+  "relocated": {
+    "amplitude_evaluations": 0,
+    "cases": 11,
+    "native_runtime_revalidated": false,
+    "physical_cards": 22,
+    "retained_paths": 316,
+    "stages": 5,
+    "status": "passed",
+    "total_preparation_seconds": 1170.633709,
+    "unique_text_contents": 241
+  },
+  "schema": "tirust-portable-preparation-offline-qualification-v1",
+  "scope": "Offline retained-text verification only; no active campaign paths are opened",
+  "test_log_sha256": "7e5bc025bde9aa094505ee6998950e5001fd23414c8236aa3c2cb4e48db48457",
+  "test_source_sha256": "e62f354793de0511769d04c5579e9f087193a225ae76b5373925c49a2c065122",
+  "tests": 8,
+  "tests_exit_code": 0,
+  "verifier_sha256": "081d032c171a52f9f63498b55d2ef9a44d92c40298317c895e12780cdfde9725"
+}

@@ -1,0 +1,1270 @@
+{
+  "files": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/cases.json": {
+      "bytes": 2687,
+      "sha256": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-ew_n1_udx_wp.mg5": {
+      "bytes": 993,
+      "sha256": "b05503c9778ae825064e2cf92e8a7c04d9784b2e07bd58f65460b4cd7d68143c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-ew_n2_epem_mupmum.mg5": {
+      "bytes": 1004,
+      "sha256": "f1824492edfe288a313bac40bc62212eb23904614d19307f7d323513f582ab23"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-ew_n3_epem_ttxa.mg5": {
+      "bytes": 1001,
+      "sha256": "695e228528a673f89c525f2458b74e3146db2eae411eb518596e41da41b71bf7"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-ew_n4_epem_mupmumaa.mg5": {
+      "bytes": 1010,
+      "sha256": "795824c0ace3e6a19eb9f095d5129eacc09e847bcf865d8abe28003553e5e204"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-li_gg_h.mg5": {
+      "bytes": 859,
+      "sha256": "282434d3177176c7a0e036a7c0e361ae37a4cb120b49ea929585f081e95708bf"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-li_gg_hh.mg5": {
+      "bytes": 862,
+      "sha256": "032515e517b38edd3876c735a3bbe0ff41646b8eb37d10d04c1e295eea3812b1"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-mixed_uux_ga.mg5": {
+      "bytes": 998,
+      "sha256": "30c1b1a0e3f4bae9281cc904e0ea56b25df827b4f242f3388373728b0076acc6"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-qcd_n1_uux_z.mg5": {
+      "bytes": 862,
+      "sha256": "91125c49dc58d7420bf3d7d33aa7a5839c2737c84a18ac2b81b6933c7a51bb5e"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-qcd_n2_gg_ttx.mg5": {
+      "bytes": 865,
+      "sha256": "35e2933825ff41b643335378c07ce4fe47b949a2346d77cb0ec82d73ac4ccb0d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-qcd_n3_uux_zgg.mg5": {
+      "bytes": 868,
+      "sha256": "b7f6c971d862a097a751d35a1285b6601400eafaa88107bbef122c81d7635888"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/commands/candidate-qcd_n4_uux_zzgg.mg5": {
+      "bytes": 871,
+      "sha256": "ba986e3293bdc582cf6f3b9fbc91fadbe46d46eef909286ed902e8761ecc3e4d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline.json": {
+      "bytes": 903196,
+      "sha256": "d674fbb51dab8b7d008bd7c7c0fab7e4b74960618af87a8eaef9b01d25c97ff4"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n1_udx_wp/build-history/20261110T082814868894Z/compilation.json": {
+      "bytes": 123292,
+      "sha256": "a073fba2748db2e129f261ff1a715b58790ce34c48a7b90768b909f96401eadb"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n1_udx_wp/compilation-process.log": {
+      "bytes": 2082,
+      "sha256": "f68d79eadd6f621f9d77bd982a517c5598d93148f6d138702db3b89314480517"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n1_udx_wp/compilation.json": {
+      "bytes": 123297,
+      "sha256": "79e72d3aa329cfd65c055a433512022e83f2eb68287dab176170048407a91c8a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n1_udx_wp/generation.json": {
+      "bytes": 27928,
+      "sha256": "cadae1cc560162794cb41230dd6b1bbbb36c0fe7aa67a535b17e511282b04a64"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n1_udx_wp/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n1_udx_wp/object-relink-make.log": {
+      "bytes": 1339,
+      "sha256": "fe407edacda33e5ededbe8106c8aae661762854b28f0da76b8c9bdec5173c5f8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n1_udx_wp/object-relink-proof.json": {
+      "bytes": 7308,
+      "sha256": "66e1e5bad6b73fc373c05adc0bdfb5a77d8148a8ce70cb617acfc67f52a6ccfe"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n1_udx_wp/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n1_udx_wp/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n2_epem_mupmum/build-history/20261110T082827885395Z/compilation.json": {
+      "bytes": 238400,
+      "sha256": "2c61945738691f5f37a5189e53ed9a634d1d2cb21d795118ae99b721b472a713"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n2_epem_mupmum/compilation-process.log": {
+      "bytes": 2092,
+      "sha256": "3538ad0b988158029e21ef855cf5f636e9919cd5cba743675c178e51332fc9ca"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n2_epem_mupmum/compilation.json": {
+      "bytes": 238406,
+      "sha256": "d3ac343c40ca86050008b8d3c52b175354f1c176ea9a68e3596a7aebe0d75cf4"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n2_epem_mupmum/generation.json": {
+      "bytes": 40022,
+      "sha256": "fdbd60a3e99d4a42413bf96ff400ce2ecb79835b3da900c2e64e7c52c21e6143"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n2_epem_mupmum/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n2_epem_mupmum/object-relink-make.log": {
+      "bytes": 1349,
+      "sha256": "3487c68085d2f0879aa13db9720fd9aba3810abb753d972433f02e76fe78aa74"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n2_epem_mupmum/object-relink-proof.json": {
+      "bytes": 7363,
+      "sha256": "9b256d60561c519aba803fc96b03a171ce1fe01e1dba48837aaab7aefb771e2b"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n2_epem_mupmum/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n2_epem_mupmum/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n3_epem_ttxa/build-history/20261110T082841246625Z/compilation.json": {
+      "bytes": 400122,
+      "sha256": "02bbc9ab6b47eafb3a244424528f97cea11757908cef11332fff886f28d7cbaa"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n3_epem_ttxa/compilation-process.log": {
+      "bytes": 2135,
+      "sha256": "03166396eca4be56a51bf87d0ccd72046fb5cfe86bbeae12e0c57421ae70e69a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n3_epem_ttxa/compilation.json": {
+      "bytes": 400127,
+      "sha256": "10b9475ec8c0bafb4feb4b76c8a70aa054be528b16f13b12cbb996730f907368"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n3_epem_ttxa/generation.json": {
+      "bytes": 57061,
+      "sha256": "2e1d0f52f7fc1336e1117cfe7129c31f84accf84a4a86b451fbd6cecce48dec0"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n3_epem_ttxa/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n3_epem_ttxa/object-relink-make.log": {
+      "bytes": 1392,
+      "sha256": "d8d7ea18f6f1365008ee46c90a1fda1f0ff514a6ae890338bde5891fea8d80b4"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n3_epem_ttxa/object-relink-proof.json": {
+      "bytes": 7743,
+      "sha256": "e87bcd5e8c36b747d8ca3899a12ffb2de5137cd9c9469105e425b969e41662e5"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n3_epem_ttxa/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n3_epem_ttxa/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n4_epem_mupmumaa/build-history/20261110T082854928928Z/compilation.json": {
+      "bytes": 349017,
+      "sha256": "541749cd691d12525a807222ec55c9bec2f9aa3c78cc811a8122b0244baa50d6"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n4_epem_mupmumaa/compilation-process.log": {
+      "bytes": 2535,
+      "sha256": "559f1ad6239038ee1737da05c3449203022b5076c60dd45bcf4bdfa7d546e8c8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n4_epem_mupmumaa/compilation.json": {
+      "bytes": 349021,
+      "sha256": "3d99c947c269e36c19e6c64bdbea5bcdadfabfe9c1ac9411fe5b82d7240a01d8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n4_epem_mupmumaa/generation.json": {
+      "bytes": 55452,
+      "sha256": "d3001ca3828bc403c3b4fdeede02c456411db9358bbf13113cdb43e44364a14d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n4_epem_mupmumaa/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n4_epem_mupmumaa/object-relink-make.log": {
+      "bytes": 1792,
+      "sha256": "d151911f6719806074877f3fe194a12685b5e6cec473a0226260e88860570b55"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n4_epem_mupmumaa/object-relink-proof.json": {
+      "bytes": 11174,
+      "sha256": "87d4a5aff8bc396fe2fa6df39bedb300656bf793e16744a12a940700d69c468e"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n4_epem_mupmumaa/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/ew_n4_epem_mupmumaa/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_h/build-history/20261110T082921723321Z/compilation.json": {
+      "bytes": 68786,
+      "sha256": "3ca9c75269cc85ebaddecc6b0b0adc5ef53ae633b132e94f327a0ec08c694b6a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_h/compilation-process.log": {
+      "bytes": 2080,
+      "sha256": "570613a0f589e16925abd57a8719c92df18a676bc202dfe4526f47de7ac57a16"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_h/compilation.json": {
+      "bytes": 68792,
+      "sha256": "833fc0e5fba27947829c9defcf6e00f593fb50a5ae7c769fe8979c786078221a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_h/generation.json": {
+      "bytes": 22357,
+      "sha256": "ff9a1f1ba095dd607ab3d55563f4856814794902a863ecaf9cac865b4cdb87b9"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_h/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_h/object-relink-make.log": {
+      "bytes": 1337,
+      "sha256": "89659ae345f7dc17e5de49d3af6c5d1de74f6186a01b0b04fd63f875ae30d2f8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_h/object-relink-proof.json": {
+      "bytes": 7288,
+      "sha256": "3866c14f075ffe7e8f72665e747e79c939ceb9041c79e6c22438df2a74e2775b"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_h/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_h/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_hh/build-history/20261110T082934509731Z/compilation.json": {
+      "bytes": 72874,
+      "sha256": "753576bc937ea17bf1893a1faa0b48689347dc03a75ff55d3820a0f1875ca4d2"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_hh/compilation-process.log": {
+      "bytes": 2082,
+      "sha256": "636de6e2ba553bc00701aed3cb1c2813cd262409c0a04369484477e9a1f4f631"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_hh/compilation.json": {
+      "bytes": 72879,
+      "sha256": "bbb1917d2fde611e7661d38561d6037a07d2c09ef682cc67dfea2a8656bc7ef7"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_hh/generation.json": {
+      "bytes": 22807,
+      "sha256": "b33cd8d31df991cc7a52ec4d27a5facf9bf73dcadd542a3f2019cf02d50fbec2"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_hh/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_hh/object-relink-make.log": {
+      "bytes": 1339,
+      "sha256": "b6a805d6cf1d9d3e7eba345c37c800657d10a78a66ce68880533bbad440f9f31"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_hh/object-relink-proof.json": {
+      "bytes": 7299,
+      "sha256": "a5c3e6db6a150913787c9156138258679f5bcda58d8e1ab45155606092f473d8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_hh/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/li_gg_hh/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/mixed_uux_ga/build-history/20261110T082908471627Z/compilation.json": {
+      "bytes": 148768,
+      "sha256": "d175ab1667bf187c3a04656eef6cc9e595fb88378ed6e934d0ea3bf6ce4deb0f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/mixed_uux_ga/compilation-process.log": {
+      "bytes": 2127,
+      "sha256": "7b13ab1958b1df38235057c2c4cdbfb2621efcc2b312f5891c831a29203f8884"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/mixed_uux_ga/compilation.json": {
+      "bytes": 148774,
+      "sha256": "ff89cb170e78f2b4f30d8d837f638e9bf4911aa2f261b9ae0adf853740003148"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/mixed_uux_ga/generation.json": {
+      "bytes": 30980,
+      "sha256": "84752381d2f82c2142dcb7d60c863f6f13d6ae16566fb6bd2768c4c667ad28e6"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/mixed_uux_ga/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/mixed_uux_ga/object-relink-make.log": {
+      "bytes": 1384,
+      "sha256": "1f623afcc07de059fe5026c49e38bec1150326e937d60f3802355f8adca63f25"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/mixed_uux_ga/object-relink-proof.json": {
+      "bytes": 7702,
+      "sha256": "5b88760d4fdb2f0748eddb667ffbb869ccc5ca3e2b5c1868d917ee44dd2d8b45"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/mixed_uux_ga/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/mixed_uux_ga/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n1_uux_z/build-history/20261110T082721392781Z/compilation.json": {
+      "bytes": 76225,
+      "sha256": "451cfe06817d82cd7b15cc9559471e11550d322dedf43b7979d54135cce6b396"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n1_uux_z/compilation-process.log": {
+      "bytes": 2082,
+      "sha256": "dff8c8ba3979a0ceabcb3a5edde1a4aa716214cbbd937f3d2fd1e7af223a3bce"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n1_uux_z/compilation.json": {
+      "bytes": 76231,
+      "sha256": "65e2b5dff70d5ad453b9eee9d140833c214c5b02fcc78da8f13e9c9fa00e8d35"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n1_uux_z/generation.json": {
+      "bytes": 23033,
+      "sha256": "160b4e6bcdb4c1ce8dffc0c713bcecabd06dd10b5b8a3a99af06fdb2e221e804"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n1_uux_z/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n1_uux_z/object-relink-make.log": {
+      "bytes": 1339,
+      "sha256": "1695d17f267ee19f7006f68bc1500b7e070f900aafa39c3fa477db5973c55444"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n1_uux_z/object-relink-proof.json": {
+      "bytes": 7307,
+      "sha256": "5e44ffc9a942be2a9c500f617585d7169aa0b07e6e27c82ec43da403b3d8dcb6"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n1_uux_z/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n1_uux_z/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n2_gg_ttx/build-history/20261110T082734734670Z/compilation.json": {
+      "bytes": 115721,
+      "sha256": "f4409e6ccd4e2fadff488d321fba2a084253734f93377f85e38475f88fba251e"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n2_gg_ttx/compilation-process.log": {
+      "bytes": 2129,
+      "sha256": "51ed5bfcc0c4279cb527ad813a58aca049860f7601a252d06baefc5827b4f27a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n2_gg_ttx/compilation.json": {
+      "bytes": 115726,
+      "sha256": "7c657a79491fc4b88a83ba3cff25b93ce6de0541bdc39b78328e5156f6797392"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n2_gg_ttx/generation.json": {
+      "bytes": 27548,
+      "sha256": "24a85335a96d454dfd8632b334dde375becbb2d6b710f4cd39374d33d7c2c545"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n2_gg_ttx/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n2_gg_ttx/object-relink-make.log": {
+      "bytes": 1386,
+      "sha256": "7968b8f293c9a8fb615711845b289510621e22844e6624f354bbef5606e6d3cf"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n2_gg_ttx/object-relink-proof.json": {
+      "bytes": 7712,
+      "sha256": "b3a8b00e93e2314ce646d5b1889990293c8b975f9aea9c237b57407e0d2d9070"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n2_gg_ttx/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n2_gg_ttx/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n3_uux_zgg/build-history/20261110T082748193323Z/compilation.json": {
+      "bytes": 162192,
+      "sha256": "86d63bcccb07bc1fbd5d01a5a1cc5129ba95c8d693854e60a2b1e18d24879f16"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n3_uux_zgg/compilation-process.log": {
+      "bytes": 2131,
+      "sha256": "7472002469983a893630697029606ddf8f7df813304054585c749add6dcb50f5"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n3_uux_zgg/compilation.json": {
+      "bytes": 162196,
+      "sha256": "b2c903437599bb3c3d225362f9239d8177af2d72589779d621c520146d50a9bb"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n3_uux_zgg/generation.json": {
+      "bytes": 32327,
+      "sha256": "2afb6c8f6bb3f56dbdae10de513073d42b283e255e84cc21561ef9e1911ebce9"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n3_uux_zgg/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n3_uux_zgg/object-relink-make.log": {
+      "bytes": 1388,
+      "sha256": "dbd8c9b6be093e3b47785dff7c560a763f3e5e2514b5768c6f54daa2a7548a13"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n3_uux_zgg/object-relink-proof.json": {
+      "bytes": 7723,
+      "sha256": "25f9f7b0855654d7bedadf547f31f680a0f31e6bab852a752c7548d4ff42836c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n3_uux_zgg/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n3_uux_zgg/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n4_uux_zzgg/build-history/20261110T082801416796Z/compilation.json": {
+      "bytes": 175568,
+      "sha256": "4ba2408433606a5309229d8f001eb33f4702b6241c3984147afc2da8820dcee1"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n4_uux_zzgg/compilation-process.log": {
+      "bytes": 2227,
+      "sha256": "bee9abf138d72fd9921d6f9a4fc9363a425d48b23d0cf27dbc0457fe2f76d625"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n4_uux_zzgg/compilation.json": {
+      "bytes": 175574,
+      "sha256": "f2dc6b55db7c01e334a8145cbb6485991b9deedc0f78a75ca226ddc1ac78d94e"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n4_uux_zzgg/generation.json": {
+      "bytes": 34555,
+      "sha256": "833c351c684553e87d7e3fca0be415df7bc66e814eb92f9b8061fb4d12333831"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n4_uux_zzgg/object-relink-link.log": {
+      "bytes": 314,
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n4_uux_zzgg/object-relink-make.log": {
+      "bytes": 1484,
+      "sha256": "3662ca57172f01edcee3fa0f100d4836f28e581032ac4cc0a832638248177008"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n4_uux_zzgg/object-relink-proof.json": {
+      "bytes": 8538,
+      "sha256": "adee0982ce6b13207d0de746033f2a553e49efec19176b81b89532e4946dc990"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n4_uux_zzgg/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/baseline/qcd_n4_uux_zzgg/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n1_udx_wp/compilation-DHELAS.log": {
+      "bytes": 11746,
+      "sha256": "381a5f4840309ba49f06f3f2cb310b3eeb3f854036e994059f473f12432754a2"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n1_udx_wp/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "57b320a4e4d29ef074d87db71ae3bc0a1cc9ca5deee851282ec7c7e80e367955"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n1_udx_wp/compilation-process.log": {
+      "bytes": 12776,
+      "sha256": "3475daa3ecbd7ef6ef2a483b318086e2445edfc1841f0566c8038e4020dfbfb6"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n1_udx_wp/compilation.json": {
+      "bytes": 130755,
+      "sha256": "40549d6c1fa6fae9d8e828191106b90c30fd2d1fde2f92227407831b9ed8d5ef"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n1_udx_wp/generation.json": {
+      "bytes": 318671,
+      "sha256": "1770df503454ced1ac5fd552c138c65c368027215636a6215cf004fa54a4be46"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n1_udx_wp/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n2_epem_mupmum/compilation-DHELAS.log": {
+      "bytes": 32816,
+      "sha256": "6bb25ccbc51602f7684d190f567810a01a8fadc3d81faead8a5ac11fb20ace54"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n2_epem_mupmum/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "57b320a4e4d29ef074d87db71ae3bc0a1cc9ca5deee851282ec7c7e80e367955"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n2_epem_mupmum/compilation-process.log": {
+      "bytes": 12791,
+      "sha256": "da8ca16c524da6f407e3f3e7e0ab0f34216322472e0c4e29a5d0aecf9f41e3cf"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n2_epem_mupmum/compilation.json": {
+      "bytes": 245869,
+      "sha256": "9cb3b1048c452914b8a9df914726e518368162fdbf229bac4f85bee9944cb3a6"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n2_epem_mupmum/generation.json": {
+      "bytes": 318683,
+      "sha256": "fd9715e358212f949db8b22b6d325663a0126eebf12c71614d9de59003d31dac"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n2_epem_mupmum/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n3_epem_ttxa/compilation-DHELAS.log": {
+      "bytes": 61281,
+      "sha256": "83bb10af4ae2477ca18fbdff60d0d24e30c841e22b033fdeb4e6dfb645b013ef"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n3_epem_ttxa/compilation-MODEL.log": {
+      "bytes": 2890,
+      "sha256": "542748b864f5b33e43942d794f63ab6401b55737372a2778be055be4ed9b4964"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n3_epem_ttxa/compilation-process.log": {
+      "bytes": 13972,
+      "sha256": "bdb0ec8c833b48dc5b9ec077fcd0a94a67930a73e0e56a38a2ed4236814e3b8b"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n3_epem_ttxa/compilation.json": {
+      "bytes": 407825,
+      "sha256": "fc4074c1e3239f2c217246417e6639784de156a1124d8d360ba295d040ec1ea7"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n3_epem_ttxa/generation.json": {
+      "bytes": 318679,
+      "sha256": "8711b30fff632f2b7cf3e6db95fda3cb856b32f36934b9b253920ff001fcf507"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n3_epem_ttxa/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n4_epem_mupmumaa/compilation-DHELAS.log": {
+      "bytes": 47817,
+      "sha256": "40b9dae63b906d5f221ee29649062ec95b2eb916d0855a82a0f04683be4f1478"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n4_epem_mupmumaa/compilation-MODEL.log": {
+      "bytes": 2890,
+      "sha256": "b9f451428c3fe4e1395597d13c36ae617388310102b70880c4ccf0d6be7acbd1"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n4_epem_mupmumaa/compilation-process.log": {
+      "bytes": 24051,
+      "sha256": "864d08bd1b9253b7d8c8d1fec55a0152027aad74a02457f6fa9f1da0d3a402e2"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n4_epem_mupmumaa/compilation.json": {
+      "bytes": 358729,
+      "sha256": "0929b077d3dccf91ca543ec74d1a60fbc6a40c32f16dd900162d90006169506d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n4_epem_mupmumaa/generation.json": {
+      "bytes": 318689,
+      "sha256": "d0f3569fad992ce11753a70f4f161ad3bbef8522c32390b89beec675d7c5d64d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/ew_n4_epem_mupmumaa/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_h/compilation-DHELAS.log": {
+      "bytes": 2100,
+      "sha256": "e096e8f023fc7591a4dcfdfa08d1dd1f79e580054a7bbe94b20f6ffde47f88cf"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_h/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "57b320a4e4d29ef074d87db71ae3bc0a1cc9ca5deee851282ec7c7e80e367955"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_h/compilation-process.log": {
+      "bytes": 12785,
+      "sha256": "1d9274b79994647727b7f1aae325f0d50edc899fbd79fb643e32153d5a5d95a4"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_h/compilation.json": {
+      "bytes": 76131,
+      "sha256": "e66041962e95f732c3c4cf36a85a71f8a560560b3c71e447d365be2b397dddad"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_h/generation.json": {
+      "bytes": 318655,
+      "sha256": "42d0bb90fa96ef900aa9f70f368521ea3d3847cc4696487256dd1c70b39cd560"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_h/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_hh/compilation-DHELAS.log": {
+      "bytes": 2812,
+      "sha256": "ef5f1566e7b92de56f8f94d9d982b984781555cac22c812af3bcb4d93eb2be28"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_hh/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "57b320a4e4d29ef074d87db71ae3bc0a1cc9ca5deee851282ec7c7e80e367955"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_hh/compilation-process.log": {
+      "bytes": 12788,
+      "sha256": "5cf9b133875f170bb4f06ba2536e85b8e2124c92091bff7c10e5411c69a76a4d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_hh/compilation.json": {
+      "bytes": 80219,
+      "sha256": "079f94774979d2fa4c880ff8aa52eae7d4644a5bb067ac6146d7c133d4926e23"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_hh/generation.json": {
+      "bytes": 318658,
+      "sha256": "1b68cf506e19a16db985883c451e47268534e05fda9fc534535d16376e8391ad"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/li_gg_hh/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/mixed_uux_ga/compilation-DHELAS.log": {
+      "bytes": 15983,
+      "sha256": "0792c99d2f3fff3af0ac77cf7e2c6ebd9ab64d95cac93cb53d5d724bda896a7c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/mixed_uux_ga/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "bb8b1edc58869662cc4a33fa82203b0f777adf63f47f81cd24dfa3b4e805e970"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/mixed_uux_ga/compilation-process.log": {
+      "bytes": 13957,
+      "sha256": "085f3adc45644b66c252c88df61250c58c8f217ef4a90b0a64d8a8f438c65e51"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/mixed_uux_ga/compilation.json": {
+      "bytes": 156469,
+      "sha256": "0a5e12c809157f3da6b6950839fe4d8acda2015a751945f64938518a8734ecad"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/mixed_uux_ga/generation.json": {
+      "bytes": 318680,
+      "sha256": "98eb3ca34d99c621bea5c8ece92673f3ffb58408da15db0885259a3be0a23f1d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/mixed_uux_ga/param_card.dat": {
+      "bytes": 4538,
+      "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n1_uux_z/compilation-DHELAS.log": {
+      "bytes": 3189,
+      "sha256": "c6224dc3e4b7116278d07ccfec50f5982aaf9d682e71e66ddd719e6739947c98"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n1_uux_z/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "57b320a4e4d29ef074d87db71ae3bc0a1cc9ca5deee851282ec7c7e80e367955"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n1_uux_z/compilation-process.log": {
+      "bytes": 12776,
+      "sha256": "84cbde31ce7273c76a52566635bddcb82520a32c82f732b8e1549fd76c6fa31c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n1_uux_z/compilation.json": {
+      "bytes": 83688,
+      "sha256": "a85defcf3e91bfcc261cf9a08e0a9e177b880957fe38b73d30ec8434fbec0e77"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n1_uux_z/generation.json": {
+      "bytes": 318658,
+      "sha256": "a2b6a4c20e6f19cbcf5d1353e02c32bb1e35a056f785230336d2ee939d01cc56"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n1_uux_z/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n2_gg_ttx/compilation-DHELAS.log": {
+      "bytes": 9897,
+      "sha256": "883c2c21683c4a70a3ecd796fc0a165d383df60e4f3eb2b82cb2d8bd0a724dca"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n2_gg_ttx/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "57b320a4e4d29ef074d87db71ae3bc0a1cc9ca5deee851282ec7c7e80e367955"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n2_gg_ttx/compilation-process.log": {
+      "bytes": 13960,
+      "sha256": "4223510344de898f56bb5edc0d877d30e0df64e98924b810f8255873214b1239"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n2_gg_ttx/compilation.json": {
+      "bytes": 123422,
+      "sha256": "217f858ea59ea595f93d6354fe3897c6da09075883f852e6844a5bdf852353d4"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n2_gg_ttx/generation.json": {
+      "bytes": 318659,
+      "sha256": "3678a003ccb9328bd63c22897d9eb6bf92515bae6c25e9e9a4e982204ba8388e"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n2_gg_ttx/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n3_uux_zgg/compilation-DHELAS.log": {
+      "bytes": 18088,
+      "sha256": "03feb196f2db20db0a81297ba0f18a2b49d1108581e43b4ad04738afce7f998e"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n3_uux_zgg/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "7af4b0416f9567bbe29cc908c794229cb6bf8a49f0b6d5167b9794cccb63f9b8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n3_uux_zgg/compilation-process.log": {
+      "bytes": 13963,
+      "sha256": "cf7319f3bdedef8d6d66804f051b3e15ed968e5489c04e8348ecee5f27048307"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n3_uux_zgg/compilation.json": {
+      "bytes": 169892,
+      "sha256": "46ff548c00bf9c80971b40d6455c1ace11bcb936276ef44c828298cbb9596b94"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n3_uux_zgg/generation.json": {
+      "bytes": 318665,
+      "sha256": "81efea364de7001fe9f1682cbe1609d44875d6f7ecd2cdc1120ddecc59755703"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n3_uux_zgg/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n4_uux_zzgg/compilation-DHELAS.log": {
+      "bytes": 19500,
+      "sha256": "8ef11669fff1fb4915547fd41eb3801cd27d6848bda064a789c7ea2143886f7b"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n4_uux_zzgg/compilation-MODEL.log": {
+      "bytes": 2547,
+      "sha256": "e004d00a98c0e933423ecaac9193871de9651d3afa7ee649b9a059f3e8d85973"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n4_uux_zzgg/compilation-process.log": {
+      "bytes": 16340,
+      "sha256": "6e67bed5e83223390db5ab61206fa66e4ba37c7e8ae19f38524e6fef25aeb35a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n4_uux_zzgg/compilation.json": {
+      "bytes": 183743,
+      "sha256": "f56882bcdd2a5274a193812671c559944cadce2e99d4fe322c6789beb067d656"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n4_uux_zzgg/generation.json": {
+      "bytes": 318666,
+      "sha256": "b0017e06b480b1ebef00460e92a4b3c3b0af501e8c83274479f62a59edc1d91c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/candidate/qcd_n4_uux_zzgg/param_card.dat": {
+      "bytes": 2472,
+      "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/loop_qcd_qed_sm_Gmu.json": {
+      "bytes": 18974,
+      "sha256": "c3138d449033233a59db761e708014e4af94383cad932f36169a4fc43d019829"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/Template/loop_material/StandAlone/SubProcesses/MadLoopCommons.inc": {
+      "bytes": 19753,
+      "sha256": "2c45aae1b048204c679eca303def57e2c2be9c512a405ac08465adedeecf5232"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/Template/loop_material/StandAlone/SubProcesses/MadLoopParamReader.f": {
+      "bytes": 18289,
+      "sha256": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/Template/loop_material/StandAlone/SubProcesses/MadLoopParams.inc": {
+      "bytes": 1853,
+      "sha256": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/Template/loop_material/StandAlone/SubProcesses/MadLoop_makefile_definitions.inc": {
+      "bytes": 396,
+      "sha256": "e855de9ec00c668853c0798806e7497eb5f0e56130ad7f9a3d764ce5895741a2"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/Template/loop_material/StandAlone/SubProcesses/mg5_citation.f": {
+      "bytes": 2867,
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/CT_interface.inc": {
+      "bytes": 3915,
+      "sha256": "bfffd44312dc0407f386d8abb82b3687f47ca6e0aeac35e492820a3eebf7f07c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/all_matrix.f": {
+      "bytes": 7791,
+      "sha256": "ce8bb7295d081e5a7481d0eb9340510a1d31f3d7554848288b58a1a783803369"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/check_sa.inc": {
+      "bytes": 22011,
+      "sha256": "5af43743e30427ffc25cc3396d931ede251c07c1d4772f5c1296c0e61bd29a68"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/check_sa_all.py.inc": {
+      "bytes": 7004,
+      "sha256": "d552aef7ba144999c7f090023a21a40666eff60d9da96833d41c4e5454ea6b38"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/check_sa_loop_induced.inc": {
+      "bytes": 24302,
+      "sha256": "46dcb244b7d870b7dfb9238e80e30b15253d73e8960289d920fee1e996efd051"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/f2py_wrapper_subproccesses.f": {
+      "bytes": 5178,
+      "sha256": "e4d18100656e727223249b0b2d79b7725661b0302a20dc2563bcec4761d3cafe"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/helas_calls_split.inc": {
+      "bytes": 1196,
+      "sha256": "3b206918a3c7f69ebbdb36bb6297d66a04ed4e3b4cc0bc3f557a13f2de9c3ee1"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/helas_loop_amplitude.inc": {
+      "bytes": 2181,
+      "sha256": "7d7ae51256d8beb4a4fe948ecd841e36865b64948178d5b6da4cd25421f7fdb2"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/improve_ps.inc": {
+      "bytes": 27025,
+      "sha256": "aa268bdc637a7c9c094ead43cf967614ab2c4fde7f7de03e774ffea6a33da6ae"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/loop_matrix_standalone.inc": {
+      "bytes": 39951,
+      "sha256": "8c36acfd1924a876f1f61fc82418039ac3d08e97aa499453fb28783302be9379"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/loop_num.inc": {
+      "bytes": 7609,
+      "sha256": "ee4fc4a1f4695c4cb737ea8c3d7a7509790898d9d1f45808d362fcb5936db9d3"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/mp_born_amps_and_wfs.inc": {
+      "bytes": 3481,
+      "sha256": "8f8088b7294bb2f7ffac8ab38084b4b23886000d3e9b666cabfcad5f2f8954ef"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop/mp_helas_calls_split.inc": {
+      "bytes": 1124,
+      "sha256": "af8d6117757f7c56ab4a0ed37bcffd1733b51acb45cb1457667d7cab58023041"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/COLLIER_interface.inc": {
+      "bytes": 25938,
+      "sha256": "0695d6accfe59400a1298b86601f7eda9bcbb667642fbf2d305f8681b7bc338d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": {
+      "bytes": 34634,
+      "sha256": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/GOLEM_interface.inc": {
+      "bytes": 19868,
+      "sha256": "06511ef2dafa7494589361d92a9a169f2de37625073d4e34e847ac9a9027bf5a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": {
+      "bytes": 10645,
+      "sha256": "29dcb05866279d2039676a7fb369c068483fa556767254b15b399b736d289692"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": {
+      "bytes": 14339,
+      "sha256": "4ccd4456d0b28f39185e10645e34b6ed2423cfbe2897c2620712e5f9432f461b"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": {
+      "bytes": 19521,
+      "sha256": "166ac2e2fb6555568bce4865dca462162b7a5af5b6b436fd64fa96ac23b80f89"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/check_py.f.inc": {
+      "bytes": 3883,
+      "sha256": "fa578e4ff52ea361372a9be52fd970ea804ee09f542d86420699b9a0ee9faaff"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/check_sa.inc": {
+      "bytes": 22011,
+      "sha256": "5af43743e30427ffc25cc3396d931ede251c07c1d4772f5c1296c0e61bd29a68"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/check_sa.py.inc": {
+      "bytes": 5088,
+      "sha256": "99554b64f7519d70b6236d0a4f98dd925b5f124f3e36c5215131468058db17e1"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/check_sa_all.py.inc": {
+      "bytes": 7004,
+      "sha256": "d552aef7ba144999c7f090023a21a40666eff60d9da96833d41c4e5454ea6b38"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/check_sa_loop_induced.inc": {
+      "bytes": 24302,
+      "sha256": "46dcb244b7d870b7dfb9238e80e30b15253d73e8960289d920fee1e996efd051"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/compute_color_flows.inc": {
+      "bytes": 46659,
+      "sha256": "5581b4120b81b8205e22b71e2ce6b451e3a6b49f811ac59e95cf50e484f148e6"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/helas_calls_split.inc": {
+      "bytes": 3087,
+      "sha256": "372448d005dd9a3269979d9ce8589d6e2de8ccacb9be930cd8e3e84f9b09c66c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/helas_loop_amplitude.inc": {
+      "bytes": 7961,
+      "sha256": "3c2925d00c555bba18e24ab6272037c18c29d54947b0ad46a8cb2629e4bd1692"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/improve_ps.inc": {
+      "bytes": 27025,
+      "sha256": "aa268bdc637a7c9c094ead43cf967614ab2c4fde7f7de03e774ffea6a33da6ae"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": {
+      "bytes": 103475,
+      "sha256": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/loop_num.inc": {
+      "bytes": 3745,
+      "sha256": "573c1682fe5b4eb058f94a0afc3f82371cd335c5181555401d0e15034ee4ccc6"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/mp_compute_loop_coefs.inc": {
+      "bytes": 21896,
+      "sha256": "d101fdedc0d4a419effe4f591c1e1bb02347712eb0ac2c05a85c18f7d2f58a38"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/mp_helas_calls_split.inc": {
+      "bytes": 2854,
+      "sha256": "668adda81df9f57cb6cf98a04167a71a318a84355d1a479abfbb319aae0c8486"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/madgraph/iolibs/template_files/loop_optimized/polynomial.inc": {
+      "bytes": 4972,
+      "sha256": "7f2685a6fc7b9aaea15892792a8a49e1a867721ed08599c97c318b5bf3730eaf"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/vendor/tirust/mtirust.f90": {
+      "bytes": 15997,
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/vendor/tirust/pole-kernels/src/generated_a0.rs": {
+      "bytes": 813,
+      "sha256": "9e2c6e1aae88904a20c858bedc3ba6792955c92020e99d3469c4fe27e613ea73"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/vendor/tirust/pole-kernels/src/generated_b0.rs": {
+      "bytes": 1324,
+      "sha256": "447e760c5d39e7d77067d4d1f8ee5f6c46859d0e023c8a2cefc227eebfb87539"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/vendor/tirust/pole-kernels/src/generated_c0.rs": {
+      "bytes": 112313,
+      "sha256": "bfa69f70796cea70751270a1f9cd0441f6e5b50496cf155185b626d474e7073d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/vendor/tirust/pole-kernels/src/generated_constants.rs": {
+      "bytes": 976,
+      "sha256": "6b2fe7cbf6a0631d07616a799e9514a0e39764f064cfac25700d980961482e19"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/vendor/tirust/pole-kernels/src/generated_d0.rs": {
+      "bytes": 681083,
+      "sha256": "be0224bdc0b61e514d4341c57cc6eb1aead6179eca3b614850a5e5bf300ab016"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/vendor/tirust/pole-kernels/src/lib.rs": {
+      "bytes": 5699,
+      "sha256": "c6da01f95d760234546269e9243e1742eb88ce6a128504662845186e90ea1cb2"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/numerical-sources/vendor/tirust/src/lib.rs": {
+      "bytes": 46218,
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/predecessor/summary.json": {
+      "bytes": 69199,
+      "sha256": "d4427c815df319554e25a453928f6c477281a1beaff573493066090103b275cc"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/inputs/source-identities/986a20b17f29b09b9718cfbb064ace55fdf551e2235fbf97daefc78f60c38f95.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/manifest.json": {
+      "bytes": 397109,
+      "sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n1_udx_wp.dat": {
+      "bytes": 28953,
+      "sha256": "ecbc8548920a5b3eef64bcc3425f483990e74df16d15f8f43233b7560eb5bf6f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n1_udx_wp.json": {
+      "bytes": 58923,
+      "sha256": "2b0badf3e278341634426db129a43d7d7f0d598296d648ee47ed2ecbf38f5cca"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n2_epem_mupmum-stress.dat": {
+      "bytes": 390,
+      "sha256": "67a16e8da6c3a30bd9cdbf597b7214b0071efbf5690cb619fef87d94459ad4a5"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n2_epem_mupmum-stress.json": {
+      "bytes": 937,
+      "sha256": "0632ad3812d1b859fe9954ce986c609b191e079c67345eee1fe8e7cf59e7ad9f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n2_epem_mupmum.dat": {
+      "bytes": 38804,
+      "sha256": "605000f577f49f2aff3f8deff7810016c13b74d3fed04973852cb94b63ea8aca"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n2_epem_mupmum.json": {
+      "bytes": 67734,
+      "sha256": "3635b34dac30fe6c100916de5470f89c949d7e8ab4839ddd52ccae6739de6b52"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n3_epem_ttxa-stress.dat": {
+      "bytes": 1458,
+      "sha256": "c9613a1f4895d3fba1ab3b74735918aa4b61143822bbd523bccc76435f39504e"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n3_epem_ttxa-stress.json": {
+      "bytes": 2992,
+      "sha256": "2f3a8e393a7d9b45fdb4ecb9210193323a1abda0fb859073f866eeb33acd9c20"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n3_epem_ttxa.dat": {
+      "bytes": 48556,
+      "sha256": "56294e1d42f0524d9d04ac451cf0f5a098dace5dd10d2a4970b27286ed0e955f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n3_epem_ttxa.json": {
+      "bytes": 83781,
+      "sha256": "e602b1f613126c3c5fc40f3e5b5fa908e545d3fbe14f14dbc7ddc41faadb604a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n4_epem_mupmumaa-stress.dat": {
+      "bytes": 1164,
+      "sha256": "2bd1a4ff4aa2bedcb4ae640c893510a9faebe7bb863e818eeace6b6d4cbd3bdf"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n4_epem_mupmumaa-stress.json": {
+      "bytes": 2356,
+      "sha256": "0ee3ee1f8bab6d638bd35274bb0e148bd3cf23caa7a7860b0fec3ff332dff48f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n4_epem_mupmumaa.dat": {
+      "bytes": 58290,
+      "sha256": "dd1bc3aeed4017110f3dfea62715eb83be3b9d72e46d464b39fd4057ac445c62"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/ew_n4_epem_mupmumaa.json": {
+      "bytes": 98565,
+      "sha256": "15442d7dd167508fb9a2b8ade5361249712ebcf3a35f1ef26b8e69c622858841"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/li_gg_h.dat": {
+      "bytes": 28961,
+      "sha256": "20d3aa53d56ba10d867a297890340cb34f5be56e8f5be9bdc5dcb2d0c560aae0"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/li_gg_h.json": {
+      "bytes": 58753,
+      "sha256": "ffe64f5f50362116489985092aa83900ba8b2f9b814210e077c1d1a3725be265"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/li_gg_hh-stress.dat": {
+      "bytes": 778,
+      "sha256": "f0b075a002e11226719488d14808b1f3091ff47404ad19d032b5f1e4f10c7862"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/li_gg_hh-stress.json": {
+      "bytes": 1694,
+      "sha256": "268fdb8f465a881e5171fd4f246a689913ca989a6fc601aacfc018bbc5912008"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/li_gg_hh.dat": {
+      "bytes": 38804,
+      "sha256": "448c163dd6d421c520c3d861b5675666f77e831ab757660df6205522ba5b7aa8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/li_gg_hh.json": {
+      "bytes": 68138,
+      "sha256": "48b0407acd5806983b52c3a314c383cbc88e5d1e629370844fde3d9432529d11"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/mixed_uux_ga-stress.dat": {
+      "bytes": 390,
+      "sha256": "67a16e8da6c3a30bd9cdbf597b7214b0071efbf5690cb619fef87d94459ad4a5"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/mixed_uux_ga-stress.json": {
+      "bytes": 937,
+      "sha256": "90bf8af4dfcbc30ab4171c122ef6560c6c8fe2f08590ac21262b281bace7ffa5"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/mixed_uux_ga.dat": {
+      "bytes": 38804,
+      "sha256": "b9cc76c494fce86e9b55a252172511abe1728c8016128a61669771ffb58df334"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/mixed_uux_ga.json": {
+      "bytes": 67622,
+      "sha256": "54c990e438ff465e3cfea8eba419c6984b360fc9c63ae56d1fcbbb82db2a17c7"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n1_uux_z.dat": {
+      "bytes": 28953,
+      "sha256": "2ed64c5cba477ce0e7ed3a7bbd642521061b251573ed20957f8e3bc396fa5b35"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n1_uux_z.json": {
+      "bytes": 58968,
+      "sha256": "fe7029a3932d1f800ebeae6fa6efa907cc132221d27fabd0295762d13cb89d6a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n2_gg_ttx-stress.dat": {
+      "bytes": 778,
+      "sha256": "b27c7845d2e0bd445470e2389a68cd16938eed4cb5bc7229f0a2b48380907f4c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n2_gg_ttx-stress.json": {
+      "bytes": 1673,
+      "sha256": "b2a30a640ac9c9c8bf035968ca536e5492b43354958a5164afd506e94102cce1"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n2_gg_ttx.dat": {
+      "bytes": 38804,
+      "sha256": "b7e7fadd4ff530582515636bd99dd235f3a1e013ff6184d76f2ded1447140445"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n2_gg_ttx.json": {
+      "bytes": 67844,
+      "sha256": "8efefd2c8f53663dd3facb9c4bb3ddeaaf8f625147510e2869b9006e865a958f"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n3_uux_zgg-stress.dat": {
+      "bytes": 1456,
+      "sha256": "56bf8297036012f208d06de1420a732047a0d88301c7cf2ed8ed6c4b8a2bc92b"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n3_uux_zgg-stress.json": {
+      "bytes": 2983,
+      "sha256": "78274cb382e344a3b4b3c47a2febef4f21b32e598acf67039fb466ed9fbf51e8"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n3_uux_zgg.dat": {
+      "bytes": 48544,
+      "sha256": "c1dc86e4e0cdd8a049d7a9a87b98831af74f3b6b79fc63fd0bbfe16a7fe55450"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n3_uux_zgg.json": {
+      "bytes": 83665,
+      "sha256": "1ad28e476b1419c2e635e2b260c9bb7ab7698e97afbab4414376fdb47f6522fe"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n4_uux_zzgg-stress.dat": {
+      "bytes": 1752,
+      "sha256": "b4c14a2ebdc58c49302b288dcfcbb3f1f5a8fc56c587a62fb7a4e896535d584c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n4_uux_zzgg-stress.json": {
+      "bytes": 3482,
+      "sha256": "00a25262b66f5bc9f7da8aaddc523c32386b15418a63498542d9e58cc3ff217d"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n4_uux_zzgg.dat": {
+      "bytes": 58293,
+      "sha256": "d2f5bd557aff1eb2eea56237447d46c91271bd0b5c063cbd8eb6060167cd0f8e"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/points/qcd_n4_uux_zzgg.json": {
+      "bytes": 99213,
+      "sha256": "4362b5144dd63d63275676f84071e460f048723f47c8d9d4e8a1c770183b7d63"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/README.md": {
+      "bytes": 3784,
+      "sha256": "7e662cbdae1bba42d23d92758fdb7f5a77e8b2f33b55c76170324b41b4dcc1a2"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/assert-declared-cards/cards-after.json": {
+      "bytes": 4724,
+      "sha256": "ec0072fe75c13a2a2e5f5c3e4c95e8419e8552dd7659fb249e8b13c35bec9ad5"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/assert-declared-cards/cards.json": {
+      "bytes": 4724,
+      "sha256": "ec0072fe75c13a2a2e5f5c3e4c95e8419e8552dd7659fb249e8b13c35bec9ad5"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/assert-declared-cards/configuration-after.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/assert-declared-cards/configuration-before.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/assert-declared-cards/console.log": {
+      "bytes": 52,
+      "sha256": "50b8a7729f8753229b53644e4d9e94284a4d0ee89bb94def93d6c5e82ea20db1"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/assert-declared-cards/source-after.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/assert-declared-cards/source-before.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-baseline/configuration-after.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-baseline/configuration-before.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-baseline/console.log": {
+      "bytes": 331,
+      "sha256": "a1c083e86a9ee2800ebbe92553d8320927ae4740758ebb4936c6134b63266c6b"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-baseline/source-after.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-baseline/source-before.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-candidate/cards-after.json": {
+      "bytes": 4724,
+      "sha256": "ec0072fe75c13a2a2e5f5c3e4c95e8419e8552dd7659fb249e8b13c35bec9ad5"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-candidate/cards-before.json": {
+      "bytes": 4724,
+      "sha256": "ec0072fe75c13a2a2e5f5c3e4c95e8419e8552dd7659fb249e8b13c35bec9ad5"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-candidate/configuration-after.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-candidate/configuration-before.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-candidate/console.log": {
+      "bytes": 342,
+      "sha256": "67921e9ffe882508f3b54946e3a1a92fb075c7d072077ef08b0dae3484968281"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-candidate/source-after.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/build-candidate/source-before.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/configuration-initial.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/dry-run.json": {
+      "bytes": 2115,
+      "sha256": "90b73bc5586d9acc5033c482dccf86926033bf0116c5d0a2fd9d85c61cd2daf7"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/events.jsonl": {
+      "bytes": 1027,
+      "sha256": "4cce65a9cc88716bd1009e51d96aff52a388091ce80dad46006b83cad1b26014"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/generate-candidate/configuration-after.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/generate-candidate/configuration-before.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/generate-candidate/console.log": {
+      "bytes": 375,
+      "sha256": "c6cc5719b782564edfec991f1a542e8c28d5dc708dbfc38c8150808d91029247"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/generate-candidate/source-after.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/generate-candidate/source-before.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/process_cleanup.py": {
+      "bytes": 5554,
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/reuse-baseline/configuration-after.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/reuse-baseline/configuration-before.json": {
+      "bytes": 44535,
+      "sha256": "fbe25e140adccf1bc5f7077a4769a8f4f2de055b77b7888624c431c7939bb8de"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/reuse-baseline/console.log": {
+      "bytes": 331,
+      "sha256": "d7a923fc91bd06ae055b4043abc6eb3ab4ebc9c89f9acf69bb904224ac84200c"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/reuse-baseline/source-after.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/reuse-baseline/source-before.json": {
+      "bytes": 312574,
+      "sha256": "980848c431435038ae180438173bdc225f28168387526b4aac1e6bf9c670b12a"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/run.py": {
+      "bytes": 16476,
+      "sha256": "726f629210a155b894f423ad76fa1de9d96b1f98270d4aceba2ba240250d6901"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/source-index.json": {
+      "bytes": 2364,
+      "sha256": "0757f9f829fbc4d472823cee226bb54a0a62efcbf70fbab59c137beeb030aa87"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/source-tests.json": {
+      "bytes": 947,
+      "sha256": "46482b9587b638cd1626ef8688102a349a3418a8c036b2b7bd1d39a5605a1be1"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/specification.json": {
+      "bytes": 321624,
+      "sha256": "2658902be76cf1aced5775d392513f9c02ee0678e568ca69063a692754c2f145"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/status.json": {
+      "bytes": 541668,
+      "sha256": "df8217641e2dbe4fb3d8ce33cb675d8724fca8e1167796e99999940471aa4f45"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/test_run.py": {
+      "bytes": 6667,
+      "sha256": "a1611006849675b10c944a1da59116088c7a101e3bfcf1ae8d640b21970f1956"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/preparation-1/tests.log": {
+      "bytes": 1144,
+      "sha256": "3b8158f9e5c0dfb9b1e27b2e4daaaf892b67896e4e756f83d68ba6f6ce547329"
+    },
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/summary.json": {
+      "bytes": 69275,
+      "sha256": "02fe70b84fa3512adadf079b276e3b34ee25f9230bc855f21a3d430e6a0c2e3d"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/numerical-qualification-2/process_cleanup.py": {
+      "bytes": 5554,
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84"
+    },
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/preparation-1/run.py": {
+      "bytes": 8280,
+      "sha256": "77bbe349f570ba3d37ef5371f8e47f734f7a55f2aefdb9d8057029127db7bcbc"
+    },
+    "tools/tirust_benchmark.py": {
+      "bytes": 96661,
+      "sha256": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370"
+    },
+    "tools/tirust_benchmark_campaign.py": {
+      "bytes": 41779,
+      "sha256": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710"
+    },
+    "tools/tirust_benchmark_compiler.py": {
+      "bytes": 8272,
+      "sha256": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46"
+    },
+    "tools/tirust_benchmark_relink.py": {
+      "bytes": 3974,
+      "sha256": "b23cae5a24a899fb27b17e31328fbeaaa4deb1a01992e5d8fa7b3d486832043f"
+    },
+    "tools/tirust_benchmark_worker.f": {
+      "bytes": 7825,
+      "sha256": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9"
+    },
+    "tools/tirust_env.sh": {
+      "bytes": 3531,
+      "sha256": "4311818b26bf38090655003a2aa14431267b727a65d167671b948a65fc54de00"
+    }
+  },
+  "scope": "Exact copied UTF-8 files; no dereference of recorded native/executable/workspace paths",
+  "unique_text_contents": 241
+}

@@ -1,0 +1,13 @@
+test_ancestral_card_mismatch_rejected_after_container_reseal (__main__.VerificationTests.test_ancestral_card_mismatch_rejected_after_container_reseal) ... ok
+test_corrupted_container_rejected (__main__.VerificationTests.test_corrupted_container_rejected) ... ok
+test_failed_stage_rejected_after_container_reseal (__main__.VerificationTests.test_failed_stage_rejected_after_container_reseal) ... ok
+test_incomplete_card_check_rejected_after_container_reseal (__main__.VerificationTests.test_incomplete_card_check_rejected_after_container_reseal) ... ok
+test_missing_fresh_build_rejected_after_container_reseal (__main__.VerificationTests.test_missing_fresh_build_rejected_after_container_reseal) ... ok
+test_relocated_complete_packet (__main__.VerificationTests.test_relocated_complete_packet) ... ok
+test_surviving_child_rejected_after_container_reseal (__main__.VerificationTests.test_surviving_child_rejected_after_container_reseal) ... ok
+test_unindexed_file_rejected (__main__.VerificationTests.test_unindexed_file_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 4.149s
+
+OK
