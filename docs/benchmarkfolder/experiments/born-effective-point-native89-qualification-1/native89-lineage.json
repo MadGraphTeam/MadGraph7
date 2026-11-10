@@ -1,0 +1,7 @@
+{
+  "original_controller": ".tirust-build/born-effective-runtime/native89-controller/control.py",
+  "original_controller_sha256": "0d26c54a474bc30789e1bd240a48b60d404bd5038ac45b14589ef44ab0395a03",
+  "original_prepared": ".tirust-build/born-effective-runtime/native89-controller/prepared.json",
+  "original_prepared_sha256": "3dc89b69c253348b0f79cb902da2d1693e4048d68bcdfd542b8fbaf673a09e50",
+  "scope": "Additive controller-only successor. Same24 prepared cases, physical inputs, executables and dependencies. No compile or native execution. Original source preserved unexecuted."
+}

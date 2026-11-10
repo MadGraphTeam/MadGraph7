@@ -1,0 +1,78 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3069,
+      "sha256": "25a2fcf4b718a1995ea4d5993c23a9844f68ee1f1bfb3879cc992fdd42cc3adf"
+    },
+    "control.py": {
+      "bytes": 22063,
+      "sha256": "23a5351646770306fb031f4459297a11005c752cbdf47cb565765e8143039867"
+    },
+    "controller.patch": {
+      "bytes": 6508,
+      "sha256": "2229bb989835604ed28f1194246257d48ac8890f1421743c0b14a161e66c2b66"
+    },
+    "derived-specifications.json": {
+      "bytes": 56386,
+      "sha256": "beba87f1b7c8a40825ae3f26eb37c8f51dc96b3528f19c127148755503eb7a3a"
+    },
+    "history/controller0d26.py": {
+      "bytes": 20864,
+      "sha256": "0d26c54a474bc30789e1bd240a48b60d404bd5038ac45b14589ef44ab0395a03"
+    },
+    "history/prepared3dc89.json": {
+      "bytes": 1228007,
+      "sha256": "3dc89b69c253348b0f79cb902da2d1693e4048d68bcdfd542b8fbaf673a09e50"
+    },
+    "legacy-fixed-qp-warning-scan.json": {
+      "bytes": 13949,
+      "sha256": "92bfca2e72785ce435793810ec2ef2502b444f31ed8af0f56e834eb589459214"
+    },
+    "lineage.json": {
+      "bytes": 584,
+      "sha256": "935352664f757ea44da846c89f11c100beab46536065dd6690d628ce2abef13a"
+    },
+    "preparation.py": {
+      "bytes": 1181,
+      "sha256": "52f7926b36a17166b3c913a74ff51acb2aa4dab114a868adde8e3daf0407f85a"
+    },
+    "prepared.json": {
+      "bytes": 1228772,
+      "sha256": "de50e4a9c9599080bd9c6bf9f70f36b8f38e2e90390dda609e6cecd0728e4ff8"
+    },
+    "runtime-copies.json": {
+      "bytes": 3069,
+      "sha256": "388dad18a7ea3d9b1f1ec59e61353aa03c5aa5ea5cc5ff9ef2c3fe05e6535f82"
+    },
+    "scan_legacy.py": {
+      "bytes": 2311,
+      "sha256": "c9824e77ca41b76f8f9cdf3742d594122e19d557388cc62eca5f6c297b78e8eb"
+    },
+    "source-tests.json": {
+      "bytes": 548,
+      "sha256": "f3bfb532d497da912b3da57f52a52cd8e3ed8a67928e1236c52f6944b61599f4"
+    },
+    "source-tests.log": {
+      "bytes": 123,
+      "sha256": "4d3075b45672aa60de9064866a0db54e1c99aa272f864cb3ebdd22236ba89ca9"
+    },
+    "supervise.py": {
+      "bytes": 9125,
+      "sha256": "bfde9b7e09012b0098e9170f8682ec1f241f4d7f5761ab2ef39b9e22091b48a0"
+    },
+    "supervisor-cpu.patch": {
+      "bytes": 694,
+      "sha256": "cd7e3ae235239d315d65d5f48d8a3f1a4a31a635fb7366fa0da5a4b7eb555a58"
+    },
+    "supervisor-provenance.json": {
+      "bytes": 388,
+      "sha256": "dfe9c5123836f6fd12c4ed26667b5ca4d5a12350c62572e4850f6d2895c967bb"
+    },
+    "test_control.py": {
+      "bytes": 6473,
+      "sha256": "5689eb3d53e9cc0a2fae9826603b24b43ae5f10152f936c1b1251648a31280f7"
+    }
+  },
+  "schema": "private-native89-controller-successor-v1",
+  "scope": "Additive source-only controller corrections; original unexecuted history preserved. No compile, loader or numerical run. Existing24 commands/dependency bindings unchanged."
+}

@@ -1,0 +1,185 @@
+{
+  "delivery": "Precise final performance acceptance remains Hua-Sheng local-machine TODO; no optimization claim from this audit.",
+  "historical_profile_stage_medians_us": {
+    "1": {
+      "name": "initialization_and_budget",
+      "raw_median_us": 0.7498423000000001
+    },
+    "2": {
+      "name": "ordered_momenta_and_shifts",
+      "raw_median_us": 0.7851145999999999
+    },
+    "3": {
+      "name": "on_shell_kinematic_matrix",
+      "raw_median_us": 0.7007613
+    },
+    "4": {
+      "name": "invariant_unpack_and_options",
+      "raw_median_us": 0.11963735
+    },
+    "5": {
+      "name": "fortran_wrapper_and_rust",
+      "raw_median_us": 8.1955312
+    },
+    "6": {
+      "name": "mapping_and_validation",
+      "raw_median_us": 0.87778775
+    },
+    "7": {
+      "name": "contraction_normalization_final_checks",
+      "raw_median_us": 0.58598205
+    }
+  },
+  "implementation": false,
+  "inputs": {
+    "Template/loop_material/StandAlone/SubProcesses/makefile": {
+      "bytes": 9428,
+      "sha256": "5f775bf9193075997245a1f7f2010e293801637ee6045fb8472be1e2d3aa66f4"
+    },
+    "docs/benchmarkfolder/experiments/early-doomed-dp-pass-audit/README.md": {
+      "bytes": 4999,
+      "sha256": "f462e3adc453d466c3932c807897056442671dfe4bfa6721b9071c6ceef4991a"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/TIRUST_interface.f": {
+      "bytes": 15135,
+      "sha256": "177a7973ea9182978097d5256fab0f0c93c1d4c799919203f7855631bee294ad"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/fortran-fixtures/qualification-1/summary.json": {
+      "bytes": 3454,
+      "sha256": "673b2c9beebb524fff97ea7b26de501fe776770062aff3b4f7453d7ad6d91858"
+    },
+    "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/index.json": {
+      "bytes": 3225,
+      "sha256": "d3c1e4212669d66846195bf65af0a05153ce406c87ac12cb30cc58a612b3bb93"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-common-allocation/README.md": {
+      "bytes": 6593,
+      "sha256": "20f082d9b271fc844bebead0589b66b0f420704c3b1134df8166bb61363cea6e"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-common-allocation/evidence-index.json": {
+      "bytes": 83116,
+      "sha256": "6b2e83690660d37e8cb10d6c3f6509c92876629f500d060b2034ec85a378020e"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-dp-finite/README.md": {
+      "bytes": 4225,
+      "sha256": "c7a6bedbd150c6ad9a04356b17b6d299b0fe93e095a3dbbb0c2e07b3da45efd3"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-dp-finite/finite-contract-proof.md": {
+      "bytes": 7300,
+      "sha256": "39a2d07fc95826b51c6e6b0f4c16e5d9c26a3899e584673e55685ac9b77a8f14"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-scratch/README.md": {
+      "bytes": 4171,
+      "sha256": "b8223333db1c53e424f74e668cdbd8428b6b48d5c1dc52107dcefca919c9ead9"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-scratch/timing-summary.json": {
+      "bytes": 4733,
+      "sha256": "5c1d3a3af2d4cd1652630468aad499af8f2ce96a8b949e055a4d5b16d9631682"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-sequence/README.md": {
+      "bytes": 3857,
+      "sha256": "1c8afc9b486831528a4231078a45bef227e347169656e16797f57e3b359a7f28"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran-sequence/timing-summary.json": {
+      "bytes": 4728,
+      "sha256": "de72ded569b9362530f35711db7cc08d787e05c98f1a35fa3e767e3f43cb8189"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran/README.md": {
+      "bytes": 6219,
+      "sha256": "07a7b362ca443d4b2b95207e87d2de8048b9fd54913c4c5c9fb224c45112f4e7"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/fortran/summary.json": {
+      "bytes": 22454,
+      "sha256": "68877091f13d39f78e761d08bae1cf6495be167c915bdf374cb829df543c4edf"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/whole-amplitude/README.md": {
+      "bytes": 5619,
+      "sha256": "9440a3938526a9cb5a5662d8345485766a09376bf38ec4dafc5f8ae2923619d4"
+    },
+    "docs/benchmarkfolder/experiments/n1-profile/whole-amplitude/split-adapter-o3-1/summary.json": {
+      "bytes": 4669,
+      "sha256": "53d38a9a437e9de6b450d02c59e7b3bda653c875eeef59684ba768abfda31c0c"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": {
+      "bytes": 11432,
+      "sha256": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec"
+    },
+    "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": {
+      "bytes": 19521,
+      "sha256": "166ac2e2fb6555568bce4865dca462162b7a5af5b6b436fd64fa96ac23b80f89"
+    },
+    "madgraph/loop/loop_exporters.py": {
+      "bytes": 218323,
+      "sha256": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74"
+    },
+    "madgraph/various/q_polynomial.py": {
+      "bytes": 59917,
+      "sha256": "649e586f201608c9063ed9d4016f2d936078753b2f45fa90887f0f4573288ea1"
+    },
+    "vendor/tirust/mtirust.f90": {
+      "bytes": 15997,
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    "vendor/tirust/src/lib.rs": {
+      "bytes": 46218,
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    }
+  },
+  "measured_benefit": false,
+  "native_execution": false,
+  "new_timing": false,
+  "not_recommended": [
+    "repeat scratch/common-allocation or adapter O3 experiments without new attribution",
+    "reassociate contiguous scalar contractions",
+    "memoize public budget setter without lifecycle/error contract and cost attribution",
+    "move generic cache lookup before legacy arithmetic/validation",
+    "remove public raw finite checks",
+    "reopen rejected early-doomed-DP skip",
+    "repair COLLIER cache outside user scope"
+  ],
+  "performance_acceptance": false,
+  "profile_limit": "Historical n1 N3/R2 instrumented observations predate symmetry-v2; not a timing bound or speedup estimate.",
+  "profile_summary": "docs/benchmarkfolder/experiments/n1-profile/fortran/summary.json",
+  "rank_0_to_6_coefficient_counts": [
+    1,
+    5,
+    15,
+    35,
+    70,
+    126,
+    210
+  ],
+  "recommendations": [
+    {
+      "gates": [
+        "rank-bound and legacy fallback parity",
+        "generated-module clean parallel/OLP dependencies",
+        "exact five-backend amplitude/status/input/IEEE/cache parity",
+        "measured full-amplitude benefit"
+      ],
+      "id": "bounded-generated-count-lookup",
+      "metric": "integer count stage then warmed full-amplitude paired runtime with identical floating arithmetic",
+      "production_change": false,
+      "source": "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc:233",
+      "status": "proposal-only"
+    },
+    {
+      "gates": [
+        "root source review before implementation",
+        "whole unchanged fallback on any bitwise unequal pair",
+        "all v2 component/trap/rounding/IEEE/negative-control fixtures against v2",
+        "both-precision physical/cache/check/input/status/accuracy parity",
+        "measured full-amplitude benefit"
+      ],
+      "id": "bitwise-symmetric-v2-fast-exit",
+      "metric": "qualified-v2 guard time and actual bitwise symmetry bypass count, then uninstrumented full-amplitude paired runtime",
+      "production_change": false,
+      "source": "docs/benchmarkfolder/experiments/ew-invariant-symmetry-prototype/v2/TIRUST_interface.f:100",
+      "status": "profile-before-preparation"
+    }
+  ],
+  "review_head": "6d4771cd947925baaf1ef6aaa8ae9882cb011431",
+  "schema": "madloop-tirust-fortran-performance-followup-audit-v1",
+  "scope": "read-only source and retained historical-profile audit; no active provisional data inspected",
+  "working_tree_sources_bound_by_content": true
+}
