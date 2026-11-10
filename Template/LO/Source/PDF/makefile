@@ -27,17 +27,8 @@ else
   TOREMOVE += ElectroweakFluxDriver.o ElectroweakFlux.o 
 endif
 
-# check if we need to link to gammaUPC
-ifneq (,$(filter edff chff, $(pdlabel1) $(pdlabel2)))
-# go through here if pdflabel1 or pdlabel2 is on "edff" or "chff"
-   TOREMOVE += $(LIBDIR)libgammaUPC.$(libext)
-# remove it to force recompilation of the library if back on it
-   TOCOMPILE += makefile_gammaUPC
-else
-# go through here if neither pdlabel1 or pdlabel2 is on "edff" or "chff"
-   TOCOMPILE += makefile_gammaUPC_dummy
-   TOREMOVE += $(LIBDIR)libgammaUPC.$(libext)
-endif
+# libgammaUPC (gammaUPC/) is built by ../makefile only, as at NLO
+
 FFLAGS += -I../MODEL
 ifdef lhapdf
   TOREMOVE +=  pdfwrap.o
@@ -68,12 +59,5 @@ $(LIBDIR)$(LIBRARY): $(PDF)
 	rm $(LIBDIR)$(LIBRARY) || echo "recompilation of $(LIBDIR)$(LIBRARY)"
 	$(call CREATELIB, $@, $^)
 
-makefile_gammaUPC:
-	(cd ./gammaUPC ; make ; cd ../)
-
-makefile_gammaUPC_dummy:
-	(cd ./gammaUPC ; make -f makefile_dummy; cd ../)
-
 clean:
 	@($(RM) *.o $(LIBDIR)$(LIBRARY))
-	@(cd ./gammaUPC ; make clean ; cd ../)
