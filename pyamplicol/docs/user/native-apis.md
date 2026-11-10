@@ -835,17 +835,54 @@ arithmetic, after the TIRust call (the per-point fallback). The result's
 `diagnostics_json` records it: `"reduction"` holds the call's `requested`,
 `effective` and `reason` with its `"fallback"` backend and
 `"fallback_points"` count, and `"fallbacks"` maps the id of every point the
-fallback evaluated again to `{"effective", "reason"}` (`effective` null: the
-point failed on NinjaRS too, with both backends' reasons in `"failures"`;
-such a point's cross-backend check is in `not_run`). An explicit `"ninjars"`
-or `"tirust"` has no fallback, nor has a TIR-only artifact (NinjaRS refused
-typed); a library built without TIRust takes NinjaRS under `"auto"`, with the
-reason, and refuses `"tirust"`. The target accuracy
+fallback evaluated again to `{"effective", "reason", "guard_estimate"}`
+(`effective` null: the point failed on NinjaRS too, with both backends'
+reasons in `"failures"`, or its guard rejected it; such a point's
+cross-backend check is in `not_run`). In double-double and arbitrary
+precision every point the fallback serves is guarded, as in the Python API:
+its NinjaRS value runs the reduction-direction check (the reversed re-test
+frame, cached masters) in the call's own arithmetic, within the fallback's
+own evaluation of the point, and the relative estimate of the outputs the
+call returns (each sector against its largest Laurent coefficient: the
+summed |A|²; on the resolved, correlated and selected calls each output of
+the call's rows only, against its own magnitude, an output that vanishes
+against the largest output of the point, as in the Python API) is the
+entry's `"guard_estimate"`. A point whose estimate exceeds the guard's
+limit, the call's target (below) never below 1e-5, has status `Failed`, not
+`AccuracyNotEstablished`, with one reason naming the fallback, TIRust's
+failure, the arithmetic, the estimate and the limit; a point within it keeps
+the fallback's value unchanged. On the same exact inputs the guard's
+estimates are the Python API's, bitwise or a few units in the last place
+apart (the SDK forms the colour-metric norms of the inclusive |A|² in
+binary64). In binary64 the fallback's value is
+served unguarded (`"guard_estimate"` null), as before the guard. An explicit `"ninjars"`
+or `"tirust"` has no fallback and no guard, nor has a TIR-only artifact
+(NinjaRS refused typed); a library built without TIRust takes NinjaRS under
+`"auto"`, with the reason, and refuses `"tirust"`.
+
+NinjaRS before 71eddb15 (pin 5b6a8f57) returned finite, badly wrong values
+with status `AccuracyNotEstablished` at near-planar 2 -> 3 points of pentagon families
+whose rank equals their propagator count (all-vector quark loops: measured
+on loop-induced g g > z z z, z z g, z g g, a a g, a g g and W+ W- g), in
+binary64 and in double-double; the measured windows, the records and the
+estimates of each check are in the [Python API](python-api.md),
+"Near-planar NinjaRS hazard". The SDKs' binary64 monitoring is the Python
+API's binary64 estimate, bitwise, and flags them as the Python API's checks
+do (the recommended checks gave 3.0 to 236 at the measured wrong binary64
+points, a Python API record: `workspace/tmp/ninjars-dd-zzz/C/out/tilt.json`
+'nj_b64_chk'); in double-double and arbitrary precision the SDKs run no
+monitoring (`AccuracyNotEstablished`, no estimate), so an explicit
+`"ninjars"` call there, or any NinjaRS value in binary64 without monitoring
+(the `"auto"` fallback's included), was exposed until NinjaRS's conditioning
+bound (71eddb15, M-LIT lit-ninja-planar), which refuses such lanes typed
+(status Failed). The target accuracy
 `rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
 `set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
 default 1e-5, the relative accuracy of each point's result) sets the
 calibrated acceptance of TIRust's checked method choice, as the Python API's
-`reduction_target=`; a value that is not a finite positive number is an
+`reduction_target=`, and in double-double and arbitrary precision the
+fallback guard's threshold, never below 1e-5; a value that is not a finite
+positive number is an
 invalid argument. The unchecked setting
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
 `set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,
@@ -856,15 +893,17 @@ method selection, no acceptance pass, plain PV at gate 0 as the last resort;
 NinjaRS: zero stability thresholds, its box mu-expansion's conditioning
 bound active; only points without a finite value or refused by that bound
 fail); `"auto"` keeps its backend and its per-point fallback, which then
-acts only on those points; the stability monitoring stays its own setting;
+acts only on those points, each served one guarded as above in double-double
+and arbitrary precision; the stability
+monitoring stays its own setting;
 `"reduction"` in `diagnostics_json` records `"unchecked"`, and any other
 value is an invalid argument. It is off by default, a timing and benchmark
 mode with no accuracy certificate (the measured accuracy per process:
-[Python API](python-api.md), "Unchecked reductions"). The fallback, the target
-and the unchecked setting need no Symbolica licence: a
+[Python API](python-api.md), "Unchecked reductions"). The fallback, its
+guard, the target and the unchecked setting need no Symbolica licence: a
 binary64 call on NinjaRS or TIRust touches no Symbolica state, and a
-double-double or arbitrary-precision fallback runs under the package key as
-any SDK call in that arithmetic.
+double-double or arbitrary-precision fallback and its guard run under the
+package key as any SDK call in that arithmetic.
 
 ## Common setup failures
 

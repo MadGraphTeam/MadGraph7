@@ -22,7 +22,18 @@
 //!   inputs, at the call's own carrier, after the TIRust call; the backend
 //!   that served each point and the fallback's reason are recorded per point
 //!   ([`fallback_served`]; a point NinjaRS fails too fails with both
-//!   reasons, [`fallback_failed`]). A TIR-only artifact has no fallback;
+//!   reasons, [`fallback_failed`]). In the extended carriers every point
+//!   the fallback serves is GUARDED (m-lit lit-fallback-guard, DECISIONS
+//!   2026-11-09 05:56 (1) and 11:53, [`fallback_guarded`]): NinjaRS can
+//!   return finite, badly wrong values as success at near-planar 2 -> 3
+//!   points of rank-n pentagon families, so its value runs the
+//!   reduction-direction re-reduction ([`FALLBACK_CHECK`], cached masters)
+//!   at the call's carrier, its relative estimate is recorded per point,
+//!   and a point whose estimate exceeds the guard's limit (the call's
+//!   target, never below [`FALLBACK_FLOOR`]: [`fallback_limit`],
+//!   [`fallback_accepted`]) fails with the one reason
+//!   [`fallback_rejected`]; a binary64 fallback serves unguarded. A
+//!   TIR-only artifact has no fallback;
 //! * an explicit backend that cannot serve the call is refused typed
 //!   ([`Refusal::Unavailable`], the Python API's `ReductionUnavailable`):
 //!   never a silent switch, and an explicit backend has no fallback (its
@@ -171,6 +182,154 @@ pub fn fallback_served(primary: &str, fallback: &str, failure: &str) -> String {
 /// primary backend's own reasons).
 pub fn fallback_failed(fallback: &str, reason: &str) -> String {
     format!("{} fallback: {reason}", name_of(fallback))
+}
+
+/// The check the per-point fallback's GUARD runs on every point the
+/// fallback served in a guarded carrier ([`fallback_guarded`]; m-lit
+/// lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and 11:53): the
+/// reduction-direction re-reduction (every loop numerator reduced a second
+/// time in the reversed frame, its coefficients and the cached master
+/// integrals reused; the Python API's `VirtualStabilityChecks(
+/// reduction_direction=True)` without `rescaled`, the SDKs' re-test frame
+/// `reversed`), at the call's own carrier (never escalated, USER 2026-11-08
+/// ~20:55 'Same precision as call'). Its estimate, in the `"relative"`
+/// metric (each squared-order sector against its largest Laurent
+/// coefficient, the metric of [`DEFAULT_TARGET`]), is recorded per point;
+/// a point whose estimate exceeds the guard's limit ([`fallback_limit`]) or
+/// is not a number fails typed ([`fallback_rejected`]), a point within it
+/// keeps the fallback's value bitwise.
+pub const FALLBACK_CHECK: &str = "reduction-direction";
+
+/// The guard's floor: its limit is never stricter than this relative
+/// accuracy, whatever the call's target (USER 2026-11-09 ~11:53, 'it's fine
+/// to relax the target precision to 1e-5 or so'; DECISIONS 11:53: the limit
+/// is max(call target, 1e-5)).
+pub const FALLBACK_FLOOR: f64 = 1e-5;
+
+/// Whether the per-point fallback's guard runs in the carrier `carrier`
+/// ([`CARRIERS`]): in the extended carriers only, double-double and
+/// arbitrary precision (USER 2026-11-09 ~11:53, 'Double-double+ only';
+/// DECISIONS 11:53). In binary64 the protection is NinjaRS's own
+/// conditioning bound in its fast engine (m-lit lit-ninja-planar): a
+/// binary64 fallback point is served as the fallback returns it, with no
+/// estimate recorded.
+pub fn fallback_guarded(carrier: &str) -> bool {
+    carrier != "double"
+}
+
+/// The guard's limit at the call's target `target`: the larger of the
+/// target and [`FALLBACK_FLOOR`].
+pub fn fallback_limit(target: f64) -> f64 {
+    target.max(FALLBACK_FLOOR)
+}
+
+/// Whether the per-point fallback's guard accepts a served point whose
+/// check estimate is `estimate` at the call's target `target`: the
+/// estimate is a number at most the guard's limit ([`fallback_limit`]; a
+/// NaN estimate is rejected).
+pub fn fallback_accepted(estimate: f64, target: f64) -> bool {
+    estimate <= fallback_limit(target)
+}
+
+/// One squared-order sector of one output a fallback-served point returns,
+/// as the guard reads that output's reduction-direction estimate
+/// ([`fallback_estimate`]): the sector's magnitude (its largest |Laurent
+/// coefficient|, the `"relative"` metric's scale of the sector), its largest
+/// absolute estimate E and its largest term scale S (the scale of the
+/// estimate's rounding floor, `FLOOR_UNITS` u S; the Python API's
+/// `StabilityEstimate.reference` / `.absolute` / `.scale`, the SDKs'
+/// `v2_stability::Estimate`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GuardSector {
+    pub magnitude: f64,
+    pub error: f64,
+    pub scale: f64,
+}
+
+/// The guard's estimate of one fallback-served point from the outputs the
+/// call RETURNS (m-lit lit-fallback-guard, DECISIONS 2026-11-09 14:30, RULING
+/// Q7; USER 2026-11-08 'only the selected helicities are evaluated and
+/// nothing more'): `outputs[o][s]` is sector s of output o (the summed
+/// value: one output; a resolved, correlated or selected call: each of its
+/// outputs, every one with the record's sectors in order), each from the
+/// reduction-direction re-test of that output alone ([`FALLBACK_CHECK`]),
+/// and `roundoff` the carrier's unit roundoff. Each output is judged
+/// relative to its own magnitude (per sector, the `"relative"` metric: its
+/// error over its magnitude); an output that VANISHES is judged relative to
+/// the largest returned output of the point (per sector). An output's
+/// sector vanishes when its magnitude lies within the estimate's rounding
+/// floor, `FLOOR_UNITS` x `roundoff` x S (a numerical zero, 'zero within the
+/// estimate', RULED Q13; the floor is the estimate's own, so no new
+/// constant). A sector whose reference is zero (no returned output has
+/// magnitude) is passed over, as the `"relative"` metric passes over it;
+/// for one output the estimate is that metric of its own estimate
+/// (`v2_stability::relative`). The largest ratio decides; any NaN input
+/// gives NaN (rejected, [`fallback_accepted`]).
+pub fn fallback_estimate(outputs: &[Vec<GuardSector>], roundoff: f64) -> f64 {
+    let sectors = outputs.iter().map(Vec::len).max().unwrap_or(0);
+    let mut largest = vec![0.0_f64; sectors];
+    for output in outputs {
+        for (s, sector) in output.iter().enumerate() {
+            if sector.magnitude.is_nan() || sector.error.is_nan() || sector.scale.is_nan() {
+                return f64::NAN;
+            }
+            if sector.magnitude > largest[s] {
+                largest[s] = sector.magnitude;
+            }
+        }
+    }
+    let floor_units = crate::v2_stability::FLOOR_UNITS;
+    let mut worst = 0.0_f64;
+    for output in outputs {
+        for (s, sector) in output.iter().enumerate() {
+            let vanishes = sector.magnitude <= floor_units * roundoff * sector.scale;
+            let against = if vanishes {
+                largest[s]
+            } else {
+                sector.magnitude
+            };
+            if against != 0.0 {
+                let ratio = sector.error / against;
+                if ratio > worst {
+                    worst = ratio;
+                }
+            }
+        }
+    }
+    worst
+}
+
+/// The ONE reason of a point the per-point fallback served but its guard
+/// rejected ([`FALLBACK_CHECK`]): `primary` (the call's effective backend)
+/// refused or failed it (`failure`, its reasons), `fallback` evaluated it
+/// again at the call's carrier `carrier`, and the fallback's value failed
+/// its reduction-direction check with the relative estimate `estimate`
+/// above the guard's limit at the call's target `target`
+/// ([`fallback_limit`]). Python (`loops.v2.reduction.text`) and the native
+/// SDKs read it from here.
+pub fn fallback_rejected(
+    primary: &str,
+    fallback: &str,
+    failure: &str,
+    carrier: &str,
+    estimate: f64,
+    target: f64,
+) -> String {
+    let limit = format!(
+        "{:e} = max(target {target:e}, {FALLBACK_FLOOR:e})",
+        fallback_limit(target)
+    );
+    let verdict = if estimate.is_nan() {
+        format!("estimate NaN, not within {limit}")
+    } else {
+        format!("estimate {estimate:.1e} > {limit}")
+    };
+    format!(
+        "auto: {} refused or failed the point ({failure}); the per-point {} fallback's value \
+         failed its {FALLBACK_CHECK} check: {verdict} ({carrier})",
+        name_of(primary),
+        name_of(fallback)
+    )
 }
 
 /// The refusal of a call's cross-backend check whose other backend cannot
@@ -609,6 +768,95 @@ mod tests {
             "NinjaRS fallback: ImpreciseResult"
         );
         assert!(cross_refusal("x").ends_with("other reduction backend: x"));
+    }
+
+    #[test]
+    fn the_fallback_guard_has_one_reason_and_one_threshold() {
+        // The one reason of a guard-rejected point: the fallback, the
+        // primary backend's failure, the check, the estimate, the limit (the
+        // call's target, never below the floor) and the carrier (m-lit
+        // lit-fallback-guard, DECISIONS 2026-11-09 05:56 (1) and 11:53).
+        assert_eq!(
+            fallback_rejected(
+                "tirust",
+                "ninjars",
+                "TIRust refused the row",
+                "double-double",
+                142.37,
+                1e-5
+            ),
+            "auto: TIRust refused or failed the point (TIRust refused the row); the per-point \
+             NinjaRS fallback's value failed its reduction-direction check: estimate 1.4e2 > \
+             1e-5 = max(target 1e-5, 1e-5) (double-double)"
+        );
+        assert!(
+            fallback_rejected("tirust", "ninjars", "x", "arbitrary", f64::NAN, 3e-7).ends_with(
+                "check: estimate NaN, not within 1e-5 = max(target 3e-7, 1e-5) (arbitrary)"
+            )
+        );
+        assert!(
+            fallback_rejected("tirust", "ninjars", "x", "arbitrary", 2e-3, 1e-3)
+                .ends_with("estimate 2.0e-3 > 1e-3 = max(target 1e-3, 1e-5) (arbitrary)")
+        );
+        // The only threshold is the call's target, never below the floor
+        // (USER ~11:53); a NaN never passes.
+        assert_eq!(FALLBACK_FLOOR, 1e-5);
+        assert_eq!(fallback_limit(1e-8), 1e-5);
+        assert_eq!(fallback_limit(1e-3), 1e-3);
+        assert!(fallback_accepted(1e-5, 1e-5));
+        assert!(fallback_accepted(0.0, 1e-5));
+        assert!(fallback_accepted(9e-6, 1e-8));
+        assert!(fallback_accepted(1e-3, 1e-3));
+        assert!(!fallback_accepted(1.0000001e-5, 1e-5));
+        assert!(!fallback_accepted(1.0000001e-5, 1e-8));
+        assert!(!fallback_accepted(f64::NAN, 1e-5));
+        assert!(!fallback_accepted(f64::INFINITY, 1e-5));
+        assert_eq!(FALLBACK_CHECK, "reduction-direction");
+        // The per-output decision (DECISIONS 2026-11-09 14:30, Q7): each
+        // returned output against its own magnitude; a vanishing one (within
+        // the estimate's rounding floor 16 u S) against the largest returned
+        // output; one output is the "relative" metric of its own estimate.
+        let u = 2.0_f64.powi(-104);
+        let sector = |magnitude: f64, error: f64, scale: f64| GuardSector {
+            magnitude,
+            error,
+            scale,
+        };
+        assert_eq!(
+            fallback_estimate(&[vec![sector(4.0, 1e-3, 4.0), sector(0.0, 1e-9, 0.0)]], u),
+            1e-3 / 4.0
+        );
+        // A small output is judged on its own magnitude (a miss on the
+        // point's sum would pass it).
+        let small = sector(1e-6, 1e-8, 1.0);
+        let large = sector(2.0, 2e-12, 2.0);
+        assert_eq!(
+            fallback_estimate(&[vec![large], vec![small]], u),
+            1e-8 / 1e-6
+        );
+        // A vanishing output (a numerical zero of the carrier) against the
+        // largest returned output (an exact large output: its own ratio 0).
+        let zero = sector(1e-31, 3e-30, 2.0);
+        assert!(zero.magnitude <= 16.0 * u * zero.scale);
+        let exact = sector(2.0, 0.0, 2.0);
+        assert_eq!(
+            fallback_estimate(&[vec![exact], vec![zero]], u),
+            3e-30 / 2.0
+        );
+        // Beside a large output with its own error, the larger ratio decides.
+        assert_eq!(fallback_estimate(&[vec![large], vec![zero]], u), 1e-12);
+        // Alone it is its own largest output: its own ratio (rejected).
+        assert_eq!(fallback_estimate(&[vec![zero]], u), 3e-30 / 1e-31);
+        // An exact zero everywhere is passed over; a NaN is rejected.
+        assert_eq!(fallback_estimate(&[vec![sector(0.0, 1.0, 0.0)]], u), 0.0);
+        assert_eq!(fallback_estimate(&[], u), 0.0);
+        assert!(fallback_estimate(&[vec![large], vec![sector(1.0, f64::NAN, 1.0)]], u).is_nan());
+        // The extended carriers only (USER ~11:53, 'Double-double+ only').
+        assert_eq!(
+            CARRIERS.map(fallback_guarded),
+            [false, true, true],
+            "{CARRIERS:?}"
+        );
     }
 
     #[test]
