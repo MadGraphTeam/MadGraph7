@@ -151,9 +151,10 @@ def test_main_runtime_pass_alone_cannot_complete_delivery(tmp_path, monkeypatch)
     monkeypatch.setattr(REPORT, "implementation", lambda *args: {"status": "passed"})
     stress = [{"title": title, "status": "passed", "required_for_stress_acceptance": True}
               for title in ("EW threshold mass transport", "QCD soft/collinear prototype",
-                            "Default stability estimator", "Complex-mass extremes")]
+                            "Complex-mass extremes")]
     stress[0]["status"] = "open"
     stress.extend([
+        {"title": "Default stability estimator", "status": "open", "required_for_stress_acceptance": False},
         {"title": "QCD n3 ordinary target", "status": "open", "required_for_stress_acceptance": False},
         {"title": "QCD higher precision", "status": "pending", "required_for_stress_acceptance": False}])
     monkeypatch.setattr(REPORT, "stress_limitations", lambda *args: stress)

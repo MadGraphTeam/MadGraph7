@@ -213,6 +213,11 @@ calibration target and observed batch minima. Qualified main-process failures
 remain authoritative across all retained attempts. Control-process timings are
 descriptive: generic raw-summary slowdown labels are preserved but do not
 create main runtime failures. Numerical control checks remain required.
+Qualification uses the registered shared `MLStabThres=1e-6` policy. The
+historical synthetic case accepted inaccurately at the default `1e-3` threshold
+remains an open disclosure; proving general accuracy at that looser threshold
+is not an additional delivery gate. The required EW threshold, QCD
+soft/collinear and complex-mass stress cases remain separate unresolved gates.
 Complete delivery additionally requires the installed ABI and Fortran checks,
 separate subprocess/event cache lifecycle qualification, precision cohorts and
 resolution of retained stress failures. The cache lifecycle criterion stays

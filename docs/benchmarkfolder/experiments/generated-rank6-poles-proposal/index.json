@@ -1,0 +1,9 @@
+{
+  "files": {
+    "README.md": "bb646e65265669133911e61addf089ea0420ff6ed98d0f78819988c57039e5b4",
+    "inspect.py": "69ef8969898d6f21697cbccff6b99afecd96f57fbdf4b6b1b9dfc52761aa2f9d",
+    "inventory.json": "b12bde23ff76978e5edc5cc4cdab37abd01e66f659797d285ef5ede3a5662555"
+  },
+  "schema": "generated-rank6-poles-proposal-freeze-v1",
+  "status": "source-only; no compilation or numerical execution"
+}

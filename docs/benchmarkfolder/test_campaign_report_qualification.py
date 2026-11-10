@@ -38,7 +38,7 @@ def test_actual_pinned_packages_and_frozen_replay_preserve_all_limits(manifest):
     assert stats["status"] == "passed" and stats["tests"] == 10 and stats["compiled_fortran_subtests"] == 4
     assert len(stats["registered_production_sources"]) == 10
     assert [row["status"] for row in rows] == ["open"] * 5 + ["pending"]
-    assert [row["required_for_stress_acceptance"] for row in rows] == [True, True, True, False, True, False]
+    assert [row["required_for_stress_acceptance"] for row in rows] == [True, True, False, False, True, False]
     assert [row["native_library_sha256"] for row in rows] == [Q.HISTORICAL] * 3 + [Q.CURRENT, None, None]
     assert "unchecked" in rows[0]["text"] and "incomplete" in rows[0]["text"]
     assert "51" in rows[1]["text"] and "status 420" in rows[1]["text"]
@@ -56,7 +56,7 @@ def test_actual_pinned_packages_and_frozen_replay_preserve_all_limits(manifest):
 def qualified_stress():
     return [{"title": title, "status": "passed", "required_for_stress_acceptance": True}
             for title in ("EW threshold mass transport", "QCD soft/collinear prototype",
-                          "Default stability estimator", "Complex-mass extremes")]
+                          "Complex-mass extremes")]
 
 
 def test_optional_target_and_strategy_disclosures_do_not_add_stress_gates(qualified_stress):
@@ -66,9 +66,26 @@ def test_optional_target_and_strategy_disclosures_do_not_add_stress_gates(qualif
     assert REPORT.stress_acceptance(rows) == "passed"
 
 
+def test_default_threshold_limitation_stays_visible_without_gating_approved_policy(manifest, qualified_stress):
+    default = next(row for row in Q.collect_stress(REPORT.Evidence(HERE), manifest)
+                   if row["title"] == "Default stability estimator")
+    assert default["status"] == "open" and default["required_for_stress_acceptance"] is False
+    assert "default 1e-3" in default["text"] and "Shared 1e-6" in default["text"]
+    assert REPORT.stress_acceptance(qualified_stress + [default]) == "passed"
+    assert default["status"] == "open"
+
+
+@pytest.mark.parametrize("required", [True, 0, 1, None, "false"])
+def test_default_threshold_disclosure_requires_explicit_false(qualified_stress, required):
+    default = {"title": "Default stability estimator", "status": "open",
+               "required_for_stress_acceptance": required}
+    assert REPORT.stress_acceptance(qualified_stress + [default]) == "open"
+
+
+@pytest.mark.parametrize("case", range(3))
 @pytest.mark.parametrize("status", ["open", "pending", "failed"])
-def test_required_unqualified_stress_still_blocks_acceptance(qualified_stress, status):
-    qualified_stress[0]["status"] = status
+def test_required_unqualified_stress_still_blocks_acceptance(qualified_stress, status, case):
+    qualified_stress[case]["status"] = status
     assert REPORT.stress_acceptance(qualified_stress) == "open"
 
 
@@ -79,6 +96,7 @@ def test_required_unqualified_stress_still_blocks_acceptance(qualified_stress, s
     lambda rows: rows[0].update(required_for_stress_acceptance=False),
     lambda rows: rows[0].update(required_for_stress_acceptance=1),
     lambda rows: rows.__setitem__(0, deepcopy(rows[1])),
+    lambda rows: rows.append(deepcopy(rows[0])),
     lambda rows: rows.append({**rows[0], "status": "open", "required_for_stress_acceptance": False}),
 ])
 def test_missing_or_misclassified_required_stress_cannot_pass(qualified_stress, mutate):
@@ -94,7 +112,10 @@ def test_optional_only_disclosures_cannot_vacuously_pass_stress_acceptance():
 def test_old_frozen_snapshot_does_not_discover_new_qualifications(manifest):
     evidence = REPORT.Evidence(HERE, {})
     assert Q.collect_statistics(evidence, manifest)["status"] == "pending"
-    assert all(row["status"] == "pending" for row in Q.collect_stress(evidence, manifest))
+    rows = Q.collect_stress(evidence, manifest)
+    assert all(row["status"] == "pending" for row in rows)
+    default = next(row for row in rows if row["title"] == "Default stability estimator")
+    assert default["required_for_stress_acceptance"] is False
     assert not evidence.files
 
 

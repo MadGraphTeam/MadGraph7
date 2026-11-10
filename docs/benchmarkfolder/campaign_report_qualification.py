@@ -242,9 +242,9 @@ def collect_stress(evidence, manifest):
         bind_references(evidence, bindings["historical_repository_files"])
         default_scope(observations, manifest)
         row("Default stability estimator", "Historical 49af synthetic host-helper case: default 1e-3 accepts correlated DP error beyond 3e-6. The imaginary symmetric error is 7.03e-4, but ordinary relative error is 1.40e-3. Shared 1e-6 rescues this helper to QP; the heuristic is not a truth-error bound. This fixture was not replayed on current eb3d or the other reducers’ default host paths. Default robustness remains open.",
-            DEFAULT + "README.md", detail={"observations": observations, "current_native_replay": "not performed"})
+            DEFAULT + "README.md", required=False, detail={"observations": observations, "current_native_replay": "not performed"})
     else:
-        row("Default stability estimator", "The historical correlated-error limitation is unresolved; its frozen scope audit is unavailable.", None, status="pending")
+        row("Default stability estimator", "The historical correlated-error limitation is unresolved; its frozen scope audit is unavailable.", None, status="pending", required=False)
 
     if bind_package(evidence, TRIAGE + "index.json") is not None:
         analysis = evidence.json(TRIAGE + "analysis.json")

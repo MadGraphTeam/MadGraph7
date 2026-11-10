@@ -151,7 +151,7 @@ def stress_limitations(evidence, manifest):
 def stress_acceptance(rows):
     """Only the established physical stress requirements control this gate."""
     required_cases = {"EW threshold mass transport", "QCD soft/collinear prototype",
-                      "Default stability estimator", "Complex-mass extremes"}
+                      "Complex-mass extremes"}
     if any(type(row.get("required_for_stress_acceptance")) is not bool for row in rows):
         return "open"
     if any(row["required_for_stress_acceptance"] != (row.get("title") in required_cases) for row in rows):

@@ -1,0 +1,2570 @@
+{
+  "processes": [
+    {
+      "bindings": [
+        {
+          "bytes": 61,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_max_coefs.inc",
+          "sha256": "1dca06ff691666dab8f666692137cd040e407c276417611d5fcc744f5f82f19d"
+        },
+        {
+          "bytes": 227980,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/polynomial.f",
+          "sha256": "1926a4450ce1c818939806e95f61decb9a399ccf214639b0fb110be808cbda59"
+        },
+        {
+          "bytes": 13021,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/TIRUST_interface.f",
+          "sha256": "30aef60b9af5cf6911233b68d86612046cacdc60483a9212fcf9b07005004e9e"
+        },
+        {
+          "bytes": 27741,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/COLLIER_interface.f",
+          "sha256": "d7cef6025ca5a1070bd95889b477913be74914112488ed606239cf34d66e0fad"
+        },
+        {
+          "bytes": 39472,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/TIR_interface.f",
+          "sha256": "19364e656cfc6a326df34476ebbb10bde3fbb7b2f6ae00da1f33cdb1d57ae68b"
+        },
+        {
+          "bytes": 89951,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/CT_interface.f",
+          "sha256": "acaea892d248e92be4bd82d48de4b3db6c25f2b4721f977d3592d13a19d3b528"
+        },
+        {
+          "bytes": 154884,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/helas_calls_ampb_1.f",
+          "sha256": "a572e5189a97da4f2f8033fe483057f9c11a14cb8549120de5ed2e01eb68a5bb"
+        },
+        {
+          "bytes": 114,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/nexternal.inc",
+          "sha256": "68d87bc41ce52297da1872cba38488f27ba25f451b333ba0c7514752948ca245"
+        },
+        {
+          "bytes": 3512,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/coupl.inc",
+          "sha256": "c4a1577adb283a3896c3a4b5c7a04b08995799dde3cc3f2dba2713d13fc40dd0"
+        },
+        {
+          "bytes": 9797,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/makefile",
+          "sha256": "a28b620683c5b3a3f182ea143306b3c22f508f9726b421a857d6e38a1498ec75"
+        },
+        {
+          "bytes": 156222,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "sha256": "c49c70923ee1f6112f2a6d9355d8d86312f891fd1020e8d89c31643c5de75912"
+        },
+        {
+          "bytes": 40857,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_2.f",
+          "sha256": "3e09c5f6025d715c50400946bb5efcb787b48b79d7438096ee53896851bb9423"
+        },
+        {
+          "bytes": 87869,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/Source/DHELAS/aloha_functions.f",
+          "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+        },
+        {
+          "bytes": 120,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/Source/DHELAS/coef_specs.inc",
+          "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+        },
+        {
+          "bytes": 23708,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/MadLoopCommons.f",
+          "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd"
+        },
+        {
+          "bytes": 168,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/global_specs.inc",
+          "sha256": "026dc479ce4eb1a0d1e57a8e18468148abcded633577dfef3e3d65a08d6d16ac"
+        },
+        {
+          "bytes": 4538,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/Cards/param_card.dat",
+          "sha256": "891e4b89d522804e1f21c3f8b19b8cc2209b29cbfb7809189a5e7062c1363ea8"
+        },
+        {
+          "bytes": 389,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/Cards/ident_card.dat",
+          "sha256": "1495ec8622e7de4da3dee4a24ecaa2f0c00e230354afef96f614262698d15e40"
+        },
+        {
+          "bytes": 98565,
+          "path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/points/ew_n4_epem_mupmumaa.json",
+          "sha256": "15442d7dd167508fb9a2b8ade5361249712ebcf3a35f1ef26b8e69c622858841"
+        },
+        {
+          "bytes": 58290,
+          "path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/points/ew_n4_epem_mupmumaa.dat",
+          "sha256": "dd1bc3aeed4017110f3dfea62715eb83be3b9d72e46d464b39fd4057ac445c62"
+        }
+      ],
+      "calls": [
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            6,
+            5,
+            3
+          ],
+          "group_id": 269,
+          "line": 884,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,6,5,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,269)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            6,
+            5,
+            3
+          ],
+          "group_id": 270,
+          "line": 887,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,6,5,3,DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,270)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            5,
+            6,
+            3
+          ],
+          "group_id": 271,
+          "line": 890,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,5,6,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,271)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            5,
+            6,
+            3
+          ],
+          "group_id": 272,
+          "line": 893,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,5,6,3,DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,272)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            6,
+            5
+          ],
+          "group_id": 273,
+          "line": 896,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,6,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,273)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            6,
+            5
+          ],
+          "group_id": 274,
+          "line": 899,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,6,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,274)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            6,
+            4,
+            2,
+            5
+          ],
+          "group_id": 275,
+          "line": 903,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,6,4,2,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,275)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            6,
+            4,
+            2,
+            5
+          ],
+          "group_id": 276,
+          "line": 906,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,6,4,2,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,276)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            5,
+            6
+          ],
+          "group_id": 277,
+          "line": 910,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,5,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,277)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            5,
+            6
+          ],
+          "group_id": 278,
+          "line": 913,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,5,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,278)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            5,
+            4,
+            2,
+            6
+          ],
+          "group_id": 279,
+          "line": 917,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,5,4,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,279)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            5,
+            4,
+            2,
+            6
+          ],
+          "group_id": 280,
+          "line": 920,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,5,4,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,280)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            6,
+            5,
+            4
+          ],
+          "group_id": 305,
+          "line": 996,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,6,5,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,305)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            6,
+            5,
+            4
+          ],
+          "group_id": 306,
+          "line": 999,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,6,5,4,DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,306)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            5,
+            6,
+            4
+          ],
+          "group_id": 307,
+          "line": 1002,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,5,6,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,307)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            5,
+            6,
+            4
+          ],
+          "group_id": 308,
+          "line": 1005,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,5,6,4,DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,308)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            6,
+            5
+          ],
+          "group_id": 309,
+          "line": 1008,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,6,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,309)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            6,
+            5
+          ],
+          "group_id": 310,
+          "line": 1011,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,6,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,310)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            6,
+            3,
+            2,
+            5
+          ],
+          "group_id": 311,
+          "line": 1015,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,6,3,2,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,311)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            6,
+            3,
+            2,
+            5
+          ],
+          "group_id": 312,
+          "line": 1018,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,6,3,2,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,312)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            5,
+            6
+          ],
+          "group_id": 313,
+          "line": 1022,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,5,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,313)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            5,
+            6
+          ],
+          "group_id": 314,
+          "line": 1025,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,5,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,314)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            5,
+            3,
+            2,
+            6
+          ],
+          "group_id": 315,
+          "line": 1029,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,5,3,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,315)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            5,
+            3,
+            2,
+            6
+          ],
+          "group_id": 316,
+          "line": 1032,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,5,3,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,316)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            5,
+            6,
+            4
+          ],
+          "group_id": 385,
+          "line": 1230,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,5,6,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),4,I_SO,385)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            6,
+            5,
+            4
+          ],
+          "group_id": 386,
+          "line": 1234,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,6,5,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),4,I_SO,386)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            5,
+            6
+          ],
+          "group_id": 387,
+          "line": 1238,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,5,6,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,387)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            6,
+            3,
+            2,
+            5
+          ],
+          "group_id": 388,
+          "line": 1241,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,6,3,2,5,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,388)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            6,
+            5
+          ],
+          "group_id": 389,
+          "line": 1244,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,6,5,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,389)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            5,
+            3,
+            2,
+            6
+          ],
+          "group_id": 390,
+          "line": 1247,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,5,3,2,6,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,390)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            5,
+            6,
+            3
+          ],
+          "group_id": 403,
+          "line": 1286,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,5,6,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),4,I_SO,403)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            6,
+            5,
+            3
+          ],
+          "group_id": 404,
+          "line": 1290,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,6,5,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),4,I_SO,404)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            5,
+            6
+          ],
+          "group_id": 405,
+          "line": 1294,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,5,6,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,405)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            6,
+            4,
+            2,
+            5
+          ],
+          "group_id": 406,
+          "line": 1297,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,6,4,2,5,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,406)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            6,
+            5
+          ],
+          "group_id": 407,
+          "line": 1300,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,6,5,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,407)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            5,
+            4,
+            2,
+            6
+          ],
+          "group_id": 408,
+          "line": 1303,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,5,4,2,6,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,408)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            6,
+            5,
+            3
+          ],
+          "group_id": 607,
+          "line": 1870,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,6,5,3,DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),4,I_SO,607)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            5,
+            6,
+            3
+          ],
+          "group_id": 608,
+          "line": 1874,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,5,6,3,DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),4,I_SO,608)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            6,
+            5
+          ],
+          "group_id": 609,
+          "line": 1878,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,6,5,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,609)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            6,
+            4,
+            2,
+            5
+          ],
+          "group_id": 610,
+          "line": 1882,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,6,4,2,5,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,610)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            5,
+            6
+          ],
+          "group_id": 611,
+          "line": 1886,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,5,6,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,611)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            5,
+            4,
+            2,
+            6
+          ],
+          "group_id": 612,
+          "line": 1890,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,3,5,4,2,6,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,612)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            6,
+            5,
+            4
+          ],
+          "group_id": 625,
+          "line": 1930,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,6,5,4,DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),4,I_SO,625)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            5,
+            6,
+            4
+          ],
+          "group_id": 626,
+          "line": 1934,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,5,6,4,DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),4,I_SO,626)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            6,
+            5
+          ],
+          "group_id": 627,
+          "line": 1938,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,6,5,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,627)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            6,
+            3,
+            2,
+            5
+          ],
+          "group_id": 628,
+          "line": 1942,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,6,3,2,5,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,628)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            5,
+            6
+          ],
+          "group_id": 629,
+          "line": 1946,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,5,6,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,629)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            5,
+            3,
+            2,
+            6
+          ],
+          "group_id": 630,
+          "line": 1950,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_1.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,4,5,3,2,6,DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(MDL_MZ),DCMPLX(ZERO),DCMPLX(ZERO),4,I_SO,630)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MZ)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            5,
+            6,
+            4,
+            3
+          ],
+          "group_id": 1047,
+          "line": 247,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_2.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,5,6,4,3,DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(MDL_MW),DCMPLX(MDL_MW),DCMPLX(ZERO),DCMPLX(MDL_MW),4,I_SO,1047)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            6,
+            5,
+            4,
+            3
+          ],
+          "group_id": 1048,
+          "line": 251,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_2.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,6,5,4,3,DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(MDL_MW),DCMPLX(MDL_MW),DCMPLX(ZERO),DCMPLX(MDL_MW),4,I_SO,1048)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            6,
+            4,
+            3,
+            5
+          ],
+          "group_id": 1065,
+          "line": 303,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_2.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,6,4,3,5,DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(MDL_MW),DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(MDL_MW),4,I_SO,1065)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            3,
+            6,
+            5
+          ],
+          "group_id": 1066,
+          "line": 307,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_2.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,3,6,5,DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(MDL_MW),DCMPLX(MDL_MW),4,I_SO,1066)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            5,
+            4,
+            3,
+            6
+          ],
+          "group_id": 1067,
+          "line": 311,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_2.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,5,4,3,6,DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(MDL_MW),DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(MDL_MW),4,I_SO,1067)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            3,
+            5,
+            6
+          ],
+          "group_id": 1068,
+          "line": 315,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa/loop_CT_calls_2.f",
+          "rank": 4,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,3,5,6,DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(ZERO),DCMPLX(MDL_MW),DCMPLX(MDL_MW),DCMPLX(MDL_MW),4,I_SO,1068)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)",
+            "DCMPLX(MDL_MW)"
+          ]
+        }
+      ],
+      "coefficient_capacity": 70,
+      "hexagon_count": 54,
+      "hexagon_rank_counts": {
+        "4": 54
+      },
+      "maximum_rank": 4,
+      "native_group_inputs_captured": false,
+      "process": "ew_n4_epem_mupmumaa",
+      "saved_point_binary64_hex": [
+        [
+          "0x1.f400000000000p+8",
+          "0x0.0p+0",
+          "0x0.0p+0",
+          "0x1.f400000000000p+8"
+        ],
+        [
+          "0x1.f400000000000p+8",
+          "0x0.0p+0",
+          "0x0.0p+0",
+          "-0x1.f400000000000p+8"
+        ],
+        [
+          "0x1.e673646aa8da6p+7",
+          "0x1.aebe28273a062p+6",
+          "0x1.ade55f61af621p+7",
+          "0x1.26ff1b49dc28cp+5"
+        ],
+        [
+          "0x1.2a5541fdcc49fp+5",
+          "-0x1.b07f20abcfc02p+3",
+          "0x1.b88c7b7f186f1p+3",
+          "0x1.fe9d16d53f9c0p+4"
+        ],
+        [
+          "0x1.d40bb60f18ae2p+8",
+          "-0x1.c4190b7d520d3p+6",
+          "-0x1.5fe1178332918p+8",
+          "-0x1.1f2e7dd80b60bp+8"
+        ],
+        [
+          "0x1.f6dfdef7b2b6bp+7",
+          "0x1.2dab1dae47fc6p+4",
+          "0x1.eca80fd988741p+6",
+          "0x1.b4c99202f7c3bp+7"
+        ]
+      ],
+      "saved_point_id": "ordinary-0000",
+      "saved_point_index": 0,
+      "subprocess": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/ew_n4_epem_mupmumaa/SubProcesses/P0_epem_mupmumaa"
+    },
+    {
+      "bindings": [
+        {
+          "bytes": 62,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_max_coefs.inc",
+          "sha256": "1949bace736cdf834cc4c1428a9f3fe8f7329c3f4be1d7bf8b5055d7f791b525"
+        },
+        {
+          "bytes": 291327,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/polynomial.f",
+          "sha256": "7afd6133a3fb9a73c7ee3429a2f07e107486a08caa4c08d15532e25dffdc05a6"
+        },
+        {
+          "bytes": 13370,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/TIRUST_interface.f",
+          "sha256": "fdb6f639e3a8e17298f10bc1b172bb7a23a1d23111eaa9230b2a38bcffa53cd8"
+        },
+        {
+          "bytes": 29384,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/COLLIER_interface.f",
+          "sha256": "8c5da1393ad7b559759128f4610d61624d1484cc3e7e4ca3bcd5301c7632f1d6"
+        },
+        {
+          "bytes": 37472,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/TIR_interface.f",
+          "sha256": "05ae4e14af288945845ba259f8f185b7257d113fa5ca8b49e80d8b43c4ef3904"
+        },
+        {
+          "bytes": 80303,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/CT_interface.f",
+          "sha256": "046d23bc913bdbec4adee0608d479ad79e798141f5fbb2ddaff17a04912c832e"
+        },
+        {
+          "bytes": 109425,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/helas_calls_ampb_1.f",
+          "sha256": "2e80c6fa816a7975e25090419f66f07031d24706718c70f261b1c59d33b568c4"
+        },
+        {
+          "bytes": 114,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/nexternal.inc",
+          "sha256": "68d87bc41ce52297da1872cba38488f27ba25f451b333ba0c7514752948ca245"
+        },
+        {
+          "bytes": 1870,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/coupl.inc",
+          "sha256": "5dd65c4f5bf4f5e79343464366986fe455cbcf5a02d451cc06a25f97b76ee818"
+        },
+        {
+          "bytes": 9782,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/makefile",
+          "sha256": "1a2b4a6debb581a77b53b90b9b3502a021ae06371b9e4e013d238d2b5991e85a"
+        },
+        {
+          "bytes": 111965,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "sha256": "ca5b3592db4d7ef079566c2e15f4359d9cdaa8f547066003f369506234ff4456"
+        },
+        {
+          "bytes": 87869,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/Source/DHELAS/aloha_functions.f",
+          "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf"
+        },
+        {
+          "bytes": 120,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/Source/DHELAS/coef_specs.inc",
+          "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+        },
+        {
+          "bytes": 23708,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/MadLoopCommons.f",
+          "sha256": "279e750387957413087fa0a5eedb2e291a48dc719af045e31ab3fa7b8b5963fd"
+        },
+        {
+          "bytes": 168,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/global_specs.inc",
+          "sha256": "4c894694d34d389a11ee23f0ad3faef74cd1fc1d1c9cfbb009fecee948ed99fc"
+        },
+        {
+          "bytes": 2472,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/Cards/param_card.dat",
+          "sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433"
+        },
+        {
+          "bytes": 460,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/Cards/ident_card.dat",
+          "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493"
+        },
+        {
+          "bytes": 99213,
+          "path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/points/qcd_n4_uux_zzgg.json",
+          "sha256": "4362b5144dd63d63275676f84071e460f048723f47c8d9d4e8a1c770183b7d63"
+        },
+        {
+          "bytes": 58293,
+          "path": "docs/benchmarkfolder/campaigns/split-dp-terminal-1/points/qcd_n4_uux_zzgg.dat",
+          "sha256": "d2f5bd557aff1eb2eea56237447d46c91271bd0b5c063cbd8eb6060167cd0f8e"
+        }
+      ],
+      "calls": [
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            6,
+            5,
+            3
+          ],
+          "group_id": 399,
+          "line": 1220,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,6,5,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,399)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            5,
+            6,
+            3
+          ],
+          "group_id": 400,
+          "line": 1223,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,5,6,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,400)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            5,
+            6,
+            4,
+            3
+          ],
+          "group_id": 401,
+          "line": 1226,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,5,6,4,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,401)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            5,
+            4,
+            6,
+            3
+          ],
+          "group_id": 402,
+          "line": 1229,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,5,4,6,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,402)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            6,
+            5,
+            4,
+            3
+          ],
+          "group_id": 403,
+          "line": 1232,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,6,5,4,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,403)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            6,
+            4,
+            5,
+            3
+          ],
+          "group_id": 404,
+          "line": 1235,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,6,4,5,3,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,404)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            6,
+            5,
+            4
+          ],
+          "group_id": 405,
+          "line": 1238,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,6,5,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,405)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            5,
+            6,
+            4
+          ],
+          "group_id": 406,
+          "line": 1241,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,5,6,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,406)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            5,
+            6,
+            3,
+            4
+          ],
+          "group_id": 407,
+          "line": 1244,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,5,6,3,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,407)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            5,
+            3,
+            6,
+            4
+          ],
+          "group_id": 408,
+          "line": 1247,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,5,3,6,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,408)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            6,
+            5,
+            3,
+            4
+          ],
+          "group_id": 409,
+          "line": 1250,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,6,5,3,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,409)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            6,
+            3,
+            5,
+            4
+          ],
+          "group_id": 410,
+          "line": 1253,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,6,3,5,4,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,410)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            6,
+            4,
+            5
+          ],
+          "group_id": 411,
+          "line": 1256,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,6,4,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,411)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            4,
+            6,
+            5
+          ],
+          "group_id": 412,
+          "line": 1259,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,4,6,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,412)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            6,
+            3,
+            5
+          ],
+          "group_id": 413,
+          "line": 1262,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,6,3,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,413)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            3,
+            6,
+            5
+          ],
+          "group_id": 414,
+          "line": 1265,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,3,6,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,414)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            6,
+            4,
+            3,
+            5
+          ],
+          "group_id": 415,
+          "line": 1268,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,6,4,3,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,415)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            6,
+            3,
+            4,
+            5
+          ],
+          "group_id": 416,
+          "line": 1271,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,6,3,4,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,416)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            5,
+            4,
+            6
+          ],
+          "group_id": 417,
+          "line": 1274,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,5,4,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,417)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "group_id": 418,
+          "line": 1277,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,3,4,5,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,418)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            5,
+            3,
+            6
+          ],
+          "group_id": 419,
+          "line": 1280,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,5,3,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,419)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            4,
+            3,
+            5,
+            6
+          ],
+          "group_id": 420,
+          "line": 1283,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,4,3,5,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,420)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            5,
+            4,
+            3,
+            6
+          ],
+          "group_id": 421,
+          "line": 1286,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,5,4,3,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,421)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            2,
+            5,
+            3,
+            4,
+            6
+          ],
+          "group_id": 422,
+          "line": 1289,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,2,5,3,4,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,422)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            6,
+            2,
+            5
+          ],
+          "group_id": 431,
+          "line": 1316,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,6,2,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,431)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            6,
+            4,
+            2,
+            5
+          ],
+          "group_id": 432,
+          "line": 1319,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,3,6,4,2,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,432)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            6,
+            5
+          ],
+          "group_id": 433,
+          "line": 1322,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,6,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,433)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            6,
+            2,
+            5
+          ],
+          "group_id": 434,
+          "line": 1325,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,6,2,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,434)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            6,
+            3,
+            2,
+            5
+          ],
+          "group_id": 435,
+          "line": 1328,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,4,6,3,2,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,435)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            6,
+            5
+          ],
+          "group_id": 436,
+          "line": 1331,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,6,5,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,436)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            5,
+            2,
+            4,
+            3,
+            6
+          ],
+          "group_id": 437,
+          "line": 1334,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,5,2,4,3,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,437)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            5,
+            2,
+            3,
+            4,
+            6
+          ],
+          "group_id": 438,
+          "line": 1337,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,5,2,3,4,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,438)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            5,
+            2,
+            6
+          ],
+          "group_id": 439,
+          "line": 1340,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,5,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,439)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            5,
+            4,
+            2,
+            6
+          ],
+          "group_id": 440,
+          "line": 1343,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,3,5,4,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,440)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            3,
+            4,
+            2,
+            5,
+            6
+          ],
+          "group_id": 441,
+          "line": 1346,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,3,4,2,5,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,441)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            5,
+            2,
+            6
+          ],
+          "group_id": 442,
+          "line": 1349,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,5,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,442)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            5,
+            3,
+            2,
+            6
+          ],
+          "group_id": 443,
+          "line": 1352,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,4,5,3,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,443)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            4,
+            3,
+            2,
+            5,
+            6
+          ],
+          "group_id": 444,
+          "line": 1355,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,4,3,2,5,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,444)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            5,
+            3,
+            4,
+            2,
+            6
+          ],
+          "group_id": 445,
+          "line": 1358,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,5,3,4,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,445)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        },
+        {
+          "external_wavefunction_ids": [
+            1,
+            5,
+            4,
+            3,
+            2,
+            6
+          ],
+          "group_id": 446,
+          "line": 1361,
+          "path": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+          "rank": 5,
+          "statement": "CALL ML5_0_LOOP_6(1,5,4,3,2,6,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),5,I_SO,446)",
+          "unsquared_mass_arguments": [
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)",
+            "DCMPLX(ZERO)"
+          ]
+        }
+      ],
+      "coefficient_capacity": 126,
+      "hexagon_count": 40,
+      "hexagon_rank_counts": {
+        "5": 40
+      },
+      "maximum_rank": 5,
+      "native_group_inputs_captured": false,
+      "process": "qcd_n4_uux_zzgg",
+      "saved_point_binary64_hex": [
+        [
+          "0x1.f400000000000p+8",
+          "0x0.0p+0",
+          "0x0.0p+0",
+          "0x1.f400000000000p+8"
+        ],
+        [
+          "0x1.f400000000000p+8",
+          "0x0.0p+0",
+          "0x0.0p+0",
+          "-0x1.f400000000000p+8"
+        ],
+        [
+          "0x1.e5a43467fba39p+7",
+          "-0x1.8ed2def20b1d9p+7",
+          "-0x1.2f7e32d0c2345p+4",
+          "-0x1.9a4d73ec02cfdp+6"
+        ],
+        [
+          "0x1.16b8538c065e0p+8",
+          "-0x1.6c23379856959p+6",
+          "-0x1.e9caa48c52113p+7",
+          "-0x1.0a5726116722cp+5"
+        ],
+        [
+          "0x1.a754c2a755286p+8",
+          "0x1.459066eb827eep+8",
+          "0x1.c09618d2cedffp+7",
+          "0x1.2eb84a0a34dc3p+7"
+        ],
+        [
+          "0x1.b9067cc5353d6p+5",
+          "-0x1.18f14c633a55bp+5",
+          "0x1.3c91484e6ddf0p+5",
+          "-0x1.efbc68fd9ab8bp+3"
+        ]
+      ],
+      "saved_point_id": "ordinary-0000",
+      "saved_point_index": 0,
+      "subprocess": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n4_uux_zzgg/SubProcesses/P0_uux_zzgg"
+    }
+  ],
+  "schema": "generated-rank6-poles-source-proposal-v1",
+  "scope": "read-only source inventory; no numerical execution",
+  "shared_bindings": [
+    {
+      "bytes": 218323,
+      "path": "madgraph/loop/loop_exporters.py",
+      "sha256": "7ac9786406b9524c8cdbc0e3210838e385c53c018c2ed6952a36d044187ece74"
+    },
+    {
+      "bytes": 59917,
+      "path": "madgraph/various/q_polynomial.py",
+      "sha256": "649e586f201608c9063ed9d4016f2d936078753b2f45fa90887f0f4573288ea1"
+    },
+    {
+      "bytes": 11432,
+      "path": "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc",
+      "sha256": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec"
+    },
+    {
+      "bytes": 25938,
+      "path": "madgraph/iolibs/template_files/loop_optimized/COLLIER_interface.inc",
+      "sha256": "0695d6accfe59400a1298b86601f7eda9bcbb667642fbf2d305f8681b7bc338d"
+    },
+    {
+      "bytes": 15997,
+      "path": "vendor/tirust/mtirust.f90",
+      "sha256": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+    },
+    {
+      "bytes": 46218,
+      "path": "vendor/tirust/src/lib.rs",
+      "sha256": "455529b929b725e8fe2d7337ab4a41fa3de9dee1b3a953afe6dc032cf99e5a4c"
+    },
+    {
+      "bytes": 5742,
+      "path": "vendor/tirust/tirust.h",
+      "sha256": "54e7c78f8087d2fa47a780248caa470d0d802d9d36f37331c5fe775a7beea2ad"
+    },
+    {
+      "bytes": 64682,
+      "path": "vendor/tirust/patches/0001-direct-poles-only.patch",
+      "sha256": "80ef17b367511419e734f760edca4593f15a324996c4830b815c03cf884cbab5"
+    },
+    {
+      "bytes": 3150,
+      "path": "docs/benchmarkfolder/qualification/poles-only/index.json",
+      "sha256": "3c1c3bc5d6ed9bc082e53313f80dda88594b46ab4f7a1adbc13f773991f12069"
+    },
+    {
+      "bytes": 2117,
+      "path": "docs/benchmarkfolder/qualification/poles-only/tensor-commands.txt",
+      "sha256": "403d1d0608fe6e94c39431f31b9c7874d5ed6068ac33db0b3dcc954d2d8a74a2"
+    },
+    {
+      "bytes": 13253,
+      "path": "docs/benchmarkfolder/qualification/poles-only/tensor-unit-tests.log",
+      "sha256": "71476c4ea49a96992c180be190dc155d3a439a9238ff2e988f34258fd66a2dd3"
+    },
+    {
+      "bytes": 921,
+      "path": "docs/benchmarkfolder/qualification/poles-only/tensor-integration-tests.log",
+      "sha256": "fdb9f22aeeac1ee380d224357f174cfcbd0f2db0911bbe58f946f429281eff1b"
+    },
+    {
+      "bytes": 816,
+      "path": "docs/benchmarkfolder/qualification/poles-only/scalar-regression.log",
+      "sha256": "b0cdf926f1297e898d3e9a9a3063f632dd07805caee80f3c4dc7eeec28b6a09e"
+    },
+    {
+      "bytes": 1267,
+      "path": "docs/benchmarkfolder/qualification/poles-only/patch-validation.json",
+      "sha256": "728ac8f583928884c070aec47bac5964b043caaf5cf631801c065dcd09edf333"
+    },
+    {
+      "bytes": 18962,
+      "path": "docs/benchmarkfolder/qualification/tirust-bridge/rust-tests.log",
+      "sha256": "a1a57579a56c1af9f954aa855977b2ae3c2c4fd85b89c00c5ffdfd8a1231d058"
+    },
+    {
+      "bytes": 29655,
+      "path": "docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/validate_release.py",
+      "sha256": "f8d068e919642570701dad7db58e7619f22fddbcd632b83127d9fcea172ed223"
+    },
+    {
+      "bytes": 5435,
+      "path": "docs/benchmarkfolder/qualification/tirust-install/qp-transport-cache/README.md",
+      "sha256": "12e784e94fee172608afb9b623fa3c840322a72708799909f9ebbd9cbc46127a"
+    },
+    {
+      "bytes": 69094528,
+      "path": ".tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+      "sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+    },
+    {
+      "bytes": 3055,
+      "path": ".tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/tirust-config.json",
+      "sha256": "25182cfb31e68f8ff6246717e6819f0ec86232de88742f6e47e73676e6a41af9"
+    }
+  ]
+}
