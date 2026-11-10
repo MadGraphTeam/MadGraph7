@@ -300,17 +300,17 @@ def _rung(
             open_.append(key)
     if not open_:
         return
-    derived = {key: rung_digits(found[key][0], final.unit_roundoff) for key in open_}
-    texts = {key: _undecided_text(name, found[key][0], derived[key]) for key in open_}
     if rung is None:
         for key in open_:
+            text = _undecided_text(name, found[key][0], None)
             decided[key] = _with(
                 decided[key],
                 verdict=UNDECIDED,
-                reason=f"{texts[key]} (an explicit carrier runs no "
-                "arbitrary-precision rung)",
+                reason=f"{text} (an explicit carrier runs no arbitrary-precision rung)",
             )
         return
+    derived = {key: rung_digits(found[key][0], final.unit_roundoff) for key in open_}
+    texts = {key: _undecided_text(name, found[key][0], derived[key]) for key in open_}
     digits = rung.digits if rung.digits is not None else max(derived.values())
     carrier = Precision.arbitrary(digits)
     if rung.digits is not None:
