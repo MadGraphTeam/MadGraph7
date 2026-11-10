@@ -694,14 +694,16 @@ impl Runtime {
         mut inputs: LoopInputs,
     ) -> RusticolResult<(LoopInputs, Option<Vec<serde_json::Value>>)> {
         let double = self.arithmetic == Arithmetic::Double;
-        if double && !self.kinematics_binary64 {
+        if !kinematics_improvement::reaches(self.kinematics_binary64, double) {
             return Ok((inputs, None));
         }
         let Some(variant) =
             kinematics_improvement::applies(self.kinematics, self.kinematics_binary64, double)
         else {
-            let off =
-                vec![kinematics_off_record(self.kinematics_improvement()); inputs.point_ids.len()];
+            let off = vec![
+                kinematics_improvement::off_record_json(self.kinematics_improvement());
+                inputs.point_ids.len()
+            ];
             return Ok((inputs, Some(off)));
         };
         let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
@@ -1296,6 +1298,9 @@ impl Runtime {
             checks: None,
             requested: self.checks.enabled(),
         };
+        // The call's points improved in its carrier (m-lit lit-psimprove),
+        // as on every other route: before the selected rows are formed.
+        let (inputs, kinematics) = self.improved_inputs(inputs)?;
         let (shape, poles, arithmetic) = (self.shape, self.poles, self.arithmetic);
         let Engine::V4(native) = &mut self.engine;
         let request = InducedRequest {
@@ -1308,16 +1313,19 @@ impl Runtime {
             reduction: &reduction,
             stability: monitoring.not_selected(),
         };
-        if resolved {
+        let mut evaluation = if resolved {
             let kept = kept.expect("a resolved selection names helicity ids");
-            return Evaluation::born_resolved_selected(native, inputs, &axes, &kept, request);
-        }
-        let by_point: Vec<Vec<usize>> = match (&kept, &selection.helicity_by_point) {
-            (Some(kept), _) => vec![kept.clone(); inputs.point_ids.len()],
-            (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
-            (None, None) => unreachable!("an unselected evaluation returned before"),
+            Evaluation::born_resolved_selected(native, inputs, &axes, &kept, request)?
+        } else {
+            let by_point: Vec<Vec<usize>> = match (&kept, &selection.helicity_by_point) {
+                (Some(kept), _) => vec![kept.clone(); inputs.point_ids.len()],
+                (None, Some(by_point)) => by_point.iter().map(|&row| vec![row as usize]).collect(),
+                (None, None) => unreachable!("an unselected evaluation returned before"),
+            };
+            Evaluation::born_selected(native, inputs, &by_point, request)?
         };
-        Evaluation::born_selected(native, inputs, &by_point, request)
+        with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+        Ok(evaluation)
     }
 
     /// The cross-backend check's backend serves the call (the Python API's
@@ -2600,24 +2608,6 @@ struct InducedRequest<'a> {
     arithmetic: Arithmetic,
     reduction: &'a Choice,
     stability: serde_json::Value,
-}
-
-/// The record of a point the kinematics settings reach but do not improve
-/// (the setting "off"; the Python API's `kinematics.off_record`).
-fn kinematics_off_record(setting: &str) -> serde_json::Value {
-    serde_json::json!({
-        "requested": setting,
-        "fallback": true,
-        "status": "off",
-        "produced": null,
-        "attempts": [],
-        "exactness": null,
-        "iterations": null,
-        "scale": null,
-        "moved": 0.0,
-        "warning": null,
-        "warning_text": null,
-    })
 }
 
 /// The diagnostics record with each point's kinematics improvement record

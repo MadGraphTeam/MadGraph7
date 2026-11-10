@@ -328,6 +328,9 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(tir_acceptance, module)?)?;
     module.add_function(wrap_pyfunction!(kinematics::kinematics_policy, module)?)?;
     module.add_function(wrap_pyfunction!(kinematics::kinematics_applies, module)?)?;
+    module.add_function(wrap_pyfunction!(kinematics::kinematics_reaches, module)?)?;
+    module.add_function(wrap_pyfunction!(kinematics::kinematics_off_record, module)?)?;
+    module.add_function(wrap_pyfunction!(kinematics::kinematics_notes, module)?)?;
     module.add_function(wrap_pyfunction!(kinematics::improve_kinematics, module)?)?;
     v2::register(module)?;
     v2_catalogue::register(module)?;

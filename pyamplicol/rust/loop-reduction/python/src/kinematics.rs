@@ -34,6 +34,37 @@ pub fn kinematics_applies(
     Ok(ki::applies(setting, binary64, carrier == "double").map(ki::Variant::name))
 }
 
+/// Whether the settings reach an evaluation in `carrier` (its results carry
+/// a record, "off" under the setting "off"; `kinematics_improvement::
+/// reaches`, the key of [`kinematics_applies`]).
+#[pyfunction]
+pub fn kinematics_reaches(binary64: bool, carrier: &str) -> bool {
+    ki::reaches(binary64, carrier == "double")
+}
+
+/// The record (JSON) of a point the settings reach but do not improve (the
+/// setting "off"; `kinematics_improvement::off_record_json`).
+#[pyfunction]
+pub fn kinematics_off_record(setting: &str) -> String {
+    ki::off_record_json(setting).to_string()
+}
+
+/// The warnings-channel lines of one tree call's records (JSON, as
+/// [`improve_kinematics`] returns them; `kinematics_improvement::
+/// notes_json`, the tree C ABI's formatter).
+#[pyfunction]
+pub fn kinematics_notes(
+    records: Vec<String>,
+    carrier: &str,
+    precision: u32,
+) -> PyResult<Vec<String>> {
+    let records: Vec<serde_json::Value> = records
+        .iter()
+        .map(|record| serde_json::from_str(record).map_err(error))
+        .collect::<PyResult<_>>()?;
+    Ok(ki::notes_json(&records, carrier, precision))
+}
+
 /// The carrier of `arithmetic`: "double", "double-double", or "arbitrary"
 /// at `digits` decimal digits (the executor's own bits, `Float::
 /// decimal_digits_to_bits`).
@@ -77,12 +108,13 @@ type Point = Vec<[String; 4]>;
 /// each component an exact decimal or fraction text) in `arithmetic` with
 /// `variant` and MadLoop's fallback (`fallback`, the public chain; False:
 /// the variant alone, forced), toward the legs' squared masses `masses2`
-/// (exact texts; None: a leg without a bound mass keeps its own p²). Returns
+/// (exact texts; None: a leg without a bound mass keeps its own p²);
+/// `variant` None takes the policy's default. Returns
 /// the improved points as exact fraction texts of the carrier values (a
 /// point no variant improves, or an exactly physical one, unchanged) and
 /// each point's record as JSON (`kinematics_improvement::Record::to_json`).
 #[pyfunction]
-#[pyo3(signature = (points, n_initial, masses2, arithmetic, digits=None, variant="z-shift", fallback=true, fourmom=None, onshell=None, close=None))]
+#[pyo3(signature = (points, n_initial, masses2, arithmetic, digits=None, variant=None, fallback=true, fourmom=None, onshell=None, close=None))]
 #[allow(clippy::too_many_arguments)]
 pub fn improve_kinematics(
     py: Python<'_>,
@@ -91,16 +123,20 @@ pub fn improve_kinematics(
     masses2: Vec<Option<String>>,
     arithmetic: &str,
     digits: Option<u32>,
-    variant: &str,
+    variant: Option<&str>,
     fallback: bool,
     fourmom: Option<f64>,
     onshell: Option<f64>,
     close: Option<f64>,
 ) -> PyResult<(Vec<Point>, Vec<String>)> {
     let arithmetic = arithmetic_of(arithmetic, digits)?;
-    let variant = ki::setting(variant)
-        .map_err(error)?
-        .ok_or_else(|| error("the kinematics improvement 'off' improves nothing"))?;
+    // No variant given: the policy's default (`DEFAULT_VARIANT`).
+    let variant = match variant {
+        None => ki::DEFAULT_VARIANT,
+        Some(text) => ki::setting(text)
+            .map_err(error)?
+            .ok_or_else(|| error("the kinematics improvement 'off' improves nothing"))?,
+    };
     let tolerances = tolerances(fourmom, onshell, close)?;
     let masses: Vec<Option<Rational>> = masses2
         .iter()

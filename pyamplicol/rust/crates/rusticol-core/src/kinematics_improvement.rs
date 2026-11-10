@@ -174,10 +174,39 @@ pub fn applies(
     binary64: bool,
     carrier_is_binary64: bool,
 ) -> Option<Variant> {
-    if carrier_is_binary64 && !binary64 {
+    if !reaches(binary64, carrier_is_binary64) {
         return None;
     }
     setting
+}
+
+/// Whether the settings reach an evaluation in a carrier (the same key as
+/// [`applies`]): every carrier above binary64, binary64 only under the
+/// binary64 switch. A reached evaluation's results carry a record, which
+/// reads "off" under the setting [`OFF`] ([`off_record_json`]); an
+/// evaluation not reached carries none (its values bitwise as without the
+/// improvement).
+pub fn reaches(binary64: bool, carrier_is_binary64: bool) -> bool {
+    !carrier_is_binary64 || binary64
+}
+
+/// The record of a point the settings reach but do not improve (the setting
+/// [`OFF`]), in [`Record::to_json`]'s layout: every surface's (the Python
+/// API's `kinematics.off_record`, the loop SDK's diagnostics).
+pub fn off_record_json(setting: &str) -> serde_json::Value {
+    serde_json::json!({
+        "requested": setting,
+        "fallback": true,
+        "status": "off",
+        "produced": null,
+        "attempts": [],
+        "exactness": null,
+        "iterations": null,
+        "scale": null,
+        "moved": 0.0,
+        "warning": null,
+        "warning_text": null,
+    })
 }
 
 /// MadLoop's input-sanity and move bounds (improve_ps.inc IS_PHYSICAL and
@@ -1323,17 +1352,58 @@ impl<T: PsReal> Ctx<T> {
 /// The warnings-channel lines of one call's records (the tree runtimes'
 /// record, m-lit lit-psimprove (G4)): one summary line (the requested
 /// variant and, per producer or status, its count) and every typed warning.
-/// The Python tree runtime writes the same lines (`runtime/backend.py`).
+/// The Python tree runtime takes the same lines ([`notes_json`]).
 pub fn notes(records: &[Record], carrier: &str, precision: u32) -> Vec<String> {
-    let Some(first) = records.first() else {
+    format_notes(
+        records.iter().map(|record| {
+            (
+                record.requested.name().to_owned(),
+                record
+                    .produced
+                    .map_or_else(|| record.status.name(), Variant::name)
+                    .to_owned(),
+                record.warning(),
+            )
+        }),
+        carrier,
+        precision,
+    )
+}
+
+/// [`notes`] of records given as their JSON ([`Record::to_json`]; the
+/// Python tree runtime's higher-precision records, which reach it as JSON):
+/// the same lines from the same formatter.
+pub fn notes_json(records: &[serde_json::Value], carrier: &str, precision: u32) -> Vec<String> {
+    let text = |value: &serde_json::Value, key: &str| value[key].as_str().map(str::to_owned);
+    format_notes(
+        records.iter().map(|record| {
+            (
+                text(record, "requested").unwrap_or_default(),
+                text(record, "produced")
+                    .or_else(|| text(record, "status"))
+                    .unwrap_or_default(),
+                text(record, "warning_text"),
+            )
+        }),
+        carrier,
+        precision,
+    )
+}
+
+/// The lines of [`notes`]: (requested, producer or status, typed warning)
+/// per point.
+fn format_notes(
+    records: impl Iterator<Item = (String, String, Option<String>)>,
+    carrier: &str,
+    precision: u32,
+) -> Vec<String> {
+    let records: Vec<_> = records.collect();
+    let Some((requested, _, _)) = records.first() else {
         return Vec::new();
     };
     let mut counts = std::collections::BTreeMap::<&str, usize>::new();
-    for record in records {
-        let key = record
-            .produced
-            .map_or_else(|| record.status.name(), Variant::name);
-        *counts.entry(key).or_default() += 1;
+    for (_, key, _) in &records {
+        *counts.entry(key.as_str()).or_default() += 1;
     }
     let summary = counts
         .iter()
@@ -1341,14 +1411,18 @@ pub fn notes(records: &[Record], carrier: &str, precision: u32) -> Vec<String> {
         .collect::<Vec<_>>()
         .join(", ");
     let mut lines = vec![format!(
-        "kinematics-improvement: {carrier} at precision {precision} ({}): {summary}",
-        first.requested.name()
+        "kinematics-improvement: {carrier} at precision {precision} ({requested}): {summary}"
     )];
-    lines.extend(records.iter().enumerate().filter_map(|(index, record)| {
-        record
-            .warning()
-            .map(|text| format!("point {index}: {text}"))
-    }));
+    lines.extend(
+        records
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (_, _, warning))| {
+                warning
+                    .as_ref()
+                    .map(|text| format!("point {index}: {text}"))
+            }),
+    );
     lines
 }
 
