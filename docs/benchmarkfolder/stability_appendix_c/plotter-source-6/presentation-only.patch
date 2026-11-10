@@ -1,0 +1,115 @@
+--- plotter-source-5/plot_metrics.py
++++ plotter-source-6/plot_metrics.py
+@@ -204,7 +204,8 @@
+             complete = [row['fraction'] if row['fraction'] and row['fraction'] > 0 else math.nan
+                         for row in tails]
+             top.step(thresholds, complete, where='post', color=COLORS[backend],
+-                     label=f"{BACKENDS[backend]} ({tails[0]['exact_zero_metrics']} zeros)")
++                     label=f"{BACKENDS[backend]} (zero:{tails[0]['exact_zero_metrics']}; "
++                           f"unavailable:{tails[0]['unavailable']}/{n})")
+             if any(row['unavailable'] for row in tails):
+                 lower = [row['lower'] if row['lower'] > 0 else math.nan for row in tails]
+                 upper = [row['upper'] if row['upper'] > 0 else math.nan for row in tails]
+@@ -232,11 +233,11 @@
+         ratio.set_ylabel('Ratio over Ninja'); ratio.set_xlabel('Target relative metric Δ')
+         note = fig.add_subplot(grid[2, column])
+         note.axis('off')
+-        note.text(0, 1, f'N={n}; empirical resolution={1/n:g}. Zero metrics counted in the legend.\n'
+-                  'Zero tails omitted on log y; unavailable points retain tail bounds.\n'
+-                  'Ninja ratios masked for incomplete populations or zero Ninja exceedances.',
++        note.text(0, 1, f'N={n}; empirical resolution={1/n:g}. Zero and unavailable counts in the legend.\n'
++                  'Dotted: upper bounds from unavailable outcomes, not measured failures.\n'
++                  'Zero tails omitted; ratios masked for missing outcomes or zero Ninja tail.',
+                   transform=note.transAxes, fontsize=7.5, va='top')
+-    subtitle = {'raw-dp-finite-consistency': 'Forced-DP internal consistency; not a true-error bound',
++    subtitle = {'raw-dp-finite-consistency': 'Host forced-DP/card-selected backend; not independent true error',
+                 'accepted-composite-internal-estimate': 'Accepted outputs after rescue; not a true-error bound',
+                 'accepted-reducer-disagreement': 'Accepted coefficients; disagreement is not true error'}[data['metric']]
+     reference = data.get('provenance', {}).get('reference_label')
+--- plotter-source-5/test_plot_metrics.py
++++ plotter-source-6/test_plot_metrics.py
+@@ -2,7 +2,10 @@
+ import importlib.util
+ import math
+ from pathlib import Path
++import sys
++import types
+ import unittest
++from unittest import mock
+ 
+ spec = importlib.util.spec_from_file_location('stability_plot_metrics', Path(__file__).with_name('plot_metrics.py'))
+ M = importlib.util.module_from_spec(spec)
+@@ -137,4 +140,57 @@
+         self.assertEqual(case['lanes'][0]['tail'][0]['unavailable'], 1)
+ 
+ 
++class PresentationTests(unittest.TestCase):
++    """Inspect emitted plot labels without matplotlib or filesystem writes."""
++
++    def render_labels(self, data):
++        matplotlib = types.ModuleType('matplotlib')
++        matplotlib.use = mock.Mock()
++        pyplot = types.ModuleType('matplotlib.pyplot')
++        figure = mock.MagicMock()
++        top, ratio, note = mock.MagicMock(), mock.MagicMock(), mock.MagicMock()
++        figure.add_subplot.side_effect = (top, ratio, note)
++        pyplot.figure = mock.Mock(return_value=figure)
++        pyplot.close = mock.Mock()
++        matplotlib.pyplot = pyplot
++        prefix = mock.Mock()
++        prefix.with_suffix.return_value.exists.return_value = False
++        with mock.patch.dict(sys.modules, {'matplotlib': matplotlib,
++                                          'matplotlib.pyplot': pyplot}), \
++                mock.patch.object(M, 'Path', return_value=prefix):
++            summary = M.render(data, 'unused', input_sha256='b' * 64)
++        labels = [call.kwargs['label'] for call in top.step.call_args_list
++                  if 'label' in call.kwargs]
++        title = figure.suptitle.call_args.args[0].replace('\n', ' ')
++        self.assertIn('Host forced-DP/card-selected backend', title)
++        return labels, note.text.call_args.args[2], summary
++
++    def test_each_backend_label_reports_zero_and_unavailable_counts(self):
++        data = dataset()
++        data['cases'][0]['lanes'][1]['values'] = [0, 0, 1e-5]
++        labels, footer, summary = self.render_labels(data)
++        self.assertEqual(labels, ['CutTools (zero:1; unavailable:1/3)',
++                                  'Ninja (zero:2; unavailable:0/3)',
++                                  'COLLIER (zero:1; unavailable:1/3)',
++                                  'NinjaRS (zero:1; unavailable:1/3)',
++                                  'TIRust (zero:1; unavailable:1/3)'])
++        self.assertIn('Zero and unavailable counts in the legend.', footer)
++        self.assertIn('upper bounds from unavailable outcomes, not measured failures', footer)
++        self.assertEqual(summary, dict(M.summarize(data, M.threshold_grid(data)),
++                                       input_sha256='b' * 64))
++
++    def test_wholly_unavailable_backend_is_explicitly_labelled(self):
++        data = dataset()
++        data['cases'][0]['point_ids'] = list(range(100))
++        for lane in data['cases'][0]['lanes']:
++            lane['values'] = [None] * 100 if lane['backend'] == 9 else [0] * 100
++        labels, _, summary = self.render_labels(data)
++        self.assertIn('TIRust (zero:0; unavailable:100/100)', labels)
++        self.assertIn('CutTools (zero:100; unavailable:0/100)', labels)
++        row = summary['cases'][0]['lanes'][-1]['tail'][0]
++        self.assertEqual((row['lower'], row['upper'], row['fraction']), (0, 1, None))
++        for lane in summary['cases'][0]['lanes']:
++            self.assertTrue(all(value is None for value in lane['ratio_over_Ninja']))
++
++
+ if __name__ == '__main__': unittest.main()
+--- plotter-source-5/README.md
++++ plotter-source-6/README.md
+@@ -53,3 +53,13 @@
+ 3e-6 target has zero exceedances for every lane; no positive tail is drawn
+ through it. Earlier source4 retains the same point data and formulas but its
+ coarse display grid could extend a 1% plateau past the true final jump.
++
++This source6 presentation successor adds exact-zero and unavailable/N counts to
++every backend legend label, including a backend with all points unavailable.
++The footer identifies both counts. The source5 statistical functions and all
++plotting calculations are unchanged. Two mocked plotting tests inspect the
++actual emitted labels without importing matplotlib or writing plot artifacts.
++The raw caption specifies host forced-DP/card-selected backends; it does not
++observe reducer-internal precision. Dotted curves are explicitly upper bounds
++from unavailable outcomes, not measured failure fractions. An entirely
++unavailable lane has unknown bounds [0,1] over all 100 intended points.

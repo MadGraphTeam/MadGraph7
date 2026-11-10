@@ -1,0 +1,23 @@
+{
+  "actual_runtime_count": 15,
+  "attempted_workers": 0,
+  "bootstrap_calls": 0,
+  "compiler_support_substitutions": 3,
+  "diagnostic_calls": 0,
+  "loader_trace_executed": true,
+  "loader_trace_returncode": 0,
+  "missing_expected_paths": [
+    "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+    "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0",
+    "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34"
+  ],
+  "passed": true,
+  "scientific_results": false,
+  "scope": "retention verification, not numerical qualification",
+  "strict_loader_validation_passed": false,
+  "unexpected_actual_paths": [
+    "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libquadmath.so.0.0.0",
+    "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libstdc++.so.6.0.34",
+    "/nix/store/wy205ik03yp1vl55il5i332nbc285n0i-gfortran-15.2.0-libgcc/lib/libgcc_s.so.1"
+  ]
+}

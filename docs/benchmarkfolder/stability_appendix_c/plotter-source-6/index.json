@@ -1,0 +1,33 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 4179,
+      "sha256": "9e9beef63dd26a6ef109359339ed68675dca437b76f51bcbb4355e7f9611647e"
+    },
+    "plot_metrics.py": {
+      "bytes": 14448,
+      "sha256": "2fc1d3fb368d623726bb26a55ca6b85e207eb6ebaf07b97da1f1846a6e92395a"
+    },
+    "presentation-only.patch": {
+      "bytes": 6732,
+      "sha256": "673ffead7282f89d957ea906b3a66eabcad385669853da5d4d5cb60e90134a68"
+    },
+    "test_plot_metrics.py": {
+      "bytes": 9981,
+      "sha256": "1da9226b62e0304a9ebe2b9d607508b520ac9abe5e49a142cce86537687b5fd6"
+    }
+  },
+  "interpretation": "host forced-DP/card-selected backend; reducer-internal precision/actualbackend unobserved; dotted curves are upper bounds due unavailable outcomes, not measured failure fractions",
+  "predecessor": {
+    "path": "../plotter-source-5/index.json",
+    "sha256": "fe16afaae081694af3eb3a7e7c8ec9b9d037933b1938e6afa6ba56522c507e41"
+  },
+  "schema": "madloop-stability-plotter-source-v1",
+  "status": "source-only; presentation qualification and explicit unavailable counts",
+  "validation": {
+    "nonrender_statistical_functions_AST_identical_to_source5": true,
+    "pure_statistical_and_mocked_presentation_tests": 23,
+    "result": "passed",
+    "synthetic_preview": "legend/footer/bounds and masked-ratio layout inspected; no measured data rendered"
+  }
+}
