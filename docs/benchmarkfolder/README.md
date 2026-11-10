@@ -356,6 +356,13 @@ inputs missing. The original capture failure and later inventory-admission
 failure remain visible. These boundary diagnostics establish neither independent
 accuracy nor the exact cause of every internal fallback failure.
 
+The optional private diagnostic bridge has no usable library or numerical
+result. Its [first build failure](experiments/tirust-first-failure-capture/diagnostics-private-build-failed-1/README.md)
+retains compiler resource errors; the [second attempt](experiments/tirust-first-failure-capture/diagnostics-private-build-failed-2/README.md)
+retains a build timeout. Both preserve their source proposals, logs and pure
+verification commands. They leave the inner fallback diagnosis open and do
+not change the installed reduction libraries or production precision policy.
+
 The [published 31-page preceding-source PDF](https://github.com/MadGraphTeam/MadGraph7/blob/913a746201eb6ef806ccb219c890a7f3486d6322/docs/benchmarkfolder/benchmark.pdf)
 retains its exact source, ledger and plots at commit `913a746201eb6`. Its SHA-256 is
 `91ceeae99968df742e7e141467e3bab321394a0512328be7df9be0f5b86d559a`.

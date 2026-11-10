@@ -1,0 +1,64 @@
+--- a/replay.c
++++ b/replay.c
+@@ -25,8 +25,12 @@
+ _Static_assert(offsetof(ml_tirust_complex, re) == 0 &&
+                offsetof(ml_tirust_complex, im) == 8, "Unexpected complex layout");
+ 
+-enum { MAX_REQUESTS = 12, MAX_EVALUATIONS = 24, MAX_PATH_BYTES = 4096,
++enum { MAX_REQUESTS = 6, MAX_EVALUATIONS = 12, MAX_PATH_BYTES = 4096,
+        MAX_INPUT_BYTES = 32768, ERROR_CAPACITY = 4096, MAX_OUTPUT = 504 };
++
++/* Private bridge metadata only. This accessor never clears LAST_ERROR. */
++extern size_t ml_tirust_private_dp_diagnostics_v1(unsigned char *, size_t);
++enum { PRIVATE_DIAGNOSTIC_CAPACITY = 65536 };
+ 
+ struct request {
+     char path[MAX_PATH_BYTES + 1];
+@@ -96,6 +100,19 @@
+     if (strcmp(stage, "destroy") == 0)
+         fprintf(out, ",\"destroy_succeeded\":%s",
+                 status == TIRUST_SUCCESS ? "true" : "false");
++    if (strcmp(stage, "evaluate") == 0) {
++        unsigned char diagnostic[PRIVATE_DIAGNOSTIC_CAPACITY];
++        size_t needed, copied;
++        needed = ml_tirust_private_dp_diagnostics_v1(diagnostic, sizeof diagnostic);
++        if (needed == 0 || needed > sizeof diagnostic) return 0;
++        copied = needed - 1;
++        if (diagnostic[copied] != 0) return 0;
++        fprintf(out, ",\"private_diagnostic_required\":%zu,"
++                "\"private_diagnostic_copy_truncated\":false,"
++                "\"private_diagnostic_encoding\":\"latin1-bytes\","
++                "\"private_diagnostic\":", needed);
++        json_bytes(out, diagnostic, copied);
++    }
+     /* Even a poisoned or unchanged output buffer is not read on failure. */
+     if (strcmp(stage, "evaluate") == 0 && status == TIRUST_SUCCESS) {
+         fprintf(out, ",\"output_bits\":[");
+@@ -198,7 +215,7 @@
+     r->method = h[3]; r->group = h[4]; r->n = h[5]; r->rank = h[6];
+     r->plen = h[7]; r->slen = h[8]; r->mlen = h[9]; r->olen = h[10];
+     r->poles = h[11]; r->finite = h[12]; r->check = h[13]; r->cache = h[14];
+-    if (r->phase != 1 || r->method < 1 || r->method > 3 ||
++    if (r->case_id != 1 || r->phase != 1 || r->method < 1 || r->method > 3 ||
+         r->poles != TIRUST_POLES_BOTH || r->finite != 1 ||
+         r->cache != 0 || r->check != (r->method == 2)) goto done;
+     if (r->case_id == 1) {
+@@ -254,6 +271,7 @@
+         int closed = fclose(in);
+         if (state < 0 || closed != 0) return 0;
+     }
++    if (*count != 6) return 0;
+     return 1;
+ bad:
+     fclose(in);
+@@ -312,8 +330,8 @@
+         fputs("usage: capture-replay REQUEST_MANIFEST\n", stderr); return 2;
+     }
+     /* Validate the entire allowlisted batch before any bridge invocation.
+-     * An empty manifest is retained as an empty journal; the controller must
+-     * report all uncaptured targets explicitly rather than inventing inputs.
++     * Exactly the six captured Zgg requests are required; missing ZZgg
++     * inputs remain unavailable and are never reconstructed here.
+      */
+     if (!manifest(argv[1], requests, &count)) {
+         fputs("invalid replay manifest or captured input\n", stderr); return 2;

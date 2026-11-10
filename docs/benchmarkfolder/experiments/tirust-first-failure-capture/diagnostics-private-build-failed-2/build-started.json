@@ -1,0 +1,13 @@
+{
+  "commands": [],
+  "cpus_nonexclusive": [
+    16,
+    17
+  ],
+  "maximum_wall_seconds": 900,
+  "memory_bytes_per_build_process": 17179869184,
+  "native_replay_started": false,
+  "private_dso_loaded": false,
+  "source_packet_index_sha256": "9c962ee3f7117eba4399d5db3253533ecf92dbcf138964b18b446c363f4ca1d4",
+  "status": "started"
+}

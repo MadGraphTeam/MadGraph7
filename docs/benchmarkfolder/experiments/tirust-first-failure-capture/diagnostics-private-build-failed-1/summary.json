@@ -1,0 +1,25 @@
+{
+  "additional_error": "oneloop: rustc-LLVM ERROR: out of memory; SIGABRT",
+  "all_original_source_tool_runtime_pins_still_match": true,
+  "cargo_returncode": 101,
+  "causal_scope": "Post-terminal host observations cannot prove the instantaneous cause of the initial EAGAIN. The4GiB child address-space limit is consistent with the explicit later allocation failure; session/user cgroup counters show no local OOM/pids-max events.",
+  "controller_status": "failed",
+  "elapsed_seconds": 518.8656364851631,
+  "expected_private_artifacts_present": {
+    "capture/capture-replay.o": false,
+    "capture/stability-check": false,
+    "target/release/libmadloop_tirust_private_diag.so": false
+  },
+  "native_replay_started": false,
+  "numerical_acceptance_claimed": false,
+  "original_first_error": "Symbolica rustc coordinator failed to spawn work thread: OS11 WouldBlock Resource temporarily unavailable",
+  "partial_build_artifact_files": 1130,
+  "performance_acceptance_claimed": false,
+  "private_dso_loaded": false,
+  "source_cache_unchanged": true,
+  "source_packet_index_sha256": "755a2d95c1478508ee41c69f11174339440210458e97e4e1eb259de912f3c6e0",
+  "staged_sources_unchanged": true,
+  "tensor_evaluations": 0,
+  "tool_observed_exit_code": 1,
+  "tool_session_id": 54263
+}

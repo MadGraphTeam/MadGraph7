@@ -1,0 +1,27 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "16,17",
+    "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/c++",
+    "--version"
+  ],
+  "observation_scope": "Post-build sourced CXX selection; not a complete retrospective compiler environment snapshot",
+  "resolved_executable_bytes": 10845,
+  "resolved_executable_sha256": "45df86fd0167b9cfc13d62af6527f59063c67de8765ccb5c1583534e86e913f4",
+  "resolved_path": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/g++",
+  "returncode": 0,
+  "selected_bytes": 10845,
+  "selected_path": "/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/c++",
+  "selected_sha256": "45df86fd0167b9cfc13d62af6527f59063c67de8765ccb5c1583534e86e913f4",
+  "source_environment_script_sha256": "4311818b26bf38090655003a2aa14431267b727a65d167671b948a65fc54de00",
+  "stderr": "",
+  "stdout": "g++ (GCC) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "wrapper_default_compiler": {
+    "bytes": 2436136,
+    "path": "/nix/store/qxaq7jz61a6zkr2mq49i0zvqip2m2jj8-gcc-15.2.0/bin/g++",
+    "resolved_path": "/nix/store/qxaq7jz61a6zkr2mq49i0zvqip2m2jj8-gcc-15.2.0/bin/g++",
+    "scope": "Statically selected default compiler from the observed wrapper; no build-time execution trace proving CXX was invoked",
+    "sha256": "21ab613f2c8b2bd4af3cd1c4a2f1b5cdcd161067288c85cb463d364f4d55054a"
+  }
+}

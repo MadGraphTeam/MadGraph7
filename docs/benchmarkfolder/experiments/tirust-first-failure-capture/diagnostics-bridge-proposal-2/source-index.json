@@ -1,0 +1,75 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1874,
+      "sha256": "f21bbd74b499def3d4d4976f54b40e68dbe0f595af42d9567920fe63a6d8093b"
+    },
+    "bindings.json": {
+      "bytes": 60612,
+      "sha256": "d0d9d0d4e76597bc554aa36c757400f1b6672825e70ee98907d87c69e9d50d20"
+    },
+    "bridge.patch": {
+      "bytes": 4562,
+      "sha256": "0ea901b01a6d54df31981b8e640da809d734297f2ca6697a658ef41b923260b6"
+    },
+    "bridge_patch.py": {
+      "bytes": 6322,
+      "sha256": "2a1e7d1a5deb032961618163ac90d655a4a7d9fe901fdbb5f5f1d75600ac12d7"
+    },
+    "build.py": {
+      "bytes": 11105,
+      "sha256": "1c971b5766b1627ca9291840fd902146c82966d019bda0e4189698d35c3d78c6"
+    },
+    "driver_patch.py": {
+      "bytes": 2759,
+      "sha256": "eb83b27aa869c98bd29e354a6b6efdfe5b111d1c6eb8a68b3636ff31b595139c"
+    },
+    "private-Cargo.toml": {
+      "bytes": 1087,
+      "sha256": "1a663d29776b1cd2e70bb714b6f612ea74d735a6f7d45c7ecda7a9e7dd2796d2"
+    },
+    "private-lib.rs": {
+      "bytes": 49845,
+      "sha256": "c1d73a666563692ec1228f4c6c9d55249a7c8726fcadb4f46fdcbb1ef34f6dce"
+    },
+    "private-replay.c": {
+      "bytes": 13284,
+      "sha256": "dc96943bc0cc0124beaf8f95fec30f79a615b95bf09b0b18de1b373732960be7"
+    },
+    "protocol.py": {
+      "bytes": 6805,
+      "sha256": "2a1fbd8a68780742ca7f741a7452f5dfd6c29a8f3a1febae029dc84446bd5dea"
+    },
+    "replay.patch": {
+      "bytes": 3036,
+      "sha256": "3c97d1e86d0dbc897a2117049b9e58487498a0580e94e12dce34f8e17bf2adc6"
+    },
+    "resource-delta.json": {
+      "bytes": 1244,
+      "sha256": "66d8fe7ef2ed470f0fee346d2e1f6b17143f8038d9f108e4d43152d879f1aedb"
+    },
+    "run_pure.py": {
+      "bytes": 844,
+      "sha256": "b7bb8f02f685113bf217bfc225dc8264c8aa4205687d8531fcf826889adfb1aa"
+    },
+    "test_bridge_patch.py": {
+      "bytes": 4415,
+      "sha256": "3568b1783090a9abac589285ffa3c5fbf2bc093b002cf2bdee781a1e6cb62b4d"
+    },
+    "test_driver_protocol.py": {
+      "bytes": 7925,
+      "sha256": "08fb2c9ddfa09132df908803272ef1bd80a7a80c868f1478e224e337bc259672"
+    },
+    "verify.py": {
+      "bytes": 2553,
+      "sha256": "685890aec9af6c1cf830d417148ea20fedca17d7a97a7fcbd226a01a66c73089"
+    }
+  },
+  "native_evaluations": 0,
+  "payload_bytes": 178272,
+  "payload_files": 16,
+  "private_build_observed": false,
+  "private_dso_loaded": false,
+  "production_or_reference_changes": false,
+  "schema": "tirust_private_public_diagnostics_source_index_v2"
+}

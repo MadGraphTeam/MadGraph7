@@ -1,0 +1,68 @@
+{
+  "actual_tool_exit_code": 1,
+  "actual_tool_session_id": 3731,
+  "files": {
+    "README.md": {
+      "bytes": 2817,
+      "sha256": "f190fb4a0a3e96cc0a1d56bc3578557ae899db753f03347d0f93eea279455725"
+    },
+    "build-started.json": {
+      "bytes": 334,
+      "sha256": "544b19c07299437f1052c35b370f5ff00a33c5d7995f6237b103e6dc24c94421"
+    },
+    "build-terminal.json": {
+      "bytes": 1545,
+      "sha256": "c994a1dbf2258fbb6efaadef704d735a2fb1d706446398ff9e567b6a7c66f196"
+    },
+    "build.log": {
+      "bytes": 24329,
+      "sha256": "dc819eac5c100da2cbfb880f0194259ccfcc2ad2a3c10c34240f422897365eb3"
+    },
+    "cache-sources-after.json": {
+      "bytes": 1413828,
+      "sha256": "a6414bc5f958536cbc5928d6cdcdcad6a2b95cf0eacb41a10f766be3f3ed5a13"
+    },
+    "cache-sources-before.json": {
+      "bytes": 1413828,
+      "sha256": "a6414bc5f958536cbc5928d6cdcdcad6a2b95cf0eacb41a10f766be3f3ed5a13"
+    },
+    "gmp-build-script-output.txt": {
+      "bytes": 3760,
+      "sha256": "50fd03676c80c90e1b9affe1d2ae81b487961978795480c39f165ced37436324"
+    },
+    "gmp-native-cache-observation.json": {
+      "bytes": 6224,
+      "sha256": "eeff2027e785058c535222516acb4f55001edf4e421da03c5c11927bd0557067"
+    },
+    "partial-build-file-hashes.json": {
+      "bytes": 169400,
+      "sha256": "ca38f0e49b1c1dff3352c7952ed365e535ff02d67365f5b0a6d25f0c8ea9c9b3"
+    },
+    "private-ELF-absence-observation.json": {
+      "bytes": 14287,
+      "sha256": "bcddf678dd427db55da64890a5bd59d35b2be4b73cf19368af5e9c447ded0f64"
+    },
+    "staged-source-files-after.json": {
+      "bytes": 57390,
+      "sha256": "9bf80463607dfb92d54d3e666af3c7b983bcd4b437cc6e778bf2ae82e7b1767e"
+    },
+    "staged-source-files.json": {
+      "bytes": 57390,
+      "sha256": "9bf80463607dfb92d54d3e666af3c7b983bcd4b437cc6e778bf2ae82e7b1767e"
+    },
+    "summary.json": {
+      "bytes": 5976,
+      "sha256": "cdf2dcc81732c0adf1c81887248d1f49bfb435f6c2f28571476c5f05afd36b21"
+    },
+    "verify.py": {
+      "bytes": 3657,
+      "sha256": "bb0f68936b4ce1dcf1ec44131a4852aa961f40c524c88b95c55e35a02de898dc"
+    }
+  },
+  "native_tensor_evaluations": 0,
+  "payload_bytes": 3174765,
+  "payload_files": 14,
+  "private_dso_loaded": false,
+  "schema": "private_diagnostic_timeout_build_retention_v2",
+  "usable_complete_private_DSO_found": false
+}
