@@ -910,7 +910,8 @@ again on NinjaRS from its original exact inputs in the call's arithmetic,
 after the TIRust call, and that point's lane records NinjaRS with the reason
 (a point NinjaRS fails too fails with both reasons). In double-double and
 arbitrary precision every point the fallback serves is guarded: its value
-runs the reduction-direction check (cached masters) in the call's arithmetic
+runs a rotation re-test (the recommended checks' rotation of the evaluated
+point) in the call's arithmetic
 and fails typed when the check's relative estimate exceeds
 `reduction_target`, never below 1e-5 (a binary64 fallback point is served
 unguarded), recorded per point

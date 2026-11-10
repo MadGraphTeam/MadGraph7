@@ -338,18 +338,18 @@ forces NinjaRS for every point (for instance for a higher accuracy). A
 TIR-only artifact has no fallback (NinjaRS is refused typed there).
 
 In double-double and arbitrary precision every point the fallback serves
-is **guarded**: its NinjaRS value runs the reduction-direction check (every
-loop numerator reduced a second time in a reversed frame, its coefficients
-and the cached master integrals reused:
-`VirtualStabilityChecks(reduction_direction=True)` without `rescaled`) in
-the call's own arithmetic (never a higher one), and the point fails typed
+is **guarded**: its NinjaRS value runs a rotation re-test (the evaluated
+point, i.e. the given inputs improved in the call's arithmetic, rotated
+exactly by the recommended checks' rotation and evaluated again:
+`VirtualStabilityChecks(1)`'s check) in the call's own arithmetic (never a
+higher one), and the point fails typed
 when that check's relative estimate (each squared-order sector against its
 largest Laurent coefficient) exceeds the guard's limit: the call's target
 (`reduction_target`, below; a rescue level's own target on that level),
 never below 1e-5, i.e. max(target, 1e-5). The point's one reason names the
 fallback, TIRust's failure, the arithmetic, the estimate and the limit,
 e.g. `auto: TIRust refused or failed the point (...); the per-point NinjaRS
-fallback's value failed its reduction-direction check: estimate 1.4e2 >
+fallback's value failed its rotation check: estimate 1.4e2 >
 1e-5 = max(target 1e-5, 1e-5) (double-double)`; `on_failure="raise"`
 raises `EvaluationError` with it, `"return"` returns the point as a failed
 lane (and a rescue stack escalates it). The estimate is recorded in the
@@ -360,10 +360,13 @@ In binary64 the fallback's value is served unguarded, with no estimate
 recorded: there the protection is the conditioning bound in NinjaRS's own
 fast engine (NinjaRS 71eddb15, below), and stability checks or the rescue
 stack flag what it serves.
-When the call's checks run that cached check it is reused; beside other
-checks (rotations, or the rescaled variant of the recommended checks and of
-every default rescue level) the served points are evaluated once more with
-it. The guard decides on the outputs the call returns: the summed value,
+When the call's checks run that rotation first (the recommended checks) it
+is reused; beside other checks (another rotation first, e.g. every default
+rescue level's, or the reduction checks alone) the served points are
+evaluated once more with it. The rotation re-test replaced the cached
+reduction-direction check, which did not see the double-double
+near-forward losses of NinjaRS (below); no false rejection was found on the
+regular double-double points measured. The guard decides on the outputs the call returns: the summed value,
 or on the resolved, correlated and selected calls each output (a helicity
 row, a colour correlator, a helicity selection), from the fallback's
 evaluation of the call's own rows only (only the selected helicities are
