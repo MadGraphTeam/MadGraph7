@@ -169,6 +169,25 @@ namespace mgOnGpu /* clang-format off */
     const std::complex<FP> s = std::sqrt( std::complex<FP>( c.real(), c.imag() ) );
     return cxsmpl<FP>( s.real(), s.imag() );
   }
+
+  // Powers, on the host only: Parameters.cc writes powers of the complex
+  // masses with them (heft: mdl_MH__exp__12 = pow( CMASS_mdl_MH, 12. ))
+  template<typename FP>
+  inline __host__ cxsmpl<FP>
+  pow( const cxsmpl<FP>& c, const FP& e )
+  {
+    const std::complex<FP> s = std::pow( std::complex<FP>( c.real(), c.imag() ), e );
+    return cxsmpl<FP>( s.real(), s.imag() );
+  }
+
+  template<typename FP>
+  inline __host__ cxsmpl<FP>
+  pow( const cxsmpl<FP>& c, const cxsmpl<FP>& e )
+  {
+    const std::complex<FP> s = std::pow( std::complex<FP>( c.real(), c.imag() ),
+                                         std::complex<FP>( e.real(), e.imag() ) );
+    return cxsmpl<FP>( s.real(), s.imag() );
+  }
 } /* clang-format on */
 
 // Expose the cxsmpl class outside the namespace

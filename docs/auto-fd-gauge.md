@@ -349,11 +349,38 @@ Two more things stood in the way of checking all this, and are fixed too:
   option (the Fortran one did not compile: no `CMASS_*` in `coupl.inc`); it
   now passes it on.
 
-Not addressed here, all pre-existing:
-- The madmatrix `HRDCOD=1` build is still broken with complex parameters.
-- `check language` disagrees in places without the complex-mass scheme
-  too: its C++ column (the retired `standalone_cpp`) does not apply the FD
-  gauge, and `t t~ > w+ w-` in the unitary gauge is 0.4% apart between
-  Fortran/C++ and madmatrix/Python.
-- MadSpin still falls back to its Fortran density backend in the
-  complex-mass scheme (`density_backend`).
+Two further madmatrix gaps in the complex-mass scheme showed up once MadSpin
+used it (any output with a running coupling, or with powers of a mass):
+- `G` and the parameters computed from it (`mdl_G__exp__2`) are typed
+  complex there. `computeDependentCouplings_fromG` left the complex `G` line
+  in (`aS` undeclared, `G` redefined) and wrote `mdl_G__exp__2` as a
+  `constexpr`. Now `G` is commented out like the real one, and a complex
+  dependent parameter is a `cxtype_sv` (`cxtype` in the float-vector branch).
+- `Parameters.cc` takes `pow` of a complex mass (heft): a host `pow(cxsmpl)`
+  now sits next to `sqrt`.
+
+**MadSpin now uses madmatrix in the complex-mass scheme.** `density_backend`
+had forced the Fortran output there. `g g > t t~` with
+`decay t > w+ b` / `decay t~ > w- b~` (`test_complex_mass_scheme`) gives
+byte-identical decayed events with the madmatrix and the Fortran density
+backends (same seed). `check language` agrees for `g g > t t~ g` (the `G^2`
+coupling) and `heft g g > h h` (the `pow`).
+
+**`check language` compared different phase-space points.** `t t~ > w+ w-`
+(0.4%) and `w+ w- > w+ w-` in the FD gauge (5%) failed, with or without the
+complex-mass scheme. There were three causes, none in a matrix element:
+- madmatrix's `check_sa` matrix mode printed the classic RAMBO point, then
+  evaluated another one. Its UMAMI buffer was overwritten with the momenta of
+  a `RamboSamplingKernelHost` at the unchanged energy.
+- The Fortran/C++ `check` drivers raise an energy at or below twice the sum
+  of the external masses to that value (`t t~ > w+ w-` at 1 TeV runs at
+  1013.676 GeV). madmatrix and the Python column did not.
+- The C++ FD `vxxxxx` (`aloha_aux_functions.fd_cc`) wrote the full
+  longitudinal polarisation and no goldstone component, which equals the FD
+  one only at zero width (the external-width limit above).
+
+All three are fixed, and every column of both checks now agrees
+(`test_check_language_massive_initial_state_and_fd`).
+
+Not addressed here: the madmatrix `HRDCOD=1` build is still broken with
+complex parameters (pre-existing).

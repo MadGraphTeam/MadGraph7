@@ -2212,13 +2212,17 @@ class TestCmdShell2(unittest.TestCase,
         self.do('set auto_gauge False')
         self.do('set complex_mass_scheme True')
         try:
-            for gauge in ('unitary', 'FD'):
+            # g g > t t~ g: the running coupling GC_12 = i G^2 goes through
+            # mdl_G__exp__2, complex in the complex-mass scheme (a cxtype_sv
+            # among the dependent parameters, and G itself has to be left out)
+            for gauge, process in (('unitary', 'u u~ > w+ w-'), ('FD', 'u u~ > w+ w-'),
+                                   ('unitary', 'g g > t t~ g')):
                 self.do('set gauge %s' % gauge)
                 self.do('import model sm')
-                self.do('generate u u~ > w+ w-')
+                self.do('generate %s' % process)
                 fortran = get_value('standalone_fortran', './check')
                 madmatrix = get_value('standalone', './check_sa.exe')
-                self.assertGreater(max(abs(v) for v in fortran), 1e-6, gauge)
+                self.assertGreater(max(abs(v) for v in fortran), 1e-6, process)
                 self._assert_me_lists_close(madmatrix, fortran, rtol=1e-6)
         finally:
             self.do('set complex_mass_scheme False')
