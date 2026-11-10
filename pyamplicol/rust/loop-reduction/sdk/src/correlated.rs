@@ -214,6 +214,7 @@ impl Runtime {
             requested: self.stability_checks().enabled(),
         }
         .not_run_resolved();
+        let (inputs, kinematics) = self.improved_inputs(inputs)?;
         let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
         let points = inputs.point_ids.len();
         let spin_legs: Vec<usize> = inputs.spin_sources.keys().copied().collect();
@@ -273,11 +274,13 @@ impl Runtime {
                 )?
             }
         };
-        Ok(CorrelatedEvaluation {
+        let mut evaluation = CorrelatedEvaluation {
             history_ids: self.history_ids.clone(),
             spin_legs,
             ..evaluation
-        })
+        };
+        with_kinematics(&mut evaluation.diagnostics_json, kinematics)?;
+        Ok(evaluation)
     }
 }
 

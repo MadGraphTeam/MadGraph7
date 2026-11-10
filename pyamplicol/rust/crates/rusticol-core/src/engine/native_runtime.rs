@@ -5122,6 +5122,83 @@ impl NativeRuntime {
         self.set_model_parameters(&overrides)
     }
 
+    /// The binary64 masses the external wavefunctions take, per external
+    /// leg in the caller's (public) leg order (a particle absent from the
+    /// runtime's mass table is massless, as `sources::particle_mass_from_map`),
+    /// and the number of initial states, which come first: the targets of the
+    /// binary64 kinematics improvement (m-lit lit-psimprove (G6)).
+    pub fn external_masses_f64(&self) -> Result<(Vec<f64>, usize), RusticolError> {
+        let particles = self.external_particles()?;
+        let initial = particles
+            .iter()
+            .take_while(|particle| particle.role == "initial")
+            .count();
+        if initial == 0
+            || initial == particles.len()
+            || particles[initial..]
+                .iter()
+                .any(|particle| particle.role == "initial")
+        {
+            return Err(RusticolError::invalid_argument(
+                "the kinematics improvement needs the initial states first, then the final states",
+            ));
+        }
+        let masses = particles
+            .iter()
+            .map(|particle| {
+                self.runtime
+                    .current_particle_mass(particle.pdg)
+                    .or_else(|_| self.runtime.current_particle_mass(-particle.pdg))
+                    .unwrap_or(0.0)
+            })
+            .collect();
+        Ok((masses, initial))
+    }
+
+    /// The binary64 kinematics improvement of flat binary64 points
+    /// (`[point][leg][E, px, py, pz]`, the caller's leg order, physical
+    /// momenta) with `variant` and MadLoop's chain, toward
+    /// [`Self::external_masses_f64`] (m-lit lit-psimprove: the binary64
+    /// switch of the tree C ABI and of the Python tree runtime): the points
+    /// to evaluate and one record per point.
+    pub fn improve_f64_points(
+        &self,
+        momenta: &[f64],
+        point_count: usize,
+        variant: crate::kinematics_improvement::Variant,
+    ) -> Result<(Vec<f64>, Vec<crate::kinematics_improvement::Record>), RusticolError> {
+        use crate::kinematics_improvement::{Tolerances, binary64};
+
+        let external_count = self.external_count();
+        validate_flat_momentum_shape(momenta.len(), point_count, external_count)?;
+        let (masses, initial) = self.external_masses_f64()?;
+        let tolerances = Tolerances::default();
+        let mut improved = Vec::with_capacity(momenta.len());
+        let mut records = Vec::with_capacity(point_count);
+        for point in momenta.chunks_exact(4 * external_count) {
+            let legs: Vec<[f64; 4]> = point
+                .chunks_exact(4)
+                .map(|leg| [leg[0], leg[1], leg[2], leg[3]])
+                .collect();
+            let outcome =
+                binary64::improve_point(&legs, initial, &masses, variant, true, &tolerances);
+            improved.extend(outcome.legs.iter().flatten());
+            records.push(outcome.record);
+        }
+        Ok((improved, records))
+    }
+
+    /// The pending warnings, not consumed (the tree C ABI adds its
+    /// kinematics record to them, m-lit lit-psimprove (G4)).
+    pub fn pending_warnings(&self) -> &[String] {
+        &self.pending_warnings
+    }
+
+    /// Whether warnings are muted.
+    pub fn warnings_muted(&self) -> bool {
+        self.warnings_muted
+    }
+
     pub fn mute_warnings(&mut self) {
         self.warnings_muted = true;
     }

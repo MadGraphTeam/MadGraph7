@@ -452,7 +452,7 @@ def test_a_process_in_the_class_reports_one_not_applicable_ward_row(monkeypatch)
     # Loop-induced: the Ward probes are not evaluated (no legs probed).
     probed = []
 
-    def point_probes(_executor, _point, _scale, legs, _carriers, _floors):
+    def point_probes(_executor, _point, _scale, legs, _carriers, _floors, **_options):
         probed.append(list(legs))
         return [{"probe": "finiteness", "carrier": "double"}], [
             induced.ProbeResult("finiteness", {"k": 0.1})
@@ -771,6 +771,8 @@ def test_a_born_interfered_request_passes_from_card_and_artifact(tmp_path):
     assert {row.subject.split()[-1] for row in poles} == {"1/eps", "1/eps^2"}
     assert all(row.verdict == checks.PASS for row in poles)
     assert all(row.carrier == "double" and row.ratio <= 1 for row in poles)
+    # A binary64 rung: no improvement (off by default in binary64).
+    assert all(row.kinematics is None for row in poles)
     ward = _rows(report, "ward")
     assert sorted(row.subject for row in ward) == [
         "leg 3, c = 1",
@@ -854,6 +856,10 @@ def test_a_dropped_r2_vertex_fails_the_ward_check(tmp_path):
     for row in ward:
         # binary64 far beyond ten times its estimate, then double-double too.
         assert row.verdict == checks.FAIL and row.carrier == "double-double"
+        # The double-double rung evaluates its lifted point improved in
+        # double-double (m-lit lit-psimprove (G5)); beams along z: MadLoop's
+        # z-shift (the default) produces it.
+        assert row.kinematics == "z-shift", row
         assert row.fallback.startswith("double ratio")
         assert float(row.fallback.split()[2]) > 1e5
         assert row.ratio > 1e5

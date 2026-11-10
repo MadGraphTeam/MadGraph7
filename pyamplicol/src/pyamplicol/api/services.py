@@ -153,6 +153,23 @@ def _generation_resource_resolution(
     )
 
 
+def _kinematics_options(
+    setting: str | None, binary64: bool | None
+) -> dict[str, object]:
+    """The kinematics improvement options of a load or a call, validated
+    (``pyamplicol.kinematics``: the native policy's values and refusals),
+    forwarded only when set."""
+
+    from pyamplicol import kinematics
+
+    options: dict[str, object] = {}
+    if setting is not None:
+        options["kinematics_improvement"] = kinematics.setting_value(setting)
+    if binary64 is not None:
+        options["kinematics_improvement_binary64"] = kinematics.binary64_value(binary64)
+    return options
+
+
 def _get_runtime_loader() -> RuntimeLoader:
     if _runtime_loader is not None:
         return _runtime_loader
@@ -425,6 +442,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> Runtime:
         """Load one process by stable ID, alias ID, or exact expression.
 
@@ -476,6 +495,9 @@ class Runtime:
             options["reduction_unchecked"] = reduction_unchecked_value(
                 reduction_unchecked
             )
+        options.update(
+            _kinematics_options(kinematics_improvement, kinematics_improvement_binary64)
+        )
         loader = _get_runtime_loader()
         if options and not _accepts_keyword_arguments(loader, *options):
             raise CompatibilityError(
@@ -650,6 +672,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
 
@@ -663,7 +687,17 @@ class Runtime:
         evaluator state. Explicit ``arithmetic`` selects double, DoubleFloat or
         arbitrary precision. Virtual runtimes retain their loaded arithmetic
         and R2 defaults when omitted, and accept scalar or per-point positive
-        ``mu_r2``; exact inputs are forwarded unchanged. ``stability`` (a
+        ``mu_r2``; exact inputs are forwarded unchanged, except that an
+        evaluation in a carrier above binary64 (a virtual in double-double or
+        arbitrary precision, at any digit count; a tree at a precision other
+        than 16, and the tree correlated paths in their carrier, by default
+        ``"arbitrary"`` also at 16 digits) first improves each point to exact
+        conservation and on-shell externals in its carrier
+        (``kinematics_improvement``, default MadLoop's ``"z-shift"``;
+        ``kinematics_improvement_binary64`` for binary64 evaluations, default
+        off; docs/user/configuration.md, "Kinematics improvement of the
+        input points") and records it (virtuals per lane, trees in the
+        warnings channel, ``take_warnings``). ``stability`` (a
         ``VirtualRescuePolicy``) runs the built-in stability rescue of a v2
         virtual runtime for this call, replacing a load-time default policy;
         with neither policy there are no hidden precision retries
@@ -744,6 +778,11 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
             )
         )
         self._require_evaluation_options(self._backend.evaluate, options)
@@ -866,6 +905,15 @@ class Runtime:
         return options
 
     @staticmethod
+    def _kinematics_options(
+        setting: str | None, binary64: bool | None
+    ) -> dict[str, object]:
+        """The kinematics improvement options (``pyamplicol.kinematics``),
+        forwarded only when set (tree and virtual runtimes)."""
+
+        return _kinematics_options(setting, binary64)
+
+    @staticmethod
     def _require_evaluation_options(
         operation: object, options: Mapping[str, object]
     ) -> None:
@@ -964,6 +1012,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
@@ -980,6 +1030,8 @@ class Runtime:
             reduction=reduction,
             reduction_target=reduction_target,
             reduction_unchecked=reduction_unchecked,
+            kinematics_improvement=kinematics_improvement,
+            kinematics_improvement_binary64=kinematics_improvement_binary64,
         )
 
     def evaluate_resolved(
@@ -999,6 +1051,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
@@ -1037,6 +1091,11 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+            )
+        )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
             )
         )
         if color_resolution is not None:
@@ -1087,6 +1146,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
@@ -1104,6 +1165,8 @@ class Runtime:
             reduction=reduction,
             reduction_target=reduction_target,
             reduction_unchecked=reduction_unchecked,
+            kinematics_improvement=kinematics_improvement,
+            kinematics_improvement_binary64=kinematics_improvement_binary64,
             color_resolution=color_resolution,
         )
 
@@ -1132,6 +1195,10 @@ class Runtime:
         its Laurent coefficients, the Born per Born order, and the explicit
         sums ``sum_orders()`` / ``sum_born_orders()``; nothing is evaluated
         twice and no order is summed silently.
+
+        Both: ``kinematics_improvement`` / ``kinematics_improvement_binary64``
+        as in :meth:`evaluate` (the tree runtime's points above binary64,
+        or in binary64 under the switch, are improved first).
         """
 
         if self.contribution_kind != "tree":
@@ -1149,6 +1216,10 @@ class Runtime:
                     ),
                 )
             )
+        kinematics_options = self._kinematics_options(
+            virtual_options.pop("kinematics_improvement", None),
+            virtual_options.pop("kinematics_improvement_binary64", None),
+        )
         if virtual_options:
             raise CompatibilityError(
                 "tree evaluate_orders takes no virtual options: "
@@ -1177,6 +1248,7 @@ class Runtime:
                 name="color-flow",
             ),
             precision=precision,
+            **kinematics_options,
         )
         if not isinstance(result, TreeOrderEvaluation):
             raise EvaluationError(
@@ -1190,6 +1262,8 @@ class Runtime:
         *,
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         precision: int | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> TreeGradedEvaluation:
         """Return tree values split by power of N_c: ``values[point][degree]``.
 
@@ -1200,7 +1274,8 @@ class Runtime:
         term is evaluated at N_c = 3 and summed over the selected helicities;
         the degrees of a point sum to :meth:`evaluate` up to rounding. The
         same split per helicity is the contracted colour axis of
-        :meth:`evaluate_resolved`. Precision follows :meth:`evaluate`.
+        :meth:`evaluate_resolved`. Precision and the kinematics improvement
+        follow :meth:`evaluate`.
         """
 
         if self.contribution_kind != "tree":
@@ -1214,7 +1289,11 @@ class Runtime:
                 "color.graded and full colour"
             )
         resolved = self.evaluate_resolved(
-            momenta, helicities=helicities, precision=precision
+            momenta,
+            helicities=helicities,
+            precision=precision,
+            kinematics_improvement=kinematics_improvement,
+            kinematics_improvement_binary64=kinematics_improvement_binary64,
         )
         if not isinstance(resolved, ResolvedEvaluation):
             raise EvaluationError("tree runtime returned an invalid resolved result")
@@ -1366,6 +1445,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -1397,6 +1478,11 @@ class Runtime:
                 reduction_unchecked,
             )
         )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
+            )
+        )
         if self._virtual:
             operation = self._virtual_correlation_operation("evaluate_correlated")
             self._require_evaluation_options(operation, options)
@@ -1418,14 +1504,39 @@ class Runtime:
                     "virtual correlation backend returned an invalid result"
                 )
             return value
+        digits = _validate_precision(16 if precision is None else precision)
+        carrier = "arbitrary" if arithmetic is None else arithmetic
         return self._correlator_evaluator().evaluate(
-            momenta,
+            self._tree_improved(momenta, digits, carrier, options),
             color_correlation=color_correlation,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(16 if precision is None else precision),
-            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+            precision=digits,
+            arithmetic=carrier,
+        )
+
+    def _tree_improved(
+        self,
+        momenta: Momenta,
+        precision: int,
+        arithmetic: str,
+        options: Mapping[str, object],
+    ) -> Momenta:
+        """A tree correlated call's points under the kinematics improvement
+        (m-lit lit-psimprove; its carrier ``arithmetic``, default
+        ``"arbitrary"`` at any precision: DECISIONS 2026-11-10 02:29 (G3),
+        the carrier kind)."""
+
+        improve = getattr(self._backend, "_improved", None)
+        if improve is None:
+            return momenta
+        return improve(
+            momenta,
+            precision,
+            options.get("kinematics_improvement"),
+            options.get("kinematics_improvement_binary64"),
+            arithmetic,
         )
 
     def evaluate_correlated_graded(
@@ -1436,22 +1547,30 @@ class Runtime:
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> _pyamplicol.GradedCorrelatedEvaluation:
         """:meth:`evaluate_correlated` split by power of N_c (tree artifacts
         graded by N_c: ``color.accuracy = "strict-lc"`` or ``"strict-nlc"``,
         or full colour with ``color.graded``). ``values[point][degree]`` is
-        the N_c^degree term at N_c = 3; the degrees sum to ``total``."""
+        the N_c^degree term at N_c = 3; the degrees sum to ``total``. The
+        kinematics improvement follows :meth:`evaluate_correlated`."""
 
         if self.contribution_kind != "tree":
             raise CompatibilityError("graded correlations are implemented for trees")
+        digits = _validate_precision(16 if precision is None else precision)
+        carrier = "arbitrary" if arithmetic is None else arithmetic
+        options = self._kinematics_options(
+            kinematics_improvement, kinematics_improvement_binary64
+        )
         return self._correlator_evaluator().evaluate_graded(
-            momenta,
+            self._tree_improved(momenta, digits, carrier, options),
             color_correlation=color_correlation,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(16 if precision is None else precision),
-            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+            precision=digits,
+            arithmetic=carrier,
         )
 
     def evaluate_correlated_many(
@@ -1471,6 +1590,8 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
         | dict[str, VirtualEvaluation]
@@ -1504,6 +1625,11 @@ class Runtime:
                 reduction_unchecked,
             )
         )
+        options.update(
+            self._kinematics_options(
+                kinematics_improvement, kinematics_improvement_binary64
+            )
+        )
         if self._virtual:
             operation = self._virtual_correlation_operation("evaluate_correlated_many")
             self._require_evaluation_options(operation, options)
@@ -1532,14 +1658,16 @@ class Runtime:
                     "virtual correlation backend returned invalid grouped results"
                 )
             return cast(dict[str, VirtualEvaluation], values)
+        digits = _validate_precision(16 if precision is None else precision)
+        carrier = "arbitrary" if arithmetic is None else arithmetic
         return self._correlator_evaluator().evaluate_many(
-            momenta,
+            self._tree_improved(momenta, digits, carrier, options),
             requests,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(16 if precision is None else precision),
-            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+            precision=digits,
+            arithmetic=carrier,
         )
 
     def clear(self) -> None:
@@ -1635,6 +1763,22 @@ class Runtime:
 
     def set_model_parameter(self, name: str, value: complex | float | int) -> None:
         self.set_model_parameters({name: value})
+
+    def take_warnings(self) -> tuple[str, ...]:
+        """Consume a tree runtime's pending warnings: the native runtime's
+        not yet emitted ones and the kinematics improvement's record of the
+        most recent improved call (m-lit lit-psimprove: a summary line, e.g.
+        ``"kinematics-improvement: arbitrary at precision 32 (z-shift):
+        z-shift 4"``, and every typed warning, which is also issued as a
+        Python warning), the lines the C ABI's
+        ``rusticol_runtime_take_warnings_json`` returns. Nothing while the
+        warnings are muted; ``()`` for a virtual runtime (its records are in
+        its results)."""
+
+        operation = getattr(self._backend, "take_warnings", None)
+        if self._virtual or not callable(operation):
+            return ()
+        return tuple(operation())
 
     def mute_warnings(self) -> None:
         self._backend.mute_warnings()

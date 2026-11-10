@@ -878,3 +878,28 @@ def test_profile_takes_the_loop_settings() -> None:
     assert effective.evaluation.reduction == "tirust"
     assert effective.evaluation.reduction_unchecked is True
     assert effective.evaluation.mu_r2 == "1e4"
+
+
+def test_evaluate_profile_and_check_take_the_kinematics_improvement() -> None:
+    """m-lit lit-psimprove: the two runtime settings on the CLI of
+    ``evaluate``, ``profile`` and ``check`` (its rungs, (G5)), parsed into
+    the evaluation keys. Parsing only: the value is validated by the native
+    policy when the configuration is resolved (no argparse ``choices``; the
+    resolved configuration and the native refusal text are tested in
+    tests/unit/test_kinematics_improvement.py, which has the native
+    extension this job lacks)."""
+
+    for command, value, switch, expected in (
+        ("evaluate", "projection", "--kinematics-improvement-binary64", True),
+        ("profile", "off", "--no-kinematics-improvement-binary64", False),
+        ("check", "rescaling", "--kinematics-improvement-binary64", True),
+    ):
+        invocation = parse_cli((command, "--kinematics-improvement", value, switch))
+        assert invocation.dedicated["evaluation.kinematics_improvement"] == value
+        assert (
+            invocation.dedicated["evaluation.kinematics_improvement_binary64"]
+            is expected
+        ), command
+    default = parse_cli(("evaluate",))
+    assert "evaluation.kinematics_improvement" not in default.dedicated
+    assert "evaluation.kinematics_improvement_binary64" not in default.dedicated

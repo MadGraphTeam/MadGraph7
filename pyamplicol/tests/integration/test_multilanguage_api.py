@@ -926,7 +926,14 @@ def test_all_languages_infer_public_order_and_accept_custom_kinematics(
     high_precision_a = tmp_path / "public-high-precision-a.json"
     high_precision_b = tmp_path / "public-high-precision-b.json"
     perturbed = [list(leg) for leg in string_point]
-    perturbed[0][0] = str(Decimal(perturbed[0][0]) + Decimal("1e-25"))
+    # A consistent perturbation of two final-state momenta (conservation
+    # kept): at precision 50 the default kinematics improvement (MadLoop's
+    # z-shift, m-lit lit-psimprove) recomputes both initial states' energy
+    # and pz from the final states, so a perturbation of the first energy
+    # alone no longer reaches the evaluated point; final-state px values do
+    # (the intent, distinct 50-digit inputs give distinct values, kept).
+    perturbed[2][1] = str(Decimal(perturbed[2][1]) + Decimal("1e-25"))
+    perturbed[3][1] = str(Decimal(perturbed[3][1]) - Decimal("1e-25"))
     high_precision_a.write_text(json.dumps(string_point) + "\n", encoding="utf-8")
     high_precision_b.write_text(json.dumps(perturbed) + "\n", encoding="utf-8")
     exact_a = _run_driver(

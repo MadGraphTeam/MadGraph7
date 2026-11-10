@@ -200,6 +200,25 @@ int rusticol_virtual_set_reduction_target(rusticol_virtual_handle *handle,
  * nothing changes. */
 int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
   int unchecked);
+/* Kinematics improvement of later evaluations (the Python API's
+ * kinematics_improvement=; m-lit lit-psimprove; additive, ABI version 2 kept):
+ * "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to 1; the
+ * default, also for NULL), "rescaling" (ImprovePSPoint 1), "projection" (the
+ * frame-independent minimal-norm projection) or "off". Before a double-double
+ * or arbitrary-precision evaluation (a binary64 one only under
+ * rusticol_virtual_set_kinematics_improvement_binary64) each point is moved
+ * onto exact energy-momentum conservation and the external shells in that
+ * carrier, from the caller's inputs in the caller's leg order; the diagnostics
+ * record it per point ("kinematics"). Another value is
+ * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
+int rusticol_virtual_set_kinematics_improvement(rusticol_virtual_handle *handle,
+  const char *setting);
+/* Whether later binary64 evaluations are improved too (the Python API's
+ * kinematics_improvement_binary64=; additive, ABI version 2 kept): 1 improves
+ * them with the selected variant, 0 (the default) evaluates them as given.
+ * Any other value is RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
+int rusticol_virtual_set_kinematics_improvement_binary64(
+  rusticol_virtual_handle *handle, int binary64);
 /* Stability checks of later evaluations (the Python API's stability_checks=,
  * VirtualStabilityChecks; additive, ABI version 2 kept): rotation_count
  * default rotations (the Python API's count; any number), or, with
