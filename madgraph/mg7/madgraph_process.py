@@ -1467,8 +1467,8 @@ class MadgraphProcess:
         gpu_backends = [b for b in resolved if b.startswith(("cuda", "hip"))]
         if recycled and gpu_backends:
             logger.info(
-                "--hel_recycling is CPU only: the %s build of %s uses the plain "
-                "matrix element", "/".join(gpu_backends), ", ".join(recycled)
+                "helicity recycling is CPU only: the %s build of %s uses the "
+                "plain matrix element", "/".join(gpu_backends), ", ".join(recycled)
             )
         # On a CPU the recycled build itself falls back to the plain matrix
         # element when its tables are too big for the SIMD width (see

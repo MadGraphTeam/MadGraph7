@@ -2377,8 +2377,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     @property
     def hel_recycling(self):
-        """Whether the output command asked for --hel_recycling=True (off by
-        default here; madevent's own option of the same name is separate)."""
+        """Whether the output is recycled: --hel_recycling=True, or 'auto', the
+        default `output standalone|mg7` sets when the option is not given.
+        An exporter built without the output command (check, tests) has no
+        P1N routines and stays plain; madevent's own option of the same name
+        is separate."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
+        return str(options.get('hel_recycling', False)).lower() \
+                                        in ('true', '1', 'yes', 'auto')
+
+    @property
+    def hel_recycling_explicit(self):
+        """Whether --hel_recycling=True was asked for on the command line
+        (rather than the 'auto' default)."""
         options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
         return str(options.get('hel_recycling', False)).lower() \
                                                 in ('true', '1', 'yes')
@@ -2503,7 +2514,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         nstmt = self.hr_count_statements(calls)
         limit = self.hel_recycling_max_stmts()
         if limit > 0 and nstmt > limit:
-            logger.warning('hel_recycling: %s is written WITHOUT recycling: its '
+            (logger.warning if self.hel_recycling_explicit else
+             logger.info)('hel_recycling: %s is written WITHOUT recycling: its '
                 'recycled block would be %d statements (%d helicity rows), more '
                 'than --hel_recycling_max=%d. Code that size no longer runs from the '
                 'caches and is slower than the plain build (2x at 22 MB of code). '
@@ -2538,8 +2550,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         if self.single_helicities and self.hel_recycling:
             refusal = self.hel_recycling_refusal()
             if refusal:
-                logger.warning('--hel_recycling is not supported with %s: %s is '
-                               'written without it.', refusal,
+                (logger.warning if self.hel_recycling_explicit else
+                 logger.debug)('--hel_recycling is not supported with %s: %s '
+                               'is written without it.', refusal,
                                os.path.basename(self.path))
             else:
                 recycle = True

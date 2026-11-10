@@ -2250,9 +2250,10 @@ class TestCmdShell2(unittest.TestCase,
         at simd_128, two events per lane in mixed precision. FPTYPE=d keeps the
         two builds within rounding of each other (1e-12); the warm-up must have
         produced the recycled build (HelRecycling.inc), or the test would compare
-        plain with plain.
+        plain with plain. The recycled side is the default output (helicity
+        recycling is on unless --hel_recycling=False).
         """
-        self._hel_recycling_vs_plain('g g > t t~ g')
+        self._hel_recycling_vs_plain('g g > t t~ g', recycled_flag='')
 
     def test_madmatrix_fd_hel_recycling_vs_plain(self):
         """--hel_recycling in the FD gauge must not change |M|^2 either.
@@ -2280,10 +2281,13 @@ class TestCmdShell2(unittest.TestCase,
                      'hr_p1n_fold<W_ACCESS, 4, true>'):
             self.assertIn(kind, calls, 'no %s group in the recycled build' % kind)
 
-    def _hel_recycling_vs_plain(self, process):
-        """plain and --hel_recycling standalone outputs of `process`, |M|^2
-        compared event by event (see test_madmatrix_hel_recycling_vs_plain);
-        returns the recycled subprocess directory"""
+    def _hel_recycling_vs_plain(self, process,
+                                recycled_flag=' --hel_recycling=True'):
+        """plain (--hel_recycling=False) and recycled standalone outputs of
+        `process`, |M|^2 compared event by event (see
+        test_madmatrix_hel_recycling_vs_plain); recycled_flag is what the
+        recycled output passes ('' for the default); returns the recycled
+        subprocess directory"""
         devnull = open(os.devnull, 'w')
         root = self.out_dir + '_hr'
         dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
@@ -2292,8 +2296,8 @@ class TestCmdShell2(unittest.TestCase,
                 shutil.rmtree(path)
         self.do('import model sm')
         self.do('generate %s' % process)
-        self.do('output standalone %s -f' % dirs['plain'])
-        self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f%s' % (dirs['recycled'], recycled_flag))
         proc = {}
         for name, path in dirs.items():
             proc_root = pjoin(path, 'SubProcesses')
@@ -2303,6 +2307,8 @@ class TestCmdShell2(unittest.TestCase,
             proc[name] = pjoin(proc_root, found[0])
         self.assertTrue(os.path.exists(pjoin(proc['recycled'], 'HelRecycling.inc')),
                         'the --hel_recycling warm-up did not produce the recycled build')
+        self.assertFalse(os.path.exists(pjoin(proc['plain'], 'HelRecycling.inc')),
+                         '--hel_recycling=False still produced a recycled build')
         ncomb = int(re.search(r'constexpr int ncomb = (\d+)',
                               open(pjoin(proc['plain'], 'ProcessData.h')).read()).group(1))
         nevt = 512
