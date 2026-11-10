@@ -314,8 +314,7 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
 def tree(tmp_path_factory):
     """u u~ > t t~ (built-in SM, recurrence) through the public Generator."""
 
-    from pyamplicol import ColorCorrelator, Generator, ModelSource
-    from pyamplicol.config import CorrelatorConfig
+    from pyamplicol import ColorCorrelator, CorrelatorConfig, Generator, ModelSource
 
     from tests.integration.test_builtin_sm_normalization import _config
 
