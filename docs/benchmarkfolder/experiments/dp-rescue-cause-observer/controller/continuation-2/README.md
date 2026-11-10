@@ -1,0 +1,7 @@
+# Pinned compiler-module guard correction
+
+Continuation 1 compiled the private observer DSO (`57a024fa…`) and passed the local MPFR and runtime-linkage checks. Its first QCD original Fortran executable also linked successfully. The controller then rejected `lib/mpmodule.mod` because it required every copied library-directory file to be an archive. Its failed manifest `0ef89470…`, sources, commands and logs remain unchanged.
+
+Both retained process snapshots identify this exact module in `existing_numerical_objects`: 24,356 bytes, SHA256 `b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f`, resolved source `vendor/CutTools/includects/mpmodule.mod`. The correction accepts only `lib/mpmodule.mod` with that exact pinned identity. It does not allow other nonarchives or add the module to the permitted linker `LOAD` inputs. All actual linker inputs still pass their original checks.
+
+The derived host routine otherwise preserves the frozen build/link/check code. It reuses the already compiled QCD original arm, whose complete artifact set is checked and protected, then runs its linkage verification and compiles/links the three remaining arms. The new controller verifies every prior artifact before reuse, forbids any Cargo command, and uses the unchanged owned-child cleanup with CPU11 and a 180-second limit. New logs and results are separate at `.tirust-build/dp-rescue-cause-observer/cause-2-continuation-2`. No numerical evaluation is performed. Original and observed source policy, flags and link order remain unchanged.

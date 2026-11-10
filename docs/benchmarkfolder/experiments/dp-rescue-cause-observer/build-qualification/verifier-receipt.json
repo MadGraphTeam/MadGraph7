@@ -1,0 +1,12 @@
+{
+  "admission_copy_byte_identical": true,
+  "all_prior_failure_manifest_bytes_unchanged": true,
+  "controller_sha256": "6a0512b620f0f9723af8811bbbd128f3b1f0990aac64e3aaf1da60ec7e5cab10",
+  "function": "controller/run.py:verify_build",
+  "independent_source_review": "/root/madloop_audit/cache_driver: exact module guard and six-arm lock/admission contract clear; no workloads",
+  "manifest_sha256": "b3f71a6493ce315dfd45d9a9da2302e16ae80c155f5a147ec65cb8a20f1e71e3",
+  "result": "passed",
+  "scope": "Read-only current artifact/provenance verification; no replay",
+  "verified_manifest": ".tirust-build/dp-rescue-cause-observer/cause-2-continuation-2/build.json",
+  "verified_pins": 33940
+}

@@ -1,0 +1,23 @@
+{
+  "automatic_retries": 0,
+  "base_builder_sha256": "42a662c5549f539374fb8e8f11aeff709f921457dd77337e7168360174493d12",
+  "base_plan_sha256": "20137ff143ca65980df1e53d487294d2677a886c5de7eb0d573eb827994b9b7c",
+  "cargo_jobs": 1,
+  "cpu": 11,
+  "files": {
+    "README.md": {
+      "bytes": 1933,
+      "sha256": "3381f1dcf31d65fba23e09115dccc967f157f202c6ee83e6c872c3b68e64ac52"
+    },
+    "resume.py": {
+      "bytes": 10500,
+      "sha256": "5ea3bc45253f60fa468e2987811ac57f0ad870ddc747f3a81a3132a7bd058ec5"
+    }
+  },
+  "owned_helper_sha256": "6a0512b620f0f9723af8811bbbd128f3b1f0990aac64e3aaf1da60ec7e5cab10",
+  "prior_failed_manifest_sha256": "7749f7d9ddc11f718297b5cd45d3f17261c245fe22e018ea95956e26cccae35e",
+  "same_native_tail_from_frozen_builder": true,
+  "schema_version": 1,
+  "scope": "Authorized incremental compile/link continuation, no numerical evaluation; source freeze before execution",
+  "seconds_cap": 1800
+}

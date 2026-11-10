@@ -1,0 +1,82 @@
+--- revision-1/build.py
++++ build.py
+@@ -157,6 +157,44 @@
+     return result
+ 
+ 
++def locked_cache_paths(native):
++    """Select only sources needed by the frozen lock and patched manifest."""
++    home = Path(native["environment"]["CARGO_HOME"])
++    trees, files, origins = set(), set(), {}
++    for package in native["external_packages"]:
++        rel = Path(package["root"]).relative_to(home)
++        if package["source"].startswith("registry+"):
++            if len(rel.parts) != 4 or rel.parts[:2] != ("registry", "src"):
++                raise ValueError("Unexpected locked registry source layout")
++            registry, directory = rel.parts[2:]
++            name = package["name"].lower()
++            shard = ("1/"+name if len(name) == 1 else "2/"+name if len(name) == 2
++                     else "3/"+name[0]+"/"+name if len(name) == 3
++                     else name[:2]+"/"+name[2:4]+"/"+name)
++            trees.add(rel)
++            files.update((Path("registry/cache")/registry/(directory+".crate"),
++                          Path("registry/index")/registry/"config.json",
++                          Path("registry/index")/registry/".cache"/shard))
++        elif package["source"].startswith("git+"):
++            if len(rel.parts) < 4 or rel.parts[:2] != ("git", "checkouts"):
++                raise ValueError("Unexpected locked git source layout")
++            checkout = Path(*rel.parts[:4])
++            database = Path("git/db")/rel.parts[2]
++            trees.update((checkout, database))
++            origins[checkout/".git/config"] = database
++        else:
++            raise ValueError("Unexpected locked external source")
++    # This manifest origin is replaced by the private, patched path packages.
++    # Keep its exact pinned checkout available for Cargo's offline resolution;
++    # it is not admitted as a numerical dependency by the graph check below.
++    checkout = Path("git/checkouts/tirust-b799601ea2755a53/854b79d")
++    database = Path("git/db/tirust-b799601ea2755a53")
++    trees.update((checkout, database))
++    origins[checkout/".git/config"] = database
++    return {"trees": sorted(map(str, trees)), "files": sorted(map(str, files)),
++            "private_git_origins": {str(k): str(v) for k, v in sorted(origins.items())}}
++
++
+ def dump(path, value):
+     Path(path).write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+ 
+@@ -292,10 +330,22 @@
+     build.copy_file(PROPOSAL/"native/observer.rs", bridge/"src/observer.rs")
+     build.copy_file(PROPOSAL/"native/observer_flags.c", bridge/"observer_flags.c")
+     cargo_home = work/"cargo-home"
+-    # Offline source caches are private regular copies. No mutable shared target.
+-    for name in ("registry", "git"):
+-        build.copy_tree(Path(native["environment"]["CARGO_HOME"])/name, cargo_home/name,
+-                        exclude=(".package-cache", ".package-cache-mutate", ".global-cache"))
++    # Copy the locked graph, not unrelated checkouts in the shared Cargo home.
++    # All destinations are private; shared cache contents are read-only inputs.
++    selection = locked_cache_paths(native)
++    original_home = Path(native["environment"]["CARGO_HOME"])
++    for rel in selection["trees"]:
++        build.copy_tree(original_home/rel, cargo_home/rel)
++    for rel in selection["files"]:
++        build.copy_file(original_home/rel, cargo_home/rel)
++    for rel, database in selection["private_git_origins"].items():
++        config = cargo_home/rel
++        old = "url = file://"+str(original_home/database)
++        new = "url = file://"+str(cargo_home/database)
++        text = config.read_text()
++        if text.count(old) != 1:
++            raise ValueError("Unexpected copied git checkout origin: "+rel)
++        config.write_text(text.replace(old, new))
+     private_packages = []
+     for package in native["external_packages"]:
+         rel = Path(package["root"]).relative_to(native["environment"]["CARGO_HOME"])
+@@ -370,6 +420,7 @@
+     if len(definitions["__gmpfr_flags"]["references"]) < 2:
+         raise ValueError("Missing numerical and flags-reader shared TLS references")
+     return dso, {"private_source_tree": tree_map(bridge), "patched_upstream_tree": tree_map(upstream),
++                 "cache_selection": selection,
+                  "cargo_environment": env_projection(env), "link_map": pin(map_path),
+                  "mpfr_archive": pin(next(iter(archives))), "mpfr_cross_references": definitions,
+                  "same_local_mpfr_instance": True}
