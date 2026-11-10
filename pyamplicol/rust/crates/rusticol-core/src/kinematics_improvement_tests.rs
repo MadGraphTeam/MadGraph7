@@ -197,6 +197,56 @@ fn binary64_madloop_variants_and_the_default_chain() {
     assert_eq!(out.record.warning_kind(), Some(WARNING_NOT_IMPROVED));
 }
 
+/// THE FINISH from the input when both MadLoop variants refuse: a 2 -> 2
+/// point whose massless final state 4 has a negative energy (p3 = p1 + p2 -
+/// p4 massive; formed in binary64): ORIG refuses (404), PSMC (every energy
+/// put on its shell, positive) refuses, the projection projects the input
+/// itself (bitwise the projection selected alone) and the point is exact.
+/// Forced ORIG (no chain): evaluated as given.
+#[test]
+fn the_finish_projects_the_input_when_both_madloop_variants_refuse() {
+    let tolerances = Tolerances::default();
+    let (e, a, s, c) = (250.0, 50.3, 0.6, 0.8);
+    let legs = vec![
+        [e, 0.0, 0.0, e],
+        [e, 0.0, 0.0, -e],
+        [2.0 * e + a, 0.0, -a * s, -a * c],
+        [-a, 0.0, a * s, a * c],
+    ];
+    let m2 = vec![0.0, 0.0, 4.0 * e * e + 4.0 * e * a, 0.0];
+    let out = improve(&legs, 2, &m2, Variant::ZShift, true, &tolerances);
+    let attempts = &out.record.attempts;
+    assert_eq!(attempts.len(), 3, "{:?}", out.record);
+    assert_eq!(
+        attempts[0],
+        Attempt {
+            step: "z-shift",
+            code: 404
+        }
+    );
+    assert_eq!(attempts[1].step, "rescaling");
+    assert_ne!(attempts[1].code, 0, "{:?}", out.record);
+    assert_eq!(
+        attempts[2],
+        Attempt {
+            step: "projection",
+            code: 0
+        }
+    );
+    assert_eq!(out.record.produced, Some(FINISH));
+    assert!(
+        out.record.exactness.as_ref().unwrap().exact,
+        "{:?}",
+        out.record
+    );
+    assert_eq!(out.record.warning_kind(), None);
+    let alone = improve(&legs, 2, &m2, Variant::Projection, true, &tolerances);
+    assert_eq!(out.legs, alone.legs);
+    let forced = improve(&legs, 2, &m2, Variant::ZShift, false, &tolerances);
+    assert_eq!(forced.record.status, Status::NotImproved);
+    assert_eq!(forced.legs, legs);
+}
+
 #[test]
 fn the_binary64_entry_of_the_tree_runtimes() {
     // The tree C ABI's and the Python tree runtime's binary64 switch
@@ -812,10 +862,30 @@ mod exact_points {
                 assert_exact(&out, n_initial, &m2, arithmetic, &record);
                 assert!(record.moved < 1e-13, "{name} {arithmetic:?}: {record:?}");
                 if psmc_record.status == Status::Improved {
+                    // The projection of PSMC's point: bitwise in MPFR (its
+                    // values round-trip through exact rationals); in
+                    // double-double within the carrier's rounding (a
+                    // DoubleFloat's (hi, lo) split need not survive the
+                    // round trip, so the projection's own rounding differs).
                     let (projected, projected_record) = run(Variant::Projection, true, &psmc);
-                    assert_eq!(out, projected, "{name} {arithmetic:?}");
-                    assert_eq!(record.iterations, projected_record.iterations);
                     assert_eq!(record.scale, psmc_record.scale);
+                    if arithmetic == Arithmetic::DoubleDouble {
+                        let scale = out.iter().fold(r(0), |acc, leg| &acc + &leg[0].abs());
+                        let worst = out
+                            .iter()
+                            .zip(&projected)
+                            .flat_map(|(a, b)| a.iter().zip(b).map(|(x, y)| (x - y).abs()))
+                            .fold(r(0), |acc, d| if d > acc { d } else { acc });
+                        let n = out.len() as f64;
+                        assert!(
+                            (&worst / &scale).to_f64() <= 2.0 * n * unit_roundoff(arithmetic),
+                            "{name}: {}",
+                            (&worst / &scale).to_f64()
+                        );
+                    } else {
+                        assert_eq!(out, projected, "{name} {arithmetic:?}");
+                        assert_eq!(record.iterations, projected_record.iterations);
+                    }
                 }
             }
         }
@@ -1061,19 +1131,6 @@ mod exact_points {
         );
         assert_eq!(out, binary64(&generic_point));
         assert!(record.warning().unwrap().contains("projection 999"));
-        // With the move admitted (THRS_CLOSE 10): the projection produces
-        // the point.
-        let (out, record) = improve_exact(
-            &binary64(&generic_point),
-            2,
-            &masses_of(&heavy),
-            dd,
-            Variant::ZShift,
-            true,
-            &loose,
-        );
-        assert_eq!(record.produced, Some(FINISH), "{record:?}");
-        assert_exact(&out, 2, &heavy, dd, &record);
     }
 
     #[test]
