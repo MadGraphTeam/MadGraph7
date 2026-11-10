@@ -566,10 +566,13 @@ def ew_models(loop_sm_compiled_model):
 
 # Two quark lines whose electroweak bosons meet at a colour-singlet vertex:
 # WWA / WWZ / WWH between W-paired lines (the neutral pairing too in
-# u u~ > d d~ e+ e-), HZZ / ZHZ from a massive quark line, the WWAA contact.
+# u u~ > d d~ e+ e-, neutrinos in u u~ > d d~ ve ve~), three quark lines
+# (u u~ > d d~ s s~), HZZ / ZHZ from a massive quark line, the WWAA contact.
 ELECTROWEAK_SINGLET_MERGES = (
     pytest.param("u u~ > d d~ a", {"QCD": 0, "QED": 3}, id="uux_ddxa"),
     pytest.param("u c~ > d s~ e+ e-", {"QCD": 0, "QED": 4}, id="ucx_dsxepem"),
+    pytest.param("u u~ > d d~ ve ve~", {"QCD": 0, "QED": 4}, id="uux_ddxvevex"),
+    pytest.param("u u~ > d d~ s s~", {"QCD": 0, "QED": 4}, id="uux_ddxssx"),
     pytest.param("u u~ > d d~ e+ e-", {"QCD": 2, "QED": 4}, id="uux_ddxepem"),
     pytest.param("u u~ > s s~ t t~", {"QCD": 0, "QED": 4}, id="uux_ssxttx"),
     pytest.param("u u~ > d d~ a a", {"QCD": 0, "QED": 4}, id="uux_ddxaa"),

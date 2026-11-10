@@ -50,6 +50,56 @@ MIRROR = np.array([1.0, -1.0, -1.0, -1.0])
 WIDTH_FREE = {"WZ": 0, "WW": 0, "WT": 0, "WH": 0}
 
 
+def _dirac_to_feynkit(components):
+    """A tree-engine Dirac spinor (a massive fermion's source or current)
+    in Spenso's components of the mirrored kinematics: the tree engine lists
+    the chirality +1 block first, Spenso's mirrored frame holds it at 2, 3
+    (the Weyl map of ``MIRROR``'s comment): the two halves swap (an
+    involution, so the same map reads a FeynKit current back)."""
+
+    return np.concatenate([components[..., 2:4], components[..., 0:2]], axis=-1)
+
+
+def _width_free_propagator(model, particle_id, row, momentum, chirality):
+    """``model.propagator_component_expression`` with a zero width (FeynKit's
+    structural model has width-free propagators; the massive Dirac
+    propagator reads the model's width, which the tree values drop through
+    ``WIDTH_FREE``)."""
+
+    from pyamplicol.models.expressions import (
+        _expr_antifermion_propagator_dirac,
+        _expr_fermion_propagator_dirac,
+    )
+
+    metadata = model._propagator_ir(particle_id, chirality)
+    if (
+        metadata.applies_propagator
+        and metadata.kind == "dirac-fermion"
+        and metadata.mass_class != "massless"
+    ):
+        build = (
+            _expr_antifermion_propagator_dirac
+            if metadata.identity.orientation == "antiparticle"
+            else _expr_fermion_propagator_dirac
+        )
+        return build(tuple(row), tuple(momentum), float(model.mass(particle_id)), 0.0)
+    return model.propagator_component_expression(
+        particle_id, row, momentum, chirality=chirality
+    )
+
+
+def _goldstone_fields(model):
+    """The Goldstone fields' particle ids (both orientations), keyed by
+    their conjugate pair."""
+
+    pairs = {}
+    for name in model._goldstone_partner_records:
+        pdg = int(model._particle_records_by_name[name].pdg_code)
+        anti = int(model.particles[pdg].anti_pdg)
+        pairs[pdg] = pairs[anti] = frozenset((pdg, anti))
+    return pairs
+
+
 def _prepared_models(loop_sm_compiled_model, qed, gauge=None):
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.models.external import CompiledUFOModel
@@ -346,7 +396,12 @@ def _colour_tensor(word, x_representation, axes, representations, generators):
         operands.append(generators)
         subscripts.append(axis_letter["X"] + open_in + open_out)
     output = "".join(axis_letter[axis] for axis in axes)
-    tensor = np.einsum(",".join(subscripts) + "->" + output, *operands)
+    # A colourless word (a lepton current) has no colour factor.
+    tensor = (
+        np.einsum(",".join(subscripts) + "->" + output, *operands)
+        if operands
+        else np.ones(())
+    )
     adjoint_count = sum(1 for label in word if representations[label] == 8)
     return tensor * math.sqrt(2) ** (adjoint_count + (x_representation == 8))
 
@@ -394,6 +449,13 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
     }
     pdgs = {label: int(leg.outgoing_pdg) for label, leg in legs.items()}
     oracle = _FeynKitTrees(native, model)
+    # A tree with one open Goldstone leg holds an odd number of Goldstone
+    # ends, so the field redefinition G -> -G (the phase of the Goldstone
+    # field, which no physical amplitude reads) flips it as a whole:
+    # FeynKit's structural model and the tree engine may differ by it. Each
+    # Goldstone pair is compared up to one sign, the same for every group.
+    goldstones = _goldstone_fields(model)
+    phases = {}
     groups = {}
     for block in blocks.blocks:
         if len(block.key.word) < min_legs or block.key.auxiliary_kind is not None:
@@ -430,12 +492,13 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
             names = [native.particle_by_pdg(pdgs[label]).name for label in labels] + [
                 native.particle_by_pdg(x_bar).name
             ]
-            # Spinor chains are read from the outgoing quarks, including the
-            # open end of an antiquark current.
+            # Spinor chains are read from the outgoing fermions (quarks and
+            # colour-singlet fermions alike), including the open end of an
+            # antifermion current.
             starts = [
                 index
                 for index, pdg in enumerate([*(pdgs[label] for label in labels), x_bar])
-                if model.is_fermion(pdg) and model.color_rep(pdg) == 3
+                if model.is_fermion(pdg) and model.source_orientation(pdg) == "particle"
             ]
             total = sum(momenta[label] for label in labels)
             # FeynKit signs every diagram by its external fermion ordering;
@@ -444,13 +507,26 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
             feynkit_sign = _feynkit_ordering_sign(
                 [*(pdgs[label] for label in labels), x_bar], model
             )
-            assert {block.pairing_sign for block in members} == {feynkit_sign}
+            leg_pdgs = [pdgs[label] for label in labels]
+            # The exterior sign of a colour-singlet fermion leg (a lepton) is
+            # the colour-flow convention's, applied where the loop joins the
+            # blocks (``Leg.sign_rank``, ``conventions.LeafWeights``), not by
+            # the block: a group with one is compared up to one sign, the
+            # same for every helicity and colour component.
+            singlet_fermion = any(
+                model.is_fermion(pdg) and model.color_rep(pdg) == 1
+                for pdg in [*leg_pdgs, x_bar]
+            )
+            if singlet_fermion:
+                assert len({block.pairing_sign for block in members}) == 1
+            else:
+                assert {block.pairing_sign for block in members} == {feynkit_sign}
             comparisons = []
             for helicities in sorted(
                 {row.helicities for block in members for row in block.rows}
             ):
                 states = []
-                for leg_helicity in helicities:
+                for leg_helicity, leg_pdg in zip(helicities, leg_pdgs, strict=True):
                     source_chirality, wave = sources[leg_helicity]
                     if len(wave) == 2:
                         wave = (
@@ -458,6 +534,8 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                             if source_chirality == 1
                             else np.concatenate([wave, [0, 0]])
                         )
+                    elif len(wave) == 4 and model.is_fermion(leg_pdg):
+                        wave = _dirac_to_feynkit(wave)
                     elif len(wave) == 4:
                         wave = wave * MIRROR
                     states.append(wave)
@@ -505,6 +583,8 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                     # A Weyl current's vertex output is the opposite chirality
                     # block of the Dirac spinor.
                     fk = fk[..., 0:2] if chirality == 1 else fk[..., 2:4]
+                elif fk.shape[-1] == 4 and model.is_fermion(particle_id):
+                    fk = _dirac_to_feynkit(fk)
                 elif fk.shape[-1] == 4:
                     fk = fk * MIRROR
                 if variant == "propagated" and fk.shape[-1] == 1:
@@ -522,11 +602,12 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                         [
                             [
                                 complex(value)
-                                for value in model.propagator_component_expression(
+                                for value in _width_free_propagator(
+                                    model,
                                     particle_id,
                                     list(map(complex, row)),
                                     list(map(float, total)),
-                                    chirality=chirality,
+                                    chirality,
                                 )
                             ]
                             for row in flat
@@ -549,7 +630,14 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
                 comparisons.append((fk, predicted))
             scale = max(np.abs(fk).max() for fk, _predicted in comparisons)
             assert scale > 0, (labels, particle_id, orders)
-            error = max(np.abs(fk - mine).max() for fk, mine in comparisons)
+            phase = 1
+            if particle_id in goldstones or singlet_fermion:
+                flipped = max(np.abs(fk + mine).max() for fk, mine in comparisons)
+                same = max(np.abs(fk - mine).max() for fk, mine in comparisons)
+                phase = -1 if flipped < same else 1
+            if particle_id in goldstones and not singlet_fermion:
+                phase = phases.setdefault(goldstones[particle_id], phase)
+            error = max(np.abs(fk - phase * mine).max() for fk, mine in comparisons)
             assert error <= TOLERANCE * scale, (labels, particle_id, orders, error)
             checked += len(comparisons)
     return checked
