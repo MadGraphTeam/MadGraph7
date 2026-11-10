@@ -844,6 +844,17 @@ class StoredObservableSlice:
             return _Selection(found, masks.wanted, group=value.key, masks=masks)
         if kind not in KINDS:
             raise ValueError(f"unknown column set {kind!r}")
+        if kind == "resolved" and not isinstance(value, str):
+            # A resolved selection (``resolved_parts``): the kept rows' (and
+            # at leading colour the kept basis elements') resolved columns
+            # only, its own column set (the runtime keeps its most recently
+            # used ones, ``selection.SelectionCache``).
+            resolution, rows, basis = value
+            found = StoredColumns(
+                self, "resolved", member=member, subset=(rows, basis), **options
+            )
+            found.check_resolution(resolution)
+            return _Selection(found, None)
         key = (kind, id(member), tuple(sorted(options.items())))
         found = self._sets.get(key)
         if found is None:
@@ -994,6 +1005,18 @@ def _merged_weights(lists: Sequence[Sequence[Sequence[Any]]]) -> list[list[Any]]
     ]
 
 
+def _basis_of(item: Mapping[str, Any]) -> int | None:
+    """A stored resolved column's colour component: its Born basis element
+    at leading colour, None (the contracted component) at NLC and full
+    colour (``observables.resolved_columns``)."""
+
+    basis = item["basis"]
+    if basis is None:
+        return None
+    (b,) = basis
+    return int(b)
+
+
 def selection_parts(observables: StoredObservableSlice, column: Any) -> _SelectionParts:
     """The column set of a leading-colour selection (``selection.column``:
     Born helicity rows and basis elements) of a loaded process, formed from
@@ -1021,7 +1044,7 @@ def selection_parts(observables: StoredObservableSlice, column: Any) -> _Selecti
 
     def chosen(item: Mapping[str, Any]) -> bool:
         (row,) = item["rows"]
-        (b,) = item["basis"]
+        b = _basis_of(item)
         return (rows is None or _row(row) in rows) and (basis is None or b in basis)
 
     kept = [k for k, item in enumerate(items) if chosen(item)]
@@ -1157,6 +1180,223 @@ def selection_parts(observables: StoredObservableSlice, column: Any) -> _Selecti
     )
 
 
+def _stored_records(observables: StoredObservableSlice) -> tuple[Any, ...]:
+    """The native formation's records of a process's resolved set
+    (``template::ResolvedRecords``): the observables record (JSON), the
+    set's seed records (and its companion's) and interference programs."""
+
+    stored = observables.stored
+    base = stored.sets["resolved"]
+    return (
+        json.dumps(stored.record, separators=(",", ":")),
+        base.overlay_json,
+        base.companion_overlay_json,
+        base.columns_json,
+    )
+
+
+def _plan_weights(
+    overlay: Mapping[str, Any], classes: Sequence[Any], weights: Sequence[int | None]
+) -> list[int] | None:
+    """A formed set's seed columns as the plan's own seed-weight columns
+    (Rust ``template::plan_weights``): when the stored set stores no seed
+    records (it reads the plan's), each formed column reads one seed-weight
+    column and they cover the plan's columns (the loader's
+    ``column_weights`` rule), the set reads the plan's seed records in place
+    rather than a copy."""
+
+    if overlay.get("seed_classes") is not None and overlay.get("seeds") is not None:
+        return None
+    if any(w is None for w in weights):
+        return None
+    found = [int(w) for w in weights if w is not None]
+    width = len(classes[0]["columns"]) if classes else 0
+    if found and max(found) + 1 == width and width <= len(found):
+        return found
+    return None
+
+
+def resolved_parts(
+    observables: StoredObservableSlice,
+    rows: frozenset[Any] | None,
+    basis: frozenset[int] | None,
+) -> _SelectionParts:
+    """The stored resolved columns of a resolved selection (lit-fc-hel
+    (G3)): the columns of the kept Born helicity ``rows`` and (leading
+    colour) the kept Born basis elements only, each with its stored seed
+    column, seed weights and interference program, so the set's plan seeds
+    (and its load keeps, ``column_rows``) the kept rows only and an
+    unselected row's column is never formed (None keeps every one of that
+    axis). The column keys and values are the resolved set's. Formed by the
+    native formation the SDKs share (Rust ``v2_runtime::template::
+    resolved_subset``); ``resolved_parts_oracle`` is its Python oracle."""
+
+    from .observables import Column
+
+    stored = observables.stored
+    base = stored.sets["resolved"]
+    indices = (
+        None
+        if rows is None
+        else [h for h, row in enumerate(observables.rows) if row in rows]
+    )
+    process = observables.process
+    overlay, companion, columns_json, outputs, lanes = (
+        observables.native.resolved_subset(
+            *_stored_records(observables),
+            process.plan_json,
+            None
+            if base.companion_overlay_json is None
+            else process.scaleless.plan_json,
+            rows=indices,
+            basis=None if basis is None else sorted(basis),
+        )
+    )
+    columns = tuple(
+        Column(
+            _key_of(json.loads(key)),
+            None,
+            None if kept is None else frozenset(observables.rows[h] for h in kept),
+            None if chosen is None else frozenset(chosen),
+        )
+        for key, kept, chosen in outputs
+    )
+    return _SelectionParts(
+        ObservableSet(
+            overlay,
+            base.plan_components,
+            columns_json,
+            companion,
+            base.companion_components,
+        ),
+        stored.record["sets"]["resolved"],
+        columns,
+        {
+            (columns[c].key, _orders_of(json.loads(sector))): (direct, swapped)
+            for c, sector, direct, swapped in lanes
+        },
+        (None, None),
+    )
+
+
+def resolved_parts_oracle(
+    observables: StoredObservableSlice,
+    rows: frozenset[Any] | None,
+    basis: frozenset[int] | None,
+) -> _SelectionParts:
+    """``resolved_parts`` formed in Python: its oracle."""
+
+    from .observables import Column
+
+    stored = observables.stored
+    meta = stored.record["sets"]["resolved"]
+    base = stored.sets["resolved"]
+    items = meta["columns"]
+    kept = [
+        k
+        for k, item in enumerate(items)
+        if (rows is None or _row(item["rows"][0]) in rows)
+        and (basis is None or _basis_of(item) in basis)
+    ]
+    if not kept:
+        raise ValueError("a selection keeps no resolved column")
+    by_key = {json.dumps(item["key"]): k for k, item in enumerate(items)}
+    chosen = set(kept)
+    used: dict[int, int] = {}
+    lanes: dict[tuple[Any, Orders], tuple[int, int]] = {}
+    for key, sector, direct, swapped in meta["lanes"]:
+        if by_key[json.dumps(key)] not in chosen:
+            continue
+        for column in (int(direct), int(swapped)):
+            used.setdefault(column, len(used))
+        lanes[_key_of(key), _orders_of(sector)] = (
+            used[int(direct)],
+            used[int(swapped)],
+        )
+    order = sorted(used, key=used.get)
+    overlays = [json.loads(base.overlay_json)]
+    if base.companion_overlay_json is not None:
+        overlays.append(json.loads(base.companion_overlay_json))
+    if any(overlay is None for overlay in overlays):
+        raise ValueError("the resolved set stores no seed records of its own")
+    plans = [observables.process.plan_json]
+    if len(overlays) > 1:
+        plans.append(observables.process.scaleless.plan_json)
+    formed = []
+    for overlay, plan_json in zip(overlays, plans, strict=True):
+        weights = overlay.get("column_weights") or list(range(int(overlay["columns"])))
+        column_rows = overlay.get("column_rows")
+        # The kept seed columns' seed-weight columns, renumbered in their
+        # order of use; each seed class keeps those weight columns only.
+        kept_weights: dict[int, int] = {}
+        for c in order:
+            kept_weights.setdefault(int(weights[c]), len(kept_weights))
+        classes, keys = overlay.get("seed_classes"), overlay.get("seeds")
+        if classes is None or keys is None:
+            plan = json.loads(plan_json)
+            classes, keys = plan["seed_classes"], plan["seeds"]
+        in_place = _plan_weights(overlay, classes, [int(weights[c]) for c in order])
+        if in_place is not None:
+            formed.append(
+                {
+                    "columns": len(order),
+                    "column_rows": None
+                    if column_rows is None
+                    else [column_rows[c] for c in order],
+                    "column_weights": in_place,
+                    "born_components": overlay["born_components"],
+                }
+            )
+            continue
+        formed.append(
+            {
+                "seed_classes": [
+                    {
+                        **record,
+                        "columns": [record["columns"][w] for w in kept_weights],
+                    }
+                    for record in classes
+                ],
+                "seeds": keys,
+                "columns": len(order),
+                "column_rows": None
+                if column_rows is None
+                else [column_rows[c] for c in order],
+                "column_weights": [kept_weights[int(weights[c])] for c in order],
+                "born_components": overlay["born_components"],
+            }
+        )
+    records = json.loads(base.columns_json)
+    columns_json = json.dumps(
+        {**records, "columns": [records["columns"][k] for k in kept]},
+        separators=(",", ":"),
+    )
+    out_columns = tuple(
+        Column(
+            _key_of(items[k]["key"]),
+            None,
+            frozenset(_row(row) for row in items[k]["rows"]),
+            None if items[k]["basis"] is None else frozenset(items[k]["basis"]),
+        )
+        for k in kept
+    )
+    from .plan_export import dumps
+
+    return _SelectionParts(
+        ObservableSet(
+            dumps(formed[0]),
+            base.plan_components,
+            columns_json,
+            None if len(formed) == 1 else dumps(formed[1]),
+            base.companion_components,
+        ),
+        meta,
+        out_columns,
+        lanes,
+        (None, None),
+    )
+
+
 # The key of the selection template's columns (one per row class).
 TEMPLATE = "selection-template"
 
@@ -1196,10 +1436,90 @@ class _SelectionMasks:
 
 
 class SelectionTemplate:
-    """The one column set of a loaded leading-colour process that serves
-    every evaluation-time selection (MF-MASKS; DESIGN §8.5), formed once from
-    its stored resolved set without regeneration. Rows whose resolved columns
-    read the same seed-weight column per (basis element, sector) form a row
+    """The one column set of a loaded Born-interfered process that serves
+    every evaluation-time selection (MF-MASKS; DESIGN §8.5; every colour
+    accuracy, lit-fc-hel): formed once from its stored resolved set without
+    regeneration by the native formation the SDKs share (Rust
+    ``v2_runtime::template::SelectionTemplate``: JSON over the stored
+    records, no Symbolica operation), with the masks of each selection
+    (``masks``). ``PythonSelectionTemplate`` is its Python oracle."""
+
+    def __init__(self, observables: StoredObservableSlice):
+        from .observables import Column
+
+        stored = observables.stored
+        base = stored.sets["resolved"]
+        process = observables.process
+        formed = observables.native.selection_template(
+            *_stored_records(observables),
+            process.plan_json,
+            None
+            if base.companion_overlay_json is None
+            else process.scaleless.plan_json,
+        )
+        self.rows = observables.rows
+        self.basis = len(observables.components)
+        self.meta = stored.record["sets"]["resolved"]
+        self.classes = tuple(tuple(hs) for hs in formed.classes)
+        self.row_class = [0] * len(self.rows)
+        for c, hs in enumerate(self.classes):
+            for h in hs:
+                self.row_class[h] = c
+        outputs, lanes = formed.outputs
+        self.columns = tuple(
+            Column(
+                (TEMPLATE, c),
+                None,
+                None if kept is None else frozenset(self.rows[h] for h in kept),
+                None,
+            )
+            for c, (_key, kept, _basis) in enumerate(outputs)
+        )
+        self.lanes = {
+            (self.columns[c].key, _orders_of(json.loads(sector))): (direct, swapped)
+            for c, sector, direct, swapped in lanes
+        }
+        self.set = ObservableSet(
+            formed.overlay,
+            base.plan_components,
+            formed.columns,
+            formed.companion_overlay,
+            base.companion_components,
+        )
+        self._formed = formed
+
+    def masks(self, column: Any) -> _SelectionMasks:
+        """The per-call masks of a selection (``selection.column``: Born
+        helicity rows and, at leading colour, basis elements; None keeps
+        every one)."""
+
+        rows = (
+            None
+            if column.rows is None
+            else [h for h, row in enumerate(self.rows) if row in column.rows]
+        )
+        basis = None if column.basis is None else sorted(column.basis)
+        kept, chosen, components, families, wanted = self._formed.masks(rows, basis)
+
+        def flags(mask: Any) -> tuple[bool, ...] | None:
+            return None if mask is None else tuple(mask)
+
+        return _SelectionMasks(
+            flags(kept),
+            flags(chosen),
+            tuple(flags(mask) for mask in components),
+            tuple(flags(mask) for mask in families),
+            tuple((TEMPLATE, c) for c in wanted),
+        )
+
+
+class PythonSelectionTemplate:
+    """``SelectionTemplate`` formed in Python (its oracle; the production
+    formation is the native one): the one column set of a loaded process
+    that serves every evaluation-time selection (MF-MASKS; DESIGN §8.5),
+    formed once from its stored resolved set without regeneration. Rows
+    whose resolved columns read the same seed-weight column per (basis
+    element, sector) form a row
     class (one at leading colour); per row class and sector one seed column
     whose weights are every basis element's seed-weight column, concatenated
     in seed-weight-column order, and one interference column of the class's
@@ -1244,9 +1564,19 @@ class SelectionTemplate:
         # Per row: the seed-weight column of each (basis element, sector,
         # plan); rows with equal ones form a row class.
         weights: dict[int, dict[tuple[int, str, int], int]] = {}
+        # The resolved colour axis: the Born basis elements at leading
+        # colour, the one contracted component (None) at NLC and full colour.
+        found_axis = {_basis_of(item) for item in items}
+        if None in found_axis and found_axis != {None}:
+            raise ValueError(
+                "a resolved set mixes basis elements and contracted columns"
+            )
+        self.axis: tuple[int | None, ...] = (
+            (None,) if None in found_axis else tuple(range(self.basis))
+        )
         for k, item in enumerate(items):
             (row,) = item["rows"]
-            (b,) = item["basis"]
+            b = _basis_of(item)
             h = row_index[_row(row)]
             for label in sectors:
                 i = seed_column[k, label]
@@ -1315,7 +1645,7 @@ class SelectionTemplate:
         # seed weights, the components each seed class reads, the plan's
         # Born component count, and per family the seed classes its leaves
         # read (None: a forward or merged program, which reads every family).
-        self._basis_components: list[list[frozenset[int]]] = []
+        self._basis_components: list[dict[int | None, frozenset[int]]] = []
         self._class_components: list[list[frozenset[int]]] = []
         self._components: list[int] = []
         self._family_classes: list[list[frozenset[int]] | None] = []
@@ -1325,8 +1655,8 @@ class SelectionTemplate:
             plan = json.loads(plan_json)
             if seed_records is None:
                 seed_records, keys = plan["seed_classes"], plan["seeds"]
-            owner: dict[int, int] = {}
-            per_basis: list[set[int]] = [set() for _ in range(self.basis)]
+            owner: dict[int, int | None] = {}
+            per_basis: dict[int | None, set[int]] = {b: set() for b in self.axis}
             for (b, _label, q), w in (
                 item for h in range(every) for item in weights[h].items()
             ):
@@ -1342,7 +1672,9 @@ class SelectionTemplate:
                                 "masks its seeds by component"
                             )
                         per_basis[b].add(component)
-            self._basis_components.append([frozenset(c) for c in per_basis])
+            self._basis_components.append(
+                {b: frozenset(c) for b, c in per_basis.items()}
+            )
             class_columns = []
             reads = []
             for record in seed_records:
@@ -1375,14 +1707,28 @@ class SelectionTemplate:
                     ]
                 )
             del plan
+            rows_record = seed_rows if any(r is not None for r in seed_rows) else None
+            in_place = _plan_weights(
+                overlay,
+                seed_records,
+                [ws[0] if len(ws) == 1 else None for ws in template_weights[p]],
+            )
+            if in_place is not None:
+                formed.append(
+                    {
+                        "columns": len(seed_rows),
+                        "column_rows": rows_record,
+                        "column_weights": in_place,
+                        "born_components": overlay["born_components"],
+                    }
+                )
+                continue
             formed.append(
                 {
                     "seed_classes": class_columns,
                     "seeds": keys,
                     "columns": len(seed_rows),
-                    "column_rows": seed_rows
-                    if any(r is not None for r in seed_rows)
-                    else None,
+                    "column_rows": rows_record,
                     "column_weights": None,
                     "born_components": overlay["born_components"],
                 }
@@ -1409,7 +1755,7 @@ class SelectionTemplate:
         kept_rows = [
             h for h, row in enumerate(self.rows) if rows is None or row in rows
         ]
-        kept_basis = [b for b in range(self.basis) if basis is None or b in basis]
+        kept_basis = [b for b in self.axis if basis is None or b in basis]
         if not kept_rows or not kept_basis:
             raise ValueError("a selection keeps no resolved column")
         row_mask = (
@@ -1422,7 +1768,7 @@ class SelectionTemplate:
             for c, hs in enumerate(self.classes)
             if any(row_mask is None or row_mask[h] for h in hs)
         )
-        every = len(kept_basis) == self.basis
+        every = len(kept_basis) == len(self.axis)
         chosen = set(kept_basis)
         components, families = [], []
         for per_basis, reads, count, family_classes in zip(
@@ -1533,6 +1879,7 @@ class StoredColumns:
         schedule: str = "B",
         selection: Any = None,
         template: bool = False,
+        subset: Any = None,
     ):
         from .plan_export import DEFAULT_LANES
 
@@ -1554,6 +1901,8 @@ class StoredColumns:
         parts = (
             self.template
             if template
+            else resolved_parts(observables, *subset)
+            if subset is not None
             else None
             if selection is None
             else selection_parts(observables, selection)
@@ -1564,6 +1913,11 @@ class StoredColumns:
         self.families = (None, None) if parts is None or template else parts.families
         self._native: dict[tuple[str, int | None, int, bool], Any] = {}
         self._plans: dict[bool, str] = {}
+        # A formed set (the selection template, a resolved selection) loads
+        # its plan as the stored plan with its seed records (``_source``),
+        # never as a merged plan JSON (u u~ > g g g g g at full colour: a
+        # 66 MB JSON and its parse, the selected call's memory peak).
+        self._formed = template or subset is not None
         self.last_report: dict[str, Any] | None = None
 
     def check_resolution(self, resolution: Any) -> None:
@@ -1601,6 +1955,25 @@ class StoredColumns:
             self._plans[twin] = found
         return found
 
+    def _source(self, twin: bool) -> tuple[Any, str | None]:
+        """The executor's plan argument and seed records (``V2Executor``'s
+        ``overlay``): a formed set's stored plan (or companion's) with its
+        overlay, the native load of what ``_plan`` merges as JSON; any other
+        set's plan JSON (``_plan``)."""
+
+        from .native_trees import executor_program
+
+        if not self._formed:
+            return self._plan(twin), None
+        process = self.observables.process
+        if twin:
+            plan, overlay = process.scaleless.plan, self.set.companion_overlay_json
+        else:
+            plan, overlay = process.plan, self.set.overlay_json
+        if overlay is None:
+            raise ValueError("the column set stores no companion seeds")
+        return executor_program(plan), overlay
+
     def _executor(self, arithmetic: str, digits: int | None, points: int, twin: bool):
         lanes = self.lanes
         if arithmetic != "double":
@@ -1632,8 +2005,9 @@ class StoredColumns:
             if twin:
                 trees = process.scaleless.trees
                 sources = self.observables.stored.record["sources"]
+                plan, overlay = self._source(True)
                 found = native.V2Executor(
-                    self._plan(True),
+                    plan,
                     arithmetic,
                     digits,
                     lanes=lanes,
@@ -1650,10 +2024,12 @@ class StoredColumns:
                         }
                     ),
                     plan_components=list(self.set.companion_components),
+                    overlay=overlay,
                 )
             else:
+                plan, overlay = self._source(False)
                 found = native.V2Executor(
-                    self._plan(False),
+                    plan,
                     arithmetic,
                     digits,
                     lanes=lanes,
@@ -1661,6 +2037,7 @@ class StoredColumns:
                     trees=process.trees.executor_argument(),
                     columns=self.set.columns_json,
                     plan_components=list(self.set.plan_components),
+                    overlay=overlay,
                 )
             self._native[key] = found
         return found

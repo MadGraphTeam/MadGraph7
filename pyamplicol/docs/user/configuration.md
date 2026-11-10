@@ -1259,9 +1259,12 @@ sets of flows sum to the inclusive value. Identical-flavour quark lines (u u~ >
 u u~ g) take every selection. A member of an exact flavour group
 (`process.flavor_blind`) lists no flows and takes no evaluation-time
 selection (`CompatibilityError`): select on its representative process,
-which evaluates the member. Next-to-leading and full colour expose no
-selection: they evaluate every helicity and colour, and their API and plans
-are unchanged.
+which evaluates the member. At next-to-leading and full colour the colour is
+contracted: an evaluation-time selection there keeps Born helicity rows only
+(`helicities=`, every colour component of their Born; colour flows are
+refused), and these accuracies have no generation-time selection
+(`selected_color_sector_ids` and `selected_source_helicities` need
+`accuracy = "lc"`); their plans are unchanged.
 
 #### External photons: alpha(0) per leg
 

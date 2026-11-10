@@ -503,7 +503,7 @@ fn dressed_rows_are_dressed_only_where_a_column_reads_them() {
     // rows (no column reads them); a helicity mask of one call drops the
     // masked rows' too (lit-dress (H): a dressed-row family runs its pruned
     // copy whenever that drops a link, so a selection dresses its row
-    // restriction only; seeded plans keep `KEPT_SHARE`); a mask keeping
+    // restriction only; so do seeded plans since lit-fc-hel (G4)); a mask keeping
     // every read row prunes nothing.
     let all = LoopProgramV4::load(&text(&dressed_plan(2, 4, 2, 0))).unwrap();
     let dropped = LoopProgramV4::load(&text(&dressed_plan(2, 4, 2, 1))).unwrap();

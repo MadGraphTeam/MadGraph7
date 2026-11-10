@@ -93,9 +93,10 @@ mod columns;
 mod induced;
 pub mod induced_outputs;
 mod monitor;
+pub mod template;
 pub use monitor::{Monitored, cross_reduction};
 
-pub use columns::{COLUMN_SETS, ColumnPoint, ColumnValues, INCLUSIVE};
+pub use columns::{COLUMN_SETS, ColumnPoint, ColumnValues, INCLUSIVE, ResolvedPoints, StoredFlow};
 
 use crate::Complex;
 use crate::runtime::{
@@ -880,6 +881,113 @@ impl Runner {
 pub(crate) struct RowLiveness {
     live: Option<Arc<LiveRows>>,
     trees: Option<TreeRows>,
+}
+
+impl RowLiveness {
+    /// No liveness (a call keeping every row).
+    pub(crate) fn none() -> Self {
+        Self {
+            live: None,
+            trees: None,
+        }
+    }
+}
+
+impl Runner {
+    /// [`Runner::fill`] of a call with selection masks
+    /// ([`template::CallMasks`]; lit-fc-hel (G5)), as the Python binding's
+    /// `V2Executor.evaluate(rows=, basis=, components=, families=)` forms it
+    /// (`evaluate_with`): the kept rows' liveness (the families the mask
+    /// keeps, pruned to the rows the kept rows reach, and the tree fill's
+    /// rows), the masked sources (kept rows and bra basis elements) and the
+    /// seeds' kept plan Born components. Without masks this is
+    /// [`Runner::fill`] with no liveness.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn fill_masked<T: Native>(
+        &mut self,
+        precision: V2Precision,
+        lanes: usize,
+        values: &[Rational],
+        scales: &[Rational],
+        incoming: &[Vec<Rational>],
+        poles: bool,
+        masks: &template::CallMasks,
+        options: &V2Options,
+        zero: &T,
+    ) -> RusticolResult<(BoundParameters<T>, TreeInputs<T>, RowLiveness)>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let live = match &masks.rows {
+            Some(rows) => {
+                self.executor(lanes)?;
+                let executor = &self.executors[&lanes];
+                let live = executor.live_rows(rows, masks.families.as_deref(), options.schedule)?;
+                let trees = live
+                    .as_deref()
+                    .and_then(|live| self.trees.live_rows(executor.plan(), live));
+                RowLiveness { live, trees }
+            }
+            None => RowLiveness::none(),
+        };
+        let sources = masks.sources::<T>(None, incoming.len());
+        let tree_rows = live.trees.as_ref();
+        let (bound, mut inputs) = self.bind_and_fill(
+            precision,
+            lanes,
+            values,
+            scales,
+            zero,
+            |trees, runtime, plan, bound| {
+                let chunk = trees.fill_points::<T>(incoming.len(), false, TREE_FILL_BUDGET);
+                trees.inputs_chunked(
+                    runtime,
+                    plan,
+                    &bound.trees,
+                    incoming,
+                    &bound.constants,
+                    poles,
+                    sources.as_deref(),
+                    None,
+                    chunk,
+                    tree_rows,
+                    zero,
+                )
+            },
+        )?;
+        masks.mask_born(&mut inputs.born, zero)?;
+        Ok((bound, inputs, live))
+    }
+
+    /// [`Runner::evaluate`] of a call with selection masks: the families the
+    /// mask keeps, each pruned to the call's live rows
+    /// (`V2Executor::evaluate_families`, as the Python binding's).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_masked<T: Native>(
+        &mut self,
+        lanes: usize,
+        batch: &V2Batch<T>,
+        zero: &T,
+        backend: &mut V2Backends,
+        options: V2Options,
+        masks: &template::CallMasks,
+        rows: &RowLiveness,
+    ) -> RusticolResult<Vec<PointResult<T>>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let (results, _report) = self.executor(lanes)?.evaluate_families(
+            batch,
+            zero,
+            backend,
+            options,
+            masks.families.as_deref(),
+            rows.live.as_deref(),
+        )?;
+        Ok(results)
+    }
 }
 
 /// The executor batch of bound parameters and tree inputs.
