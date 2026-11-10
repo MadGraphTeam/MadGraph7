@@ -1139,7 +1139,10 @@ far below the point's largest (suppressed helicity rows of a boosted
 near-forward point, 1e-13 .. 1e-21 of the largest) need about
 log10(largest / output) + the conditioning + the target's digits of working
 precision: TIRust at 20-32 digits can serve them badly off, which the
-recommended checks flag; use 60 digits or more there.
+recommended checks flag; use 60 digits or more there. The per-point NinjaRS
+fallback's guard can miss them too (an estimate, not a bound): at g g > z z,
+theta = 1e-4 in a rotated frame, double-double rows 5e-11 of the largest are
+served 1e-2 off at a guard estimate of 1e-5.
 
 `evaluate_correlated` always uses retained Symbolica evaluator states through
 the separate Python exact executor, including at its default precision 16.
