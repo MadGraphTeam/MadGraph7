@@ -5,12 +5,220 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   RF: Preserve the legacy scalar-scale fallback for MC@NLO-Delta events
+       with an unspecified mur when reading MadGraph7 scale metadata.
+   RF: Remove UNLOPS merging and NNLL+NLO jet-veto resummation, including their
+       dedicated cuts, clustering, reweighting utilities, PDF grids and LHE
+       records. NLO runs now accept only ickkw=0 (no merging) and ickkw=3 (FxFx);
+       cards selecting removed modes are rejected.
+   RF: Refactor MC@NLO subtraction around native labelled matching histories and
+       an output-wide BornSupport library. Equivalent Born evaluators share
+       amplitudes, helicity sums and colour/spin correlations, with explicit
+       transfers of model parameters, momenta and subprocess metadata. Native
+       histories retain their own Born projections, PDFs, damping and weights.
+       The FKS_params.dat controls MCExplicitKLSum, FKSExplicitSum and
+       MCSubtractionAtFixedFlow select complete inner matching-history sums,
+       outer FKS-sector sums and subtraction at the sampled event colour flow.
+   RF: Split FKS phase-space generation into typed Born/real/counterevent state,
+       sampling and forward/inverse radiation maps. Native Born projections,
+       subtraction, recoil and event writing use the same kinematic state.
+       Resonance channels use local recoil with analytic maps and Jacobians.
+       FKSFinalRecoil=1 or 2 selects a massless incoming parton with a hadronic
+       PDF as recoiler at fixed order; this option is unavailable for MC@NLO.
+   RF: Compute MC@NLO-Delta shower scales in native Fortran, removing the
+       Pythia-backed runtime dependency of the matching integrator. Update
+       shower-scale, event-colour and Sudakov bookkeeping, including massive
+       radiators, Pythia 8.318/FxFx patches and Herwig7 integration, configured
+       through herwig7_path.
+   RF: Add optional born_spreading in the NLO run_card, fitting a normalized
+       Born radiation distribution to reduce negative S-event weights. Fits
+       are validated before use and saved per FKS sector. Add the fitted
+       virtual surrogate controlled by VirtTrickSurrogate: 0 retains the
+       grid/polynomial, 1 uses colour dipoles and 2 also uses Born-pair logs.
+       Repeat the initial channel scan after bad-iteration recovery resets
+       the grids, including when a Born-spreading fit is already ready;
+       calibrated restarts retain their adapted channel weights.
+   RF: Preserve MadGraph7 polarisation and me_frame choices through native Born
+       and real evaluation. Born helicity masks follow the model, context and
+       requested frame; shared real caches restore diagram weights as well as
+       split-order results. Mixed QCD/QED Born amplitudes retain their separate
+       strong-coupling powers when cached amplitudes are rescaled.
+       Model snapshots now contain only used point-dependent parameters and
+       numerical couplings, selected using the model converter's dependency
+       metadata and reads in the generated evaluators. Used fixed inputs are
+       installed once per model configuration; card/coupling reinitialization
+       refreshes that configuration and invalidates dependent caches. Running
+       external parameters are included, and unused model inputs are omitted.
+   RF: Propagate MINT integration uncertainties with the actual iteration
+       weights, including individual channels and the last-three-iteration
+       estimate. Retain the existing central-value and histogram weights;
+       accuracy-driven runs can need more iterations with the corrected error.
+       Handle zero signed estimates and zero-error channels in these updates.
+   RF: Use scalar virtual fits only with one Born normalizer matching the fit.
+       Other order combinations retain the per-order grid/polynomial, avoiding
+       excessive virtual sampling with mixed QCD/EW corrections. Protect the
+       virtual-to-Born diagnostic when the Born contribution is zero.
+   RF: Add massive/QED subtraction and shower-support checks. Experimental NLO
+       QED shower launches require --allow_qed_ps; QED Delta/FxFx matching and
+       shower channels excluded by the support checks remain unsupported.
+       PYTHIA6PT final-state radiation is rejected before compilation, using
+       radiation flags from the retained FKS sectors, including multicore
+       generation. ISR-only PYTHIA6PT, fixed order and offline reweighting keep
+       their existing availability.
+   RF: Regenerate existing NLO process outputs for the new BornSupport library,
+       metadata and Fortran modules. Refit older Born-spreading sidecars from
+       integration step 0. Add compiled native/history/frame regressions,
+       mixed-order cache and shower checks, and MadGraph7-compatible CI setup.
+       Remove branch-added documentation/audit artifacts and fxfx_diagnostics;
+       manual historical replay tools accept external provenance inputs.
+   RF: Clean up aborted local-worker batches after their workers stop,
+       preserving the original failure and allowing the same MultiCore
+       instance to run later batches without stale errors or queued work.
+   RF: Transport the transverse spin four-vector to the Born frame for
+       resonance and initial-state recoil, and preserve it during the
+       auxiliary channel projection for consistent me_frame phases.
+   RF: Restore the two-piece massive final-state radiation map so both
+       solutions meet at xi_max without an overshoot or gap; align its
+       inverse coordinates, including the initial-state recoil adapter.
+   RF: Restore the lower-bound rejection for soft ISR counterevents in
+       both mappings, avoiding endpoints that cannot pass the cuts.
+   RF: Include finite sampling-cutoff factors in final-state radiation
+       Jacobians, their inverses and counterevents. Preserve the normalized
+       auxiliary Born measure and its spreading coordinates.
+   RF: The default ISR mapping is now asymmetric at fixed order as well.
+       Set FKSISRMapping=1 to restore the previous symmetric default for
+       fixed-order runs.
+   RF: Compute polar and azimuthal angles from transverse momentum
+       components, preserving near-beam directions and rotation precision.
+   RF: Stabilize massive final-state radiation bounds and both solutions
+       near branch junctions and stationary daughters for zero and nonzero
+       recoil mass. Use stable phase-space weights and inverse branch
+       selection with the dimensionful momentum normalization.
+   RF: Restore the outer FKS statistical compensation for omitted final
+       photon permutations when photons are tagged. Preserve strict tag,
+       polarization and on-shell identities for evaluator reuse and native
+       MC histories. Regenerate tagged-photon NLO outputs to obtain the
+       corrected factors.
+   RF: Use unit Sudakov ratios for empty MC@NLO-Delta cross-connection
+       intervals and equal connection weights when their normalization
+       vanishes, including equal-scale and flat-table limits.
+   RF: Use the current emitter mass for the PYTHIA6Q starting-scale bound,
+       avoiding stale kinematic invariants after a change of FKS sector.
+   OM: MLM (mg7 and madevent): the hardest scale the shower of the particles that are not
+       light jets starts from now also includes the core-process scale of the clustering
+       (madevent's central factorisation scale for scalefact = 1), so it no longer drops
+       below the hard process when mu_F does: mg7 clustering_mean without the pdf ladder
+       (beam.pdf_reweighting = false puts mu_F at the softest clustering scale, about
+       40 GeV for t tbar + 1 jet instead of 210 GeV), madevent scalefact < 1. Samples with
+       the default settings are unchanged (mu_F is the core-process scale there).
+   OM: MLM (mg7 and madevent): the shower of the particles that are not light jets
+       (leptons, photons, top and other heavy quarks) now starts from the hardest scale of
+       the event, the larger of mu_F and the light jets' pt_clust, and no longer from the
+       collider energy: that scale is their pt_clust in the LHE (hidden mg7
+       beam.mlm_shower_start / madevent run_card mlm_shower_start = "hardest_scale", the
+       default; "collider_energy" is the previous behaviour). This moves the merged cross
+       section (W + jets +4-9 %, t tbar + jets +12-27 %) and makes it far less dependent on
+       qcut. With Beams:setProductionScalesFromLHEF Pythia8 starts the initial-state
+       shower from the largest pt_clust, and the MLM Pythia8 card now sets
+       SpaceShower:pTmaxMatch = 1 so that this also holds for a sample with no light parton
+       in the final state. Light partons of the core process keep the collider energy,
+       Pythia8's do-not-match flag.
+   OM: mg7: the event scale (SCALUP) of the LHE output is now the factorisation scale, the
+       larger of the two beams', as madevent writes it; it was the renormalisation scale.
+       mu_R stays in the <scales> tag (mur) and in AQCDUP. The two differ for MLM samples in
+       the default clustering_mean mode (mu_R, the mean of the clustering scales, is about
+       half of mu_F for the jet samples) and for unequal fixed scales. Pythia8 MLM showers
+       do not change: with Beams:setProductionScalesFromLHEF (set for MLM) Pythia8 replaces
+       SCALUP by the largest pt_clust_i. Reweighting and MadSpin, which pass mu_R to the
+       running model parameters, read it from the <scales> tag.
+   OM: bin/madgraph, bin/madevent, bin/aMCatNLO and bin/generate_events (madevent, aMC@NLO
+       and mg7 outputs) no longer read their commands, or the answers to the questions of
+       a command given on the command line, from a pipe or a redirected file (e.g.
+       "./bin/madgraph < script.txt", "echo 0 | ./bin/generate_events"). That mode runs as
+       an interactive session, where a command that cannot be applied (such as an invalid
+       "set") was only a warning and the run went on. They now stop with an error asking
+       to write the commands to a file and run "EXECUTABLE PATH" instead, unless the new
+       --allow-stdin option is given. A forced run (-f) only stops when input is waiting
+       on stdin, which it would otherwise silently ignore. Running with a script file, or
+       with stdin on /dev/null, is unchanged.
+   OM: energy units ("1 TeV", "500 MeV", ...) are now only accepted where the value is an
+       energy, and converted to GeV. The run_card entries carrying an energy are declared
+       as such (energy=True in their definition): the madevent and aMC@NLO run_cards now
+       accept units on them too (e.g. "set ptj 1 TeV"). A unit on any other numeric entry
+       is an error: on the mg7 run_card, "set etaj 2 TeV" or "set jet-eta_abs.max 4 TeV"
+       used to set an eta cut of 2000/4000; for the [cuts], the observable of the cut says
+       whether it is an energy. In the param_card, only the masses and the widths accept
+       a unit (e.g. "set mt 172.5 GeV"). The madevent energy shortcuts (lhc, lcc, lep,
+       ilc, ebeam, fixed_scale) take a unit too: "set lhc 500 GeV" is a 500 GeV collider
+       (a unit-less lhc/lcc value stays in TeV), where "set ebeam 6.5 TeV" used to set
+       6.5 GeV; a real extra argument ("set lhc 13 14") is now refused.
+   OM: madevent MLM (ickkw=1) with use_syst: the <pdfrwt> entry of the incoming partons
+       used the flavour class of the grouped subprocess instead of the event's flavour
+       (pdg 1 for s s~, 2 for c c~), so the systematics (PDF and mu_F variations) of every
+       s/c-initiated event were computed with the d/u PDF (up to 9% for mu_F=2 on p p > z).
+   OM: madevent LO vector mode (vector_size>1): the good-helicity scan saw a single
+       beam orientation per warp, so up to half of p p > z was dropped. With helicity
+       recycling, the madevent_forhel scan now runs event by event. Without it
+       (hel_recycling = False), the scan inside SMATRIX now runs its MAXTRIES events
+       for each beam orientation and gets the orientation of each event. Also fixed a
+       latent bug: an event in IMODE 5 no longer skips the rest of the vector (the
+       vector code currently always uses IMODE 0).
+   RF: Add real-diagram channels for fixed-order NLO, through the
+       hidden option real_channels_x0 in the run_card. Useful for
+       processes that have new structures opening beyond LO, such as
+       pp>w+bb [QCD] (W radiating from a final state quark line) or
+       pp>w+h [QED] (photon induced t-channel contribution). A typical
+       value would be a few percent or so (e.g., 0.03). See also
+       Sec.6.3 of 0908.4272 [hep-ph].
+   OM: real_channels_x0 is now set by default, at output, for the processes
+       whose real-emission diagrams have propagators that the Born channels
+       do not follow (0.05, e.g. pp>w+h [QED], pp>w+bb~ [QCD], pp>w+w- [QED];
+       -1 otherwise, e.g. pp>jj, pp>w+j, pp>tt~j, pp>tt~h [QCD]). The
+       decision is the same for a resonance and its decay products
+       (pp>w+j and pp>e+vej). The value is written in the run_card, and
+       ignored for MC@NLO/LO/merged runs.
    OM: The default PDF follows the process when a photon is needed (issue #311):
        a photon in the initial state of a proton beam (LO, NLO and the mg7
        [beam] pdf) or NLO EW corrections ([QED]) select
        NNPDF40_nlo_as_01180_qed (lhaid 335900), at NLO also for a model with a
        massive b (NNPDF4.0 has no 4-flavour QED set). The NNPDF4.0 defaults
        have no photon. A PDF set by the user is kept.
+   ZW: MG7 outputs have two reweighting backends: MadtRex ('install madtrex';
+       matrix-element and PDF/scale reweighting on lhe or lhe_npy events) and the
+       classic reweighting module (f2py). Both read Cards/reweight_card.dat with the
+       classic vocabulary ('change' for options, 'set' for parameters). The backend
+       comes from 'generate_events --reweight-backend=classic|madtrex|auto', the
+       reweight switch of the launch question (now OFF/ON/classic/madtrex/density,
+       ON being auto), or the card's new 'change backend' line; auto prefers
+       MadtRex when it can run the card. The choice is logged and recorded in
+       Events/<run>/reweighting.json, and a choice that cannot run stops the launch
+       before the generation. Reweighting runs once, after the systematics;
+       '--reweight=CARD' now just switches it on with CARD as the reweight card.
+       MadtRex cards: 'change helicity', 'change fptype', 'change mode LO|pdf',
+       'change verbose/max_batch/...' replace the former 'set' spellings (still
+       accepted, with a warning), 'set MT 175' (a parameter by its param_card
+       name) works, and directives only the classic module knows are an error
+       instead of being ignored. MG7 outputs get their own default reweight card
+       documenting both backends. madevent and aMC@NLO outputs are unchanged.
+       Both backends add their weights to the run's own event file
+       (Events/<run>/events.lhe.gz, or events.npy for an lhe_npy run reweighted by
+       MadtRex, as rwgt_<name> columns that npy_to_lhe carries over), after the
+       systematics weights; MadtRex no longer writes a separate *_reweighted file
+       (bin/reweight --output still can). MadtRex reads lhe_npy events with
+       systematics weights (they were refused as "Invalid header for event file").
+   ZW: Without f2py_compiler set, the f2py installed with the running Python (e.g.
+       in a virtual environment) is used before f2py3/f2py on the PATH, which may
+       build modules for another Python version (reweighting then failed with "file
+       too short" or a missing all_matrix2py module).
+   OM: MadtRex follow-ups: 'install madtrex' builds with clang/macOS; madtrex refuses a
+       madspace other than the one it was built against (with the command to rebuild it;
+       MadGraph then reweights with the classic module) and its installer a too old
+       madspace; a failing reweighting no longer stops the run, and 'reweight RUN' (after
+       'launch PROC -i') reweights the events of an earlier run; MadtRex reweight cards
+       accept '!' comments and multi-index parameters ('set NMIX 1 2 0.5'); the baseline
+       PDF set and precision of a MadtRex reweighting are those of the run that made the
+       events (its LHE header), not of the current run_card; a gridpack made with
+       include_madtrex_source builds madtrex from its sources in bin/reweight.
    OM: new command 'install cuttools_iregi' recompiling CutTools and IREGI (vendor/)
        with the current fortran compiler. The error raised when CutTools/IREGI were
        compiled with another compiler (e.g. after a gfortran update) now points to it.
@@ -153,7 +361,51 @@ ANNOUNCEMENT:
        list for good, and a later import of e.g. loop_sm then grouped mdl_MW under
        ('aEWM1','Gf') instead of ('aEWM1',), reordering mp_intparam_definition.inc.
        Each instance now works on its own copy.
+   NC+DdE+LM+HS+LS: gamma-UPC 1.8 with forward neutron tagging in ultraperipheral
+       collisions, at LO and NLO.
+       - new pdlabel edf<y>n<z>n / chf<y>n<z>n: EDFF / ChFF with the neutron tags <y>, <z>
+         of beam 1 and beam 2 among i (0n+Xn), x (Xn), 0, 1, 2, 3, 4. Pb208, Au197 and O16
+         (up to 2n) are supported. The tag of a proton beam is ignored.
+       - edp/edm (chp/chm) in place of edf (chf) give the upper/lower neutron-emission
+         cross sections, for the uncertainty estimate.
+       - new photoabsorption and 1n-4n emission cross sections for Pb208, Au197, O16 (and U238,
+         not enabled yet), and a new interpolation of the photon-photon luminosity grid.
+   HS+OM: Bug fix (gamma-UPC): at LO, a run with a regular pdlabel followed by a run with a
+       gamma-UPC pdlabel in the same output kept the dummy library and stopped. libgammaUPC is
+       now built by Source/makefile only, which follows the pdlabel; under 'make -j' it was
+       also compiled twice at once ("Cannot rename module file").
+   HS+OM: Bug fix (gamma-UPC): an error inside gamma-UPC now stops with a non-zero exit status
+       (it used to report success).
 
+
+3.8.2 (XX/XX/XX):
+    OM: LO grouped output (default): the renormalisation/factorisation scales and the MLM xqcut
+        veto were computed on the momenta before the symmetry permutation of the channel (#453).
+        Channels with such permutations were biased (e.g. -3.5% for u q > z u q, also with MLM).
+        Fixed both for the scalar and the vector (vector_size>1, cudacpp) mode.
+    OM: LO vector mode (vector_size>1): fix the reweighting of MLM matching (the central factorisation
+        scale of the last event of the batch was used for all events), the config/mirror used per warp,
+        and a crash (memory corruption) when vector_size was changed in the run_card after the output.
+    OM: LO vector mode with nb_warp>1: when a P directory groups several subprocesses, each warp
+        selected its own subprocess but only the last one was evaluated for all warps (wrong weights,
+        'Clustering failed' crashes). The subprocess is now chosen once per vector (from the PDF weights
+        averaged over the warps) and the configuration/beam orientation per warp.
+    OM: MadSpin (spinmode=PA): new option 'auto_zero_width_PA' (default True) setting the width
+        of the particles decayed by MadSpin to zero in the matrix element of the production density
+        matrix, and each one in the matrix element of its own decay density matrix only (Breit-Wigner
+        sampling, reshuffling, propagator factor and branching ratios keep the param_card widths).
+    OM: output standalone: new option --zerowidth_decay=True|False|<pdg>,<pdg>,... writing propagators
+        with a zero width (param_card untouched): in a 2>N process those of the final-state particles,
+        in a 1>N process (decay) those of the decaying particle only; a pdg list restricts to those.
+    VD+OM: Density mode of the reweighting (since 3.8.0): the particles of the density matrix are now
+        ordered as given in particle_in_density_matrix (they followed the order of the process), also
+        when they are ranked with an observable. That ranking could be wrong, or drop a particle, when
+        other particles were in between. A pdg code (or a rank) absent from the process is now an error.
+    OM: Density mode of the reweighting (since 3.8.0): boost_choice used the wrong particles when the
+        event contains intermediate particles, e.g. the t+W frame instead of the b+t~ one for
+        g g > t t~, t > b w+ with boost_choice [5, -6].
+    VD: Quantum Information library: new observable Get_Steering (two-qubit steering for 2 or 3
+        measurements per site, 1510.08030).
 
 3.8.1 (XX/XX/XX):
     OM: LO: the final unweighting no longer truncates the events above the maximum
@@ -177,6 +429,11 @@ ANNOUNCEMENT:
     HS+LM+LS: P-Wave Support for Quarkonium/Leptonium (2607.26739)
 
     Bug Fixes:
+        OM: MadLoop: disable helicity filtering for all 2>1 and 1>2 processes.
+            A filter learned in the c.m. frame can discard nonzero helicities in
+            another frame, giving an incorrect virtual contribution in standalone,
+            OLP or boosted reweighting calls. The aMC@NLO virtual is evaluated in
+            the Born c.m. frame and is unaffected.
         OM: Bug fix custom files for cuts/scale/... were broken for NLO computation
             since 3.6.0
         OM: Bug fix (since 3.6.0) for rapidity cut in asymmetric collision 

@@ -26,6 +26,7 @@ import contextlib
 import logging
 import math
 import copy
+import filecmp
 import os
 import re
 import shutil
@@ -48,7 +49,7 @@ root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 root_path = os.path.split(root_path)[0]
 sys.path.insert(0, os.path.join(root_path,'bin'))
 
-# usefull shortcut
+# useful shortcut
 pjoin = os.path.join
 # Special logger for the Cmd Interface
 logger = logging.getLogger('madgraph.stdout') # -> stdout
@@ -114,7 +115,7 @@ def render_HwU_plot(path, stdout=None, stderr=None):
 # HelpToCmd
 #===============================================================================
 class HelpToCmd(object):
-    """ The Series of help routins in common between amcatnlo_run and
+    """ The Series of help routines shared by amcatnlo_run and
     madevent interface"""
 
     def help_treatcards(self):
@@ -148,7 +149,7 @@ class HelpToCmd(object):
         logger.info("              We then either stop at the N-body decay or when the estimated error is lower than M.")
         logger.info("        default: 4.0025")
         logger.info("  --min_br=X: All channel which are estimated below this value will not be integrated numerically.")
-        logger.info("        default: precision (decimal part of the body_decay options) divided by four")
+        logger.info("        default: precision (decimal part of the body_decay options) divided by five")
         logger.info("  --precision_channel=X: requested numerical precision for each channel")
         logger.info("        default: 0.01")
         logger.info("  --path=X: path for param_card")
@@ -241,7 +242,7 @@ class CheckValidForCmd(object):
 
         if args[0] in ['timeout']:
             if not args[1].isdigit():
-                raise self.InvalidCmd('timeout values should be a integer')
+                raise self.InvalidCmd('timeout values should be an integer')
 
     def check_compute_widths(self, args):
         """check that the model is loadable and check that the format is of the
@@ -679,7 +680,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     # The three options categories are treated on a different footage when a
     # set/save configuration occur. current value are kept in self.options
     options_configuration = {'pythia8_path': './pythia8',
-                       'hwpp_path': './herwigPP',
+                       'herwig7_path': './herwig7',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
                        'hepmc3_path': None,
@@ -753,7 +754,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         
         self.param_card_iterator = [] #an placeholder containing a generator of paramcard for scanning
 
-        # usefull shortcut
+        # useful shortcut
         self.status = pjoin(self.me_dir, 'status')
         self.error =  pjoin(self.me_dir, 'error')
         self.dirbin = pjoin(self.me_dir, 'bin', 'internal')
@@ -1257,7 +1258,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     '@MG5aMC', # MA5 hadronique
                     'run_rivet_later', # Rivet
                     'change particle_in_density_matrix', # density mode of reweight
-                    'simd_vector_size', # mg7 run_card.toml
+                    'madspace_cpu_mode', # mg7 run_card.toml
+                    'simd_vector_size', # mg7 run_card.toml (before madspace_cpu_mode)
                     'include_madspace', # mg7 run_card.toml
                     ]
         
@@ -1293,7 +1295,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             # MadAnalysis4 is gone, but banners and process directories written
             # by older versions still carry this card: recognise it, ignore it.
             return 'plot_card.dat'
-        elif 'simd_vector_size' in text or 'include_madspace' in text:
+        elif 'madspace_cpu_mode' in text or 'simd_vector_size' in text or \
+                'include_madspace' in text:
             # mg7 run_card is a TOML file (madspace/MadNIS integration engine)
             return 'run_card.toml'
         elif ('gridpack' in text and 'ebeam1' in text) or \
@@ -1434,7 +1437,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 else:
                     histo.type += '|%s=%.4g'%(merging_scale_name, max_merging_scale)
             
-            # Now plot and compare against oneanother the shape for the the two scales
+            # Now plot and compare against one another the shape for the two scales
             histograms.HwUList(min_scale_histos+max_scale_histos).output(
                 pjoin(plot_root_path,'min_max_%s_%s_comparison'
                                          %(merging_scale_name,observable_name)),
@@ -1470,9 +1473,15 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         PY8_plots_root_path = pjoin(self.me_dir,'HTML',
                                            self.run_name,'%s_PY8_plots'%tag)
 
-        if 'ickkw' in self.run_card:
-            if int(self.run_card['ickkw'])==1 or \
-                  self.run_card['ktdurham']>0.0 or self.run_card['ptlund']>0.0:
+        # read through __getitem__: an mg7 run card answers these legacy keys
+        # (ickkw = 1 for an MLM sample) without containing them
+        try:
+            ickkw = int(self.run_card['ickkw'])
+            ckkw_cut = self.run_card['ktdurham'] > 0.0 or self.run_card['ptlund'] > 0.0
+        except KeyError:
+            ickkw, ckkw_cut = 0, False
+        if ickkw or ckkw_cut:
+            if ickkw==1 or ckkw_cut:
                 self.update_status('Create matching plots for Pythia8',
                                                                 level='pythia8')
 
@@ -1489,6 +1498,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                                              self.run_name, '%s_pts.dat' % tag)
                 for observable_name, data_path in [('djr',djr_path),
                                                    ('pt',pt_path)]:
+                    # Pythia8's main164 writes the DJRs only (no pts.dat):
+                    # an observable without data is skipped, not the plots
+                    if not os.path.isfile(data_path):
+                        continue
                     try:
                         if not self.generate_Pythia8_HwU_plots(
                                     PY8_plots_root_path, merging_scale_name,
@@ -2169,6 +2182,20 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             raise self.ConfigurationError('''Can\'t load Reweight module.
             The variable mg5_path might not be correctly configured.''')
 
+        # the reweighting backend (madgraph/various/reweight_backend.py): this
+        # is the classic module; MadtRex runs from the MG7 output's launcher
+        backend = [a.split('=', 1)[1] for a in line.split()
+                   if a.startswith(('--backend=', '--reweight-backend='))]
+        if backend:
+            line = ' '.join(a for a in line.split()
+                            if not a.startswith(('--backend=', '--reweight-backend=')))
+            if backend[-1].lower() == 'madtrex':
+                raise self.InvalidCmd('--backend=madtrex: MadtRex needs an MG7 output; '
+                                      'this reweighting uses the classic module')
+            if backend[-1].lower() not in ('classic', 'auto'):
+                raise self.InvalidCmd('--backend=%s: expected classic, madtrex or auto'
+                                      % backend[-1])
+
         # plugin option
         plugin = False
         reweight_mode = None
@@ -2328,7 +2355,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     pass
                 # prepare multi-core  job:
                 import madgraph.various.lhe_parser as lhe_parser
-                # args now alway content the path to the valid files
+                # args now always contain the path to the valid files
                 if 'nevt_job' in self.run_card and self.run_card['nevt_job'] !=-1:
                     nevt_job = self.run_card['nevt_job']
                 else:
@@ -2416,7 +2443,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             self.results.delete_run(self.run_name, self.run_tag)
 
         self.check_decay_events(args) 
-        # args now alway content the path to the valid files
+        # args now always contain the path to the valid files
 
         #According to the reweight mode chosen by the user, we instantiate the correct reweight interface
         #could improve it with a __new__ in ReweightInterface so we would always call ReweightInterface instead of DensityInterface ?
@@ -2429,7 +2456,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         if plugin: 
             rwgt_interface = misc.from_plugin_import(self.plugin_path, 'new_reweight', 
                                         plugin, warning=False, 
-                                        info="Will use re-weighting from pluging %(plug)s")
+                                        info="Will use re-weighting from plugin %(plug)s")
                 
 
         reweight_cmd = rwgt_interface(args[0], mother=self)
@@ -2737,9 +2764,26 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     'The corresponding directory cannot be found in \n' + \
                     'Source/PDF/lep_densities')
 
-        # now copy the files
+        # now copy the files. Source/makefile builds libpdf.a from the PDF
+        # *directory*, whose mtime does not move when an existing file is
+        # overwritten, so a new density would never be compiled: the previous
+        # one stayed linked (a 240 GeV FCC-ee density used for a 365 GeV run).
+        # Hence remove the stale objects and the library whenever the density
+        # actually changes, and leave everything alone when it does not.
+        changed = False
         for filename in ['eepdf.f', 'gridpdfaux.f']:
-            files.cp(os.path.join(lep_d_path, filename), pdf_path)
+            new = os.path.join(lep_d_path, filename)
+            old = os.path.join(pdf_path, filename)
+            if os.path.exists(old) and filecmp.cmp(new, old, shallow=False):
+                continue
+            files.cp(new, pdf_path)
+            changed = True
+            obj = os.path.join(pdf_path, filename[:-2] + '.o')
+            if os.path.exists(obj):
+                os.remove(obj)
+        libpdf = os.path.join(sourcedir, os.pardir, 'lib', 'libpdf.a')
+        if changed and os.path.exists(libpdf):
+            os.remove(libpdf)
 
     ############################################################################
     # Start of MadAnalysis5 related function
@@ -2820,7 +2864,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                                                      no_compilation=not compilation)
         except Exception as e:
             if not __debug__:
-                logger.info('MadAnalysis5 instalation not python3 compatible')
+                logger.info('MadAnalysis5 installation is not compatible with Python 3')
                 return None
             logger.warning('MadAnalysis5 failed to start so that MA5 analysis will be skipped.')
             error=io.StringIO()
@@ -3013,7 +3057,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         if self.force:
             return runtype
         
-        # This heavy-looking structure of auto is just to mimick what is done
+        # This heavy-looking structure of auto is just to mimic what is done
         # for ask_pythia_configuration
         auto=False
         if mode=='auto':
@@ -3156,6 +3200,16 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         #2 Prepare Rivet setup environments
         rivet_path = self.options['rivet_path']
         yoda_path = self.options['yoda_path']
+        # Rivet links against rivet, yoda and a full fastjet installation
+        # (fjcore, the fallback without fastjet-config, is not enough)
+        for key, what in [('rivet_path', 'rivet'), ('yoda_path', 'yoda'),
+                          ('fastjet', 'fastjet-config')]:
+            value = self.options[key]
+            if not value or value in ['None', 'NA'] or \
+                         (key == 'fastjet' and not misc.which(value)):
+                raise self.InvalidCmd('Rivet requires %s, but option %s is "%s":'
+                    ' install it (install rivet) or set %s in '
+                    'mg5_configuration.txt.' % (what, key, value, key))
         fastjet_path = subprocess.Popen([self.options['fastjet'], '--prefix'],
                          stdout = subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
 
@@ -3266,7 +3320,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 return
         else:
             # Called issued by the user itself and only MA5 will be run.
-            # we must therefore ask wheter the user wants to edit the card
+            # we must therefore ask whether the user wants to edit the card
             self.ask_madanalysis5_run_configuration(runtype=mode) 
 
         if not self.options['madanalysis5_path'] or \
@@ -3293,7 +3347,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                                          ' Skipping its hadron-level analysis.')
                 return
             else:
-                raise self.InvalidCmd('\nNo input files specified or availabled for'+
+                raise self.InvalidCmd('\nNo input files specified or available for'+
         ' this MadAnalysis5 hadron-level run.\nPlease double-check the options of this'+
         ' MA5 command (or card) and which output files\nare currently in the chosen'+
         " run directory '%s'."%self.run_name)
@@ -3662,17 +3716,33 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     ############################################################################
     def get_pid_final_initial_states(self):
         """Find the pid of all particles in the final and initial states"""
+        import json
+
         pids = set()
         subproc = [l.strip() for l in open(pjoin(self.me_dir,'SubProcesses',
                                                                  'subproc.mg'))]
-        nb_init = self.ninitial
-        pat = re.compile(r'''DATA \(IDUP\(ILH|I,\d+\),ILH|I=1,\d+\)/([\+\-\d,\s]*)/''', re.I)
+        pat = re.compile(r'DATA\s*\(IDUP\((?:ILH|I),\d+\),'
+                         r'\s*(?:ILH|I)=1,\d+\)\s*/([+\-\d,\s]*)/', re.I)
         for Pdir in subproc:
-            text = open(pjoin(self.me_dir, 'SubProcesses', Pdir, 'born_leshouche.inc')).read()
+            directory = pjoin(self.me_dir, 'SubProcesses', Pdir)
+            metadata_path = pjoin(directory, 'born_support.json')
+            source = pjoin(directory, 'born_leshouche.inc')
+            if os.path.isfile(metadata_path):
+                with open(metadata_path) as stream:
+                    metadata = json.load(stream)
+                if 'born_pdgs' in metadata:
+                    pids.update(str(pdg) for process in metadata['born_pdgs']
+                                for pdg in process)
+                    continue
+                # Earlier shared-provider outputs keep the immutable IDUP
+                # table in the context metadata rather than in this include.
+                source = pjoin(self.me_dir, 'Source', 'BornSupport',
+                               'c%d' % metadata['context'], 'metadata.f')
+            with open(source) as stream:
+                text = stream.read()
             group = pat.findall(text)
             for particles in group:
-                particles = particles.split(',')
-                pids.update(set(particles))
+                pids.update(str(int(pdg)) for pdg in particles.split(','))
 
         return pids
 
@@ -3741,7 +3811,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     def do_set(self, line, log=True):
         """Set an option, which will be default for coming generations/outputs
         """
-        # cmd calls automaticaly post_set after this command.
+        # cmd automatically calls post_set after this command.
 
 
         args = self.split_arg(line)
@@ -4045,7 +4115,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             if not isinstance(interface, cmd.CmdShell):
                 # we are in web mode => forbid scan due to security risk
                 raise Exception("Scan are not allowed in web mode")
-            # at least one scan parameter found. create an iterator to go trough the cards
+            # at least one scan parameter found. create an iterator to go through the cards
             main_card = iterator_class(text)
             interface.param_card_iterator = main_card
             first_card = main_card.next(autostart=True)
@@ -4194,7 +4264,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     def add_error_log_in_html(self, errortype=None):
         """If a ME run is currently running add a link in the html output"""
 
-        # Be very carefull to not raise any error here (the traceback
+        # Be very careful to not raise any error here (the traceback
         #will be modify in that case.)
         if hasattr(self, 'results') and hasattr(self.results, 'current') and\
                 self.results.current and 'run_name' in self.results.current and \
@@ -4388,7 +4458,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         self.options[name] = None
 
         if not final:
-            return self.options # the return is usefull for unittest
+            return self.options # the return is useful for unittest
 
         # Treat each expected input
         # delphes/pythia/... path
@@ -4500,7 +4570,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         # load the name of the event file
         args = self.split_arg(line)
         self.check_decay_events(args)
-        # args now alway content the path to the valid files
+        # args now always contain the path to the valid files
         madspin_cmd = interface_madspin.MadSpinInterface(args[0])
         # pass current options to the interface
         madspin_cmd.mg5cmd.options.update(self.options)
@@ -4661,7 +4731,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         # load the name of the event file
         args = self.split_arg(line) 
         self.check_check_events(args) 
-        # args now alway content the path to the valid files
+        # args now always contain the path to the valid files
         reweight_cmd = reweight_interface.ReweightInterface(args[0], allow_madspin=True)
         reweight_cmd.mother = self
         self.update_status('Running check on events', level='check')
@@ -4784,7 +4854,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         """
         make_opts = path
         pattern = re.compile(r'^(\w+)\s*=\s*(.*)$',re.DOTALL)
-        diff = False # set to True if one varible need to be updated 
+        diff = False # set to True if one variable needs to be updated
                      #if on False the file is not modify
         
         tag = '#end_of_make_opts_variables\n'
@@ -4908,7 +4978,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
 
     def get_characteristics(self, path=None):
-        """reads the proc_characteristics file and initialises the correspondant
+        """reads the proc_characteristics file and initialises the corresponding
         dictionary"""
         
         if not path:
@@ -5213,7 +5283,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         else:
             raise MadGraph5Error('Not valid LHAPDF version: %s' % lhapdf_version)
         
-        # check taht the file has been installed in the global dir
+        # check that the file has been installed in the global dir
         if os.path.exists(pjoin(pdfsets_dir, filename)) or \
            os.path.isdir(pjoin(pdfsets_dir, filename)):
             logger.info('%s successfully downloaded and stored in %s' \
@@ -5349,9 +5419,9 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             else:
                 raise
                 
-        # this will be removed once some issues in lhapdf6 will be fixed
-        if lhapdf_version.startswith('6.0'):
-            raise MadGraph5Error('LHAPDF 6.0.x not supported. Please use v6.1 or later')
+        # the PDF glue (pdf_lhapdf62.cc) requires LHAPDF 6.2 or later
+        if lhapdf_version.startswith(('6.0.', '6.1.')):
+            raise MadGraph5Error('LHAPDF %s not supported. Please use v6.2 or later' % lhapdf_version)
         return lhapdf_version
 
 
@@ -5546,7 +5616,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         self.update_dependent_done = False
 
         if 'allow_arg' not in opt or not opt['allow_arg']:
-            # add some mininal content for this:
+            # add some minimal content for this:
             opt['allow_arg'] = list(range(self.integer_bias, self.integer_bias+len(cards)))
 
         self.param_consistency = True
@@ -5575,7 +5645,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 card_name = card_name.split('_',1)[0] 
                 self.paths[card_name] = card
                 
-        # go trough the initialisation of each card and detect conflict
+        # go through the initialisation of each card and detect conflict
         for name in self.to_init_card:
             new_vars = set(getattr(self, 'init_%s' % name)(cards))
             new_conflict = self.all_vars.intersection(new_vars)
@@ -5738,8 +5808,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
               '   0 : means no PDF\n'+\
               '   1 : means proton PDF\n'+\
               '  -1 : means antiproton PDF\n'+\
-              '   2 : means PDF for elastic photon emited from a proton\n'+\
-              '   3 : means PDF for elastic photon emited from an electron',
+              '   2 : means PDF for elastic photon emitted from a proton\n'+\
+              '   3 : means PDF for elastic photon emitted from an electron',
     'lhc'   : 'syntax: set lhc VALUE:\n      Set for a proton-proton collision with that given center of mass energy (in TeV)',
     'lep'   : 'syntax: set lep VALUE:\n      Set for a electron-positron collision with that given center of mass energy (in GeV)',
     'fixed_scale' : 'syntax: set fixed_scale VALUE:\n      Set all scales to the give value (in GeV)',
@@ -5938,7 +6008,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         self.reweight_card_default = banner_mod.DensityCard(self.paths['reweight_default'])
 
         self.reweight_vars = [k.lower() for k in self.reweight_card.keys()]
-        #we define here the reweight_card for the density mode as a dictionnary. And we read it off the default cards
+        #we define here the reweight_card for the density mode as a dictionary. And we read it off the default cards
         return []
 
     @staticmethod
@@ -6015,7 +6085,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         # `help vi`: this is where a card is about to open in vi
         if len(args) == 1 and args[0] in ('vi', 'vim'):
             return self.help_vi()
-        # handle comand related help
+        # handle command related help
         if len(args)==0 or (len(args) == 1 and hasattr(self, 'do_%s' % args[0])):
             out = cmd.BasicCmd.do_help(self, line)
             if len(args)==0:
@@ -6086,7 +6156,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 conflict_raise = True
                 logger.info('**   AMBIGUOUS NAME: %s **', args[start], '$MG:BOLD')
                 if card == '':
-                    logger.info('**   If not explicitely speficy this parameter  will modif the run_card file', '$MG:BOLD')
+                    logger.info('**   Unless explicitly specified, this parameter will modify the run_card file', '$MG:BOLD')
 
             self.run_card.do_help(args[start])
         ### PARAM_CARD WITH BLOCK NAME -----------------------------------------
@@ -6096,7 +6166,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 conflict_raise = True
                 logger.info('**   AMBIGUOUS NAME: %s **', args[start], '$MG:BOLD')
                 if card == '':
-                    logger.info('**   If not explicitely speficy this parameter  will modif the param_card file', '$MG:BOLD')
+                    logger.info('**   Unless explicitly specified, this parameter will modify the param_card file', '$MG:BOLD')
                  
             if args[start] == 'width':
                 args[start] = 'decay'
@@ -6131,7 +6201,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 conflict_raise = True
                 logger.info('**   AMBIGUOUS NAME: %s **', args[start], '$MG:BOLD')
                 if card == '':
-                    logger.info('**   If not explicitely speficy this parameter  will modif the param_card file', '$MG:BOLD')
+                    logger.info('**   Unless explicitly specified, this parameter will modify the param_card file', '$MG:BOLD')
                  
             all_var = self.pname2block[args[start]]
             for bname, lhaid in all_var:
@@ -6147,7 +6217,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 conflict_raise = True
                 logger.info('**   AMBIGUOUS NAME: %s **', args[start], '$MG:BOLD')
                 if card == '':
-                    logger.info('**   If not explicitely speficy this parameter  will modif the madloop_card file', '$MG:BOLD')                
+                    logger.info('**   Unless explicitly specified, this parameter will modify the madloop_card file', '$MG:BOLD')
                 
             self.MLcard.do_help(args[start])
 
@@ -6157,7 +6227,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 conflict_raise = True
                 logger.info('**   AMBIGUOUS NAME: %s **', args[start], '$MG:BOLD')
                 if card == '':
-                    logger.info('**   If not explicitely speficy this parameter  will modif the pythia8_card file', '$MG:BOLD')  
+                    logger.info('**   Unless explicitly specified, this parameter will modify the pythia8_card file', '$MG:BOLD')
 
             self.PY8Card.do_help(args[start])
         elif card.startswith('madanalysis5'):
@@ -6493,6 +6563,37 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 return args[:i] + [' '.join(args[i:])]
         return args
 
+    # the shortcuts taking an energy, and the unit of their unit-less value
+    # in GeV ("set lhc 13" is 13 TeV, "set lep 200" is 200 GeV)
+    energy_shortcuts = {'ebeam': 1., 'lhc': 1e3, 'lcc': 1e3, 'lep': 1., 'ilc': 1.,
+                        'fixed_scale': 1.}
+
+    def join_energy_units(self, args):
+        """Turn a value given with an energy unit ("13TeV", or "13" "TeV" as
+        two tokens) into one value in the unit of the shortcut args[0]
+        ("set lhc 500 GeV" -> "0.5")."""
+        joined = [args[0]]
+        for token in args[1:]:
+            if len(joined) > 1 and token.lower() in banner_mod.energy_units and \
+                    banner_mod.parse_energy_unit('%s %s' % (joined[-1], token)) is not None:
+                token = '%s %s' % (joined.pop(), token)
+            energy = banner_mod.parse_energy_unit(token)
+            if energy is not None:
+                token = '%.12g' % (energy / self.energy_shortcuts[args[0]])
+            joined.append(token)
+        return joined
+
+    def _scripted(self):
+        """True when the question is answered from a command file."""
+        mother = getattr(self, 'mother_interface', None)
+        return bool(mother is not None and getattr(mother, 'inputfile', None))
+
+    def invalid_set(self, text):
+        """Reject a set command: an error in a scripted run, a warning interactively."""
+        if self._scripted():
+            raise InvalidCmd(text)
+        logger.warning(text)
+
     def do_set(self, line):
         """ edit the value of one parameter in the card"""
 
@@ -6501,7 +6602,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         
         
         if len(args) == 0:
-            logger.warning("No argument. For help type 'help set'.")
+            self.invalid_set("No argument. For help type 'help set'.")
+            return
         # fix some formatting problem
         if len(args)==1 and '=' in args[-1]:
             arg1, arg2 = args.pop(-1).split('=',1)
@@ -6517,28 +6619,33 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         # special shortcut:
         if args[0] in self.special_shortcut:
             targettypes , cmd = self.special_shortcut[args[0]]
+            if args[0] in self.energy_shortcuts:
+                args = self.join_energy_units(args)
             if len(args) != len(targettypes) +1:
                 if len(targettypes) == 1 and args[len(targettypes)].startswith('scan'):
                     args = args[:len(targettypes)] + [' '.join(args[len(targettypes):])]
                     targettypes = [str]
                 else:
-                    logger.warning('shortcut %s requires %s argument' % (args[0], len(targettypes)))
                     if len(args) < len(targettypes) +1:
+                        self.invalid_set('shortcut %s requires %s argument' % (args[0], len(targettypes)))
                         return
                     else:
-                        logger.warning('additional argument will be ignored')
+                        self.invalid_set('shortcut %s takes %s argument(s), got %s: %s'
+                                         % (args[0], len(targettypes), len(args) - 1,
+                                            ' '.join(args[1:])))
+                        return
             values ={}
             for i, argtype in enumerate(targettypes):           
                 try:  
                     values[str(i)] = banner_mod.ConfigFile.format_variable(args[i+1], argtype, args[0])
                 except ValueError as e:
-                    logger.warning("Wrong argument: The entry #%s should be of type %s.", i+1, argtype)
+                    self.invalid_set("Wrong argument: The entry #%s should be of type %s." % (i+1, argtype))
                     return
                 except InvalidCmd as e:
                     if isinstance(args[i+1], str) and args[i+1].startswith('scan'):
                         values[str(i)] = args[i+1]
                     else:
-                        logger.warning(str(e))
+                        self.invalid_set(str(e))
                         return
             #else:
             #    logger.warning("too many argument for this command")
@@ -6548,10 +6655,10 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     try:
                         text = arg % values
                     except KeyError:
-                        logger.warning("This command requires one argument")
+                        self.invalid_set("This command requires one argument")
                         return
                     except Exception as e:
-                        logger.warning(str(e))
+                        self.invalid_set(str(e))
                         return
                     else:
                         split = text.split()
@@ -6565,12 +6672,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     try:
                         arg(self)(*val)
                     except Exception as e:
-                        logger.warning(str(e))
+                        self.invalid_set(str(e))
             return
 
         start = 0
         if len(args) < 2:
-            logger.warning('Invalid set command %s (need two arguments)' % line)
+            self.invalid_set('Invalid set command %s (need two arguments)' % line)
             return            
 
         # Special case for the qcut value
@@ -6605,43 +6712,43 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         card = '' #store which card need to be modify (for name conflict)
         if args[0] == 'madweight_card':
             if not self.mw_card:
-                logger.warning('Invalid Command: No MadWeight card defined.')
+                self.invalid_set('Invalid Command: No MadWeight card defined.')
                 return
             args[0] = 'MadWeight_card'
         
         if args[0] == 'shower_card':
             if not self.shower_card:
-                logger.warning('Invalid Command: No Shower card defined.')
+                self.invalid_set('Invalid Command: No Shower card defined.')
                 return
             args[0] = 'shower_card'
 
         if args[0] == "madloop_card":
             if not self.has_ml:
-                logger.warning('Invalid Command: No MadLoopParam card defined.')
+                self.invalid_set('Invalid Command: No MadLoopParam card defined.')
                 return
             args[0] = 'MadLoop_card'
 
         if args[0] == "pythia8_card":
             if not self.has_PY8:
-                logger.warning('Invalid Command: No Pythia8 card defined.')
+                self.invalid_set('Invalid Command: No Pythia8 card defined.')
                 return
             args[0] = 'pythia8_card'
 
         if args[0] == "rivet_card":
             if not self.has_rivet:
-                logger.warning('Invalid Command: No Rivet card defined.')
+                self.invalid_set('Invalid Command: No Rivet card defined.')
                 return
             args[0] = 'rivet_card'
 
         if args[0] == 'reweight_card':
             if not self.has_density:
-                logger.warning('Invalid Command: No Reweight card defined')
+                self.invalid_set('Invalid Command: No Reweight card defined')
                 return
             args[0] = 'reweight_card'
 
         if args[0] == 'delphes_card':
             if not self.has_delphes:
-                logger.warning('Invalid Command: No Delphes card defined.')
+                self.invalid_set('Invalid Command: No Delphes card defined.')
                 return
             if args[1] == 'atlas':
                 logger.info("set default ATLAS configuration for Delphes", '$MG:BOLD')
@@ -6676,7 +6783,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 card = args[0]
             start=1
             if len(args) < 3:
-                logger.warning('Invalid set command: %s (not enough arguments)' % line)
+                self.invalid_set('Invalid set command: %s (not enough arguments)' % line)
                 return
             
         elif args[0] in ['MadLoop_card']:
@@ -6690,7 +6797,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 card = args[0]
             start=1
             if len(args) < 3:
-                logger.warning('Invalid set command: %s (not enough arguments)' % line)
+                self.invalid_set('Invalid set command: %s (not enough arguments)' % line)
                 return
         elif args[0] in ['pythia8_card']:
             if args[1] == 'default':
@@ -6704,7 +6811,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 card = args[0]
             start=1
             if len(args) < 3:
-                logger.warning('Invalid set command: %s (not enough arguments)' % line)
+                self.invalid_set('Invalid set command: %s (not enough arguments)' % line)
                 return
 
         elif args[0] in ['madspin_card']:
@@ -6713,7 +6820,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 files.cp(self.paths['MS_default'], self.paths['madspin'])
                 return
             else:
-                logger.warning("""Command set not allowed for modifying the madspin_card. 
+                self.invalid_set("""Command set not allowed for modifying the madspin_card. 
                     Check the command \"decay\" instead.""")
                 return
 
@@ -6728,9 +6835,9 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if len(matches) == 1:
                 args[start] = matches[0]
             elif len(matches) > 1:
-                logger.warning(
-                    "Ambiguous key %r — use the full section.key form, e.g.: %s",
-                    args[start], ' or '.join(matches))
+                self.invalid_set(
+                    "Ambiguous key %r — use the full section.key form, e.g.: %s"
+                    % (args[start], ' or '.join(matches)))
                 return
 
         # set dynamical_scale_choice HT/n (any n > 0), in every mode
@@ -6783,11 +6890,15 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if any(t.startswith('scan') for t in args):
                 index = [i for i,t in enumerate(args) if t.startswith('scan')][0]
                 args = args[:index] + [' '.join(args[index:])]
+            # a value with an energy unit ("1 TeV") arrives as two tokens
+            elif len(args) > start + 2 and args[-1].lower() in banner_mod.energy_units \
+                    and banner_mod.parse_energy_unit(' '.join(args[-2:])) is not None:
+                args = args[:-2] + [' '.join(args[-2:])]
                 
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             
             if args[start] == 'width':
@@ -6801,18 +6912,23 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                         key = lhaid
                         break
                 else:
-                    logger.warning('%s is not part of block "%s" but "%s". please correct.' %
+                    self.invalid_set('%s is not part of block "%s" but "%s". please correct.' %
                                     (args[start+1], args[start], bname))
                     return
             elif args[start+1] == 'scale':
-                self.modified_card.add('param')
-                self.setP(args[start], None, args[-1])
+                if self.setP(args[start], None, args[-1]):
+                    self.modified_card.add('param')
                 return
             else:
                 try:
                     key = tuple([int(i) for i in args[start+1:-1]])
                 except ValueError:
                     if args[start+1:-1] == ['all']:
+                        # refused once, before any entry changes
+                        error = self.check_param_value(args[start], args[-1])
+                        if error:
+                            self.invalid_set('Invalid input: %s' % error)
+                            return
                         for key in self.param_card[args[start]].param_dict:
                             if (args[start], key) in self.restricted_value:
                                 continue
@@ -6820,7 +6936,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                                 self.setP(args[start], key, args[-1])
                         self.modified_card.add('param')
                         return
-                    logger.warning('invalid set command %s (failed to identify LHA information)' % line)
+                    self.invalid_set('invalid set command %s (failed to identify LHA information)' % line)
                     return
 
             if key in self.param_card[args[start]].param_dict:
@@ -6833,17 +6949,22 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
                 if args[-1].lower() == 'default' or args[-1].startswith('scan') or \
                         args[-1].lower().split()[:1] in (['auto'], ['auto@nlo']):
-                    self.setP(args[start], key, args[-1])
+                    if not self.setP(args[start], key, args[-1]):
+                        return
+                elif banner_mod.parse_energy_unit(args[-1]) is not None:
+                    # only the masses and widths are energies
+                    if not self.setP(args[start], key, args[-1]):
+                        return
                 else:
                     try:
                         value = float(args[-1])
                     except Exception:
-                        logger.warning('Invalid input: Expected number and not \'%s\'' \
+                        self.invalid_set('Invalid input: Expected number and not \'%s\'' \
                                                                      % args[-1])
                         return
                     self.setP(args[start], key, value)
             else:
-                logger.warning('invalid set command %s' % line)
+                self.invalid_set('invalid set command %s' % line)
                 return
             self.modified_card.add('param')
         
@@ -6852,10 +6973,17 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             
             all_var = self.pname2block[args[start]]
+            # all the entries or none of them: refuse a bad value once
+            value = ' '.join(args[start+1:])
+            for bname, lhaid in all_var:
+                error = self.check_param_value(bname, value)
+                if error:
+                    self.invalid_set('Invalid input: %s' % error)
+                    return
             for bname, lhaid in all_var:
                 new_line = 'param_card %s %s %s' % (bname,
                    ' '.join([ str(i) for i in lhaid]), ' '.join(args[start+1:]))
@@ -6877,13 +7005,13 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             try:
                 key = tuple([int(i) for i in args[start+1:-1]])
             except ValueError:
-                logger.warning('invalid set command %s, onia_card can not be updated' % line)
+                self.invalid_set('invalid set command %s, onia_card can not be updated' % line)
                 return
 
             if key in self.onia_card[args[start]].param_dict:
@@ -6893,12 +7021,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     try:
                         value = float(args[-1])
                     except Exception:
-                        logger.warning('Invalid input: Expected number and not \'%s\'' \
+                        self.invalid_set('Invalid input: Expected number and not \'%s\'' \
                                                                      % args[-1])
                         return
                     self.setO(args[start], key, value)
             else:
-                logger.warning('invalid set command %s' % line)
+                self.invalid_set('invalid set command %s' % line)
                 return
             self.modified_card.add('onia')
                 
@@ -6909,7 +7037,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
                        
             block = args[start]
@@ -6925,12 +7053,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             block = [b for b, data in self.mw_card.items() if args[start] in data]
             if len(block) > 1:
-                logger.warning('%s is define in more than one block: %s.Please specify.'
+                self.invalid_set('%s is define in more than one block: %s.Please specify.'
                                % (args[start], ','.join(block)))
                 return
            
@@ -6958,7 +7086,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             if args[start+1].lower() == 'default':
@@ -6988,7 +7116,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             if args[start+1] == 'default':
@@ -7007,7 +7135,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             if args[start+1] == 'default':
@@ -7027,7 +7155,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
       
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             if args[start+1] == 'default':
                 value = self.rivet_card_default[args[start]]
@@ -7043,7 +7171,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             if args[start+1] == 'default':
                 value = self.fo_card_default[args[start]]
@@ -7060,7 +7188,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             if args[start+1] == 'default':
                 value = self.reweight_card_default[args[start]]
@@ -7075,7 +7203,6 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
         #INVALID --------------------------------------------------------------
         else:      
-            logger.warning('invalid set command %s ' % line)
             arg = args[start].lower()
             if self.has_PY8:   
                 close_opts = [name for name in self.PY8Card if name.lower().startswith(arg[:3]) or arg in name.lower()]
@@ -7085,7 +7212,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 close_opts = [name for name in self.run_card if name.lower().startswith(arg[:3]) or arg in name.lower()]
                 if close_opts:
                     logger.info('Did you mean one of the following run_card options:\n%s' % '\t'.join(close_opts))
-                
+            self.invalid_set('invalid set command %s ' % line)
             return
 
     def setM(self, block, name, value):
@@ -7112,7 +7239,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             logger.info('modify madweight_card information BLOCK "%s" with id "%s" set to %s',
                     block, name, value, '$MG:BOLD')
         else:
-            logger.warning("Invalid command: No value. To set default value. Use \"default\" as value")
+            self.invalid_set("Invalid command: No value. To set default value. Use \"default\" as value")
             return
         
         self.mw_card[block][name] = value
@@ -7120,10 +7247,13 @@ class AskforEditCard(cmd.OneLinePathCompletion):
     def setR(self, name, value):
 
         with misc.TMP_variable(banner_mod.RunCard, 'allow_scan', True):
-            if self.mother_interface.inputfile:
-                self.run_card.set(name, value, user=True, raiseerror=True)
-            else:
-                self.run_card.set(name, value, user=True)
+            try:
+                self.run_card.set(name, value, user=True, raiseerror=self._scripted())
+            except InvalidCmd as error:
+                # e.g. a value of the wrong type, or a unit on an entry that
+                # is not an energy
+                self.invalid_set("invalid 'set %s %s': %s" % (name, value, error))
+                return
             new_value = self.run_card.get(name)
             logger.info('modify parameter %s of the run_card.dat to %s' % (name, new_value),'$MG:BOLD')        
 
@@ -7133,7 +7263,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         try:
             self.MLcard.set(name, value, user=True)
         except Exception as error:
-            logger.warning("Fail to change parameter. Please Retry. Reason: %s." % error)
+            self.invalid_set("Fail to change parameter. Please Retry. Reason: %s." % error)
             return
         logger.info('modify parameter %s of the MadLoopParam.dat to %s' % (name, value),'$MG:BOLD')
         if default and name.lower() in self.MLcard.user_set:
@@ -7143,7 +7273,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         try:
             self.PY8Card.userSet(name, value)
         except Exception as error:
-            logger.warning("Fail to change parameter. Please Retry. Reason: %s." % error)
+            self.invalid_set("Fail to change parameter. Please Retry. Reason: %s." % error)
             return
         logger.info('modify parameter %s of the pythia8_card.dat to %s' % (name, value), '$MG:BOLD')
         if default and name.lower() in self.PY8Card.user_set:
@@ -7153,7 +7283,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         try:
             self.rivet_card.set(name, value, user=True)
         except Exception as error:
-            logger.warning("Fail to change parameter. Please Retry. Reason: %s." % error)
+            self.invalid_set("Fail to change parameter. Please Retry. Reason: %s." % error)
             return
         logger.info('modify parameter %s of the rivet_card.dat to %s' % (name, value), '$MG:BOLD')
         if default and name.lower() in self.rivet_card.user_set:
@@ -7163,45 +7293,64 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         try:
             self.reweight_card.set(name, value, user=True)
         except Exception as error:
-            logger.warning("Fail to change parameter. Please Retry. Reason: %s." % error)
+            self.invalid_set("Fail to change parameter. Please Retry. Reason: %s." % error)
             return
         logger.info('modify parameter %s of the reweight_card.dat to %s' % (name, value), '$MG:BOLD')
         if default and name.lower() in self.reweight_card.user_set:
             self.reweight_card.user_set.remove(name.lower())
 
+    def check_param_value(self, block, value):
+        """Why ``value`` can not be set in the param_card block ``block``, or
+        None when it can."""
+        if not isinstance(value, str):
+            return None
+        value = value.lower()
+        if value == 'default':
+            return None
+        elif value.split()[:1] in (['auto'], ['auto@nlo']):
+            if block != 'decay':
+                return '\'Auto\' value only valid for DECAY'
+            try:
+                param_card_mod.format_auto_width(value)
+            except param_card_mod.InvalidParam as error:
+                return str(error)
+        elif value.startswith('scan'):
+            if ':' not in value:
+                return '\'scan\' mode requires a \':\' before the definition.'
+            tag = value.split(':')[0][4:].strip()
+            if tag and not tag.isdigit():
+                return 'scan tag need to be integer and not "%s"' % tag
+        elif banner_mod.parse_energy_unit(value) is not None:
+            # "1 TeV": only the masses and the widths are energies
+            if block not in ('mass', 'decay'):
+                return 'block %s is not an energy: \'%s\' can not carry a unit' % (block, value)
+        else:
+            try:
+                float(value)
+            except ValueError:
+                return '\'%s\' is not valid input.' % value
+        return None
+
     def setP(self, block, lhaid, value):
+        """Set one entry of the param_card (its scale when lhaid is None).
+        Returns whether it was set: a rejected value goes to invalid_set."""
+        error = self.check_param_value(block, value)
+        if error:
+            self.invalid_set('Invalid input: %s' % error)
+            return False
         if isinstance(value, str):
             value = value.lower()
             if value == 'default':
                 default = param_card_mod.ParamCard(self.paths['param_default'])
                 value = default[block].param_dict[lhaid].value
-
             elif value.split()[:1] in (['auto'], ['auto@nlo']):
-                if block != 'decay':
-                    logger.warning('Invalid input: \'Auto\' value only valid for DECAY')
-                    return
-                try:
-                    value = param_card_mod.format_auto_width(value)
-                except param_card_mod.InvalidParam as error:
-                    logger.warning('Invalid input: %s' % error)
-                    return
+                value = param_card_mod.format_auto_width(value)
             elif value.startswith('scan'):
-                if ':' not in value:
-                    logger.warning('Invalid input: \'scan\' mode requires a \':\' before the definition.')
-                    return
-                tag = value.split(':')[0]
-                tag = tag[4:].strip()
-                if tag and not tag.isdigit():
-                    logger.warning('Invalid input: scan tag need to be integer and not "%s"' % tag)
-                    return
-                
-                
                 pass
+            elif banner_mod.parse_energy_unit(value) is not None:
+                value = banner_mod.parse_energy_unit(value)
             else:
-                try:
-                    value = float(value)
-                except ValueError:
-                    logger.warning('Invalid input: \'%s\' not valid intput.'% value)
+                value = float(value)
 
         if lhaid:
             logger.info('modify param_card information BLOCK %s with id %s set to %s' %\
@@ -7211,6 +7360,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             logger.info('modify param_card information scale of BLOCK %s set to %s' %\
                         (block, value), '$MG:BOLD')
             self.param_card[block].scale = value            
+        return True
 
     def setO(self, block, lhaid, value):
         if isinstance(value, str):
@@ -7220,14 +7370,15 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 value = default[block].param_dict[lhaid].value
 
             elif value.startswith('scan'):
-                logger.warning('Invalid input: \'scan\' mode does not work with onia_card.')
+                self.invalid_set('Invalid input: \'scan\' mode does not work with onia_card.')
                 return
 
             else:
                 try:
                     value = float(value)
                 except ValueError:
-                    logger.warning('Invalid input: \'%s\' not valid intput.'% value)
+                    self.invalid_set('Invalid input: \'%s\' is not valid input.'% value)
+                    return
 
         if lhaid:
             logger.info('modify onia_card information BLOCK %s with id %s set to %s' %\
@@ -7348,7 +7499,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                             card_to_remove = 'pythia8_card.dat'
                         if path_to_remove:
                             if 'partonshower' in self.run_card['bypass_check']:
-                                logger.warning("forcing to keep parton-shower run while possibly not fully consistent... please be carefull")
+                                logger.warning("forcing to keep parton-shower run while possibly not fully consistent... please be careful")
                             else:    
                                 logger.error('Parton-Shower are not yet ready for such proton component definition. Parton-shower will be switched off.')
                                 os.remove(path_to_remove)
@@ -7366,7 +7517,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                                         logger.warning('Activating QED shower: setting %s to True', param)
                                         self.PY8Card[param] = True
                         elif 'partonshower' in self.run_card['bypass_check']:
-                            logger.warning("forcing to keep parton-shower run while possibly not fully consistent... please be carefull")
+                            logger.warning("forcing to keep parton-shower run while possibly not fully consistent... please be careful")
                         else:
                             logger.error('Parton-Shower are not yet ready for such proton component definition. Parton-shower will be switched off.')
                             os.remove(self.paths['pythia8'])
@@ -7387,14 +7538,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if proc_charac and 'MLM' in proc_charac['limitations']:
                 if self.run_card['ickkw']:
                     raise Exception( "Your model is identified as not fully supported within MadGraph7.\n" +\
-                      "You can NOT run with FxFx/UnLOPS matching/merging. Please check if merging outside MadGraph7 are suitable or refrain to use merging with this model")
+                      "You can NOT run with FxFx matching/merging. Please check if merging outside MadGraph7 are suitable or refrain to use merging with this model")
             
-            # ensure that for fixed order ICKKW model are not set to FxFx and/or UNLOPS
+            # FxFx requires shower matching, so it cannot be used at fixed order.
             if 'shower_cards' not in self.cards and self.opt['switch']['fixed_order'] == 'ON':
-                if self.run_card['ickkw'] in [3,4]:
-                    # 3 is FxFx and 4 is UNLOPS
-                    mergemode = {3:'FxFx', 4:'UNLOPS'}
-                    raise Exception("You are running in fixed order mode but ICKKW is set to %s (%s). This does not make sense. Please fix and retry" %(self.run_card['ickkw'], mergemode[self.run_card['ickkw']]))
+                if self.run_card['ickkw'] == 3:
+                    raise Exception("You are running in fixed order mode but ICKKW is set to 3 (FxFx). This does not make sense. Please fix and retry")
 
 
             if 'fix_scale' in proc_charac['limitations']:
@@ -7438,7 +7587,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                                      self.run_card['ptj'], self.shower_card['qcut'])
                         
                     if self.shower_card['njmax'] == -1:
-                        if not proc_charac: #shoud not happen in principle 
+                        if not proc_charac: #should not happen in principle
                             raise Exception( "Impossible to setup njmax automatically. Please setup that value manually.")
                         njmax = proc_charac['max_n_matched_jets']
                         self.do_set('shower_card njmax %i' % njmax) 
@@ -7469,7 +7618,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             extralibs = self.shower_card['extralibs'].split()
             extrapaths = self.shower_card['extrapaths'].split()
             # remove default stdhep/Fmcfio for recent shower
-            if self.run_card['parton_shower'] in ['PYTHIA8', 'HERWIGPP', 'HW7']:
+            if self.run_card['parton_shower'] in ['PYTHIA8', 'HERWIG7', 'HW7']:
                 if 'stdhep' in self.shower_card['extralibs']:
                     extralibs.remove('stdhep')
                     modify_extralibs = True
@@ -7646,7 +7795,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             return self.update_to_full(args[1:])
         elif args[0] in self.update_block:
             self.run_card.display_block.append(args[0].lower())
-            self.modified_card.add('run') # delay writting of the run_card
+            self.modified_card.add('run') # delay writing of the run_card
             logger.info('add optional block %s to the run_card', args[0])
         else:
             self.do_help('update')
@@ -7670,7 +7819,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if name in self.modified_card:
                 self.modified_card.remove(name)
         else:
-            raise Exception("Need to add the associate writter proxy for %s" % name)
+            raise Exception("Need to add the associated writer proxy for %s" % name)
         
     def write_card_run(self):
         """ write the run_card """
@@ -7694,7 +7843,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
     def update_dependent(mecmd, me_dir, param_card, path ,timer=0, run_card=None,
                     lhapdfconfig=None):
         """static method which can also be called from outside the class
-           usefull in presence of scan.
+           useful in presence of scan.
            return if the param_card was updated or not
         """
         
@@ -8259,7 +8408,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             elif self.has_ml and args[0].lower() == "madloop":
                 card = "MadLoopParams.dat"
             else:
-                logger.error("unknow card %s. Please retry." % args[0])
+                logger.error("unknown card %s. Please retry." % args[0])
                 return
             # ensure that the card is in sync
             if card in self.modified_card:
@@ -8297,7 +8446,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
                 ff.close()
-                logger.info("writting at line %d of the file %s the line: \"%s\"" %(pos, card, line.split(None,2)[2] ),'$MG:BOLD')
+                logger.info("writing at line %d of the file %s the line: \"%s\"" %(pos, card, line.split(None,2)[2] ),'$MG:BOLD')
                 self.last_editline_pos = pos
             elif args[1].startswith('--line_position='):
                 #position in file determined by user
@@ -8309,7 +8458,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
                 ff.close()
-                logger.info("writting at line %d of the file %s the line: \"%s\"" %(pos, card, line.split(None,2)[2] ),'$MG:BOLD')
+                logger.info("writing at line %d of the file %s the line: \"%s\"" %(pos, card, line.split(None,2)[2] ),'$MG:BOLD')
                 self.last_editline_pos = pos
                 
             elif args[1].startswith(('--after_line=banner','--after_line=\'banner\'','--after_line=\"banner\"')):
@@ -8324,7 +8473,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
                 ff.close()
-                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline, card, line.split(None,2)[2] ),'$MG:BOLD')
+                logger.info("writing at line %d of the file %s the line: \"%s\"" %(posline, card, line.split(None,2)[2] ),'$MG:BOLD')
                 self.last_editline_pos = posline
                 
             elif args[1].startswith('--replace_line='):
@@ -8344,7 +8493,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                         return self.do_add('%s %s' % (args[0], new_line))   
                     raise Exception('invalid regular expression: not found in file')
                 # found the line position "posline"
-                # need to check if the a fail savety is present
+                # need to check if a fail-safe is present
                 new_line = re.split(search_pattern,line)[-1].strip()
                 # Matches (optional leading ws) + --before_line=VALUE or --after_line=VALUE + (trailing ws)
                 drop_first_before_after = re.compile(r'''
@@ -8410,7 +8559,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 ff = open(path,'w')
                 ff.write('\n'.join(split))
                 ff.close()
-                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline, card, re.split(search_pattern,line)[-1] ),'$MG:BOLD')                
+                logger.info("writing at line %d of the file %s the line: \"%s\"" %(posline, card, re.split(search_pattern,line)[-1] ),'$MG:BOLD')
                 self.last_editline_pos = posline
                                 
             elif args[1].startswith('--after_line='):
@@ -8430,7 +8579,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 ff.write('\n'.join(split))
                 ff.close()
 
-                logger.info("writting at line %d of the file %s the line: \"%s\"" %(posline+1, card, re.split(search_pattern,line)[-1] ),'$MG:BOLD')                                 
+                logger.info("writing at line %d of the file %s the line: \"%s\"" %(posline+1, card, re.split(search_pattern,line)[-1] ),'$MG:BOLD')
                 self.last_editline_pos = posline+1
                                                  
             else:
@@ -8493,7 +8642,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 misc.compile(cwd=path,shell=True)
             except MadGraph5Error as error:
                 logger.error('''ASperGe failed to compile. Note that gsl is needed
-     for this compilation to go trough. More information on how to install this package on
+     for this compilation to go through. More information on how to install this package on
      http://www.gnu.org/software/gsl/
      Full compilation log is available at %s''' % pjoin(self.me_dir, 'ASperge_compilation.log'))
                 open(pjoin(self.me_dir, 'ASperge_compilation.log'),'w').write(str(error))
@@ -8514,7 +8663,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
 
     def copy_file(self, path, pathname=None, card_type=None):
-        """detect the type of the file and overwritte the current file.
+        """detect the type of the file and overwrite the current file.
         If card_type is given (a paths key such as 'run', 'madspin', ...) the
         auto-detection (regexp) is bypassed and that card is overwritten."""
 
@@ -8631,7 +8780,7 @@ You can also copy/paste, your event file here.''')
             else:
                 raise
         if time.time() - start < .5:
-            self.mother_interface.ask("Are you really that fast? If you are using an editor that returns directly. Please confirm that you have finised to edit the file", 'y',
+            self.mother_interface.ask("Are you really that fast? If you are using an editor that returns directly, please confirm that you have finished editing the file", 'y',
                                       timeout=False)
         # editor may not have restored the screen; don't trust it for the next redraw
         if hasattr(self, 'invalidate_display'):
@@ -8708,7 +8857,7 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
     def run_launch(self, *args, **opts)
 
     possible arguments are listed above and should be function who takes a single
-    argument the instance of intereset. those return
+    argument the instance of interest. those return
     input_path -> function that return the path of the card to read
     store_for_scan -> function that return a dict of entry to keep in memory
     get_run_name -> function that  return the string with the current run_name
@@ -8731,7 +8880,7 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
        a. If you inherit from CommonRunCmd (or if the self.mother is). Then 
        everything should be automatic.
       
-       b. If you do not you can/should create the funtion self.get_model(). 
+       b. If you do not you can/should create the function self.get_model().
           Which returns the appropriate MG model (like the one from import_ufo.import_model) 
     
        c. You can also have full control by defining your own do_compute_widths(self, line)

@@ -40,20 +40,25 @@ class MyReader {
     format_str <<"%"<<wgts_info_len_used<<"s";
     sprintf(cwgtinfo_weights_info[0],format_str.str().c_str(),"central value");
     cwgtinfo_nn=1;
-    while (true){
-      hss << reader.headerBlock;
-      std::getline(hss,hs,'\n');
+    hss << reader.headerBlock;
+    while (std::getline(hss,hs,'\n')) {
       if (hs.find("</header>") != std::string::npos) break;
       // Read the wgt information
       if (hs.find("<initrwgt>") != std::string::npos) {
-	while (true) {
-	  std::getline(hss,hs,'\n');
+	while (std::getline(hss,hs,'\n')) {
 	  if (hs.find("</initrwgt>") != std::string::npos) break;
 	  if (hs.find("<weightgroup") != std::string::npos) continue;
 	  if (hs.find("</weightgroup>") != std::string::npos) continue;
 	  if (hs.find("<weight id") != std::string::npos) {
 	    std::string sRWGT = hs.substr(hs.find("'>")+2,hs.find("</w")-3);
 	    sRWGT = sRWGT.substr(0,sRWGT.find("<"));
+	    // tag=0 is the sum over coupling orders. Expose its usual
+	    // dyn/muR/muF label to HwU; retain the order-resolved labels.
+	    std::istringstream label(sRWGT);
+	    std::string first;
+	    int tag;
+	    if ((label >> first) && first == "tag=" && (label >> tag) && tag == 0)
+	      std::getline(label,sRWGT);
 	    sprintf(cwgtinfo_weights_info[cwgtinfo_nn],format_str.str().c_str(),sRWGT.c_str());
 	    ++cwgtinfo_nn;
 	  }
@@ -72,7 +77,7 @@ class MyReader {
       std::stringstream ss;
       int i,j;
   
-      // Read aMCatNLO extra informations
+      // Read aMCatNLO extra information
       ss << reader.eventComments;
       for (i=0; i<=15; i++) ss >> svec[i];
       std::string ch1 = svec[0];
@@ -98,14 +103,15 @@ class MyReader {
       // TV: change the line below to read the rwgt block even if the
       // the jwgtinfo is 0 (when no scale or PDF variation is done)
       //if (jwgtinfo != 9) {
-      if (jwgtinfo != 9 && jwgtinfo != 0) {
-	std::exit;
+      // Negative jwgtinfo also stores <mgrwgt> coefficients. The <rwgt>
+      // weights are still present and must reach the shower analysis.
+      if (jwgtinfo != 9 && jwgtinfo != -9 && jwgtinfo != 0) {
+	return;
       }
       else {
-	ss << reader.headerBlock;
-	while (true) {
-	  ss << reader.headerBlock;
-	  std::getline(ss,s,'\n');
+	// The optional rwgt block belongs to this event. In particular,
+	// jwgtinfo == 0 also permits events without any reweighting block.
+	while (std::getline(ss,s,'\n')) {
 	  if (s.find("</rwgt>") != std::string::npos) break;
 	  if (s.find("id=") != std::string::npos) {
 	    int ioffs=s.find("'>")+2;

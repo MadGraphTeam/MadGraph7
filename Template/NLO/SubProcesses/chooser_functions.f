@@ -78,11 +78,13 @@ c
 
 
       subroutine fks_inc_chooser()
+      use mc_native_context, only: activate_native_context
 c For a given nFKSprocess, it fills the c_fks_inc common block with the
 c fks.inc information
       implicit none
       include 'nexternal.inc'
       include 'fks_info.inc'
+      include 'nFKSconfigs.inc'
       integer i,j
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
@@ -113,7 +115,10 @@ c fks.inc information
       common /c_is_aorg/is_aorg
       logical is_charged(nexternal)
       common /c_is_charged/is_charged
+      double precision iden_comp,iden_comp_FKS(fks_configs)
+      common /c_iden_comp/iden_comp,iden_comp_FKS
 c
+      call activate_native_context(nFKSprocess)
       i_fks=fks_i_D(nFKSprocess)
       j_fks=fks_j_D(nFKSprocess)
       extra_cnt = extra_cnt_D(nFKSprocess)
@@ -143,6 +148,11 @@ c
          is_charged(i) = particle_type(i).ne.1.or.
      &                   particle_charge(i).ne.0d0
       enddo
+c Mother identity depends on the active splitting order. Refresh it
+c before reconstructing Born types, including when alternating sectors.
+      do i = 1, nsplitorders
+         split_type(i) = split_type_d(nFKSprocess,i)
+      enddo
       do i=1,nexternal
          if (i.lt.min(i_fks,j_fks)) then
             particle_type_born(i)=particle_type(i)
@@ -158,7 +168,8 @@ c
             ch_i=particle_charge(i_fks)
             ch_j=particle_charge(j_fks)
             particle_tag_born(i) = particle_tag(j_fks)
-            call get_mother_col_charge(i_type,ch_i,j_type,ch_j,m_type,ch_m) 
+            call get_mother_col_charge(i_fks,j_fks,i_type,ch_i,j_type
+     $           ,ch_j,m_type,ch_m) 
             particle_type_born(i)=m_type
             particle_charge_born(i)=ch_m
          elseif (i.ne.max(i_fks,j_fks)) then
@@ -168,9 +179,7 @@ c
          endif
       enddo
       
-      do i = 1, nsplitorders
-         split_type(i) = split_type_d(nFKSprocess,i)
-      enddo
+      iden_comp=iden_comp_FKS(nFKSprocess)
       return
       end
 
@@ -181,7 +190,7 @@ c leshouche.inc information
       implicit none
       include 'nexternal.inc'
       include 'genps.inc'
-      integer i,j,k
+      integer i,j
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       integer idup(nexternal,maxproc),mothup(2,nexternal,maxproc),
@@ -199,8 +208,9 @@ c
      &        maxproc,maxproc_used
          stop
       endif
-      if (maxflow_used.gt.maxflow) then
-         write (*,*) 'ERROR in leshouche_inc_chooser: increase maxflow',
+      if (maxflow_used.ne.maxflow) then
+         write (*,*) 'ERROR in leshouche_inc_chooser: maxflow and '/
+     &        /'maxflow_used should be equal',
      &        maxflow,maxflow_used
          stop
       endif
@@ -309,17 +319,19 @@ C read the various information from the configs_and_props_info.dat file
 C read the various information from the configs_and_props_info.dat file
       implicit none
       include "nexternal.inc"
+      include 'born_nhel.inc'
       integer itmp_array(nexternal)
       integer i,j,k,l
       character *200 buff
       include 'leshouche_decl.inc'
       include 'nFKSconfigs.inc'
       include 'fks_info.inc'
-      include 'born_maxamps.inc'
-      integer idup(nexternal,maxproc)
-      integer mothup(2,nexternal,maxproc)
-      integer icolup(2,nexternal,maxflow)
+      include 'genps.inc'
+      integer idup(nexternal-1,maxproc)
+      integer mothup(2,nexternal-1,maxproc)
+      integer icolup(2,nexternal-1,max_bcol)
       include 'born_leshouche.inc'
+      icolup_d=0
       if (fks_configs.eq.1) then
          if (pdg_type_d(1,fks_i_d(1)).eq.-21) then
 c SPECIAL for [LOonly=QCD] process. Simply use the information from the
@@ -334,7 +346,7 @@ c born_leshouche.inc file.
                mothup_d(1,1,nexternal,j)=mothup(1,fks_j_d(1),j)
                mothup_d(1,2,nexternal,j)=mothup(2,fks_j_d(1),j)
             enddo
-            do j=1,maxflow
+            do j=1,max_bcol
                do i=1,nexternal-1
                   icolup_d(1,1,i,j)=icolup(1,i,j)
                   icolup_d(1,2,i,j)=icolup(2,i,j)
@@ -382,23 +394,27 @@ c born_leshouche.inc file.
       end
 
 
-      subroutine get_mother_col_charge(i_type, ch_i, j_type, ch_j,
-     $     m_type, ch_m)
+      subroutine get_mother_col_charge(i_fks,j_fks,i_type, ch_i, j_type,
+     $     ch_j,m_type,ch_m)
 C Given the type (color representation) and charges of i and j, return
 C the type and charges of the mother particle
       implicit none
       integer i_type, j_type, m_type
       double precision ch_i, ch_j, ch_m
       include 'nexternal.inc'
+      include 'orders.inc'
       integer i_fks,j_fks
-
-      common/fks_indices/i_fks,j_fks
+      logical split_type(nsplitorders)
+      common /c_split_type/split_type
 
       if (abs(i_type).eq.abs(j_type) .and. 
      &    abs(ch_i).eq.abs(ch_j) .and. 
      &    abs(i_type).gt.1) then
-        ! neutral color octet splitting
+        ! A quark pair has a photon mother for a QED-only splitting.
+        ! Retain the octet convention for QCD and mixed-order sectors.
          m_type=8
+         if (abs(i_type).eq.3.and.split_type(qed_pos).and.
+     &       .not.split_type(qcd_pos)) m_type=1
          ch_m = 0d0
          if ( (j_fks.le.nincoming .and.
      &         abs(i_type).eq.3 .and. j_type.ne.i_type) .or.
@@ -488,7 +504,7 @@ c gluon splitting:  g/a -> ff
                     pdg_uborn(k,ict)=22
                   else
                     write (*,*) 'set_pdg ',
-     &                'ERROR#1 in PDG assigment for underlying Born'
+     &                'ERROR#1 in PDG assignment for underlying Born'
                     stop 1
                   endif
                else
@@ -500,7 +516,7 @@ c gluon splitting:  g/a -> ff
                     pdg_uborn(k,ict)=22
                   else
                     write (*,*) 'set_pdg ',
-     &                'ERROR#2 in PDG assigment for underlying Born'
+     &                'ERROR#2 in PDG assignment for underlying Born'
                     stop 1
                   endif
                endif
@@ -513,8 +529,10 @@ c final state gluon radiation:  X -> Xg
 c initial state gluon splitting (gluon is j_fks):  g -> XX
                pdg_uborn(k,ict)=-pdg(fks_i_d(iFKS),ict)
             else
-               write(*,*)
-     &          'set_pdg ERROR#3 in PDG assigment for underlying Born'
+               write (*,*) 'set_pdg ERROR#3 in PDG '/
+     $              /'assignment for underlying Born'
+               write (*,*) iFKS,ict,fks_i_d(iFKS),fks_j_d(iFKS)
+     $              ,pdg(fks_i_d(iFKS),ict),pdg(fks_j_d(iFKS),ict)
                stop 1
             endif
          elseif(k.lt.fks_i_d(iFKS)) then
@@ -530,7 +548,7 @@ c initial state gluon splitting (gluon is j_fks):  g -> XX
                     ! will always have momenta 0
                 else
                write(*,*)
-     &          'set_pdg ERROR#4 in PDG assigment for underlying Born'
+     &          'set_pdg ERROR#4 in PDG assignment for underlying Born'
                stop 1
 
                 endif
@@ -557,7 +575,7 @@ c initial state gluon splitting (gluon is j_fks):  g -> XX
       do j = 1, nsplitorders
         split_type_used(j)=.false.
       enddo
-      do i = 1, fks_configs
+      do i = 1, fks_integrated
         do j = 1, nsplitorders
           split_type_used(j)=split_type_used(j).or.
      %      split_type_d(i,j)
@@ -566,5 +584,4 @@ c initial state gluon splitting (gluon is j_fks):  g -> XX
       write(*,*) 'SPLIT TYPE USED:', split_type_used
       return
       end
-
 

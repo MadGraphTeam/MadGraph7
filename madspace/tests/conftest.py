@@ -3,6 +3,8 @@
 Tests marked cpu_only (host-side code, e.g. LHE files) are skipped on a GPU.
 """
 
+import os
+
 import pytest
 import torch
 from madspace_testing import BACKEND, DEVICE, ON_GPU
@@ -24,7 +26,11 @@ def pytest_configure(config):
 
 def pytest_report_header(config):
     name = torch.cuda.get_device_name(DEVICE) if ON_GPU else "cpu"
-    return f"madspace test device: {BACKEND} ({name})"
+    simd_mode = os.environ.get("MADSPACE_SIMD_MODE", "auto")
+    return [
+        f"madspace test device: {BACKEND} ({name})",
+        f"madspace SIMD mode: {simd_mode}",
+    ]
 
 
 def pytest_collection_modifyitems(config, items):

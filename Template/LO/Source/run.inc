@@ -67,9 +67,15 @@ c
       logical clusinfo
       double precision lhe_version
       COMMON/TO_LHEFORMAT/lhe_version,clusinfo
+c
+c     MLM: start the shower of the non-jet particles from the hardest scale
+c     of the event, not sqrt(s) (run_card mlm_shower_start = hardest_scale)
+c
+      logical mlm_hardest_shower
+      common/to_mlm_shower/mlm_hardest_shower
 
 c     
-C     Controls wheter to perform Monte-Carlo sampling over grouped subprocesses
+C     Controls whether to perform Monte-Carlo sampling over grouped subprocesses
 C
       logical MC_grouped_subproc
       common/to_MC_grouped_subproc/MC_grouped_subproc

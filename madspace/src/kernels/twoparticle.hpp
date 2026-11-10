@@ -21,14 +21,9 @@ two_body_decay(FVal<T> r_phi, FVal<T> r_cos_theta, FVal<T> m0, FVal<T> m1, FVal<
     auto pp_open = 0.5 * where(m1 * m2 == 0., m0 - fabs(ed), sqrt(max(pp2, EPS)));
     auto e1_open = 0.5 * (m0 + ed);
 
-    // Below threshold (m0 < m1 + m2) the decay has no phase space, but the formulas
-    // above return a spurious positive weight: pp goes negative and e1 gets clamped
-    // to 0 while the spatial components don't, producing a spacelike p1 that blows
-    // up downstream (e.g. in boost()) into NaNs. pp2 > 0 is the exact Kaellen-function
-    // threshold test; pp_open > 0 also excludes it since the massless shortcut can
-    // return a negative pp there. Below threshold we substitute a valid
-    // massless-massless splitting so the kinematics stay physical, and force det = 0
-    // so it contributes nothing to the integral.
+    // Below threshold (m0 < m1 + m2) there is no phase space: substitute a massless
+    // splitting to keep p1 physical (no NaNs in boost) and set det = 0. pp2 > 0 is
+    // the threshold test; pp_open > 0 covers the massless shortcut going negative.
     auto open = (pp2 > 0.) & (pp_open > 0.);
     auto pp = where(open, pp_open, 0.5 * m0_clip);
     auto e1 = where(open, e1_open, 0.5 * m0_clip);
@@ -125,9 +120,9 @@ KERNELSPEC void kernel_com_cos_theta_window(
     FIn<T, 0> m2,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> pt_min,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> pt_min,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> r_out,
     FOut<T, 0> det
 ) {
@@ -145,9 +140,9 @@ KERNELSPEC void kernel_com_cos_theta_window_inverse(
     FIn<T, 0> m2,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> pt_min,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> pt_min,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> r_cos_theta,
     FOut<T, 0> det
 ) {

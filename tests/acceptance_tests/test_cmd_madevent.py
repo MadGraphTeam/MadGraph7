@@ -65,7 +65,7 @@ def check_html_page(cls, link):
     with misc.chdir(cwd):
         for path in pattern.findall(text):
             if not path:
-                continue # means is just a linke starting with #
+                continue # means is just a line starting with #
             cls.assertTrue(os.path.exists(path), '%s/%s' %(cwd,path))
     return True
     
@@ -170,19 +170,30 @@ _MG7_DEFAULT_CARDS = {
 
 def _mg7_tool_or_skip(test, cmd, *option_keys):
     """skipTest unless every configured tool path in *option_keys* (e.g.
-    'pythia8_path', 'delphes_path', 'rivet_path') is available; otherwise the
-    post-processing driver would silently skip the tool and the output-file
-    assertions would fail for an unrelated (missing-tool) reason."""
+    'pythia8_path', 'delphes_path', 'rivet_path', or 'fastjet' for the
+    fastjet-config executable) is available; otherwise the post-processing
+    driver would skip or fail on the tool and the output-file assertions would
+    fail for an unrelated (missing-tool) reason. Used by the madevent
+    post-processing tests too."""
     for key in option_keys:
         path = cmd.options.get(key)
+        if path and key == 'fastjet':
+            # fastjet-config may be given by name and found on the PATH
+            path = misc.which(path) or path
         if not path or path in ('None', 'NA') or not os.path.exists(path):
-            test.skipTest('mg7 post-processing tool %s not configured (%s)'
+            test.skipTest('post-processing tool %s not configured (%s)'
                           % (key, path))
+
+
+# Rivet runs need rivet, yoda and a full fastjet (fastjet-config) next to the
+# Pythia8 shower; contur adds its own installation on top.
+_RIVET_TOOLS = ('pythia8_path', 'rivet_path', 'yoda_path', 'fastjet')
 
 
 def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
                       toml_edits=None, precopy_cards=None, extra_cards=None,
-                      events=100, require_tools=(), timeout=1800):
+                      events=100, require_tools=(), timeout=1800,
+                      tolerated_crashes=()):
     """Drive an mg7 post-processing chain through the command interface.
 
     Runs *setup_cmds* (MG5 lines ending with the ``generate``) + ``output mg7
@@ -199,8 +210,12 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
 
     Returns the run directory (``Events/run_01``). Assertions/skips are made on
     *test*; the run self-skips when the mg7 runtime stack or a *require_tools*
-    program is unavailable.
+    program is unavailable. A tool failure (a ``*_crash.log`` in the run) fails
+    the test, unless its name matches one of the *tolerated_crashes* patterns:
+    the tools' output is otherwise easy to mistake for a success (a glob on
+    ``*delphes*`` matched ``Delphes_crash.log``).
     """
+    import fnmatch
     import glob
     if os.path.isdir(run_dir):
         shutil.rmtree(run_dir)
@@ -243,7 +258,9 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     log = pjoin(run_dir, 'mg7_postproc.log')
     if switch_lines:
         stdin_text = '\n'.join(list(switch_lines) + ['done']) + '\n'
-        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events')]
+        # the switches are answered through stdin on purpose
+        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events'),
+                '--allow-stdin']
     else:
         stdin_text = None
         args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f']
@@ -254,17 +271,24 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     # Surface any per-tool *_crash.log written by run_selected_tools when a
     # post-processing tool fails *without* failing generate_events (rc stays 0),
     # so a silently-swallowed tool failure is visible in CI.
+    crashes = []
     for cl in sorted(glob.glob(pjoin(run_dir, '**', '*_crash.log'), recursive=True)):
         try:
             print('\n----- %s -----\n%s' % (cl, open(cl).read()),
                   file=sys.stderr, flush=True)
         except Exception:
             pass
+        if not any(fnmatch.fnmatch(os.path.basename(cl), pattern)
+                   for pattern in tolerated_crashes):
+            crashes.append(cl)
     if proc.returncode != 0:
         # surface the generate_events output (the log lives in a tmp dir that CI
         # does not upload) so the real crash is visible in the test failure.
         test.fail('mg7 generate_events failed (rc=%s)\n%s'
                   % (proc.returncode, _mg7_postproc_report(run_dir)))
+    if crashes:
+        test.fail('mg7 post-processing tool(s) failed: %s\n%s'
+                  % (', '.join(crashes), _mg7_postproc_report(run_dir)))
     runs = sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*')))
     test.assertTrue(runs, 'no mg7 run directory under %s' % run_dir)
     return runs[0]
@@ -1490,7 +1514,7 @@ class TestMECmdShell(unittest.TestCase):
                         (r'\nsystematics = false\n', '\nsystematics = true\n'),
                         (r'systematics_pdf = \[[^\]]*\]',
                          'systematics_pdf = ["central"]')],
-            events=100)
+            events=100, tolerated_crashes=('*systematics*',))
 
         lhe_path = pjoin(run, 'events.lhe')
         if not os.path.exists(lhe_path):
@@ -1523,7 +1547,7 @@ class TestMECmdShell(unittest.TestCase):
         mg.exec_cmd('output mg7 %s' % out_dir)
 
         launcher = importlib.import_module(
-            'madgraph.iolibs.template_files.mg7.launch')
+            'madgraph.mg7.launch')
         tool_cards = ('pythia8_card.dat', 'madspin_card.dat', 'delphes_card.dat',
                       'reweight_card.dat', 'rivet_card.dat',
                       'madanalysis5_parton_card.dat',
@@ -1658,8 +1682,9 @@ class TestMECmdShell(unittest.TestCase):
         if not has_mg7:
             self.skipTest('mg7 runtime stack (madspace) unavailable')
         # e+ e- > mu+ mu- is leptonic, so no parton density is ever evaluated
-        # and the [systematics] PDF variations are empty -- but alpha_s still
-        # comes from the nominal set, and the mu_R/mu_F weights are computed.
+        # and the [systematics] PDF variations are empty -- but alpha_s comes
+        # from the param-card grid the launcher writes (fixed_alphas.info), and
+        # the mu_R/mu_F weights are computed.
         # They are deliberately left enabled: the gridpack has to reproduce the
         # calculator the launcher built, and used to die doing so.
         datadir = os.environ.get('LHAPDF_DATA_PATH')
@@ -2083,6 +2108,148 @@ class TestMECmdShell(unittest.TestCase):
                 )
 
 
+    def test_mlm_pdfrwt_flavour(self):
+        """With MLM (ickkw=1) and use_syst, the <pdfrwt> information must carry
+        the event's flavours. A grouped
+        subprocess (q q~ > z with q = d s / u c) clusters with the
+        representative of its coupling class: s s~ > z was booked as 1 and
+        c c~ > z as 2, so the systematics of every s/c-initiated event used
+        the d/u PDF."""
+
+        import gzip
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm')
+        mg_cmd.exec_cmd('generate p p > z @0')
+        mg_cmd.exec_cmd('add process p p > z j @1')
+        # scalar mode only: vector_size>1 with grouped flavours does not run
+        # (DSIG_VEC reads the per-warp IFLAV_VEC per event)
+        for vector_size in [1]:
+            run_dir = pjoin(self.path, 'MGPROC_pdfrwt_%d' % vector_size)
+            mg_cmd.exec_cmd('output madevent %s' % run_dir)
+
+            run_card = banner.RunCardLO(pjoin(run_dir, 'Cards', 'run_card.dat'))
+            run_card.set('nevents', 2000, user=True)
+            run_card.set('iseed', 7, user=True)
+            run_card.set('ickkw', 1, user=True)
+            run_card.set('xqcut', 20.0, user=True)
+            run_card.set('use_syst', True, user=True)
+            run_card.set('systematics_program', 'none', user=True)
+            if vector_size > 1:
+                run_card.set('vector_size', vector_size, user=True)
+            run_card.write(pjoin(run_dir, 'Cards', 'run_card.dat'))
+
+            self.cmd_line = MECmd.MadEventCmdShell(me_dir=run_dir)
+            self.cmd_line.no_notification()
+            self.cmd_line.exec_cmd('set automatic_html_opening False')
+            self.do('generate_events -f')
+
+            path = pjoin(run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+            text = gzip.open(path, 'rt').read()
+            checked = collections.Counter()
+            for event in re.findall(r'<event[^>]*>(.*?)</event>', text, re.S):
+                lines = [l.split() for l in event.split('<')[0].strip().splitlines()]
+                partons = [(int(l[0]), int(l[1]), float(l[8])) for l in lines[1:]]
+                # beam 1 moves along +z, beam 2 along -z
+                beam = dict((1 if pz > 0 else 2, pdg)
+                            for pdg, status, pz in partons if status == -1)
+                flavours = set(abs(pdg) for pdg, status, pz in partons
+                               if abs(pdg) <= 6)
+                pdfrwt = dict((int(b), [int(x) for x in body.split()[1:1+int(body.split()[0])]])
+                              for b, body in re.findall(
+                                  r'<pdfrwt beam="(\d)">(.*?)</pdfrwt>', event))
+                self.assertEqual(sorted(pdfrwt), [1, 2], event)
+                for b in (1, 2):
+                    # leading entry: the incoming parton of this beam
+                    self.assertEqual(pdfrwt[b][0], beam[b],
+                        'vector_size=%s: leading pdfrwt entry of beam %s is '
+                        'not the incoming parton:\n%s' % (vector_size, b, event))
+                    # ladder: only quark flavours present in the event
+                    for pdg in pdfrwt[b][1:]:
+                        if abs(pdg) <= 6:
+                            self.assertIn(abs(pdg), flavours,
+                                'vector_size=%s: pdfrwt ladder of beam %s has a '
+                                'flavour absent from the event:\n%s'
+                                % (vector_size, b, event))
+                quarks = [abs(pdg) for pdg in beam.values() if pdg != 21]
+                checked[max(quarks) if quarks else 21] += 1
+            # the check is only meaningful with s and c initiated events
+            self.assertGreater(checked[3], 0, checked)
+            self.assertGreater(checked[4], 0, checked)
+
+    def test_mlm_top_is_not_a_jet(self):
+        """With MLM (ickkw=1) a top is never a jet. cluster() mapped every
+        quark leg up to pdg 6 to the coupling class of the event, which is
+        1 on a leg that is not merged: the tops were clustered as d quarks
+        and got their own finite pt_clust in ~20% of the p p > t t~ + 0,1j
+        events (sigma of t t~ + 0,1,2j 6.7% low, 2-jet MLM acceptance 14.4%
+        instead of 12.1%).
+
+        A top that no clustering booked a scale onto gets pt_clust = sqrt(s)
+        from setclscales. With the default mlm_shower_start = hardest_scale,
+        unwgt.f (mlm_hardest_shower_scale) then rewrites it to the event's
+        hardest scale, max(SCALUP, pt_clust of the light partons below
+        sqrt(s)), the same value for both tops. A top clustered as a jet
+        keeps its own clustering scale (the rewrite only touches sqrt(s)),
+        so every top must carry exactly that hardest scale. With cluster.f
+        before the fix, 281 of the 1000 tops fail this, the same tops that
+        sit below sqrt(s) with mlm_shower_start = collider_energy."""
+
+        import gzip
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm')
+        mg_cmd.exec_cmd('generate p p > t t~ @0')
+        mg_cmd.exec_cmd('add process p p > t t~ j @1')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 500, user=True)
+        run_card.set('iseed', 31337, user=True)
+        run_card.set('ickkw', 1, user=True)
+        run_card.set('xqcut', 20.0, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        self.do('generate_events -f')
+
+        self.assertEqual(run_card['mlm_shower_start'], 'hardest_scale')
+        sqrts = run_card['ebeam1'] + run_card['ebeam2']
+        maxjetflavor = run_card['maxjetflavor']
+        path = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        text = gzip.open(path, 'rt').read()
+        ntops, njets, clustered_tops = 0, 0, []
+        for event in re.findall(r'<event[^>]*>(.*?)</event>', text, re.S):
+            body = event.split('<')[0].strip().splitlines()
+            scalup = float(body[0].split()[3])
+            pdgs = [int(l.split()[0]) for l in body[1:]]
+            scales = dict((int(i), float(v)) for i, v in
+                          re.findall(r'pt_clust_(\d+)="([^"]+)"', event))
+            self.assertEqual(sorted(scales), list(range(3, len(pdgs) + 1)), event)
+            light = [ptclust for i, ptclust in scales.items()
+                     if (pdgs[i-1] == 21 or 1 <= abs(pdgs[i-1]) <= maxjetflavor)
+                     and ptclust < 0.999 * sqrts]
+            njets += len(light)
+            hardest = max([scalup] + light)
+            for i, ptclust in scales.items():
+                if abs(pdgs[i-1]) == 6:
+                    ntops += 1
+                    if abs(ptclust - hardest) > 1e-5 * hardest:
+                        clustered_tops.append(event)
+        # the tops of every event, and some clustered jets
+        self.assertGreater(ntops, 900)
+        self.assertGreater(njets, 50)
+        self.assertEqual(len(clustered_tops), 0,
+            '%d tops (of %d) do not carry the hardest scale of the event '
+            '(clustered as a jet?), e.g.:\n%s'
+            % (len(clustered_tops), ntops,
+               clustered_tops[0] if clustered_tops else ''))
+
     def test_t_channel_survey_grid(self):
         """check that refining on the survey grid is not biased for
         u q > z u q (all channels pure t-channel chains). With the grid
@@ -2175,6 +2342,100 @@ class TestMECmdShell(unittest.TestCase):
         err = self.cmd_line.results.current['error']
         self.assertLess(abs(val - target) / target, 0.02,
                         '%s +- %s vs %s' % (val, err, target))
+
+
+    def test_group_subprocess_permuted_scale(self):
+        """check that grouped (scalar and vector) and non-grouped output agree
+        when the grouped channels use a symmetry permutation of the momenta
+        and the scales depend on the clustering (MLM). see issue #453"""
+
+        from unittest import mock
+        gen_ximprove = MECmd.gen_ximprove
+
+        results = {}
+        for name, group, vector_size in [('grouped', True, 1),
+                                         ('grouped_vec', True, 16),
+                                         ('nongrouped', False, 1)]:
+            self.run_dir = pjoin(self.path, 'MGPROC_%s' % name)
+            mg_cmd = MGCmd.MasterCmd()
+            mg_cmd.no_notification()
+            mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+            mg_cmd.exec_cmd('set group_subprocesses %s' % group)
+            mg_cmd.exec_cmd('define q = u d')
+            mg_cmd.exec_cmd('generate u q > z u q')
+            mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+            run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+            run_card.set('nevents', 10000, user=True)
+            run_card.set('iseed', 11, user=True)
+            run_card.set('use_syst', False, user=True)
+            run_card.set('ickkw', 1, user=True)
+            run_card.set('xqcut', 40.0, user=True)
+            run_card.set('drjj', 0.0, user=True)
+            if vector_size > 1:
+                run_card.set('vector_size', vector_size, user=True)
+            run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+            self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+            self.cmd_line.no_notification()
+            self.cmd_line.exec_cmd('set automatic_html_opening False')
+            # use the same refine setup (survey grid kept) for grouped and
+            # non-grouped: whether a job is split depends on the output
+            # mode and changes the refine grid, which is independent of #453
+            with mock.patch.object(gen_ximprove.gen_ximprove, 'keep_grid_for_refine', True), \
+                 mock.patch.object(gen_ximprove.gen_ximprove_v4, 'keep_grid_for_refine', True):
+                self.do('generate_events -f')
+            results[name] = (self.cmd_line.results.current['cross'],
+                             self.cmd_line.results.current['error'])
+
+        val0, err0 = results['nongrouped']
+        self.assertGreater(val0, 0)
+        for name in ['grouped', 'grouped_vec']:
+            val, err = results[name]
+            # without the fix, grouped is ~3% low (about 8 sigma)
+            self.assertLess(abs(val - val0) / math.hypot(err, err0), 4,
+                            '%s: %s +- %s vs nongrouped %s +- %s' % (name, val, err, val0, err0))
+
+    def test_vector_mode_helicity_both_orientations(self):
+        """check that scalar and vector (vector_size 16) madevent agree for
+        p p > z, with and without helicity recycling. q q~ > z with the Z at
+        rest has helicities that vanish in one beam orientation only, and in
+        vector mode the first events of the good-helicity scan share one
+        orientation: without the fix, vector mode was 10-50% low."""
+
+        results = {}
+        for name, hel_recycling, vector_size in [('hel_scalar', True, 1),
+                                                 ('hel_vec', True, 16),
+                                                 ('nohel_scalar', False, 1),
+                                                 ('nohel_vec', False, 16)]:
+            self.run_dir = pjoin(self.path, 'MGPROC_%s' % name)
+            mg_cmd = MGCmd.MasterCmd()
+            mg_cmd.no_notification()
+            mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+            mg_cmd.exec_cmd('generate p p > z')
+            mg_cmd.exec_cmd('output madevent %s --hel_recycling=%s' % (self.run_dir, hel_recycling))
+
+            run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+            run_card.set('nevents', 2000, user=True)
+            run_card.set('iseed', 31, user=True)
+            run_card.set('use_syst', False, user=True)
+            if vector_size > 1:
+                run_card.set('vector_size', vector_size, user=True)
+            run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+            self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+            self.cmd_line.no_notification()
+            self.cmd_line.exec_cmd('set automatic_html_opening False')
+            self.do('generate_events -f')
+            results[name] = (self.cmd_line.results.current['cross'],
+                             self.cmd_line.results.current['error'])
+
+        val0, err0 = results['hel_scalar']
+        self.assertGreater(val0, 0)
+        for name in ['hel_vec', 'nohel_scalar', 'nohel_vec']:
+            val, err = results[name]
+            self.assertLess(abs(val - val0) / math.hypot(err, err0), 4,
+                            '%s: %s +- %s vs hel_scalar %s +- %s' % (name, val, err, val0, err0))
 
     def test_e_p_collision(self):
         """check that e p > e j gives the correct result"""
@@ -2480,7 +2741,7 @@ class TestMECmdShell(unittest.TestCase):
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -2581,7 +2842,7 @@ C
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -3039,7 +3300,7 @@ C
         if syst:
             # check that the html has the information
             self.assertIn('syst', data[0].parton)
-            # check that the code was runned correctly
+            # check that the code was run correctly
             fsock = open('%s/Events/%s/parton_systematics.log' % \
                   (self.run_dir, data[0]['run_name']),'r')
             text = fsock.read()
@@ -3477,7 +3738,7 @@ class TestMEfromfile(unittest.TestCase):
         """
         This test is checking that the scale in auto_dsig are correctly assigned
         in 3.6.2, a wrong Q2FACT(IB(1)) was used instead of Q2FACT(1).
-        Leading to an assymetry in the DY +1j process.
+        Leading to an asymmetry in the DY +1j process.
         This acceptance test is there to prevent such type of error
         """
 
@@ -3511,7 +3772,6 @@ class TestMEfromfile(unittest.TestCase):
         set ickkw 1
         set xqcut 10
         set mmll 50
-        set auto_ptj_mmjj False
         set ptj 0.01
         """ % {'path':self.run_dir})
         command.close()
@@ -3576,8 +3836,8 @@ class TestMEfromfile(unittest.TestCase):
         generate g g > b b~ HIW<=1
         output madevent %(path)s
         launch 
+        shower=OFF
         set nevents 1000
-        set shower none
         """ % {'path':self.run_dir})
         command.close()
         
@@ -3834,6 +4094,8 @@ class TestMEfromfile(unittest.TestCase):
     def test_contur_from_file(self):
         """check that contur runs as expected"""
 
+        _mg7_tool_or_skip(self, MGCmd.MasterCmd(),
+                          *(_RIVET_TOOLS + ('contur_path',)))
         cwd = os.getcwd()
         import subprocess
         if logging.getLogger('madgraph').level <= 20:
@@ -3866,8 +4128,9 @@ class TestMEfromfile(unittest.TestCase):
 
 
     def test_rivet_from_file(self):
-        """check that contur runs as expected"""
+        """check that rivet runs as expected"""
 
+        _mg7_tool_or_skip(self, MGCmd.MasterCmd(), *_RIVET_TOOLS)
         cwd = os.getcwd()
         import subprocess
         if logging.getLogger('madgraph').level <= 20:
@@ -4008,7 +4271,6 @@ set draw_rivet_plots True
     def test_delphes_mg7(self):
         """Delphes detector simulation chained on the mg7 output (Pythia8 shower
         + Delphes) through the command interface."""
-        import glob
         datadir = _mg7_datadir_or_skip(self)
         run = _run_mg7_postproc(
             self,
@@ -4021,8 +4283,10 @@ set draw_rivet_plots True
             require_tools=('pythia8_path', 'delphes_path'),
             events=100)
 
-        self.assertTrue(glob.glob(pjoin(run, '*delphes*')),
-                        'mg7 Delphes run produced no output in %s\n%s'
+        # the ROOT file itself: a glob on '*delphes*' also matched the
+        # Delphes_crash.log of a run where Delphes could not start
+        self.assertTrue(os.path.exists(pjoin(run, 'tag_1_delphes_events.root')),
+                        'mg7 Delphes run produced no ROOT file in %s\n%s'
                         % (run, _mg7_postproc_report(pjoin(self.path, 'MG7_delphes'))))
 
     def test_rivet_from_file_mg7(self):
@@ -4048,7 +4312,7 @@ set draw_rivet_plots True
             pjoin(self.path, 'MG7_rivet'), datadir,
             switch_lines=['shower=Pythia8', 'analysis=Rivet'],
             precopy_cards=['pythia8', 'rivet'],
-            require_tools=('pythia8_path', 'rivet_path'),
+            require_tools=_RIVET_TOOLS,
             events=100)
 
         self.assertTrue(os.path.exists(pjoin(run, 'rivet_result.yoda')),

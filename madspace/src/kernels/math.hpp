@@ -121,6 +121,7 @@ backward_kernel_reduce_product(FIn<T, 1> in, FIn<T, 0> out_grad, FOut<T, 1> in_g
         FVal<T> val = in[i];
         auto zero_val = val == 0.;
         product = product * where(zero_val & (zero_count == 0), 1., val);
+        zero_count = zero_count + where(zero_val, IVal<T>(1), IVal<T>(0));
     }
     auto zero_product = where(zero_count == 0, product, 0.);
     for (std::size_t i = 0; i < in.size(); ++i) {
@@ -138,7 +139,7 @@ KERNELSPEC void kernel_sqrt(FIn<T, 0> in, FOut<T, 0> out) {
 template <typename T>
 KERNELSPEC void
 backward_kernel_sqrt(FIn<T, 0> in, FIn<T, 0> out_grad, FOut<T, 0> in_grad) {
-    in_grad += where(in > 0., -0.5 * out_grad / sqrt(in), 0.);
+    in_grad += where(in > 0., 0.5 * out_grad / sqrt(in), 0.);
 }
 
 template <typename T>

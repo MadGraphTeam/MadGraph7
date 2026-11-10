@@ -1038,7 +1038,7 @@ class Amplitude(base_objects.PhysicsObject):
         return self.get('process').get_ninitial()
 
     def has_loop_process(self):
-        """ Returns wether this amplitude has a loop process."""
+        """ Returns whether this amplitude has a loop process."""
         
         return self.get('process').get('perturbation_couplings')
 
@@ -1124,7 +1124,7 @@ class Amplitude(base_objects.PhysicsObject):
            len([leg for leg in legs if leg.is_outgoing_fermion(model)]):
             if not returndiag:
                 self['diagrams'] = res
-                raise InvalidCmd('The number of of incoming/outcoming fermions are different')
+                raise InvalidCmd('The numbers of incoming/outgoing fermions are different')
             else:
                 return False, res
 
@@ -1268,7 +1268,7 @@ class Amplitude(base_objects.PhysicsObject):
             lastvx = -1
             # For decay chain processes, there is an "artificial"
             # extra vertex corresponding to particle 1=1, so we need
-            # to exclude the two last vertexes.
+            # to exclude the two last vertices.
             if is_decay_proc: lastvx = -2
             ninitial = len([leg for leg in process.get('legs') if leg.get('state') == False])
             # Check required s-channels for each list in required_s_channels
@@ -2440,7 +2440,7 @@ class DecayChainAmplitude(Amplitude):
         return misc.make_unique(decay_ids)
     
     def has_loop_process(self):
-        """ Returns wether this amplitude has a loop process."""
+        """ Returns whether this amplitude has a loop process."""
         return self['amplitudes'].has_any_loop_process()
     
     def get_amplitudes(self):
@@ -2499,7 +2499,7 @@ class MultiProcess(base_objects.PhysicsObject):
                  loop_filter=None, diagram_filter=None, merge_crossing=False):
         """Allow initialization with ProcessDefinition or
         ProcessDefinitionList
-        optimize allows to use param_card information. (usefull for 1-.N)"""
+        optimize allows to use param_card information. (useful for 1-.N)"""
 
         if isinstance(argument, base_objects.ProcessDefinition):
             super(MultiProcess, self).__init__()

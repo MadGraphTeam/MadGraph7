@@ -180,9 +180,10 @@ class Systematics(object):
                 raise SystematicsError('EVA only works with e/mu beams, not lpp* = %s' % self.b2)
             #self.b1 = beam1//2212
             isEVAxDIS=True
-        # none, chff, edff
-        if(self.banner.run_card['pdlabel'] in ['none','chff','edff']):
-            raise SystematicsError('Systematics not supported for pdlabel=%s' % self.banner.run_card['pdlabel'])
+        # none, and gamma-UPC (edff, chff, ... with neutron tagging)
+        pdlabel = self.banner.run_card['pdlabel']
+        if pdlabel == 'none' or banner_mod.is_upc_label(pdlabel):
+            raise SystematicsError('Systematics not supported for pdlabel=%s (none and gamma-UPC labels)' % pdlabel)
 
         self.orig_ion_pdf = False
         self.ion_scaling = ion_scaling
@@ -594,7 +595,7 @@ class Systematics(object):
             except RuntimeError:
                 resume.write( '# PDF variation: missing combination\n')
             else:
-                resume.write( '# PDF variation: +%2.3g%% -%2.3g%%\n' % (percent(pdferr.errplus), percent(pdferr.errminus)))       
+                resume.write( '# PDF variation: +%2.3g%% -%2.3g%%\n' % (percent(pdferr.errplus), percent(pdferr.errminus)))
         # report error/central not directly linked to the central
         resume.write( "#\n")        
         for lhapdfid,values in pdfs.items():
@@ -612,7 +613,7 @@ class Systematics(object):
             try:
                 pdferr =  pdfset.uncertainty(values)
             except RuntimeError:
-                # the same error can happend to some other type of error like custom.
+                # the same error can happen to some other type of error like custom.
                 pass
             else:
                 resume.write( '#PDF %s: %g +%2.3g%% -%2.3g%%\n' % (pdfset.name, pdferr.central,percent(pdferr.errplus), percent(pdferr.errminus)))
@@ -1156,7 +1157,7 @@ class Systematics(object):
         elif(vPol==-1):
             return self.get_eva_stripped_pdf_vm(muf,vPID,fPID,xx,beam,ievo_eva,evaorder)
         else:
-            raise SystematicsError("unknow EVA vPol: %s " % vPol)
+            raise SystematicsError("unknown EVA vPol: %s " % vPol)
         
     # scale dependence of f_V+ according to EVA accuracy
     def get_eva_stripped_pdf_vp(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0, evaorder=0):
@@ -1392,7 +1393,7 @@ def call_systematics(args, result=sys.stdout, running=True,
                 else:
                     opts[key] = values
         else:
-            raise SystematicsError("unknow argument %s" % arg)
+            raise SystematicsError("unknown argument %s" % arg)
 
     #load run_card and extract parameter if needed.
     if 'from_card' in opts:

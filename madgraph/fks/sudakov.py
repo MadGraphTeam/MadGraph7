@@ -95,7 +95,7 @@ def get_isospin_partners_samecharge_iz(pid, model):
 
 
 def get_goldstone(pid, model):
-    """returns the goldstone boson correspoinding to the longitudinal polarisation 
+    """returns the goldstone boson corresponding to the longitudinal polarisation
     of particlle pid
     """
     gold_dict = {23: 250, 24: 251, -24: -251}

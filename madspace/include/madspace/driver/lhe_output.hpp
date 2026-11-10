@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <fstream>
 #include <optional>
 #include <string>
@@ -16,17 +17,17 @@
 namespace madspace {
 
 /**
- * One `<header>` block of an LHE file's `<init>` section.
+ * One block in the `<header>` section of an LHE file.
  *
- * A free-form, generator-specific block of extra metadata, written verbatim
- * under `name`. `escape_content` XML-escapes `content` before writing it.
+ * A free-form block of extra metadata, written as a tag `name` containing
+ * `content`. If `escape_content` is set, `content` is wrapped in CDATA.
  */
 struct LHEHeader {
     /// The `<header>` block's tag name.
     std::string name;
     /// The block's text content.
     std::string content;
-    /// Whether to XML-escape `content` before writing it.
+    /// Whether to wrap `content` in a CDATA section.
     bool escape_content;
 };
 
@@ -37,7 +38,7 @@ struct LHEHeader {
 struct LHEProcess {
     /// Cross section of this subprocess, in pb.
     double cross_section;
-    /// Statistical uncertainty of `cross_section`.
+    /// Uncertainty of `cross_section`.
     double cross_section_error;
     /// Maximum event weight, used to unweight LHEF v1 weighted events.
     double max_weight;
@@ -54,9 +55,9 @@ struct LHEMeta {
     int beam1_pdg_id, beam2_pdg_id;
     /// Energies of the two beams, in GeV.
     double beam1_energy, beam2_energy;
-    /// PDF group ids (LHAPDF's `PDFAuthors`) of the two beams.
+    /// PDF author group ids (LHEF `PDFGUP`) of the two beams.
     int beam1_pdf_authors, beam2_pdf_authors;
-    /// PDF set ids (LHAPDF's `LHAPDF ID`) of the two beams.
+    /// PDF set ids (LHEF `PDFSUP`) of the two beams.
     int beam1_pdf_id, beam2_pdf_id;
     /// LHEF `IDWTUP` event-weight convention.
     int weight_mode;
@@ -94,6 +95,9 @@ struct LHEParticle {
     double lifetime;
     /// Cosine of the spin angle, or `9` if the spin is not specified.
     double spin;
+    /// MLM clustering scale in GeV, written for outgoing particles if
+    /// @ref LHEEvent::has_cluster_scales is set.
+    double cluster_scale;
 };
 
 /// Leading-order reweighting inputs of one event, written as the `<mgrwt>`
@@ -111,6 +115,19 @@ struct LOReweightInfo {
     double x1, x2;
     /// Factorization scales of the two beams, in GeV.
     double fact_scale1, fact_scale2;
+    /// MLM pdf reweighting ladder of each beam, as madevent's `<pdfrwt>`
+    /// books it: the beam parton at its leading scale, then one entry per
+    /// ladder step (line flavour, momentum fraction before the step, scale).
+    /// Empty: a single entry from pdg/x/fact_scale.
+    std::array<std::vector<int>, 2> ladder_pdgs{};
+    /// See @ref ladder_pdgs.
+    std::array<std::vector<double>, 2> ladder_x{};
+    /// See @ref ladder_pdgs.
+    std::array<std::vector<double>, 2> ladder_q{};
+    /// Scales of the MLM alpha_s vertices (`<asrwt>`); `qcd_power` counts
+    /// them too, the `<rscale>` power is what is left at the
+    /// renormalisation scale.
+    std::vector<double> asrwt{};
 };
 
 /**
@@ -126,24 +143,73 @@ struct LHEEvent {
     int process_id;
     /// Event weight.
     double weight;
-    /// Event scale, in GeV.
+    /// Event scale (SCALUP), in GeV: the larger factorisation scale, as
+    /// madevent writes it.
     double scale;
     /// QED coupling at the event scale.
     double alpha_qed;
-    /// QCD coupling at the event scale.
+    /// QCD coupling at the renormalisation scale (@ref mu_r).
     double alpha_qcd;
     /// One entry per particle, incoming and outgoing.
     std::vector<LHEParticle> particles;
+    /// Whether the MLM clustering scales of the outgoing particles are written
+    /// (`pt_clust_<i>` attributes of `<scales>`).
+    bool has_cluster_scales;
+    /// Renormalisation scale, written as the `mur` attribute of `<scales>`.
+    /// It is not in SCALUP: the event `scale` is the larger factorisation
+    /// scale, as unwgt.f writes sqrt(max(q2fact)).
+    double mu_r;
+    /// Factorisation scales of the two beams (`muf1`, `muf2`; `muf` is their
+    /// maximum).
+    double mu_f1;
+    double mu_f2;
+    /// Whether the `mur` and `muf*` attributes of `<scales>` are written.
+    bool has_scales;
     /// Optional LHEF v3 weights (`<rwgt>` block); `rwgt_ids` and `rwgt` have
     /// the same length.
     std::vector<int> rwgt_ids;
     std::vector<double> rwgt;
-    /// Optional `<mgrwt>` block.
+    /// Optional `<mgrwt>` block; written only if `qcd_power` is nonnegative and
+    /// both beams took part.
     std::optional<LOReweightInfo> lo_info;
 
     /// Append this event's LHE text to `buffer`.
     void format_to(std::string& buffer) const;
 };
+
+/**
+ * Start the MLM shower from the hardest scale of the event rather than from the
+ * collider energy.
+ *
+ * The MLM clustering reports the light partons it assigned no clustering scale
+ * to (those of the core process) at the collider energy, and the outgoing
+ * particles that are not light partons (leptons, photons, heavy quarks) at the
+ * core-process scale, madevent's central factorisation scale. With
+ * Beams:setProductionScalesFromLHEF, which MLM merging turns on, Pythia8 starts
+ * each particle's final-state shower from its pt_clust and the initial-state
+ * shower from the largest of them. Here the outgoing particles that are not
+ * light partons (|pdg| <= `max_jet_flavor` or a gluon) get the hardest scale of
+ * the event: the largest of their own pt_clust (the core-process scale), SCALUP
+ * (mu_F) and the light partons' pt_clust below the collider energy. The
+ * core-process scale keeps the start at the hard process when mu_F is a soft
+ * clustering scale (clustering_mean without the pdf ladder). Only the shower
+ * start moves, not the matching. A light parton at the collider energy keeps
+ * it: that value is Pythia8's "do not match" flag.
+ */
+void apply_mlm_hardest_shower_scale(
+    LHEEvent& event, double collider_energy, int max_jet_flavor
+);
+
+/**
+ * Start the MLM shower of the outgoing particles that are not light partons
+ * (|pdg| <= `max_jet_flavor` or a gluon) from the collider energy, the
+ * behaviour of mlm_shower_start = "collider_energy": their pt_clust, which the
+ * MLM clustering sets to the core-process scale, is replaced by
+ * `collider_energy`.
+ */
+void apply_mlm_collider_shower_scale(
+    LHEEvent& event, double collider_energy, int max_jet_flavor
+);
 
 /**
  * Fills in the non-kinematic data of an @ref LHEEvent from sampled indices.
@@ -162,32 +228,41 @@ public:
     struct SubprocArgs {
         /// Process id shared by every event of this subprocess.
         int process_id;
-        /// Decay topology of each diagram channel.
+        /// Decay topology of each diagram channel. A subprocess without diagrams
+        /// has one topology and no permutations and diagram indices.
         std::vector<Topology> topologies;
-        /// Final-state particle permutation of each channel.
+        /// Permutation of the external legs (incoming first) of each diagram of
+        /// each channel.
         nested_vector3<std::size_t> permutations;
-        /// Sampled-diagram index available to each channel.
+        /// Diagram index of each diagram of each channel.
         nested_vector2<std::size_t> diagram_indices;
-        /// Color-configuration indices available to each diagram.
+        /// Color-configuration indices of each diagram of each channel.
         nested_vector3<std::size_t> diagram_color_indices;
         /// Color-line assignment of each sampled color configuration.
         nested_vector2<std::tuple<int, int>> color_flows;
-        /// Color representation (singlet, triplet, octet, ...) of each PDG id.
+        /// Color representation of each PDG id: 1 (singlet), 3, -3 or 8; ids
+        /// not listed count as singlets.
         std::unordered_map<int, int> pdg_color_types;
         /// Per-particle helicity of each sampled helicity configuration.
         nested_vector2<double> helicities;
-        /// Per-particle PDG id of each sampled flavor configuration.
+        /// PDG ids per particle, for each flavor index and each of its options;
+        /// one option is chosen at random per event.
         nested_vector3<int> pdg_ids;
-        /// Per-diagram PDG override, indexed like `diagram_color_indices`
-        /// then by `Topology::Decay::flat_propagator_index`. Falls back to
-        /// `Topology::Decay::pdg_id` if empty.
+        /// Per-diagram PDG override, indexed by channel, diagram within the
+        /// channel and `Topology::Decay::flat_propagator_index`. Falls back to
+        /// `Topology::Decay::pdg_id` if missing.
         nested_vector3<int> diagram_propagator_pdgs;
+        /// Relative weight of each PDG-id option of each flavor: an option is
+        /// written with probability proportional to its weight. Uniform if empty,
+        /// or for a flavor whose weights are empty.
+        nested_vector2<double> pdg_id_weights;
     };
 
     /// @param subproc_args  Bookkeeping for every subprocess, indexed like
     ///                      `subprocess_index` in @ref complete_event_data.
-    /// @param bw_cutoff     Number of widths within which a propagator is
-    ///                      sampled on its Breit-Wigner resonance.
+    /// @param bw_cutoff     A resonance is written to an event only if its
+    ///                      invariant mass is within this many widths of its
+    ///                      mass.
     LHECompleter(const std::vector<SubprocArgs>& subproc_args, double bw_cutoff);
     /**
      * Fill in `event`'s PDG ids, color flow, mother/daughter links, masses
@@ -197,11 +272,12 @@ public:
      * @param event              The event to complete, modified in place.
      * @param subprocess_index   Index into the `subproc_args` passed to the
      *                           constructor.
-     * @param diagram_index      Sampled diagram.
+     * @param diagram_index      Sampled diagram, -1 for a subprocess without
+     *                           diagrams.
      * @param color_index        Sampled color configuration.
      * @param flavor_index       Sampled flavor assignment.
      * @param helicity_index     Sampled helicity configuration.
-     * @param rand_gen           RNG stream, used to sample resonance masses.
+     * @param rand_gen           RNG stream, used to pick the flavor option.
      */
     void complete_event_data(
         LHEEvent& event,
@@ -212,7 +288,7 @@ public:
         int helicity_index,
         MixMaxRandom& rand_gen
     );
-    /// Largest particle count over every subprocess.
+    /// Largest particle count over every subprocess, including resonances.
     std::size_t max_particle_count() const { return _max_particle_count; }
     /// Serialize this completer's bookkeeping to `file`.
     void save(const std::string& file) const;
@@ -225,8 +301,7 @@ private:
         std::size_t color_offset, pdg_id_offset, helicity_offset, mass_offset;
         std::size_t particle_count, color_count, flavor_count;
         std::size_t diagram_count, helicity_count;
-        // 2 for a collision, 1 for a decay. Decides which leading particles are
-        // written as initial state and what the outgoing ones point at.
+        // 2 for a collision, 1 for a decay.
         std::size_t incoming_count;
     };
     struct PropagatorData {
@@ -242,6 +317,9 @@ private:
     std::vector<double> _helicities;
     std::vector<std::array<std::size_t, 2>> _pdg_id_and_count;
     std::vector<int> _pdg_ids;
+    // flavor slot -> offset of its cumulative option probabilities, if not uniform
+    std::unordered_map<std::size_t, std::size_t> _pdg_id_weight_offsets;
+    std::vector<double> _pdg_id_cumulative;
     std::unordered_map<std::size_t, std::array<std::size_t, 3>>
         _propagator_index_and_count;
     std::vector<PropagatorData> _propagators;

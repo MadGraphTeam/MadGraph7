@@ -14,8 +14,6 @@
      $        ,wgtref,scalevarR(0:maxscales),scalevarF(0:maxscales)
      $        ,wgtxsecmu(0:maxorders,maxscales,maxscales,maxdynscales)
      $        ,wgtxsecPDF(0:maxPDFs,maxPDFsets),wgtbpower,wgtcpower
-     $        ,veto_multiplier,H1_factor_virt,veto_compensating_factor
-     $        ,born_wgt_veto
          double precision,allocatable :: momenta_str(:,:,:)
          character(len= 100) :: LHAPDFsetname(maxPDFsets) 
          character(len=1024),allocatable :: n_ctr_str(:)
@@ -27,7 +25,7 @@ c switch for running muR-dependent factor runfac=1(running)/0(fixed)
 c WARNING: If you set runfac=1 to include a muR-dependent factor
 c          make sure you modified the function rwgt_muR_dep_fac in
 c	   reweight_xsec.f and compute_cpower in fks_singular.f
-c          appropiately to include all muR dependent overall factors
+c          appropriately to include all muR dependent overall factors
 c          (except for alpha_s) in the calculation. This procedure 
 c          will be incorrect, if you miss one of the muR dependent
 c          factors or if there is a not factorizing muR dependent term.

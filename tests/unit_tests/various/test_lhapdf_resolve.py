@@ -303,3 +303,116 @@ class TestResolveLhapdf(unittest.TestCase):
         promoted = paths.with_data_path('/somewhere')
         self.assertEqual(promoted.data_paths[0], '/somewhere')
         self.assertEqual(promoted.config, paths.config)
+
+
+class TestDownloadLhapdfSet(unittest.TestCase):
+    """misc.download_lhapdf_set installs a PDF set without LHAPDF, straight
+    from the LHAPDF server; here a local HTTP server stands in for it."""
+
+    def setUp(self):
+        import http.server
+        import threading
+        self.tmpdir = tempfile.mkdtemp(prefix='mg7_lhapdf_download')
+        self.target = pjoin(self.tmpdir, 'pdfsets')
+        self.files = {'/pdfsets.index': b'338500 MYSET 1\n',
+                      '/MYSET.tar.gz': self.tarball({
+                          'MYSET/MYSET.info': b'SetIndex: 338500\n',
+                          'MYSET/MYSET_0000.dat': os.urandom(100000)})}
+        # how many leading requests of a path get half of its content only
+        self.truncate = {}
+        self.requests = []
+        test = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                test.requests.append(self.path)
+                body = test.files.get(self.path)
+                if body is None:
+                    self.send_error(404)
+                    return
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                if test.truncate.get(self.path, 0) > 0:
+                    test.truncate[self.path] -= 1
+                    body = body[:len(body) // 2]
+                    self.close_connection = True
+                self.wfile.write(body)
+
+        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = 'http://127.0.0.1:%d' % self.server.server_address[1]
+        # exercise the python download only, whatever tools the machine has
+        self.saved_which = misc.which
+        misc.which = lambda program: None
+
+    def tearDown(self):
+        misc.which = self.saved_which
+        self.server.shutdown()
+        self.server.server_close()
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    @staticmethod
+    def tarball(members):
+        import io
+        import tarfile
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode='w:gz') as tar:
+            for name, data in members.items():
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        return buf.getvalue()
+
+    def download(self, name='MYSET'):
+        return misc.download_lhapdf_set(name, self.target, base_url=self.url)
+
+    def test_installs_set_and_index(self):
+        path = self.download()
+        self.assertEqual(path, pjoin(self.target, 'MYSET'))
+        self.assertEqual(sorted(os.listdir(path)),
+                         ['MYSET.info', 'MYSET_0000.dat'])
+        # nothing but the set and the index: no temporary directory left
+        self.assertEqual(sorted(os.listdir(self.target)),
+                         ['MYSET', 'pdfsets.index'])
+
+    def test_present_set_is_not_downloaded_again(self):
+        self.download()
+        del self.requests[:]
+        self.download()
+        self.assertEqual(self.requests, [])
+
+    def test_truncated_transfer_is_retried(self):
+        self.truncate['/MYSET.tar.gz'] = 1
+        self.download()
+        self.assertEqual(self.requests.count('/MYSET.tar.gz'), 2)
+        self.assertTrue(os.path.exists(pjoin(self.target, 'MYSET', 'MYSET_0000.dat')))
+
+    def test_persistent_truncation_fails_without_partial_set(self):
+        self.truncate['/MYSET.tar.gz'] = 10
+        self.assertRaises(misc.MadGraph5Error, self.download)
+        self.assertEqual(os.listdir(self.target), [])
+
+    def test_unknown_set_fails_at_once(self):
+        self.assertRaises(misc.LhapdfServerError, self.download, 'NOSUCHSET')
+        self.assertEqual(self.requests, ['/NOSUCHSET.tar.gz'])
+        self.assertEqual(os.listdir(self.target), [])
+
+    def test_member_outside_the_target_is_refused(self):
+        self.files['/EVIL.tar.gz'] = self.tarball({'../EVIL': b'x',
+                                                   'EVIL/EVIL.info': b''})
+        self.assertRaises(misc.MadGraph5Error, self.download, 'EVIL')
+        self.assertFalse(os.path.exists(pjoin(self.tmpdir, 'EVIL')))
+        self.assertEqual(os.listdir(self.target), [])
+
+    def test_index_download(self):
+        index = misc.download_lhapdf_index(self.target, base_url=self.url)
+        with open(index) as fsock:
+            self.assertEqual(fsock.read(), '338500 MYSET 1\n')
+        del self.files['/pdfsets.index']
+        other = pjoin(self.tmpdir, 'other')
+        self.assertIsNone(misc.download_lhapdf_index(other, base_url=self.url))
+        self.assertFalse(os.path.exists(pjoin(other, 'pdfsets.index.part')))

@@ -616,6 +616,11 @@ c**************************************************************************
       integer tmppdg
 
       integer flavor(nexternal)
+      integer idup(nexternal,maxproc,maxsproc)
+      integer mothup(2,nexternal)
+      integer icolup(2,nexternal,maxflow,maxsproc)
+      include 'leshouche.inc'
+      include 'cuts.inc'
       integer mapconfig(0:lmaxconfigs), this_config
       common/to_mconfigs/mapconfig, this_config
 
@@ -658,17 +663,29 @@ c     initialize index map
       enddo
       mt2last=0
       minpt2ij=1.0d37
-c     Map merged flavor particles (PDG=81) to their actual quark flavors
+c     Map the quark legs (and merged 81 legs) to the representative of the
+c     coupling class of this event: FLAVOR(i) is the position of that
+c     representative in the merged quark group, which is its pdg since the
+c     quarks are always merged in pdg order (1,2,...). It is NOT the flavour
+c     of the event (s s~ > z gives 1, c c~ > z gives 2): the flavour
+c     combination (IPSEL) is only drawn after the scales are set, and rewgt
+c     sets the external identities to it after clustering.
+c     Only the jet quark legs are mapped, identified by their (fixed) pdg in
+c     the first flavour row: FLAVOR is 1 on a leg that is not merged, so a
+c     top (or a b with maxjetflavor=4) would otherwise be clustered as a d
+c     quark. The current label cannot be used for that test, since a merged
+c     leg keeps the class of the previous event (up to 6 for a massless
+c     top merged in 81). A merged leg is a jet in every row or in none
+c     (rewgt stops otherwise when ickkw>0).
       do i=1,nexternal
-         if(flavor(i).ge.1.and.flavor(i).le.5)then
-               do igraph=1,n_max_cg
-               tmppdg=ipdgcl(ishft(1,i-1),igraph,iproc)
-                  if(tmppdg.eq.81.or.(tmppdg.gt.0.and.tmppdg.le.5)) then
-                     ipdgcl(ishft(1,i-1),igraph,iproc)=flavor(i)
-                  else if(tmppdg.eq.-81.or.(tmppdg.lt.0.and.tmppdg.ge.-5))then
-                     ipdgcl(ishft(1,i-1),igraph,iproc)=-flavor(i)
-                  endif
-               enddo
+         tmppdg=abs(idup(i,1,iproc))
+         if(flavor(i).ge.1.and.flavor(i).le.6.and.
+     $        tmppdg.ge.1.and.tmppdg.le.maxjetflavor)then
+            do igraph=1,n_max_cg
+               if(ipdgcl(ishft(1,i-1),igraph,iproc).ne.0)
+     $              ipdgcl(ishft(1,i-1),igraph,iproc)=
+     $              sign(flavor(i),idup(i,1,iproc))
+            enddo
          endif
       enddo
 

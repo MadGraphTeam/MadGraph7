@@ -41,7 +41,7 @@ C
       INTEGER SELECTED_HEL, SELECTED_COL, IVEC
       INTEGER IFLAV
 C     
-C     global (due to reading writting)
+C     global (due to reading writing)
 C     
 C     Good-helicity filter is per (helicity, flavor): a helicity that
 C      is zero for
@@ -564,7 +564,7 @@ C
       INTEGER I,J
       INTEGER SQSPLITORDERS(NSQSO,NSO)
       DATA (SQSPLITORDERS(  1,I),I=  1,  1) /    2/
-      COMMON/SQPLITORDERS/SQPLITORDERS
+      COMMON/SQPLITORDERS/SQSPLITORDERS
 C     
 C     BEGIN CODE
 C     
@@ -620,14 +620,14 @@ C
 C     LOCAL VARIABLES
 C     
       INTEGER I
-      INTEGER SQPLITORDERS(NSQSO,NSO)
-      COMMON/SQPLITORDERS/SQPLITORDERS
+      INTEGER SQSPLITORDERS(NSQSO,NSO)
+      COMMON/SQPLITORDERS/SQSPLITORDERS
 C     
 C     BEGIN CODE
 C     
       IF (SOINDEX.GT.0.AND.SOINDEX.LE.NSQSO) THEN
         DO I=1,NSO
-          ORDERS(I) =  SQPLITORDERS(SOINDEX,I)
+          ORDERS(I) =  SQSPLITORDERS(SOINDEX,I)
         ENDDO
         RETURN
       ENDIF

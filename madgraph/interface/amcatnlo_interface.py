@@ -60,7 +60,7 @@ import madgraph.various.cluster as cluster
 import madgraph.various.misc as misc
 import madgraph.various.banner as banner_mod
 import madgraph.models.model_reader as model_reader
-#usefull shortcut
+#useful shortcut
 pjoin = os.path.join
 
 
@@ -711,7 +711,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             for o in myprocdef['model'].get_coupling_orders():
                 if o not in list(myprocdef['orders'].keys()):
                     myprocdef['orders'][o] = self.options['default_unset_couplings']
-                    logger.warning(('%s order is missing in the process definition. It will be set to "default unser couplings": %s\n' + \
+                    logger.warning(('%s order is missing in the process definition. It will be set to "default user couplings": %s\n' + \
                                    'If this is not what you need, please regenerate with the correct orders.') % (o,myprocdef['orders'][o]))
 
         # raise a warning if squared-orders constraints are not of the '<=' kind
@@ -720,7 +720,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         # this is in case no orders have been passed
         if not myprocdef['squared_orders'] and not myprocdef['orders']:
-            # find the minimum weighted order, then extract the values for the varius
+            # find the minimum weighted order, then extract the values for the various
             # couplings in the model
             weighted = diagram_generation.MultiProcess.find_optimal_process_orders(myprocdef,
                                                            tree_diagram_filter)
@@ -846,7 +846,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                     ord in myprocdef['perturbation_couplings']])
         # if [orders] have not been specified, 
         # finally set perturbation_couplings to **all** the coupling orders 
-        # avaliable in the model.
+        # available in the model.
         # This is necessary because when doing EW corrections one only specifies
         # squared-orders constraints. In that case, all kind of splittings/loop-particles
         # must be included
@@ -1093,6 +1093,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             # Save processes instances generated
             self.born_processes_for_olp = []
             self.born_processes = []
+            if hasattr(self._curr_exporter, 'prepare_born_support'):
+                self._curr_exporter.prepare_born_support(
+                    self._curr_matrix_elements.get('matrix_elements'))
             for ime, me in \
                 enumerate(self._curr_matrix_elements.get('matrix_elements')):
                 if not self.options['low_mem_multicore_nlo_generation']:
@@ -1127,7 +1130,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                     # the very large timeout passed to get is to be able to catch
                     # KeyboardInterrupts
                     diroutputmap = pool.map_async(generate_directories_fks_async,
-                                                  list(range(len(glob_directories_map)))).get(9999999)
+                                                  list(range(len(glob_directories_map))),
+                                                  chunksize=misc.pool_chunksize(pool, len(glob_directories_map))).get(9999999)
                 except KeyboardInterrupt:
                     pool.terminate()
                     raise KeyboardInterrupt 
@@ -1252,12 +1256,14 @@ _launch_usage = "launch [DIRPATH] [MODE] [options]\n" + \
                 "     in the run_card.dat\n"
 
 _launch_parser = misc.OptionParser(usage=_launch_usage)
+_launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
+                            help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")
 _launch_parser.add_option("-f", "--force", default=False, action='store_true',
                                 help="Use the card present in the directory for the launch, without editing them")
 _launch_parser.add_option("-c", "--cluster", default=False, action='store_true',
                             help="Submit the jobs on the cluster")
 _launch_parser.add_option("-i", "--interactive", default=False, action='store_true',
-                            help="Use interactive consol")
+                            help="Use the interactive console")
 _launch_parser.add_option("-m", "--multicore", default=False, action='store_true',
                             help="Submit the jobs on multicore mode")
 _launch_parser.add_option("-x", "--nocompile", default=False, action='store_true',

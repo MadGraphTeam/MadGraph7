@@ -150,7 +150,7 @@ class TestFKSQED(unittest.TestCase):
         # check real emissions:
         # from the first and second leg, one can have the final and initial
         # state photon splitting,
-        # as well as the final and initial state gluon splittng 
+        # as well as the final and initial state gluon splitting
         # (for order consistency)
         self.assertEqual(len(fksproc.reals[0]), 4)
         self.assertEqual(len(fksproc.reals[1]), 4)
@@ -168,7 +168,7 @@ class TestFKSQED(unittest.TestCase):
         #check that the correct orders are set for the real amplitudes
 
         #there should be 16 born processes with leptons and 12 without 
-        # (remeber, without leptons means no born process with BOTH initial-
+        # (remember, without leptons means no born process with BOTH initial-
         # state leptons, so things like u e- > u e- are kept)
         self.assertEqual(len(fksmultiproc_wlep['born_processes']), 20)
         self.assertEqual(len(fksmultiproc_nolep['born_processes']), 14)

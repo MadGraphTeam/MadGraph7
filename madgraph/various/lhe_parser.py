@@ -1,6 +1,7 @@
 from __future__ import division
 from __future__ import absolute_import
 import collections
+import codecs
 import random
 import re
 import operator
@@ -479,7 +480,7 @@ class EventFile(object):
     
     def initialize_unweighting(self, get_wgt, trunc_error):
         """ scan once the file to return 
-            - the list of the hightest weight (of size trunc_error*NB_EVENT
+            - the list of the highest weight (of size trunc_error*NB_EVENT
             - the cross-section by type of process
             - the total number of events in the file
             """
@@ -1254,7 +1255,7 @@ class EventFile(object):
         else:
             nb_events_unweighted = nb_keep
 
-        logger.log(log_level, "write %i event (efficiency %.2g %%, truncation %.2g %%) after %i iteration(s)", 
+        logger.log(log_level, "write %i event (efficiency %.2g %%, overweight excess %.2g %%) after %i iteration(s)",
           nb_keep, nb_events_unweighted/nb_event*100, trunc_cross/cross['abs']*100, i)
      
         # every event heavier than max_wgt is kept, so trunc_cross is the
@@ -1317,33 +1318,86 @@ class EventFile(object):
         else:
             return out
 
-    def split(self, nb_event=0, partition=None, cwd=os.path.curdir, zip=False):
-        """split the file in multiple file. Do not change the weight!"""
+    def _iter_event_text(self, chunk_size=1024 * 1024):
+        """Read complete event blocks without parsing or reformatting particles.
 
-        nb_file = -1
-        for i, event in enumerate(self):
-            if (not (partition is None) and i==sum(partition[:nb_file+1])) or \
-                                   (partition is None and i % nb_event == 0):
-                if i:
-                    #close previous file
-                    current.write('</LesHouchesEvent>\n')
+        Scan buffered chunks, rather than making a Python call for every line.
+        Memory use is limited to a chunk plus the largest event. Keep the usual
+        iterator for subclasses which generate or mix events themselves.
+        """
+        if type(self) is not EventFile or self.eventgroup:
+            for event in self:
+                yield str(event)
+            return
+
+        opening = re.compile(r'(?m)^[ \t]*<event(?:[ \t][^>\r\n]*)?>')
+        closing = re.compile(r'(?m)^[ \t]*</event>[ \t]*\r?\n')
+        decoder = codecs.getincrementaldecoder(self.encoding)(errors='ignore')
+        pending = ''
+        while True:
+            chunk = self.file.read(chunk_size)
+            eof = not chunk
+            if isinstance(chunk, bytes):
+                chunk = decoder.decode(chunk, final=eof)
+            pending += chunk
+            if eof and pending and not pending.endswith('\n'):
+                pending += '\n'
+            end = 0
+            for match in closing.finditer(pending):
+                start = opening.search(pending, end, match.start())
+                if start is not None:
+                    yield pending[start.start():match.end()]
+                end = match.end()
+            pending = pending[end:]
+            if eof:
+                if opening.search(pending):
+                    raise ValueError('Incomplete LHE event in %s' % self.path)
+                return
+
+    def split(self, nb_event=0, partition=None, cwd=os.path.curdir, zip=False):
+        """Split into consecutive files, preserving event text and weights.
+
+        File names retain the historical ``<input>_<index>.lhe[.gz]`` form.
+        A partition can select only the first sum(partition) events.
+        """
+        if partition is None:
+            sizes = None
+            if nb_event <= 0 or int(nb_event) != nb_event:
+                raise ValueError('nb_event must be a positive integer')
+            size = int(nb_event)
+        else:
+            sizes = list(partition)
+            if any(n <= 0 or int(n) != n for n in sizes):
+                raise ValueError('partition sizes must be positive integers')
+            if not sizes:
+                return 0
+
+        nb_file = 0
+        current = None
+        remaining = 0
+        try:
+            for event in self._iter_event_text():
+                if current is None:
+                    suffix = '.lhe.gz' if zip else '.lhe'
+                    path = pjoin(cwd, '%s_%d%s' % (self.path, nb_file, suffix))
+                    current = EventFile(path, 'w')
+                    current.write(self.banner)
+                    remaining = int(sizes[nb_file]) if sizes is not None else size
+                    nb_file += 1
+                current.write(event)
+                remaining -= 1
+                if remaining == 0:
+                    current.write('</LesHouchesEvents>\n')
                     current.close()
-                # create the new file
-                nb_file +=1
-                # If end of partition then finish writing events here.
-                if not partition is None and (nb_file+1>len(partition)):
-                    return nb_file
-                if zip:
-                    current = EventFile(pjoin(cwd,'%s_%s.lhe.gz' % (self.path, nb_file)),'w')
-                else:
-                    current = open(pjoin(cwd,'%s_%s.lhe' % (self.path, nb_file)),'w')                    
-                current.write(self.banner)
-            current.write(str(event))
-        if i!=0:
-            current.write('</LesHouchesEvent>\n')
-            current.close()
-             
-        return nb_file +1
+                    current = None
+                    if sizes is not None and nb_file == len(sizes):
+                        break
+            if current is not None:
+                current.write('</LesHouchesEvents>\n')
+        finally:
+            if current is not None:
+                current.close()
+        return nb_file
 
     def update_HwU(self, hwu, fct, name='lhe', keep_wgt=False, maxevents=sys.maxsize):
         """take a HwU and add this event file for the function fct"""
@@ -1661,7 +1715,7 @@ class MultiEventFile(EventFile):
         if not self.banner:
             return
         
-        # compute the cross-section of each splitted channel
+        # compute the cross-section of each split channel
         grouped_cross = {}
         grouped_error = {}
         for i,ff in enumerate(self.files):
@@ -1762,7 +1816,7 @@ class MultiEventFile(EventFile):
     
     def initialize_unweighting(self, getwgt, trunc_error):
         """ scan once the file to return 
-            - the list of the hightest weight (of size trunc_error*NB_EVENT
+            - the list of the highest weight (of size trunc_error*NB_EVENT
             - the cross-section by type of process
             - the total number of events in the files
             In top of that it initialise the information for the next routine
@@ -2798,6 +2852,8 @@ class Event(list):
             new.reweight_order = list(self.reweight_order)
         new.matched_scale_data = None if self.matched_scale_data is None \
                                  else list(self.matched_scale_data)
+        if getattr(self, 'scales_attributes', None) is not None:
+            new.scales_attributes = dict(self.scales_attributes)
         new.syscalc_data = dict(self.syscalc_data)
         new.density = list(self.density)
         fields = self._copy_particle_fields
@@ -2931,7 +2987,7 @@ class Event(list):
                                            if not self.reweight_order.append(pid)])
                                       # the if is to create the order file on the flight
             except ValueError as error:
-                raise Exception('Event File has unvalid weight. %s' % error)
+                raise Exception('Event file has an invalid weight. %s' % error)
             self.tag = self.tag[:start] + self.tag[stop+7:]
         return self.reweight_data
     
@@ -3018,7 +3074,9 @@ class Event(list):
         initial-state partons give the PDF pdg codes and, together with the beam
         energies ``ebeam = (ebeam1, ebeam2)``, the Bjorken-x (x_i = E_i/ebeam_i,
         exact for the collinear massless initial state of an LHE event); the
-        renormalisation and factorisation scales are the event scale (SCALUP).
+        factorisation scale is the event scale (SCALUP, the larger mu_F) and
+        the renormalisation scale the ``mur`` of the <scales> tag (SCALUP if
+        there is none, see :meth:`get_ren_scale`).
         With a single alpha_s power there is no clustering, so there is a single
         PDF reweight entry per beam and no separate alpha_s reweight scale --
         matching what MadEvent writes for an unmatched LO event (verified
@@ -3037,7 +3095,7 @@ class Event(list):
             ebeam = (0., 0.)
         scale = float(self.scale)
         loweight = {'n_qcd': int(nqcd),
-                    'ren_scale': scale,
+                    'ren_scale': self.get_ren_scale(),
                     'asrwt': [],
                     'tot_fact': 1.0}
         for beam, (part, eb) in enumerate(zip(initial, ebeam), start=1):
@@ -3115,6 +3173,38 @@ class Event(list):
         return self.loweight
     
             
+    scales_attribute_pattern = re.compile(r'(\w+)\s*=\s*["\']([^"\']*)["\']')
+
+    def get_scales_attributes(self):
+        """The scales of the LHEF3 <scales> tag other than the per-particle
+        pt_clust_i, as floats by name: mur, muf, muf1 and muf2 in the mg7
+        output; empty for an event without them (madevent writes pt_clust_i
+        only). Kept when parse_matching_scale takes the tag apart."""
+
+        if getattr(self, 'scales_attributes', None) is None:
+            self.scales_attributes = {}
+            match = re.search(r'<scales\s([^>]*)>', self.tag)
+            if match:
+                for name, value in self.scales_attribute_pattern.findall(match.group(1)):
+                    if name.startswith('pt_clust_'):
+                        continue
+                    try:
+                        self.scales_attributes[name] = float(value)
+                    except ValueError:
+                        pass
+        return self.scales_attributes
+
+    def get_ren_scale(self):
+        """The renormalisation scale of the event: the mur of its <scales>
+        tag when finite and positive, otherwise SCALUP. SCALUP is the factorisation
+        scale (madevent and mg7 alike), the closest a file without mur has."""
+
+        mur = self.get_scales_attributes().get('mur')
+        # MC@NLO-Delta uses mur=-1 to mark an unspecified scale.
+        if mur is not None and math.isfinite(mur) and mur > 0:
+            return mur
+        return float(self.scale)
+
     def parse_matching_scale(self):
         """Parse the line containing the starting scale for the shower"""
         
@@ -3122,7 +3212,8 @@ class Event(list):
             return self.matched_scale_data
             
         self.matched_scale_data = []
-        
+        # the tag is taken apart below: read the other scales first
+        self.get_scales_attributes()
 
         pattern  = re.compile(r"<scales\s|</scales>")
         data = re.split(pattern,self.tag)
@@ -3180,7 +3271,7 @@ class Event(list):
         this_particle.status = 2
         this_particle.helicity = 0
         
-        # some usefull information
+        # some useful information
         decay_particle = decay_event[0]
         this_4mom = FourMomentum(this_particle)
         nb_part = len(self) #original number of particle
@@ -3214,10 +3305,12 @@ class Event(list):
             this_particle.reshuffle_info = decay_particle.reshuffle_info
         self.nexternal += decay_event.nexternal -1
         old_scales = list(self.parse_matching_scale())
-        if old_scales:
-            jet_position = sum(1 for i in range(position) if self[i].status==1)
-            initial_pos = sum(1 for i in range(position) if self[i].status==-1)
-            self.matched_scale_data.pop(initial_pos+jet_position)
+        # pt_clust indices are full LHE rows, including resonances. The
+        # decaying particle stays in place with status 2, so keep its entry
+        # and all existing particle indices unchanged.
+        decay_scale = old_scales[position] if old_scales else -1
+        if decay_scale == -1:
+            decay_scale = self.scale
         # add the particle with only handling the 4-momenta/mother
         # color information will be corrected later.
         for particle in decay_event[1:]:
@@ -3226,7 +3319,11 @@ class Event(list):
             new_particle.event_id = len(self)
             self.append(new_particle)
             if old_scales:
-                self.matched_scale_data.append(old_scales[initial_pos+jet_position])
+                # Inherit the parent's shower scale (SCALUP for FxFx
+                # resonances). Pythia takes the maximum tagged external
+                # scale as SCALUP, so daughters must keep that maximum when
+                # the parent becomes status 2 and only EW jets remain.
+                self.matched_scale_data.append(decay_scale)
             # compute and assign the new four_momenta
             if at_rest:
                 new_momentum = FourMomentum(new_particle).boost(this_4mom)
@@ -3804,7 +3901,7 @@ class Event(list):
         
     def get_tag_and_order(self, merged_particle=None):
         """Return the unique tag identifying the SubProcesses for the generation.
-        Usefull for program like MadSpin and Reweight module.
+        Useful for program like MadSpin and Reweight module.
         merged particle is a dictionary id:merged
         such that if id is in the tag, it will be replace by merged[id]
         """
@@ -4411,7 +4508,7 @@ class Event(list):
         particle correspond to new_mom"""
 
         
-        # some usefull information
+        # some useful information
         decay_particle = subdiag[0]
         orig_mom = FourMomentum(decay_particle) 
         #nb_part = len(self) #original number of particle
@@ -4641,7 +4738,10 @@ class Event(list):
                                    for i,v in enumerate(self.matched_scale_data)
                                               if v!=-1])
             if tmp_scale:
-                tag_str = "<scales %s></scales>%s" % (tmp_scale, self.tag)
+                # the event's other scales (mg7's mur/muf...) go back in first
+                other = ''.join(' %s="%s"' % item
+                                for item in self.get_scales_attributes().items())
+                tag_str = "<scales%s %s></scales>%s" % (other, tmp_scale, self.tag)
             
         if self.syscalc_data:
             keys= ['rscale', 'asrwt', ('pdfrwt', 'beam', '1'), ('pdfrwt', 'beam', '2'),
@@ -4769,7 +4869,7 @@ class Event(list):
                         raise error
 
             # Now ind should be defined and correspond to the position in the curr_block
-            # compute now the associate postion in the original order
+            # compute now the associate position in the original order
             # first case is the particle was found in the initial state
             if (part.status == -1 and not flip) or (part.status == 1 and flip):
                 position =  ind
@@ -5034,7 +5134,7 @@ class Event(list):
         The two list are consider equivalent if the  total content associated to an identifier
         is the same (up to ordering)
         so (3,4,5) and (4,3,5) are the same for mapping={0:"a",1:"a",2:"b"}
-        since a is assocated to 3,4 in both case (and b to 5 in each case
+        since a is associated to 3,4 in both case (and b to 5 in each case
         but (3,4,5) and (3,5,4) are not the same because b has 5 in one case and 4 in the second
 
         if permutate_two_decay is False, then two permutation are consider equivalent if they differ by a swap of particles having not
@@ -5473,7 +5573,7 @@ class FourMomentum(object):
     
     def boost_to_restframe(self, pboost):
         """apply the boost transformation such that pboost is at rest in the new frame.
-        First apply a rotation to allign the pboost to the z axis and then use
+        First apply a rotation to align the pboost to the z axis and then use
         zboost routine (see above)
         """
         
@@ -5830,6 +5930,8 @@ class OneNLOWeight(object):
             to_add('%i', self.merge_new_pdg)
             to_add('%.10e', self.ref_wgt*self.bias_wgt)
             to_add('%.10e', self.bias_wgt)
+            if getattr(self, 'native_provenance', None) is not None:
+                to_add('%i', list(self.native_provenance))
             return ' '.join(format_var) % tuple(variable)
             
         
@@ -5909,7 +6011,6 @@ class OneNLOWeight(object):
         #     type=4 : soft counter-term: 
         #     type=5 : collinear counter-term: 
         #     type=6 : soft-collinear counter-term: 
-        #     type=7 : O(alphaS) expansion of Sudakov factor for NNLL+NLO:  
         #     type=8 : soft counter-term (with n+1-body kin.):     
         #     type=9 : collinear counter-term (with n+1-body kin.): 
         #     type=10: soft-collinear counter-term (with n+1-body kin.): 
@@ -5950,6 +6051,11 @@ class OneNLOWeight(object):
         except IndexError:
             self.bias_wgt = 1.0
             
+        # New outputs append provider, context, history and event-owner IDs.
+        # The preceding fields retain their native PDF/ME interpretation.
+        suffix = data[flag+16:flag+20]
+        self.native_provenance = tuple(map(int, suffix)) if len(suffix) == 4 else None
+
         if not keep_bias:
             self.ref_wgt /= self.bias_wgt
             self.pwgt = [p/self.bias_wgt for p in self.pwgt]
@@ -6218,7 +6324,7 @@ class NLO_PARTIALWEIGHT(object):
         self.nb_event = 0
         self.nb_wgts = 0
         self.threshold = threshold
-        self.modified = False #set on True if we decide to change internal infor
+        self.modified = False #set on True if we decide to change internal info
                               # that need to be written in the event file.
                               #need to be set manually when this is the case
         if isinstance(input, str):

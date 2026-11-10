@@ -13,6 +13,8 @@
 #
 ################################################################################
 from __future__ import absolute_import
+import array
+import random
 import subprocess
 import unittest
 import os
@@ -42,6 +44,44 @@ from madgraph import MG4DIR, MG5DIR, MadGraph5Error, InvalidCmd
 from tests import test_manager
 
 _v4_model_path = os.path.join(MG5DIR, 'tests', 'input_files', 'full_sm')
+
+# test_madmatrix_hel_recycling_several_libraries: |M|^2 (helicity sum) through
+# umami of a sequence of madmatrix subprocess libraries, in one process.
+# usage: <param_card> '[[library, momenta (check_sa --dump-momenta), npar], ...]'
+# prints the |M|^2 of every call as one JSON list.
+_UMAMI_SEQUENCE_DRIVER = '''
+import ctypes, json, os, sys
+card = sys.argv[1].encode()
+libs = {}
+out = []
+for path, momenta, npar in json.loads(sys.argv[2]):
+    if path not in libs:
+        # madspace loads them with dlopen(RTLD_NOW): RTLD_GLOBAL on macOS
+        lib = ctypes.CDLL(path, mode=os.RTLD_NOW)
+        handle = ctypes.c_void_p()
+        assert lib.umami_initialize(ctypes.byref(handle), card) == 0
+        libs[path] = (lib, handle)
+    lib, handle = libs[path]
+    raw = open(momenta, 'rb').read()
+    count = len(raw) // (8 * 4 * npar)
+    point = (ctypes.c_double * (4 * npar * count)).from_buffer_copy(raw)
+    mom = (ctypes.c_double * (4 * npar * count))()
+    for ievt in range(count):  # (E,px,py,pz) per leg per event -> momenta[mu][leg][event]
+        for ipart in range(npar):
+            for mu in range(4):
+                mom[count * (npar * mu + ipart) + ievt] = point[(ievt * npar + ipart) * 4 + mu]
+    me = (ctypes.c_double * count)()
+    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+    status = lib.umami_matrix_element(
+        handle, ctypes.c_size_t(count), ctypes.c_size_t(count), ctypes.c_size_t(0),
+        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+        (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+    assert status == 0, status
+    out.append(list(me))
+print(json.dumps(out))
+'''
 
 #===============================================================================
 # TestCmd
@@ -223,7 +263,7 @@ class TestCmdShell1(unittest.TestCase):
                     'collier':'./HEPTools/lib',
                     'hepmc_path': './hepmc',
                     'hepmc3_path': './HEPTools/hepmc3',
-                    'hwpp_path': './herwigPP',
+                    'herwig7_path': './herwig7',
                     'thepeg_path': './thepeg',
                     #'applgrid': 'applgrid-config',
                     'pineappl': 'pineappl',
@@ -1472,7 +1512,9 @@ class TestCmdShell2(unittest.TestCase,
         # process's symbols into every library loaded later in this (shared)
         # test process.
         libdir = pjoin(self.out_dir, 'lib')
-        lib = ctypes.CDLL(glob.glob(pjoin(libdir, 'libmadmatrix_P*.so'))[0])
+        # libmadmatrix_<model>_<Pdir>_<backend>_<fptype>.so
+        lib = ctypes.CDLL([path for path in glob.glob(pjoin(libdir, 'libmadmatrix_*_P*.so'))
+                           if 'libmadmatrix_common' not in path][0])
         handle = ctypes.c_void_p()
         card = pjoin(self.out_dir, 'Cards', 'param_card.dat').encode()
         self.assertEqual(0, lib.umami_initialize(ctypes.byref(handle), card))
@@ -1570,8 +1612,8 @@ class TestCmdShell2(unittest.TestCase,
           alternate, leaving partial pages, gives the |M|^2 of single-event
           calls, event by event.
 
-        The helicities are chosen once per loaded library, so each first call
-        runs in its own process.
+        The helicities are chosen once per instance (umami_initialize), so each
+        first call runs in its own process, with an instance of its own.
         """
         self._check_umami_first_call([('scalar', 'd', 1e-12),
                                       ('simd_128', 'd', 1e-12),
@@ -1681,7 +1723,7 @@ class TestCmdShell2(unittest.TestCase,
                 evaluate(first, [k % 2 if k != 'forward' else 1 for k in first])
                 flavors = [0, 1, 1, 0, 1, 0, 0]
                 print(json.dumps({
-                    'good': lib.madmatrix_good_helicity_count(),
+                    'good': lib.madmatrix_good_helicity_count(handle),
                     'batch': evaluate(range(7), flavors),
                     'single': [evaluate([k], [f])[0] for k, f in enumerate(flavors)]}))
                 '''))
@@ -1697,8 +1739,8 @@ class TestCmdShell2(unittest.TestCase,
                                   cwd=proc_dir)
             self.assertEqual(0, make.returncode, 'the %s library did not build:\n%s'
                              % (build, make.stdout.decode(errors='replace')[-3000:]))
-            lib = glob.glob(pjoin(self.out_dir, 'lib',
-                                  'libmadmatrix_P*_%s.so' % backend))[0]
+            lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_*_P*_%s_%s.so'
+                                  % (backend, fptype)))[0]
             runs = {}
             for first in ('single', 'batch', 'forward'):
                 out = subprocess.check_output(
@@ -2192,6 +2234,193 @@ class TestCmdShell2(unittest.TestCase,
                                  'the scalar and vectorised backends disagree '
                                  'in %s: %s vs %s' % (d, scalar, vector))
 
+    def test_madmatrix_hel_recycling_vs_plain(self):
+        """--hel_recycling must not change |M|^2, event by event.
+
+        The recycled build makes every helicity row of a page at once and reads
+        the rows back in the helicity loop; with one helicity per event
+        (UMAMI_IN_HELICITY_INDEX, check_sa --hel-index: what MadTrex and a
+        sampled-helicity run pass) each SIMD lane can have its own, and the
+        recycled build has to take the plain per-lane code instead. Both are
+        compared here to the plain output on the same points, at the scalar
+        and a SIMD backend: the helicity sum, and one random helicity per event.
+
+        g g > t t~ g is small enough to build in seconds and still has helicity
+        rows that share wavefunctions, amplitudes that vanish at some rows and,
+        at simd_128, two events per lane in mixed precision. FPTYPE=d keeps the
+        two builds within rounding of each other (1e-12); the warm-up must have
+        produced the recycled build (HelRecycling.inc), or the test would compare
+        plain with plain.
+        """
+        self._hel_recycling_vs_plain('g g > t t~ g')
+
+    def test_madmatrix_fd_hel_recycling_vs_plain(self):
+        """--hel_recycling in the FD gauge must not change |M|^2 either.
+
+        What FD changes for the recycler is the amplitude split (P1N): the
+        current a P1N leaves on a vector leg has five components, the fifth
+        the Goldstone, and a scalar keeps its value in that fifth component.
+        Dotting four components for a vector or component 0 for a scalar
+        silently drops part of every amplitude of a group (|M|^2 off by up to
+        2.2 relative here). t t~ > w+ w- z splits all three kinds at the
+        default threshold: vector legs of the merged vector/Goldstone vertices
+        (VVV1_VSV2_..., VVVV5_VVSS1_...), the Higgs of the top Yukawa (FFS4)
+        and fermion legs; the test checks that each kind is there.
+        """
+        import glob
+        self.do('set gauge FD')
+        try:
+            recycled = self._hel_recycling_vs_plain('t t~ > w+ w- z')
+        finally:
+            self.do('set gauge unitary')
+        calls = ''.join(open(path).read() for path in
+                        glob.glob(pjoin(recycled, 'HelRecycling*.inc')))
+        for kind in ('hr_p1n_fold<W_ACCESS, 5, false>',
+                     'hr_p1n_fold<W_ACCESS, 1, false, 4>',
+                     'hr_p1n_fold<W_ACCESS, 4, true>'):
+            self.assertIn(kind, calls, 'no %s group in the recycled build' % kind)
+
+    def _hel_recycling_vs_plain(self, process):
+        """plain and --hel_recycling standalone outputs of `process`, |M|^2
+        compared event by event (see test_madmatrix_hel_recycling_vs_plain);
+        returns the recycled subprocess directory"""
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hr'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % process)
+        self.do('output standalone %s -f' % dirs['plain'])
+        self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        proc = {}
+        for name, path in dirs.items():
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(d for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 1, 'one subprocess expected in %s' % path)
+            proc[name] = pjoin(proc_root, found[0])
+        self.assertTrue(os.path.exists(pjoin(proc['recycled'], 'HelRecycling.inc')),
+                        'the --hel_recycling warm-up did not produce the recycled build')
+        ncomb = int(re.search(r'constexpr int ncomb = (\d+)',
+                              open(pjoin(proc['plain'], 'ProcessData.h')).read()).group(1))
+        nevt = 512
+        random.seed(11)
+        helicities = array.array('i', [random.randrange(0, ncomb) for _ in range(nevt)])
+        hel_file = pjoin(root + '_hel.bin')
+        with open(hel_file, 'wb') as fsock:
+            helicities.tofile(fsock)
+
+        def dump(proc_dir, backend, tag, extra=()):
+            exe = pjoin(proc_dir, 'check_sa.exe')
+            if os.path.exists(exe):
+                os.remove(exe)
+            subprocess.call(['make', 'BACKEND=%s' % backend, 'FPTYPE=d', 'USEBUILDDIR=1'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            if not os.path.exists(exe):
+                return None  # backend not available on this host
+            out = pjoin(proc_dir, 'me_%s_%s.bin' % (backend, tag))
+            subprocess.call(['./check_sa.exe', 'perf'] + list(extra) +
+                            ['--dump-me', out, '16', '32', '1'],
+                            stdout=devnull, stderr=subprocess.STDOUT, cwd=proc_dir)
+            self.assertTrue(os.path.exists(out), 'no |M|^2 dump in %s' % proc_dir)
+            return array.array('d', open(out, 'rb').read())
+
+        compared = 0
+        for backend in ('scalar', 'simd_128'):
+            for tag, extra in (('sum', ()), ('hel', ('--hel-index', hel_file))):
+                plain = dump(proc['plain'], backend, tag, extra)
+                recycled = dump(proc['recycled'], backend, tag, extra)
+                if plain is None or recycled is None:
+                    continue
+                self.assertEqual(len(plain), nevt)
+                self.assertEqual(len(recycled), nevt)
+                self.assertTrue(any(plain), 'all-zero |M|^2 (%s, %s)' % (backend, tag))
+                for i, (a, b) in enumerate(zip(plain, recycled)):
+                    self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
+                                         '%s %s event %d: plain %r, recycled %r'
+                                         % (backend, tag, i, a, b))
+                compared += 1
+        self.assertGreaterEqual(compared, 2, 'the scalar backend did not build')
+        return proc['recycled']
+
+    def test_madmatrix_hel_recycling_several_libraries(self):
+        """--hel_recycling: several subprocess libraries in one process must
+        give the |M|^2 that each gives alone.
+
+        Every subprocess library of an output shares one per-thread scratch
+        area (libmadmatrix_common, hr_thread_scratch), zeroed whenever another
+        library takes it over; each library names itself by an address. That
+        address was a static local of the inline hr_page: a weak symbol, the
+        same in every library, which the macOS loader coalesces when the
+        libraries are loaded as madspace loads them (dlopen RTLD_NOW, i.e.
+        RTLD_GLOBAL there). Every library then passed the same owner, the area
+        was never zeroed, and in the rows mode the (helicity, amplitude) pairs
+        a library drops kept the amplitudes another one left there: mg7
+        p p > z j j came out 300 times too high in its 4-quark classes, while
+        check_sa.exe, which loads one library, saw nothing.
+
+        Three subprocesses of z + 2 partons that drop pairs (u u > z u u and
+        u u~ > z u u~ 48, g g > z u u~ 24) are evaluated through umami, each
+        alone in its own process, then all in one process, in turn and more
+        than once; the results must not change (they were off by up to a
+        factor 48 with the weak owner).
+        """
+        import glob
+        import json
+        devnull = open(os.devnull, 'w')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model sm')
+        self.do('generate u u > z u u')
+        self.do('add process g g > z u u~')
+        self.do('add process u u~ > z u u~')
+        self.do('output standalone %s -f --hel_recycling=True' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        procs = sorted(d for d in os.listdir(proc_root)
+                       if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertEqual(len(procs), 3, procs)
+        calls = {}
+        for proc in procs:
+            proc_dir = pjoin(proc_root, proc)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                            'the --hel_recycling warm-up did not produce the '
+                            'recycled build of %s' % proc)
+            self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'], stdout=devnull,
+                                                stderr=devnull, cwd=proc_dir))
+            momenta = pjoin(proc_dir, 'momenta.bin')
+            subprocess.call(['./check_sa.exe', 'perf', '--dump-momenta', momenta,
+                             '1', '32', '1'], cwd=proc_dir,
+                            stdout=devnull, stderr=devnull)
+            self.assertTrue(os.path.exists(momenta), 'no momenta for %s' % proc)
+            # libmadmatrix_<model>_<Pdir>_<backend>_<fptype>.so
+            lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_*_%s_*.so' % proc))
+            self.assertEqual(len(lib), 1, lib)
+            calls[proc] = [lib[0], momenta, 5]
+
+        # In a child process: the libraries are loaded RTLD_GLOBAL, as madspace
+        # does on macOS, which would leak their symbols into every library
+        # loaded later in this (shared) test process.
+        driver = pjoin(self.out_dir, 'umami_sequence.py')
+        open(driver, 'w').write(_UMAMI_SEQUENCE_DRIVER)
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+
+        def run(sequence):
+            out = subprocess.check_output(
+                [sys.executable, driver, card, json.dumps([calls[p] for p in sequence])])
+            return json.loads(out.decode().strip().splitlines()[-1])
+
+        alone = dict((proc, run([proc])[0]) for proc in procs)
+        for proc in procs:
+            self.assertTrue(any(alone[proc]), 'all-zero |M|^2 for %s' % proc)
+        sequence = procs + procs[::-1] + procs
+        for ncall, (proc, values) in enumerate(zip(sequence, run(sequence))):
+            for i, (a, b) in enumerate(zip(alone[proc], values)):
+                self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
+                                     'call %d (%s), event %d: alone %r, after the '
+                                     'other libraries %r' % (ncall, proc, i, a, b))
+
     def test_standalone_cpp_perf_alpha_s_from_param_card(self):
         """check_sa.exe 'perf' mode must use the alpha_s of the param card,
         as the 'matrix' mode does.
@@ -2529,7 +2758,7 @@ class TestCmdShell2(unittest.TestCase,
             self.assertIsNotNone(match)
 
             val1 = float(match.group(1))
-            target =  process[1]  # value to comapre to
+            target =  process[1]  # value to compare to
             passed = abs(val1-target)/(val1+target) < 1e-08
 
             self.assertTrue(passed)
@@ -2744,12 +2973,55 @@ class TestCmdShell2(unittest.TestCase,
 
 
         self.assertEqual(len(sol), 10)
-        # I am not sure why for this case I didn't have to introduce the nomalisation term
+        # I am not sure why for this case I didn't have to introduce the normalisation term
         original_sol = sol =  {(-1, -1, 1, 1): (-5.551115123125783e-17, 0.0), (-1, -1, 1, -1): (0.00926133766116009, 0.0), (-1, 1, 1, 1): (-0.009292545047075378, 0.0), (-1, 1, 1, -1): (0.09884700885130696, 0.0), (-1, -1, -1, -1): (-1.6479873021779667e-17, 0.0), (-1, 1, -1, 1): (5.415404411525035e-07, 0.0), (-1, 1, -1, -1): (-0.012877349160785171, 0.0), (1, 1, 1, 1): (-1.734723475976807e-17, 0.0), (1, 1, 1, -1): (0.012880402732054583, 0.0), (1, 1, -1, -1): (-4.85722573273506e-17, 0.0)}
         for key in original_sol:
             self.assertIn(key, sol)
             self.assertAlmostEqual(original_sol[key][0] if abs(original_sol[key][0]) > 1e-12 else 0, sol[key][0])
             self.assertAlmostEqual(original_sol[key][1] if abs(original_sol[key][1]) > 1e-12 else 0, sol[key][1])
+
+    def test_standalone_zerowidth(self):
+        """output standalone_fortran --zerowidth_decay=: in a decay only the decaying
+        particle's propagators get a zero width, in a production the listed
+        final-state particles' ones; nothing changes without the option."""
+
+        def calls(out_dir, pdir):
+            # the P<n>_ numbering depends on the generation, not the suffix
+            sub = os.path.join(out_dir, 'SubProcesses')
+            pdir = [d for d in os.listdir(sub) if d.split('_', 1)[-1] == pdir][0]
+            text = open(os.path.join(sub, pdir, 'matrix.f')).read()
+            return [l.strip() for l in text.split('\n')
+                    if l.strip().startswith('CALL') and 'XXXXX' not in l]
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('set group_subprocesses False')
+        self.do('generate t > e+ ve b')
+        self.do('add process t > w+ b g')
+        for option in ('True', '6,24'):
+            self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=%s -f'
+                    % (self.out_dir, option))
+            # the internal W of the top decay keeps its width
+            self.assertTrue([c for c in calls(self.out_dir, 't_epveb')
+                             if ',MDL_MW,MDL_WW,' in c])
+            # the internal top of t > w+ b g does not
+            self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
+                             if ',MDL_MT, ZERO,' in c])
+        self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=False -f'
+                % self.out_dir)
+        self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
+                         if ',MDL_MT,MDL_WT,' in c])
+
+        self.do('generate e+ e- > t t~ z')
+        self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=6,24 -f'
+                % self.out_dir)
+        zeroed = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
+        self.assertEqual(len(zeroed), 2)
+        self.assertTrue(all('MDL_MT, ZERO,' in c for c in zeroed), zeroed)
+
+        self.do('output standalone_fortran %s --prefix=int --density=1 -f' % self.out_dir)
+        kept = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
+        self.assertTrue(all('MDL_MT,MDL_WT,' in c for c in kept), kept)
 
     def test_standalone_density_uu(self):
         ############################################################################
@@ -3748,7 +4020,7 @@ set particle_in_density_matrix [6, -6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'),'w')
         command_card.write(text)
         command_card.close()
@@ -3819,7 +4091,7 @@ set particle_in_density_matrix [6, -6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -3902,7 +4174,7 @@ set run_card nevents 1
 set use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'),'w')
         command_card.write(text)
         command_card.close()
@@ -3923,7 +4195,7 @@ set helicity_direction [6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -3938,9 +4210,13 @@ set boost_choice [6, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.4526973360805629+0j), (-2.1317321205040213e-05+0.0024340905341333923j), (2.13173212052136e-05-0.002434090538628891j),
-                          (0.28550869973262555+0j), (0.04730266391943712+0j), (0.04700262219476668+0j), (2.1317321205213577e-05+0.0024340905386288922j),
-                          (0.04730266391943711+0j), (-2.1317321205040145e-05-0.0024340905341333906j), (0.45269733608056295+0j)]
+        # Regenerated when the reweighting (standalone_rw) started to set the
+        # t-channel widths to zero, as madevent did for the input events
+        # (zerowidth_tchannel): the t-channel top propagator lost MDL_WT.
+        density_ref = [(0.45270438876343766+0.0j), (0.0+0.0024345422714880808j), (-0.0-0.002434542275983678j),
+                       (0.28551318353826904+0.0j), (0.047295611236562354+0.0j), (0.047011148655689436+0.0j),
+                       (0.0+0.0024345422759837264j), (0.047295611236562354+0.0j), (-0.0-0.0024345422714880972j),
+                       (0.45270438876343766+0.0j)]
 
         #1) here we check that the density matrix is computed properly
         for i in range(len(density_ref)):
@@ -3950,17 +4226,17 @@ set boost_choice [6, -6]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the concurrence is computed properly
-        concurrence_ref = 0.47641209333195317
+        concurrence_ref = 0.47643514460330366
         concurrence_check = rho_instance.Get_Concurrence()
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
 
         #3) here we check that purity is computed properly
-        purity_ref = 0.5818411704583635
+        purity_ref = 0.5818593450086657
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         #4) here we check that magic is computed properly
-        magic_ref = 0.4706552252614239
+        magic_ref = 0.4706253424888031
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3978,7 +4254,7 @@ set run_card nevents 1
 set use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd2.txt','w')
         command_card.write(text)
         command_card.close()
@@ -4003,7 +4279,7 @@ set order_helicities [+1, -1, +1, 0, +1, +1, 0, -1, 0, 0, 0, +1, -1, -1, -1, 0, 
 set axis_referential [-1, -2]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt2.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4080,7 +4356,7 @@ set run_card use_syst False
 """
 
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -4102,7 +4378,7 @@ set particle_in_density_matrix [5, -6]
 set boost_choice [5, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4121,10 +4397,13 @@ set boost_choice [5, -6]
         # legs it names: it used to count LHE lines, status-2 ones included, so
         # the status-2 top of this decay chain shifted it onto t (the resonance
         # line) + W+ instead of b + t~. The previous numbers were in that frame.
-        density_ref = [(0.0025697944663450214+0j), (0.00022583206322766304+0.0002724023671240153j), (0.03458000936877068-0.003111931365020864j),
-                            (0.003535839291923179+0.0031321719755733556j), (0.002495767955975634+0j), (0.002308240777864438-0.002551169179285921j),
-                            (0.03333888343971259-0.0016718211497894133j), (0.5116911466377606+0j), (0.04414462084336885+0.031496541741920014j),
-                            (0.48324329093991875+0j)]
+        # Regenerated when the reweighting (standalone_rw) started to set the
+        # t-channel widths to zero, as madevent did for the input events
+        # (zerowidth_tchannel): the t-channel top propagator lost MDL_WT.
+        density_ref = [(0.002572819258503627+0.0j), (0.00022287625051417933+0.000269373544283043j), (0.034620381554042186-0.0031148240475356633j),
+                       (0.003493349987547038+0.0030943536658021155j), (0.002492794223097223+0.0j), (0.0022714731159374324-0.0025077711911968975j),
+                       (0.03329882105505325-0.001669052089828375j), (0.5122804070927276+0.0j), (0.043564252872336236+0.03090169904947277j),
+                       (0.48265397942567173+0.0j)]
 
 
         event_of_reference = """<event>
@@ -4135,7 +4414,7 @@ set boost_choice [5, -6]
         5  1    3    3  501    0 +4.3637392514e+01 +4.9281743782e+00 -1.3060449857e+01 4.6056207819e+01 4.7000000000e+00 0.0000e+00 -1.0000e+00
        24  1    3    3    0    0 -5.4634276257e+01 +1.8631606795e+02 -1.6969165851e+02 2.7011304345e+02 8.0419002446e+01 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  503 +1.0996883743e+01 -1.9124424233e+02 -3.5723989432e+02 4.4073192960e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
-<density> (0.0025697944663450214+0j) (0.00022583206322766304+0.0002724023671240153j) (0.03458000936877068-0.003111931365020864j) (0.003535839291923179+0.0031321719755733556j) (0.002495767955975634+0j) (0.002308240777864438-0.002551169179285921j) (0.03333888343971259-0.0016718211497894133j) (0.5116911466377606+0j) (0.04414462084336885+0.031496541741920014j) (0.48324329093991875+0j) </density>
+<density> (0.002572819258503627+0.0j) (0.00022287625051417933+0.000269373544283043j) (0.034620381554042186-0.0031148240475356633j) (0.003493349987547038+0.0030943536658021155j) (0.002492794223097223+0.0j) (0.0022714731159374324-0.0025077711911968975j) (0.03329882105505325-0.001669052089828375j) (0.5122804070927276+0.0j) (0.043564252872336236+0.03090169904947277j) (0.48265397942567173+0.0j) </density>
 </event>
 """
         
@@ -4152,12 +4431,12 @@ set boost_choice [5, -6]
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.5059543230761125
+        purity_ref = 0.505810869888376
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         #4) here we check that magic is computed properly
-        magic_ref = 0.045797020165311494
+        magic_ref = 0.04539434702919854
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -4178,7 +4457,7 @@ set run_card nevents 1
 set run_card use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -4200,7 +4479,7 @@ set particle_in_density_matrix [24, -6]
 set boost_choice [24, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4219,13 +4498,16 @@ set boost_choice [24, -6]
         # legs it names: it used to count LHE lines, status-2 ones included, so
         # the status-2 top of this decay chain shifted it onto b + W+ instead of
         # W+ + t~. The previous numbers were in that frame.
-        density_ref = [(0.03463053018280333+0j), (0.004239768679509782-6.107094544726455e-06j), (-0.09316199935947835-0.0642487039633136j),
-                            (-0.012210969227695868-0.007878922646928346j), (-0.002124188268916235-0.02297486682150409j), (0.003995508129090404+0.0004157871358009479j),
-                            (0.022117113597568305+0j), (-0.00501677525377969-0.007670018167320941j), (-0.05782633417873876-0.041591356606323786j),
-                            (-0.0345671307549972-0.028610030448355993j), (-0.012725299997169235-0.018055903954330738j), (0.37490761451895765+0j),
-                            (0.029901925820799556-0.012796932628922494j), (0.034730980413616615+0.048482547570504436j), (-0.010620049324088833+0.0038059883057455558j),
-                            (0.23499754842424148+0j), (0.1492214808480949+0.014281754024531749j), (0.04586173454409796+0.00814618965628759j),
-                            (0.1307089935801734+0j), (0.003896314151841825+0.020473298367979682j), (0.20263819969625585+0j)]
+        # Regenerated when the reweighting (standalone_rw) started to set the
+        # t-channel widths to zero, as madevent did for the input events
+        # (zerowidth_tchannel): the t-channel top propagator lost MDL_WT.
+        density_ref = [(0.03462856093584298+0.0j), (0.004222692552048597-3.914851804525198e-06j), (-0.09315136922763956-0.06424541106056061j),
+                       (-0.012161343076623666-0.007852907982114157j), (-0.0021548339817954705-0.02299216606257348j), (0.004000989959849888+0.0004271687621753295j),
+                       (0.022124992142446936+0.0j), (-0.004976106543712062-0.007632363502328344j), (-0.05784211938393767-0.041606353301745905j),
+                       (-0.034560622408768275-0.028594347672533223j), (-0.012757048104007053-0.018079926753134273j), (0.374857868204696+0.0j),
+                       (0.029720084211203073-0.012771984245079535j), (0.03485290974186369+0.0484732992793134j), (-0.01064461469034376+0.0037920989793522506j),
+                       (0.2350541853144974+0.0j), (0.14918389804980686+0.014260521941388894j), (0.045994627672498976+0.008149821823945263j),
+                       (0.1306812643391364+0.0j), (0.0037983745012122867+0.02048399076640624j), (0.20265312906338015+0.0j)]
 
         
         #1) here we check that the density matrix is computed properly
@@ -4235,15 +4517,15 @@ set boost_choice [24, -6]
 
         rho_instance = dens.DensityMatrixObservables(density_check)
 
-        #2) here we check that the smaller eigenvalue of the partialy transposed density matrix is computed properly
-        flag_ref, eigval_ref = False, [0.00013081840995776112, 0.00023375814738743806, 0.10060517756525891, 0.1278032913859491, 0.25544825447210895, 0.5157787000193378]
+        #2) here we check that the smaller eigenvalue of the partially transposed density matrix is computed properly
+        flag_ref, eigval_ref = False, [0.0001309474273079456, 0.00023369563417047353, 0.10046843670831423, 0.1278389488146789, 0.25565138370380525, 0.5156765877117229]
         flag_check, eigval_check = rho_instance.PeresHorodecki_criterion(['boson', 'fermion'])
         self.assertEqual(flag_ref, flag_check)
         for i in range(len(eigval_ref)):
             self.assertAlmostEqual(eigval_ref[i], eigval_check[i], places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.3577366329048327
+        purity_ref = 0.35771674847320956
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
@@ -4265,7 +4547,7 @@ set run_card nevents 1
 set run_card use_syst False
 """
         
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -4294,7 +4576,7 @@ set particle_in_density_matrix [6, -6] rapidity [0, 1]
 set boost_choice [6, -6] pt [0, 0]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4313,7 +4595,7 @@ set boost_choice [6, -6] pt [0, 0]
         6  1    1    2  502    0 -3.1599447381e+02 +3.9628896508e+02 +1.0466750690e+02 5.4569381371e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  501 -2.8790168023e+02 -5.3212030280e+01 +2.4116702458e+02 4.1690458307e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  503 +2.3766404453e+02 -1.6598323661e+02 +7.5634541823e+01 3.4595406749e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
-<density> (0.41585128247332614+0j) (-0.03826754879773473-0.08665010160467382j) (0.01819843853040962+0.0694772074195328j) (-0.006036323974019095+0.028318452797874368j) (0.08409384779983874+0j) (-0.051323966834621225-0.010218484907272918j) (-0.018157600093053276-0.06950829298296718j) (0.0841062677380868+0j) (0.0382601151338116+0.08669345314193963j) (0.41594860198874833+0j) </density>
+<density> (0.4158995551694228+0.0j) (-0.038266416707557815-0.08667282347919017j) (0.018177344236518424+0.06949114218724137j) (-0.006036326465490495+0.02831843465941133j) (0.08410102856179515+0.0j) (-0.051324023693436596-0.010218495226221291j) (-0.018178695623423707-0.06949438656775611j) (0.0840990482542204+0.0j) (0.03826126259622656+0.08667076377998419j) (0.4159003680145617+0.0j) </density>
 </event>
 """
 
@@ -4323,10 +4605,13 @@ set boost_choice [6, -6] pt [0, 0]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.41585128247332614+0j), (-0.03826754879773473-0.08665010160467382j), (0.01819843853040962+0.0694772074195328j), 
-                            (-0.006036323974019095+0.028318452797874368j), (0.08409384779983874+0j), (-0.051323966834621225-0.010218484907272918j), 
-                            (-0.018157600093053276-0.06950829298296718j), (0.0841062677380868+0j), (0.0382601151338116+0.08669345314193963j), 
-                            (0.41594860198874833+0j)]
+        # Regenerated when the reweighting (standalone_rw) started to set the
+        # t-channel widths to zero, as madevent did for the input events
+        # (zerowidth_tchannel): the t-channel top propagator lost MDL_WT.
+        density_ref = [(0.4158995551694228+0.0j), (-0.038266416707557815-0.08667282347919017j), (0.018177344236518424+0.06949114218724137j),
+                       (-0.006036326465490495+0.02831843465941133j), (0.08410102856179515+0.0j), (-0.051324023693436596-0.010218495226221291j),
+                       (-0.018178695623423707-0.06949438656775611j), (0.0840990482542204+0.0j), (0.03826126259622656+0.08667076377998419j),
+                       (0.4159003680145617+0.0j)]
 
         lhe_path = pjoin(self.out_dir + '_density5/Events/run_01/unweighted_events.lhe.gz')
         for event in lhe_parser.EventFile(lhe_path):
@@ -4340,17 +4625,17 @@ set boost_choice [6, -6] pt [0, 0]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the bounds of concurrence is computed properly
-        concurrence_ref = 0.028913810451469873
+        concurrence_ref = 0.028913877218595573
         concurrence_check = rho_instance.Get_Concurrence()
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         # #3) here we check that purity is computed properly
-        purity_ref = 0.42378825285881117
+        purity_ref = 0.4237883009145146
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         # #4) here we check that magic is computed properly
-        magic_ref = 0.480231580151087
+        magic_ref = 0.4802316159074085
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 

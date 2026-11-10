@@ -20,6 +20,8 @@ import copy
 import os
 import sys
 import time
+from types import SimpleNamespace
+from unittest import mock
 
 import tests.unit_tests as unittest
 
@@ -38,6 +40,53 @@ _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
 #===============================================================================
 # TestImportUFO
 #===============================================================================
+class TestOrganizeModelExpression(unittest.TestCase):
+    """A model's EW scheme and LOOP inputs must not affect later imports."""
+
+    def setUp(self):
+        defaults = mock.patch.object(import_ufo.OrganizeModelExpression,
+                                    'track_dependant', ['aS', 'aEWM1', 'MU_R'])
+        defaults.start()
+        self.addCleanup(defaults.stop)
+
+    def organize(self, gmu=False, loop_scale=False):
+        def external(name, block, code):
+            return SimpleNamespace(name=name, nature='external', type='real',
+                                   value=1., lhablock=block, lhacode=[code])
+
+        parameters = [external('Gf', 'SMINPUTS', 2),
+                      external('custom_scale', 'LOOP' if loop_scale else 'INPUTS', 1)]
+        if not gmu:
+            parameters.append(external('aEWM1', 'SMINPUTS', 1))
+        parameters += [SimpleNamespace(name=name, nature='internal', type='real',
+                                       value=expression)
+                       for name, expression in (('mass', '2*Gf'),
+                                                ('scale', '2*custom_scale'))]
+        model = SimpleNamespace(all_parameters=parameters, all_couplings=[])
+        organizer = import_ufo.OrganizeModelExpression(model)
+        organizer.main()
+        return organizer
+
+    def test_gmu_dependencies_do_not_leak_between_models(self):
+        before = self.organize()
+        gmu = self.organize(gmu=True)
+        after = self.organize()
+        self.assertEqual(before.all_expr['mass'].depend, ())
+        self.assertEqual(gmu.all_expr['mass'].depend, ('Gf',))
+        self.assertEqual(after.all_expr['mass'].depend, ())
+        self.assertNotIn('Gf', import_ufo.OrganizeModelExpression.track_dependant)
+
+    def test_loop_scale_dependencies_do_not_leak_between_models(self):
+        before = self.organize()
+        running = self.organize(loop_scale=True)
+        after = self.organize()
+        self.assertEqual(before.all_expr['scale'].depend, ())
+        self.assertEqual(running.all_expr['scale'].depend, ('custom_scale',))
+        self.assertEqual(after.all_expr['scale'].depend, ())
+        self.assertNotIn('custom_scale',
+                         import_ufo.OrganizeModelExpression.track_dependant)
+
+
 class TestImportUFO(unittest.TestCase):
     """Test class for the RestrictModel object"""
 
@@ -118,7 +167,7 @@ class TestImportUFO(unittest.TestCase):
         self.assertEqual(output, ' 1') 
 
     def test_reshape_FFV_coeff(self):
-        """ test the possiblity to reshape FFV vertex"""
+        """ test the possibility to reshape FFV vertex"""
 
         import madgraph.models as ufomodels
         ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
@@ -794,7 +843,7 @@ class TestGetLuarkPDG(unittest.TestCase):
         self.assertEqual(model.get_lepton_pdgs(), [-82,-15, -13, -11, 11, 13, 15,82])
 
 class TestImportUFONoSideEffect(unittest.TestCase):
-    """Test class for the the possible side effect on a UFO model loaded when
+    """Test class for the possible side effect on a UFO model loaded when
        converting it to a MG5 model"""
 
     def test_ImportUFONoSideEffectLO(self):
@@ -872,7 +921,7 @@ class TestImportUFONoSideEffect(unittest.TestCase):
         self.assertEqual(original_all_CTvertices,ufo_model.all_CTvertices)
         self.assertEqual(original_all_CTparameters,ufo_model.all_CTparameters)
 
-        # Also test that one new lorentz struture has been added within the model
+        # Also test that one new lorentz structure has been added within the model
         # and that the associate optimization is working as expected.
         self.assertEqual(len(original_all_lorentz) + 1, len(model['lorentz']))
         new_l = [l for l  in model['lorentz'] if l not in original_all_lorentz][0]
@@ -1506,7 +1555,7 @@ class TestBenchmarkModel(unittest.TestCase):
         
         
     def test_use_as_benchmark(self):
-        """check that the value inside the restrict card overwritte the default
+        """check that the value inside the restrict card overwrite the default
         parameter such that this option can be use for benchmark point"""
         
         params_ext = self.model['parameters'][('external',)]

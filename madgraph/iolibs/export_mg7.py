@@ -408,7 +408,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
     def get_subprocess_info(self, proc_dir, lib_me_path):
         n_external, n_initial = self.matrix_element.get_nexternal_ninitial()
         if self.color_basis:
-            # First build a color representation dictionnary
+            # First build a color representation dictionary
             repr_dict = {}
             legs = self.process.get_legs_with_decays()
             for leg in legs:

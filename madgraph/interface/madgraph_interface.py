@@ -180,6 +180,39 @@ def interference_mode_of(option, orders):
     return ''
 
 
+# '[amplicol]' takes the matrix elements of a process from AmpliCol, a
+# colour-ordered generator, instead of MG diagrams (mg7 output only)
+ME_BACKENDS = ('amplicol',)
+_BACKEND_BRACKET = re.compile(r"\[\s*(?P<backend>\w+)\s*\]")
+
+
+def check_amplicol_overlap(procdef, others, what):
+    """Refuse a process sharing a subprocess with another one, which would
+    count it twice (the duplicate check of 'add process')."""
+    import madgraph.iolibs.export_amplicol as export_amplicol
+    model = procdef.get('model')
+    for other in others:
+        if export_amplicol.overlapping(procdef, other, model):
+            raise madgraph.InvalidCmd(
+                "Duplicate process %s found: it overlaps %s. Please check "
+                "your processes." % (procdef.nice_string(prefix=False), what(other)))
+
+
+def split_backend_line(line):
+    """(line without the bracket, backend) for a process with a matrix-element
+    backend bracket like '[amplicol]', (line, '') for any other line."""
+
+    match = next((m for m in _BACKEND_BRACKET.finditer(line)
+                  if m.group('backend').lower() in ME_BACKENDS), None)
+    if not match:
+        return line, ''
+    rest = line[:match.start()] + ' ' + line[match.end():]
+    if '[' in rest or ']' in rest:
+        raise madgraph.InvalidCmd(
+            "[%s] cannot be combined with another '[...]'." % match.group('backend'))
+    return ' '.join(rest.split()), match.group('backend').lower()
+
+
 def split_interference_line(line):
     """Split a process definition of the form
 
@@ -613,6 +646,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --source       Build from source (non-interactive).")
         logger.info("     -j N/--jobs=N  Parallel compilation jobs (source build;")
         logger.info("                    defaults to the 'nb_core' option).")
+        logger.info("     --system       Install into the active Python environment instead of madspace/install.")
+        logger.info("     --clean        Delete the build and install directories first (full rebuild).")
+        logger.info("     --docs         Generate API docstrings and .pyi stubs (source build, needs doxygen).")
         logger.info("     --cuda         Enable CUDA GPU backend (source build).")
         logger.info("     --hip          Enable HIP/ROCm GPU backend (source build).")
         logger.info("     --openblas     Build OpenBLAS from source (default on Linux/Windows, source build).")
@@ -623,6 +659,27 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --no-debug     Optimized build, no debug symbols, Release (source build, default).")
         logger.info("     --cuda-arch=ARCHS  Semicolon-separated CUDA compute capabilities, e.g. 75;80;86.")
         logger.info("     --hip-arch=ARCHS   Semicolon-separated HIP architectures, e.g. gfx900;gfx906.")
+        logger.info(" ")
+        logger.info("   \"install pyamplicol [options]\"",'$MG:BOLD')
+        logger.info("   Install pyAmpliCol, the matrix-element generator of the [amplicol] backend.")
+        logger.info("   Without options an interactive installer is launched. Available options:")
+        logger.info("     -y/--yes       Re-install non-interactively using saved settings.")
+        logger.info("     --bin          Install pre-compiled package from PyPI (non-interactive;")
+        logger.info("                    only guaranteed to match this checkout in a release tarball).")
+        logger.info("     --source       Build from source (non-interactive; needs a Rust toolchain,")
+        logger.info("                    which is installed locally if rustup is not available).")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (source build;")
+        logger.info("                    defaults to the 'nb_core' option).")
+        logger.info("     --system       Install into the active Python environment instead of pyamplicol/install.")
+        logger.info("     --clean        Delete the build and install directories first (full rebuild).")
+        logger.info("     --build-models Regenerate the prepared models instead of downloading them.")
+        logger.info("   \"install madtrex [options]\"",'$MG:BOLD')
+        logger.info("   Install MadtRex, the event-reweighting library used by MG7, together")
+        logger.info("   with its bundled Rex fork. Requires madspace to be installed first.")
+        logger.info("   Without options an interactive installer is launched. Available options:")
+        logger.info("     -y/--yes       Install non-interactively.")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (defaults to the 'nb_core' option).")
+        logger.info("     --clean        Rebuild from scratch.")
 
     def help_display(self):
         logger.info("syntax: display " + "|".join(self._display_opts),'$MG:color:BLUE')
@@ -748,7 +805,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("syntax: output [" + "|".join(self._export_formats) + \
                     "] [path|.|auto] [options]",'$MG:color:BLUE')
         logger.info("-- Output any generated process(es) to file.",'$MG:BOLD')
-        logger.info("   Default mode is madevent. Default path is \'.\' or auto.")
+        logger.info("   Default mode is mg7. Default path is \'.\' or auto.")
         logger.info("   mode:",'$MG:BOLD')
         logger.info("   - For MadLoop and aMC@NLO runs, there is only one mode and")
         logger.info("     it is set by default.")
@@ -785,9 +842,17 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
-        logger.info("      --axial_gauge=True: [madevent|standalone_fortran] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
+        logger.info("      --hel_recycling=True: [standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (off by default). CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes.")
+        logger.info("      --hel_recycling_chunk=<n>: [standalone|mg7] statements per function when the recycled block is cut up (default 200, 0 keeps it in one piece).")
+        logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
+        logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
+        logger.info("      --hel_recycling_max=<n>: [standalone|mg7] keep the plain code when the recycled block would exceed n statements, which no longer runs from the caches and is slower (default 300000, 0 for no limit).")
+        logger.info("      --axial_gauge=True: [madevent|standalone_fortran|standalone|mg7] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
+        logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran(default:False)|standalone_rw/msP/msF(default:True)] set the t-channel widths to zero as madevent (see option zerowidth_tchannel)")
+        logger.info("      --zerowidth_decay=True|False|<pdg>,<pdg>: [standalone_fortran] write the propagators of the final-state particles (of the decaying particle in a 1>N decay) with a zero width; a pdg list restricts to those.")
+        logger.info("      --density=<i>[,<j>...]: [standalone_fortran, also for loop processes] keep the helicities of the external legs i, j, ... open and write their spin-density matrix (the other legs are summed over helicity). In the madevent, mg7 and NLO outputs it only selects the default me_frame of the run_card, as a polarized particle does.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
         logger.info("       output standalone_fortran MYRUN -f",'$MG:color:GREEN')
@@ -808,7 +873,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   that the resulting matrix elements give the same value.")
         logger.info("o gauge:",'$MG:color:GREEN')
         logger.info("   Check that processes are gauge invariant by ")
-        logger.info("   comparing Feynman and unitary gauges.")
+        logger.info("   comparing Feynman and unitary gauges. For tree-level")
+        logger.info("   processes the axial gauge (and, if the model has a Feynman")
+        logger.info("   gauge, the Feynman-diagram (FD) gauge) are compared as well.")
         logger.info("   This check is, for now, not available for loop processes.")
         logger.info("o brs:",'$MG:color:GREEN')
         logger.info("   Check that the Ward identities are satisfied if the ")
@@ -870,7 +937,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("    --lambdaCMS = <python_list> : specifies the list of lambdaCMS values to ")
         logger.info(r"      use for the test. For example: '[(1/2.0)**exp\ for\ exp\ in\ range(0,20)]'")
         logger.info("      In the list expression, you must escape spaces. Also, this option")
-        logger.info("      *must* appear last in the otpion list. Finally, the default value is '1.0e-6'")
+        logger.info("      *must* appear last in the option list. Finally, the default value is '1.0e-6'")
         logger.info("      for which an optimal list of progressive values is picked up to 1.0e-6")
         logger.info("    --show_plot = True or False: Whether to show plot during analysis (default is True)")
         logger.info("    --report = concise or full: Whether return a concise or full report.")
@@ -959,9 +1026,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     all=   : Generate all the real-emission and loop diagrams, ready for aMC@NLO runs.")
         logger.info("     virt=  : Generate only the loop diagrams, read for MadLoop standalone checks/runs.")
         logger.info("     real=  : Generate only the real-emission diagrams, for use with alternative OLP. ")
-        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
-        logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
-        logger.info("   can still handle these.")
+        logger.info("     noborn=: Loop-induced processes (no born amplitude, e.g. g g > h), see below.")
+        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > h), please use ")
+        logger.info("   the 'noborn=' mode: 'output madevent' then integrates them at LO, with MadLoop")
+        logger.info("   for the matrix element. aMC@NLO cannot integrate these processes. 'virt=' and")
+        logger.info("   'sqrvirt=' give the standalone MadLoop output of the loop amplitude, for checks.")
         self._log_interference_syntax()
         self._log_diagram_filter_syntax()
 
@@ -1040,9 +1109,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     all=   : Generate all the real-emission and loop diagrams, ready for aMC@NLO runs.")
         logger.info("     virt=  : Generate only the loop diagrams, read for MadLoop standalone checks/runs.")
         logger.info("     real=  : Generate only the real-emission diagrams, for use with alternative OLP. ")
-        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
-        logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
-        logger.info("   can still handle these.")
+        logger.info("     noborn=: Loop-induced processes (no born amplitude, e.g. g g > h), see below.")
+        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > h), please use ")
+        logger.info("   the 'noborn=' mode: 'output madevent' then integrates them at LO, with MadLoop")
+        logger.info("   for the matrix element. aMC@NLO cannot integrate these processes. 'virt=' and")
+        logger.info("   'sqrvirt=' give the standalone MadLoop output of the loop amplitude, for checks.")
         self._log_interference_syntax()
         self._log_diagram_filter_syntax()
 
@@ -1078,7 +1149,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("              We then either stop at the N-body decay or when the estimated error is lower than M.")
         logger.info("        default: 4.0025")
         logger.info("  --min_br=X: All channel which are estimated below this value will not be integrated numerically.")
-        logger.info("        default: precision (decimal part of the body_decay options) divided by four")
+        logger.info("        default: precision (decimal part of the body_decay options) divided by five")
         logger.info("  --precision_channel=X: requested numerical precision for each channel")
         logger.info("        default: 0.01")
         logger.info("  --path=X: path for param_card")
@@ -1120,7 +1191,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("              We then either stop at the N-body decay or when the estimated error is lower than M.")
         logger.info("        default: 4.0025")
         logger.info("  --min_br=X: All channel which are estimated below this value will not be integrated numerically.")
-        logger.info("        default: precision (decimal part of the body_decay options) divided by four")
+        logger.info("        default: precision (decimal part of the body_decay options) divided by five")
         logger.info("  --precision_channel=X: requested numerical precision for each channel")
         logger.info("        default: 0.01")
         logger.info("  --path=X: path for param_card")
@@ -1148,10 +1219,12 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   '{++}' is refused, and so is '{+T}' -- 'T' already covers +1 and -1.")
         logger.info(" > '{G}','{H}','{Q}','{W}','{S}' select a piece of the *propagator* of a massive vector")
         logger.info("   and are only valid on a particle that is decayed further (an internal line).")
-        logger.info(" > At LO, users need to set 'group_subprocesses False' and 'me_frame' (run_card).")
+        logger.info(" > At LO, polarized processes work with any 'group_subprocesses' setting. 'me_frame' (run_card)")
+        logger.info("   defaults to the rest frame of the massive final-state particles (or their")
+        logger.info("   decay products) in p p collisions, [1,2] (the partonic c.m.) in e+ e-.")
         logger.info("   'nhel=1' is only a variance choice, not a requirement: it selects Monte-Carlo")
         logger.info("   over helicities, which is an unbiased estimator of the same cross-section.")
-        logger.info(" > For the proces 'p p > w+ z j j, w+ > l+ vl, z > l+ l-', the WZ rest frame is given by me_frame = [3,4,5,6]")
+        logger.info(" > For the process 'p p > w+ z j j, w+ > l+ vl, z > l+ l-', the WZ rest frame is given by me_frame = [3,4,5,6]")
         logger.info("Polarization at NLO:",'$MG:BOLD')
         logger.info(" > A polarized massive particle needs a frame, so it is allowed for the NLO modes")
         logger.info("   that have one:")
@@ -1190,10 +1263,21 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   counterterms and the weights written to the LHE use the same frame as")
         logger.info("   the cross-section. The shower itself knows nothing about the frame, so")
         logger.info("   the polarised sample is defined by the hard process, as at LO.")
-        logger.info(" > Define the frame from final-state particles only. A frame built from the")
-        logger.info("   initial state is not infrared safe at NLO -- the real emission and the reduced")
-        logger.info("   Born carry different momentum fractions even in the collinear limit -- and is")
-        logger.info("   refused. me_frame = [1,2] names the partonic c.m. and is simply skipped.")
+        logger.info(" > At NLO a frame may only contain legs whose momentum no infrared limit")
+        logger.info("   changes. Refused: a beam that radiates (the partons of p p) -- the real")
+        logger.info("   emission and the reduced Born carry different momentum fractions even in the")
+        logger.info("   collinear limit -- and a jet (a massless coloured parton), which a collinear")
+        logger.info("   splitting changes by a finite amount. Allowed: colourless or massive")
+        logger.info("   final-state particles, the decaying particle of a 1 -> N process (never")
+        logger.info("   split, even if coloured), and a beam that does not radiate (e+ e- with [QCD]).")
+        logger.info(" > The default frame at NLO, as at LO: with initial-state QCD radiation (p p),")
+        logger.info("   the rest frame of the massive final-state particles -- [3,4] for")
+        logger.info("   p p > w+{0} w- [QCD], [3] (Collins-Soper) for p p > w+{0} j [QCD]; without")
+        logger.info("   it (e+ e- > t{L} t~ [QCD], decays) [1,2], the partonic c.m..")
+        logger.info(" > me_frame = [1,2] set by hand on a p p process: the c.m. of the real emission")
+        logger.info("   is not infrared safe, so it is evaluated as the rest frame of the Born final")
+        logger.info("   state -- the same frame for the Born -- and refused when that final state")
+        logger.info("   contains a jet.")
         logger.info(" > For further details, see appendices of [arXiv:1912.01725] and [arXiv:2512.10015],")
         logger.info("   and for possibilities with loop-induced processes, see [2401.17365].")
     
@@ -1444,7 +1528,13 @@ class CheckValidForCmd(cmd.CheckCmd):
         # process died with an AttributeError instead of saying so.
         if args[0] in ['processes', 'diagrams', 'diagrams_text'] and \
                 not self._curr_amps and not getattr(self, '_fks_multi_proc', None):
-            raise self.InvalidCmd("No process generated, please generate a process!")
+            # [amplicol] processes are kept without diagrams
+            if self._curr_amplicol_defs and args[0] != 'processes':
+                raise self.InvalidCmd("Only [amplicol] processes are defined: "
+                    "their matrix elements come from AmpliCol, without diagrams. "
+                    "Use 'display processes' to list them.")
+            elif not self._curr_amplicol_defs:
+                raise self.InvalidCmd("No process generated, please generate a process!")
         if args[0] == 'checks' and not self._comparisons and not self._cms_checks:
             raise self.InvalidCmd("No check results to display.")
 
@@ -1648,7 +1738,7 @@ class CheckValidForCmd(cmd.CheckCmd):
                 self.check_process_format(right)
             return
 
-        #check balance of paranthesis
+        #check balance of parenthesis
         if process.count('(') != process.count(')'):
             raise self.InvalidCmd('Invalid Format, no balance between open and close parenthesis')
         #remove parenthesis for fututre introspection
@@ -1675,7 +1765,7 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd(
                 '\"%s\" is a wrong process format. Please try again' % process)
 
-        # '/' and '$' sould be used only after the process definition
+        # '/' and '$' should be used only after the process definition
         for particles in particles_parts[:-1]:
             if re.search(r'\D/', particles):
                 raise self.InvalidCmd(
@@ -2269,7 +2359,7 @@ This will take effect only in a NEW terminal
 
         if args[0] in ['timeout', 'max_npoint_for_channel', 'max_t_for_channel']:
             if not args[1].isdigit():
-                raise self.InvalidCmd('%s values should be a integer' % args[0])
+                raise self.InvalidCmd('%s values should be an integer' % args[0])
             
         if args[0] in ['loop_optimized_output', 'loop_color_flows', 'low_mem_multicore_nlo_generation', 'nlo_mixed_expansion']:
             try:
@@ -2284,7 +2374,7 @@ This will take effect only in a NEW terminal
 
         if args[0] in ['timeout']:
             if not args[1].isdigit():
-                raise self.InvalidCmd('timeout values should be a integer')
+                raise self.InvalidCmd('timeout values should be an integer')
 
         if args[0] in ['OLP']:
             if args[1] not in MadGraphCmd._OLP_supported:
@@ -2391,7 +2481,11 @@ This will take effect only in a NEW terminal
             return
 
 
-        if not self._curr_amps:
+        if self._curr_amplicol_defs and self._export_format != 'mg7':
+            raise self.InvalidCmd(
+                'The [amplicol] processes are only supported by the mg7 output.')
+
+        if not self._curr_amps and not self._curr_amplicol_defs:
             text = 'No processes generated. Please generate a process first.'
             raise self.InvalidCmd(text)
 
@@ -2751,7 +2845,7 @@ class CompleteForCmd(cmd.CompleteCmd):
             pert_couplings_allowed = []
         if self._curr_model.get('name').startswith('sm'):
             pert_couplings_allowed = pert_couplings_allowed + ['QCD']
-        # Find wether the loop mode is already set or not
+        # Find whether the loop mode is already set or not
         loop_specs = line[line.index('[')+1:]
         try:
             loop_orders = loop_specs[loop_specs.index('=')+1:]
@@ -2858,8 +2952,8 @@ class CompleteForCmd(cmd.CompleteCmd):
         if not categories:
             # The direct completion (might be needed for some completion using
             # this function but adding some other completions (like in check)).
-            # For those, it looks ok in the categorie mode on my mac, but if
-            # someone sees wierd result on Linux systems, then use the
+            # For those, it looks ok in the category mode on my mac, but if
+            # someone sees weird result on Linux systems, then use the
             # default completion for these features.
             return self.list_completion(text, particles+syntax+couplings)
         else:
@@ -3357,7 +3451,7 @@ class CompleteForCmd(cmd.CompleteCmd):
     @cmd.debug()
     def complete_output(self, text, line, begidx, endidx,
                         possible_options = ['f', 'noclean', 'nojpeg'],
-                        possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
+                        possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False', '--hel_recycling=True', '--hel_recycling_chunk=', '--hel_recycling_max=', '--hel_recycling_jamp=', '--hel_recycling_tables=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
                                                  '--mask=False', '--prefix=', '--axial_gauge=True']):
         "Complete the output command"
@@ -3385,7 +3479,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                 except Exception as error:
                     print(error)
             if 'standalone_fortran' in args:
-                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=']
+                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--zerowidth_decay=']
 
             # Directory continuation
             if args[-1].endswith(os.path.sep):
@@ -3737,12 +3831,26 @@ class CompleteForCmd(cmd.CompleteCmd):
         elif len(args) and args[0] == 'update':
             return self.list_completion(text, ['-f','--timeout='])
         elif len(args) >= 2 and args[1] == 'madspace':
-            options = ['-y', '--yes', '--bin', '--source',
+            options = ['-y', '--yes', '--bin', '--source', '-j', '--jobs=',
+                       '--system', '--clean', '--docs', '--no-docs',
                        '--cuda', '--no-cuda', '--hip', '--no-hip',
                        '--openblas', '--no-openblas',
                        '--simd', '--no-simd',
                        '--debug', '--full-debug', '--no-debug',
                        '--cuda-arch=', '--hip-arch=']
+            for opt in options[:]:
+                if any(a.startswith(opt) for a in args[2:]):
+                    options.remove(opt)
+            return self.list_completion(text, options)
+        elif len(args) >= 2 and args[1] == 'pyamplicol':
+            options = ['-y', '--yes', '--bin', '--source', '-j', '--jobs=',
+                       '--system', '--clean', '--build-models']
+            for opt in options[:]:
+                if any(a.startswith(opt) for a in args[2:]):
+                    options.remove(opt)
+            return self.list_completion(text, options)
+        elif len(args) >= 2 and args[1] == 'madtrex':
+            options = ['-y', '--yes', '--clean', '--jobs=']
             for opt in options[:]:
                 if any(a.startswith(opt) for a in args[2:]):
                     options.remove(opt)
@@ -3802,7 +3910,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
-                     'madspace']
+                     'madspace', 'pyamplicol', 'madtrex']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -3849,7 +3957,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     # The three options categories are treated on a different footage when a
     # set/save configuration occur. current value are kept in self.options
     options_configuration = {'pythia8_path': './HEPTools/pythia8',
-                       'hwpp_path': './herwigPP',
+                       'herwig7_path': './herwig7',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
                        'hepmc3_path': './HEPTools/hepmc3',
@@ -3915,7 +4023,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'stdout_level':None,
                           'loop_optimized_output':True,
                           'loop_color_flows':False,
-                          'max_npoint_for_channel': 0, # 0 means automaticly adapted
+                          'max_npoint_for_channel': 0, # 0 means automatically adapted
                           'default_unset_couplings': 99, # 99 means infinity
                           'max_t_for_channel': 99, # means no restrictions
                           'zerowidth_tchannel': True,
@@ -3939,6 +4047,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _curr_model = None  #base_objects.Model()
     _curr_amps = diagram_generation.AmplitudeList()
     _curr_proc_defs = base_objects.ProcessDefinitionList()
+    # processes whose matrix elements come from AmpliCol, see split_backend_line
+    _curr_amplicol_defs = base_objects.ProcessDefinitionList()
     _curr_matrix_elements = helas_objects.HelasMultiProcess()
     _curr_helas_model = None
     _curr_exporter = None
@@ -4027,6 +4137,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._done_export=False
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
 
         self._v4_export_formats = ['madevent', 'standalone_fortran','standalone_msP','standalone_msF',
@@ -4072,6 +4183,37 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
     # Add a process to the existing multiprocess definition
     # Generate a new amplitude
+    def add_backend_process(self, procdef, backend, warning_duplicate=True):
+        """Keep a process whose matrix elements come from another backend than
+        MG diagrams. It is exported by the mg7 output, without diagrams."""
+
+        if procdef.get('decay_chains') or procdef.get('required_s_channels') or \
+                procdef.get('forbidden_onsh_s_channels') or \
+                procdef.get('forbidden_s_channels') or \
+                procdef.get('forbidden_particles') or procdef.get('orders') or \
+                procdef.get('squared_orders') or procdef.get('is_decay_chain') or \
+                any(leg.get('polarization') for leg in procdef.get('legs')) or \
+                procdef.get_ninitial() != 2:
+            raise self.InvalidCmd(
+                "[%s] supports 2 -> n processes without decay chains, coupling "
+                "orders, s-channel or particle restrictions and polarizations."
+                % backend)
+        initial = [amp.get_ninitial() for amp in self._curr_amps]
+        if initial and initial[0] != procdef.get_ninitial():
+            raise self.InvalidCmd(
+                "Can not mix processes with different number of initial states.")
+        if warning_duplicate:
+            check_amplicol_overlap(
+                procdef, list(self._curr_amplicol_defs),
+                lambda other: other.nice_string(prefix=False))
+            check_amplicol_overlap(
+                procdef, [amp.get('process') for amp in self._curr_amps],
+                lambda other: other.nice_string())
+        self._curr_amplicol_defs.append(procdef)
+        self._done_export = False
+        logger.info("Process %s is computed by %s at output time" %
+                    (procdef.nice_string(prefix=False), backend))
+
     def do_add(self, line, counter=0):
         """Generate an amplitude for a given process and add to
         existing amplitudes
@@ -4170,7 +4312,10 @@ This implies that with decay chains:
             else:
                 nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
                 nb_proc += counter
+                line, backend = split_backend_line(line)
                 myprocdef = self.extract_process(line, proc_number=nb_proc)
+                if backend:
+                    return self.add_backend_process(myprocdef, backend, warning_duplicate)
                 # 'left [treextree] right': hidden order selecting the
                 # interference, minimal orders of the right-hand process
                 diagram_generation.prepare_interference_process(myprocdef)
@@ -4185,6 +4330,10 @@ This implies that with decay chains:
             if self._curr_amps and self._curr_amps[0].get_ninitial() != \
                myprocdef.get_ninitial() and not standalone_only:
                 raise self.InvalidCmd("Can not mix processes with different number of initial states.")
+            # [amplicol] processes are always 2 -> n
+            if self._curr_amplicol_defs and myprocdef.get_ninitial() != 2 \
+                    and not standalone_only:
+                raise self.InvalidCmd("Can not mix processes with different number of initial states.")
 
             # Check the propagator-only polarization braces: {G},{H},{Q},{W}
             # and {S} name a piece of a propagator numerator and are valid on
@@ -4194,9 +4343,9 @@ This implies that with decay chains:
             #Check that we do not have situation like z{T} z
             if not myprocdef.check_polarization():
                 logger.critical("Not Supported syntax:\n"+ \
-                                "   Syntax like p p  > Z{T} Z are ambiguious" +\
+                                "   Syntax like p p  > Z{T} Z are ambiguous" +\
                                 "   Behavior is not guarantee to be stable within future version of the code." + \
-                                "   Furthemore, you can have issue with symmetry factor (we do not guarantee [differential] cross-section."+\
+                                "   Furthermore, you can have issue with symmetry factor (we do not guarantee [differential] cross-section."+\
                                 "   We suggest you to abort this computation")
                 ans = self.ask('Do you want to continue', 'no',['yes','no'])
                 if ans == 'no':
@@ -4208,7 +4357,7 @@ This implies that with decay chains:
             self._curr_proc_defs.append(myprocdef)
 
             try:
-                # Negative coupling order contraints can be given on at most one
+                # Negative coupling order constraints can be given on at most one
                 # coupling order (and either in squared orders or orders, not both)
                 if len([1 for val in list(myprocdef.get('orders').values())+\
                               list(myprocdef.get('squared_orders').values()) if val<0])>1:
@@ -4253,6 +4402,10 @@ This implies that with decay chains:
     
                 for amp in amplitudes:
                     if amp not in self._curr_amps:
+                        if warning_duplicate and self._curr_amplicol_defs:
+                            check_amplicol_overlap(
+                                amp.get('process'), list(self._curr_amplicol_defs),
+                                lambda other: other.nice_string(prefix=False))
                         self._curr_amps.append(amp)
                     elif warning_duplicate:
                         raise self.InvalidCmd( "Duplicate process %s found. Please check your processes." % \
@@ -4426,34 +4579,9 @@ This implies that with decay chains:
             answer = self.ask('model conversion to support both py2 and py3 are done in place.\n They are NO guarantee of success.\n It can make the model to stop working under PY2 as well.\n Do you want to proceed?',
                      'y', ['y','n'])
             if answer != 'y':
-                return 
-        
-        #Object_library 
-        text = open(pjoin(model_dir, 'object_library.py')).read()
-        #(.iteritems() -> .items())
-        text = text.replace('.iteritems()', '.items()')
-        # raise UFOError, "" -> raise UFOError()
-        text = re.sub('raise (\\w+)\\s*,\\s*["\']([^"]+)["\']',
-                      r'raise \g<1>("\g<2>")', text)
-        text = open(pjoin(model_dir, 'object_library.py'),'w').write(text)
-        
-        # write_param_card.dat -> copy the one of the sm model
-        files.cp(pjoin(MG5DIR, 'models','sm','write_param_card.py'),
-                 pjoin(model_dir, 'write_param_card.py'))
-        
-        # __init__.py check that function_library and object_library are imported
-        text = open(pjoin(model_dir, '__init__.py')).read()
-        mod = False
-        # import function_library 
-        # from . import function_library
-        to_check =  ['object_library', 'function_library']
-        for lib in to_check:
-            if 'import %s' % lib in text:
-                continue
-            mod = True
-            text = "import %s \n" % lib + text  
-        if mod:
-            open(pjoin(model_dir, '__init__.py'),'w').write(text)
+                return
+
+        import_ufo.convert_model_py2_to_py3(model_dir, force=True)
         
         
         
@@ -4642,6 +4770,9 @@ This implies that with decay chains:
         elif args[0] == 'processes':
             for amp in self._curr_amps:
                 print(amp.nice_string_processes())
+            for procdef in self._curr_amplicol_defs:
+                print('Process: %s [amplicol] (no diagrams)'
+                      % procdef.nice_string(prefix=False).strip())
 
         elif args[0] == 'diagrams_text':
             dirpath, no_open, merge = self._parse_display_output_args(args[1:])
@@ -4666,7 +4797,7 @@ This implies that with decay chains:
             print(' '.join([fockstate.get('name') for fockstate in self._fockstates]))
 
         elif args[0] == 'boundstates':
-            print('Bound state lables:')
+            print('Bound state labels:')
             for key in self._boundstates:
                 print(self.boundstate_string(key))
 
@@ -4724,7 +4855,7 @@ This implies that with decay chains:
 
             try:
                 ufomodel = ufomodels.load_model(self._curr_model.get('name'))
-                print('Note that this is the UFO informations.')
+                print('Note that this is the UFO information.')
                 print(' "display couplings" present the actual definition')
                 print('prints the current states of mode')
                 print(eval('ufomodel.couplings.%s.nice_string()'%args[1]))
@@ -5369,7 +5500,7 @@ This implies that with decay chains:
                 if option[1] == 'None':
                     options['events'] = None
                 elif not os.path.exists(option[1]):
-                    raise Exception('path %s does not exists' % option[1])
+                    raise Exception('path %s does not exist' % option[1])
                 else:
                     options['events'] = option[1]
             elif option[0] == '--skip_evt':
@@ -5468,7 +5599,7 @@ This implies that with decay chains:
                 except:
                     tweaks = [value]
                 if not all(isinstance(t,str) for t in tweaks):
-                    raise self.InvalidCmd("Invalid specificaiton of tweaks: %s"%value)
+                    raise self.InvalidCmd("Invalid specification of tweaks: %s"%value)
                 CMS_options['tweak'] = []
                 for tweakID, tweakset in enumerate(tweaks):
                     specs =re.match(r'^(?P<tweakset>.*)\((?P<name>.*)\)$', tweakset)
@@ -6136,6 +6267,7 @@ This implies that with decay chains:
         self._curr_amps = diagram_generation.AmplitudeList()
         # Reset Process definition
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._generate_info = ""
@@ -6146,7 +6278,6 @@ This implies that with decay chains:
         # Reset polarization-citation marker (a new process definition starts)
         self._uses_polarization = False
         self._uses_density_matrix = False
-        self._uses_quarkonia = False
         # Reset _done_export, since we have new process
         self._done_export = False
         # Also reset _export_format and _export_dir
@@ -6332,7 +6463,7 @@ This implies that with decay chains:
                 coupling_alias['aS'] = 'QCD^2=2*'
         
         ## The 'split_orders' (i.e. those for which individual matrix element
-        ## evalutations must be provided for each corresponding order value) are
+        ## evaluations must be provided for each corresponding order value) are
         ## defined from the orders specified in between [] and any order for
         ## which there are squared order constraints.
         split_orders = []
@@ -6412,9 +6543,9 @@ This implies that with decay chains:
 
         # If the squared orders are defined but not the orders, assume 
         # orders=sq_orders. In case the squared order has a negative value or is
-        # defined with the '>' operato, then this order correspondingly set to 
+        # defined with the '>' operator, then this order correspondingly set to
         # be maximal (99) since there is no way to know, during generation, if 
-        # the amplitude being contstructed will be leading or not.
+        # the amplitude being constructed will be leading or not.
         # This only applies when no perturbation couplings are provided, ie
         # for LO-only generation
         if orders=={} and squared_orders!={} and not perturbation_couplings:
@@ -6912,7 +7043,7 @@ This implies that with decay chains:
                                        self._curr_model.get('order_hierarchy')
                                        [elem if not elem.endswith('.sqrt') else elem[:-5]])
             except KeyError:
-                raise self.InvalidCmd("The loaded model does not defined a "+\
+                raise self.InvalidCmd("The loaded model does not define a "+\
                     " coupling order hierarchy for these couplings: %s"%\
                       str([so for so in split_orders if so!='WEIGHTED' and so not 
                                  in list(self._curr_model['order_hierarchy'].keys())]))
@@ -6965,7 +7096,7 @@ This implies that with decay chains:
                 required_schannel_ids = \
                                self.extract_particle_ids(required_schannels, crash_on_duplication=True)
             except DuplicateParticle:
-                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In old version of MadGraph7, this was allowed but incorectly intrepreted as \"> A >\".")
+                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In older versions of MadGraph7, this was allowed but incorrectly interpreted as \"> A >\".")
 
             if required_schannel_ids and not \
                    isinstance(required_schannel_ids[0], list):
@@ -7182,7 +7313,7 @@ This implies that with decay chains:
              self._curr_amps[0]['has_born']):
             raise self.InvalidCmd("Can not mix loop induced process with not loop induced process")
             
-        # Negative coupling order contraints can be given on at most one
+        # Negative coupling order constraints can be given on at most one
         # coupling order (and either in squared orders or orders, not both)
         if len([1 for val in list(myprocdef.get('orders').values())+\
                       list(myprocdef.get('squared_orders').values()) if val<0])>1:
@@ -7202,7 +7333,7 @@ This implies that with decay chains:
                        "ignore_six_quark_processes" in self.options \
                        else []
 
-        # Decide here wether one needs a LoopMultiProcess or a MultiProcess
+        # Decide here whether one needs a LoopMultiProcess or a MultiProcess
 
         try:
             myproc = loop_diagram_generation.LoopInducedMultiProcess(myprocdef,
@@ -7513,7 +7644,7 @@ This implies that with decay chains:
             if not line.strip():
                 break
             index_par = line.find(')')
-            # special cases: parenthesis but no , => remove the paranthesis!
+            # special cases: parenthesis but no , => remove the parenthesis!
             if line.lstrip()[0] == '(' and index_par !=-1 and \
                                                     not ',' in line[:index_par]:
                 par_start = line.find('(')
@@ -7614,7 +7745,7 @@ This implies that with decay chains:
                             except Exception:
                                 raise err
                     else:
-                        raise self.InvalidCmd('UFO model not python3 compatible. You can convert it via the command \nconvert model %s\nYou can also type \"set auto_convert_model T\" to automatically convert all python2 module to be python3 compatible in the future.' % model_path)
+                        raise self.InvalidCmd('UFO model is not compatible with Python 3. You can convert it via the command \nconvert model %s\nYou can also type \"set auto_convert_model T\" to automatically convert all python2 module to be python3 compatible in the future.' % model_path)
                 if os.path.sep in args[1] and "import" in self.history[-1]:
                     self.history[-1] = 'import model %s' % self._curr_model.get('modelpath+restriction')
 
@@ -7658,6 +7789,7 @@ This implies that with decay chains:
             self._curr_amps = diagram_generation.AmplitudeList()
             # Reset proc defs
             self._curr_proc_defs = base_objects.ProcessDefinitionList()
+            self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
             self._curr_matrix_elements = helas_objects.HelasMultiProcess()
             process_checks.store_aloha = []
             self.advise_neglected_masses()
@@ -7710,7 +7842,7 @@ This implies that with decay chains:
                 raise MadGraph5Error('No default directory in output')
 
 
-            #convert and excecute the card
+            #convert and execute the card
             self.import_mg4_proc_card(proc_card)
 
     def remove_pointless_decay(self, param_card):
@@ -8169,6 +8301,14 @@ This implies that with decay chains:
             logger.warning('Pythia8 is installed but its main164 could not be ' +
                 'compiled, so MadEvent cannot shower with it yet:\n%s' % error)
             return
+        # the main164 an MLM shower uses to split its jet rates per jet sample,
+        # patched if needed: built now rather than at the first MLM shower
+        try:
+            misc.get_pythia8_main164(pythia8_path, jet_sample_djrs=True)
+        except (MadGraph5Error, OSError) as error:
+            logger.info('main164 could not be built to split the jet rates per ' +
+                'jet sample (the DJR plots of MLM showers will show their sum ' +
+                'only):\n%s' % error)
         # the HepMC3 of a Pythia8 built against it (pythia8_hepmc3)
         if not self.options['hepmc3_path'] and misc.find_hepmc(3, [pjoin(prefix, 'hepmc3')]):
             self.options['hepmc3_path'] = pjoin(prefix, 'hepmc3')
@@ -8335,7 +8475,7 @@ This implies that with decay chains:
             elif lhapdf_version==6:
                 lhapdf_option.append('--with_lhapdf5=OFF')
                 lhapdf_option.append('--with_lhapdf6=%s'%lhapdf_path)
-            # Make sure each otion in add_options appears only once
+            # Make sure each option in add_options appears only once
             add_options.append('--mg5_path=%s'%MG5DIR)
             add_options = misc.make_unique(add_options)
 
@@ -8348,7 +8488,7 @@ This implies that with decay chains:
                         + lhapdf_option + compiler_options + add_options)
         else:
             logger.info('Now installing %s. Be patient...'%tool)
-            # Make sure each otion in add_options appears only once
+            # Make sure each option in add_options appears only once
             add_options.append('--mg5_path=%s'%MG5DIR)
             add_options = misc.make_unique(add_options)
             add_options.append('--mg5_path=%s'%MG5DIR)
@@ -8586,8 +8726,8 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
         elif args[0] == 'cuttools_iregi':
             self.install_cuttools_iregi()
             return
-        elif args[0] == 'madspace':
-            install_script = pjoin(MG5DIR, 'madspace', 'install.py')
+        elif args[0] in ('madspace', 'pyamplicol', 'madtrex'):
+            install_script = pjoin(MG5DIR, args[0], 'install.py')
             install_args = args[1:]
             # The source build compiles in parallel only if it is told how many
             # jobs it may use (see set_build_parallelism in install.py), so hand
@@ -8595,7 +8735,11 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             if not any(a == '-j' or a.startswith('-j') or a.startswith('--jobs')
                        for a in install_args):
                 install_args = install_args + ['-j', str(self.options['nb_core'])]
-            subprocess.run([sys.executable, install_script] + install_args)
+            result = subprocess.run([sys.executable, install_script] + install_args)
+            if result.returncode != 0:
+                raise self.InvalidCmd('install %s failed (%s exited with code %d): see '
+                                      'its output above' % (args[0], install_script,
+                                                            result.returncode))
             return
 
         plugin = self.install_plugin
@@ -8686,7 +8830,7 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             
         if args[0] in self._advanced_install_opts:
             # Now launch the advanced installation of the tool args[0]
-            # path['HEPToolsInstaller'] is the online adress where to downlaod
+            # path['HEPToolsInstaller'] is the online address where to download
             # the installers if necessary.
             add_options.extend(install_options['options_for_HEPToolsInstaller'])
             if not any(opt.startswith('--logging=') for opt in add_options):
@@ -8871,7 +9015,7 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                                          getattr(plugin, 'latest_validated_version', ''))
             except Exception as error:
                 print(error)
-                logger.warning('Plugin not python3 compatible! It will run with python2')
+                logger.warning('Plugin is not compatible with Python 3! It will run with python2')
                 text = open(os.path.join(MG5DIR, 'PLUGIN', name, '__init__.py')).read()
                 if re.search(r'^\s*new_interface\s*=\s*(?!None).', text, re.M):
                     new_interface = True
@@ -9040,7 +9184,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             #pattern = re.compile(r'''=== removed file \'(?P<new>[^\']*)\'''')
             #all_rm = pattern.findall(text)
             pattern=re.compile(r'''=== removed file \'(?P<new>[^\']*)\'(?=.*=== added file \'(?P=new)\')''',re.S)
-            print('this step can take a few minuts. please be patient')
+            print('this step can take a few minutes. please be patient')
             all_rm_add = pattern.findall(text)
             #=== added file 'tests/input_files/full_sm/interactions.dat'
             for new in all_add:
@@ -9424,13 +9568,13 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
         config_file.close()      
         self.options['stdout_level'] = logging.getLogger('madgraph').level
         if not final:
-            return self.options # the return is usefull for unittest
+            return self.options # the return is useful for unittest
 
         # Treat each expected input
-        # 1: Pythia8_path and hewrig++ paths
+        # 1: Pythia8_path and herwig7 paths
         # try absolute and relative path
         for key in self.options:
-            if key in ['pythia8_path', 'hwpp_path', 'thepeg_path', 'hepmc_path',
+            if key in ['pythia8_path', 'herwig7_path', 'thepeg_path', 'hepmc_path',
                        'hepmc3_path', 'madanalysis5_path']:
                 if self.options[key] in ['None', None]:
                     self.options[key] = None 
@@ -9454,10 +9598,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                             logger.warning(message)
                             continue
  
-                #this is for hw++
-                if key == 'hwpp_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Herwig++', 'Analysis', 'BasicConsistency.hh')):
-                    if not os.path.isfile(pjoin(path, 'include', 'Herwig++', 'Analysis', 'BasicConsistency.hh')):
-                        self.options['hwpp_path'] = None
+                #this is for hw7
+                if key == 'herwig7_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Herwig', 'Analysis', 'BasicConsistency.h')):
+                    if not os.path.isfile(pjoin(path, 'include', 'Herwig', 'Analysis', 'BasicConsistency.h')):
+                        self.options['herwig7_path'] = None
                     else:
                         continue
                 # this is for thepeg
@@ -9558,8 +9702,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         return self.options
 
     def check_for_export_dir(self, filepath):
-        """Check if the files is in a valid export directory and assign it to
-        export path if if is"""
+        """Check if the file is in a valid export directory and assign it to
+        export path if it is"""
 
         # keep previous if a previous one is defined
         if self._export_dir:
@@ -9724,11 +9868,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # what needs madspace). The bootstrap has to be told whether it may
             # take over the terminal: in a subprocess it could read that off
             # sys.argv/sys.stdin, but in process those describe MG5, not the run.
-            from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+            from madgraph.mg7 import bootstrap as mg7_bootstrap
             mg7_bootstrap.ensure_madspace(
                 interactive=bool(self.use_rawinput) and not options['force'],
                 jobs=self.options['nb_core'])
-            from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+            from madgraph.mg7 import launch as mg7_launch
 
             MG7 = mg7_launch.MG7Cmd(me_dir=me_dir, options=self.options)
             if options['interactive']:
@@ -11118,6 +11262,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.info('Note that you need to regenerate all processes')
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         if self.options[args[0]] == 'gpu':
             export_v4.ProcessExporterFortranMEGroup.grouped_mode = 'gpu'
@@ -11197,10 +11342,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         else:
             if not old:
                 if log:
-                    logger.info('Complex mass already desactivated.')
+                    logger.info('Complex mass already deactivated.')
                 return
             if log:
-                logger.info('Desactivate complex mass scheme.')
+                logger.info('Deactivate complex mass scheme.')
         if not self._curr_model:
             return
         self.do_import("model %s" % self._curr_model.get('name'), options={'allow_qed_cms':True})
@@ -11293,6 +11438,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self._curr_model = None
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._curr_helas_model = None
         self._curr_exporter = None
@@ -11577,7 +11723,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             if major_version != sys.version_info[0] or \
                minor_version != sys.version_info[1]:
                return  
-            # remove the --python- arguent to not include it in the option/configuration file
+            # remove the --python- argument to not include it in the option/configuration file
             del args[2]
 
         to_do = True
@@ -11595,10 +11741,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             except Exception:
                 res = 1
             if res != 0 and args[1] != 'None':
-                logger.info('%s does not seem to correspond to a valid lhapdf-config ' % args[1] + \
+                # the shipped default just means "no LHAPDF here", which the
+                # mg7 output does not need (it downloads the PDF sets itself)
+                log_level = logging.DEBUG if args[1] == 'lhapdf-config' else logging.INFO
+                logger.log(log_level, '%s does not seem to correspond to a valid lhapdf-config ' % args[1] + \
                         'executable. \nPlease set the \'lhapdf\' variable to the (absolute) ' + \
                         '/PATH/TO/lhapdf-config (including lhapdf-config).\n' + \
-                        'Note that you can still compile and run aMC@NLO with the built-in PDFs\n' + \
+                        'Note that you can still compile and run aMC@NLO with the built-in PDFs,\n' + \
+                        'and the mg7 output downloads its PDF sets without LHAPDF\n' + \
                         ' MadGraph7> set lhapdf /PATH/TO/lhapdf-config\n')
                
     set2_lhapdf_py2 = set2_lhapdf
@@ -11772,6 +11922,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # depend on this option
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._curr_exporter = None
         self._second_exporter = None
@@ -12083,7 +12234,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         
     def set2_automatic_html_opening(self, args, log=True):
         """Set whether the code should automatically open the html status page when
-        running madevent executation (default: yes).
+        running madevent execution (default: yes).
         """
         return self.set_default('automatic_html_opening', args, log=log)
     
@@ -12158,7 +12309,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
     def set2_dmtcp(self, args, log=True):
         """ Usage: set dmtcp /PATH/TO/dmtcp_install_directory
-            usefull only if checkpointing is True.
+            useful only if checkpointing is True.
             DMTCP installation directory should contain bin/dmtcp_restart and bin/dmtcp_launch
         """
         args = ['dmtcp'] + args
@@ -12178,8 +12329,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
         logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
         logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
-        logger.info(" > auto:  ddm for the output formats which do not need a color")
-        logger.info("          flow decomposition (standalone), trace otherwise")
+        logger.info(" > auto:  ddm for the output formats which support it (madevent, mg7,")
+        logger.info("          standalone and standalone_fortran; the trace basis is still")
+        logger.info("          used next to it for the color flow of each event), trace")
+        logger.info("          otherwise (NLO, pythia8, matchbox, ...)")
 
     def set2_color_basis(self, args, log=True):
         """Set the color basis used for fully adjoint (multi-gluon) processes.
@@ -12205,7 +12358,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 # not documented options:
 #   	            	contur_path         
 #delphes_path             	eps_viewer               	exrootanalysis_path
-#hepmc_path               	hepmc3_path              	hwpp_path
+#hepmc_path               	hepmc3_path              	herwig7_path
 #pineappl                 	pythia-pgs_path          	pythia8_path
 #rivet_path               	                 	syscalc_path
 #thepeg_path              	yoda_path
@@ -12227,7 +12380,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # Be careful:
         # This command is associated to a post_cmd: post_set.
         # This command mainly delegates to set2_xxx functions.
-        # which is the recomend way to provide help via docstrings.
+        # which is the recommended way to provide help via docstrings.
         args = self.split_arg(line)
 
         if args and cmd.is_removed_option(args[0]):
@@ -12668,7 +12821,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # have been defined with multiparticle labels, because then
             # branching ratios necessitates to keep subprocesses independent.
             # That applies only if there is more than one subprocess of course.
-            if self._curr_amps[0].get_ninitial() == 1 and \
+            if self._curr_amps and self._curr_amps[0].get_ninitial() == 1 and \
                                                      len(self._curr_amps)>1:
                 
                 processes = [amp.get('process') for amp in self._curr_amps if 'process' in  list(amp.keys())]
@@ -12923,7 +13076,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         mode['mode'] = 'MadSpin'
                     # The conditional statement tests whether we are dealing
                     # with a loop induced process.
-                    if isinstance(self._curr_amps[0], 
+                    # (an output with only [amplicol] processes has no amplitudes)
+                    if self._curr_amps and isinstance(self._curr_amps[0], 
                                          loop_diagram_generation.LoopAmplitude):
                         mode['optimized_output']=self.options['loop_optimized_output']
                         HelasMultiProcessClass = loop_helas_objects.LoopHelasProcess
@@ -13064,7 +13218,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                       
                       
         matrix_elements = self._curr_matrix_elements.get_matrix_elements()
-        if any(l.get('flavor') is None for l in matrix_elements[0].get('processes')[0].get('legs')):
+        if matrix_elements and any(l.get('flavor') is None for l in matrix_elements[0].get('processes')[0].get('legs')):
             [m.get_external_flavors() for m in matrix_elements]  #precompute all flavors
         # Just the matrix.f files
         if self._export_format == 'matrix':
@@ -13165,8 +13319,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             wanted_lorentz = self._curr_matrix_elements.get_used_lorentz()
             wanted_couplings = self._curr_matrix_elements.get_used_couplings()
 
-            if self._export_format == 'madevent' and not 'no_helrecycling' in flaglist and \
-                not isinstance(self._curr_amps[0], loop_diagram_generation.LoopAmplitude):
+            # the P1N (amplitude split) routines: madevent's helicity recycling,
+            # and the C++ one of a madmatrix output asked for --hel_recycling
+            exporter_opts = (getattr(self._curr_exporter, 'opt', None) or {}).get(
+                                                       'output_options') or {}
+            cpp_recycling = hasattr(getattr(self._curr_exporter,
+                                            'oneprocessclass', None),
+                                    'write_recycled') and \
+                str(exporter_opts.get('hel_recycling', False)).lower() in \
+                                                       ('true', '1', 'yes')
+            if (self._export_format == 'madevent' or cpp_recycling) and \
+                not 'no_helrecycling' in flaglist and \
+                not (self._curr_amps and isinstance(
+                    self._curr_amps[0], loop_diagram_generation.LoopAmplitude)):
                 for (name, flag, out) in wanted_lorentz[:]:
                     if out == 0:
                         newflag = list(flag) + ['P1N']
@@ -13211,8 +13376,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             ## write fj_lhapdf_opts file
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
-            opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'hwpp_path', 'thepeg_path', 
-                                                     'hepmc_path', 'hepmc3_path', 'eMELA']
+            opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'herwig7_path',
+                            'thepeg_path', 'hepmc_path', 'hepmc3_path', 'eMELA']
             to_keep = {}
             for opt in opts_to_keep:
                 if self.options[opt]:
@@ -13315,13 +13480,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         except Exception:
             pass
 
-        # quarkonium / leptonium (NRQCD/NRQED) models: detect from model name
+        # quarkonium / leptonium (NRQCD/NRQED): a bound state in the generated
+        # processes (e.g. with 'add model sm_onia'), or such a model by name
         _quarkonia_kws = ('nrqcd', 'nrqed', 'quarkon', 'leptonium')
         try:
             _mn = (self._curr_model.get('name') or '').lower() if self._curr_model else ''
         except Exception:
             _mn = ''
-        if getattr(self, '_uses_quarkonia', False) or any(k in _mn for k in _quarkonia_kws):
+        if self.has_onium_amplitude() or any(k in _mn for k in _quarkonia_kws):
             pairs.append(('ColpaniSerri:2025vdz',
                            'S-wave quarkonium/leptonium production (NRQCD/NRQED)'))
 
@@ -13338,7 +13504,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.debug('could not write generation citations: %s', error)
 
     def do_help(self, line):
-        """ propose some usefull possible action """
+        """ propose some useful possible action """
 
         super(MadGraphCmd,self).do_help(line)
 
@@ -13494,7 +13660,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                             value_mass = eval(str(p.mass), data)
                         except Exception:
                             # the p object can still be UFO reference. since the 
-                            # mass name might hve change load back the MG5 one.
+                            # mass name might have changed load back the MG5 one.
                             value_mass = eval(str(model.get_particle(p.pdg_code).get('mass')), data)
                         tmp_mass -= abs(value_mass)             
                     if tmp_mass <=0:
@@ -13667,7 +13833,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         result_file = pjoin(decay_dir, 'decay_widths.json')
         log_file = pjoin(decay_dir, 'decay_widths.log')
         cmd = [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'),
-               '--decay-widths=%s' % result_file, '--precision=%s' % precision]
+               '--decay-widths=%s' % result_file, '--precision=%s' % precision,
+               '--allow-stdin']
         if self.options['nb_core']:
             cmd.append('--nb-core=%s' % self.options['nb_core'])
         with open(log_file, 'w') as log:
@@ -13695,7 +13862,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         after others succeeded, the caller still has the decay_info it would
         hand to MadEvent.
         """
-        from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+        from madgraph.mg7 import bootstrap as mg7_bootstrap
         # the survey of a decay uses no PDF: only the build needs the environment
         self.setup_mg7_environment(lhapdf=False)
         mg7_bootstrap.ensure_madspace(interactive=False,
@@ -14153,6 +14320,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # Reset amplitudes
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         # Reset _done_export, since we have new process
@@ -14287,6 +14455,8 @@ _launch_usage = "launch [DIRPATH] [options]\n" + \
          "   Example: launch PROC_sm_1 --name=run2 \n" + \
          "   Example: launch ../pythia8 \n"
 _launch_parser = misc.OptionParser(usage=_launch_usage)
+_launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
+                            help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")
 _launch_parser.add_option("-f", "--force", default=False, action='store_true',
                                 help="Use the card present in the directory in order to launch the different program")
 _launch_parser.add_option("-n", "--name", default='', type='str',

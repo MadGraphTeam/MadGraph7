@@ -103,7 +103,7 @@ C     BEGIN CODE
 C     ----------
       IF(ABS(REFERENCE_VALUE).EQ.0.0D0) THEN
         ML5_0_ISZERO=.FALSE.
-        WRITE(*,*) '##E02 ERRROR Reference value for comparison is'
+        WRITE(*,*) '##E02 ERROR Reference value for comparison is'
      $   //' zero.'
         STOP
       ELSE
@@ -203,7 +203,7 @@ C      rotated for the stability test purposes.
       REAL*8 P(0:3,NEXTERNAL)
 C     DP_RES STORES THE DOUBLE PRECISION RESULT OBTAINED FROM
 C      DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
-C     THE STAB_STAGE COUNTER I CORRESPONDANCE GOES AS FOLLOWS
+C     THE STAB_STAGE COUNTER CORRESPONDENCE GOES AS FOLLOWS
 C     I=1 -> ORIGINAL PS, CTMODE=1
 C     I=2 -> ORIGINAL PS, CTMODE=2, (ONLY WITH CTMODERUN=-1)
 C     I=3 -> PS WITH ROTATION 1, CTMODE=1, (ONLY WITH CTMODERUN=-2)
@@ -219,7 +219,7 @@ C      I+20.
       DATA N_DP_EVAL/1/
       DATA N_QP_EVAL/1/
 C     This is used for loop-induced where the reference scale for
-C      comparisons is infered from
+C      comparisons is inferred from
 C     the previous points
       REAL*8 NEXTREF
       DATA NEXTREF/ZERO/
@@ -286,9 +286,9 @@ C
       DATA REF/0.0D0/
       COMMON/ML5_0_INIT/NTRY,CHECKPHASE,HELDOUBLECHECKED,REF
 
-C     THE LOGICAL BELOWS ARE JUST TO KEEP TRACK OF WHETHER THE MP_PS
-C      HAS BEEN SET YET OR NOT AND WHETER THE MP EXTERNAL WFS HAVE
-C      BEEN COMPUTED YET.
+C     THE LOGICAL VARIABLES BELOW ARE JUST TO KEEP TRACK OF WHETHER
+C      THE MP_PS HAS BEEN SET YET OR NOT AND WHETHER THE MP EXTERNAL
+C      WFS HAVE BEEN COMPUTED YET.
       LOGICAL MP_DONE
       DATA MP_DONE/.FALSE./
       COMMON/ML5_0_MP_DONE/MP_DONE
@@ -296,8 +296,8 @@ C      BEEN COMPUTED YET.
       DATA MP_PS_SET/.FALSE./
       COMMON/ML5_0_MP_PS_SET/MP_PS_SET
 
-C     PS CAN POSSIBILY BE PASSED THROUGH IMPROVE_PS BUT IS NOT
-C      MODIFIED FOR THE PURPOSE OF THE STABILITY TEST	  
+C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED
+C      FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT
 C      USED ANYWHERE ELSE
       REAL*8 PS(0:3,NEXTERNAL)
@@ -447,12 +447,18 @@ C       Setup the file paths
         CALL JOINPATH(TMP,COLORDENOMFNAME,COLORDENOMFN)
         CALL JOINPATH(TMP,HELFILTERFNAME,HELFILTERFN)
 
-C       Make sure that the loop filter is disabled when there is
-C        spin-2 particles for 2>1 or 1>2 processes
-        IF(MAX_SPIN_EXTERNAL_PARTICLE.GT.3.AND.(NEXTERNAL.LE.3.AND.HELI
-     $CITYFILTERLEVEL.NE.0)) THEN
-          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1'
-     $     //' processes involving spin 2 particles.'
+C       Disable the helicity filter for 2>1 and 1>2 processes.
+C       In the c.m. frame one particle is then at rest (the
+C       final state of a 2>1, the decaying one of a 1>2), and
+C       which helicities vanish depends on the frame: at rest
+C       the helicity is defined along z, a boost changes it.
+C       A filter learned in one frame silently drops part of
+C       the result in another (u d~ > w+: virtual = 0 with the
+C       W along -z) and the stability test cannot see it.
+C       The tree-level standalone output does the same.
+        IF(NEXTERNAL.LE.3.AND.HELICITYFILTERLEVEL.NE.0) THEN
+          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 and'
+     $     //' 1>2 processes.'
           HELICITYFILTERLEVEL = 0
 C         We write a dummy filter for structural reasons here
           OPEN(1, FILE=HELFILTERFN, ERR=6116, STATUS='NEW'
@@ -591,7 +597,7 @@ C        therefore guarantee any precision
         CTMODEINIT_BU=CTMODEINIT
 C       So either one choses quad precision directly
 C       CTMODEINIT=4
-C       Or, because this is very slow, we keep the orignal value. The
+C       Or, because this is very slow, we keep the original value. The
 C        accuracy returned is -1 and tells the MC that he should not
 C        trust the evaluation for checks.
         CTMODEINIT=CTMODEINIT_BU
@@ -1009,7 +1015,7 @@ C         SET THE LOOP FILTER
             WRITE(*,*) '##W15 Helicity filter could not be'
      $       //' successfully double checked.'
             WRITE(*,*) '##One reason for this is that you have changed'
-     $       //' sensible parameters which affected what are the zero'
+     $       //' sensitive parameters which affected what are the zero'
      $       //' helicity configurations.'
             WRITE(*,*) '##MadLoop will try to reset the Helicity'
      $       //' filter with the next PS points it receives.'

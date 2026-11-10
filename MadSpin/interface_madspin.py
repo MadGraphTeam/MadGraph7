@@ -108,6 +108,13 @@ def decay_density_tensor(slot_identity, helicities, slot_densities):
     return density_dec
 
 
+def ren_scale2(event):
+    """mu_R**2 for the matrix element's SCALE2: the mur of the event's <scales>
+    tag (the mg7 output writes it), otherwise SCALUP, which holds mu_F."""
+    get_ren_scale = getattr(event, 'get_ren_scale', None)
+    return (get_ren_scale() if get_ren_scale else event.scale) ** 2
+
+
 
 class MadSpinDegenerateWeight(madspin.MadSpinError):
     """The accept/reject cannot ever accept: every trial weight is structurally
@@ -269,6 +276,19 @@ class MadSpinOptions(banner.ConfigFile):
         self.add_param('global_order_coupling', '')
         self.add_param('identical_particle_in_prod_and_decay', 'average')
         self.add_param('beampol', [0., 0.], comment='beam polarisation of each beam in percent, -100 .. 100, exactly as the run_card polbeam1/polbeam2 (0 is unpolarised). Taken from the run_card of the production when it has one.')
+        self.add_param('auto_zero_width_PA', True,
+                       comment="spinmode = PA only (ignored otherwise). Set to zero "
+                       "the width of every particle MadSpin decays (the particles "
+                       "of the 'decay' lines present in the production) in the "
+                       "propagators of the matrix element of the production "
+                       "density matrix, and, in the decay density matrix of each "
+                       "such particle, in the propagators of that particle only "
+                       "(the top in 't > w+ b g'; the W propagator of "
+                       "'t > e+ ve b' keeps its width even when a W is decayed "
+                       "too), as the pole approximation requires. The param_card "
+                       "is untouched, so the Breit-Wigner sampling, the "
+                       "reshuffling, the propagator factor applied by MadSpin "
+                       "and the branching ratios keep the physical widths.")
         self.add_param('decay_output', 'auto',
                        allowed=['auto', 'unweighted', 'weighted'],
                        comment="whether MadSpin unweights its decays at all. 'auto' "
@@ -911,7 +931,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         self.mg5cmd = master_interface.MasterCmd()
         self.seed = None
         self.err_branching_ratio = 0
-        self.me_run_name = "" # Events diretory name where to stotre the events (used by madevent) not use internally
+        self.me_run_name = "" # Events directory where the events are stored (used by madevent, not used internally)
         self.all_iden = {}
         # The card this run executes, and the directory do_import derives from
         # the event file. Both are what madspin_card_path archives from; set
@@ -1295,6 +1315,10 @@ class MadSpinInterface(extended_cmd.Cmd):
             elif line.startswith('import model'):
                 if model_name in line:
                     final_model = True
+
+        # same t-channel widths as the generation (aMC@NLO keeps them)
+        if rwgt_interface.ReweightInterface.keep_tchannel_width(self.banner):
+            self.mg5cmd.options['zerowidth_tchannel'] = False
                     
                 
     def import_model(self, args):
@@ -2279,7 +2303,7 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         # the legacy modes 'madspin_v1' and 'onshell_v1' are not compatible with loop-induced processes
         if self.options['spinmode'] in ['madspin_v1', 'onshell_v1'] and process_LI:
-            raise ValueError("The MadSpin modes 'madspin_v1' and 'onshell_v1' are are not compatible with loop-induced processes. Please choose a mode among 'none', 'PA', 'madspin' or 'onshell'.")
+            raise ValueError("The MadSpin modes 'madspin_v1' and 'onshell_v1' are not compatible with loop-induced processes. Please choose a mode among 'none', 'PA', 'madspin' or 'onshell'.")
 
         if self.options['onlyhelicity']:
             self.options['spinmode'] = 'madspin_v1'
@@ -2313,6 +2337,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 "density matrix to restrict, so they are only available in the "
                 "density spin modes (madspin/full, PA, onshell). Got "
                 "spinmode=%s." % spinmode)
+        self._announce_zero_width()
         # The density modes decide about the '@' grouping later, in run_onshell,
         # where the production events say how many of each particle an event
         # carries. These two never can, so say it now rather than after the
@@ -2326,6 +2351,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         # on reuse.
         self._check_reused_version()
         self._check_reused_param_card()
+        self._check_reused_zero_width()
 
         if spinmode in ["none"]:
             out = self.run_bridge(line)
@@ -2607,7 +2633,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             import madgraph.various.hepmc_parser as hepmc_parser
             orig_lhe = hepmc_parser.HEPMC_EventFile(filename)
             orig_lhe.allow_empty_event = True
-            logger.info("Parsing input event to know how many decay to generate. This can takes few minuts.")
+            logger.info("Parsing input events to determine how many decays to generate. This can take a few minutes.")
         else:
             raise Exception
             
@@ -3340,6 +3366,114 @@ class MadSpinInterface(extended_cmd.Cmd):
             logger.debug('could not record the parameters of %s: %s',
                          directory, error)
 
+    def _zero_width_pdgs(self):
+        """The sorted, sign-less pdg codes of the particles whose propagators
+        auto_zero_width_PA writes with a zero width (``output standalone_fortran
+        --zerowidth_decay=``, see decay_all_events_onshell.generate_all_matrix_element
+        and ProcessExporterFortranSA.get_zerowidth_pdgs): in the production
+        density matrix element, and each one in its own decay density matrix
+        element only.
+
+        Non-empty only for spinmode = PA with auto_zero_width_PA: then every
+        particle MadSpin decays, i.e. the initial particle of each 'decay'
+        line (a multiparticle label counts for all its members) that is in
+        the final state of the production. The Python-side propagator of
+        those particles keeps its width.
+        """
+        if self.options['spinmode'] != 'PA' or \
+                not self.options['auto_zero_width_PA']:
+            return []
+        # Only particles the production does have in its final state: the
+        # default card carries 'decay z > ...' for every process, which must
+        # not zero the Z width of a sample without a Z. Without a proc_card
+        # (hepmc/lhe_no_banner input) nothing restricts the list.
+        final_state = set(abs(int(pid)) for pid in
+                          (getattr(self, 'final_state', None) or ()))
+        pdgs = set()
+        for label in self.list_branches:
+            pdgs.update(self._label_to_abs_pdgs(label))
+        if final_state:
+            pdgs &= final_state
+        return sorted(pdgs)
+
+    def _label_to_abs_pdgs(self, label):
+        """The sign-less pdgs a particle or multiparticle label stands for."""
+        multiparticles = getattr(self.mg5cmd, '_multiparticles', {}) or {}
+        if label in multiparticles:
+            return set(abs(int(pid)) for pid in multiparticles[label])
+        name2pdg = self.model.get('name2pdg') if self.model else {}
+        if label in name2pdg:
+            return set([abs(int(name2pdg[label]))])
+        return set()
+
+    def _announce_zero_width(self):
+        """Say which widths auto_zero_width_PA zeroes (PA only)."""
+        pdgs = self._zero_width_pdgs()
+        if pdgs:
+            logger.info("MadSpin PA: propagators of pdg %s have a zero width "
+                        "in the production density matrix element, and each "
+                        "one in its own decay density matrix element only "
+                        "('set auto_zero_width_PA False' to keep the widths).",
+                        ', '.join(str(pid) for pid in pdgs))
+
+    # Record of the widths a reusable directory zeroed in its density matrix
+    # elements (see _zero_width_pdgs). Kept out of PARAM_CARD_STAMP on purpose:
+    # that stamp is the banner's card, which auto_zero_width_PA does not touch.
+    ZERO_WIDTH_STAMP = 'ms_zero_width.dat'
+
+    def _check_reused_zero_width(self):
+        """Refuse to reuse a directory whose cached maximum weights were
+        measured with other widths zeroed in the density matrix elements.
+
+        The maximum weights (max_wgt*, pure_interference*) are ratios of
+        density-matrix contractions, i.e. of exactly the matrix elements this
+        option changes; the rest of the cache (decay gridpacks, partial widths)
+        does not depend on it. A missing stamp means an empty list: either the
+        directory predates the option or nothing was zeroed, and in both cases
+        the matrix elements had the param_card widths.
+        """
+        current = self._zero_width_pdgs()
+        reusing = self._reused_directory()
+        directory = reusing or (self.options['curr_dir'] and
+                                os.path.realpath(self.options['curr_dir']))
+        if not directory:
+            return
+        stamp = pjoin(directory, self.ZERO_WIDTH_STAMP)
+        if reusing and any(misc.glob(pattern, directory)
+                           for pattern in ('max_wgt*', 'pure_interference*')):
+            previous = []
+            if os.path.exists(stamp):
+                try:
+                    previous = sorted(int(tok) for tok in open(stamp).read().split())
+                except (IOError, OSError, ValueError) as error:
+                    logger.debug('unreadable %s (%s)', stamp, error)
+                    previous = None
+            if previous is not None and previous != current:
+                raise MadSpinStaleParameters(
+                    "MadSpin is reusing %s, whose density matrix elements "
+                    "had the width of pdg %s set to zero, while this run zeroes "
+                    "pdg %s (auto_zero_width_PA, spinmode=PA).\n"
+                    "\n"
+                    "The maximum weights cached there were measured with those "
+                    "other matrix elements and are not re-measured on reuse. "
+                    "Point 'ms_dir'/'use_old_dir' at a fresh directory (or "
+                    "remove %s), or set auto_zero_width_PA to match how it was "
+                    "built, and rerun."
+                    % (directory, previous or '[]', current or '[]', directory))
+            return
+        # (re)built from scratch: record what it is built with
+        try:
+            if current:
+                if not os.path.isdir(directory):
+                    os.makedirs(directory)
+                with open(stamp, 'w') as fsock:
+                    fsock.write(' '.join(str(pid) for pid in current) + '\n')
+            elif os.path.exists(stamp):
+                os.remove(stamp)
+        except (IOError, OSError) as error:
+            logger.debug('could not record the zeroed widths in %s: %s',
+                         directory, error)
+
     @classmethod
     def _store_partial_width(cls, decay_dir, cross):
         """Record the measured partial width of ``decay_dir`` next to its
@@ -3969,7 +4103,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             seq_ladder = self._sequential_pool_ladder(to_decay, nb_event,
                                                       density_method)
             for pdg, nb_needed in to_decay.items():
-                # muliply by expected effeciency of generation
+                # multiply by expected efficiency of generation
                 spin = self.model.get_particle(pdg).get('spin')
                 if pdg in seq_ladder:
                     efficiency = seq_ladder[pdg]
@@ -11732,7 +11866,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                                 build_event=True, decay_densities=None):
         """ return the onshell wgt for the production event associated to the decays
             return also the full event with decay.
-            Carefull this modifies production event (pass to the full one)
+            Careful: this modifies the production event (pass to the full one)
             build_event: if False (density mode) compute weight without building event
             decay_densities: pre-computed decay density matrices (see
                 calculate_matrix_element_from_density); the decay events must
@@ -11937,7 +12071,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         that build's tag."""
         tag = madspin.density_libtag(self._ms_run_id,
                                      'p' if prod_or_decay == 'prod' else 'd')
-        if os.path.exists(pjoin(tree, 'lib', 'libmadmatrix_common%s_scalar.so' % tag)):
+        if os.path.exists(madmatrix_density.common_library_path(tree, tag)):
             return tag
         try:
             return madmatrix_density.find_libtag(tree)
@@ -12540,8 +12674,9 @@ class MadSpinInterface(extended_cmd.Cmd):
         momentum is the sum of the selected legs (in the lab), ready to be
         handed to ``_boost_momenta``, which negates the spatial part itself
         (HELAS ``boostx``, exactly what ``boost_to_frame`` does in driver.f);
-        its ``initial`` attribute is the initial state's total momentum, the
-        partonic CM that ``_boost_momenta`` goes through first.
+        its ``along_beam`` and ``initial`` attributes tell ``_boost_momenta``
+        how to get there (along the beam for a collision, through the rest
+        frame of the decaying particle for a decay).
 
         Three things switch it on -- the three clauses of ``_needs_frame_axis``
         -- and all of them are cases where the frame is *observable*:
@@ -12609,15 +12744,12 @@ class MadSpinInterface(extended_cmd.Cmd):
                 "frame_id = %s selects legs %s, a massless system (m^2 = %g "
                 "GeV^2): it has no rest frame. Select massive legs, or several "
                 "legs." % (frame_id, selected, pboost.mass_sqr))
-        # madevent's boost_to_frame acts on momenta in the partonic CM frame
-        # (genps.f builds them there, unwgt.f boosts them to the lab only when
-        # it writes the event), so _boost_momenta first takes the lab momenta
-        # back to the rest frame of the initial state. Going to the selected
-        # legs straight from the lab is not the same frame: two boosts along
-        # different directions compose to a boost and a (Wigner) rotation, and
-        # the quantisation axis of a leg at rest turns with it -- 25 degrees
-        # for a W of pT = 100 GeV in a partonic CM at rapidity 1.
+        # A collision has a beam axis, and its frame is reached along it first
+        # (see _boost_momenta). A decay has none: madevent hands its matrix
+        # element momenta in the rest frame of the decaying particle and
+        # boosts once from there, so _boost_momenta goes through that frame.
         nb_initial = len(orig_order[0]) if orig_order else 2
+        pboost.along_beam = (nb_initial == 2)
         pboost.initial = lhe_parser.FourMomentum()
         for i in range(nb_initial):
             pboost.initial += lhe_parser.FourMomentum(momenta[i])
@@ -12663,11 +12795,24 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         if rest_leg == -1:
             rest_leg = getattr(pboost, 'rest_leg', None)
-        initial = getattr(pboost, 'initial', None)
-        if initial is not None:
-            # through the partonic CM first, as madevent (see _frame_boost)
-            momenta = to_rest(momenta, initial)
-            pboost = to_rest([pboost], initial)[0]
+        if getattr(pboost, 'along_beam', False):
+            # Along z to zero rapidity of pboost, then transverse to its rest
+            # frame: the frame madevent, madspace, aMC@NLO and driver.f all
+            # use, and the same whichever frame along the beam the momenta
+            # come in -- here the lab. A single boost straight from the lab
+            # would differ by a Wigner rotation, and the quantisation axis of
+            # a leg at rest would turn with it (get_me_frame_boosts,
+            # Template/Common/Source/impose_frame_rest.f).
+            momenta = to_rest(momenta, lhe_parser.FourMomentum(
+                pboost.E, 0., 0., pboost.pz))
+            pboost = lhe_parser.FourMomentum(
+                math.sqrt((pboost.E - pboost.pz) * (pboost.E + pboost.pz)),
+                pboost.px, pboost.py, 0.)
+        elif getattr(pboost, 'initial', None) is not None:
+            # a decay: through the rest frame of the decaying particle first,
+            # as madevent (see _frame_boost)
+            momenta = to_rest(momenta, pboost.initial)
+            pboost = to_rest([pboost], pboost.initial)[0]
         out = [(new.E, new.px, new.py, new.pz)
                for new in to_rest(momenta, pboost)]
         if rest_leg is not None and rest_leg <= len(out):
@@ -12850,7 +12995,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                   pos=position,
                                                   allow_hel=allow_hel,
                                                   alphas=event.aqcd,
-                                                  scale2=event.scale**2)
+                                                  scale2=ren_scale2(event))
 
 
         #print(f"density_array = {density_array}") 
@@ -12964,7 +13109,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 P[:, :, c] = np.asarray(momenta[k], dtype=float).T
                 all_pdgs[:, c] = pdgs[k]
                 alphas[c] = events[k].aqcd
-                scale2[c] = events[k].scale ** 2
+                scale2[c] = ren_scale2(events[k])
             # PY_GET_DENSITY_BATCH(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS,
             #                      SCALE2, NBATCH, NEXT)
             inter = module.py_get_density_batch(pdgs=all_pdgs,
@@ -13142,7 +13287,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 else:
                     # SCALE2 is the squared scale (MU_R = sqrt(SCALE2) in
                     # UPDATE_AS_PARAM2), as get_density and the reweighting pass it
-                    new_value = self.all_f2py[pdir](pdg_for_call, p, event.aqcd, event.scale**2)
+                    new_value = self.all_f2py[pdir](pdg_for_call, p, event.aqcd, ren_scale2(event))
                 #if the process is Loop-Induced, smatrixhel returns the tuple (value, returncode), we need to keep only the value
                 if isinstance(new_value, tuple):
                     new_value = new_value[0]

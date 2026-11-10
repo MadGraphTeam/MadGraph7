@@ -376,7 +376,7 @@
          integer:: nd
          complex(kind(1d0))::cterm,prefact
 
-         if (np.gt.1) then       ! positive powers (identiy excluded)
+         if (np.gt.1) then       ! positive powers (identity excluded)
             res%comp(0) = (a%comp(0))**np
             do i=1,2**npwave-1
                res%comp(i) = dcmplx(0d0,0d0)
@@ -389,7 +389,7 @@
                   else
                      prefact=(a%comp(0))**(np-nd)
                   endif
-                  ! Determing the prefactor (same for all nd entries)
+                  ! Determining the prefactor (same for all nd entries)
                   if (np.le.4) then
                      prefact = prefact*fallfact_int(np,nd)
                   else
@@ -426,7 +426,7 @@
                ! Each group corresponds to a number of derivative nd
                do nd=1,nd_max(i)
                   prefact=(a%comp(0))**(np-nd)
-                  ! Determing the prefactor (same for all nd entries)
+                  ! Determining the prefactor (same for all nd entries)
                   if (np.ge.-4) then
                      prefact = prefact*fallfact_int(np,nd)
                   else
@@ -484,7 +484,7 @@
                ! Each group corresponds to a number of derivative nd
                do nd=1,nd_max(i)
                   prefact=(a%comp(0))**(np-nd)
-                  ! Determing the prefactor (same for all nd entries)
+                  ! Determining the prefactor (same for all nd entries)
                   if (np.eq.0.5d0 .or. np.eq.1.5d0) then
                      prefact = prefact*fallfact_real(int(np+0.5),nd)
                   else
@@ -521,7 +521,7 @@
                ! Each group corresponds to a number of derivative nd
                do nd=1,nd_max(i)
                   prefact=(a%comp(0))**(np-nd)
-                  ! Determing the prefactor (same for all nd entries)
+                  ! Determining the prefactor (same for all nd entries)
                   if (np.eq.-0.5d0 .or. np.eq.-1.5d0) then
                      prefact = prefact*fallfact_real(int(np+0.5),nd)
                   else

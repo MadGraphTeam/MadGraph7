@@ -1,5 +1,6 @@
 #include "madspace/driver/channel_generator.hpp"
 #include "madspace/driver/random.hpp"
+#include "madspace/phasespace/weighting_step.hpp"
 #include "madspace/util.hpp"
 
 using namespace madspace;
@@ -24,6 +25,9 @@ int event_extra_flags(const std::unordered_map<std::string, std::size_t>& index_
     if (index_map.contains("bias")) {
         flags |= EventRecord::f_bias;
     }
+    if (index_map.contains("matrix_element")) {
+        flags |= EventRecord::f_matrix_element;
+    }
     return flags;
 }
 
@@ -33,6 +37,12 @@ int particle_extra_flags(
     int flags = 0;
     if (index_map.contains("cluster_scales")) {
         flags |= ParticleRecord::f_clustering;
+    }
+    if (index_map.contains("alphas_scales")) {
+        flags |= ParticleRecord::f_alphas_scales;
+    }
+    if (index_map.contains("ladder_x")) {
+        flags |= ParticleRecord::f_pdf_ladder;
     }
     return flags;
 }
@@ -55,8 +65,8 @@ DerivedSeed::SeedType unweight_seed_type(bool is_survey, std::size_t survey_pass
         : DerivedSeed::second_survey_unweight;
 }
 
-// Role folded into job_index so integrand_channel and integrand_common get
-// independent streams despite sharing seed_type/channel_index.
+// Folded into job_index so integrand_channel and integrand_common get independent
+// streams.
 enum RngRole { rng_role_channel = 0, rng_role_common = 1, rng_role_count = 2 };
 
 DerivedSeed generate_phase_seed(
@@ -72,6 +82,18 @@ DerivedSeed generate_phase_seed(
         generate_seed_type(is_survey, survey_pass),
         job_index * rng_role_count + role,
         channel_index
+    );
+}
+
+// An empty path means the events are only kept in memory.
+std::optional<EventFile> open_event_file(
+    const std::string& path, const DataLayout& layout, std::size_t particle_count
+) {
+    if (path.empty()) {
+        return std::nullopt;
+    }
+    return std::make_optional<EventFile>(
+        path, layout, particle_count, EventFile::create, true
     );
 }
 
@@ -117,13 +139,10 @@ ChannelEventGenerator::ChannelEventGenerator(
         )
     ),
     _event_file(
-        event_file,
-        _event_file_layout,
-        integrand.particle_count(),
-        EventFile::create,
-        true
+        open_event_file(event_file, _event_file_layout, integrand.particle_count())
     ),
-    _weight_file(weight_file, weight_file_layout, 0, EventFile::create, true),
+    _weight_file(open_event_file(weight_file, weight_file_layout, 0)),
+    _weight_file_path(weight_file),
     _batch_size(config.start_batch_size),
     _particle_count(integrand.particle_count()),
     _integrand_channel_function(IntegrandChannelPart(integrand).function()),
@@ -149,6 +168,17 @@ ChannelEventGenerator::ChannelEventGenerator(
     init_used_globals();
     init_runtimes();
     init_field_indices();
+    auto& me_outputs = integrand.diff_xs().at(0).matrix_element().outputs();
+    for (auto [provided, output] :
+         zip(_provided_indices,
+             std::array{
+                 MatrixElement::color_index_out,
+                 MatrixElement::helicity_index_out,
+                 MatrixElement::diagram_index_out
+             })) {
+        provided =
+            std::find(me_outputs.begin(), me_outputs.end(), output) != me_outputs.end();
+    }
     if (const auto& grid_name = integrand.vegas_grid_name(); grid_name) {
         _vegas_optimizer =
             VegasGridOptimizer(contexts, grid_name.value(), config.vegas_damping);
@@ -244,10 +274,9 @@ ChannelEventGenerator::ChannelEventGenerator(
             ParticleRecord::f_particle_data | _particle_layout_extra_flags
         )
     ),
-    _event_file(
-        event_file, _event_file_layout, particle_count, EventFile::create, true
-    ),
-    _weight_file(weight_file, weight_file_layout, 0, EventFile::create, true),
+    _event_file(open_event_file(event_file, _event_file_layout, particle_count)),
+    _weight_file(open_event_file(weight_file, weight_file_layout, 0)),
+    _weight_file_path(weight_file),
     _batch_size(config.start_batch_size),
     _particle_count(particle_count),
     _integrand_channel_function(integrand_channel_function),
@@ -293,6 +322,13 @@ void ChannelEventGenerator::init_runtimes() {
 }
 
 void ChannelEventGenerator::init_field_indices() {
+    auto& unweighter_outputs = _unweighter_function.outputs();
+    for (auto [key, value] : zip(unweighter_outputs.keys(), unweighter_outputs)) {
+        // with the common batch size, to compare and combine channels
+        _event_types.push_back(
+            key, Type(value.type.dtype, madspace::batch_size, value.type.shape)
+        );
+    }
     auto index_map = _integrand_common_function.outputs().index_map();
     _field_indices.weight = index_map.at("weight");
     _field_indices.momenta = index_map.at("momenta");
@@ -321,24 +357,68 @@ void ChannelEventGenerator::init_field_indices() {
     } else {
         _field_indices.partial_weight_product = -1;
     }
+    if (index_map.contains("cluster_scales")) {
+        _field_indices.cluster_scales = index_map.at("cluster_scales");
+    } else {
+        _field_indices.cluster_scales = -1;
+    }
+    if (index_map.contains("alphas_scales")) {
+        _field_indices.alphas_scales = index_map.at("alphas_scales");
+    } else {
+        _field_indices.alphas_scales = -1;
+    }
+    if (index_map.contains("ladder_x")) {
+        const char* names[] = {
+            "ladder_x",
+            "ladder_pdg",
+            "ladder_q",
+            "ladder_info",
+            "ladder_lead_q",
+        };
+        for (std::size_t k = 0; k < _field_indices.ladder.size(); ++k) {
+            _field_indices.ladder[k] = index_map.at(names[k]);
+        }
+    } else {
+        _field_indices.ladder.fill(-1);
+    }
     if (index_map.contains("subprocess_index")) {
         _field_indices.subprocess_index = index_map.at("subprocess_index");
     } else {
         _field_indices.subprocess_index = -1;
     }
     _field_indices.bias = index_map.contains("bias") ? index_map.at("bias") : -1;
+    _field_indices.matrix_element =
+        index_map.contains("matrix_element") ? index_map.at("matrix_element") : -1;
     _field_indices.random = index_map.at("random");
     _field_indices.rest = _field_indices.random + 1;
 }
 
+EventFile& ChannelEventGenerator::event_file() {
+    if (!_event_file) {
+        throw std::logic_error("Channel was created without an event file");
+    }
+    return *_event_file;
+}
+
+EventFile& ChannelEventGenerator::weight_file() {
+    if (!_weight_file) {
+        throw std::logic_error("Channel was created without a weight file");
+    }
+    return *_weight_file;
+}
+
 void ChannelEventGenerator::unweight_file(MixMaxRandom& rand_gen) {
+    if (!_step_settings.empty()) {
+        unweight_step_file(rand_gen);
+        return;
+    }
     std::size_t buf_size = 1000000;
     EventBuffer buffer(0, 0, weight_file_layout);
     std::size_t accept_count = _unweighted_accept_count;
-    for (std::size_t i = _unweighted_count; i < _weight_file.event_count();
-         i += buf_size) {
-        _weight_file.seek(i);
-        _weight_file.read(buffer, buf_size);
+    auto& w_file = weight_file();
+    for (std::size_t i = _unweighted_count; i < w_file.event_count(); i += buf_size) {
+        w_file.seek(i);
+        w_file.read(buffer, buf_size);
         for (std::size_t j = 0; j < buffer.event_count(); ++j) {
             auto weight = buffer.event(j).weight();
             if (std::abs(weight.value()) / _max_weight < rand_gen.generate_double()) {
@@ -350,10 +430,10 @@ void ChannelEventGenerator::unweight_file(MixMaxRandom& rand_gen) {
                 ++accept_count;
             }
         }
-        _weight_file.seek(i);
-        _weight_file.write(buffer);
+        w_file.seek(i);
+        w_file.write(buffer);
     }
-    _unweighted_count = _weight_file.event_count();
+    _unweighted_count = w_file.event_count();
     _unweighted_accept_count = accept_count;
     _status.count_unweighted = accept_count;
 }
@@ -365,9 +445,8 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
         if (w_view[i] != 0) {
             ++sample_count_after_cuts;
         }
-        // With a bias b the weights are w b: the absolute integral, which drives
-        // the adaptation, unweighting and channel allocation, keeps the bias,
-        // while the reported cross section divides it out.
+        // With a bias b the weights are w b: the absolute integral keeps the bias,
+        // the reported cross section divides it out.
         double weight = w_view[i];
         if (_field_indices.bias != -1 && weight != 0.) {
             weight /= job.biases.view<double, 1>()[i];
@@ -375,11 +454,7 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
         _cross_section.push(weight);
         _abs_cross_section.push(std::abs(w_view[i]));
     }
-    _status.mean = _cross_section.mean();
-    _status.error = _cross_section.error();
-    _status.mean_abs = _abs_cross_section.mean();
-    _status.error_abs = _abs_cross_section.error();
-    _status.rel_std_dev = _abs_cross_section.rel_std_dev();
+    update_status_integrals();
     _status.count += w_view.size();
     _status.count_opt += w_view.size();
     _count_requested_opt += job.requested_event_count;
@@ -392,8 +467,7 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
             auto hist2_view = job.hists.at(2 * i + 1).view<double, 2>()[0];
             auto& chan_hist = _histograms.at(i);
             for (std::size_t j = 0; j < hist_view.size(); ++j) {
-                // note: we don't assign the actuals means and errors here. There are
-                // still some normalization steps necessary that are performed later
+                // raw sums; normalized in EventGenerator::histograms()
                 chan_hist.bin_values.at(j) += hist_view[j];
                 chan_hist.bin_errors.at(j) += hist2_view[j];
             }
@@ -431,12 +505,13 @@ void ChannelEventGenerator::optimize_vegas(const GeneratorBatchJob& job) {
 
 double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
     std::size_t buf_size = 1000000;
-    EventBuffer buffer(0, 0, weight_file_layout);
+    EventBuffer buffer(0, weight_record_count(), weight_layout());
     double weight_sum = 0;
-    _weight_file.seek(0);
+    auto& w_file = weight_file();
+    w_file.seek(0);
     std::size_t unweighted_count = 0;
-    for (std::size_t i = 0; i < _weight_file.event_count(); i += buf_size) {
-        _weight_file.read(buffer, buf_size);
+    for (std::size_t i = 0; i < w_file.event_count(); i += buf_size) {
+        w_file.read(buffer, buf_size);
         bool done = false;
         for (std::size_t j = 0; j < buffer.event_count(); ++j) {
             if (unweighted_count == event_count) {
@@ -447,7 +522,9 @@ double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
             if (weight == 0.) {
                 continue;
             }
-            weight_sum += std::abs(weight) / _max_weight;
+            weight_sum += _step_settings.empty()
+                ? std::abs(weight) / _max_weight
+                : std::abs(unweighted_weight(buffer, j));
             ++unweighted_count;
         }
         if (done) {
@@ -457,9 +534,8 @@ double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
     return weight_sum;
 }
 
-// Assigns job's base seed on the scheduling thread, from its logical identity
-// only (channel, kind, sequence) -- never from context_index -- so it doesn't
-// depend on worker/context assignment.
+// The job's seed depends only on channel, kind and sequence, not on the context
+// it runs on.
 void ChannelEventGenerator::start_job(
     GeneratorBatchJob& job,
     ResultQueue& result_queue,
@@ -471,8 +547,7 @@ void ChannelEventGenerator::start_job(
     job.rng_is_survey = is_survey;
     job.rng_survey_pass = survey_pass;
     job.rng_job_index = is_survey ? _survey_rng_seq++ : _generate_rng_seq++;
-    // Through result_queue, so a job that throws still posts its result and the
-    // exception reaches the waiting thread instead of leaving it blocked forever.
+    // Submitted via result_queue so that an exception reaches the waiting thread.
     result_queue.submit(
         _contexts.at(job.context_index)->thread_pool(),
         job.job_id,
@@ -494,10 +569,8 @@ void ChannelEventGenerator::start_job(
                 ? _config.cpu_batch_size
                 : _config.gpu_batch_size;
             std::size_t batch_size = max_batch_size;
-            // Only VEGAS batches shrink to fit -- they need next_vegas_batch_size()'s
-            // exact geometric progression for correct grid-adaptation statistics.
-            // Generation batches always submit full device-sized jobs; a little
-            // overshoot there is expected and cheaper than a partial job.
+            // Only VEGAS batches shrink to fit, to keep their batch sizes exact.
+            // Generation jobs are always full device batches.
             if (job.is_vegas_batch && job.batch_event_count > 0 &&
                 batch_size > job.batch_event_count) {
                 batch_size = job.batch_event_count;
@@ -508,8 +581,7 @@ void ChannelEventGenerator::start_job(
             std::size_t total_count = 0, repetitions = 0;
             TensorVec all_ps_points;
             while (true) {
-                // Successive calls draw further from integrand_channel's own
-                // persistent stream (set once above) -- no per-call re-seeding.
+                // successive calls continue the stream seeded above
                 auto ps_points =
                     runtimes.integrand_channel->run({Tensor({batch_size})});
                 std::size_t acc_count =
@@ -571,8 +643,7 @@ void ChannelEventGenerator::start_job(
             if (_field_indices.bias != -1) {
                 job.biases = job.events.at(_field_indices.bias).cpu();
             }
-            // observable_histograms/vegas_histogram/discrete_histogram don't consume
-            // random numbers, so they're never seeded.
+            // the histogram runtimes use no random numbers and are never seeded
             if (runtimes.observable_histograms) {
                 auto hists = runtimes.observable_histograms->run(
                     {job.events.at(_field_indices.weight),
@@ -609,6 +680,7 @@ void ChannelEventGenerator::start_job(
 
 void ChannelEventGenerator::prepare_unweight_job(GeneratorBatchJob& job) const {
     job.max_weight = _max_weight;
+    job.count_target = _status.count_target;
 }
 
 void ChannelEventGenerator::submit_unweight_job(
@@ -631,6 +703,30 @@ void ChannelEventGenerator::submit_unweight_job(
             );
             unweighter_args.push_back(Tensor(job.max_weight, context->device()));
             TensorVec unw_events = runtimes.unweighter->run(unweighter_args);
+            if (!_step_settings.empty()) {
+                // the events stay on the device for the steps, with the random
+                // numbers of the steps drawn per event
+                if (job.rng_seed) {
+                    runtimes.step_random->set_seed(DerivedSeed(
+                        job.rng_seed,
+                        DerivedSeed::weighting_step_random,
+                        job.rng_job_index,
+                        job.channel_index,
+                        job.rng_is_survey ? 1 + job.rng_survey_pass : 0
+                    ));
+                }
+                auto random = runtimes.step_random->run({unw_events.at(0)});
+                job.step_host.push_back(unw_events.at(_field_indices.weight).cpu());
+                job.step_host.push_back(
+                    unw_events.at(_field_indices.matrix_element).cpu()
+                );
+                if (_field_indices.bias != -1) {
+                    job.step_host.push_back(unw_events.at(_field_indices.bias).cpu());
+                }
+                job.unweighted_events = std::move(unw_events);
+                job.unweighted_events.push_back(random.at(0));
+                return;
+            }
             for (auto& item : unw_events) {
                 job.unweighted_events.push_back(item.cpu());
             }
@@ -661,20 +757,37 @@ void ChannelEventGenerator::clear_events() {
     _status.count_opt = 0;
     _count_requested_opt = 0;
     _status.count_after_cuts_opt = 0;
-    _event_file.clear();
-    _weight_file.clear();
+    if (_event_file) {
+        _event_file->clear();
+    }
+    if (_weight_file) {
+        _weight_file->clear();
+    }
     _cross_section.reset();
     _abs_cross_section.reset();
     _large_weights.clear();
+    _first_step_count = 0.;
+    _freeze_count = 0.;
+    _final_integral = {};
+    ++_event_epoch;
+    for (auto& state : _step_states) {
+        if (!state.max_weight_fixed) {
+            state.max_weight = 0.;
+        }
+        state.large_weights.clear();
+        state.count_accepted = 0.;
+        state.freeze_count = 0.;
+    }
     for (auto& hist : _histograms) {
         std::fill(hist.bin_values.begin(), hist.bin_values.end(), 0.);
         std::fill(hist.bin_errors.begin(), hist.bin_errors.end(), 0.);
     }
 }
 
-void ChannelEventGenerator::update_max_weight(Tensor weights) {
-    if (_max_weight_fixed ||
-        _status.count_unweighted > _config.freeze_max_weight_after) {
+void ChannelEventGenerator::update_max_weight(Tensor weights, bool unweight) {
+    // _freeze_count rather than the written events, which arrive in thread-dependent
+    // order.
+    if (_max_weight_fixed || _freeze_count > _config.freeze_max_weight_after) {
         return;
     }
 
@@ -694,18 +807,20 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
     }
     std::sort(_large_weights.begin(), _large_weights.end(), std::greater{});
     apply_truncation_budget();
+    if (unweight && _max_weight > 0) {
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            _freeze_count += std::min(1., std::abs(w_view[i]) / _max_weight);
+        }
+    }
 }
 
 void ChannelEventGenerator::set_target_count(std::size_t target_count) {
     std::size_t old_target = _status.count_target;
     _status.count_target = target_count;
-    // The truncation budget scales with count_target, and _max_weight only
-    // rises. A cap chosen under a larger target than the channel ends up with
-    // (e.g. generate()'s round-one seed) would otherwise never be corrected: a
-    // channel that has met its smaller target is not revisited. Tighten the cap
-    // now; unweight_all() re-unweights the whole file against it at the end.
+    // The truncation budget scales with count_target and _max_weight only rises, so
+    // tighten the cap for a smaller target here; unweight_all() re-unweights later.
     if (target_count < old_target && _max_weight != 0 && !_max_weight_fixed &&
-        _status.count_unweighted <= _config.freeze_max_weight_after) {
+        _freeze_count <= _config.freeze_max_weight_after) {
         apply_truncation_budget();
     }
 }
@@ -726,6 +841,11 @@ void ChannelEventGenerator::apply_truncation_budget() {
         if (w_sum / w > max_truncation) {
             if (_max_weight < w) {
                 _status.count_unweighted *= _max_weight / w;
+                _first_step_count *= _max_weight / w;
+                _freeze_count *= _max_weight / w;
+                for (auto& state : _step_states) {
+                    state.count_accepted *= _max_weight / w;
+                }
                 _max_weight = w;
                 _unweighted_count = 0;
                 _unweighted_accept_count = 0;
@@ -739,6 +859,21 @@ void ChannelEventGenerator::apply_truncation_budget() {
 void ChannelEventGenerator::write_events(
     const std::vector<Tensor>& unweighted_events, double job_max_weight
 ) {
+    EventBuffer event_buffer(0, _particle_count, _event_file_layout);
+    EventBuffer weight_buffer(0, 0, weight_file_layout);
+    fill_event_buffers(unweighted_events, event_buffer, weight_buffer);
+    event_file().write(event_buffer);
+    weight_file().write(weight_buffer);
+    _status.count_unweighted += event_buffer.event_count() *
+        (job_max_weight > 0 ? job_max_weight / _max_weight : 1);
+    _status.done = _status.count_unweighted >= _status.count_target;
+}
+
+void ChannelEventGenerator::fill_event_buffers(
+    const TensorVec& unweighted_events,
+    EventBuffer& event_buffer,
+    EventBuffer& weight_buffer
+) const {
     auto w_view = unweighted_events.at(_field_indices.weight).view<double, 1>();
     auto mom_view = unweighted_events.at(_field_indices.momenta).view<double, 3>();
     auto colors_view =
@@ -753,10 +888,8 @@ void ChannelEventGenerator::write_events(
         unweighted_events.at(_field_indices.ren_scale).view<double, 1>();
     auto alphas_view = unweighted_events.at(_field_indices.alpha_qcd).view<double, 1>();
 
-    EventBuffer event_buffer(
-        w_view.size(), _event_file.particle_count(), _event_file_layout
-    );
-    EventBuffer weight_buffer(w_view.size(), 0, weight_file_layout);
+    event_buffer.resize(w_view.size());
+    weight_buffer.resize(w_view.size());
     for (std::size_t i = 0; i < w_view.size(); ++i) {
         weight_buffer.event(i).weight() = w_view[i];
         auto event = event_buffer.event(i);
@@ -809,10 +942,66 @@ void ChannelEventGenerator::write_events(
         }
     }
 
+    if (_field_indices.cluster_scales != -1) {
+        auto cluster_view =
+            unweighted_events.at(_field_indices.cluster_scales).view<double, 2>();
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            auto scales = cluster_view[i];
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                particle.cluster_scale() = j >= 2 ? scales[j - 2] : 0.;
+            }
+        }
+    }
+
+    if (_field_indices.alphas_scales != -1) {
+        // vertex i on outgoing particle 2 + i; there is one vertex less than
+        // there are outgoing particles, the remaining slots hold zero
+        auto alphas_view =
+            unweighted_events.at(_field_indices.alphas_scales).view<double, 2>();
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            auto scales = alphas_view[i];
+            std::size_t vertex_count = scales.size();
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                particle.alphas_scale() =
+                    j >= 2 && j - 2 < vertex_count ? scales[j - 2] : 0.;
+            }
+        }
+    }
+
+    if (_field_indices.ladder[0] != -1) {
+        auto slot_view = [&](std::size_t k) {
+            return unweighted_events.at(_field_indices.ladder[k]).view<double, 2>();
+        };
+        auto x_view = slot_view(0), pdg_view = slot_view(1), q_view = slot_view(2),
+             info_view = slot_view(3), lead_q_view = slot_view(4);
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            std::size_t slot_count = x_view[i].size();
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                bool has_slot = j < slot_count;
+                particle.ladder_x() = has_slot ? x_view[i][j] : 0.;
+                particle.ladder_pdg() = has_slot ? pdg_view[i][j] : 0.;
+                particle.ladder_q() = has_slot ? q_view[i][j] : 0.;
+                particle.ladder_info() = has_slot ? info_view[i][j] : 0.;
+                particle.ladder_lead_q() = j < 2 ? lead_q_view[i][j] : 0.;
+            }
+        }
+    }
+
     if (_field_indices.bias != -1) {
         auto bias_view = unweighted_events.at(_field_indices.bias).view<double, 1>();
         for (std::size_t i = 0; i < bias_view.size(); ++i) {
             event_buffer.event(i).bias() = bias_view[i];
+        }
+    }
+
+    if (_field_indices.matrix_element != -1) {
+        auto me_view =
+            unweighted_events.at(_field_indices.matrix_element).view<double, 1>();
+        for (std::size_t i = 0; i < me_view.size(); ++i) {
+            event_buffer.event(i).matrix_element() = me_view[i];
         }
     }
 
@@ -824,12 +1013,6 @@ void ChannelEventGenerator::write_events(
             event.subprocess_index() = subproc_view[i];
         }
     }
-
-    _event_file.write(event_buffer);
-    _weight_file.write(weight_buffer);
-    _status.count_unweighted +=
-        w_view.size() * (job_max_weight > 0 ? job_max_weight / _max_weight : 1);
-    _status.done = _status.count_unweighted >= _status.count_target;
 }
 
 void ChannelEventGenerator::save(const std::string& file_name) const {
@@ -842,12 +1025,21 @@ std::string ChannelEventGenerator::to_json(bool include_estimates) const {
     j = *this;
     if (include_estimates) {
         j["max_weight"] = _max_weight;
-        double error = _abs_cross_section.error();
-        if (_abs_cross_section.count() > 1 && std::isfinite(error) && error > 0) {
-            j["abs_integral"] = {{"mean", _abs_cross_section.mean()}, {"error", error}};
+        auto integral = result_integral();
+        double error = std::sqrt(integral.variance_abs / integral.count);
+        if (integral.count > 1 && std::isfinite(error) && error > 0) {
+            j["abs_integral"] = {{"mean", integral.mean_abs}, {"error", error}};
             j["integral"] = {
-                {"mean", _cross_section.mean()}, {"error", _cross_section.error()}
+                {"mean", integral.mean},
+                {"error", std::sqrt(integral.variance / integral.count)}
             };
+        }
+        if (!_step_states.empty()) {
+            json step_max_weights = json::array();
+            for (auto& state : _step_states) {
+                step_max_weights.push_back(state.max_weight);
+            }
+            j["step_max_weights"] = step_max_weights;
         }
     }
     return j.dump();
@@ -911,6 +1103,14 @@ ChannelEventGenerator ChannelEventGenerator::load_json(
     if (channel.contains("max_weight") && channel.at("max_weight").get<double>() > 0) {
         generator.set_fixed_max_weight(channel.at("max_weight").get<double>());
     }
+    if (channel.contains("provided_indices")) {
+        generator._provided_indices =
+            channel.at("provided_indices").get<std::array<bool, 3>>();
+    }
+    if (channel.contains("step_max_weights")) {
+        generator._loaded_step_max_weights =
+            channel.at("step_max_weights").get<std::vector<double>>();
+    }
     if (channel.contains("abs_integral")) {
         generator.set_abs_integral_prior(
             channel.at("abs_integral").at("mean").get<double>(),
@@ -950,29 +1150,456 @@ void ChannelEventGenerator::set_integral_prior(double mean, double error) {
     _integral_prior = {mean, error};
 }
 
-bool ChannelEventGenerator::uses_integral_prior() const {
-    double error = _abs_cross_section.error();
+bool ChannelEventGenerator::uses_integral_prior(bool final_step) const {
+    auto integral = final_step ? result_integral() : first_step_integral();
+    double error = std::sqrt(integral.variance_abs / integral.count);
     return _abs_integral_prior &&
-        (_abs_cross_section.count() < 2 || !std::isfinite(error) || !(error > 0));
+        (integral.count < 2 || !std::isfinite(error) || !(error > 0));
 }
 
 std::pair<double, double> ChannelEventGenerator::integral_prior() const {
     return _integral_prior ? *_integral_prior : *_abs_integral_prior;
 }
 
-double ChannelEventGenerator::abs_integral_estimate() const {
-    double mean = _abs_cross_section.mean();
+double ChannelEventGenerator::abs_integral_estimate(bool final_step) const {
+    auto integral = final_step ? result_integral() : first_step_integral();
+    double mean = integral.mean_abs;
     if (!_abs_integral_prior) {
         return mean;
     }
     auto [prior_mean, prior_error] = *_abs_integral_prior;
-    double error = _abs_cross_section.error();
-    if (uses_integral_prior()) {
+    double error = std::sqrt(integral.variance_abs / integral.count);
+    if (uses_integral_prior(final_step)) {
         return prior_mean;
     }
     double prior_weight = 1. / (prior_error * prior_error);
     double weight = 1. / (error * error);
     return (prior_mean * prior_weight + mean * weight) / (prior_weight + weight);
+}
+
+ChannelEventGenerator::IntegralEstimate
+ChannelEventGenerator::first_step_integral() const {
+    return {
+        .mean = _cross_section.mean(),
+        .variance = _cross_section.variance(),
+        .mean_abs = _abs_cross_section.mean(),
+        .variance_abs = _abs_cross_section.variance(),
+        .count = _cross_section.count(),
+    };
+}
+
+ChannelEventGenerator::IntegralEstimate ChannelEventGenerator::result_integral() const {
+    if (_step_settings.empty() || _final_integral.count == 0) {
+        return first_step_integral();
+    }
+    auto& integral = _final_integral;
+    double count = static_cast<double>(integral.count);
+    auto variance = [&](double sum2, double mean) {
+        return integral.count > 1
+            ? std::max(0., (sum2 - count * mean * mean) / (count - 1))
+            : 0.;
+    };
+    double mean = integral.sum / count;
+    double mean_abs = integral.abs_sum / count;
+    return {
+        .mean = mean,
+        .variance = variance(integral.sum2, mean),
+        .mean_abs = mean_abs,
+        .variance_abs = variance(integral.abs_sum2, mean_abs),
+        .count = integral.count,
+    };
+}
+
+void ChannelEventGenerator::update_status_integrals() {
+    auto integral = result_integral();
+    _status.mean = integral.mean;
+    _status.error = std::sqrt(integral.variance / integral.count);
+    _status.mean_abs = integral.mean_abs;
+    _status.error_abs = std::sqrt(integral.variance_abs / integral.count);
+    _status.rel_std_dev = std::sqrt(integral.variance_abs) / integral.mean_abs;
+}
+
+void ChannelEventGenerator::set_weighting_steps(
+    const std::vector<StepSettings>& steps
+) {
+    if (steps.empty()) {
+        throw std::invalid_argument("at least one weighting step is needed");
+    }
+    if (!_step_settings.empty()) {
+        bool same =
+            steps.size() == _step_settings.size() &&
+            std::equal(
+                steps.begin(),
+                steps.end(),
+                _step_settings.begin(),
+                [](auto& a, auto& b) {
+                    return a.unweight == b.unweight && a.ratio == b.ratio &&
+                        a.max_overweight_truncation == b.max_overweight_truncation &&
+                        a.freeze_max_weight_after == b.freeze_max_weight_after;
+                }
+            );
+        if (!same) {
+            throw std::logic_error(
+                "the weighting steps of a channel cannot be changed"
+            );
+        }
+        return;
+    }
+    if (_field_indices.matrix_element == -1) {
+        throw std::invalid_argument(
+            "a channel with weighting steps needs an integrand that returns the "
+            "matrix element"
+        );
+    }
+    if (_status.count > 0) {
+        throw std::logic_error(
+            "the weighting steps must be set before events are generated"
+        );
+    }
+    _step_settings = steps;
+    _step_states.assign(steps.size(), {});
+    if (!_loaded_step_max_weights.empty()) {
+        if (_loaded_step_max_weights.size() != steps.size()) {
+            throw std::invalid_argument(
+                "the stored maximum weights do not match the weighting steps"
+            );
+        }
+        for (std::size_t step = 1; double max_weight : _loaded_step_max_weights) {
+            if (max_weight > 0) {
+                set_fixed_step_max_weight(step, max_weight);
+            }
+            ++step;
+        }
+    }
+    if (_weight_file) {
+        _weight_file.reset();
+        _weight_file = open_event_file(
+            _weight_file_path, step_weight_file_layout, steps.size() + 1
+        );
+    }
+    auto random_count =
+        static_cast<me_int_t>(WeightingStepFunction::random_count * steps.size());
+    FunctionBuilder fb(
+        NamedVector<Type>{{"weight", batch_float}},
+        NamedVector<Type>{{"random", batch_float_array(random_count)}}
+    );
+    fb.output(0, fb.random(fb.batch_size({fb.input(0)}), random_count));
+    Function random_function = fb.function();
+    for (auto [context, runtimes] : zip(_contexts, _runtimes)) {
+        runtimes.step_random = build_runtime(random_function, context, false);
+    }
+}
+
+void ChannelEventGenerator::set_first_pass_settings(
+    std::optional<double> max_overweight_truncation,
+    std::optional<std::size_t> freeze_max_weight_after
+) {
+    if (max_overweight_truncation) {
+        _config.max_overweight_truncation = *max_overweight_truncation;
+    }
+    if (freeze_max_weight_after) {
+        _config.freeze_max_weight_after = *freeze_max_weight_after;
+        _first_pass_freeze_max_weight_after = freeze_max_weight_after;
+    }
+}
+
+void ChannelEventGenerator::set_fixed_step_max_weight(
+    std::size_t step, double max_weight
+) {
+    if (!(max_weight > 0)) {
+        throw std::invalid_argument("The fixed maximum weight must be positive");
+    }
+    auto& state = _step_states.at(step - 1);
+    state.max_weight = max_weight;
+    state.max_weight_fixed = true;
+    _unweighted_count = 0;
+    _unweighted_accept_count = 0;
+}
+
+void ChannelEventGenerator::update_step_max_weight(
+    std::size_t step, const std::vector<double>& values, std::size_t count_target
+) {
+    auto& state = _step_states.at(step - 1);
+    auto& settings = _step_settings.at(step - 1);
+    // not count_accepted, it depends on the first maximum at the time of the call
+    if (state.max_weight_fixed ||
+        state.freeze_count > settings.freeze_max_weight_after) {
+        return;
+    }
+    double min_nonzero = 0.;
+    for (double value : values) {
+        double abs_value = std::abs(value);
+        if (!std::isfinite(abs_value)) {
+            continue;
+        }
+        if (abs_value != 0 && (min_nonzero == 0 || abs_value < min_nonzero)) {
+            min_nonzero = abs_value;
+        }
+        if (abs_value > state.max_weight) {
+            state.large_weights.push_back(abs_value);
+        }
+    }
+    if (state.max_weight == 0) {
+        state.max_weight = min_nonzero;
+    }
+    std::sort(state.large_weights.begin(), state.large_weights.end(), std::greater{});
+    apply_step_truncation_budget(step, count_target);
+    if (state.max_weight > 0) {
+        for (double value : values) {
+            state.freeze_count += std::min(1., std::abs(value) / state.max_weight);
+        }
+    }
+}
+
+void ChannelEventGenerator::apply_step_truncation_budgets() {
+    for (std::size_t step = 1;
+         auto [state, settings] : zip(_step_states, _step_settings)) {
+        if (settings.unweight && !state.max_weight_fixed && state.max_weight != 0 &&
+            state.freeze_count <= settings.freeze_max_weight_after) {
+            apply_step_truncation_budget(step, _status.count_target);
+        }
+        ++step;
+    }
+}
+
+void ChannelEventGenerator::apply_step_truncation_budget(
+    std::size_t step, std::size_t count_target
+) {
+    auto& state = _step_states.at(step - 1);
+    auto& settings = _step_settings.at(step - 1);
+    auto& large_weights = state.large_weights;
+    // same truncation as for the first step, see apply_truncation_budget()
+    double max_truncation = settings.max_overweight_truncation *
+        static_cast<double>(std::min(count_target, settings.freeze_max_weight_after));
+    double sum = 0;
+    std::size_t count = 0;
+    for (double value : large_weights) {
+        if (value < state.max_weight) {
+            break;
+        }
+        sum += value;
+        ++count;
+        if (sum / value > max_truncation) {
+            if (state.max_weight < value) {
+                // the events of this and the later steps
+                double factor = state.max_weight / value;
+                _status.count_unweighted *= factor;
+                for (std::size_t i = step - 1; i < _step_states.size(); ++i) {
+                    _step_states.at(i).count_accepted *= factor;
+                }
+                state.freeze_count *= factor;
+                state.max_weight = value;
+                _unweighted_count = 0;
+                _unweighted_accept_count = 0;
+            }
+            break;
+        }
+    }
+    large_weights.erase(large_weights.begin() + count, large_weights.end());
+}
+
+void ChannelEventGenerator::add_step_accepted(
+    std::size_t step,
+    double count,
+    double max_weight,
+    const std::vector<double>& max_weights
+) {
+    // the fraction left with the current maxima, like in write_step_events()
+    double factor = max_weight > 0 ? max_weight / _max_weight : 1.;
+    for (std::size_t i = 0; i + 1 < step; ++i) {
+        if (_step_settings.at(i).unweight && max_weights.at(i) > 0) {
+            factor *= max_weights.at(i) / _step_states.at(i).max_weight;
+        }
+    }
+    _step_states.at(step - 1).count_accepted += count * factor;
+}
+
+void ChannelEventGenerator::add_first_step_events(
+    std::size_t count, double job_max_weight
+) {
+    _first_step_count +=
+        count * (job_max_weight > 0 ? job_max_weight / _max_weight : 1);
+}
+
+StepIntegral ChannelEventGenerator::step_integral(const StepEvents& step_events) const {
+    std::size_t step_count = _step_settings.size();
+    // the final weights in units of the cross section
+    double weight_unit = step_events.max_weight;
+    for (auto [settings, job_max_weight] :
+         zip(_step_settings, step_events.max_weights)) {
+        if (settings.unweight) {
+            weight_unit *= job_max_weight;
+        }
+    }
+    StepIntegral integral{.count = step_events.generated_count};
+    std::vector<double> ratios(step_count);
+    for (std::size_t i = 0; i < step_events.weights.size(); ++i) {
+        for (std::size_t k = 0; k < step_count; ++k) {
+            ratios.at(k) = step_events.ratios.at(k).at(i);
+        }
+        double weight = weight_unit *
+            evaluate_step_chain(
+                step_events.weights.at(i),
+                step_events.max_weight,
+                ratios.data(),
+                step_events.max_weights.data(),
+                _step_settings
+            )
+                .weight;
+        double xs_weight =
+            step_events.biases.empty() ? weight : weight / step_events.biases.at(i);
+        integral.sum += xs_weight;
+        integral.sum2 += xs_weight * xs_weight;
+        integral.abs_sum += std::abs(weight);
+        integral.abs_sum2 += weight * weight;
+    }
+    return integral;
+}
+
+void ChannelEventGenerator::add_step_integral(const StepIntegral& integral) {
+    _final_integral.count += integral.count;
+    _final_integral.sum += integral.sum;
+    _final_integral.sum2 += integral.sum2;
+    _final_integral.abs_sum += integral.abs_sum;
+    _final_integral.abs_sum2 += integral.abs_sum2;
+    update_status_integrals();
+}
+
+void ChannelEventGenerator::fill_step_buffers(
+    const StepEvents& step_events, EventBuffer& event_buffer, EventBuffer& weight_buffer
+) const {
+    fill_event_buffers(step_events.events, event_buffer, weight_buffer);
+    for (std::size_t i = 0; i < step_events.weights.size(); ++i) {
+        weight_buffer.event(i).weight() = step_events.weights.at(i);
+        auto first = weight_buffer.particle(i, 0);
+        first.step_ratio() = 1.;
+        first.step_max_weight() = step_events.max_weight;
+        for (std::size_t k = 0; k < _step_settings.size(); ++k) {
+            auto record = weight_buffer.particle(i, k + 1);
+            record.step_ratio() = step_events.ratios.at(k).at(i);
+            record.step_max_weight() = step_events.max_weights.at(k);
+        }
+    }
+}
+
+void ChannelEventGenerator::write_step_events(const StepEvents& step_events) {
+    add_step_integral(step_integral(step_events));
+    std::size_t count = step_events.weights.size();
+    if (count > 0) {
+        EventBuffer event_buffer(0, _particle_count, _event_file_layout);
+        EventBuffer weight_buffer(0, weight_record_count(), step_weight_file_layout);
+        fill_step_buffers(step_events, event_buffer, weight_buffer);
+        event_file().write(event_buffer);
+        weight_file().write(weight_buffer);
+    }
+    // the fraction left by unweighting with the current maxima. Like in
+    // write_events(), it is rescaled when a maximum rises, so it does not
+    // depend on the order of the updates.
+    double count_factor =
+        step_events.max_weight > 0 ? step_events.max_weight / _max_weight : 1.;
+    for (auto [state, settings, job_max_weight] :
+         zip(_step_states, _step_settings, step_events.max_weights)) {
+        if (settings.unweight && job_max_weight > 0) {
+            count_factor *= job_max_weight / state.max_weight;
+        }
+    }
+    _status.count_unweighted += count * count_factor;
+    _status.done = _status.count_unweighted >= _status.count_target;
+}
+
+StepChainResult
+ChannelEventGenerator::step_chain(EventBuffer& weight_buffer, std::size_t index) const {
+    std::vector<double> ratios, max_weights;
+    for (std::size_t k = 0; auto& state : _step_states) {
+        ratios.push_back(weight_buffer.particle(index, k + 1).step_ratio());
+        max_weights.push_back(state.max_weight);
+        ++k;
+    }
+    return evaluate_step_chain(
+        weight_buffer.event(index).weight(),
+        _max_weight,
+        ratios.data(),
+        max_weights.data(),
+        _step_settings
+    );
+}
+
+double ChannelEventGenerator::unweighted_weight(
+    EventBuffer& weight_buffer, std::size_t index
+) const {
+    double weight = weight_buffer.event(index).weight();
+    if (_step_settings.empty()) {
+        return std::copysign(std::max(1., std::abs(weight) / _max_weight), weight);
+    }
+    return weight == 0. ? 0. : step_chain(weight_buffer, index).weight;
+}
+
+void ChannelEventGenerator::unweight_step_file(MixMaxRandom& rand_gen) {
+    std::size_t buf_size = 100000;
+    std::size_t step_count = _step_settings.size();
+    EventBuffer buffer(0, step_count + 1, step_weight_file_layout);
+    std::vector<double> ratios(step_count), old_max_weights(step_count),
+        max_weights(step_count);
+    for (auto [max_weight, state] : zip(max_weights, _step_states)) {
+        max_weight = state.max_weight;
+    }
+    std::size_t accept_count = _unweighted_accept_count;
+    auto& w_file = weight_file();
+    for (std::size_t i = _unweighted_count; i < w_file.event_count(); i += buf_size) {
+        w_file.seek(i);
+        w_file.read(buffer, buf_size);
+        for (std::size_t j = 0; j < buffer.event_count(); ++j) {
+            auto weight = buffer.event(j).weight();
+            double random = rand_gen.generate_double();
+            if (weight.value() == 0.) {
+                continue;
+            }
+            for (std::size_t k = 0; k < step_count; ++k) {
+                auto record = buffer.particle(j, k + 1);
+                ratios.at(k) = record.step_ratio();
+                old_max_weights.at(k) = record.step_max_weight();
+            }
+            // accepted with the stored maxima: keep with the ratio of the
+            // acceptances, which only decrease with larger maxima
+            double old_acceptance =
+                evaluate_step_chain(
+                    weight.value(),
+                    buffer.particle(j, 0).step_max_weight(),
+                    ratios.data(),
+                    old_max_weights.data(),
+                    _step_settings
+                )
+                    .acceptance;
+            double acceptance =
+                evaluate_step_chain(
+                    weight.value(),
+                    _max_weight,
+                    ratios.data(),
+                    max_weights.data(),
+                    _step_settings
+                )
+                    .acceptance;
+            if (!(acceptance > random * old_acceptance)) {
+                weight = 0;
+                continue;
+            }
+            weight = std::copysign(
+                std::max(std::abs(weight.value()), _max_weight), weight.value()
+            );
+            buffer.particle(j, 0).step_max_weight() = _max_weight;
+            for (std::size_t k = 0; k < step_count; ++k) {
+                if (_step_settings.at(k).unweight) {
+                    buffer.particle(j, k + 1).step_max_weight() = max_weights.at(k);
+                }
+            }
+            ++accept_count;
+        }
+        w_file.seek(i);
+        w_file.write(buffer);
+    }
+    _unweighted_count = w_file.event_count();
+    _unweighted_accept_count = accept_count;
+    _status.count_unweighted = accept_count;
 }
 
 void madspace::to_json(nlohmann::json& j, const ChannelEventGenerator& channel) {
@@ -1001,5 +1628,6 @@ void madspace::to_json(nlohmann::json& j, const ChannelEventGenerator& channel) 
         {"subprocess_index", channel._status.subprocess},
         {"name", channel._status.name},
         {"histograms", histograms},
+        {"provided_indices", channel._provided_indices},
     };
 }

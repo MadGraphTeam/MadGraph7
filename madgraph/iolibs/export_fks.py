@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 import glob
+import json
 import logging
 import os
 import re
@@ -35,6 +36,7 @@ import madgraph.core.base_objects as base_objects
 import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_base as fks
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_real_channels_auto as fks_real_channels_auto
 import fractions
 import math
 import madgraph.iolibs.drawing_eps as draw
@@ -45,6 +47,7 @@ import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.template_files as template_files
 import madgraph.iolibs.ufo_expression_parsers as parsers
 import madgraph.iolibs.export_v4 as export_v4
+import madgraph.iolibs.born_support as born_support
 import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.various.q_polynomial as q_polynomial
 import madgraph.various.banner as banner_mod
@@ -378,7 +381,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         new_process_content = []
         
         # First find the coupling and suppress the coupling from process_str
-        #But first ensure that coupling are define whithout spaces:
+        #But first ensure that coupling are define without spaces:
         process_str = process_str.replace(' =', '=')
         process_str = process_str.replace('= ', '=')
         process_str = process_str.replace(',',' , ')
@@ -405,7 +408,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
 
     #===============================================================================
-    # write a initial states map, useful for the fast PDF NLO interface
+    # write an initial states map, useful for the fast PDF NLO interface
     #===============================================================================
     def write_maxproc_files(self, nmaxpdf, subproc_path):
         """write the c++ and fortran header files with the max number of pdf pairs
@@ -426,11 +429,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
 
     #===============================================================================
-    # write a initial states map, useful for the fast PDF NLO interface
+    # write an initial states map, useful for the fast PDF NLO interface
     #===============================================================================
     def write_init_map(self, file_pos, initial_states):
         """ Write an initial state process map. Each possible PDF
-        combination gets an unique identifier."""
+        combination gets a unique identifier."""
         
         text=''
         i=0
@@ -569,6 +572,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                      matrix_element.extra_cnt_me_list, 
                                      fortran_model)
         for i, extra_cnt_me in enumerate(matrix_element.extra_cnt_me_list):
+            if (hasattr(self, 'born_support_registry') and
+                    self.born_support_registry[borndir]['source'] != borndir):
+                continue
             replace_dict = {}
 
             den_factor_lines = self.get_den_factor_lines(matrix_element,
@@ -600,6 +606,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         split_types = self.write_fks_info_file(writers.FortranWriter(filename), 
                                  matrix_element, 
                                  fortran_model)
+
+        self.write_mc_history_files(matrix_element)
 
         # update the splitting types
         self.proc_characteristic['splitting_types'] = list(\
@@ -724,7 +732,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'check_sudakov_angle2.f',
                      'momentum_reshuffling.f',
                      'MCmasses_HERWIG6.inc',
-                     'MCmasses_HERWIGPP.inc',
+                     'MCmasses_HERWIG7.inc',
                      'MCmasses_PYTHIA6Q.inc',
                      'MCmasses_PYTHIA6PT.inc',
                      'MCmasses_PYTHIA8.inc',
@@ -737,8 +745,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'OLE_order.olc',
                      'FKSParams.f90',
                      'cuts.inc',
-                     'unlops.inc',
-                     'pythia_unlops.f',
                      'driver_mintMC.f',
                      'driver_mintFO.f',
                      'pineappl_interface.cc',
@@ -756,13 +762,20 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'splitorders_stuff.f',
                      'orderstags_glob.f',
                      'chooser_functions.f',
-                     'veto_xsec.f',
-                     'veto_xsec.inc',
+                     'mc_native_runtime.f',
                      'weight_lines.f',
+                     'fks_phase_space_data.f',
                      'genps_fks.f',
+                     'genps_fks_sampling.f',
+                     'genps_fks_radiation.f',
+                     'genps_fks_helpers.f',
+                     'resonance_recoil.f',
+                     'initial_recoil.f',
+                     'recoil_selection.f',
+                     'recoil_selection.inc',
+                     'resonance_histories.f',
                      'boostwdir2.f',
                      'boost_to_frame.f',
-                     'madfks_mcatnlo.inc',
                      'open_output_files.f',
                      'open_output_files_dummy.f',
                      'HwU_dummy.f',
@@ -770,12 +783,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'analysis_dummy.f',
                      'analysis_lhe.f',
                      'mint_module.f90',
+                     'virtual_surrogate.f90',
+                     'virtual_approximation.f',
                      'MC_integer.f',
-                     'mint.inc',
                      'montecarlocounter.f',
+                     'mcatnlo_delta_scales.f90',
+                     'herwig7_scales.f90',
                      'q_es.inc',
-                     'recluster.cc',
-                     'Boosts.h',
                      'reweight_xsec.f',
                      'reweight_xsec_events.f',
                      'reweight_xsec_events_pdf_dummy.f',
@@ -798,18 +812,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'pineappl_maxproc.inc',
                      'pineappl_maxproc.h',
                      'timing_variables.inc',
-                     'pythia8_fortran_dummy.cc',
-                     'pythia8_fortran.cc',
-                     'pythia8_wrapper.cc',
-                     'pythia8_control_setup.inc',
-                     'pythia8_control.inc',
-                     'dire_fortran.cc',
-                     'LHAFortran_aMCatNLO.h',
                      'sudakov.f',
-                     'hep_event_streams.inc',
                      'orderstag_base.inc',
                      'orderstags_glob.dat',
-                     'polfit.f']
+                     'polfit.f',
+                     'qed_shower_support.f90',
+                     'process_module.f90',
+                     'scale_module.f90']
 
         if matrix_element.ewsudakov:
             linkfiles.append('ewsudakov_functions.f')
@@ -829,6 +838,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         else:
             os.system("ln -s ../BinothLHA_user.f ./BinothLHA.f")
 
+        if hasattr(self, 'born_support_registry'):
+            born_support.worker_record(self, matrix_element, amp_split_orders)
+
         # Return to SubProcesses dir
         os.chdir(os.path.pardir)
         # Add subprocess to subproc.mg
@@ -842,6 +854,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         gen_infohtml.make_info_html_nlo(self.dir_path)
 
         return calls, amp_split_orders
+
+    def prepare_born_support(self, matrix_elements):
+        # Native providers build their own packed Born colour density. Keep
+        # the ordinary Born/linked sources as their input; the standalone
+        # outputs use the integrated MG7 colour-link template instead.
+        self.born_color_links_in_born = False
+        born_support.prepare(self, matrix_elements)
 
     #===========================================================================
     #  create the run_card 
@@ -930,7 +949,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         if 'QCD' in order[0]:
             perturbation_order.append('QCD')
         self.proc_characteristic['perturbation_order'] = perturbation_order 
-        
+        self.set_real_channels_default()
+        self.set_me_frame_characteristics()
+
         self.create_proc_charac()
 
         filename = os.path.join(self.dir_path,'SubProcesses','orderstag_base.inc')
@@ -949,6 +970,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         filename = os.path.join(self.dir_path,'Source','MODEL','get_mass_width_fcts.f')
         makeinc = os.path.join(self.dir_path,'Source','MODEL','makeinc.inc')
         self.write_get_mass_width_file(writers.FortranWriter(filename), makeinc, self.model)
+
+        born_support.finalize(self)
         
         # Touch "done" file
         os.system('touch %s/done' % os.path.join(self.dir_path,'SubProcesses'))
@@ -1178,7 +1201,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
     def write_amp_split_orders_file(self, writer, amp_split_orders):
         """ write the include file with the information of the coupling power for the 
-        differen entries in the amp_split array"""
+        different entries in the amp_split array"""
         text = "integer iaso, amp_split_orders(%d, nsplitorders)\n" % len(amp_split_orders)
 
         for i, amp_orders in enumerate(amp_split_orders):
@@ -1204,7 +1227,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     def write_a0gmuconv_file(self, writer, matrix_element):
-        """writes an include file with the informations about the 
+        """writes an include file with the information about the
         alpha0 < > gmu conversion, to be used when the process has
         tagged photons
         """
@@ -1232,7 +1255,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         """writes the function that computes the rescaling factor needed in
         the case of external photons.
         If split types does not contain [QED] or if there are not tagged photons,
-        dummy informations are filled
+        dummy information is filled
         """
 
         # get the model parameters
@@ -1284,7 +1307,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     def write_orders_file(self, writer, matrix_element):
-        """writes the include file with the informations about coupling orders.
+        """writes the include file with the information about coupling orders.
         In particular this file should contain the constraints requested by the user
         for all the orders which are split"""
 
@@ -1520,7 +1543,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         """writes the declarations for the variables relevant for configs_and_props
         """
         lines = []
-        lines.append("integer ifr,lmaxconfigs_used,max_branch_used")
+        lines.append("integer lmaxconfigs_used,max_branch_used")
         lines.append("parameter (lmaxconfigs_used=%4d)" % max_iconfig)
         lines.append("parameter (max_branch_used =%4d)" % -max_leg_number)
         lines.append("integer mapconfig_d(%3d,0:lmaxconfigs_used)" % nfksconfs)
@@ -1535,7 +1558,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     def write_configs_and_props_info_file(self, filename, matrix_element):
-        """writes the configs_and_props_info.inc file that cointains
+        """writes the configs_and_props_info.inc file that contains
         all the (real-emission) configurations (IFOREST) as well as
         the masses and widths of intermediate particles"""
         lines = []
@@ -1577,7 +1600,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 mapconfigs.append(helas_diag.get('number'))
                 lines.append("# Diagram %d for nFKSprocess %d" % \
                                  (helas_diag.get('number'),iFKS))
-                # Correspondance between the config and the amplitudes
+                # Correspondence between the config and the amplitudes
                 lines.append("C   %4d   %4d   %4d " % (iFKS,iconfig,
                                                            helas_diag.get('number')))
     
@@ -1683,7 +1706,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                     mapconfigs.append(helas_diag.get('number'))
                     lines.append("# Diagram %d for nFKSprocess %d" % \
                                      (helas_diag.get('number'),iFKS))
-                    # Correspondance between the config and the amplitudes
+                    # Correspondence between the config and the amplitudes
                     lines.append("C   %4d   %4d   %4d " % (iFKS,iconfig,
                                                            helas_diag.get('number')))
 
@@ -1850,7 +1873,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
     def write_leshouche_info_file(self, filename, matrix_element):
         """writes the leshouche_info.inc file which contains 
-        the LHA informations for all the real emission processes
+        the LHA information for all the real emission processes
         """
         lines = []
         lines.append("# I -> IDUP_D")
@@ -1970,16 +1993,162 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
     def write_real_matrix_elements(self, matrix_element, fortran_model):
         """writes the matrix_i.f files which contain the real matrix elements""" 
         
+        self.write_real_channels_file(writers.FortranWriter('real_channels.inc'),
+                                     matrix_element)
+        self.write_real_channels_structure('real_channels_structure.json',
+                                           matrix_element)
+        max_diagrams = max([1] + [real.matrix_element.get_number_of_amplitudes()
+                                 for real in matrix_element.real_processes])
+        weights_writer = writers.FortranWriter('real_matrix_weights.inc')
+        weights_writer.writelines([
+            'double precision real_amp2(%d)' % max_diagrams,
+            'common /c_real_diagram_weights/ real_amp2',
+            'logical get_real_diagram_weights',
+            'common /c_get_real_diagram_weights/ get_real_diagram_weights'])
+        weights_writer.close()
+
         sqsorders_list = []
         for n, fksreal in enumerate(matrix_element.real_processes):
             filename = 'matrix_%d.f' % (n + 1)
+            writer = writers.FortranWriter(filename)
             ncalls, ncolors, nsplitorders, nsqsplitorders = \
                                     self.write_split_me_fks(\
-                                        writers.FortranWriter(filename),
+                                        writer,
                                         fksreal.matrix_element, 
                                         fortran_model, 'real', "%d" % (n+1))
+            if n == 0:
+                writer.writelines("""
+      block data initialize_real_diagram_weights
+      implicit none
+      include 'real_matrix_weights.inc'
+      data get_real_diagram_weights /.false./
+      end
+""")
+            writer.close()
             sqsorders_list.append(nsqsplitorders)
         return sqsorders_list
+
+    def get_real_channels(self, matrix_element):
+        """Return independent real topologies and their locally owned sectors.
+
+        Configuration numbers follow configs_and_props_info.dat, whereas
+        diagram numbers index the uncompressed, per-diagram real_amp2 array.
+        The same real process in another Born directory owns different sectors
+        and deliberately retains its own hard channels.
+        """
+        sectors = matrix_element.get_fks_info_list()
+        sector_me = [info['n_me'] for info in sectors]
+        representative = [sector_me.index(ime + 1) + 1
+                          for ime in range(len(matrix_element.real_processes))]
+        channels = []
+        for ime, real in enumerate(matrix_element.real_processes, 1):
+            me = real.matrix_element
+            diagrams = me.get('base_amplitude').get('diagrams')
+            minvert = min(max(len(vertex.get('legs'))
+                              for vertex in diag.get('vertices'))
+                          for diag in diagrams)
+            iconfig = 0
+            for idiag, diag in enumerate(diagrams):
+                if any(len(vertex.get('legs')) > minvert
+                       for vertex in diag.get('vertices')):
+                    continue
+                iconfig += 1
+                channels.append((ime, representative[ime - 1], iconfig,
+                                 me.get('diagrams')[idiag].get('number')))
+        return channels, sector_me, representative
+
+    def write_real_channels_structure(self, filename, matrix_element):
+        """Write what finalize needs to choose the default of
+        real_channels_x0. Written per directory, since directories can be
+        written by separate processes."""
+        try:
+            structure = fks_real_channels_auto.real_structures(matrix_element)
+        except Exception as error:
+            # the decision is an optimisation only: never fail the output
+            logger.debug('Cannot analyse the real-emission diagrams: %s' % error)
+            return
+        structure['n_hard_channels'] = len(self.get_real_channels(matrix_element)[0])
+        with open(filename, 'w') as stream:
+            json.dump(structure, stream)
+
+    def set_real_channels_default(self):
+        """Choose the default of real_channels_x0 in the run_card of the
+        process, from the real_channels_structure.json of all directories"""
+        # all directories are written: the model analysers are not needed
+        fks_real_channels_auto.clear_analysers()
+        directories = []
+        for path in glob.glob(pjoin(self.dir_path, 'SubProcesses', 'P*',
+                                    'real_channels_structure.json')):
+            with open(path) as stream:
+                directories.append(json.load(stream))
+        if not directories:
+            return
+        n_hard_channels = sum(d['n_hard_channels'] for d in directories)
+        try:
+            x0, summary = fks_real_channels_auto.decide(directories,
+                                                        n_hard_channels)
+        except Exception as error:
+            logger.debug('Cannot analyse the real-emission diagrams: %s' % error)
+            return
+        self.proc_characteristic['real_channels_x0'] = x0
+        if x0 > 0:
+            logger.info('%d of the %d real-emission diagrams have propagators '
+                        'that the Born integration channels do not follow: '
+                        'fixed-order runs will integrate the hard real emission '
+                        'with dedicated channels (real_channels_x0 = %s in the '
+                        'run_card; -1 to disable).'
+                        % (summary['n_uncovered'], summary['n_diagrams'], x0))
+        elif summary['n_uncovered']:
+            logger.info('Real-emission integration channels not enabled by '
+                        'default: %d hard channels (more than %d).'
+                        % (n_hard_channels,
+                           fks_real_channels_auto.MAX_HARD_CHANNELS))
+
+    def set_me_frame_characteristics(self):
+        """Record the default me_frame of the run_card, what me_frame = [1, 2]
+        means for these processes at NLO, and which legs may not enter an
+        me_frame once real emission is computed
+        (fks_common.me_frame_characteristics). RunCardNLO uses the first for
+        its default and resolves the run_card against all three at launch."""
+        cm_legs, unsafe_legs, default_legs = \
+            fks_common.me_frame_characteristics(
+                getattr(self, 'proc_defs', None) or [],
+                density=self.proc_characteristic['density_matrix'],
+                splitting_types=self.proc_characteristic['splitting_types']
+                                or ['QCD'])
+        self.proc_characteristic['me_frame_cm_legs'] = cm_legs
+        self.proc_characteristic['me_frame_unsafe_legs'] = unsafe_legs
+        self.proc_characteristic['me_frame_default_legs'] = default_legs
+        if default_legs:
+            logger.info(
+                'Polarised NLO: the default me_frame is %s, the rest frame of '
+                'the massive final-state particles. The partonic c.m. [1, 2] '
+                'is not infrared safe once the initial state radiates.'
+                % default_legs)
+
+    def write_real_channels_file(self, writer, matrix_element):
+        """Write compact hard-channel IDs without a Born-channel factor."""
+        channels, sector_me, representative = self.get_real_channels(matrix_element)
+        max_diagrams = max([1] + [real.matrix_element.get_number_of_amplitudes()
+                                 for real in matrix_element.real_processes])
+        lines = [
+            'integer n_real_channels,n_real_matrix_elements,max_real_diagrams',
+            'parameter (n_real_channels=%d)' % len(channels),
+            'parameter (n_real_matrix_elements=%d)' % len(representative),
+            'parameter (max_real_diagrams=%d)' % max_diagrams]
+        tables = [('real_channel_me', [channel[0] for channel in channels]),
+                  ('real_channel_fks', [channel[1] for channel in channels]),
+                  ('real_channel_config', [channel[2] for channel in channels]),
+                  ('real_channel_diagram', [channel[3] for channel in channels]),
+                  ('real_sector_me', sector_me),
+                  ('real_me_fks', representative)]
+        for name, values in tables:
+            values = values or [0]
+            lines.append('integer %s(%d)' % (name, len(values)))
+            lines.append('data %s /%s/' %
+                         (name, ','.join(str(value) for value in values)))
+        writer.writelines(lines)
+        writer.close()
 
         
     
@@ -2148,6 +2317,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             replace_dict['amp2_lines'] = '\n'.join(amp2_lines)
             replace_dict['global_variable'] = "       Double Precision amp2(NGRAPHS)\n       common/to_amps/  amp2\n"
 
+        if proc_type == 'real':
+            replace_dict['real_amp2_lines'] = '\n'.join(
+                line.replace('AMP2(', 'REAL_AMP2(')
+                for line in self.get_amp2_lines(matrix_element))
+
         # JAMP definition, depends on the number of independent split orders
         split_orders=matrix_element.get('processes')[0].get('split_orders')
         if len(split_orders)==0:
@@ -2247,6 +2421,19 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         filename = 'born_coloramps.inc'
         self.write_coloramps_file(writers.FortranWriter(filename),
                                   mapconfigs, born_me, fortran_model)
+
+        # Equivalent contexts keep their own immutable mapping data, but only
+        # the preassigned provider worker emits the evaluator implementations.
+        borndir = os.path.basename(pathdir)
+        if (hasattr(self, 'born_support_registry') and
+                self.born_support_registry[borndir]['source'] != borndir):
+            self.write_maxamps_file(writers.FortranWriter('born_maxamps.inc'),
+                                    len(matrix_element.get('diagrams')),
+                                    max(1, len(born_me['color_basis'])),
+                                    len(born_me['processes']), 1)
+            self.color_link_files = []
+            self.generate_ewsudakov_fks_files(matrix_element, fortran_model)
+            return
         
         # the born ME's and color/charge links
         sqsorders_list = []
@@ -2316,6 +2503,10 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                             nsqorders,
                             fortran_model)
 
+        self.generate_ewsudakov_fks_files(matrix_element, fortran_model)
+
+    def generate_ewsudakov_fks_files(self, matrix_element, fortran_model):
+        """Write context-local EW files, also for a reused Born provider."""
         # finally the matrix elements needed for the sudakov approximation
         # of ew corrections. 
         # First, the squared amplitudes involving the goldstones
@@ -3213,7 +3404,7 @@ Parameters              %(params)s\n\
 
         replace_dict = {}
 
-        # number of matrix elmenets
+        # number of matrix elements
         replace_dict['ngoldstone_me'] = max(len(goldstone_mes),1)
         # identical particle factors
         if goldstone_mes:
@@ -3346,6 +3537,21 @@ Parameters              %(params)s\n\
             calls_to_me += "endif\n"
             
         replace_dict['calls_to_me'] = calls_to_me
+        replace_dict['process_declarations'] = '\n'.join(
+            declaration for name, declaration in (
+                ('pdglist', 'integer pdglist(nexternal-1)'),
+                ('pdglist_oth', 'integer pdglist_oth(nexternal-1)'),
+                ('comp_idfac', 'double precision comp_idfac'))
+            if re.search(r'\b%s\b' % name, calls_to_me, re.IGNORECASE))
+
+        # FKS providers own their amplitude cache. Standalone Sudakov
+        # exports keep the original Born evaluator and its shared flag.
+        standalone_born = not hasattr(self, 'born_support_registry')
+        replace_dict['born_cache_declarations'] = (
+            'LOGICAL CALCULATEDBORN\nCOMMON/CCALCULATEDBORN/CALCULATEDBORN'
+            if standalone_born else '')
+        replace_dict['reset_born_cache'] = (
+            'CALCULATEDBORN=.FALSE.' if standalone_born else '')
 
         file = open(os.path.join(_file_path, \
                           'iolibs/template_files/ewsudakov_wrapper.inc')).read()
@@ -3713,7 +3919,7 @@ Parameters              %(params)s\n\
         replace_dict['reshuffle_calls'] = 'pass_reshuffle = .true.\n'
 
         pdgs_in, pdgs_out = pdgs
-        # make sure all the lists have lenght = 2. In case, pad with zero's
+        # make sure all the lists have length = 2. In case, pad with zero's
         for resh_list in [legs, pdgs_in, pdgs_out]:
             while len(resh_list) < 2:
                 if resh_list == legs:
@@ -3906,7 +4112,7 @@ Parameters              %(params)s\n\
     # write_fks_info_file
     #===============================================================================
     def write_fks_info_file(self, writer, fksborn, fortran_model): #test_written
-        """Writes the content of fks_info.inc, which lists the informations on the 
+        """Writes the content of fks_info.inc, which lists the information on the
         possible splittings of the born ME.
         nconfs is always >=1 (use a fake configuration for LOonly).
         The fake configuration use an 'antigluon' (id -21, color=8) as i_fks and 
@@ -4058,6 +4264,221 @@ Parameters              %(params)s\n\
     
         return split_types_return
 
+
+    def write_mc_history_files(self, fksborn):
+        """Export the statistical ledger and the full ordered MC history sum.
+
+        FKS_INFO remains the reduced outer integration list. Each row here has
+        unit multiplicity and refers back to its native FKS_INFO entry for the
+        Born/extra-counterterm, splitting orders and native colour basis. No
+        outer-to-inner colour-flow identification is made: flows are sampled
+        independently at each native Born point.
+
+        Outer statistical factors can compensate photon label permutations
+        excluded from the strict identities used by these history rows.
+        """
+        infos = fksborn.get_fks_info_list()
+        nexternal, nincoming = fksborn.born_me.get_nexternal_ninitial()
+        nexternal += 1
+        born_iden = fksborn.born_me['identical_particle_factor']
+        symmetry = []
+        groups = []
+        allowed_pairs = []
+        group_keys = []
+        sector_groups = []
+        native_rows = [0] * len(infos)
+
+        def process_identity(proc, tags):
+            # Decay-chain NLO generation is not supported by the FKS exporter.
+            # Do not silently erase resonance ancestry if that ever changes.
+            if proc['decay_chains']:
+                raise MadGraph5Error('MC histories require explicit resonance ancestry '
+                                     'for decay-chain processes')
+            legs = proc.get_legs_with_decays()
+            if len(legs) != nexternal or len(tags) != nexternal:
+                raise MadGraph5Error('Inconsistent external states in MC history export')
+            return fks_common.external_process_identity(proc, tags)
+
+        def statistical_identity(state):
+            # Photon tags select the Born multiplicity/isolation requirement;
+            # the real ME denominator and photon cuts remain symmetric in
+            # final photons. Their omitted label permutations therefore need
+            # statistical compensation, without making them safe MC relabels.
+            state = list(state)
+            if state[0] == 22 and state[1]:
+                state[3] = False
+            return tuple(state)
+
+        for sector, info in enumerate(infos, 1):
+            real = fksborn.real_processes[info['n_me']-1]
+            real_iden = real.matrix_element['identical_particle_factor']
+            if born_iden <= 0 or real_iden <= 0:
+                raise MadGraph5Error('Non-positive MC statistical denominator')
+            # Preserve the entire ordered subprocess list: the inner PDF index
+            # is subsequently interpreted in the outer event's flavour list.
+            processes = tuple(process_identity(proc, real.particle_tags)
+                              for proc in real.matrix_element['processes'])
+            key = (processes, real_iden)
+            if key not in group_keys:
+                if any(any(proc in old_processes for proc in processes)
+                       for old_processes, _ in group_keys):
+                    raise MadGraph5Error('Incompatible ordered subprocess lists in MC '
+                                         'history export; separate these process groups')
+                group_keys.append(key)
+                groups.append([])
+                allowed_pairs.append(set())
+            group = group_keys.index(key)
+            allowed_pairs[group].update((i, j) for i, js in real.fks_j_from_i.items()
+                                        for j in js if i > nincoming and i != j)
+            sector_groups.append(group)
+            states = tuple(tuple(proc[1][leg] for proc in processes)
+                           for leg in range(nexternal))
+            fks_info = info['fks_info']
+            i, j = fks_info['i'], fks_info['j']
+            if not (nincoming < i <= nexternal and 1 <= j <= nexternal and i != j):
+                raise MadGraph5Error('Invalid ordered MC history in FKS sector %d' % sector)
+            ii_list = [k for k in range(nincoming+1, nexternal+1)
+                       if states[k-1] == states[i-1]]
+            jj_list = ([j] if j <= nincoming else
+                       [k for k in range(nincoming+1, nexternal+1)
+                        if states[k-1] == states[j-1]])
+            statistical_states = tuple(tuple(statistical_identity(state)
+                                             for state in leg_states)
+                                       for leg_states in states)
+            stat_ii_list = [k for k in range(nincoming+1, nexternal+1)
+                            if statistical_states[k-1] == statistical_states[i-1]]
+            stat_jj_list = ([j] if j <= nincoming else
+                            [k for k in range(nincoming+1, nexternal+1)
+                             if statistical_states[k-1] == statistical_states[j-1]])
+            fac_i = len(stat_ii_list)
+            fac_j = len(stat_jj_list) - int(i in stat_jj_list)
+            # A common matrix element/PDF list must have one common orbit.
+            # Otherwise split the process group instead of losing histories.
+            for _, proc_states in processes:
+                if (ii_list != [k for k in range(nincoming+1, nexternal+1)
+                                if proc_states[k-1] == proc_states[i-1]] or
+                    (j > nincoming and jj_list !=
+                     [k for k in range(nincoming+1, nexternal+1)
+                      if proc_states[k-1] == proc_states[j-1]])):
+                    raise MadGraph5Error('Different FKS orbits in grouped subprocesses '
+                                         'of sector %d; separate these processes' % sector)
+                stat_proc_states = tuple(statistical_identity(state) for state in proc_states)
+                if (stat_ii_list != [k for k in range(nincoming+1, nexternal+1)
+                                    if stat_proc_states[k-1] == stat_proc_states[i-1]] or
+                    (j > nincoming and stat_jj_list !=
+                     [k for k in range(nincoming+1, nexternal+1)
+                      if stat_proc_states[k-1] == stat_proc_states[j-1]])):
+                    raise MadGraph5Error('Different FKS statistical factors in grouped '
+                                         'subprocesses of sector %d; separate these processes' % sector)
+            symmetry.append((fac_i, fac_j, born_iden, real_iden))
+            orbit = []
+            for ii in ii_list:
+                for jj in jj_list:
+                    if ii == jj:
+                        continue
+                    # p_native(:,leg) = p_outer(:,perm(leg)). Locate jj
+                    # AFTER the first swap so overlapping swaps remain bijective.
+                    perm = list(range(1, nexternal+1))
+                    perm[i-1], perm[ii-1] = perm[ii-1], perm[i-1]
+                    pos = perm.index(jj)
+                    perm[j-1], perm[pos] = perm[pos], perm[j-1]
+                    if (sorted(perm) != list(range(1, nexternal+1)) or
+                        perm[:nincoming] != list(range(1, nincoming+1)) or
+                        any(states[k] != states[label-1] for k, label in enumerate(perm)) or
+                        perm[i-1] != ii or perm[j-1] != jj):
+                        raise MadGraph5Error('Invalid MC permutation in FKS sector %d' % sector)
+                    # The existing native evaluator already handles the full
+                    # splitting-order/extra-Born content of a fixed pair. Two
+                    # retained representatives covering that same ordered pair
+                    # would double its real term; never resolve this with seen().
+                    if any(row[1:3] == (ii, jj) for row in groups[group]):
+                        raise MadGraph5Error('Overlapping MC history (%d,%d) in FKS '
+                                             'sector %d; ambiguous Born/splitting identity' %
+                                             (ii, jj, sector))
+                    row = (sector, ii, jj, perm)
+                    groups[group].append(row)
+                    orbit.append(row)
+            # Statistical photon compensation may exceed the strict identity
+            # orbit. Only safe label permutations belong in this history list.
+            if len(orbit) != len(ii_list) * (len(jj_list) - int(i in jj_list)) or not orbit:
+                raise MadGraph5Error('Incorrect MC orbit size in FKS sector %d' % sector)
+
+        # No real correction: retain the fake LO-only sector, but no MC histories.
+        if not infos:
+            symmetry = [(1, 1, born_iden, born_iden)]
+        lines = ['C Generated statistical factors: no initial spin/colour averages.',
+                 'INTEGER FKS_FAC_I_D(%d),FKS_FAC_J_D(%d)' %
+                 (len(symmetry), len(symmetry)),
+                 'DOUBLE PRECISION FKS_IDEN_BORN_D(%d),FKS_IDEN_REAL_D(%d)' %
+                 (len(symmetry), len(symmetry))]
+        for column, name in enumerate(('FKS_FAC_I_D', 'FKS_FAC_J_D',
+                                       'FKS_IDEN_BORN_D', 'FKS_IDEN_REAL_D')):
+            fmt = '%d' if column < 2 else '%dd0'
+            lines.append('DATA %s / %s /' %
+                         (name, ', '.join(fmt % row[column] for row in symmetry)))
+        # Extra Born counterterms use the primary Born statistical convention;
+        # see get_den_factor_lines(). Do not substitute their raw denominators.
+        lines.append('C I_B follows get_den_factor_lines, including extra Borns.')
+        writers.FortranWriter('fks_symmetry.inc').writelines(lines)
+
+        # fks_j_from_i can refer to a Born in ANOTHER P* directory. Such a
+        # history cannot be evaluated by this directory's sborn. Flag this
+        # explicitly for the hatted-H driver; fixed-order export still works.
+        missing_pairs = [allowed - set(row[1:3] for row in group)
+                         for allowed, group in zip(allowed_pairs, groups)]
+        rows = []
+        starts, ends = [], []
+        for group in groups:
+            starts.append(len(rows)+1)
+            rows.extend(group)
+            ends.append(len(rows))
+        for index, (sector, ii, jj, perm) in enumerate(rows, 1):
+            fks_info = infos[sector-1]['fks_info']
+            if (ii, jj) == (fks_info['i'], fks_info['j']):
+                native_rows[sector-1] = index
+        if any(index == 0 for index in native_rows):
+            raise MadGraph5Error('Missing native MC history')
+        size = max(len(rows), 1)
+        lines = ['C Ordered MC histories; each row has UNIT multiplicity.',
+                 'C NATIVE points to fks_info.inc: Born, orders and colour basis.',
+                 'C Both gg orientations are kept; native fks_Hij supplies eta.',
+                 'INTEGER MC_HIST_COUNT,MC_HIST_POS',
+                 'PARAMETER (MC_HIST_COUNT=%d)' % len(rows),
+                 'INTEGER MC_HIST_FIRST(%d),MC_HIST_LAST(%d),MC_HIST_OWN(%d)' %
+                 (len(symmetry), len(symmetry), len(symmetry)),
+                 'LOGICAL MC_HIST_COMPLETE(%d)' % len(symmetry),
+                 'INTEGER MC_HIST_NATIVE(%d),MC_HIST_I(%d),MC_HIST_J(%d)' %
+                 (size, size, size),
+                 'INTEGER MC_HIST_PERM(NEXTERNAL,%d)' % size]
+        for name, values in (
+                ('MC_HIST_FIRST', [starts[g] for g in sector_groups] or [1]),
+                ('MC_HIST_LAST', [ends[g] for g in sector_groups] or [0]),
+                ('MC_HIST_OWN', native_rows or [0])):
+            lines.append('DATA %s / %s /' % (name, ', '.join(str(v) for v in values)))
+        for column, name in enumerate(('MC_HIST_NATIVE', 'MC_HIST_I', 'MC_HIST_J')):
+            lines.append('DATA %s / %s /' %
+                         (name, ', '.join(str(row[column]) for row in rows) or '0'))
+        lines.append('DATA MC_HIST_COMPLETE / %s /' %
+                     (', '.join('.false.' if missing_pairs[g] else '.true.'
+                                for g in sector_groups) or '.true.'))
+        for sector, group in enumerate(sector_groups, 1):
+            if missing_pairs[group]:
+                lines.append('C Sector %d needs histories from another Born context: %s' %
+                             (sector, ', '.join('(%d,%d)' % pair
+                                               for pair in sorted(missing_pairs[group]))))
+        for index, (sector, ii, jj, perm) in enumerate(rows, 1):
+            info = infos[sector-1]
+            native = info['fks_info']
+            lines.append('C History %d: native %d, real ME %d, father %d (PDG %d),' %
+                         (index, sector, info['n_me'], native['ij'], native['ij_id']))
+            lines.append('C primary Born 0, extra Born %d, splitting %s.' %
+                         (native['extra_cnt_index']+1, '/'.join(native['splitting_type'])))
+            lines.append('DATA (MC_HIST_PERM(MC_HIST_POS,%d),MC_HIST_POS=1,NEXTERNAL) / %s /' %
+                         (index, ', '.join(str(label) for label in perm)))
+        if not rows:
+            lines.append('DATA MC_HIST_PERM / %d*0 /' % nexternal)
+        writers.FortranWriter('mc_histories.inc').writelines(lines)
+
  
     #===============================================================================
     # write_pdf_file
@@ -4094,6 +4515,9 @@ Parameters              %(params)s\n\
         replace_dict['ee_comp_vars'] = eepdf_vars
         replace_dict['pdf_data'] = pdf_data
         replace_dict['pdf_lines'] = pdf_lines
+        replace_dict['photon_pdf_declaration'] = (
+            'DOUBLE PRECISION PHOTONPDFSQUARE'
+            if 'PHOTONPDFSQUARE(' in pdf_lines.upper() else '')
 
         file = open(os.path.join(_file_path, \
                           'iolibs/template_files/parton_lum_n_fks.inc')).read()
@@ -4157,7 +4581,7 @@ Parameters              %(params)s\n\
                     color_flow_list = []
     
                 else:
-                    # First build a color representation dictionnary
+                    # First build a color representation dictionary
                     repr_dict = {}
                     for l in legs:
                         repr_dict[l.get('number')] = \
@@ -4174,6 +4598,8 @@ Parameters              %(params)s\n\
                                   ",".join(["%3r" % color_flow_dict[l.get('number')][i] \
                                             for l in legs])))
 
+        lines.append("INTEGER IPROC_BORN")
+        lines.append("PARAMETER (IPROC_BORN=%d)"%(iproc+1))
         # Write the file
         writer.writelines(lines)
     
@@ -4225,7 +4651,7 @@ Parameters              %(params)s\n\
             mapconfigs.append(helas_diag.get('number'))
             lines.append("# Diagram %d, Amplitude %d" % \
                          (helas_diag.get('number'),helas_diag.get('amplitudes')[0]['number']))
-            # Correspondance between the config and the amplitudes
+            # Correspondence between the config and the amplitudes
             lines.append("data mapconfig(%4d)/%4d/" % (iconfig,
                                                      helas_diag.get('amplitudes')[0]['number']))
     
@@ -4378,7 +4804,7 @@ Parameters              %(params)s\n\
     #===============================================================================
 
     def get_fks_j_from_i_lines(self, me, i = 0): #test written
-        """generate the lines for fks.inc describing initializating the
+        """generate the lines for fks.inc describing initializing the
         fks_j_from_i array"""
         lines = []
         if not me.isfinite:
@@ -4429,7 +4855,7 @@ Parameters              %(params)s\n\
                     nflow = 1
     
                 else:
-                    # First build a color representation dictionnary
+                    # First build a color representation dictionary
                     repr_dict = {}
                     for l in legs:
                         repr_dict[l.get('number')] = \
@@ -4514,7 +4940,7 @@ Parameters              %(params)s\n\
                 else:
                     # in this case the last particle (-21) has two color indices
                     # and it has to be emitted by j_fks
-                    # First build a color representation dictionnary
+                    # First build a color representation dictionary
                     repr_dict = {}
                     for l in legs[:-1]:
                         repr_dict[l.get('number')] = \
@@ -4563,7 +4989,7 @@ Parameters              %(params)s\n\
     def get_den_factor_lines(self, fks_born, born_me=None):
         """returns the lines with the information on the denominator keeping care
         of the identical particle factors in the various real emissions
-        If born_me is procided, it is used instead of fksborn.born_me"""
+        If born_me is provided, it is used instead of fksborn.born_me"""
         
         compensate = True
         if not born_me:
@@ -4663,7 +5089,6 @@ Parameters              %(params)s\n\
                     pdgtopdf[pdg] = 6000000 + pdg
 
             # Get PDF variable declarations for all initial states
-            ee_pdf_definition_lines += "DOUBLE PRECISION dummy_components(n_ee)\n" 
             for i in [0,1]:
                 pdf_definition_lines += "DOUBLE PRECISION " + \
                                        ",".join(["%s%d" % (pdf_codes[pdg],i+1) \
@@ -4688,13 +5113,13 @@ Parameters              %(params)s\n\
             if 22 in initial_states[0] and 22 in initial_states[1]:
                 if subproc_group:
                     pdf_lines = pdf_lines + \
-                        "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                        "IF (ABS(LPP(IB(1))).EQ.2.AND.ABS(LPP(IB(2))).EQ.2.AND.(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))THEN\n"
                     pdf_lines = pdf_lines + \
                         ("%s%d=PHOTONPDFSQUARE(XBK(IB(1)),XBK(IB(2)))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
                         (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)
                 else:
                     pdf_lines = pdf_lines + \
-                        "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:4).EQ.'edff'.OR.PDLABEL(1:4).EQ.'chff'))THEN\n"
+                        "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))THEN\n"
                     pdf_lines = pdf_lines + \
                         ("%s%d=PHOTONPDFSQUARE(XBK(1),XBK(2))\n%s%d=DSQRT(%s%d)\n%s%d=%s%d\n") % \
                         (pdf_codes[22],1,pdf_codes[22],2,pdf_codes[22],1,pdf_codes[22],1,pdf_codes[22],2)
@@ -4781,6 +5206,9 @@ Parameters              %(params)s\n\
                 pdf_lines += "if (ABS(LPP(1)).EQ.ABS(LPP(2)).and. (ABS(LPP(1)).EQ.3.or.ABS(LPP(1)).EQ.4).and.pdlabel.ne.'none')" + \
                              "PD(IPROC)=ee_comp_prod(%s_components,%s_components)\n" % \
                              tuple(comp_list)
+
+        if 'DUMMY_COMPONENTS' in pdf_lines.upper():
+            ee_pdf_definition_lines = "DOUBLE PRECISION dummy_components(n_ee)\n" + ee_pdf_definition_lines
 
         # Remove last line break from pdf_lines
         return pdf_definition_lines[:-1], pdf_data_lines[:-1], pdf_lines[:-1], ee_pdf_definition_lines
@@ -5358,6 +5786,15 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
     """
     dirstopdg = []
 
+    def prepare_born_support(self, matrix_elements):
+        """Keep Born evaluators in each standalone Sudakov library.
+
+        This exporter builds libsudpy instead of the FKS runtime and does not
+        finalize a shared Born registry. Deduplicating here would remove the
+        Born sources needed by equivalent subprocesses such as u u~ and u~ u.
+        """
+        pass
+
     def finalize(self, *args, **opts):
         """do the usual finalize, then call the function that writes
         the python module with all the calls
@@ -5511,6 +5948,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         self.draw_feynman_diagrams(matrix_element)
 
         linkfiles = ['sa_ewsudakov.f',
+                     'fks_phase_space_data.f',
                      'sub_f2py_ewsudakov.f',
                      'sa_ewsudakov_dummyfcts.f',
                      'ewsudakov_functions.f',

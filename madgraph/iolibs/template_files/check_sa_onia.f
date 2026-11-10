@@ -69,7 +69,7 @@ c     models are read from Cards/param_card.dat. The secondary parameters are ca
 c     in Source/MODEL/couplings.f. The values are stored in common blocks that are listed
 c     in coupl.inc .
 
-      call setpara('param_card.dat')  !first call to setup the paramaters
+      call setpara('param_card.dat')  !first call to set up the parameters
       call setonia('onia_card.dat')   !first call to setup the LDMEs
       MOM_RESH_TYPE = 1
       include "pmass.inc"             !set up masses

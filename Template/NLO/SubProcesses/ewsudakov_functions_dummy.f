@@ -45,8 +45,9 @@
       end
 
       subroutine ewsudakov_f77(p_born_in, gstr_in, results)
+      use fks_phase_space_data, only: p_born
 c**************************************************************************
-c     This is the driver for the whole calulation
+c     This is the driver for the whole calculation
 c**************************************************************************
       implicit none
 C arguments
@@ -55,8 +56,6 @@ C arguments
       double precision p_born_in(0:3,nexternal-1)
       double precision gstr_in, results(6)
       ! results contain (born, sud0, sud1)
-      double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
 cc
       include 'coupl.inc'
       include 'orders.inc'
@@ -91,7 +90,6 @@ cc
       logical firsttime
       data firsttime/.true./
 
-      integer i
 
       logical s_to_rij
       COMMON /to_s_to_rij/ s_to_rij
@@ -125,10 +123,7 @@ C-----
 
         ! call the EWsudakov
         call sudakov_wrapper(p_born)
-        wgt_sud = 2d0*(amp_split_ewsud_lsc(1)+
-     $        amp_split_ewsud_ssc(1)+
-     $        amp_split_ewsud_xxc(1)+
-     $        amp_split_ewsud_par(1))
+        wgt_sud=dble(2d0*(amp_split_ewsud_lsc(1)+amp_split_ewsud_ssc(1)+amp_split_ewsud_xxc(1)+amp_split_ewsud_par(1)))
         results(1) = wgt_born
         results(2+sud_mod) = wgt_sud
       enddo
@@ -145,10 +140,7 @@ C-----
 
       ! call the EWsudakov
       call sudakov_wrapper(p_born)
-      wgt_sud = 2d0*(amp_split_ewsud_lsc(1)+
-     $        amp_split_ewsud_ssc(1)+
-     $        amp_split_ewsud_xxc(1)+
-     $        amp_split_ewsud_par(1))
+      wgt_sud=dble(2d0*(amp_split_ewsud_lsc(1)+amp_split_ewsud_ssc(1)+amp_split_ewsud_xxc(1)+amp_split_ewsud_par(1)))
       results(4) = wgt_sud
 
       sud_mod = 1
@@ -160,10 +152,7 @@ C-----
       wgt_born = amp_split_born(1)
       ! call the EWsudakov
       call sudakov_wrapper(p_born)
-      wgt_sud = 2d0*(amp_split_ewsud_lsc(1)+
-     $        amp_split_ewsud_ssc(1)+
-     $        amp_split_ewsud_xxc(1)+
-     $        amp_split_ewsud_par(1))
+      wgt_sud=dble(2d0*(amp_split_ewsud_lsc(1)+amp_split_ewsud_ssc(1)+amp_split_ewsud_xxc(1)+amp_split_ewsud_par(1)))
       results(5) = wgt_sud
 
       sud_mod = 1
@@ -175,10 +164,7 @@ C-----
       wgt_born = amp_split_born(1)
       ! call the EWsudakov
       call sudakov_wrapper(p_born)
-      wgt_sud = 2d0*(amp_split_ewsud_lsc(1)+
-     $        amp_split_ewsud_ssc(1)+
-     $        amp_split_ewsud_xxc(1)+
-     $        amp_split_ewsud_par(1))
+      wgt_sud=dble(2d0*(amp_split_ewsud_lsc(1)+amp_split_ewsud_ssc(1)+amp_split_ewsud_xxc(1)+amp_split_ewsud_par(1)))
       results(6) = wgt_sud
       return
 

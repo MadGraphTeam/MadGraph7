@@ -58,8 +58,38 @@ cmd_logger = logging.getLogger('cmdprint2') # -> print
 dir_to_f2py_free_mod = {}
 nb_f2py_module = 0 # each time the process/model is changed this number is modified to 
                # forced the python module to re-create an executable
+# names (output directory name + suffix, e.g. rw_me, rw_me_r2) under which a
+# reweighting f2py module and its shared library were imported in this python
+# process. Nothing loaded can be unloaded: the dynamic loader resolves a
+# library by its install name/SONAME to the one already loaded, whichever
+# directory it comes from (e.g. the rw_me of a previous reweighting in the same
+# session, or of another sample). A new build must therefore use a name that is
+# not in here (see get_f2py_suffix), or it gets the previous matrix elements.
+loaded_f2py_names = set()
 
 #lhapdf = None
+
+
+# The "change <option>" lines of a reweight card that ReweightInterface.do_change
+# understands, and those DensityInterface adds (its do_change_<option>
+# methods). The reweighting-backend selector (madgraph/various/
+# reweight_backend.py) uses them to tell which lines need this (the classic)
+# backend.
+REWEIGHT_CHANGE_OPTIONS = frozenset([
+    'backend', 'model', 'process', 'keep_ordering', 'use_eventid',
+    'allow_missing_finalstate', 'boost', 'virtual_path', 'tree_path',
+    'output', 'helicity', 'mode', 'rwgt_dir', 'systematics', 'soft_threshold',
+    'multicore', 'identical_particle_in_prod_and_decay', 'include_sudakov'])
+DENSITY_CHANGE_OPTIONS = frozenset([
+    'helicity_direction', 'boost_choice', 'order_helicities',
+    'symmetrise_initial_state', 'axis_referential', 'matrix_normalisation',
+    'particle_in_density_matrix'])
+# "change" options of the shared reweight-card vocabulary that only MadtRex
+# (MG7 outputs) understands; an error here rather than a discarded line.
+MADTREX_ONLY_CHANGE_OPTIONS = frozenset([
+    'fptype', 'verbose', 'max_batch', 'max_deferred_iterations', 'streaming',
+    'stream_batch_size', 'nb_core', 'min_batch', 'alpha_s_power',
+    'scale_variation_output'])
 
 
 class ReweightInterface(extended_cmd.Cmd):
@@ -121,11 +151,14 @@ class ReweightInterface(extended_cmd.Cmd):
         self.event_path = event_path
         self.path2prefix = {} # store the f2pyprefix associated to a library
         self.scale2_is_rooted = set() # loop libraries expecting mu^4 (see load_module)
+        # output directory name (rw_me, rw_mevirt, ...) -> suffix of the names
+        # its f2py modules and library were built with ('' = default names)
+        self.f2py_suffix = {}
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
             
-        # dictionary to fortan evaluator
+        # dictionary to fortran evaluator
         self.calculator = {}
         self.calculator_nbcall = {}
         
@@ -287,7 +320,7 @@ class ReweightInterface(extended_cmd.Cmd):
                 commandline +='add process %s pert_%s %s --no_warning=duplicate;' % (process,order.replace(' ',''), final)
             if ewsudakov:
                 # EW sudakov reweight
-                # this is a NLO-type generation, so [LOonly=QCD] must be added, toghether
+                # this is a NLO-type generation, so [LOonly=QCD] must be added, together
                 # with the proper flag for the EW sudakov.
                 # Also, --no_warning=duplicate can be removed
                 commandline = commandline.replace("--no_warning=duplicate", "[LOonly=QCD] --ewsudakov")
@@ -376,6 +409,8 @@ class ReweightInterface(extended_cmd.Cmd):
     def help_change(self):
         """help for change command"""
 
+        print("change backend classic|auto: the reweighting program (MadtRex, the other")
+        print("               backend, needs an MG7 output)")
         print("change model X :use model X for the reweighting")
         print("change process p p > e+ e-: use a new process for the reweighting")
         print("change process p p > mu+ mu- --add : add one new process to existing ones")
@@ -390,7 +425,23 @@ class ReweightInterface(extended_cmd.Cmd):
         args = self.split_arg(line)
         if len(args)<2:
             logger.critical("not enough argument (need at least two). Discard line")
-        if args[0] == "model":
+        if args[0] in MADTREX_ONLY_CHANGE_OPTIONS or \
+                (args[0] == 'mode' and len(args) > 1 and args[1].lower() == 'pdf'):
+            raise self.InvalidCmd(
+                "'change %s' is MadtRex only: MadtRex reweights MG7 outputs "
+                "(change backend madtrex)" % ' '.join(args))
+        if args[0] not in REWEIGHT_CHANGE_OPTIONS:
+            logger.critical("unknown option! %s.  Discard line." % args[0])
+        elif args[0] == "backend":
+            # which backend reads the card (madgraph/various/reweight_backend.py)
+            if len(args) < 2 or args[1].lower() not in ('classic', 'auto', 'madtrex'):
+                raise self.InvalidCmd(
+                    "change backend: expected classic, madtrex or auto")
+            if args[1].lower() == 'madtrex':
+                raise self.InvalidCmd(
+                    "the reweight card asks for MadtRex ('change backend madtrex'): "
+                    "MadtRex needs an MG7 output; use 'change backend classic' or auto")
+        elif args[0] == "model":
             nb_f2py_module += 1 # tag to force the f2py to reload
             self.second_model = " ".join(args[1:])
             if self.has_standalone_dir:
@@ -463,8 +514,6 @@ class ReweightInterface(extended_cmd.Cmd):
             if args[1] == 'True':
                 self.inc_sudakov = True
                 self.rwgt_mode = 'LO'
-        else:
-            logger.critical("unknown option! %s.  Discard line." % args[0])
         
             
     def check_launch(self, args):
@@ -802,7 +851,7 @@ class ReweightInterface(extended_cmd.Cmd):
     def setup_f2py_interface(self):
         """ ensure that all f2py interface are ready/loaded/compiled
             if this function does not return None then nothing is executed after this
-            usefull for some plugin
+            useful for some plugin
         """
 
         if self.rwgt_dir and os.path.exists(pjoin(self.rwgt_dir,'rw_me','rwgt.pkl')):
@@ -885,7 +934,7 @@ class ReweightInterface(extended_cmd.Cmd):
                 Shell_internal = None
             if not isinstance(self.mother, (extended_cmd.CmdShell, Shell_internal)): 
                 raise Exception("scan are not allowed on the Web")
-            # at least one scan parameter found. create an iterator to go trough the cards
+            # at least one scan parameter found. create an iterator to go through the cards
             main_card = check_param_card.ParamCardIterator(new_card)
             if self.options['rwgt_name']:
                 self.options['rwgt_name'] = '%s_0' % self.options['rwgt_name']
@@ -1226,7 +1275,7 @@ class ReweightInterface(extended_cmd.Cmd):
             # LO reweighting    
             w_orig = self.calculate_matrix_element(event, 0)
             # reshuffle event for mass effect # external mass only
-            # carefull that new_event can sometimes be = to event 
+            # careful that new_event can sometimes be = to event
             # (i.e. change can be in place)
             jac, new_event = self.change_kinematics(event)
         
@@ -1466,8 +1515,8 @@ class ReweightInterface(extended_cmd.Cmd):
 
         if self.output_type != 'default':
             event.nloweight.modified = True # the internal info will be changed
-                                            # so set this flage to True to change
-                                            # the writting of those data
+                                            # so set this flag to True to change
+                                            # the writing of those data
 
         #initialise the input to the function which recompute the weight
         scales2 = []
@@ -1999,8 +2048,12 @@ class ReweightInterface(extended_cmd.Cmd):
             if not self.use_eventid:
                 pid = -1
             
-            if not scale2: 
-                if hasattr(event, 'scale'):
+            if not scale2:
+                # mu_R: the mur of the <scales> tag when the event has one
+                # (mg7), else SCALUP, which holds mu_F
+                if hasattr(event, 'get_ren_scale'):
+                    scale2 = event.get_ren_scale()**2
+                elif hasattr(event, 'scale'):
                     scale2 = event.scale**2
                 else:
                     scale2 = 0
@@ -2015,7 +2068,7 @@ class ReweightInterface(extended_cmd.Cmd):
             # for loop we have also the stability status code
             if isinstance(new_value, tuple):
                 new_value, code = new_value
-                #if code points unstability -> returns 0
+                #if code points instability -> returns 0
                 hundred_value = (code % 1000) //100
                 if hundred_value in [4]:
                     new_value = 0.
@@ -2034,7 +2087,7 @@ class ReweightInterface(extended_cmd.Cmd):
         
 
     def get_crossing_tag(self,tag):
-        """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
+        """find if using crossing symmetry allow to find the correct tag and return the associated tag"""
 
         # get list of possible crossing tag
         crossing_tag = [tuple([int(x) for x in sorted(list(t[0])+list(t[1]))]) for t in self.id_to_path.keys()]
@@ -2092,26 +2145,37 @@ class ReweightInterface(extended_cmd.Cmd):
         element's leg order) in the rest frame of the legs ``selected``
         (counted from 1), a single one exactly at rest.
 
-        madevent applies that boost to momenta that are in the partonic CM
-        frame -- genps.f builds them there and unwgt.f boosts them to the lab
-        only when it writes the event -- so the event is first taken back to
-        the rest frame of its initial state (the z boost the default frame
-        does below). Boosting to the selected legs straight from the lab is
-        not the same frame: two boosts along different directions compose to
-        a boost *and* a rotation (Wigner), and the quantisation axis of a
-        single leg at rest turns with it -- by 25 degrees already for a W of
-        pT = 100 GeV in a partonic CM at rapidity 1. Only a frame that
-        is the partonic CM itself (e.g. the whole final state) is unaffected.
+        For a collision that frame is reached by a boost along z, to zero
+        rapidity of the selected legs, and then a transverse one
+        (get_me_frame_boosts in Template/Common/Source/impose_frame_rest.f),
+        which lands in the same frame whichever frame along the beam it
+        starts from -- the lab here, the partonic CM in madevent. A single
+        boost from either would not: two boosts along different directions
+        compose to a boost *and* a rotation (Wigner), and the quantisation
+        axis of a single leg at rest turns with it -- by 25 degrees already
+        for a W of pT = 100 GeV in a partonic CM at rapidity 1. A decay has
+        no beam: its frame is a single boost from the rest frame of the
+        decaying particle, the frame madevent works in.
         """
-        pinit = lhe_parser.FourMomentum()
-        for i in range(nb_initial):
-            pinit += lhe_parser.FourMomentum(momenta[i])
-        cm = cls.boost_momenta_to_rest_frame(momenta, pinit)
+        rest_leg = selected[0] - 1 if len(selected) == 1 else None
+        if nb_initial != 2:
+            pinit = lhe_parser.FourMomentum()
+            for i in range(nb_initial):
+                pinit += lhe_parser.FourMomentum(momenta[i])
+            rest = cls.boost_momenta_to_rest_frame(momenta, pinit)
+            pboost = lhe_parser.FourMomentum()
+            for n in selected:
+                pboost += lhe_parser.FourMomentum(rest[n - 1])
+            return cls.boost_momenta_to_rest_frame(rest, pboost, rest_leg)
         pboost = lhe_parser.FourMomentum()
         for n in selected:
-            pboost += lhe_parser.FourMomentum(cm[n - 1])
-        rest_leg = selected[0] - 1 if len(selected) == 1 else None
-        return cls.boost_momenta_to_rest_frame(cm, pboost, rest_leg)
+            pboost += lhe_parser.FourMomentum(momenta[n - 1])
+        along_z = cls.boost_momenta_to_rest_frame(
+            momenta, lhe_parser.FourMomentum(pboost.E, 0., 0., pboost.pz))
+        transverse = lhe_parser.FourMomentum(
+            math.sqrt((pboost.E - pboost.pz) * (pboost.E + pboost.pz)),
+            pboost.px, pboost.py, 0.)
+        return cls.boost_momenta_to_rest_frame(along_z, transverse, rest_leg)
 
     def get_me_frame(self, n_incoming, n_external):
         """The legs -- counted from 1, in the matrix element's order -- whose
@@ -2600,6 +2664,9 @@ class ReweightInterface(extended_cmd.Cmd):
                 except madgraph.InvalidCmd:
                     pass 
                         
+        if self.keep_tchannel_width(self.banner):
+            mgcmd.options['zerowidth_tchannel'] = False
+
         # 1. Load model---------------------------------------------------------  
         if  not data['model_name'] and not second:
             raise self.InvalidCmd('Only UFO model can be loaded in this module.')
@@ -2623,6 +2690,19 @@ class ReweightInterface(extended_cmd.Cmd):
                 except madgraph.InvalidCmd:
                     pass
         return path_me, data, mgcmd
+
+    @staticmethod
+    def keep_tchannel_width(event_banner):
+        """True if the sample was generated with finite t-channel widths:
+        only madevent (since 2.8.0) sets them to zero (zerowidth_tchannel),
+        aMC@NLO keeps them. The version is in the header of the proc_card."""
+
+        if 'mgruncard' in event_banner and \
+               isinstance(event_banner.get('run_card'), banner.RunCardNLO):
+            return True
+        version = re.search(r'VERSION\s+(\d+)\.(\d+)', event_banner['mg5proccard'])
+        return bool(version) and \
+                         (int(version.group(1)), int(version.group(2))) < (2, 8)
 
     @misc.mute_logger()
     def create_standalone_directory(self, second=False):
@@ -2752,11 +2832,26 @@ class ReweightInterface(extended_cmd.Cmd):
                 if not os.path.isdir(pjoin(path_me,onedir)):
                     continue
                 pdir = pjoin(path_me, onedir, 'SubProcesses')
-                self.compile_SubProcess_dir(pdir)
+                self.f2py_suffix[onedir] = self.get_f2py_suffix(pdir)
+                self.compile_SubProcess_dir(pdir, self.f2py_suffix[onedir])
 
+    @staticmethod
+    def get_f2py_suffix(Sdir):
+        """suffix for the names of the f2py modules/library built in Sdir:
+        '' (the default names) unless that name was already imported in this
+        process, from this or any other directory (see loaded_f2py_names).
+        """
+        name = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        suffix = ''
+        i = 1
+        while name + suffix in loaded_f2py_names:
+            i += 1
+            suffix = '_r%i' % i
+        return suffix
 
-    def compile_SubProcess_dir(self, Sdir):
-        """compile a full Subprocess directory"""
+    def compile_SubProcess_dir(self, Sdir, suffix=''):
+        """compile a full Subprocess directory. A non-empty suffix is appended
+        to the names of the f2py modules and of their shared library."""
 
         if self.mother:
             nb_core = self.mother.options['nb_core'] if self.mother.options['run_mode'] !=0 else 1
@@ -2767,20 +2862,25 @@ class ReweightInterface(extended_cmd.Cmd):
         # the loader hands the second f2py module the first library.
         # The leading '_' keeps it different from the liball<dir>_<N>me.so
         # name that load_module tries to preload with RTLD_GLOBAL.
-        procname = 'PROCNAME=_%s' % os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
-        os.environ['MENUM'] = '2'
-        try: 
-            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
-        except Exception as e:
-            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=1)
-
-        if not (self.second_model or self.second_process or self.dedicated_path):
-            os.environ['MENUM'] = '3'
+        # A rebuild of a name already loaded in this process (suffix) also
+        # renames the f2py module, and for the loop output (rw_mevirt, whose
+        # makefile names its library after ROOTNAME) the library too.
+        dirname = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        names = ['PROCNAME=_%s%s' % (dirname, suffix)]
+        if suffix:
+            names.append('ROOTNAME=%s%s' % (dirname, suffix))
+        for menum in ['2', '3']:
+            if menum == '3' and (self.second_model or self.second_process or self.dedicated_path):
+                break
+            os.environ['MENUM'] = menum
+            args = names + ['all_matrix%spy.so' % menum]
+            if suffix:
+                args.insert(-1, 'F2PYMOD=all_matrix%spy%s' % (menum, suffix))
             try:
-                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
+                misc.compile(args, cwd=Sdir, nb_core=nb_core)
             except Exception as e:
-                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=1)
-                
+                misc.compile(args, cwd=Sdir, nb_core=1)
+
 
     def load_module(self, metag=1):
         """load the various module and load the associate information"""
@@ -2818,23 +2918,19 @@ class ReweightInterface(extended_cmd.Cmd):
                             except Exception as err:
                                 logger.debug('ctypes trick fail for module')
                             break
-                    mod_name = '%s.SubProcesses.all_matrix%spy' % (onedir, tag)
-                    #mymod = __import__('%s.SubProcesses.allmatrix%spy' % (onedir, tag), globals(), locals(), [],-1)
-                    if mod_name in list(sys.modules.keys()):
-                        del sys.modules[mod_name]
-                        tmp_mod_name = mod_name
-                        while '.' in tmp_mod_name:
-                            tmp_mod_name = tmp_mod_name.rsplit('.',1)[0]
-                            del sys.modules[tmp_mod_name]
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        mymod = importlib.reload(mymod)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    else:
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    
+                    suffix = self.f2py_suffix.get(onedir, '')
+                    mod_name = '%s.SubProcesses.all_matrix%spy%s' % (onedir, tag, suffix)
+                    # forget the module and its packages: the packages of a
+                    # previous reweighting may point to another rwgt_dir
+                    tmp_mod_name = mod_name
+                    while tmp_mod_name:
+                        sys.modules.pop(tmp_mod_name, None)
+                        tmp_mod_name = tmp_mod_name.rpartition('.')[0]
+                    import importlib
+                    importlib.invalidate_caches()
+                    mymod = importlib.import_module(mod_name)
+                    loaded_f2py_names.add(onedir + suffix)
+
                 if fprefix != '':
                     fprefix = 'f%i_' % fprefix
                     for attr in dir(mymod):
@@ -2876,9 +2972,9 @@ class ReweightInterface(extended_cmd.Cmd):
             hel_dict={}
             for prefix in prefix_set:
                 if hasattr(mymod,'%s%sprocess_nhel' % (fprefix,prefix)):
-                    #transer nhel information from fortran to wrapper
+                    #transfer nhel information from fortran to wrapper
                     getattr(mymod, '%sget_nhel_entry' % prefix)()
-                    #transer now to python dictionary
+                    #transfer now to python dictionary
                     nhel = getattr(getattr(mymod, '%sprocess_nhel' % prefix), '%snhel' %prefix)
                     hel_dict[prefix] = {}
                     for i, onehel in enumerate(zip(*nhel)):
@@ -3044,6 +3140,7 @@ class ReweightInterface(extended_cmd.Cmd):
         to_save['allow_missing_finalstate'] = self.options['allow_missing_finalstate']
         to_save['identical_particle_in_prod_and_decay'] = self.options['identical_particle_in_prod_and_decay']
         to_save['nb_library'] = self.nb_library
+        to_save['f2py_suffix'] = self.f2py_suffix
 
         name = pjoin(self.rwgt_dir, 'rw_me', 'rwgt.pkl')
         save_load_object.save_to_file(name, to_save)
@@ -3093,6 +3190,7 @@ class ReweightInterface(extended_cmd.Cmd):
         self.second_model = obj['second_model']
         self.has_nlo = obj['has_nlo']
         self.nb_library = obj['nb_library']
+        self.f2py_suffix = obj.get('f2py_suffix', {})
         if not self.rwgt_mode:
             self.rwgt_mode = obj['rwgt_mode']
             logger.info("mode set to %s" % self.rwgt_mode)
@@ -3198,7 +3296,7 @@ class DensityInterface(ReweightInterface):
         pattern = re.compile(r"\[[^\]]*\]", re.IGNORECASE)
         return pattern.findall(input_text)
 
-    def find_observable(self, input_text): #we accepect input as "observable" or "observable_name"
+    def find_observable(self, input_text): #we accept input as "observable" or "observable_name"
         # pattern = re.compile(r"lambda p: p\.[A-Za-z0-9]+", re.IGNORECASE)
         # output = pattern.findall(input_text)
         # if output == []:
@@ -3359,8 +3457,8 @@ class DensityInterface(ReweightInterface):
         elif line[0] == 'False':
             self.matrix_normalisation = False
         else:
-            logger.warning('Option matrix_normalisation not understood, set it to True. Please use the syntax: change matrix_normalisation True if you want to enable it.')
-            self.matrix_normalisation = False
+            logger.warning('Option matrix_normalisation not understood, set it to True (the default). Please use the syntax: change matrix_normalisation False if you want to disable it.')
+            self.matrix_normalisation = True
 
 
     def do_change_particle_in_density_matrix(self, line):
@@ -3678,19 +3776,15 @@ class DensityInterface(ReweightInterface):
                      p, pdg, relevant_model or self.model, n_initial=n_ini)
                  for p in all_p]
 
-        #list_properties is the list of properties of the class FourMomentum that we can use to rank particles
-        list_properties = [p for p in dir(lhe_parser.FourMomentum) if isinstance(getattr(lhe_parser.FourMomentum,p),property)]
-        
-        
         # the particles are chosen -- and ranked, for an observable -- on the
         # lab-frame momenta, laid out in the matrix element's order like pdg
         # and all_p, so that a returned position is a leg for all three
         lab_p = event.get_momenta(orig_order, merged_map=self.revert_merged,
                                  decay_chain=not self.keep_ordering)
-        boost_corrected = self.chose_particle_user_input(lab_p, pdg, list_properties, orig_order, self.momenta_boost, 'momenta_boost', fortran_format = False)
+        boost_corrected = self.chose_particle_user_input(lab_p, pdg, self.momenta_boost, 'momenta_boost', fortran_format = False)
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id, boost_corrected)
         
-        refChoice_corrected = self.chose_particle_user_input(lab_p, pdg, list_properties, orig_order, self.helicity_direction, 'helicity_direction', fortran_format = True)
+        refChoice_corrected = self.chose_particle_user_input(lab_p, pdg, self.helicity_direction, 'helicity_direction', fortran_format = True)
         phi, theta = self.calculate_angles_rotation(refChoice_corrected, all_p, module)
         
         for i in range(len(all_p)):
@@ -3720,7 +3814,7 @@ class DensityInterface(ReweightInterface):
 
 
         # POS of py_get_density: a leg of the matrix element, like pdg and all_p
-        pos_corrected = self.chose_particle_user_input(lab_p, pdg, list_properties, orig_order, self.particle_in_density_matrix, 'particle_in_density_matrix', fortran_format = True)
+        pos_corrected = self.chose_particle_user_input(lab_p, pdg, self.particle_in_density_matrix, 'particle_in_density_matrix', fortran_format = True)
 
         status = []
         for particle in event:
@@ -3732,7 +3826,7 @@ class DensityInterface(ReweightInterface):
         All_PDGs = []
         prefix_unique = []
             
-        #Bloc to determine which sets of pdg-codes corresponds to which prefix
+        #Block to determine which sets of pdg-codes corresponds to which prefix
         for i in range(len(PREFIX)):
             prefix_cor.append(PREFIX[i].decode('UTF-8').strip().lower())
             if prefix_cor[i] not in prefix_unique:
@@ -3756,17 +3850,21 @@ class DensityInterface(ReweightInterface):
                     prefix = prefix_cor[k]
 
         get_density = lambda *args: module.py_get_density(pdg, *args)
+        # mu_R: the mur of the <scales> tag when the event has one (mg7), else
+        # SCALUP, which holds mu_F
+        ren_scale2 = (event.get_ren_scale() if hasattr(event, 'get_ren_scale')
+                      else event.scale)**2
         for i in range(len(all_p)):
             pinv = self.invert_momenta(all_p[i])
             # npdg = len(all_p[i]) #number of particles in the event
-            # the argument event.scale**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
+            # the argument mu_R**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
             production_matrix = get_density(-1, pinv, pos_corrected, #self.number_changing_helicities,
-                                            self.allowed_helicities, event.aqcd, event.scale**2)
+                                            self.allowed_helicities, event.aqcd, ren_scale2)
 
             if self.symmetrise_initial_state:
                 pinv_bis = self.invert_momenta(all_p_bis[i])
                 production_matrix_bis = get_density(-1, pinv_bis, pos_corrected, #self.number_changing_helicities,
-                                            self.allowed_helicities, event.aqcd, event.scale**2)
+                                            self.allowed_helicities, event.aqcd, ren_scale2)
                 
             if self.symmetrise_initial_state:
                 rho_instance = dens.DensityMatrixObservables(production_matrix + production_matrix_bis, self.number_combinations * (self.number_combinations + 1) / 2)
@@ -3782,7 +3880,7 @@ class DensityInterface(ReweightInterface):
     def calculate_weight(self, event, sud_mod=None):
         """ This method overwrites the method of the same name in the class ReweightInterface.
             For this mode, it does not do a lot.
-            Output: {'orig': w_orig} (dictionnary with the production matrix as value)
+            Output: {'orig': w_orig} (dictionary with the production matrix as value)
         """
         w_orig = self.calculate_matrix_element(event, 0)
         return {'orig': w_orig}
@@ -3790,6 +3888,7 @@ class DensityInterface(ReweightInterface):
 
     def method_boost_event(self, event, all_p, orig_order, hypp_id, boost_corrected):
         """ This method overwrites the method of the same name in the class ReweightInterface.
+            boost_corrected are positions (python format) in orig_order, like the momenta in all_p.
             Output: new_all_p (all the boosted momenta of a given event)
         """
 
@@ -3818,7 +3917,7 @@ class DensityInterface(ReweightInterface):
             pboost += lhe_parser.FourMomentum(momenta[position])
 
         if abs(pboost.px/pboost.E) < 1e-10 and abs(pboost.py/pboost.E) < 1e-10 and abs(pboost.pz/pboost.E) < 1e-10:
-            #if we try to boost with with a 4-momentum like [M, 0, 0, 0], we return the momenta without any boost
+            #if we try to boost with a 4-momentum like [M, 0, 0, 0], we return the momenta without any boost
             return momenta
                 
         if abs(pboost.px/pboost.E) < 1e-10:
@@ -3832,193 +3931,62 @@ class DensityInterface(ReweightInterface):
 
 
 
-    def chose_particle_user_input(self, momenta, pdg, list_properties, orig_order, user_input, name_input, fortran_format = False):
+    @staticmethod
+    def chose_particle_user_input(momenta, pdg, user_input, name_input, fortran_format = False):
         """
         This function transforms the user_input for a given name_input into the position of particles in the original order.
         The position of the particles can then be used to boost, rotate the event, etc.
+        user_input = (pdg codes, observable, ranks). The j-th position returned corresponds to the j-th pdg code given by the user,
+        such that the order of the user is kept (it is the order of the particles in the density matrix).
+        For each pdg code, the candidates are the particles of the process with this pdg code:
+          - without observable, the k-th occurrence of a pdg code in the user input takes the k-th candidate in the original order
+          - with an observable, the candidates are ranked in decreasing order of the observable (evaluated on momenta). The k-th
+            occurrence of a pdg code takes the k-th candidate, or the candidate of rank user_input[2][j] if ranks are given.
+        momenta: momenta of the event in the original order, pdg: pdg codes in the original order
         fortran_format = True, means that we use the Fortran format for indices, so lists begin at 1, else we use Python format.
-        Output: position_particles
-
-        ``momenta`` are the event's momenta in the matrix element's order,
-        i.e. aligned with ``pdg``: every position returned is a leg of the
-        matrix element. They used to be the event's own lines, which ranked
-        pdg[i] (a leg) together with event[i] (an LHE line, status-2 ones
-        included) -- a different particle whenever the LHE order is not the
-        matrix element's.
+        Output: position_particles ([-1] if the option is not used)
         """
-        if 0 in user_input[0]: # if the user does not want to user this input
+        pdg_to_chose, observable = list(user_input[0]), user_input[1]
+        if 0 in pdg_to_chose: # if the user does not want to use this input
             return [-1]
-        
-        if user_input[1] == '':
-            position_particles = self.find_position_particles_default_order(orig_order, user_input, name_input, fortran_format) #if the user does not give an observable to rank the particles
-            return position_particles
 
-        else:
-            found_property = False
-            for prop in list_properties: #finding the observable given by the user
-                if prop == user_input[1]:
-                    found_property = True
-                    observable_values = []
-                    original_order = [i for i in range(len(momenta))]
-                    for i, p in enumerate(momenta):
-                        if pdg[i] in user_input[0]:
-                            correct_p_rot = lhe_parser.FourMomentum(p)
-                            observable_values.append(getattr(correct_p_rot, prop))
-                        else:
-                            observable_values.append(float('NaN'))
-
-                    # if several particles of same pdg have the same value of the observable, we can not rank them so we use the default order.
-                    # we do not crash the code because it can happen randomly for an event, even if the user_input is correct
-                    if len(set(observable_values)) != len(observable_values) and len(set(user_input[0])) != len(user_input[0]):
-                        logger.warning(f"Some particles in {name_input} have the same value for the observable given. For this event the order of the observable is not taken into account.")                        
-                        position_particles = self.find_position_particles_default_order(orig_order, user_input, name_input, fortran_format)
-                        return position_particles
-                    
-                    # ranking the particles via the observable's value. The
-                    # particles that are not candidates carry NaN, and NaN
-                    # compares False with everything, so sorting them in with
-                    # the rest left the candidates in whatever order the NaNs
-                    # happened to split them into -- i.e. it depended on the
-                    # leg order again ('the hardest top' could be the softer
-                    # one). Candidates first, by decreasing value (ties: the
-                    # later leg first, as before); the NaNs after them.
-                    ranked = sorted(zip(observable_values, original_order),
-                                    key=lambda vo: (vo[0] == vo[0],
-                                                    vo[0] if vo[0] == vo[0] else 0.,
-                                                    vo[1]),
-                                    reverse=True)
-                    observable_values_sorted, new_order = zip(*ranked)
-
-                    if len(user_input[2]) > 0: # if the user gives a ranking to use for the observable, use it
-                        position_particles = self.find_position_particles_with_observable(pdg, observable_values_sorted, new_order, original_order, user_input, name_input, fortran_format)
-                        return position_particles
-
-                    else: #else they are ranked in decreasing order
-                        position_particles = self.find_position_particles_new_order(pdg, user_input, new_order, fortran_format)
-                        return position_particles
-
-            if not found_property:
-                raise ValueError(f'The observable {user_input[1]} is not recognised. Observables are defined in the class FourMomentum of lhe_parser.')
-
-
-    def find_position_particles_with_observable(self, pdg, observable_values_sorted, new_order, original_order, user_input, name_input, fortran_format):
-        """
-        This function transforms the user_input for a given name_input into the position of particles in the original order specifically if the user gives an observable.
-        The position of the particles can then be used to boost, rotate the event, etc.
-        fortran_format = True, means that we use the Fortran format for indices, so lists begin at 1, else we use Python format.
-        Output: position_particles
-        """
-        if len(user_input[0]) != len(user_input[2]):
+        ranks = list(user_input[2]) if observable else [] # a ranking without observable is ignored (an error is already printed when reading the card)
+        if observable and not isinstance(getattr(lhe_parser.FourMomentum, observable, None), property):
+            raise ValueError(f'The observable {observable} is not recognised. Observables are defined in the class FourMomentum of lhe_parser.')
+        if ranks and len(ranks) != len(pdg_to_chose):
             raise ValueError(f'The number of particle in {name_input}[0] and the number of ranks in {name_input}[2] do not match.')
 
-        pdg_new = [0] * len(pdg)
-        new_order_corrected = [0] * len(pdg)
-        for i in range(len(pdg)):
-            if observable_values_sorted[i] == observable_values_sorted[i]: #if the value of observable is not a NaN (it is in the density matrix)
-                pdg_new[i] = pdg[new_order[i]]
-                new_order_corrected[i] = new_order[i]
-            else: #if it is a NaN we keep them in the original order
-                pdg_new[i] = pdg[i]
-                new_order_corrected[i] = original_order[i]
+        # candidates[pid] are the positions of the particles with this pdg code, in the original order
+        candidates = {pid: [i for i in range(len(pdg)) if pdg[i] == pid] for pid in set(pdg_to_chose)}
+        for pid in candidates:
+            if not candidates[pid]:
+                raise ValueError(f'The pdg inputs for {name_input} are not correct. The pdg {pid} is not present in the process.')
 
-        # dic_rank_particles keys are the particles chosen by the user and the values are their wanted rank in the observable's order
-        dic_rank_particles = {}
-        for i in range(len(user_input[0])):
-            if user_input[0][i] not in dic_rank_particles.keys():
-                dic_rank_particles[user_input[0][i]] = []
-
-        for i in range(len(user_input[0])):
-            if user_input[0][i] in dic_rank_particles.keys():
-                dic_rank_particles[user_input[0][i]].append(user_input[2][i])
-
-        # dic_values_observable keys are the particles chosen by the user and is filled with their value in the chosen observable
-        # dic_postion_new_order keys are the particles chosen by the user and is filled with their position in new_order
-        dic_values_observable, dic_postion_new_order = {}, {}
-        for key in user_input[0]:
-            dic_values_observable[key], dic_postion_new_order[key] = [], []
-
-        for key in dic_rank_particles.keys():
-            for j in range(len(pdg_new)):
-                if pdg_new[j] == int(key):
-                    dic_values_observable[key].append(observable_values_sorted[j])
-            for k in range(len(dic_rank_particles[key])):
-                for l in range(len(observable_values_sorted)):
-                    try:
-                        #this if statement represents which index of dic_values_observable[key] we want to keep
-                        if observable_values_sorted[l] == dic_values_observable[key][dic_rank_particles[key][k]] and pdg[new_order[l]] == key:
-                            dic_postion_new_order[key].append(l)
-                    except:
-                        raise ValueError(f'There are not enough identical particles for the rank you chose in {name_input}. Please change your input')
+        if observable:
+            values = {i: getattr(lhe_parser.FourMomentum(momenta[i]), observable) for pos in candidates.values() for i in pos}
+            if any(len(set(values[i] for i in pos)) != len(pos) for pos in candidates.values()):
+                # if several particles of same pdg have the same value of the observable, we can not rank them so we use the default order.
+                # we do not crash the code because it can happen randomly for an event, even if the user_input is correct
+                logger.warning(f"Some particles in {name_input} have the same value for the observable given. For this event the order of the observable is not taken into account.")
+            else:
+                for pid in candidates:
+                    candidates[pid] = sorted(candidates[pid], key=lambda i: values[i], reverse=True) #ranking the particles via the observable's value
 
         position_particles = []
-        for key in dic_postion_new_order.keys(): # here we convert the position in new_order to the position in the original order
-            for j in range(len(dic_postion_new_order[key])):
-                if fortran_format:
-                    position_particles.append(new_order[dic_postion_new_order[key][j]] + 1) #python format begins integers at 0 so we do not need to add +1
-                else:
-                    position_particles.append(new_order[dic_postion_new_order[key][j]]) #python format begins integers at 0 so we do not need to add +1
-        return position_particles
+        for j, pid in enumerate(pdg_to_chose):
+            rank = ranks[j] if ranks else pdg_to_chose[:j].count(pid)
+            try:
+                position = candidates[pid][rank]
+            except IndexError:
+                if ranks:
+                    raise ValueError(f'There are not enough identical particles for the rank you chose in {name_input}. Please change your input')
+                raise ValueError(f'The pdg inputs for {name_input} are not correct. The pdg {pid} is not present {pdg_to_chose.count(pid)} times in the process.')
+            if position in position_particles:
+                raise ValueError(f'The same particle (pdg {pid}) is selected twice in {name_input}. Please change your input')
+            position_particles.append(position)
 
-    def find_position_particles_default_order(self, orig_order, user_input, name_input, fortran_format):
-        """
-        This function transforms the user_input for a given name_input into the position of particles in the original order specifically if the user does not give any additional information.
-        The position of the particles can then be used to boost, rotate the event, etc.
-        fortran_format = True, means that we use the Fortran format for indices, so lists begin at 1, else we use Python format.
-        Output: position_particles
-        """
-        pdg_to_chose = user_input[0]
-        position_particles = []
-        orig_order_concatenated = orig_order[0] + orig_order[1]
-        particle_in_process_already_chosen = [False for i in range(len(orig_order_concatenated))]
-        particle_in_user_input_already_found = [False for i in range(len(pdg_to_chose))]
-        
-        if 0 in pdg_to_chose:
-            return [-1]
-        else:
-            for i in range(len(orig_order_concatenated)):
-                if len(position_particles) != len(user_input[0]):
-                    for j in range(len(pdg_to_chose)):
-                        if pdg_to_chose[j] == orig_order_concatenated[i] and not particle_in_process_already_chosen[i] and not particle_in_user_input_already_found[j]: # if the particles is still available and that its pdg code corresponds to the user input
-                            if fortran_format:
-                                position_particles.append(i + 1) #if fortran_format = True, we add +1 because Fortran indices begin at 1 instead of 0 as in Python
-                            else:
-                                position_particles.append(i) # position of the particle in the original order
-                            particle_in_process_already_chosen[i] = True
-                            particle_in_user_input_already_found[j] = True
-
-                            break
-
-            if len(position_particles) != len(user_input[0]):
-                logger.error(f'The pdg inputs for {name_input} are not correct. At least one pdg is not present in the process.')
-
-            return position_particles
-
-
-    def find_position_particles_new_order(self, pdg, user_input, new_order, fortran_format):
-        """
-        This function transforms the user_input for a given name_input into the position of particles in the original order specifically if the user gives 
-        an observable but does not specify the rank in which to order them. In this case, they are ranked in decreasing order.
-        The position of the particles can then be used to boost, rotate the event, etc.
-        fortran_format = True, means that we use the Fortran format for indices, so lists begin at 1, else we use Python format.
-        Output: position_particles
-        """
-        if -1 not in user_input[0]:
-            position_particles = [0] * len(user_input[0])
-            is_particle_taken = [0] * len(pdg)
-            compteur = 0
-            for i in range(len(position_particles)):
-                for j in range(len(pdg)):
-                    if pdg[new_order[j]] == user_input[0][i] and is_particle_taken[j] == 0:
-                        if fortran_format:
-                            position_particles[compteur] = new_order[j] + 1 #if fortran_format = True, we add +1 because Fortran indices begin at 1 instead of 0 as in Python
-                        else:
-                            position_particles[compteur] = new_order[j]
-                        is_particle_taken[j] = 1
-                        compteur += 1
-                        break                    
-        else:
-            position_particles = [-1]
-        
+        if fortran_format: # we add +1 because Fortran indices begin at 1 instead of 0 as in Python
+            position_particles = [i + 1 for i in position_particles]
         return position_particles
 
     def calculate_angles_rotation(self, position_particles, all_p, module):
@@ -4026,9 +3994,9 @@ class DensityInterface(ReweightInterface):
             Output: phi and theta for each element of all_p
         """
         if -1 not in position_particles:
-            pref = [0, 0, 0, 0]
             phi, theta = [0] * len(all_p), [0] * len(all_p)
             for i in range(len(all_p)):
+                pref = [0, 0, 0, 0]
                 for j in range(len(position_particles)):
                     for k in range(len(pref)):
                         pref[k] += all_p[i][position_particles[j] - 1][k]

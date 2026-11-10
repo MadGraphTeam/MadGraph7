@@ -30,7 +30,7 @@ from madgraph import MadGraph5Error
 #===============================================================================
 class MadLoopBannerStyles(object):
     """ A container class to specify all banner styles. """
-    # a dictionary contaning all banner styles
+    # a dictionary containing all banner styles
     ordered_style_keys = ['classic','classic2','classic3','big','funky',
                           'curly','bubbles','mario','wiggly',
                           'printed','fast','isometric']

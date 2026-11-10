@@ -1,6 +1,7 @@
       Program DRIVER
+      use fks_phase_space_data, only: p_born
 c**************************************************************************
-c     This is the driver for the whole calulation
+c     This is the driver for the whole calculation
 c**************************************************************************
       use mint_module
       use FKSParams
@@ -21,16 +22,12 @@ C
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
       double precision p(0:3, nexternal), prambo(0:3,100)
-      double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
       double precision pswgt
       double precision fks_double, fks_single
       double precision, allocatable :: virt_wgts(:,:)
       double precision double, single, finite
       double precision born, virt_wgt
       double precision totmass
-      logical calculatedborn
-      common/ccalculatedborn/calculatedborn
       logical fksprefact
       parameter (fksprefact=.true.)
       integer nfksprocess
@@ -82,7 +79,7 @@ C-----
       call setrun                !Sets up run parameters
       call setpara('param_card.dat')   !Sets up couplings and masses
       call setcuts               !Sets up cuts and particle masses
-      call printout              !Prints out a summary of paramaters
+      call printout              !Prints out a summary of parameters
       call run_printout          !Prints out a summary of the run settings
       include 'pmass.inc'
      
@@ -98,7 +95,7 @@ c     Set the energy to be characteristic of the run
       enddo
       if (abs(lpp(1)).eq.1.and.abs(lpp(2)).eq.1) then
           energy = max((ebeam(1)+ebeam(2))/20.0d0,2.0d0*totmass)
-      else if (lpp(1).eq.2.and.lpp(2).eq.2) then
+      else if (abs(lpp(1)).eq.2.and.abs(lpp(2)).eq.2) then
           energy = max((ebeam(1)/(nb_proton(1)+nb_neutron(1))+ebeam(2)/
      .       (nb_proton(2)+nb_neutron(2)))/200.0d0,2.0d0*totmass)
       else
@@ -132,11 +129,11 @@ c     not equal to it so as to be sensitive to all logs in the check.
       iconfigs(1)=iconfig
 c Find the nFKSprocess for which we compute the Born-like contributions,
 c ie. which is a Born+g real-emission process
-      do nFKSprocess=1,fks_configs
+      do nFKSprocess=1,fks_integrated
          call fks_inc_chooser()
          if (is_aorg(i_fks)) exit
       enddo
-      if (nFKSprocess.gt.fks_configs) then
+      if (nFKSprocess.gt.fks_integrated) then
 c If there is no fks_configuration that has a gluon or photon as i_fks
 c (this might happen in case of initial state leptons with
 c include_lepton_initiated_processes=False) the Born and virtuals do not
@@ -161,7 +158,6 @@ c initialization
           finite=0d0
           single=0d0
           double=0d0
-          calculatedborn = .false.
           if (nincoming.eq.1) then
               call rambo(0, nexternal-nincoming-1, pmass(1), 
      1         pmass_rambo, prambo)

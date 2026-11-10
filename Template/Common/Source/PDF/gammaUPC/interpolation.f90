@@ -186,7 +186,7 @@ CONTAINS
     integer i, j, k
     double precision dx
     
-    ! if u is ouside the x() interval take a boundary value (left or right)
+    ! if u is outside the x() interval take a boundary value (left or right)
     if(u <= x(1)) then
        ispline = y(1)
        return
@@ -197,7 +197,7 @@ CONTAINS
     end if
     
     !*
-    !  binary search for for i, such that x(i) <= u <= x(i+1)
+    !  binary search for i, such that x(i) <= u <= x(i+1)
     !*
     i = 1
     j = n+1
@@ -645,7 +645,7 @@ CONTAINS
        write ( *, '(a)' ) ' '
        write ( *, '(a)' ) 'CC_COMPUTE_POINTS - Fatal error!'
        write ( *, '(a,i8)' ) '  Illegal value of N = ', n
-       stop
+       stop 1
        
     else if ( n == 1 ) then
        
@@ -1128,7 +1128,7 @@ CONTAINS
        write ( *, '(a)' ) ''
        write ( *, '(a)' ) 'ORDER_FROM_LEVEL_135 - Fatal error!'
        write ( *, '(a)' ) '  Illegal input value of L!'
-       stop
+       stop 1
     else if ( l == 0 ) then
        n = 1
     else

@@ -71,7 +71,7 @@ c     models are read from Cards/param_card.dat. The secondary parameters are ca
 c     in Source/MODEL/couplings.f. The values are stored in common blocks that are listed
 c     in coupl.inc .
 
-      call setpara('param_card.dat')  !first call to setup the paramaters
+      call setpara('param_card.dat')  !first call to set up the parameters
       include "pmass.inc"             !set up masses
 
       TOTALMASS = 0.0d0

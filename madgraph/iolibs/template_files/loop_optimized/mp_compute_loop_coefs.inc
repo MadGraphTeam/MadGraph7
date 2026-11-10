@@ -650,7 +650,7 @@ C   In principle it is no longer necessary to compute the quantity below once th
       ENDDO
 C   The if statement below is not strictly necessary but makes it clear when it is executed.
     ELSEIF(H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-C     Make sure that that no polarization constraint filters out this helicity
+C     Make sure that no polarization constraint filters out this helicity
       IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)) THEN
 C       If both computational method is used, then we must just update RES_FROM_JAMP
         DO K=0,3
@@ -661,7 +661,7 @@ C       If both computational method is used, then we must just update RES_FROM_
       ENDIF
     ENDIF 
     IF (H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-C     Make sure that that no polarization constraint filters out this helicity
+C     Make sure that no polarization constraint filters out this helicity
       IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)) THEN
 	    CALL %(proc_prefix)sCOMPUTE_COLOR_FLOWS_DERIVED_QUANTITIES(HEL_MULT)
 	  ENDIF

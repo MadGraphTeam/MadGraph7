@@ -76,7 +76,7 @@ c     default behavior: fixed scale (for retro compatibility)
       subroutine bias_weight_function(p,ipdg,bias_wgt)
 c This is a user-defined function to which to bias the event generation.
 c A non-flat distribution will generate events with a certain weight
-c inversely proportinal to the bias_wgt. This is particularly useful to
+c inversely proportional to the bias_wgt. This is particularly useful to
 c generate more events (with smaller weight) in tails of distributions.
 c It computes the bias_wgt factor from the momenta and multiplies the
 c weight that goes into MINT (or vegas) with this factor.  Before
@@ -96,11 +96,12 @@ c      'bias' = event_norm
 c
       implicit none
       include 'nexternal.inc'
-      double precision bias_wgt,p(0:3,nexternal),H_T
-      integer ipdg(nexternal),i
+      double precision bias_wgt,p(0:3,nexternal)
+      integer ipdg(nexternal)
 
       bias_wgt=1d0
 
+c Declare integer i and double precision H_T before using the examples.
 c How to enhance the tails is very process dependent. For example for
 c top quark production one could use:
 c      do i=1,nexternal

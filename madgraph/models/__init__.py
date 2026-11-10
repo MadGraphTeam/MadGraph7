@@ -87,7 +87,7 @@ def load_model(name, decay=False):
         model_path = os.path.realpath(os.sep.join(path_split))
         sys_path = os.path.realpath(os.path.dirname(sys.modules[path_split[-1]].__file__))
         if sys_path != model_path:
-            raise Exception('name %s already consider as a python library cann\'t be reassigned(%s!=%s)' % \
+            raise Exception('name %s is already considered a Python library and can\'t be reassigned(%s!=%s)' % \
                 (path_split[-1], model_path, sys_path))
         # same model already loaded: return the cached package and skip
         # the wipe below. Wiping internals (object_library, particles, ...)
