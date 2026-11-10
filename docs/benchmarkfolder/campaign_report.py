@@ -177,8 +177,7 @@ def collect(evidence, campaign_id):
     cohorts = document_module("campaign_report_cohorts").collect_cohorts(evidence, directory, manifest, config)
     qualified = implementation(evidence, manifest)
     stress = stress_limitations(evidence)
-    lifecycle = {"status": "pending", "evidence": None,
-        "scope": "Cross-subprocess and event-boundary cache lifecycle requires separate frozen native qualification; installed ABI/public-call parity does not establish it."}
+    lifecycle = document_module("campaign_report_lifecycle").collect_lifecycle(evidence, manifest)
     criteria = {
         "all_eleven_five_backend_numerical": numerical["status"],
         "eight_main_runtime_gates": paired["main_status"],
@@ -214,7 +213,8 @@ def validate(inputs, path, manifest, summary):
         raise ValueError("Campaign report differs from independently reparsed frozen evidence")
     if actual["campaign_binding"] != summary.get("campaign_binding"):
         raise ValueError("Report dossier and selected summary belong to different campaigns")
-    for name in ("campaign_report.py", "campaign_report_numerical.py", "campaign_report_pairs.py", "campaign_report_cohorts.py"):
+    for name in ("campaign_report.py", "campaign_report_numerical.py", "campaign_report_pairs.py",
+                 "campaign_report_cohorts.py", "campaign_report_lifecycle.py"):
         inputs.add(name)
     return dossier
 

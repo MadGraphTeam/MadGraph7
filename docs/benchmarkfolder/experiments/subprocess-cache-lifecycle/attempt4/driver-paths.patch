@@ -1,0 +1,22 @@
+--- ../driver.f.in
++++ driver.f.in
+@@ -41,7 +41,7 @@
+       IF(CACHE.NE.0.AND.CACHE.NE.-1) STOP 11
+       RESOURCE='resources'
+       CALL SETMADLOOPPATH(RESOURCE)
+-      CALL SETPARA('param_card.dat')
++      CALL SETPARA('nominal/param_card.dat')
+       CALL @PREFIX_A@GET_ANSWER_DIMENSION(ND(1))
+       CALL @PREFIX_B@GET_ANSWER_DIMENSION(ND(2))
+       CALL @PREFIX_A@GET_NSQSO_LOOP(NS(1))
+@@ -82,8 +82,8 @@
+         SCALE_FACTOR=1D0
+         IF(PHASE.EQ.2) SCALE_FACTOR=2D0
+         IF(PHASE.EQ.3) BETA=0.25D0
+-        IF(PHASE.EQ.4) CALL SETPARA('param_alternate.dat')
+-        IF(PHASE.EQ.5) CALL SETPARA('param_card.dat')
++        IF(PHASE.EQ.4) CALL SETPARA('alternate/param_card.dat')
++        IF(PHASE.EQ.5) CALL SETPARA('nominal/param_card.dat')
+         DO J=1,3
+           PROC=1
+           IF(J.EQ.2) PROC=2

@@ -1,0 +1,28 @@
+
+mtirust.o:
+                 U __gttf2
+                 U __unordtf2
+                 U _gfortran_internal_pack
+                 U _gfortran_st_read
+                 U _gfortran_st_read_done
+                 U _gfortran_st_write
+                 U _gfortran_st_write_done
+                 U _gfortran_string_len_trim
+                 U _gfortran_transfer_real128
+                 U _gfortran_transfer_real128_write
+                 U free
+                 U malloc
+                 U memcpy
+                 U memmove
+                 U memset
+                 U ml_tirust_cache_statistics
+                 U ml_tirust_clear_cache
+                 U ml_tirust_context_create
+                 U ml_tirust_context_destroy
+                 U ml_tirust_evaluate_dp
+                 U ml_tirust_evaluate_mp
+                 U ml_tirust_last_error
+                 U ml_tirust_qp_cache_statistics
+                 U ml_tirust_register_plan
+                 U ml_tirust_set_cache_budget
+                 U ml_tirust_supports

@@ -1,0 +1,20 @@
+At line 338 of file lha_read.f
+Fortran runtime error: Bad real number in item 1 of list input
+
+Error termination. Backtrace:
+#0  0x72f4ac694655 in ???
+#1  0x72f4ac695219 in ???
+#2  0x72f4ac695d8f in ???
+#3  0x72f4ac94914b in ???
+#4  0x72f4ac94a5d5 in ???
+#5  0x72f4ac94b1da in ???
+#6  0x5a3210ccc23b in ???
+#7  0x5a3210ccc00e in ???
+#8  0x5a3210cc7e87 in ???
+#9  0x5a3210c0b186 in ???
+#10  0x5a3210c0b737 in ???
+#11  0x5a3210c0ba74 in ???
+#12  0x72f4ac2a34c4 in ???
+#13  0x72f4ac2a3577 in ???
+#14  0x5a3210c0b014 in ???
+#15  0xffffffffffffffff in ???

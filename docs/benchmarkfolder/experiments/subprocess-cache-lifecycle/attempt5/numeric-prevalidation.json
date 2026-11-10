@@ -1,0 +1,1096 @@
+{
+  "alternate/ident_card.dat": {
+    "maximum_width": 2,
+    "numeric_tokens": [
+      {
+        "line": 5,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 7,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 9,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 11,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 13,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 15,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 17,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 19,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 21,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 23,
+        "token": "23",
+        "width": 2
+      },
+      {
+        "line": 25,
+        "token": "25",
+        "width": 2
+      },
+      {
+        "line": 27,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 29,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 31,
+        "token": "23",
+        "width": 2
+      },
+      {
+        "line": 33,
+        "token": "24",
+        "width": 2
+      },
+      {
+        "line": 35,
+        "token": "25",
+        "width": 2
+      }
+    ],
+    "reader_character_width": 20
+  },
+  "alternate/param_card.dat": {
+    "maximum_width": 12,
+    "numeric_tokens": [
+      {
+        "line": 15,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 15,
+        "token": "9.118800e+01",
+        "width": 12
+      },
+      {
+        "line": 21,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 21,
+        "token": "4.700000e+00",
+        "width": 12
+      },
+      {
+        "line": 22,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 22,
+        "token": "1.730000e+02",
+        "width": 12
+      },
+      {
+        "line": 23,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 23,
+        "token": "1.777000e+00",
+        "width": 12
+      },
+      {
+        "line": 24,
+        "token": "23",
+        "width": 2
+      },
+      {
+        "line": 24,
+        "token": "9.200000e+01",
+        "width": 12
+      },
+      {
+        "line": 25,
+        "token": "25",
+        "width": 2
+      },
+      {
+        "line": 25,
+        "token": "1.250000e+02",
+        "width": 12
+      },
+      {
+        "line": 31,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 31,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 32,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 32,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 33,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 33,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 34,
+        "token": "4",
+        "width": 1
+      },
+      {
+        "line": 34,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 35,
+        "token": "11",
+        "width": 2
+      },
+      {
+        "line": 35,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 36,
+        "token": "12",
+        "width": 2
+      },
+      {
+        "line": 36,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 37,
+        "token": "13",
+        "width": 2
+      },
+      {
+        "line": 37,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 38,
+        "token": "14",
+        "width": 2
+      },
+      {
+        "line": 38,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 39,
+        "token": "16",
+        "width": 2
+      },
+      {
+        "line": 39,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 40,
+        "token": "21",
+        "width": 2
+      },
+      {
+        "line": 40,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 41,
+        "token": "22",
+        "width": 2
+      },
+      {
+        "line": 41,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 42,
+        "token": "24",
+        "width": 2
+      },
+      {
+        "line": 42,
+        "token": "8.041900e+01",
+        "width": 12
+      },
+      {
+        "line": 48,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 48,
+        "token": "1.325070e+02",
+        "width": 12
+      },
+      {
+        "line": 49,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 49,
+        "token": "1.166390e-05",
+        "width": 12
+      },
+      {
+        "line": 50,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 50,
+        "token": "1.180000e-01",
+        "width": 12
+      },
+      {
+        "line": 56,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 56,
+        "token": "4.700000e+00",
+        "width": 12
+      },
+      {
+        "line": 57,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 57,
+        "token": "1.730000e+02",
+        "width": 12
+      },
+      {
+        "line": 58,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 58,
+        "token": "1.777000e+00",
+        "width": 12
+      },
+      {
+        "line": 63,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 63,
+        "token": "1.491500e+00",
+        "width": 12
+      },
+      {
+        "line": 64,
+        "token": "23",
+        "width": 2
+      },
+      {
+        "line": 64,
+        "token": "2.441404e+00",
+        "width": 12
+      },
+      {
+        "line": 65,
+        "token": "24",
+        "width": 2
+      },
+      {
+        "line": 65,
+        "token": "2.047600e+00",
+        "width": 12
+      },
+      {
+        "line": 66,
+        "token": "25",
+        "width": 2
+      },
+      {
+        "line": 66,
+        "token": "6.382339e-03",
+        "width": 12
+      },
+      {
+        "line": 72,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 72,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 73,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 73,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 74,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 74,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 75,
+        "token": "4",
+        "width": 1
+      },
+      {
+        "line": 75,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 76,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 76,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 77,
+        "token": "11",
+        "width": 2
+      },
+      {
+        "line": 77,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 78,
+        "token": "12",
+        "width": 2
+      },
+      {
+        "line": 78,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 79,
+        "token": "13",
+        "width": 2
+      },
+      {
+        "line": 79,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 80,
+        "token": "14",
+        "width": 2
+      },
+      {
+        "line": 80,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 81,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 81,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 82,
+        "token": "16",
+        "width": 2
+      },
+      {
+        "line": 82,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 83,
+        "token": "21",
+        "width": 2
+      },
+      {
+        "line": 83,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 84,
+        "token": "22",
+        "width": 2
+      },
+      {
+        "line": 84,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 89,
+        "token": "82",
+        "width": 2
+      },
+      {
+        "line": 90,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 90,
+        "token": "0",
+        "width": 1
+      },
+      {
+        "line": 91,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 91,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 92,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 92,
+        "token": "8",
+        "width": 1
+      },
+      {
+        "line": 93,
+        "token": "4",
+        "width": 1
+      },
+      {
+        "line": 93,
+        "token": "1",
+        "width": 1
+      }
+    ],
+    "reader_character_width": 20
+  },
+  "nominal/ident_card.dat": {
+    "maximum_width": 2,
+    "numeric_tokens": [
+      {
+        "line": 5,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 7,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 9,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 11,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 13,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 15,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 17,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 19,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 21,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 23,
+        "token": "23",
+        "width": 2
+      },
+      {
+        "line": 25,
+        "token": "25",
+        "width": 2
+      },
+      {
+        "line": 27,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 29,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 31,
+        "token": "23",
+        "width": 2
+      },
+      {
+        "line": 33,
+        "token": "24",
+        "width": 2
+      },
+      {
+        "line": 35,
+        "token": "25",
+        "width": 2
+      }
+    ],
+    "reader_character_width": 20
+  },
+  "nominal/param_card.dat": {
+    "maximum_width": 12,
+    "numeric_tokens": [
+      {
+        "line": 15,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 15,
+        "token": "9.118800e+01",
+        "width": 12
+      },
+      {
+        "line": 21,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 21,
+        "token": "4.700000e+00",
+        "width": 12
+      },
+      {
+        "line": 22,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 22,
+        "token": "1.730000e+02",
+        "width": 12
+      },
+      {
+        "line": 23,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 23,
+        "token": "1.777000e+00",
+        "width": 12
+      },
+      {
+        "line": 24,
+        "token": "23",
+        "width": 2
+      },
+      {
+        "line": 24,
+        "token": "9.118800e+01",
+        "width": 12
+      },
+      {
+        "line": 25,
+        "token": "25",
+        "width": 2
+      },
+      {
+        "line": 25,
+        "token": "1.250000e+02",
+        "width": 12
+      },
+      {
+        "line": 31,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 31,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 32,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 32,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 33,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 33,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 34,
+        "token": "4",
+        "width": 1
+      },
+      {
+        "line": 34,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 35,
+        "token": "11",
+        "width": 2
+      },
+      {
+        "line": 35,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 36,
+        "token": "12",
+        "width": 2
+      },
+      {
+        "line": 36,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 37,
+        "token": "13",
+        "width": 2
+      },
+      {
+        "line": 37,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 38,
+        "token": "14",
+        "width": 2
+      },
+      {
+        "line": 38,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 39,
+        "token": "16",
+        "width": 2
+      },
+      {
+        "line": 39,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 40,
+        "token": "21",
+        "width": 2
+      },
+      {
+        "line": 40,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 41,
+        "token": "22",
+        "width": 2
+      },
+      {
+        "line": 41,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 42,
+        "token": "24",
+        "width": 2
+      },
+      {
+        "line": 42,
+        "token": "8.041900e+01",
+        "width": 12
+      },
+      {
+        "line": 48,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 48,
+        "token": "1.325070e+02",
+        "width": 12
+      },
+      {
+        "line": 49,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 49,
+        "token": "1.166390e-05",
+        "width": 12
+      },
+      {
+        "line": 50,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 50,
+        "token": "1.180000e-01",
+        "width": 12
+      },
+      {
+        "line": 56,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 56,
+        "token": "4.700000e+00",
+        "width": 12
+      },
+      {
+        "line": 57,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 57,
+        "token": "1.730000e+02",
+        "width": 12
+      },
+      {
+        "line": 58,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 58,
+        "token": "1.777000e+00",
+        "width": 12
+      },
+      {
+        "line": 63,
+        "token": "6",
+        "width": 1
+      },
+      {
+        "line": 63,
+        "token": "1.491500e+00",
+        "width": 12
+      },
+      {
+        "line": 64,
+        "token": "23",
+        "width": 2
+      },
+      {
+        "line": 64,
+        "token": "2.441404e+00",
+        "width": 12
+      },
+      {
+        "line": 65,
+        "token": "24",
+        "width": 2
+      },
+      {
+        "line": 65,
+        "token": "2.047600e+00",
+        "width": 12
+      },
+      {
+        "line": 66,
+        "token": "25",
+        "width": 2
+      },
+      {
+        "line": 66,
+        "token": "6.382339e-03",
+        "width": 12
+      },
+      {
+        "line": 72,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 72,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 73,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 73,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 74,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 74,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 75,
+        "token": "4",
+        "width": 1
+      },
+      {
+        "line": 75,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 76,
+        "token": "5",
+        "width": 1
+      },
+      {
+        "line": 76,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 77,
+        "token": "11",
+        "width": 2
+      },
+      {
+        "line": 77,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 78,
+        "token": "12",
+        "width": 2
+      },
+      {
+        "line": 78,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 79,
+        "token": "13",
+        "width": 2
+      },
+      {
+        "line": 79,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 80,
+        "token": "14",
+        "width": 2
+      },
+      {
+        "line": 80,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 81,
+        "token": "15",
+        "width": 2
+      },
+      {
+        "line": 81,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 82,
+        "token": "16",
+        "width": 2
+      },
+      {
+        "line": 82,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 83,
+        "token": "21",
+        "width": 2
+      },
+      {
+        "line": 83,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 84,
+        "token": "22",
+        "width": 2
+      },
+      {
+        "line": 84,
+        "token": "0.000000e+00",
+        "width": 12
+      },
+      {
+        "line": 89,
+        "token": "82",
+        "width": 2
+      },
+      {
+        "line": 90,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 90,
+        "token": "0",
+        "width": 1
+      },
+      {
+        "line": 91,
+        "token": "2",
+        "width": 1
+      },
+      {
+        "line": 91,
+        "token": "1",
+        "width": 1
+      },
+      {
+        "line": 92,
+        "token": "3",
+        "width": 1
+      },
+      {
+        "line": 92,
+        "token": "8",
+        "width": 1
+      },
+      {
+        "line": 93,
+        "token": "4",
+        "width": 1
+      },
+      {
+        "line": 93,
+        "token": "1",
+        "width": 1
+      }
+    ],
+    "reader_character_width": 20
+  }
+}

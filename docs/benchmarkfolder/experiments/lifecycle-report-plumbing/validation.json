@@ -1,0 +1,14 @@
+{
+  "canonical_pdf_sha256": "f5cc86a70738dfc719b34a1e7686b57934fe1b421c7774275f2498ee0044d2df",
+  "canonical_report_regenerated": false,
+  "final_index_sha256": "5c95b810b82308d141aa84e7ce90b74581a6ba5ee38597eb61ca9d6556c2cdfd",
+  "frozen_replay_identical": true,
+  "independent_review_status": "CLEAR",
+  "independent_source_reviewer": "/root/madloop_audit/cache_driver",
+  "kind": "report-only lifecycle validation",
+  "native_execution": false,
+  "portable_files_read": 204,
+  "qualified_scope": "Four fresh workers each evaluate 19 checked native-DP physical calls and 24 separate DP/QP tensor-key requests across two subprocess prefixes. Coefficients, status, accuracy, inputs and IEEE state agree exactly with caching enabled/disabled and observation enabled/disabled. Each observed worker records 38 automatic physical-boundary clears and two context generations. QP coverage is confined to tensor-key diagnostics; this N\u22643, rank\u22642 experiment makes no physical-QP-rescue, rank-six, EW, poles-only or timing claim.",
+  "report_suite_tests_passed": 159,
+  "results_sha256": "372b4cf532f92fc14426fc7ccb541f677be4317829c76120608686d205948cca"
+}

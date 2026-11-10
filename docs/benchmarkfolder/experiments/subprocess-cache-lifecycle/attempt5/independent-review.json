@@ -1,0 +1,23 @@
+{
+  "analyzer_sha256": "0014bbf833cce64344ffcf38e2cb8c9a92605eeeb697fcf260553a13e5d1d40b",
+  "findings": [],
+  "no_native_or_compiler_rerun": true,
+  "results_sha256": "372b4cf532f92fc14426fc7ccb541f677be4317829c76120608686d205948cca",
+  "reviewers": [
+    "/root/madloop_audit",
+    "/root/madloop_audit/cache_driver",
+    "/root/madloop_audit/cache_driver/native_parity_rows",
+    "/root/madloop_audit/cache_driver/native_parity_rows/topology_tables"
+  ],
+  "scope": "Independent frozen-source, actual retained-build, live artifact hashes, and raw numerical/cache lifecycle review. Final portable inventory audited separately after freeze.",
+  "status": "PASS",
+  "verified": [
+    "Frozen analyzer replay exactly reproduces results.json.",
+    "Separate direct token parsing confirms all4 streams and exact numerical/input/status/generation/IEEE parity.",
+    "Observed167rows/118native per worker:49BEGIN,2create,2destroy,43clear,4register,55DP,12MP; all67 evaluations succeed.",
+    "Measured physical calls each have entry-clear, primary/check evaluations, exit-clear;317creates before entry-clear;316evicts seeded entry.",
+    "Both prefixes register N3R2 in both context generations; enabled key diagnostics have5cold/7repeat per precision; disabled QP diagnostics report12bypasses.",
+    "Live181 distinct link/runtime/executable artifact hashes match frozen bindings.",
+    "All5 smoke/worker command records pass CPU10/exit0/deadline/no-timeout checks, with unchanged13inputs+3declaredoutputs."
+  ]
+}

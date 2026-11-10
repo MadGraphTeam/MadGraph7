@@ -1,0 +1,170 @@
+{
+  "build_sha256": "2d0a4b1f21858accec66a0c441de09345719092d66defbf50f445221df6da179",
+  "cache": 0,
+  "executable": {
+    "map_path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/attempt4/lifecycle_card-smoke.map",
+    "map_sha256": "4e782da6cd266d12bf85dcf8b8f92c38f9d747edd7777798c84d431093dfa876",
+    "path": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/attempt4/lifecycle_card-smoke",
+    "resolved_link_inputs": {
+      "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so": "69a56a9993b7729b29b274e65016031c81f2397f176ed5ad44d59bd50425e0bd",
+      "/nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53",
+      "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+      "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtbeginS.o": "754390a4952316d2c199c3480a7da38e1be699f50a40565fc619abc894b8643e",
+      "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/crtendS.o": "5c42d26eaa4a7974a6f62ba0bc85f770d9abf870cd2f7b670fb68367dcfdf467",
+      "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/Scrt1.o": "0d4f828f340108eaacf5177f7de2d3ee7a10c35950bd71ea052188e6a1998b54",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crti.o": "8c1507e22ab4137ac5c5d984b7d8d44156f2d61617e5774bebea6e3299f68adf",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/crtn.o": "225270dc2c7f8fb4603441e5dd501497de53a8d38f60d680a5d4e7cad6bf4801",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so": "3051eb23b4916df17a396054d8a9d9c29279a28707c5aaaf2b8cd2adf09c7089",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc_nonshared.a": "2f366aebdb4d6e112d80d02e567d2305dfe16463406b33643dcdad3720cc6e12",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so": "5102c7ae44be1b185f81a094341fbc6e1ecc43414053ff28ae45cd69de2e1bc2",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c",
+      "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194",
+      "/nix/store/qarrb8yfby1yyypm32vabzgxgq3w41ma-gcc-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a": "ed389893fc73dc3ad2b943b5bc53dd5b2f2d3cd0ac4adde100c7b46061d5a396",
+      "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libquadmath.so.0.0.0": "58f1e90497fdb2fe3bfc1ea468829b2f3e469c28a5b2018b6693b3a53491dbd2",
+      "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6.0.34": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libtirust.a": "0c86349a4fd0dadd918476731e899529ce1c7b17f5892a4af2c22dd762250c1a",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/MadLoopCommons.o": "e8c9d344d5211041b30799848e46f4bc8b0770bb4d4dc4703734921315c7b058",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/MadLoopParamReader.o": "53518badf58f38dec9f931547da196d2c7b9a893fe526ae74d7bf812a257a7fb",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/COLLIER_interface.o": "541bd36c24e112c599a7589deb5975959b732cf0a83ccef4a62f7e0cd98f6146",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/CT_interface.o": "43aefac2dd050b989b70c5332ded40f00f886c61b6779eaa1d21498f20e55ae3",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/TIRUST_interface.o": "6bc2f9a3ab8e485bec42f2abcb3ed5ab8337f7bb7bea8b591684191112bebdb0",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/TIR_interface.o": "45fbdc56b584015ce77c358ced398c9293ef379d61e4c98c131fe198467bcd4b",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/born_matrix.o": "d80b968ad0a0d104d539ad9c377b9364c43b429b0fe1ac3544c3b49503addb8a",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/coef_construction_1.o": "ee1e323f9e351fa2ae5525d3bb768cd6a0560bae1d8daddb3c246476d1648c7d",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/helas_calls_ampb_1.o": "65ced8b7e6b44283cbb7daf64887824aa84c6b2e868c6895e5bc5915754c73b9",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/improve_ps.o": "f54881469c47bff4eecaefe448c51e83e36f716f2a5f780fe5128e52d32e5996",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/loop_CT_calls_1.o": "ae12c3e752b2150b8afde485d22098a52700d8e6dd794a3b3be39cdd5b1557fa",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/loop_matrix.o": "81ceae8cb1c8d22a0c6d87a3145003df3850e9baa776375b94c66485dc02a04b",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/loop_num.o": "c8ede24136ba19005a1776c07b99746877af77a00996bd9fe6327061f9c4ad65",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/mp_coef_construction_1.o": "a3c859bfe6cbfacd646575deb614de0f3f7649b461a28a3177f3518071bed339",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/mp_compute_loop_coefs.o": "7ac80d705f3b5fd082f683d1cf11b84fe98947d449fd0047bddfa8545dbe55a5",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/mp_helas_calls_ampb_1.o": "801723e800921bcea3ababd6975cd8cc058f4aae5fd3f4c3162b81daf491c9ab",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P101_uux_z/polynomial.o": "f67d9650f00a45e6fc5654fea8e057bacd452478310d0f5c5db1cad07d3f0d6f",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/COLLIER_interface.o": "48c38b94f742b05526f7ec7eb2f5d1ed0348efe5e1c6c63557377ce69bf49a35",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/CT_interface.o": "2f858f1da076530ed00a1cdf7c1f5457d8a7ad9519ed788bb700773b62df19cb",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/TIRUST_interface.o": "8e0a19d891e213c0269b80496230c4fecb4fb0699c200c71c9bab66a2a1cc7eb",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/TIR_interface.o": "d0cc5b2123fc787b36aecda5784446f0e1f9e8edac66c060fcc8dc48050dea46",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/born_matrix.o": "3a527dc3940a1ef1cae34ec8923f37f19ff2971551101987222c75fe7b762025",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/coef_construction_1.o": "32273912258c3e35713f64a8c53305858704641f38709dcb13f9809e2ccc6ff1",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/helas_calls_ampb_1.o": "c8c06c0aeff548e604eb3026b694781ad51349895c275f254f33285b16d232aa",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/improve_ps.o": "2e2dca2cfebd0d87d042d863730fa7b07d11f57339a8b8ceeb15d4d684bf5228",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/loop_CT_calls_1.o": "7b6642d53745356b27feca7aaa9c9be2785fac60bb1021fced7b6dfa90b9a945",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/loop_matrix.o": "a830381c623b947510775b633064e2aaff3962ea26361d8b1672f722542edd57",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/loop_num.o": "5c5c50f6105e50bed42bc83ccaa09481c8b9fabf7496ef6b72a8cc9306d48c14",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/mp_coef_construction_1.o": "2b96048aafd9e279b4013d50bfce1700c4f6ee60b793a4526b050e9a59489917",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/mp_compute_loop_coefs.o": "1336bdd4b39a687b1612ad276b524e440a5779dc3014daeddb1bfd3a198856bf",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/mp_helas_calls_ampb_1.o": "285431c0a40b9ad625e5a79095f034d2bad895f1f639dc1db0912726c4b48139",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/P202_ddx_z/polynomial.o": "4a00b7d103d5f1bdfb37816686198dc193b7e906d7b675611c37208408a1fa3e",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/lifecycle_card_smoke_attempt4.o": "661aafa019384e76eb602cd796869bcb50aebd4ae24e8beaab48c16b2aff7f3e",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/mg5_citation.o": "cb05941f5dbf37c04e97ea8e4f9e702180e141418bc9222faff3f8c49b742e84",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/SubProcesses/observer_observed.o": "1e0cb958f209874cd5a8bf043118ed575f0be367563c56eb8244194247a04bfb",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/lib/libdhelas.a": "5e20e480c3b51204337d907e2cbb6714e8eb7a80c65a00d068f949e95441cba1",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/export/lib/libmodel.a": "0d6d8520e27bd8b0c37c435c152338620093dcc218eec0ab38ed7c08c99f8a7d",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/mg/vendor/CutTools/includects/libcts.a": "95ae11ab9b76f5da4adc8db56b7cd5995d08e0a63062c83ca86b114570d8a25d",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/mg/vendor/IREGI/src/libiregi.a": "6246428ec9d75ec8d57e0d1dd16efc4525053dc8d49857c6c41366ea14eb4fdf",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0.0.0": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninjars/lib/libninjars.a": "0edfa89d7d83161a6ce3fdf0bb1fbca928b73d2b5ec44211a3b2efa186a155d6",
+      "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/oneloop/libavh_olo.a": "10acae25536d5f7580d60980290e21033eb7413224554f167f031d2c809bab48"
+    },
+    "runtime": {
+      "files": {
+        "/nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/ld-linux-x86-64.so.2": "e655ec5a68127ee03586457e67039ea9deef55abaeae519c1f53ad1cf18ee5b2",
+        "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+        "/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0": "78d384074a271a26fd8bd466aedb4f285e56547daf596aa898c3bfff4bcaa6b5",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2": "1e08370bba3ee9e4f97bb0500d1f32afb0417babca6ae455c6458b9a3edb86a8",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6": "29ed835214dc8bc811e10f384ac5428148418bdc7d93f43e5f3a6880bd6dc903",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2": "0b410a4dc1e19583f1bbd192ff5d09de4208715a04d6d11c28fdbda01e1c6bb0",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6": "2e1c8e9e8d5fbefde85eb1d0750375da636ea65aa918b7fdcc328f07f3e6c01e",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1": "8711c00a71893ffd72d6c2dae8c5006657be99aaadb0f3638ad1170e44f86795",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0": "a4150ff6ddfe86384f38fc78d181fb1c0c77b413a172d4fff10176b4084dec43",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1": "573b665c223e81106e9ff7e07335e425b0e6ca5d24e733e0721f60d878576a0c",
+        "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1": "89c37bcd4745fcc40c2302754479518cbc3b95082c0a041cc4de1ab310190194",
+        "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1": "528a3ea63aa4c25bf9ba5cd8d14c8bdeab3c5aaea16dc9cee00d50fdd8565a53",
+        "/nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6": "07853a5af9ef85b9d180efe4a795db0023e40ec9168872095580aef556f9e0ec",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so": "6ee2403dd120f9b0f5a551a7d16412ddfd46d97f29af6f61f0d09fc62db80d92",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0": "9db3a86f5a521eeae192ae1a7870369168eaf0ca9d1b90cf9aae95cc58ab978d"
+      },
+      "ldd": "\tlinux-vdso.so.1 (0x0000700778c7d000)\n\tlibninja.so.0 => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/ninja/lib/libninja.so.0 (0x00007007731e4000)\n\tlibcollier.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/libcollier.so (0x0000700772e56000)\n\tlibgcc_s.so.1 => /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libgcc_s.so.1 (0x0000700772e27000)\n\tlibdl.so.2 => /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libdl.so.2 (0x0000700772e22000)\n\tlibutil.so.1 => /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libutil.so.1 (0x0000700772e1d000)\n\tlibrt.so.1 => /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/librt.so.1 (0x0000700772e18000)\n\tlibpthread.so.0 => /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libpthread.so.0 (0x0000700772e13000)\n\tlibgfortran.so.5 => /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5 (0x0000700772abb000)\n\tlibm.so.6 => /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libm.so.6 (0x00007007729d1000)\n\tlibmvec.so.1 => /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libmvec.so.1 (0x00007007728d7000)\n\tlibc.so.6 => /nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6 (0x00007007726cb000)\n\t/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/ld-linux-x86-64.so.2 => /nix/store/0d8g8n0a11v6f5m2h416ajyxmnkwc3md-glibc-2.42-67/lib64/ld-linux-x86-64.so.2 (0x0000700778c7f000)\n\tlibmadloop_tirust.so => /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so (0x000070076e8ef000)\n\tlibstdc++.so.6 => /nix/store/xc0ga87wdclrx54qjaryahkkmkmqi9qz-gcc-15.2.0-lib/lib/libstdc++.so.6 (0x000070076e66d000)\n\tlibquadmath.so.0 => /nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib/libquadmath.so.0 (0x000070076e623000)\n"
+    },
+    "sha256": "1aa09d105454bcbead239c2f0aa804f5ac12c5fb260e7397f78deb4f664349e1"
+  },
+  "input_files": {
+    "alternate/ident_card.dat": {
+      "kind": "file",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "size": 460
+    },
+    "alternate/param_card.dat": {
+      "kind": "file",
+      "sha256": "fcabdea53b657d04ced8e0ee157b51aab59e85dc893a3257581ba504efe20e63",
+      "size": 3489
+    },
+    "nominal/ident_card.dat": {
+      "kind": "file",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "size": 460
+    },
+    "nominal/param_card.dat": {
+      "kind": "file",
+      "sha256": "6f1f578e858e1aa603fbe9445e4a5f425ce69cc677977610ed64535d63fd1c31",
+      "size": 3470
+    },
+    "resources/ML5_101_ColorDenomFactors.dat": {
+      "kind": "file",
+      "sha256": "ad0fadf63cc7cd779ce475e345bf4063565b63a3c2efef1eebc89790aaa6acba",
+      "size": 4
+    },
+    "resources/ML5_101_ColorNumFactors.dat": {
+      "kind": "file",
+      "sha256": "1ddb914da9135a2d6dfcc0ff179d68d23e7fd1e5364c088c183234d04a41bece",
+      "size": 4
+    },
+    "resources/ML5_101_HelConfigs.dat": {
+      "kind": "file",
+      "sha256": "4598f48b6b2ac00343f20c274f536e95cd7ccbd56b035f7292a9387e40b0f035",
+      "size": 88
+    },
+    "resources/ML5_202_ColorDenomFactors.dat": {
+      "kind": "file",
+      "sha256": "ad0fadf63cc7cd779ce475e345bf4063565b63a3c2efef1eebc89790aaa6acba",
+      "size": 4
+    },
+    "resources/ML5_202_ColorNumFactors.dat": {
+      "kind": "file",
+      "sha256": "1ddb914da9135a2d6dfcc0ff179d68d23e7fd1e5364c088c183234d04a41bece",
+      "size": 4
+    },
+    "resources/ML5_202_HelConfigs.dat": {
+      "kind": "file",
+      "sha256": "4598f48b6b2ac00343f20c274f536e95cd7ccbd56b035f7292a9387e40b0f035",
+      "size": 88
+    },
+    "resources/MadLoopParams.dat": {
+      "kind": "file",
+      "sha256": "6f1a1a53eda39e9ad920162a3e4a788d0cea18089f49c88b996e9c0357401af0",
+      "size": 14617
+    },
+    "resources/ident_card.dat": {
+      "kind": "file",
+      "sha256": "a39f898e29da6781c365a7946f64d0c9fe1b2ba096137295b638aee0c3dc2493",
+      "size": 460
+    },
+    "resources/param_card.dat": {
+      "kind": "file",
+      "sha256": "6f1f578e858e1aa603fbe9445e4a5f425ce69cc677977610ed64535d63fd1c31",
+      "size": 3470
+    }
+  },
+  "label": "card-smoke",
+  "variant": "card-smoke"
+}

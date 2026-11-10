@@ -1,0 +1,20 @@
+{
+  "error": "Unbound resolved library in link map: /nix/store/b7kx9bkjsma9wslr1cg0316m5jy450l8-gcc-15.2.0-libgcc/lib/libgcc_s.so",
+  "native_workers_started": 0,
+  "plain_link_returncode": 0,
+  "retained_files": {
+    "lifecycle_plain": {
+      "bytes": 78166136,
+      "private_copy": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/attempt2-retained/lifecycle_plain",
+      "sha256": "7b9ea41996aacd066f25b2eee8f60546c52e70d58c818fc24592aa7e2116e35e"
+    },
+    "lifecycle_plain.map": {
+      "bytes": 30594809,
+      "private_copy": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/subprocess-cache-lifecycle/attempt2-retained/lifecycle_plain.map",
+      "sha256": "62f2e2b80445f1299d6cbe8eed44c3265480b4ce058247d12dce267cb80e0171"
+    }
+  },
+  "scope": "Successful compile/link is not qualification; no numerical result is claimed and no retry has occurred.",
+  "stage": "build: post-plain-link input binding",
+  "status": "failed closed before native execution"
+}

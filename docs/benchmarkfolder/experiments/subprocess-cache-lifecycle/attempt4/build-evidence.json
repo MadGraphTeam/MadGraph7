@@ -1,0 +1,42 @@
+{
+  "build_sha256": "2d0a4b1f21858accec66a0c441de09345719092d66defbf50f445221df6da179",
+  "evidence": {
+    "execution/compile-card-smoke.json": "748b2a0e40414b6ed16213b03edcf6e1cfe24fb25bb76820cc6ffe0dd9864826",
+    "execution/compile-card-smoke.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "execution/compile-driver.json": "20494b9f67a538b1bdc7a43468b4703bdc78d86a8a8a882ebe7aac5ce0982649",
+    "execution/compile-driver.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "execution/lifecycle_card-smoke.map.gz": "cf703192a6f19ea818da55af8b18217903177d5c1d074d99fe600c3c80e3266d",
+    "execution/lifecycle_observed.map.gz": "4321362ad3fe124a0da0efc1b8557ec85e295f1f4577078608189b60376781c1",
+    "execution/lifecycle_plain.map.gz": "31083421cefae274ed64728fc281652d5f936dcf0259fd2ed85e10e4e17377d8",
+    "execution/link-card-smoke.json": "3b40e1c8391ae9e747f4e75c7940a8c4ef28c78817b34f0b3d8ce68f6f2e71d4",
+    "execution/link-card-smoke.txt": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51",
+    "execution/link-observed.json": "75cf556d2edd67bf588c29d66e126f83b23e905120cd0ea188c6627901a61d51",
+    "execution/link-observed.txt": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51",
+    "execution/link-plain.json": "491ea970ca3d2da51a65846025f78bf10e4999f92a03c73e8a94394427c9e14b",
+    "execution/link-plain.txt": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51"
+  },
+  "maps": {
+    "card-smoke": {
+      "gzip_bytes": 1800023,
+      "gzip_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/attempt4/execution/lifecycle_card-smoke.map.gz",
+      "gzip_sha256": "cf703192a6f19ea818da55af8b18217903177d5c1d074d99fe600c3c80e3266d",
+      "raw_bytes": 30597618,
+      "raw_sha256": "4e782da6cd266d12bf85dcf8b8f92c38f9d747edd7777798c84d431093dfa876"
+    },
+    "observed": {
+      "gzip_bytes": 1800035,
+      "gzip_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/attempt4/execution/lifecycle_observed.map.gz",
+      "gzip_sha256": "4321362ad3fe124a0da0efc1b8557ec85e295f1f4577078608189b60376781c1",
+      "raw_bytes": 30598055,
+      "raw_sha256": "b62373ed88e6651ec06f5166f72650811b634e602ef033c4030fcb2220af0059"
+    },
+    "plain": {
+      "gzip_bytes": 1799849,
+      "gzip_path": "docs/benchmarkfolder/experiments/subprocess-cache-lifecycle/attempt4/execution/lifecycle_plain.map.gz",
+      "gzip_sha256": "31083421cefae274ed64728fc281652d5f936dcf0259fd2ed85e10e4e17377d8",
+      "raw_bytes": 30597583,
+      "raw_sha256": "e15119a69f4d24ed1bfa1386933a4f0f45ace9f4ec8fe992ddfcdcede7a3a606"
+    }
+  },
+  "note": "Lossless compressed UTF-8 linker maps; no compiled binaries are included in this report directory."
+}

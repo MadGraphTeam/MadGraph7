@@ -1,0 +1,41 @@
+{
+  "files": {
+    "root-verification.json": {
+      "bytes": 1763,
+      "sha256": "939178f5d7d5e81fd8e446309f5892f4b72b92bd633911ba20f7d352bf33beeb"
+    },
+    "source-handoff.json": {
+      "bytes": 1200,
+      "sha256": "fb8f882db06caf2e4eb1b9ff312f68a26b682a62fb95809c52876a36021f948c"
+    },
+    "validation.json": {
+      "bytes": 1158,
+      "sha256": "9633b702d9b287ffb2b7eb92be6d781b9bff1aa289e965a2c1c42fe81c038aeb"
+    }
+  },
+  "kind": "lifecycle-report-plumbing-portable-handoff",
+  "schema_version": 1,
+  "scope": "Report-only source handoff and validation records. No numerical execution, compilation, Typst generation, canonical report update, commit or push performed by this packaging step.",
+  "source_files": {
+    "docs/benchmarkfolder/campaign-report.typ": {
+      "bytes": 9529,
+      "sha256": "15b6ef56882c8051aa9f17512ed1299562ab25ecdac7a918de73a82f8f1abaf3"
+    },
+    "docs/benchmarkfolder/campaign_report.py": {
+      "bytes": 12687,
+      "sha256": "3db59ff9e5e6a05e4c0b7fcd83ca0a82300bf1d829e5716d933cfd2bd46c7618"
+    },
+    "docs/benchmarkfolder/campaign_report_lifecycle.py": {
+      "bytes": 10956,
+      "sha256": "d1e04eaf5443275e5f5f0c224b1d5efea105dfc13d05fea47be001cf47499ccc"
+    },
+    "docs/benchmarkfolder/test_campaign_report.py": {
+      "bytes": 13423,
+      "sha256": "47614a6a44274e8845f09ae55c57e36d9a363f86ca469ac1442f735a996ed039"
+    },
+    "docs/benchmarkfolder/test_campaign_report_lifecycle.py": {
+      "bytes": 11142,
+      "sha256": "9b66edd05cbff296157ccfcf34a704f4fbb8818527518d07e8cc712f24c60477"
+    }
+  }
+}

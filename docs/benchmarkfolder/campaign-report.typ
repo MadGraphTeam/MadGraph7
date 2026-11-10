@@ -137,9 +137,13 @@
   rejection behavior; their elapsed times are not physical-amplitude benchmark
   samples.]
   v(6pt)
-  note(fill: warm)[*Subprocess/event cache lifecycle:
+  note(fill: if data.subprocess_event_cache_lifecycle.status == "passed" { pale } else { warm })[*Subprocess/event cache lifecycle:
     #status(data.subprocess_event_cache_lifecycle.status).*
-    #data.subprocess_event_cache_lifecycle.scope]
+    #data.subprocess_event_cache_lifecycle.scope
+    #if data.subprocess_event_cache_lifecycle.evidence != none {
+      v(3pt)
+      text(6.3pt, fill: ink2)[#raw(data.subprocess_event_cache_lifecycle.summary_evidence)]
+    }]
   v(6pt)
   [Higher-rank terminal Fortran qualification is bound to the completed source,
   IEEE/trap and fixed-input coefficient checks in

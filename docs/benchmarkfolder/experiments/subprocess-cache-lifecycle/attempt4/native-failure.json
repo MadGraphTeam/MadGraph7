@@ -1,0 +1,27 @@
+{
+  "card_smoke_invocations": 1,
+  "completed_card_records": 1,
+  "evidence": {
+    "execution/native-card-smoke.json": "bd8a2e9a9981dd4da5d886fb88d431839714c8f938aae8d88099245e40c6fdf4",
+    "execution/native-card-smoke.txt": "20a062150784d760e71c50ace0838362d76311eef32e68ae1181afd82dddf6c5",
+    "runs/card-smoke/inputs.json": "a5daf9a4fe232b9d74fbfdd90d860d72eefd611c5d73410200ac3ccad827ebc5",
+    "runs/card-smoke/outputs.json": "18f63e03beb7003e11edf578c7578a91057183c9624f4f2f6dbe59e58b8647e4",
+    "runs/card-smoke/param.log": "cdde0eca3dea04cbdac9c03675488ab3effb5535f8349e24b595d3a006b680dc",
+    "runs/card-smoke/records.txt": "d64ecc971bba5d3baa453c2bcd5207316236777b3b0dda0d81cbef692dac9323",
+    "runs/card-smoke/trace.txt": "36dd1b2a07fead0624a9d0d1bdb95a413d9b24f81759c5625cd54ba53f824d43",
+    "smoke-failure.json": "8c97912ef29ab5a6a7d84b82f8bc8cbc25d764e1afc67f68bc1fa9587d08d6fa"
+  },
+  "flushed_native_export_records": 0,
+  "inputs_unchanged": true,
+  "nominal_MZ_binary64": "4056CC083126E979",
+  "nominal_card_completed": true,
+  "original_token": "9.2000000000000000e+01",
+  "physical_workers": 0,
+  "reader_source_sha256": "319682ba82c7f585b6673f81256723719ef1fc3a5c78c5debd183cd4ba171cca",
+  "restoration_reached": false,
+  "returncode": 2,
+  "source_reason": "Generated LHA reader stores values in CHARACTER*20; long alternate token truncates to an invalid exponent before LHA_get_real line338. Smoke source calls no amplitude/tensor entrypoint.",
+  "status": "card-only smoke failed at alternate fixture parsing",
+  "timed_out": false,
+  "truncated_token": "9.2000000000000000e+"
+}

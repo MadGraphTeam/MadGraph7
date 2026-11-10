@@ -20,6 +20,7 @@ def module(name):
 REPORT = module("campaign_report")
 PAIRS = module("campaign_report_pairs")
 COHORTS = module("campaign_report_cohorts")
+LIFECYCLE = module("campaign_report_lifecycle")
 
 
 def write(root, name, value):
@@ -141,6 +142,8 @@ def test_main_runtime_pass_alone_cannot_complete_delivery(tmp_path, monkeypatch)
         def collect_pairs(*args): return {"status": "passed", "main_status": "passed", "regression_status": "passed"}
         @staticmethod
         def collect_cohorts(*args): return {"status": "passed"}
+        @staticmethod
+        def collect_lifecycle(*args): return LIFECYCLE.collect_lifecycle(*args)
     monkeypatch.setattr(REPORT, "document_module", lambda name: AllMeasured)
     monkeypatch.setattr(REPORT, "implementation", lambda *args: {"status": "passed"})
     monkeypatch.setattr(REPORT, "stress_limitations", lambda *args: [{"status": "open"}])

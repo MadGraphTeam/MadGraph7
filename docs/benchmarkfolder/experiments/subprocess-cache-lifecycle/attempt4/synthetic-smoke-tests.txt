@@ -1,0 +1,16 @@
+test_complete_synthetic_protocol_is_accepted (__main__.CardSmokeParserTests.test_complete_synthetic_protocol_is_accepted) ... ok
+test_dirty_begin_metadata_and_counters_are_rejected (__main__.CardSmokeParserTests.test_dirty_begin_metadata_and_counters_are_rejected) ... ok
+test_extra_native_export_and_unobserved_trace_are_rejected (__main__.CardSmokeParserTests.test_extra_native_export_and_unobserved_trace_are_rejected) ... ok
+test_flush_health_generation_and_missing_close_are_rejected (__main__.CardSmokeParserTests.test_flush_health_generation_and_missing_close_are_rejected) ... ok
+test_missing_closed_bare_stop_and_truncated_records_are_rejected (__main__.CardSmokeParserTests.test_missing_closed_bare_stop_and_truncated_records_are_rejected) ... ok
+test_observer_ieee_flag_or_rounding_perturbation_is_rejected (__main__.CardSmokeParserTests.test_observer_ieee_flag_or_rounding_perturbation_is_rejected) ... ok
+test_record_generation_or_health_changes_are_rejected (__main__.CardSmokeParserTests.test_record_generation_or_health_changes_are_rejected) ... ok
+test_unchanged_nonzero_ieee_state_is_accepted (__main__.CardSmokeParserTests.test_unchanged_nonzero_ieee_state_is_accepted) ... ok
+test_wrong_action_count_order_and_process_are_rejected (__main__.CardSmokeParserTests.test_wrong_action_count_order_and_process_are_rejected) ... ok
+test_wrong_initial_alternate_and_restored_mass_are_rejected (__main__.CardSmokeParserTests.test_wrong_initial_alternate_and_restored_mass_are_rejected) ... ok
+test_wrong_paths_order_ordinals_and_extra_records_are_rejected (__main__.CardSmokeParserTests.test_wrong_paths_order_ordinals_and_extra_records_are_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.822s
+
+OK
