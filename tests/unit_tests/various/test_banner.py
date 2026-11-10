@@ -3223,10 +3223,14 @@ class TestRunCardMG7JetFlavours(unittest.TestCase):
 
     def test_lepton_collider_5f_default(self):
         """no hadronic beam: max_jet_flavor and the jet list stay, and the
-        jet cuts are dropped anyway"""
+        default jet cuts are kept, as madevent's ptj/etaj/drjj for lpp = 0
+        (without them e+ e- > j j j j is infrared divergent)"""
         rc = self.build([[mg7_proc([11, -11], [5, -5], FakeModel5F())]])
+        self.assertTrue(rc['beam']['leptonic'])
+        self.assertEqual(rc['beam']['max_jet_flavor'], 4)
         self.assertEqual(rc['multiparticles']['jet'], self.JET4)
-        self.assertFalse([k for k in rc['cuts'] if k.startswith('jet')])
+        self.assertEqual(rc['cuts']['jet-pt'], {'min': 20.0})
+        self.assertEqual(rc['cuts']['jet-delta_r'], {'min': 0.4})
 
     def test_set_max_jet_flavor_updates_a_standard_jet_list(self):
         rc = bannermod.RunCardMG7()
