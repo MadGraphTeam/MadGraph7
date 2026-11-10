@@ -20,6 +20,7 @@ input/default_run_card_nlo.dat
 input/default_run_card_mg7.toml
 input/default_switch.txt
 input/mg7_configuration.txt
+input/mg5_configuration.txt
 TEST_MW_*
 .vscode/
 HEPTools/*

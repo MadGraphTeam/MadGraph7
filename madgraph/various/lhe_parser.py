@@ -1,6 +1,7 @@
 from __future__ import division
 from __future__ import absolute_import
 import collections
+import codecs
 import random
 import re
 import operator
@@ -1254,7 +1255,7 @@ class EventFile(object):
         else:
             nb_events_unweighted = nb_keep
 
-        logger.log(log_level, "write %i event (efficiency %.2g %%, truncation %.2g %%) after %i iteration(s)", 
+        logger.log(log_level, "write %i event (efficiency %.2g %%, overweight excess %.2g %%) after %i iteration(s)",
           nb_keep, nb_events_unweighted/nb_event*100, trunc_cross/cross['abs']*100, i)
      
         # every event heavier than max_wgt is kept, so trunc_cross is the
@@ -1317,33 +1318,86 @@ class EventFile(object):
         else:
             return out
 
-    def split(self, nb_event=0, partition=None, cwd=os.path.curdir, zip=False):
-        """split the file in multiple file. Do not change the weight!"""
+    def _iter_event_text(self, chunk_size=1024 * 1024):
+        """Read complete event blocks without parsing or reformatting particles.
 
-        nb_file = -1
-        for i, event in enumerate(self):
-            if (not (partition is None) and i==sum(partition[:nb_file+1])) or \
-                                   (partition is None and i % nb_event == 0):
-                if i:
-                    #close previous file
-                    current.write('</LesHouchesEvent>\n')
+        Scan buffered chunks, rather than making a Python call for every line.
+        Memory use is limited to a chunk plus the largest event. Keep the usual
+        iterator for subclasses which generate or mix events themselves.
+        """
+        if type(self) is not EventFile or self.eventgroup:
+            for event in self:
+                yield str(event)
+            return
+
+        opening = re.compile(r'(?m)^[ \t]*<event(?:[ \t][^>\r\n]*)?>')
+        closing = re.compile(r'(?m)^[ \t]*</event>[ \t]*\r?\n')
+        decoder = codecs.getincrementaldecoder(self.encoding)(errors='ignore')
+        pending = ''
+        while True:
+            chunk = self.file.read(chunk_size)
+            eof = not chunk
+            if isinstance(chunk, bytes):
+                chunk = decoder.decode(chunk, final=eof)
+            pending += chunk
+            if eof and pending and not pending.endswith('\n'):
+                pending += '\n'
+            end = 0
+            for match in closing.finditer(pending):
+                start = opening.search(pending, end, match.start())
+                if start is not None:
+                    yield pending[start.start():match.end()]
+                end = match.end()
+            pending = pending[end:]
+            if eof:
+                if opening.search(pending):
+                    raise ValueError('Incomplete LHE event in %s' % self.path)
+                return
+
+    def split(self, nb_event=0, partition=None, cwd=os.path.curdir, zip=False):
+        """Split into consecutive files, preserving event text and weights.
+
+        File names retain the historical ``<input>_<index>.lhe[.gz]`` form.
+        A partition can select only the first sum(partition) events.
+        """
+        if partition is None:
+            sizes = None
+            if nb_event <= 0 or int(nb_event) != nb_event:
+                raise ValueError('nb_event must be a positive integer')
+            size = int(nb_event)
+        else:
+            sizes = list(partition)
+            if any(n <= 0 or int(n) != n for n in sizes):
+                raise ValueError('partition sizes must be positive integers')
+            if not sizes:
+                return 0
+
+        nb_file = 0
+        current = None
+        remaining = 0
+        try:
+            for event in self._iter_event_text():
+                if current is None:
+                    suffix = '.lhe.gz' if zip else '.lhe'
+                    path = pjoin(cwd, '%s_%d%s' % (self.path, nb_file, suffix))
+                    current = EventFile(path, 'w')
+                    current.write(self.banner)
+                    remaining = int(sizes[nb_file]) if sizes is not None else size
+                    nb_file += 1
+                current.write(event)
+                remaining -= 1
+                if remaining == 0:
+                    current.write('</LesHouchesEvents>\n')
                     current.close()
-                # create the new file
-                nb_file +=1
-                # If end of partition then finish writing events here.
-                if not partition is None and (nb_file+1>len(partition)):
-                    return nb_file
-                if zip:
-                    current = EventFile(pjoin(cwd,'%s_%s.lhe.gz' % (self.path, nb_file)),'w')
-                else:
-                    current = open(pjoin(cwd,'%s_%s.lhe' % (self.path, nb_file)),'w')                    
-                current.write(self.banner)
-            current.write(str(event))
-        if i!=0:
-            current.write('</LesHouchesEvent>\n')
-            current.close()
-             
-        return nb_file +1
+                    current = None
+                    if sizes is not None and nb_file == len(sizes):
+                        break
+            if current is not None:
+                current.write('</LesHouchesEvents>\n')
+        finally:
+            if current is not None:
+                current.close()
+        return nb_file
 
     def update_HwU(self, hwu, fct, name='lhe', keep_wgt=False, maxevents=sys.maxsize):
         """take a HwU and add this event file for the function fct"""
@@ -3167,10 +3221,15 @@ class Event(list):
 
     def get_ren_scale(self):
         """The renormalisation scale of the event: the mur of its <scales>
-        tag (mg7 writes it), otherwise SCALUP. SCALUP is the factorisation
+        tag when finite and positive, otherwise SCALUP. SCALUP is the factorisation
         scale (madevent and mg7 alike), the closest a file without mur has."""
 
-        return self.get_scales_attributes().get('mur', float(self.scale))
+        mur = self.get_scales_attributes().get('mur')
+        # MC@NLO-Delta uses mur=-1 to mark an unspecified scale.
+        if mur is not None and math.isfinite(mur) and mur > 0:
+            return mur
+        return float(self.scale)
+
     def parse_matching_scale(self):
         """Parse the line containing the starting scale for the shower"""
         
@@ -3271,10 +3330,12 @@ class Event(list):
             this_particle.reshuffle_info = decay_particle.reshuffle_info
         self.nexternal += decay_event.nexternal -1
         old_scales = list(self.parse_matching_scale())
-        if old_scales:
-            jet_position = sum(1 for i in range(position) if self[i].status==1)
-            initial_pos = sum(1 for i in range(position) if self[i].status==-1)
-            self.matched_scale_data.pop(initial_pos+jet_position)
+        # pt_clust indices are full LHE rows, including resonances. The
+        # decaying particle stays in place with status 2, so keep its entry
+        # and all existing particle indices unchanged.
+        decay_scale = old_scales[position] if old_scales else -1
+        if decay_scale == -1:
+            decay_scale = self.scale
         # add the particle with only handling the 4-momenta/mother
         # color information will be corrected later.
         for particle in decay_event[1:]:
@@ -3283,7 +3344,11 @@ class Event(list):
             new_particle.event_id = len(self)
             self.append(new_particle)
             if old_scales:
-                self.matched_scale_data.append(old_scales[initial_pos+jet_position])
+                # Inherit the parent's shower scale (SCALUP for FxFx
+                # resonances). Pythia takes the maximum tagged external
+                # scale as SCALUP, so daughters must keep that maximum when
+                # the parent becomes status 2 and only EW jets remain.
+                self.matched_scale_data.append(decay_scale)
             # compute and assign the new four_momenta
             if at_rest:
                 new_momentum = FourMomentum(new_particle).boost(this_4mom)
@@ -5890,6 +5955,8 @@ class OneNLOWeight(object):
             to_add('%i', self.merge_new_pdg)
             to_add('%.10e', self.ref_wgt*self.bias_wgt)
             to_add('%.10e', self.bias_wgt)
+            if getattr(self, 'native_provenance', None) is not None:
+                to_add('%i', list(self.native_provenance))
             return ' '.join(format_var) % tuple(variable)
             
         
@@ -5969,7 +6036,6 @@ class OneNLOWeight(object):
         #     type=4 : soft counter-term: 
         #     type=5 : collinear counter-term: 
         #     type=6 : soft-collinear counter-term: 
-        #     type=7 : O(alphaS) expansion of Sudakov factor for NNLL+NLO:  
         #     type=8 : soft counter-term (with n+1-body kin.):     
         #     type=9 : collinear counter-term (with n+1-body kin.): 
         #     type=10: soft-collinear counter-term (with n+1-body kin.): 
@@ -6010,6 +6076,11 @@ class OneNLOWeight(object):
         except IndexError:
             self.bias_wgt = 1.0
             
+        # New outputs append provider, context, history and event-owner IDs.
+        # The preceding fields retain their native PDF/ME interpretation.
+        suffix = data[flag+16:flag+20]
+        self.native_provenance = tuple(map(int, suffix)) if len(suffix) == 4 else None
+
         if not keep_bias:
             self.ref_wgt /= self.bias_wgt
             self.pwgt = [p/self.bias_wgt for p in self.pwgt]

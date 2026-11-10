@@ -77,7 +77,8 @@ fact_scale2 = %(beam.fact_scale2)s
 dynamical_scale_choice = %(beam.dynamical_scale_choice)s
 # multiplies the dynamical scale; fixed scales are unaffected
 scale_factor = %(beam.scale_factor)s
-# heaviest quark flavour treated as a jet by the MLM back-clustering
+# heaviest quark flavour treated as a jet by the MLM back-clustering; changing
+# it with "set" also updates a standard jet list in [multiparticles]
 max_jet_flavor = %(beam.max_jet_flavor)s
 # the other MLM clustering options (scale_scheme, alphas_reweighting,
 # pdf_reweighting, clustering_history, ...) are hidden; one that is set (at the

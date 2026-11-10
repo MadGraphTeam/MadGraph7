@@ -632,7 +632,7 @@ c              far above xo, the 1/s map below already keeps more.
                write(*,*) "Transforming s_hat 1/s ",i,swidth(i), smin,
      $              shat_unit
             endif
-        else if(smin/shat_unit.gt.spole(i)+bwcutoff*max(swidth(i),  spole(i)*small_width_treatment)) then 
+        else if(smin/shat_unit.gt.spole(i)+bwcutoff*max(swidth(i),  spole(i)*small_width_treatment)) then
             swidth(i) = smin/shat_unit
             spole(i) = -2d0
             write(*,*) "Transforming s_hat 1/s ",i,xo, smin, shat_unit

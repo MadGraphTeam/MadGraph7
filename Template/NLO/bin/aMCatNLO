@@ -223,14 +223,14 @@ try:
         # They are an input file 
         input_file = args[0]
         if options.web:
-            cmd_line = cmd_interface.aMCatNLOCmd()
+            cmd_line = cmd_interface.aMCatNLOCmd(me_dir=os.path.dirname(root_path))
             cmd_line.debug_output = os.path.join(os.path.dirname(input_file),'generation.log')
             cmd_line.use_rawinput = False
             cmd_line.haspiping = False
             cmd_line.run_cmd('import command ' + input_file)
             cmd_line.run_cmd('quit')      
         else:
-            cmd_line = cmd_interface.aMCatNLOCmdShell()
+            cmd_line = cmd_interface.aMCatNLOCmdShell(me_dir=os.path.dirname(root_path))
             cmd_line.use_rawinput = False
             cmd_line.haspiping = False
             cmd_line.run_cmd('import command ' + input_file)
@@ -238,9 +238,9 @@ try:
     elif args:
         # a single command is provided
         if options.web:
-            cmd_line = cmd_interface.aMCatNLOCmd(force_run=force_run)
+            cmd_line = cmd_interface.aMCatNLOCmd(me_dir=os.path.dirname(root_path), force_run=force_run)
         else:
-            cmd_line = cmd_interface.aMCatNLOCmdShell(force_run=force_run)
+            cmd_line = cmd_interface.aMCatNLOCmdShell(me_dir=os.path.dirname(root_path), force_run=force_run)
         if not hasattr(cmd_line, 'do_%s' % args[0]):
             if parser_error:
                 print( parser_error)
@@ -254,10 +254,10 @@ try:
     else:
         # Interactive mode
         if options.web:
-            cmd_line = cmd_interface.aMCatNLOCmd()
+            cmd_line = cmd_interface.aMCatNLOCmd(me_dir=os.path.dirname(root_path))
             cmd_line.cmdloop()
         else:
-            cmd_line = cmd_interface.aMCatNLOCmdShell()
+            cmd_line = cmd_interface.aMCatNLOCmdShell(me_dir=os.path.dirname(root_path))
             cmd_line.cmdloop()
 
 except KeyboardInterrupt:
