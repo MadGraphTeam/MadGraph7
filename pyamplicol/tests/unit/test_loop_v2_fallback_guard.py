@@ -884,9 +884,10 @@ def _guard_split(found, explicit, target: float) -> tuple[list[int], list[int]]:
 @pytest.mark.loop_physics
 def test_the_guard_at_double_double_and_arbitrary_precision(hh, loop_native):
     """The guard in the extended carriers through the public API (Done 1):
-    at the near-forward g g > h h points TIRust's gates refuse points 1 and 2
-    in double-double and at 16-20 digits; the fallback serves them on NinjaRS
-    in the call's own carrier and the guard runs its check there. Double-
+    at the near-forward g g > h h points TIRust's gates refuse all three
+    points in double-double (points 1 and 2 also at 16-20 digits); the
+    fallback serves them on NinjaRS in the call's own carrier and the guard
+    runs its check there. Double-
     double and 20 digits accept them (estimates within 1e-5, values bitwise
     the explicit NinjaRS ones, no public estimate without checks); at 16
     digits and the target 1e-6 (estimates 2.3e-6 and 1.9e-2 at pin
