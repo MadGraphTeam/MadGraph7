@@ -1,0 +1,622 @@
+{
+  "label": "li-rows.json LI-32 N4-massive R4 row 57 R=5 lane 44",
+  "state": "complete",
+  "library_sha256": "fd91192dc05db72c9af91b716f09877a84df92d36c69b0293afe12adb3e9ae25",
+  "native_report_sha256": "c1300e89fde4b6ac674754216a4965ba850e949dcb1a988ec75be12ca866d66b",
+  "runner_sha256": "9d2dabe227514cf0909ee808a6d9a95bc5af11b1c78d2169baa76ed5b65e614a",
+  "build_metadata": {
+    "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/host-rescue-audit-release/libtirust_host_rescue.so",
+    "compiler": "GNU Fortran (GCC) 15.2.0",
+    "policy_source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc",
+    "policy_start_line": 1713,
+    "policy_end_line": 2006,
+    "eligibility_source": ".tirust-build/adapter-export/release-external/SubProcesses/P0_uux_z/loop_matrix.f",
+    "eligibility_initialization": "Verbatim generated availability filters and QP index construction",
+    "source_hashes": {
+      "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/build_host_rescue.py": "2cf3370b175bf5ea21255dd9dba53835eeca22d59731cca4de2fd10a9fc96aed",
+      "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/host_rescue_driver.f": "a3070568351c003608cd716e8d4c8e7e712eb9628be787dbf98488b57c51eb55",
+      "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+      "Template/loop_material/StandAlone/SubProcesses/MadLoopCommons.inc": "2c45aae1b048204c679eca303def57e2c2be9c512a405ac08465adedeecf5232",
+      "Template/loop_material/StandAlone/SubProcesses/MadLoopParams.inc": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+      ".tirust-build/stability-audit-release/libtirust_stability_audit.so": "22ecfe0d691635153a3f96c6a3a558da501a435dfd005cb79ddca09603d924a6",
+      ".tirust-build/adapter-export/release-external/SubProcesses/P0_uux_z/loop_matrix.f": "82f44e79fe23b1fd7a892e67e3682d666f47fa6d5d13ebf7e4e87d77323707db",
+      ".tirust-build/host-rescue-audit-release/production-eligibility.inc": "0d7a68fdea5368ebb6c9957dfe35d15867c0b633d29761afd2b23bf049e7e976",
+      ".tirust-build/host-rescue-audit-release/production-policy.inc": "702273b7a33b5b70c2b6e7606723c285277e44862f1ad0fbfe3b07dc477e9499",
+      ".tirust-build/host-rescue-audit-release/production-retcode.inc": "c3cc089a1b26d58d329d1769f4f6004ff2188e2c0d639dd025fcdbda6a264e06",
+      ".tirust-build/host-rescue-audit-release/host_rescue.f": "573b4141f29995483c3de70a89bc6e6d761c07d98b6e74f121f6e00d2df2dfa7",
+      ".tirust-build/host-rescue-audit-release/libtirust_host_rescue.so": "fd91192dc05db72c9af91b716f09877a84df92d36c69b0293afe12adb3e9ae25"
+    },
+    "physics_callback": "Injected N4R5 production diagnostic adapter at labels 200 and 300",
+    "rotations": "Callbacks select caller-provided original, rotation1 and rotation2 fixture arrays",
+    "limitations": [
+      "The full SLOOPMATRIX physics/filter initialization pipeline is not executed.",
+      "Real and imaginary projections are independent synthetic interference diagnostics.",
+      "This executes the production automatic branch and native accuracy/return-code functions."
+    ]
+  },
+  "thresholds": [
+    0.001,
+    1e-06
+  ],
+  "rows": [
+    {
+      "threshold": 0.001,
+      "rotations": 0,
+      "projection": "real",
+      "status": 0,
+      "return_code": 219,
+      "accuracy": 3.7983320394218526e-05,
+      "dp_accuracy": 3.7983320394218526e-05,
+      "qp_accuracy": -1.0,
+      "calls": 2,
+      "modes": [
+        1,
+        2
+      ],
+      "rotation_indices": [
+        0,
+        0
+      ],
+      "backend_statuses": [
+        0,
+        0
+      ],
+      "result": [
+        524.1950567875288,
+        124.15874623894094,
+        0.0
+      ],
+      "evaluations": [
+        [
+          524.1991612252314,
+          124.15874623960985,
+          0.0
+        ],
+        [
+          524.1909523498261,
+          124.15874623827202,
+          0.0
+        ]
+      ],
+      "fixture_truth": [
+        524.0351881183657,
+        124.15874621134739,
+        0.0
+      ],
+      "same_input_native_qp_truth": [
+        524.0351881183658,
+        124.15874621134739,
+        0.0
+      ],
+      "relative_error_to_fixture_truth": 0.0003050723935869828,
+      "relative_error_to_same_input_qp": 0.0003050723935867658
+    },
+    {
+      "threshold": 0.001,
+      "rotations": 0,
+      "projection": "imaginary",
+      "status": 0,
+      "return_code": 219,
+      "accuracy": 0.0002170826856529698,
+      "dp_accuracy": 0.0002170826856529698,
+      "qp_accuracy": -1.0,
+      "calls": 2,
+      "modes": [
+        1,
+        2
+      ],
+      "rotation_indices": [
+        0,
+        0
+      ],
+      "backend_statuses": [
+        0,
+        0
+      ],
+      "result": [
+        166.31134525596826,
+        82.51923629890503,
+        0.0
+      ],
+      "evaluations": [
+        [
+          166.3023424926655,
+          82.51923633742169,
+          0.0
+        ],
+        [
+          166.32034801927102,
+          82.51923626038837,
+          0.0
+        ]
+      ],
+      "fixture_truth": [
+        166.545303550055,
+        82.5192363125055,
+        0.0
+      ],
+      "same_input_native_qp_truth": [
+        166.5453035500552,
+        82.5192363125055,
+        0.0
+      ],
+      "relative_error_to_fixture_truth": 0.0014047726900711865,
+      "relative_error_to_same_input_qp": 0.0014047726900723793
+    },
+    {
+      "threshold": 0.001,
+      "rotations": 2,
+      "projection": "real",
+      "status": 0,
+      "return_code": 219,
+      "accuracy": 3.798332047279537e-05,
+      "dp_accuracy": 3.798332047279537e-05,
+      "qp_accuracy": -1.0,
+      "calls": 4,
+      "modes": [
+        1,
+        2,
+        1,
+        1
+      ],
+      "rotation_indices": [
+        0,
+        0,
+        1,
+        2
+      ],
+      "backend_statuses": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "result": [
+        524.1950567875372,
+        124.15874623894095,
+        0.0
+      ],
+      "evaluations": [
+        [
+          524.1991612252314,
+          124.15874623960985,
+          0.0
+        ],
+        [
+          524.1909523498261,
+          124.15874623827202,
+          0.0
+        ],
+        [
+          524.1991612252302,
+          124.1587462396099,
+          0.0
+        ],
+        [
+          524.1991612252483,
+          124.15874623960983,
+          0.0
+        ]
+      ],
+      "fixture_truth": [
+        524.0351881183657,
+        124.15874621134739,
+        0.0
+      ],
+      "same_input_native_qp_truth": [
+        524.0351881183658,
+        124.15874621134739,
+        0.0
+      ],
+      "relative_error_to_fixture_truth": 0.00030507239360303676,
+      "relative_error_to_same_input_qp": 0.0003050723936028197
+    },
+    {
+      "threshold": 0.001,
+      "rotations": 2,
+      "projection": "imaginary",
+      "status": 0,
+      "return_code": 219,
+      "accuracy": 0.00021708268571636472,
+      "dp_accuracy": 0.00021708268571636472,
+      "qp_accuracy": -1.0,
+      "calls": 4,
+      "modes": [
+        1,
+        2,
+        1,
+        1
+      ],
+      "rotation_indices": [
+        0,
+        0,
+        1,
+        2
+      ],
+      "backend_statuses": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "result": [
+        166.31134525596568,
+        82.51923629890507,
+        0.0
+      ],
+      "evaluations": [
+        [
+          166.3023424926655,
+          82.51923633742169,
+          0.0
+        ],
+        [
+          166.32034801927102,
+          82.51923626038837,
+          0.0
+        ],
+        [
+          166.30234249266442,
+          82.51923633742166,
+          0.0
+        ],
+        [
+          166.30234249266033,
+          82.51923633742177,
+          0.0
+        ]
+      ],
+      "fixture_truth": [
+        166.545303550055,
+        82.5192363125055,
+        0.0
+      ],
+      "same_input_native_qp_truth": [
+        166.5453035500552,
+        82.5192363125055,
+        0.0
+      ],
+      "relative_error_to_fixture_truth": 0.001404772690086716,
+      "relative_error_to_same_input_qp": 0.001404772690087909
+    },
+    {
+      "threshold": 1e-06,
+      "rotations": 0,
+      "projection": "real",
+      "status": 0,
+      "return_code": 323,
+      "accuracy": 0.0,
+      "dp_accuracy": 3.7983320394218526e-05,
+      "qp_accuracy": 0.0,
+      "calls": 4,
+      "modes": [
+        1,
+        2,
+        4,
+        5
+      ],
+      "rotation_indices": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "backend_statuses": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "result": [
+        524.0351881183658,
+        124.15874621134739,
+        0.0
+      ],
+      "evaluations": [
+        [
+          524.1991612252314,
+          124.15874623960985,
+          0.0
+        ],
+        [
+          524.1909523498261,
+          124.15874623827202,
+          0.0
+        ],
+        [
+          524.0351881183658,
+          124.15874621134739,
+          0.0
+        ],
+        [
+          524.0351881183658,
+          124.15874621134739,
+          0.0
+        ]
+      ],
+      "fixture_truth": [
+        524.0351881183657,
+        124.15874621134739,
+        0.0
+      ],
+      "same_input_native_qp_truth": [
+        524.0351881183658,
+        124.15874621134739,
+        0.0
+      ],
+      "relative_error_to_fixture_truth": 2.169450454841158e-16,
+      "relative_error_to_same_input_qp": 0.0
+    },
+    {
+      "threshold": 1e-06,
+      "rotations": 0,
+      "projection": "imaginary",
+      "status": 0,
+      "return_code": 323,
+      "accuracy": 0.0,
+      "dp_accuracy": 0.0002170826856529698,
+      "qp_accuracy": 0.0,
+      "calls": 4,
+      "modes": [
+        1,
+        2,
+        4,
+        5
+      ],
+      "rotation_indices": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "backend_statuses": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "result": [
+        166.5453035500552,
+        82.5192363125055,
+        0.0
+      ],
+      "evaluations": [
+        [
+          166.3023424926655,
+          82.51923633742169,
+          0.0
+        ],
+        [
+          166.32034801927102,
+          82.51923626038837,
+          0.0
+        ],
+        [
+          166.5453035500552,
+          82.5192363125055,
+          0.0
+        ],
+        [
+          166.5453035500552,
+          82.5192363125055,
+          0.0
+        ]
+      ],
+      "fixture_truth": [
+        166.545303550055,
+        82.5192363125055,
+        0.0
+      ],
+      "same_input_native_qp_truth": [
+        166.5453035500552,
+        82.5192363125055,
+        0.0
+      ],
+      "relative_error_to_fixture_truth": 1.1945816650004379e-15,
+      "relative_error_to_same_input_qp": 0.0
+    },
+    {
+      "threshold": 1e-06,
+      "rotations": 2,
+      "projection": "real",
+      "status": 0,
+      "return_code": 323,
+      "accuracy": 0.0,
+      "dp_accuracy": 3.798332047279537e-05,
+      "qp_accuracy": 0.0,
+      "calls": 8,
+      "modes": [
+        1,
+        2,
+        1,
+        1,
+        4,
+        5,
+        4,
+        4
+      ],
+      "rotation_indices": [
+        0,
+        0,
+        1,
+        2,
+        0,
+        0,
+        1,
+        2
+      ],
+      "backend_statuses": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "result": [
+        524.0351881183658,
+        124.15874621134739,
+        0.0
+      ],
+      "evaluations": [
+        [
+          524.1991612252314,
+          124.15874623960985,
+          0.0
+        ],
+        [
+          524.1909523498261,
+          124.15874623827202,
+          0.0
+        ],
+        [
+          524.1991612252302,
+          124.1587462396099,
+          0.0
+        ],
+        [
+          524.1991612252483,
+          124.15874623960983,
+          0.0
+        ],
+        [
+          524.0351881183658,
+          124.15874621134739,
+          0.0
+        ],
+        [
+          524.0351881183658,
+          124.15874621134739,
+          0.0
+        ],
+        [
+          524.0351881183658,
+          124.15874621134739,
+          0.0
+        ],
+        [
+          524.0351881183658,
+          124.15874621134739,
+          0.0
+        ]
+      ],
+      "fixture_truth": [
+        524.0351881183657,
+        124.15874621134739,
+        0.0
+      ],
+      "same_input_native_qp_truth": [
+        524.0351881183658,
+        124.15874621134739,
+        0.0
+      ],
+      "relative_error_to_fixture_truth": 2.169450454841158e-16,
+      "relative_error_to_same_input_qp": 0.0
+    },
+    {
+      "threshold": 1e-06,
+      "rotations": 2,
+      "projection": "imaginary",
+      "status": 0,
+      "return_code": 323,
+      "accuracy": 0.0,
+      "dp_accuracy": 0.00021708268571636472,
+      "qp_accuracy": 0.0,
+      "calls": 8,
+      "modes": [
+        1,
+        2,
+        1,
+        1,
+        4,
+        5,
+        4,
+        4
+      ],
+      "rotation_indices": [
+        0,
+        0,
+        1,
+        2,
+        0,
+        0,
+        1,
+        2
+      ],
+      "backend_statuses": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "result": [
+        166.5453035500552,
+        82.5192363125055,
+        0.0
+      ],
+      "evaluations": [
+        [
+          166.3023424926655,
+          82.51923633742169,
+          0.0
+        ],
+        [
+          166.32034801927102,
+          82.51923626038837,
+          0.0
+        ],
+        [
+          166.30234249266442,
+          82.51923633742166,
+          0.0
+        ],
+        [
+          166.30234249266033,
+          82.51923633742177,
+          0.0
+        ],
+        [
+          166.5453035500552,
+          82.5192363125055,
+          0.0
+        ],
+        [
+          166.5453035500552,
+          82.5192363125055,
+          0.0
+        ],
+        [
+          166.5453035500552,
+          82.5192363125055,
+          0.0
+        ],
+        [
+          166.5453035500552,
+          82.5192363125055,
+          0.0
+        ]
+      ],
+      "fixture_truth": [
+        166.545303550055,
+        82.5192363125055,
+        0.0
+      ],
+      "same_input_native_qp_truth": [
+        166.5453035500552,
+        82.5192363125055,
+        0.0
+      ],
+      "relative_error_to_fixture_truth": 1.1945816650004379e-15,
+      "relative_error_to_same_input_qp": 0.0
+    }
+  ],
+  "limitation": "Executed production rescue block with synthetic real/imaginary integral callbacks; full SLOOPMATRIX physics/filter initialization is not executed.",
+  "all_default_kept_dp": true,
+  "all_diagnostic_rescued_qp": true
+}

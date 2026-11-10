@@ -1,0 +1,2 @@
+      REAL*8 MU_R
+      COMMON/AUDIT_COUPL/MU_R

@@ -1,0 +1,27 @@
+{
+  "compiler": "GNU Fortran (GCC) 15.2.0",
+  "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/libtirust_stability_audit.so",
+  "bridge": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+  "coefficient_count": 126,
+  "propagators": 4,
+  "rank": 5,
+  "max_generated_rank": 6,
+  "normalization": "none: diagnostic tensor contraction",
+  "runtime_lock": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/numerical-tests.lock",
+  "input_sha256": {
+    "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/build_harness.py": "47c8f85b7f326154437dbeea295d1ee1e61216c97d20d109977baff19008803b",
+    "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/harness_driver.f": "571b60e05abbcc1b1bc96580001d6c9254ed6e731e0246d75f65df282cbd9df6",
+    "vendor/tirust/mtirust.f90": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f",
+    "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec",
+    "madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16",
+    "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": "166ac2e2fb6555568bce4865dca462162b7a5af5b6b436fd64fa96ac23b80f89",
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+    "Template/loop_material/StandAlone/SubProcesses/MadLoopParams.inc": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+    "Template/loop_material/StandAlone/SubProcesses/MadLoopParamReader.f": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+    ".tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+    ".tirust-build/default-stability-current-1/adapter/adapter.f": "ed7199bf318d93d1e7f6db6171daad05b81089f27a3aa025e9cf4bf1ae987700",
+    ".tirust-build/default-stability-current-1/adapter/accuracy.f": "fcc931304cbd93714ddc531cb4ecef0b1d1c9991fb10a3cea6f385765fd06af3",
+    ".tirust-build/default-stability-current-1/adapter/driver.f": "099ea6e9b87d9d42069640ceb3b645c1dc3754407e1614fdec0fb8bd92955a0b",
+    ".tirust-build/default-stability-current-1/adapter/libtirust_stability_audit.so": "b4bbb09365b5b26617e942a4634c18f39376806fe59ca4a948860b7a131ae649"
+  }
+}

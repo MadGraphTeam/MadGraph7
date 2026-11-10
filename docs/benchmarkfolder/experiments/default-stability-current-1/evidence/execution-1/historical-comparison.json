@@ -1,0 +1,150 @@
+{
+  "adjudicator_sha256": "06f5eda96fff6e195410b1b12fad1c890ffbb326cfa5b57b89b82731de098267",
+  "historical_sha256": "e77c9380f6af78f0da125e931f7ddd538dfb06912af2fffc1351600b51a41c01",
+  "rows": [
+    {
+      "case": [
+        0.001,
+        0,
+        "real"
+      ],
+      "historical_accuracy_bit_equal": true,
+      "historical_result_bit_equal": [
+        true,
+        true,
+        true
+      ],
+      "truth_symmetric_errors": [
+        0.00015251293305072205,
+        1.1112202840760499e-10,
+        0.0
+      ]
+    },
+    {
+      "case": [
+        0.001,
+        0,
+        "imaginary"
+      ],
+      "historical_accuracy_bit_equal": true,
+      "historical_result_bit_equal": [
+        true,
+        true,
+        true
+      ],
+      "truth_symmetric_errors": [
+        0.0007028800383767471,
+        8.240787658946336e-11,
+        0.0
+      ]
+    },
+    {
+      "case": [
+        0.001,
+        2,
+        "real"
+      ],
+      "historical_accuracy_bit_equal": true,
+      "historical_result_bit_equal": [
+        true,
+        true,
+        true
+      ],
+      "truth_symmetric_errors": [
+        0.00015251293305874652,
+        1.1112208563617385e-10,
+        0.0
+      ]
+    },
+    {
+      "case": [
+        0.001,
+        2,
+        "imaginary"
+      ],
+      "historical_accuracy_bit_equal": true,
+      "historical_result_bit_equal": [
+        true,
+        true,
+        true
+      ],
+      "truth_symmetric_errors": [
+        0.0007028800383845229,
+        8.240761827051825e-11,
+        0.0
+      ]
+    },
+    {
+      "case": [
+        1e-06,
+        0,
+        "real"
+      ],
+      "historical_accuracy_bit_equal": true,
+      "historical_result_bit_equal": [
+        true,
+        true,
+        true
+      ],
+      "truth_symmetric_errors": [
+        1.0847252274205788e-16,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "case": [
+        1e-06,
+        0,
+        "imaginary"
+      ],
+      "historical_accuracy_bit_equal": true,
+      "historical_result_bit_equal": [
+        true,
+        true,
+        true
+      ],
+      "truth_symmetric_errors": [
+        5.9729083250021855e-16,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "case": [
+        1e-06,
+        2,
+        "real"
+      ],
+      "historical_accuracy_bit_equal": true,
+      "historical_result_bit_equal": [
+        true,
+        true,
+        true
+      ],
+      "truth_symmetric_errors": [
+        1.0847252274205788e-16,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "case": [
+        1e-06,
+        2,
+        "imaginary"
+      ],
+      "historical_accuracy_bit_equal": true,
+      "historical_result_bit_equal": [
+        true,
+        true,
+        true
+      ],
+      "truth_symmetric_errors": [
+        5.9729083250021855e-16,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

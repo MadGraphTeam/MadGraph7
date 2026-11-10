@@ -1,0 +1,642 @@
+C     TIRust tensor reduction. The public diagnostic returns
+C      MadLoop-ordered
+C     moments, marks an unevaluated finite coefficient with NaN, and
+C      performs
+C     no numerator contraction or counterterm addition.
+      SUBROUTINE AUDIT_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK
+     $ ,PL,M2L,TIRCOEFS,STABLE)
+      USE MTIRUST
+      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT64_T
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+     $ ,IEEE_VALUE,IEEE_QUIET_NAN
+      USE AUDIT_POLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
+      IMPLICIT NONE
+      INCLUDE 'loop_max_coefs.inc'
+      INTEGER CTMODE,NLOOPLINE,RANK,I,J,K,NC,STATUS
+      REAL*8 PL(0:3,NLOOPLINE)
+      COMPLEX*16 M2L(NLOOPLINE)
+      COMPLEX*16 TIRCOEFS(0:LOOPMAXCOEFS-1,3)
+      LOGICAL STABLE,CACHE_ENABLED,CHECK_PASS
+      REAL*8 P_TMP(0:3,0:NLOOPLINE-1),ABSP(0:3),REF_P,PREFIX_SUM
+      REAL*8 SHIFTS(0:3,NLOOPLINE),P_S_MAT(NLOOPLINE,0:3)
+      REAL*8 PDEN_DUMMY(0:3,NLOOPLINE-1),INVARIANTS(NLOOPLINE
+     $ ,NLOOPLINE),SCALE
+      COMPLEX*16 MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
+      COMPLEX*16 RAW(LOOPMAXCOEFS,4)
+      INTEGER TIRUST_MAP(0:LOOPMAXCOEFS-1)
+      DATA (TIRUST_MAP(I),I=0,9)/1,2,3,4,5,6,7,10,8,11/
+      DATA (TIRUST_MAP(I),I=10,19)/13,9,12,14,15,16,17,20,26,18/
+      DATA (TIRUST_MAP(I),I=20,29)/21,27,23,29,32,19,22,28,24,30/
+      DATA (TIRUST_MAP(I),I=30,39)/33,25,31,34,35,36,37,40,46,56/
+      DATA (TIRUST_MAP(I),I=40,49)/38,41,47,57,43,49,59,52,62,66/
+      DATA (TIRUST_MAP(I),I=50,59)/39,42,48,58,44,50,60,53,63,67/
+      DATA (TIRUST_MAP(I),I=60,69)/45,51,61,54,64,68,55,65,69,70/
+      DATA (TIRUST_MAP(I),I=70,79)/71,72,75,81,91,106,73,76,82,92/
+      DATA (TIRUST_MAP(I),I=80,89)/107,78,84,94,109,87,97,112,101,116/
+      DATA (TIRUST_MAP(I),I=90,99)/121,74,77,83,93,108,79,85,95,110/
+      DATA (TIRUST_MAP(I),I=100,109)/88,98,113,102,117,122,80,86,96
+     $ ,111/
+      DATA (TIRUST_MAP(I),I=110,119)/89,99,114,103,118,123,90,100,115
+     $ ,104/
+      DATA (TIRUST_MAP(I),I=120,129)/119,124,105,120,125,126,127,128
+     $ ,131,137/
+      DATA (TIRUST_MAP(I),I=130,139)/147,162,183,129,132,138,148,163
+     $ ,184,134/
+      DATA (TIRUST_MAP(I),I=140,149)/140,150,165,186,143,153,168,189
+     $ ,157,172/
+      DATA (TIRUST_MAP(I),I=150,159)/193,177,198,204,130,133,139,149
+     $ ,164,185/
+      DATA (TIRUST_MAP(I),I=160,169)/135,141,151,166,187,144,154,169
+     $ ,190,158/
+      DATA (TIRUST_MAP(I),I=170,179)/173,194,178,199,205,136,142,152
+     $ ,167,188/
+      DATA (TIRUST_MAP(I),I=180,189)/145,155,170,191,159,174,195,179
+     $ ,200,206/
+      DATA (TIRUST_MAP(I),I=190,199)/146,156,171,192,160,175,196,180
+     $ ,201,207/
+      DATA (TIRUST_MAP(I),I=200,209)/161,176,197,181,202,208,182,203
+     $ ,209,210/
+
+      INCLUDE 'coupl.inc'
+      INCLUDE 'MadLoopParams.inc'
+      STABLE=.FALSE.
+      TIRCOEFS=0
+      IF(RANK.LT.0.OR.RANK.GT.6) RETURN
+      IF(.NOT.TIRUST_SUPPORTS(NLOOPLINE,RANK,TIRUSTCOMPUTEFINITE))
+     $  RETURN
+      CALL AUDIT_INITIALIZE_TIRUST(STATUS)
+      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+      CALL TIRUST_SET_CACHE_BUDGET(INT(TIRUSTCACHEMAXBYTES,C_INT64_T)
+     $ ,STATUS)
+      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+      PDEN_DUMMY=0
+      MASSES=CMPLX(M2L,KIND=KI_TIR)
+      CALL AUDIT_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,M2L)
+      MASSES=M2L
+C     Preserve the summation and threshold conventions of the Ninja
+C      adapter.
+      P_TMP=0
+      ABSP=0
+      DO I=0,3
+        DO J=1,NLOOPLINE
+          P_TMP(I,0)=P_TMP(I,0)+PL(I,J)
+          ABSP(I)=ABSP(I)+ABS(PL(I,J))
+        ENDDO
+      ENDDO
+      REF_P=MAXVAL(ABSP)
+      IF(REF_P.GT.1D-8) THEN
+        DO I=0,3
+          IF(ABS(P_TMP(I,0))/MAX(REF_P*1D-6,ABSP(I)).GT.1D-6) RETURN
+        ENDDO
+      ENDIF
+C     Accumulate ordered prefixes once, preserving the zero-seeded sum.
+      DO I=0,3
+        PREFIX_SUM=REAL(0,KIND=KI_TIR)
+        DO J=1,NLOOPLINE-1
+          PREFIX_SUM=PREFIX_SUM+PL(I,J)
+          P_TMP(I,J)=PREFIX_SUM
+        ENDDO
+      ENDDO
+      DO J=1,NLOOPLINE
+        DO I=0,3
+          SHIFTS(I,J)=P_TMP(I,J-1)
+          P_S_MAT(J,I)=SHIFTS(I,J)
+        ENDDO
+      ENDDO
+      CALL AUDIT_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES,S_MAT)
+      DO J=1,NLOOPLINE
+        DO I=1,NLOOPLINE
+          INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J)
+     $     ,KIND=KI_TIR)
+        ENDDO
+      ENDDO
+      SCALE=MU_R**2
+      NC=NCOEF_R(RANK)
+      CACHE_ENABLED=TIRUSTGLOBALCACHE.EQ.
+     $ -1.OR.NLOOPLINE.LE.TIRUSTGLOBALCACHE
+      CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5
+      CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS
+     $ ,MASSES,SCALE,RAW(1:NC,1:4),STATUS,MAX(0,LOOPPOLEMODE)
+     $ ,TIRUSTCOMPUTEFINITE,CHECK_PASS,CACHE_ENABLED)
+      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+      DO I=0,NC-1
+        K=TIRUST_MAP(I)
+        DO J=1,4
+          IF(J.EQ.4.AND..NOT.TIRUSTCOMPUTEFINITE) CYCLE
+          IF(.NOT.IEEE_IS_FINITE(REAL(RAW(K,J),KIND=KI_TIR))
+     $     .OR..NOT.IEEE_IS_FINITE(AIMAG(RAW(K,J)))) RETURN
+        ENDDO
+        IF(TIRUSTCOMPUTEFINITE) THEN
+          TIRCOEFS(I,1)=RAW(K,4)
+        ELSE
+          TIRCOEFS(I,1)=CMPLX(IEEE_VALUE(REAL(0,KIND=KI_TIR)
+     $     ,IEEE_QUIET_NAN),REAL(0,KIND=KI_TIR),KIND=KI_TIR)
+        ENDIF
+        TIRCOEFS(I,2)=RAW(K,1)+RAW(K,2)
+        TIRCOEFS(I,3)=RAW(K,3)
+      ENDDO
+      STABLE=.TRUE.
+      END
+
+C     TIRust tensor reduction. The public diagnostic returns
+C      MadLoop-ordered
+C     moments, marks an unevaluated finite coefficient with NaN, and
+C      performs
+C     no numerator contraction or counterterm addition.
+      SUBROUTINE AUDIT_MP_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE
+     $ ,RANK,PL,M2L,TIRCOEFS,STABLE)
+      USE MTIRUST
+      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT64_T
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+     $ ,IEEE_VALUE,IEEE_QUIET_NAN
+      USE AUDIT_POLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
+      IMPLICIT NONE
+      INCLUDE 'loop_max_coefs.inc'
+      INTEGER CTMODE,NLOOPLINE,RANK,I,J,K,NC,STATUS
+      REAL*16 PL(0:3,NLOOPLINE)
+      COMPLEX*16 M2L(NLOOPLINE)
+      COMPLEX*32 TIRCOEFS(0:LOOPMAXCOEFS-1,3)
+      LOGICAL STABLE,CACHE_ENABLED,CHECK_PASS
+      REAL*16 P_TMP(0:3,0:NLOOPLINE-1),ABSP(0:3),REF_P,PREFIX_SUM
+      REAL*16 SHIFTS(0:3,NLOOPLINE),P_S_MAT(NLOOPLINE,0:3)
+      REAL*16 PDEN_DUMMY(0:3,NLOOPLINE-1),INVARIANTS(NLOOPLINE
+     $ ,NLOOPLINE),SCALE
+      COMPLEX*32 MASSES(NLOOPLINE),S_MAT(NLOOPLINE,NLOOPLINE)
+      COMPLEX*32 RAW(LOOPMAXCOEFS,4)
+      INTEGER TIRUST_MAP(0:LOOPMAXCOEFS-1)
+      DATA (TIRUST_MAP(I),I=0,9)/1,2,3,4,5,6,7,10,8,11/
+      DATA (TIRUST_MAP(I),I=10,19)/13,9,12,14,15,16,17,20,26,18/
+      DATA (TIRUST_MAP(I),I=20,29)/21,27,23,29,32,19,22,28,24,30/
+      DATA (TIRUST_MAP(I),I=30,39)/33,25,31,34,35,36,37,40,46,56/
+      DATA (TIRUST_MAP(I),I=40,49)/38,41,47,57,43,49,59,52,62,66/
+      DATA (TIRUST_MAP(I),I=50,59)/39,42,48,58,44,50,60,53,63,67/
+      DATA (TIRUST_MAP(I),I=60,69)/45,51,61,54,64,68,55,65,69,70/
+      DATA (TIRUST_MAP(I),I=70,79)/71,72,75,81,91,106,73,76,82,92/
+      DATA (TIRUST_MAP(I),I=80,89)/107,78,84,94,109,87,97,112,101,116/
+      DATA (TIRUST_MAP(I),I=90,99)/121,74,77,83,93,108,79,85,95,110/
+      DATA (TIRUST_MAP(I),I=100,109)/88,98,113,102,117,122,80,86,96
+     $ ,111/
+      DATA (TIRUST_MAP(I),I=110,119)/89,99,114,103,118,123,90,100,115
+     $ ,104/
+      DATA (TIRUST_MAP(I),I=120,129)/119,124,105,120,125,126,127,128
+     $ ,131,137/
+      DATA (TIRUST_MAP(I),I=130,139)/147,162,183,129,132,138,148,163
+     $ ,184,134/
+      DATA (TIRUST_MAP(I),I=140,149)/140,150,165,186,143,153,168,189
+     $ ,157,172/
+      DATA (TIRUST_MAP(I),I=150,159)/193,177,198,204,130,133,139,149
+     $ ,164,185/
+      DATA (TIRUST_MAP(I),I=160,169)/135,141,151,166,187,144,154,169
+     $ ,190,158/
+      DATA (TIRUST_MAP(I),I=170,179)/173,194,178,199,205,136,142,152
+     $ ,167,188/
+      DATA (TIRUST_MAP(I),I=180,189)/145,155,170,191,159,174,195,179
+     $ ,200,206/
+      DATA (TIRUST_MAP(I),I=190,199)/146,156,171,192,160,175,196,180
+     $ ,201,207/
+      DATA (TIRUST_MAP(I),I=200,209)/161,176,197,181,202,208,182,203
+     $ ,209,210/
+
+      INCLUDE 'coupl.inc'
+      INCLUDE 'MadLoopParams.inc'
+      STABLE=.FALSE.
+      TIRCOEFS=0
+      IF(RANK.LT.0.OR.RANK.GT.6) RETURN
+      IF(.NOT.TIRUST_SUPPORTS(NLOOPLINE,RANK,TIRUSTCOMPUTEFINITE))
+     $  RETURN
+      CALL AUDIT_INITIALIZE_TIRUST(STATUS)
+      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+      CALL TIRUST_SET_CACHE_BUDGET(INT(TIRUSTCACHEMAXBYTES,C_INT64_T)
+     $ ,STATUS)
+      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+      PDEN_DUMMY=0
+      MASSES=CMPLX(M2L,KIND=KI_QTIR)
+      CALL AUDIT_MP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,MASSES)
+C     Preserve the summation and threshold conventions of the Ninja
+C      adapter.
+      P_TMP=0
+      ABSP=0
+      DO I=0,3
+        DO J=1,NLOOPLINE
+          P_TMP(I,0)=P_TMP(I,0)+PL(I,J)
+          ABSP(I)=ABSP(I)+ABS(PL(I,J))
+        ENDDO
+      ENDDO
+      REF_P=MAXVAL(ABSP)
+      IF(REF_P.GT.1D-8) THEN
+        DO I=0,3
+          IF(ABS(P_TMP(I,0))/MAX(REF_P*1D-6,ABSP(I)).GT.1D-6) RETURN
+        ENDDO
+      ENDIF
+C     Accumulate ordered prefixes once, preserving the zero-seeded sum.
+      DO I=0,3
+        PREFIX_SUM=REAL(0,KIND=KI_QTIR)
+        DO J=1,NLOOPLINE-1
+          PREFIX_SUM=PREFIX_SUM+PL(I,J)
+          P_TMP(I,J)=PREFIX_SUM
+        ENDDO
+      ENDDO
+      DO J=1,NLOOPLINE
+        DO I=0,3
+          SHIFTS(I,J)=P_TMP(I,J-1)
+          P_S_MAT(J,I)=SHIFTS(I,J)
+        ENDDO
+      ENDDO
+      CALL AUDIT_MP_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_S_MAT,MASSES
+     $ ,S_MAT)
+      DO J=1,NLOOPLINE
+        DO I=1,NLOOPLINE
+          INVARIANTS(I,J)=REAL(S_MAT(I,J)+MASSES(I)+MASSES(J)
+     $     ,KIND=KI_QTIR)
+        ENDDO
+      ENDDO
+      SCALE=REAL(MU_R,KIND=KI_QTIR)**2
+      NC=NCOEF_R(RANK)
+      CACHE_ENABLED=TIRUSTGLOBALCACHE.EQ.
+     $ -1.OR.NLOOPLINE.LE.TIRUSTGLOBALCACHE
+      CHECK_PASS=CTMODE.EQ.2.OR.CTMODE.EQ.5
+      CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS
+     $ ,MASSES,SCALE,RAW(1:NC,1:4),STATUS,MAX(0,LOOPPOLEMODE)
+     $ ,TIRUSTCOMPUTEFINITE,CHECK_PASS,CACHE_ENABLED)
+      IF(STATUS.NE.TIRUST_SUCCESS) RETURN
+      DO I=0,NC-1
+        K=TIRUST_MAP(I)
+        DO J=1,4
+          IF(J.EQ.4.AND..NOT.TIRUSTCOMPUTEFINITE) CYCLE
+          IF(.NOT.IEEE_IS_FINITE(REAL(RAW(K,J),KIND=KI_QTIR))
+     $     .OR..NOT.IEEE_IS_FINITE(AIMAG(RAW(K,J)))) RETURN
+        ENDDO
+        IF(TIRUSTCOMPUTEFINITE) THEN
+          TIRCOEFS(I,1)=RAW(K,4)
+        ELSE
+          TIRCOEFS(I,1)=CMPLX(IEEE_VALUE(REAL(0,KIND=KI_QTIR)
+     $     ,IEEE_QUIET_NAN),REAL(0,KIND=KI_QTIR),KIND=KI_QTIR)
+        ENDIF
+        TIRCOEFS(I,2)=RAW(K,1)+RAW(K,2)
+        TIRCOEFS(I,3)=RAW(K,3)
+      ENDDO
+      STABLE=.TRUE.
+      END
+
+      SUBROUTINE AUDIT_TIRUSTLOOP(CTMODE,NLOOPLINE,RANK,PL,M2L
+     $ ,TIRCOEFS,STABLE)
+      IMPLICIT NONE
+      INCLUDE 'loop_max_coefs.inc'
+      INTEGER CTMODE,NLOOPLINE,RANK
+      REAL*8 PL(0:3,NLOOPLINE)
+      COMPLEX*16 M2L(NLOOPLINE)
+      COMPLEX*16 TIRCOEFS(0:LOOPMAXCOEFS-1,3)
+      LOGICAL STABLE
+      CALL AUDIT_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK,PL,M2L
+     $ ,TIRCOEFS,STABLE)
+      END
+
+      SUBROUTINE AUDIT_MP_TIRUST_LOOP(NLOOPLINE,PL,M2L,RANK,RES,STABLE)
+      USE MTIRUST, ONLY: KI_QTIR
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      USE AUDIT_POLYNOMIAL_CONSTANTS, ONLY: NCOEF_R
+      IMPLICIT NONE
+      INTEGER NLOOPGROUPS,NSQUAREDSO
+      PARAMETER(NLOOPGROUPS=1,NSQUAREDSO=1)
+      INCLUDE 'loop_max_coefs.inc'
+      INTEGER NLOOPLINE,RANK,CTMODE,I,J
+      REAL*16 PL(0:3,NLOOPLINE)
+      COMPLEX*16 M2L(NLOOPLINE)
+      COMPLEX*16 RES(3)
+      COMPLEX*32 COEFS(0:LOOPMAXCOEFS-1,3),RESULT(3)
+      REAL*8 LSCALE
+      COMMON/AUDIT_CT/LSCALE,CTMODE
+      REAL*16 NORMALIZATION
+      PARAMETER(NORMALIZATION=1.0E0_16/(16.0E0_16
+     $ *3.141592653589793238462643383279502884E0_16**2))
+      LOGICAL STABLE,FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+      COMMON/AUDIT_FPE_IN_REDUCTION/FPE_IN_DP_REDUCTION
+     $ ,FPE_IN_QP_REDUCTION
+      INTEGER ID,R
+      COMMON/AUDIT_LOOP/ID,R
+      COMPLEX*32 LOOPCOEFS(0:LOOPMAXCOEFS-1,NLOOPGROUPS)
+      COMMON/AUDIT_MP_LCOEFS/LOOPCOEFS
+      RES=0
+      CALL AUDIT_MP_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK,PL
+     $ ,M2L,COEFS,STABLE)
+      IF(.NOT.STABLE) THEN
+        FPE_IN_QP_REDUCTION=.TRUE.
+        RETURN
+      ENDIF
+      RESULT=0
+      DO I=1,3
+        DO J=0,NCOEF_R(RANK)-1
+          RESULT(I)=RESULT(I)+LOOPCOEFS(J,ID)*COEFS(J,I)
+        ENDDO
+        RESULT(I)=NORMALIZATION*RESULT(I)
+        RES(I)=CMPLX(RESULT(I),KIND=KIND(0D0))
+        STABLE=STABLE.AND.IEEE_IS_FINITE(DBLE(RES(I)))
+     $   .AND.IEEE_IS_FINITE(AIMAG(RES(I)))
+      ENDDO
+      IF(.NOT.STABLE) THEN
+        RES=0
+        FPE_IN_QP_REDUCTION=.TRUE.
+      ENDIF
+      END
+
+      SUBROUTINE AUDIT_INITIALIZE_TIRUST(STATUS)
+      USE MTIRUST
+      IMPLICIT NONE
+      INTEGER STATUS
+      INTEGER LAST_GENERATION
+      COMMON/AUDIT_TIRUST_INIT/LAST_GENERATION
+      STATUS=TIRUST_SUCCESS
+      IF(LAST_GENERATION.EQ.TIRUST_CONTEXT_GENERATION()) RETURN
+      CALL TIRUST_REGISTER_PLAN(4,5,STATUS)
+      LAST_GENERATION=TIRUST_CONTEXT_GENERATION()
+      END
+
+      BLOCK DATA AUDIT_TIRUST_INIT_DATA
+      IMPLICIT NONE
+      INTEGER LAST_GENERATION
+      COMMON/AUDIT_TIRUST_INIT/LAST_GENERATION
+      DATA LAST_GENERATION/-2/
+      END
+
+      SUBROUTINE AUDIT_CLEAR_TIRUST_CACHE()
+      USE MTIRUST, ONLY: TIRUST_CLEAR_CACHE
+      CALL TIRUST_CLEAR_CACHE()
+      END
+
+      SUBROUTINE AUDIT_FINALIZE_TIRUST()
+      USE MTIRUST, ONLY: TIRUST_FINALIZE
+      IMPLICIT NONE
+      INTEGER LAST_GENERATION
+      COMMON/AUDIT_TIRUST_INIT/LAST_GENERATION
+      CALL TIRUST_FINALIZE()
+      LAST_GENERATION=-2
+      END
+      SUBROUTINE AUDIT_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_LOOP,M2L
+     $ ,S_MAT)
+C     
+C     Helper function that compute the loop kinematic matrix with
+C      proper thresholds
+C     NLOOPLINE : Number of loop lines
+C     P_LOOP    : List of external momenta running in the loop, i.e.
+C      q_i in the denominator (l_i+q_i)**2-m_i**2
+C     M2L       : List of complex-valued masses running in the loop.
+C     S_MAT(N,N): Kinematic matrix output.
+C     
+C     ARGUMENTS
+C     
+      INTEGER NLOOPLINE
+      REAL*8 P_LOOP(NLOOPLINE,0:3)
+      COMPLEX*16 M2L(NLOOPLINE)
+      COMPLEX*16 S_MAT(NLOOPLINE,NLOOPLINE)
+C     
+C     GLOBAL VARIABLES
+C     
+      INCLUDE 'MadLoopParams.inc'
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I,J,K
+      COMPLEX*16 DIFFSQ
+      REAL*8 REF_NORMALIZATION
+
+C     ----------
+C     BEGIN CODE
+C     ----------
+
+      DO I=1,NLOOPLINE
+        DO J=1,NLOOPLINE
+
+          IF(I.EQ.J)THEN
+            S_MAT(I,J)=-(M2L(I)+M2L(J))
+          ELSE
+            DIFFSQ = (DCMPLX(P_LOOP(I,0),0.0D0)-DCMPLX(P_LOOP(J,0)
+     $       ,0.0D0))**2
+            DO K=1,3
+              DIFFSQ = DIFFSQ - (DCMPLX(P_LOOP(I,K),0.0D0)
+     $         -DCMPLX(P_LOOP(J,K),0.0D0))**2
+            ENDDO
+C           Default value of the kinematic matrix
+            S_MAT(I,J)=DIFFSQ-M2L(I)-M2L(J)
+C           And we now test various thresholds. Normally, at most one
+C            applies.
+            IF(ABS(M2L(I)).NE.0.0D0)THEN
+              IF(ABS((DIFFSQ-M2L(I))/M2L(I)).LT.OSTHRES)THEN
+                S_MAT(I,J)=-M2L(J)
+              ENDIF
+            ENDIF
+            IF(ABS(M2L(J)).NE.0.0D0)THEN
+              IF(ABS((DIFFSQ-M2L(J))/M2L(J)).LT.OSTHRES)THEN
+                S_MAT(I,J)=-M2L(I)
+              ENDIF
+            ENDIF
+C           Choose what seems the most appropriate way to compare
+C           massless onshellness.
+            REF_NORMALIZATION=0.0D0
+C           Here, we chose to base the threshold only on the energy
+C            component
+            DO K=0,0
+              REF_NORMALIZATION = REF_NORMALIZATION + ABS(P_LOOP(I,K))
+     $          + ABS(P_LOOP(J,K))
+            ENDDO
+            REF_NORMALIZATION = (REF_NORMALIZATION/2.0D0)**2
+            IF(REF_NORMALIZATION.NE.0.0D0)THEN
+              IF(ABS(DIFFSQ/REF_NORMALIZATION).LT.OSTHRES)THEN
+                S_MAT(I,J)=-(M2L(I)+M2L(J))
+              ENDIF
+            ENDIF
+          ENDIF
+
+        ENDDO
+      ENDDO
+
+      END
+
+      SUBROUTINE AUDIT_MP_BUILD_KINEMATIC_MATRIX(NLOOPLINE,P_LOOP,M2L
+     $ ,S_MAT)
+C     
+C     Helper function that compute the loop kinematic matrix with
+C      proper thresholds
+C     NLOOPLINE : Number of loop lines
+C     P_LOOP    : List of external momenta running in the loop, i.e.
+C      q_i in the denominator (l_i+q_i)**2-m_i**2
+C     M2L       : List of complex-valued masses running in the loop.
+C     S_MAT(N,N): Kinematic matrix output.
+C     
+C     ARGUMENTS
+C     
+      INTEGER NLOOPLINE
+      REAL*16 P_LOOP(NLOOPLINE,0:3)
+      COMPLEX*32 M2L(NLOOPLINE)
+      COMPLEX*32 S_MAT(NLOOPLINE,NLOOPLINE)
+C     
+C     GLOBAL VARIABLES
+C     
+      INCLUDE 'MadLoopParams.inc'
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I,J,K
+      COMPLEX*32 DIFFSQ
+      REAL*16 REF_NORMALIZATION
+
+C     ----------
+C     BEGIN CODE
+C     ----------
+
+      DO I=1,NLOOPLINE
+        DO J=1,NLOOPLINE
+
+          IF(I.EQ.J)THEN
+            S_MAT(I,J)=-(M2L(I)+M2L(J))
+          ELSE
+            DIFFSQ = (CMPLX(P_LOOP(I,0),0.0E0_16,KIND=16)
+     $       -CMPLX(P_LOOP(J,0),0.0E0_16,KIND=16))**2
+            DO K=1,3
+              DIFFSQ = DIFFSQ - (CMPLX(P_LOOP(I,K),0.0E0_16,KIND=16)
+     $         -CMPLX(P_LOOP(J,K),0.0E0_16,KIND=16))**2
+            ENDDO
+C           Default value of the kinematic matrix
+            S_MAT(I,J)=DIFFSQ-M2L(I)-M2L(J)
+C           And we now test various thresholds. Normally, at most one
+C            applies.
+            IF(ABS(M2L(I)).NE.0.0E0_16)THEN
+              IF(ABS((DIFFSQ-M2L(I))/M2L(I)).LT.OSTHRES)THEN
+                S_MAT(I,J)=-M2L(J)
+              ENDIF
+            ENDIF
+            IF(ABS(M2L(J)).NE.0.0E0_16)THEN
+              IF(ABS((DIFFSQ-M2L(J))/M2L(J)).LT.OSTHRES)THEN
+                S_MAT(I,J)=-M2L(I)
+              ENDIF
+            ENDIF
+C           Choose what seems the most appropriate way to compare
+C           massless onshellness.
+            REF_NORMALIZATION=0.0E0_16
+C           Here, we chose to base the threshold only on the energy
+C            component
+            DO K=0,0
+              REF_NORMALIZATION = REF_NORMALIZATION + ABS(P_LOOP(I,K))
+     $          + ABS(P_LOOP(J,K))
+            ENDDO
+            REF_NORMALIZATION = (REF_NORMALIZATION/2.0E0_16)**2
+            IF(REF_NORMALIZATION.NE.0.0E0_16)THEN
+              IF(ABS(DIFFSQ/REF_NORMALIZATION).LT.OSTHRES)THEN
+                S_MAT(I,J)=-(M2L(I)+M2L(J))
+              ENDIF
+            ENDIF
+          ENDIF
+
+        ENDDO
+      ENDDO
+
+      END
+
+      SUBROUTINE AUDIT_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN,M2L)
+      IMPLICIT NONE
+
+      INTEGER CTMODE,NLOOPLINE
+
+      REAL*8 PL(0:3,NLOOPLINE)
+      REAL*8 PDEN(0:3,NLOOPLINE-1)
+      COMPLEX*16 M2L(NLOOPLINE)
+      REAL*8 NEW_PL(0:3,NLOOPLINE)
+      REAL*8 NEW_PDEN(0:3,NLOOPLINE-1)
+      COMPLEX*16 NEW_M2L(NLOOPLINE)
+
+      INTEGER I,J,K
+
+      IF (CTMODE.NE.2.AND.CTMODE.NE.5) THEN
+        RETURN
+      ENDIF
+
+      IF (NLOOPLINE.LE.2) THEN
+        RETURN
+      ENDIF
+
+      DO I=1,NLOOPLINE-1
+        DO J=0,3
+          NEW_PDEN(J,NLOOPLINE-I) = PDEN(J,I)
+        ENDDO
+      ENDDO
+      DO I=1,NLOOPLINE-1
+        DO J=0,3
+          PDEN(J,I) = NEW_PDEN(J,I)
+        ENDDO
+      ENDDO
+
+      DO I=2,NLOOPLINE
+        NEW_M2L(I)=M2L(NLOOPLINE-I+2)
+      ENDDO
+      DO I=2,NLOOPLINE
+        M2L(I)=NEW_M2L(I)
+      ENDDO
+
+
+      DO I=1,NLOOPLINE
+        DO J=0,3
+          NEW_PL(J,I) = -PL(J,NLOOPLINE+1-I)
+        ENDDO
+      ENDDO
+      DO I=1,NLOOPLINE
+        DO J=0,3
+          PL(J,I) = NEW_PL(J,I)
+        ENDDO
+      ENDDO
+
+      END
+
+      SUBROUTINE AUDIT_MP_SWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN,M2L)
+      IMPLICIT NONE
+
+      INTEGER CTMODE,NLOOPLINE
+
+      REAL*16 PL(0:3,NLOOPLINE)
+      REAL*16 PDEN(0:3,NLOOPLINE-1)
+      COMPLEX*32 M2L(NLOOPLINE)
+      REAL*16 NEW_PL(0:3,NLOOPLINE)
+      REAL*16 NEW_PDEN(0:3,NLOOPLINE-1)
+      COMPLEX*32 NEW_M2L(NLOOPLINE)
+
+      INTEGER I,J,K
+
+      IF (CTMODE.NE.2.AND.CTMODE.NE.5) THEN
+        RETURN
+      ENDIF
+
+      IF (NLOOPLINE.LE.2) THEN
+        RETURN
+      ENDIF
+
+      DO I=1,NLOOPLINE-1
+        DO J=0,3
+          NEW_PDEN(J,NLOOPLINE-I) = PDEN(J,I)
+        ENDDO
+      ENDDO
+      DO I=1,NLOOPLINE-1
+        DO J=0,3
+          PDEN(J,I) = NEW_PDEN(J,I)
+        ENDDO
+      ENDDO
+
+      DO I=2,NLOOPLINE
+        NEW_M2L(I)=M2L(NLOOPLINE-I+2)
+      ENDDO
+      DO I=2,NLOOPLINE
+        M2L(I)=NEW_M2L(I)
+      ENDDO
+
+
+      DO I=1,NLOOPLINE
+        DO J=0,3
+          NEW_PL(J,I) = -PL(J,NLOOPLINE+1-I)
+        ENDDO
+      ENDDO
+      DO I=1,NLOOPLINE
+        DO J=0,3
+          PL(J,I) = NEW_PL(J,I)
+        ENDDO
+      ENDDO
+
+      END
+
+

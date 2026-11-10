@@ -1,0 +1,256 @@
+{
+  "bridge_sha256": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+  "build_metadata": {
+    "adapter": {
+      "bridge": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so",
+      "coefficient_count": 126,
+      "compiler": "GNU Fortran (GCC) 15.2.0",
+      "input_sha256": {
+        ".tirust-build/default-stability-current-1/adapter/accuracy.f": "fcc931304cbd93714ddc531cb4ecef0b1d1c9991fb10a3cea6f385765fd06af3",
+        ".tirust-build/default-stability-current-1/adapter/adapter.f": "ed7199bf318d93d1e7f6db6171daad05b81089f27a3aa025e9cf4bf1ae987700",
+        ".tirust-build/default-stability-current-1/adapter/driver.f": "099ea6e9b87d9d42069640ceb3b645c1dc3754407e1614fdec0fb8bd92955a0b",
+        ".tirust-build/default-stability-current-1/adapter/libtirust_stability_audit.so": "b4bbb09365b5b26617e942a4634c18f39376806fe59ca4a948860b7a131ae649",
+        ".tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9",
+        "Template/loop_material/StandAlone/SubProcesses/MadLoopParamReader.f": "33d6cbdacc55cae6f05138c10a3be5e38db685aa74e1bab44ab3480871e3d9d4",
+        "Template/loop_material/StandAlone/SubProcesses/MadLoopParams.inc": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+        "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/build_harness.py": "47c8f85b7f326154437dbeea295d1ee1e61216c97d20d109977baff19008803b",
+        "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/harness_driver.f": "571b60e05abbcc1b1bc96580001d6c9254ed6e731e0246d75f65df282cbd9df6",
+        "madgraph/iolibs/template_files/loop_optimized/CT_interface.inc": "dfd7cf893599d2976041c1d603c08d888640bc74938d3605e14a707168e6cf16",
+        "madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc": "ae18cc526313dac260be88c40d3ac92210687a576f94f32f1bf42a5311afa9ec",
+        "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": "166ac2e2fb6555568bce4865dca462162b7a5af5b6b436fd64fa96ac23b80f89",
+        "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+        "vendor/tirust/mtirust.f90": "3cb9cf98e82965e546365b293fdfd622cbae2ec09a7ae3d364de3ccf9b9bd56f"
+      },
+      "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/libtirust_stability_audit.so",
+      "max_generated_rank": 6,
+      "normalization": "none: diagnostic tensor contraction",
+      "propagators": 4,
+      "rank": 5,
+      "runtime_lock": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/numerical-tests.lock"
+    },
+    "host": {
+      "compiler": "GNU Fortran (GCC) 15.2.0",
+      "eligibility_initialization": "Verbatim generated availability filters and QP index construction",
+      "eligibility_source": ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/loop_matrix.f",
+      "library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/host/libtirust_host_rescue.so",
+      "limitations": [
+        "The full SLOOPMATRIX physics/filter initialization pipeline is not executed.",
+        "Real and imaginary projections are independent synthetic interference diagnostics.",
+        "This executes the production automatic branch and native accuracy/return-code functions."
+      ],
+      "physics_callback": "Injected N4R5 production diagnostic adapter at labels 200 and 300",
+      "policy_end_line": 2006,
+      "policy_source": "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc",
+      "policy_start_line": 1713,
+      "rotations": "Callbacks select caller-provided original, rotation1 and rotation2 fixture arrays",
+      "source_hashes": {
+        ".benchmark-work/tirust/campaigns/split-dp-terminal-1/outputs/candidate/qcd_n1_uux_z/SubProcesses/P0_uux_z/loop_matrix.f": "82f44e79fe23b1fd7a892e67e3682d666f47fa6d5d13ebf7e4e87d77323707db",
+        ".tirust-build/default-stability-current-1/adapter/libtirust_stability_audit.so": "b4bbb09365b5b26617e942a4634c18f39376806fe59ca4a948860b7a131ae649",
+        ".tirust-build/default-stability-current-1/host/host_rescue.f": "573b4141f29995483c3de70a89bc6e6d761c07d98b6e74f121f6e00d2df2dfa7",
+        ".tirust-build/default-stability-current-1/host/libtirust_host_rescue.so": "ae2a0a763eee2d91488bd0b160f658e15816521a764cb5e2c13b6e3f44776ccb",
+        ".tirust-build/default-stability-current-1/host/production-eligibility.inc": "0d7a68fdea5368ebb6c9957dfe35d15867c0b633d29761afd2b23bf049e7e976",
+        ".tirust-build/default-stability-current-1/host/production-policy.inc": "702273b7a33b5b70c2b6e7606723c285277e44862f1ad0fbfe3b07dc477e9499",
+        ".tirust-build/default-stability-current-1/host/production-retcode.inc": "c3cc089a1b26d58d329d1769f4f6004ff2188e2c0d639dd025fcdbda6a264e06",
+        "Template/loop_material/StandAlone/SubProcesses/MadLoopCommons.inc": "2c45aae1b048204c679eca303def57e2c2be9c512a405ac08465adedeecf5232",
+        "Template/loop_material/StandAlone/SubProcesses/MadLoopParams.inc": "bdad7ce47887b572dd0dad05a9cba5a88b1003a1973bba4914906ad8e08cef61",
+        "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/build_host_rescue.py": "2cf3370b175bf5ea21255dd9dba53835eeca22d59731cca4de2fd10a9fc96aed",
+        "docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/host_rescue_driver.f": "a3070568351c003608cd716e8d4c8e7e712eb9628be787dbf98488b57c51eb55",
+        "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8"
+      }
+    }
+  },
+  "builder_sha256": {
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/build_harness.py": "47c8f85b7f326154437dbeea295d1ee1e61216c97d20d109977baff19008803b",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/qualification/tirust-bridge/stability-audit/build_host_rescue.py": "2cf3370b175bf5ea21255dd9dba53835eeca22d59731cca4de2fd10a9fc96aed"
+  },
+  "commands": [
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O3",
+        "-fPIC",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/loop_material/StandAlone/SubProcesses",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/tirust/mtirust.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/mtirust.o"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O3",
+        "-fPIC",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/loop_material/StandAlone/SubProcesses",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/polynomial.f90",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/polynomial.o"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O3",
+        "-fPIC",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/loop_material/StandAlone/SubProcesses",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/adapter.f",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/adapter.o"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O3",
+        "-fPIC",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/loop_material/StandAlone/SubProcesses",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/accuracy.f",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/accuracy.o"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O3",
+        "-fPIC",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/loop_material/StandAlone/SubProcesses",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/driver.f",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/driver.o"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O3",
+        "-fPIC",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-J/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/loop_material/StandAlone/SubProcesses",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/loop_material/StandAlone/SubProcesses/MadLoopParamReader.f",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/MadLoopParamReader.o"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-print-libgcc-file-name"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-shared",
+        "-Wl,-z,defs",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/mtirust.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/polynomial.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/adapter.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/accuracy.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/driver.o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/MadLoopParamReader.o",
+        "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a",
+        "-lgcc_s",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+        "-lmadloop_tirust",
+        "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter/libtirust_stability_audit.so"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "--version"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-O3",
+        "-fPIC",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/Template/loop_material/StandAlone/SubProcesses",
+        "-c",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/host/host_rescue.f",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/host/host_rescue.o"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-print-libgcc-file-name"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "-shared",
+        "-Wl,-z,defs",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/host/host_rescue.o",
+        "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a",
+        "-lgcc_s",
+        "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-ltirust_stability_audit",
+        "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/adapter",
+        "-o",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/default-stability-current-1/host/libtirust_host_rescue.so"
+      ],
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+        "--version"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "complete": true,
+  "cpu": 14,
+  "elapsed_seconds": 3.47790605481714,
+  "launcher_sha256": "01aeffab1ec75707dd5f1594e8960d71bae120045e985c5b9b81fc8cfd57651f",
+  "native_evaluation": false,
+  "timeout_seconds": 120
+}
