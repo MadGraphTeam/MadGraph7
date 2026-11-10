@@ -202,13 +202,57 @@ fn parse(bytes: &[u8], what: &str) -> RusticolResult<Value> {
     serde_json::from_slice(bytes).map_err(|e| invalid(format!("{what}: {e}")))
 }
 
-/// A plan as JSON (a stored binary plan member is read as its JSON).
-fn plan_value(bytes: &[u8]) -> RusticolResult<Value> {
-    use rusticol_core::loop_v2::plan::binary::{PlanModel, is_binary};
-    if is_binary(bytes) {
-        return parse(&PlanModel::from_binary(bytes)?.json(), "plan");
+/// The records a formation reads of a plan (its seed classes and keys, its
+/// forward or merged program, its families' leaf seeds): typed, so the rest
+/// of the plan (steps, contents, edges, ...) is skipped while reading
+/// rather than held as JSON values (the formation's peak memory).
+#[derive(serde::Deserialize)]
+struct PlanView {
+    #[serde(default)]
+    seed_classes: Option<Value>,
+    #[serde(default)]
+    seeds: Option<Value>,
+    #[serde(default)]
+    forward: Option<serde::de::IgnoredAny>,
+    #[serde(default)]
+    merged: Option<serde::de::IgnoredAny>,
+    #[serde(default)]
+    families: Vec<FamilyView>,
+}
+
+#[derive(serde::Deserialize)]
+struct FamilyView {
+    leaves: Vec<LeafView>,
+}
+
+#[derive(serde::Deserialize)]
+struct LeafView {
+    seed: usize,
+}
+
+impl PlanView {
+    fn seed_classes(&self) -> RusticolResult<&Value> {
+        self.seed_classes
+            .as_ref()
+            .ok_or_else(|| invalid("a stored record lacks \"seed_classes\""))
     }
-    parse(bytes, "plan")
+
+    fn seeds(&self) -> RusticolResult<&Value> {
+        self.seeds
+            .as_ref()
+            .ok_or_else(|| invalid("a stored record lacks \"seeds\""))
+    }
+}
+
+/// A plan's [`PlanView`] (a stored binary plan member is read as its JSON).
+fn plan_view(bytes: &[u8]) -> RusticolResult<PlanView> {
+    use rusticol_core::loop_v2::plan::binary::{PlanModel, is_binary};
+    let read =
+        |bytes: &[u8]| serde_json::from_slice(bytes).map_err(|e| invalid(format!("plan: {e}")));
+    if is_binary(bytes) {
+        return read(&PlanModel::from_binary(bytes)?.json());
+    }
+    read(bytes)
 }
 
 fn usize_of(value: &Value, what: &str) -> RusticolResult<usize> {
@@ -251,6 +295,17 @@ fn row_of(item: &Value) -> RusticolResult<&Value> {
         [row] => Ok(row),
         _ => Err(invalid("a resolved column has one Born row")),
     }
+}
+
+/// A seed class's seed-weight column `w` (its terms `[component, re, im]`).
+fn terms_of(record: &Value, w: usize) -> RusticolResult<&Vec<Value>> {
+    let columns = array(field(record, "columns")?, "a seed class's columns")?;
+    array(
+        columns
+            .get(w)
+            .ok_or_else(|| invalid("a seed-weight column out of range"))?,
+        "a seed-weight column",
+    )
 }
 
 /// The stored resolved set's records: its columns, the process rows and
@@ -362,13 +417,13 @@ impl<'a> Resolved<'a> {
 }
 
 /// The plans of a formation (process, companion), as JSON.
-fn plans(records: &ResolvedRecords<'_>, count: usize) -> RusticolResult<Vec<Value>> {
-    let mut out = vec![plan_value(records.plan)?];
+fn plans(records: &ResolvedRecords<'_>, count: usize) -> RusticolResult<Vec<PlanView>> {
+    let mut out = vec![plan_view(records.plan)?];
     if count > 1 {
         let companion = records
             .companion_plan
             .ok_or_else(|| invalid("a companion seed record without the companion plan"))?;
-        out.push(plan_value(companion)?);
+        out.push(plan_view(companion)?);
     }
     Ok(out)
 }
@@ -495,19 +550,9 @@ impl SelectionTemplate {
         for (p, (overlay, plan)) in resolved.overlays.iter().zip(&plans).enumerate() {
             let (seed_records, keys) = match (overlay.get("seed_classes"), overlay.get("seeds")) {
                 (Some(classes @ Value::Array(_)), Some(keys)) => (classes, keys),
-                _ => (field(plan, "seed_classes")?, field(plan, "seeds")?),
+                _ => (plan.seed_classes()?, plan.seeds()?),
             };
             let seed_records = array(seed_records, "the seed classes")?;
-            let terms_of = |record: &Value, w: usize| -> RusticolResult<Vec<Value>> {
-                let columns = array(field(record, "columns")?, "a seed class's columns")?;
-                Ok(array(
-                    columns
-                        .get(w)
-                        .ok_or_else(|| invalid("a seed-weight column out of range"))?,
-                    "a seed-weight column",
-                )?
-                .clone())
-            };
             let component_of = |term: &Value| -> RusticolResult<usize> {
                 usize_of(
                     term.get(0).ok_or_else(|| invalid("a seed weight term"))?,
@@ -517,23 +562,26 @@ impl SelectionTemplate {
             let mut owner: BTreeMap<usize, Option<usize>> = BTreeMap::new();
             let mut per_basis: BTreeMap<Option<usize>, BTreeSet<usize>> =
                 axis.iter().map(|&b| (b, BTreeSet::new())).collect();
-            for signature in &weights {
-                for (&(b, _s, q), &w) in signature {
-                    if q != p {
-                        continue;
-                    }
-                    for record in seed_records {
-                        for term in terms_of(record, w)? {
-                            let component = component_of(&term)?;
-                            if *owner.entry(component).or_insert(b) != b {
-                                return Err(invalid(
-                                    "a plan Born component carries the seed weights of two \
-                                     Born basis elements; the selection template masks its \
-                                     seeds by component",
-                                ));
-                            }
-                            per_basis.entry(b).or_default().insert(component);
+            // Each (colour component, seed-weight column) of the plan once
+            // (rows of a class, and sectors, repeat them).
+            let pairs: BTreeSet<(Option<usize>, usize)> = weights
+                .iter()
+                .flat_map(|signature| signature.iter())
+                .filter(|((_, _, q), _)| *q == p)
+                .map(|(&(b, _, _), &w)| (b, w))
+                .collect();
+            for &(b, w) in &pairs {
+                for record in seed_records {
+                    for term in terms_of(record, w)? {
+                        let component = component_of(term)?;
+                        if *owner.entry(component).or_insert(b) != b {
+                            return Err(invalid(
+                                "a plan Born component carries the seed weights of two \
+                                 Born basis elements; the selection template masks its \
+                                 seeds by component",
+                            ));
                         }
+                        per_basis.entry(b).or_default().insert(component);
                     }
                 }
             }
@@ -546,7 +594,7 @@ impl SelectionTemplate {
                 for ws in &template_weights[p] {
                     let mut terms = Vec::new();
                     for &w in ws {
-                        terms.extend(terms_of(record, w)?);
+                        terms.extend(terms_of(record, w)?.iter().cloned());
                     }
                     let distinct: BTreeSet<usize> = terms
                         .iter()
@@ -570,18 +618,16 @@ impl SelectionTemplate {
                 .cloned()
                 .ok_or_else(|| invalid("seed records lack 'born_components'"))?;
             components.push(usize_of(&born_components, "the Born component count")?);
-            let reads_every = plan.get("forward").is_some_and(|v| !v.is_null())
-                || plan.get("merged").is_some_and(|v| !v.is_null());
+            let reads_every = plan.forward.is_some() || plan.merged.is_some();
             if reads_every {
                 family_classes.push(None);
             } else {
                 let keys = array(keys, "the seed keys")?;
-                let families = array(field(plan, "families")?, "the plan families")?;
-                let mut per_family = Vec::with_capacity(families.len());
-                for family in families {
+                let mut per_family = Vec::with_capacity(plan.families.len());
+                for family in &plan.families {
                     let mut classes_read = BTreeSet::new();
-                    for leaf in array(field(family, "leaves")?, "a family's leaves")? {
-                        let seed = usize_of(field(leaf, "seed")?, "a leaf seed")?;
+                    for leaf in &family.leaves {
+                        let seed = leaf.seed;
                         let key = keys
                             .get(seed)
                             .ok_or_else(|| invalid("a leaf of an unknown seed key"))?;
@@ -804,10 +850,7 @@ pub fn resolved_subset(
         let (seed_records, keys) = if own_seeds(overlay) {
             (&overlay["seed_classes"], &overlay["seeds"])
         } else {
-            (
-                field(&plans[p], "seed_classes")?,
-                field(&plans[p], "seeds")?,
-            )
+            (plans[p].seed_classes()?, plans[p].seeds()?)
         };
         let classes = array(seed_records, "the seed classes")?
             .iter()
