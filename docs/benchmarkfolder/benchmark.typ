@@ -9,9 +9,10 @@
 } else { json(context-path) }
 #let pilots = json("experiments/numerical/completed-pilots-index.json")
 #let intermediate = if report.at("intermediate_path", default: none) == none { none } else { json(report.intermediate_path) }
+#let current-dossier = if report.at("campaign_report_path", default: none) == none { none } else { json(report.campaign_report_path) }
 #let env = json("implementation-start.json")
 #show: body => report-style(body, date: d.at("date", default: "9 November 2026"),
-  revision: if d.at("candidate_revision", default: none) == none { "not yet measured" } else {
+  revision: if campaign != none { "registered " + campaign.candidate.exporter_identity.revision.slice(0, 12) } else if d.at("candidate_revision", default: none) == none { "not yet measured" } else {
     d.candidate_revision.slice(0,12) + if intermediate != none { " (measured)" } else { "" }
   })
 #let names = ("1": "CutTools", "6": "Ninja", "7": "COLLIER", "8": "NinjaRS", "9": "TIRust")
@@ -51,7 +52,7 @@
 #align(center)[
   #text(26pt, weight: "bold", fill: navy)[MadLoop with TIRust]
   #v(5pt)
-  #text(12pt, fill: ink2)[One-loop reduction · intermediate qualification report]
+  #text(12pt, fill: ink2)[One-loop reduction · #if campaign == none { [intermediate qualification report] } else { [registered campaign report] }]
   #v(4pt)
   #text(8.5pt, fill: luma(110))[CutTools · Ninja · COLLIER · NinjaRS · TIRust]
   #v(3pt)
@@ -61,6 +62,17 @@
 #if campaign != none {
   text(8pt, fill: ink2)[Selected campaign: #raw(campaign.id). Current numerical identity:
     #raw(campaign.candidate.numerical_identity_sha256.slice(0,16)).]
+  v(4pt)
+  text(8pt, fill: ink2)[Registered exporter anchor: #raw(campaign.candidate.exporter_identity.revision.slice(0,12)).
+    Observed export Git revisions: #if report.at("observed_candidate_revisions", default: ()).len() == 0 { [not yet measured] }
+    else { raw(report.observed_candidate_revisions.map(r => r.slice(0,12)).join(", ")) }.
+    Documentary revisions can differ while the registered exporter bytes remain identical.]
+  v(4pt)
+  note(fill: warm)[*Complete delivery qualification:
+    #cell-status(if current-dossier != none and current-dossier.delivery_complete { "pass" } else { "incomplete" }).*
+    The eight main runtime gates are one requirement. The eleven-process numerical matrix,
+    controls, existing-backend regressions, precision cohorts, implementation checks and
+    unresolved stress cases retain separate statuses.]
   v(4pt)
 }
 #note(fill: if d.gate.complete and d.gate.passed { pale } else { warm })[
@@ -140,7 +152,11 @@
 
 The same saved momenta, model parameters, coupling orders and scale are evaluated by all five tools. The regression criterion is #raw("3e-6"), with #raw("1e-8") as the ordinary-point target. Born, finite, simple-pole and double-pole coefficients are retained. Near-zero poles use the existing MadLoop comparison policy. Final accepted DP/QP outcomes and failed evaluations are retained; the histograms do not enumerate internal rescue attempts.
 
-#figure(table-style(table(columns: (1.4fr, .8fr, .8fr, .8fr, .8fr, .8fr),
+#if current-dossier != none {
+  import "campaign-report.typ": show-campaign-numerical
+  show-campaign-numerical(current-dossier, d.cases, process-label)
+} else {
+figure(table-style(table(columns: (1.4fr, .8fr, .8fr, .8fr, .8fr, .8fr),
   inset: (x: 4pt, y: 7pt), stroke: table-stroke, fill: table-fill,
   table.header([Process], ..ids.map(id => [#tool-name(id)])),
   ..d.cases.map(c => (
@@ -156,6 +172,7 @@ The same saved momenta, model parameters, coupling orders and scale are evaluate
     }),
   )).flatten(),
 )), caption: [Comparison status and largest retained relative discrepancy. A dash or pending status denotes absent evidence.])
+}
 
 #note[
   Agreement is assessed using independent numerical backends and higher precision when a discrepancy occurs. Known difficult scalar-box regions are retained as stress cases. A backend's own success flag does not establish cross-backend agreement.
@@ -194,7 +211,7 @@ The index #raw("experiments/numerical/completed-pilots-index.json") binds 491 re
 #pagebreak()
 = Absolute timing by reduction backend
 
-Values below are warmed full-amplitude times in µs per point. Initialization, compilation and model generation are excluded and recorded separately. All tools use matching pole, helicity/color and stability settings. Cache behaviour and actual rescue work remain part of the measurement. Recorded backend/precision histograms identify the final accepted reducer for every timed amplitude; they do not count every internal rescue attempt.
+Values below are warmed full-amplitude times in µs per point. Initialization, compilation and model generation are excluded and recorded separately. All tools use matching pole, helicity/color and stability settings. Cache behaviour and actual rescue work remain part of the measurement. Recorded backend/precision histograms identify the final accepted reducer for every timed amplitude; they do not count every internal rescue attempt. Control-process speeds are descriptive; the ≤1.05 runtime gate applies to the eight main processes.
 
 #figure(table-style(table(columns: (1.4fr, .8fr, .8fr, .8fr, .8fr, .8fr),
   inset: (x: 4pt, y: 8pt), stroke: table-stroke, fill: table-fill,
@@ -313,4 +330,9 @@ The accompanying #raw(report.cases_path) fixes the matrix and thresholds; #raw(s
 #if intermediate != none {
   import "intermediate.typ": show-intermediate
   show-intermediate(intermediate)
+}
+
+#if current-dossier != none {
+  import "campaign-report.typ": show-campaign-details
+  show-campaign-details(current-dossier, d.cases, process-label)
 }

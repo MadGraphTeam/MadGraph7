@@ -149,3 +149,73 @@ heading/table colors and the logarithmic timing palette follow that source;
 no external benchmark values are used as measurements for this integration.
 An intermediate PDF explicitly says incomplete until the complete campaign
 has passed the numerical and performance gates.
+
+## Registered campaign report dossier
+
+The twelve-page intermediate report is preserved exactly under
+`history/report-before-split-dp-campaign/`. Its `reconstruct.py` verifies all
+4,693 original report inputs against the recorded Git revision and can restore
+them into a new ignored directory. The original installer outer inventory is
+included: its later additive update is not substituted into that historical
+ledger. The preceding eight-page archive and `doc/benchmarkfolder` NinjaRS
+report remain unchanged. See the archive README for verification and exact PDF
+reproduction commands.
+
+The docs-only `campaign_report.py` collector prepares a separate immutable
+dossier for a named campaign. It does not run an amplitude, compiler, live
+campaign guard or performance measurement. It checks retained source/native
+identities and reparses saved raw observations using the hash-bound parser
+sources. Candidate export Git revisions may differ after documentary commits;
+the registered exporter anchor and each observed revision are displayed
+separately, with one exact exporter file inventory required throughout.
+
+After the included run directories are closed and their outputs no longer
+change, retain a **new** dossier and render the selected report explicitly:
+
+```sh
+source tools/tirust_env.sh
+python3 tools/tirust_benchmark.py summarize --campaign split-dp-terminal-1
+PYTHONDONTWRITEBYTECODE=1 python3 docs/benchmarkfolder/campaign_report.py \
+  --campaign split-dp-terminal-1 \
+  --output campaigns/split-dp-terminal-1/report-snapshots/closed-1.json
+python3 docs/benchmarkfolder/build_report.py --campaign split-dp-terminal-1 \
+  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed-1.json
+python3 docs/benchmarkfolder/build_report.py --verify-only \
+  --campaign split-dp-terminal-1 \
+  --campaign-report campaigns/split-dp-terminal-1/report-snapshots/closed-1.json
+PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider \
+  tests/unit_tests/various/test_tirust_report.py \
+  docs/benchmarkfolder/test_intermediate_report.py \
+  docs/benchmarkfolder/test_campaign_report.py \
+  docs/benchmarkfolder/test_campaign_report_numerical.py
+```
+
+Do not freeze a dossier while its included run directories are active:
+`results.json` and worker logs may still grow. The collector ignores later new
+paths when validating a frozen snapshot, but changes to already-bound files
+correctly invalidate that snapshot. An unlaunched row can remain pending in a
+closed snapshot; it never becomes a successful or zero-time observation.
+The current canonical PDF is not changed by collecting a dossier.
+
+Three datasets have distinct roles. The final complete warmup traversal checks
+all eleven physical cases, baseline CutTools plus five candidate backends, on
+the exact 100-point streams; these rows have no timing, FPE-flag observation or
+internal retry counters. Paired full-amplitude measurements determine the eight
+main runtime gates and existing-backend regressions, including every timed
+call's final accepted status. Traced cohort diagnostics separately time frozen
+native-DP, compensated-DP and naturally rescued QP subsets, retaining flags,
+retry counters, migration and failure evidence. Their tracing overhead and
+different point subsets prohibit treating cohort medians as formal acceptance
+measurements or direct backend speed ratios.
+
+The dossier displays the exact 0.95-second eligibility floor, two-second
+calibration target and observed batch minima. Qualified main-process failures
+remain authoritative across all retained attempts. Control-process timings are
+descriptive: generic raw-summary slowdown labels are preserved but do not
+create main runtime failures. Numerical control checks remain required.
+Complete delivery additionally requires the installed ABI and Fortran checks,
+separate subprocess/event cache lifecycle qualification, precision cohorts and
+resolution of retained stress failures. The cache lifecycle criterion stays
+pending until a separate frozen native proof is bound; public-call parity alone
+does not establish it. A passing eight-process runtime gate alone cannot
+complete the integration goal.

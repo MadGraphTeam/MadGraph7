@@ -40,6 +40,28 @@ def test_hundred_points_with_seven_comparison_repetitions():
     assert REPORT.validate_summary(data) is data
 
 
+def test_documentary_export_revisions_preserve_registered_numerical_anchor(campaign):
+    campaign["summary"]["candidate_revision"] = None
+    campaign["summary"]["candidate_revisions"] = ["documentation-head-a", "documentation-head-b"]
+    write_json(campaign["report"] / "summary.json", campaign["summary"])
+    summary, _, context, _ = prepare(campaign)
+    assert summary["candidate_revision"] is None
+    assert context["observed_candidate_revisions"] == ["documentation-head-a", "documentation-head-b"]
+    assert context["registered_exporter_revision"] == campaign["manifest"]["candidate"]["exporter_identity"]["revision"]
+
+
+def test_passing_mixed_head_summary_requires_registered_single_source():
+    data = passing_summary()
+    data.update(candidate_revision=None, candidate_revisions=["doc-a", "doc-b"],
+                candidate_source_hashes=["same-exporter"], campaign_binding={"id": "named"})
+    with pytest.raises(ValueError):
+        REPORT.validate_summary(data)
+    REPORT.validate_summary(data, registered_identity={"files_sha256": "same-exporter"})
+    data["candidate_source_hashes"].append("different-exporter")
+    with pytest.raises(ValueError):
+        REPORT.validate_summary(data, registered_identity={"files_sha256": "same-exporter"})
+
+
 @pytest.mark.parametrize("change", [
     lambda row: row.update(points=99),
     lambda row: row["correctness"][0].update(samples=6),

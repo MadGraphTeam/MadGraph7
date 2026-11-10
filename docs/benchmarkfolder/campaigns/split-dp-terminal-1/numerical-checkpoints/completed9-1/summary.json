@@ -1,0 +1,1110 @@
+{
+  "case_count": 9,
+  "case_ids": [
+    "qcd_n1_uux_z",
+    "ew_n1_udx_wp",
+    "li_gg_h",
+    "qcd_n2_gg_ttx",
+    "ew_n2_epem_mupmum",
+    "mixed_uux_ga",
+    "li_gg_hh",
+    "qcd_n3_uux_zgg",
+    "ew_n3_epem_ttxa"
+  ],
+  "cases": [
+    {
+      "case": {
+        "id": "qcd_n1_uux_z",
+        "model": "loop_sm",
+        "nfinal": 1,
+        "process": "u u~ > z [virt=QCD]",
+        "role": "main"
+      },
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "baseline",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 100
+          },
+          "backend": 9,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "219": 100
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "case": {
+        "id": "ew_n1_udx_wp",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "nfinal": 1,
+        "process": "u d~ > w+ [virt=QED]",
+        "role": "main"
+      },
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "baseline",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 100
+          },
+          "backend": 9,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "219": 100
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "case": {
+        "id": "li_gg_h",
+        "model": "loop_sm",
+        "nfinal": 1,
+        "process": "g g > h [noborn=QCD]",
+        "role": "control"
+      },
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "baseline",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 100
+          },
+          "backend": 9,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "219": 100
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "case": {
+        "id": "qcd_n2_gg_ttx",
+        "model": "loop_sm",
+        "nfinal": 2,
+        "process": "g g > t t~ [virt=QCD]",
+        "role": "main"
+      },
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "baseline",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 100
+          },
+          "backend": 9,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "219": 100
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "case": {
+        "id": "ew_n2_epem_mupmum",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "nfinal": 2,
+        "process": "e+ e- > mu+ mu- [virt=QED]",
+        "role": "main"
+      },
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "baseline",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 100
+          },
+          "backend": 9,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "219": 100
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "case": {
+        "id": "mixed_uux_ga",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "nfinal": 2,
+        "process": "u u~ > g a [virt=QCD QED]",
+        "role": "control"
+      },
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "baseline",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 100
+          },
+          "backend": 9,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "219": 100
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "case": {
+        "id": "li_gg_hh",
+        "model": "loop_sm",
+        "nfinal": 2,
+        "process": "g g > h h [noborn=QCD]",
+        "role": "control"
+      },
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "baseline",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 100
+          },
+          "backend": 9,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "219": 100
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "case": {
+        "id": "qcd_n3_uux_zgg",
+        "model": "loop_sm",
+        "nfinal": 3,
+        "process": "u u~ > z g g [virt=QCD]",
+        "role": "main"
+      },
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "baseline",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 56,
+          "ordinary_target_passed": false,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 56,
+          "ordinary_target_passed": false,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 56,
+          "ordinary_target_passed": false,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 87,
+            "9:QP": 13
+          },
+          "backend": 9,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 56,
+          "ordinary_target_passed": false,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "219": 87,
+            "323": 13
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "case": {
+        "id": "ew_n3_epem_ttxa",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "nfinal": 3,
+        "process": "e+ e- > t t~ a [virt=QED]",
+        "role": "main"
+      },
+      "lanes": [
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "baseline",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "1:DP": 100
+          },
+          "backend": 1,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "211": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "6:DP": 100
+          },
+          "backend": 6,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "216": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "7:DP": 100
+          },
+          "backend": 7,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "217": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "8:DP": 100
+          },
+          "backend": 8,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "218": 100
+          }
+        },
+        {
+          "accepted_backend_precision_counts": {
+            "9:DP": 82,
+            "9:QP": 18
+          },
+          "backend": 9,
+          "fpe_flags": null,
+          "internal_retry_counts": null,
+          "ordinary_target_missed_coefficient_comparisons": 0,
+          "ordinary_target_passed": true,
+          "passed": true,
+          "performance_eligible": false,
+          "points": 100,
+          "seconds": null,
+          "source": "candidate",
+          "status_counts": {
+            "219": 82,
+            "323": 18
+          }
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "fpe_flags_observed": false,
+  "full_matrix_complete": false,
+  "internal_retry_counts_observed": false,
+  "lane_count": 54,
+  "manifest_sha256": "1237c563b16a13e2c98327b494a4e5d0b8dec8eb6c7020d632b9b86839143a31",
+  "overall_goal_qualified": false,
+  "performance_acceptance_eligible": false,
+  "saved_points_per_lane": 100,
+  "schema": "madloop-tirust-completed-nine-numerical-v1",
+  "scope": "Nine closed ordinary numerical cases only; two n4 cases remain outside this checkpoint; no timing qualification"
+}

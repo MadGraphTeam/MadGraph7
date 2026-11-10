@@ -185,14 +185,14 @@ def predecessor_history(inputs, manifest, summary, report):
     return [failures[key]["display"] for key in sorted(failures)]
 
 
-def prepare_report(root=ROOT, campaign=None):
+def prepare_report(root=ROOT, campaign=None, campaign_report=None):
     helper_path = Path(__file__).with_name("intermediate_report.py")
-    if (Path(root) / "intermediate-status.json").exists() and not helper_path.is_file():
+    if campaign is None and (Path(root) / "intermediate-status.json").exists() and not helper_path.is_file():
         raise ValueError("Intermediate status exists but its validator is missing")
     inputs = ReportInputs(root)
     report = "." if campaign is None else "campaigns/" + campaign_id(campaign)
     summary_name, cases_name = joined(report, "summary.json"), joined(report, "cases.json")
-    summary = validate_summary(inputs.json(summary_name))
+    summary = inputs.json(summary_name)
     cases = inputs.json(cases_name)
     configured = {row["id"]: row for row in cases["cases"]}
     if (len(configured) != len(cases["cases"]) or set(configured) != {row["id"] for row in summary["cases"]} or
@@ -218,14 +218,26 @@ def prepare_report(root=ROOT, campaign=None):
         for name, checksum in shared["files"].items():
             inputs.add(joined(report, name), checksum)
         identity = manifest["candidate"]["exporter_identity"]
-        if ((summary.get("candidate_revision") not in (None, identity["revision"])) or
-                any(value != identity["revision"] for value in summary.get("candidate_revisions", [])) or
-                any(value != identity["files_sha256"] for value in summary.get("candidate_source_hashes", []))):
+        observed_revisions = summary.get("candidate_revisions", [])
+        observed_revision = summary.get("candidate_revision")
+        if (any(value != identity["files_sha256"] for value in summary.get("candidate_source_hashes", []))
+                or len(set(summary.get("candidate_source_hashes", []))) > 1
+                or len(set(observed_revisions)) != len(observed_revisions)
+                or (observed_revision is not None and observed_revisions != [observed_revision])
+                or (observed_revision is None and len(observed_revisions) == 1)):
             raise ValueError("Summary candidate source differs from the registered candidate")
+        # Documentation commits can change the observed HEAD without changing
+        # a single exporter byte. Keep raw observations unchanged and label the
+        # registered anchor separately; never invent an observed Git revision.
+        context["registered_exporter_revision"] = identity["revision"]
+        context["observed_candidate_revisions"] = summary.get("candidate_revisions", [])
+        validate_summary(summary, registered_identity=identity)
         context["numerical_identity_sha256"] = manifest["candidate"]["numerical_identity_sha256"]
         context["predecessors"] = predecessor_history(inputs, manifest, summary, report)
     elif summary.get("campaign_binding") is not None:
         raise ValueError("A bound campaign summary requires --campaign")
+    else:
+        validate_summary(summary)
     for name in ("build_report.py", "benchmark.typ", "style.typ", "poles-timing.typ", "implementation-start.json",
                  "style-provenance.json", "experiments/numerical/completed-pilots-index.json",
                  "experiments/poles-timing/historical-release-paired/analysis-summary.json"):
@@ -236,18 +248,33 @@ def prepare_report(root=ROOT, campaign=None):
     # The supplement binds later implementation and historical diagnostic
     # evidence independently of the selected acceptance campaign. It never
     # replaces or upgrades that campaign's numerical or performance gate.
-    if helper_path.exists():
+    if campaign is None and helper_path.exists():
         spec = importlib.util.spec_from_file_location("intermediate_report", helper_path)
         helper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(helper)
         supplement = helper.validate(inputs, summary)
         if supplement is not None:
             context["intermediate_path"] = "intermediate-status.json"
+    if campaign is not None:
+        dossier_path = campaign_report or joined(report, "report-data.json")
+        if campaign_report is not None or inside(inputs.root, dossier_path).exists():
+            if not Path(dossier_path).is_relative_to(Path(report)):
+                raise ValueError("Campaign report dossier must belong to the selected campaign")
+            dossier_helper = Path(__file__).with_name("campaign_report.py")
+            if not dossier_helper.is_file():
+                raise ValueError("Campaign report dossier exists but its validator is missing")
+            spec = importlib.util.spec_from_file_location("campaign_report", dossier_helper)
+            helper = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(helper)
+            dossier = helper.validate(inputs, dossier_path, manifest, summary)
+            context["campaign_report_path"] = dossier_path
+            context["delivery_complete"] = dossier["delivery_complete"]
+            inputs.add("campaign-report.typ")
     return summary, inputs, context, {"summary": summary_name, "manifest": manifest_name,
                                      "context": joined(report, "report-context.json")}
 
 
-def validate_summary(data):
+def validate_summary(data, registered_identity=None):
     """Refuse a passing headline when declared numerical evidence is absent."""
     cases = data["cases"]
     if len({row["id"] for row in cases}) != len(cases):
@@ -258,7 +285,10 @@ def validate_summary(data):
         main = [row for row in cases if row["role"] == "main"]
         if (not data["gate"]["complete"] or len(main) != 8 or
                 not data["gate"].get("consistent_candidate_source") or
-                not data.get("candidate_revision") or data["gate"].get("failed_cases") or
+                (not data.get("candidate_revision") and not (
+                    registered_identity is not None and data.get("campaign_binding") is not None
+                    and data.get("candidate_source_hashes") == [registered_identity["files_sha256"]]
+                    and bool(data.get("candidate_revisions")))) or data["gate"].get("failed_cases") or
                 data["gate"].get("validation_errors")):
             raise ValueError("Passing report requires all eight main cases")
         for row in main:
@@ -290,8 +320,11 @@ def main():
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--font-path", type=Path, action="append", default=[])
     parser.add_argument("--campaign", help="Registered campaign ID; omit for the original campaign")
+    parser.add_argument("--campaign-report", help="Explicit frozen docsroot-relative dossier for that campaign")
     args = parser.parse_args()
-    summary, inventory, context, typst_inputs = prepare_report(ROOT, args.campaign)
+    if args.campaign_report and not args.campaign:
+        parser.error("--campaign-report requires --campaign")
+    summary, inventory, context, typst_inputs = prepare_report(ROOT, args.campaign, args.campaign_report)
     context_path = inside(ROOT, typst_inputs["context"])
     context_bytes = (json.dumps(context, indent=2, sort_keys=True, allow_nan=False) + "\n").encode()
     # A custom PDF must not overwrite the canonical PDF's reproducibility ledger.

@@ -1,0 +1,35 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 6987,
+      "sha256": "3de88467875c1ad8b9f92c22126193aabd08648fc6f2069f6d6818c78eac1a67"
+    },
+    "audit.py": {
+      "bytes": 15556,
+      "sha256": "960a5c49b6a16436d84775ab920e39bda0f902be66015f0945fc995db61185ac"
+    },
+    "current-compute-accuracy.inc": {
+      "bytes": 3091,
+      "sha256": "214466e95f1f000e856de63eee6a948a03ac7373f42c14e4c68ccb7930213d19"
+    },
+    "current-source-excerpts.json": {
+      "bytes": 18229,
+      "sha256": "956aab839e6b741ca5b89d5bf2cb1e3a483aa1a409a4c0cc7acc80cc747a4587"
+    },
+    "inputs.json": {
+      "bytes": 46276,
+      "sha256": "782002214c404f35c9e4ad4ccf40d63184a5f24136626f54d3fd6894122d752c"
+    },
+    "observations.json": {
+      "bytes": 20863,
+      "sha256": "f2b27390e17b840f8f92bc16c0a0c9344dc68e59bfac36fdd05149ad609093ec"
+    },
+    "source-bindings.json": {
+      "bytes": 8941,
+      "sha256": "ad6edd33d509fb5adfb839152ce9b8d09d6ad5dc2157b5f90010ac9a0f3c742b"
+    }
+  },
+  "kind": "read-only-derived evidence; no new compiler/native/test execution",
+  "limitations_preserved": true,
+  "schema_version": 1
+}

@@ -1,0 +1,24 @@
+{
+  "files": {
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/numerical-qualification-2/process_cleanup.py": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/numerical-qualification-2/run.py": "6622bf7637b8935b176e459064f5b6b24c477e3efc595c16014986b6b3cc8124",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/preparation-1/verify.py": "7326b17efbdcd168873140292ba81d83fb0afb0d664a9db9d6b5cbef778c3509",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/timing-qualification-1/README.md": "2094afbf0c615b4bae7ba426def12975800a668314b078244e6c5ea8b9c58d9c",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/timing-qualification-1/preflight.py": "ee42b1968c429b0224483a5cfddac79622f8c57acfe87f05e7601b33b429ec29",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/timing-qualification-1/process_cleanup.py": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/timing-qualification-1/run.py": "cb3ae97afa1878107f2f8c369d724a7413795cbf9aa2c231da697982f498d382",
+    "tools/tirust_benchmark.py": "fa8a3f0567160661054b1c267e4ea496fa250ccee38d59852e09e3c13ec8d0b6",
+    "tools/tirust_benchmark_campaign.py": "1e116cf8e392648e6966e332959eaec586532552799a9bf59a0fd5beab901a9a",
+    "tools/tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "tools/tirust_benchmark_numerical.py": "1d4ca057aecef040457a46dc06c23185ba31cd53bf67df1c5fa6805c99c0128f",
+    "tools/tirust_benchmark_warmup.py": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d",
+    "tools/tirust_benchmark_worker.f": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9",
+    "tools/tirust_benchmark_worker.py": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57"
+  },
+  "manifest_sha256": "1237c563b16a13e2c98327b494a4e5d0b8dec8eb6c7020d632b9b86839143a31",
+  "native_or_compiler_jobs_launched": false,
+  "preparation_index_sha256": "91e1274318ce90a5f708d4457e57a46197453f39c1bb06f2fb2ed621041385c0",
+  "quiet_window_clearance_created": false,
+  "status": "source-prepared-execution-not-authorized",
+  "validation": "Python AST syntax parsed; copied cleanup bytes match; no admission or worker execution"
+}
