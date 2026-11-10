@@ -1,0 +1,39 @@
+{
+  "actual_local_install_performed": false,
+  "actual_local_registry_created": false,
+  "campaign": "invariant-symmetry-1",
+  "canonical_files": {
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/cases.json": "10990396a99f5dacbc489205fe447a745a435cf5329b537beb09ea308f9043ef",
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/manifest.json": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+    "docs/benchmarkfolder/campaigns/invariant-symmetry-1/summary.json": "02fe70b84fa3512adadf079b276e3b34ee25f9230bc855f21a3d430e6a0c2e3d"
+  },
+  "numerical_identity_sha256": "f217762db032b8b755c0f62171bedcb0e9f6e09eac8128d7f8529d15e5dac8c8",
+  "overall_goal_qualified": false,
+  "preserved_handoff2": {
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/timing-handoff-2/LOCAL_TIMING_TODO.md": "8cf04830441198fc00488f6d33a9d59dcbb51bf4e940d62da1449d1d2efe7669",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/timing-handoff-2/PROVISIONAL_COMMANDS.md": "5f8e742551bca483c85034acf23a53edeeb6d4a18e5422327322115b47872a10",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/timing-handoff-2/index.json": "7307c76f0712f07e85185506c8849a8cb94f60f0719fe23f30726bc88d9dda92",
+    "docs/benchmarkfolder/campaigns/split-dp-terminal-1/timing-handoff-2/validation.json": "e0dafed826bf8b21ec83f9e712187b41219c66272270ddf7e29949b871e7fdf4"
+  },
+  "protocol_files": {
+    "docs/benchmarkfolder/build_local_report.py": "19c998bac3e132e2c84c908e44ffe71e090ca83651c229e50e6afab0089587ae",
+    "docs/benchmarkfolder/local-report.typ": "1298df40604260cb7ba6a6f55fb11a1ee533d2a6188c640af1ea38073babc5e9",
+    "docs/benchmarkfolder/style.typ": "68e21877f61f92de75525e8d088b7de3fc00d8223b3aef393babc6015b59255e",
+    "docs/benchmarkfolder/test_build_local_report.py": "5534fbe360382d8161a3bdd73d21127874c59af8207e211c6886e387cc07cb01",
+    "tests/unit_tests/loop/test_tirust_benchmark_local.py": "13ce5c0d9ab9b016e88eca7d95864f0bb75b12d66eed031f545eb0dc563ff58b",
+    "tests/unit_tests/loop/test_tirust_physical_card_origins.py": "1009964fabd758e33bcf32464ec2ada0177ff4b711e5cecda3c0c3fb466e8794",
+    "tools/tirust_benchmark.py": "bc405b44d8d794cc4396ef3da3d48af238ac4dfb619c58901d7bab910a7e1370",
+    "tools/tirust_benchmark_campaign.py": "ac32ced4232607423a2cf77068b516b3dbb061372437c2b4f3acb93f00b29710",
+    "tools/tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "tools/tirust_benchmark_local.py": "70fd4c19ad6d35f6941b470ec6953068f5626aab5d4f6968e0dfe670d4bc4e9b",
+    "tools/tirust_benchmark_numerical.py": "1d4ca057aecef040457a46dc06c23185ba31cd53bf67df1c5fa6805c99c0128f",
+    "tools/tirust_benchmark_warmup.py": "be6b33f8f51f49484f0b75ed1eabcb62f5bc4a3f25f37666adff0d4029d7617d",
+    "tools/tirust_benchmark_worker.f": "7cc01cc4a0cfb5478b0f77f713c403d8eee30d52cfcb0926752b12aaa157d5b9",
+    "tools/tirust_benchmark_worker.py": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57",
+    "tools/tirust_env.sh": "4311818b26bf38090655003a2aa14431267b727a65d167671b948a65fc54de00"
+  },
+  "schema": "madloop-tirust-current-source-timing-handoff-bindings-v1",
+  "source_files_sha256": "a90f80545696a648dbcfdfb8de73b1e319364edf2b93d02d4458c7b9656b8b19",
+  "source_revision": "2c13246ffa63aa357ad1e29e5e79aff63d88dc7e",
+  "status": "source-only new campaign; all eleven fresh local numerical qualifications and timings pending"
+}

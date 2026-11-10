@@ -1,0 +1,13 @@
+test_all_documented_launcher_commands_parse_without_execution (__main__.TestHandoff.test_all_documented_launcher_commands_parse_without_execution) ... ok
+test_declared_actual_card_ancestry_only (__main__.TestHandoff.test_declared_actual_card_ancestry_only) ... ok
+test_exact_current_campaign_and_pending_summary (__main__.TestHandoff.test_exact_current_campaign_and_pending_summary) ... ok
+test_handoff2_unchanged_and_document_links_resolve (__main__.TestHandoff.test_handoff2_unchanged_and_document_links_resolve) ... ok
+test_install_receipt_and_all_fresh_stages_precede_timing (__main__.TestHandoff.test_install_receipt_and_all_fresh_stages_precede_timing) ... ok
+test_no_source_override_and_current_inventory_matches (__main__.TestHandoff.test_no_source_override_and_current_inventory_matches) ... ok
+test_policy_is_fresh_full100_six_lanes_seven_pairs (__main__.TestHandoff.test_policy_is_fresh_full100_six_lanes_seven_pairs) ... ok
+test_renderer_cli_uses_new_local_registry_only (__main__.TestHandoff.test_renderer_cli_uses_new_local_registry_only) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.673s
+
+OK
