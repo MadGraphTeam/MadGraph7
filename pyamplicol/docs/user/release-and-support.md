@@ -69,6 +69,13 @@ binary64 stability for both process types (`rusticol_virtual_set_stability_check
 rotations, the reduction-direction and rescaled checks, the cross-backend check;
 off by default), each point's estimate equal to the Python API's.
 
+In 1.0.2, storing a one-loop request whose Born couplings, as its scaleless
+companion evaluates them, read a model helper function (e.g. `u u~ > d d~ g`
+with QCD corrections and explicit coupling-order caps that keep both Born
+orders, QCD^3 and QCD QED^2) failed with `Could not create evaluator: function
+value_N(..) is not in a parameter map`, so nothing was stored and no value was
+wrong; such requests now store.
+
 ## 1.0.2 release
 
 Version `1.0.2` adds one-loop virtual matrix elements on the v2 engine:
