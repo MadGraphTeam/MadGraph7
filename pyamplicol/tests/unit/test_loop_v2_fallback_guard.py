@@ -1408,8 +1408,8 @@ def test_the_routes_guard_in_double_double_and_arbitrary_precision(hh, loop_nati
     test's claim: on these binary64 texts NinjaRS's +- rows move 1.1e-4 ..
     9.3e11 from the exact point's in response to the texts' shell and
     momentum-conservation defect, while TIRust's at 80 digits stay within
-    2.3e-6; on the exact points nearby the two agree at 60 and 80 digits;
-    the cause is under investigation (F-GH),
+    2.3e-6; on the exact points nearby NinjaRS at 60 and 80 digits agrees
+    with TIRust at 80 digits; the cause is under investigation (F-GH),
     ``tmp/lit-fallback-guard/fix5/probe15.json``, report §0.) 16
     digits at the target 1e-6 (the limit stays 1e-5): point 1 is accepted
     and point 2 rejected typed on every route

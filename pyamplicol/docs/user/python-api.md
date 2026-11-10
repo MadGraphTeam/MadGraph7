@@ -432,8 +432,9 @@ near-forward g g > h h points (`workspace/tmp/lit-fallback-guard/fix5/probe15.js
   from those of the exact point nearby on NinjaRS (1.1e-4 to 9.3e11, the
   same in double-double and at 60 and 80 digits) and little on TIRust
   at 80 digits (2.2e-11 to 2.3e-6); on the exact on-shell,
-  momentum-conserving points the two backends agree to 3e-37 or better
-  at 60 to 80 digits. On the binary64 texts the rows are well defined
+  momentum-conserving points NinjaRS at 60 and 80 digits agrees with
+  TIRust at 80 digits to 3e-37 (the latter's own error). On the binary64
+  texts the rows are well defined
   (TIRust's at 80 digits stay within 2.3e-6 of the exact point's);
   NinjaRS's response to the texts' shell and momentum-conservation
   defect is what moves them, and neither the reduction-direction check
