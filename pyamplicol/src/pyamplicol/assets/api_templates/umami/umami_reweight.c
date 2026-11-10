@@ -45,17 +45,18 @@ typedef struct {
     /* scratch of the flavour switch */
     double *values, *batch, *resolved;
     size_t values_capacity, batch_capacity, resolved_capacity;
-    /* Flat (channel, flavour) selections: offset of each channel, and their count. */
-    size_t *selection_offsets, selection_count;
-    /* Per call: the unswitched events, their selection and enhancement, and their
-     * order sorted by selection. */
-    size_t *order, *keys, *sorted, order_capacity, keys_capacity, sorted_capacity;
-    double *enhancements;
-    size_t enhancements_capacity;
+    /* Per call: the unswitched events, their flavour, enhancement and the values of
+     * both sides, and their order sorted by the process of one side. */
+    size_t *order, *sorted, order_capacity, sorted_capacity;
+    ReweightFlavour const **flavours;
+    size_t flavours_capacity;
+    double *enhancements, *side_values[2];
+    size_t enhancements_capacity, side_capacity[2];
     size_t *starts, *cursor;
     /* Per chunk of UMAMI_CHUNK events. */
-    double *chunk_values, *reference_values, *target_values;
-    size_t *events, *picked, *positions;
+    double *chunk_values;
+    size_t *events, *positions;
+    ReweightFlavour const **entries;
     uint32_t *helicities;
 } Instance;
 
@@ -244,30 +245,22 @@ UmamiStatus umami_initialize(UmamiHandle *handle, char const *param_card_path) {
                                      sizeof(*instance->target_tables));
     instance->momenta = calloc(4 * reweight_provider.particle_count, sizeof(double));
     instance->base = malloc(strlen(param_card_path) + 1);
-    instance->selection_offsets = calloc(reweight_provider.channel_count + 1, sizeof(size_t));
-    for (size_t c = 0; instance->selection_offsets != NULL && c < reweight_provider.channel_count;
-         ++c) {
-        instance->selection_offsets[c] = instance->selection_count;
-        instance->selection_count += reweight_provider.channels[c].flavour_count;
-    }
-    size_t chunk = UMAMI_CHUNK;
-    instance->starts = calloc(instance->selection_count + 1, sizeof(size_t));
-    instance->cursor = calloc(instance->selection_count + 1, sizeof(size_t));
+    size_t chunk = UMAMI_CHUNK, processes = reweight_provider.reference_process_count;
+    if (reweight_provider.target_process_count > processes)
+        processes = reweight_provider.target_process_count;
+    instance->starts = calloc(processes + 1, sizeof(size_t));
+    instance->cursor = calloc(processes + 1, sizeof(size_t));
     instance->chunk_values = calloc(chunk, sizeof(double));
-    instance->reference_values = calloc(chunk, sizeof(double));
-    instance->target_values = calloc(chunk, sizeof(double));
     instance->events = calloc(chunk, sizeof(size_t));
-    instance->picked = calloc(chunk, sizeof(size_t));
     instance->positions = calloc(chunk, sizeof(size_t));
+    instance->entries = calloc(chunk, sizeof(*instance->entries));
     instance->helicities = calloc(chunk, sizeof(uint32_t));
     if (instance->reference == NULL || instance->target == NULL || instance->momenta == NULL ||
         instance->reference_tables == NULL || instance->target_tables == NULL ||
         instance->base == NULL || reweight_provider.reference_process_count == 0 ||
-        reweight_provider.target_process_count == 0 || instance->selection_offsets == NULL ||
-        instance->starts == NULL || instance->cursor == NULL || instance->chunk_values == NULL ||
-        instance->reference_values == NULL || instance->target_values == NULL ||
-        instance->events == NULL || instance->picked == NULL || instance->positions == NULL ||
-        instance->helicities == NULL ||
+        reweight_provider.target_process_count == 0 || instance->starts == NULL ||
+        instance->cursor == NULL || instance->chunk_values == NULL || instance->events == NULL ||
+        instance->positions == NULL || instance->entries == NULL || instance->helicities == NULL ||
         !reserve(&instance->batch, &instance->batch_capacity,
                  4 * reweight_provider.particle_count * chunk)) {
         umami_free(instance); return UMAMI_ERROR;
@@ -536,11 +529,12 @@ static UmamiStatus switch_event(Instance *instance, ReweightSwitchTarget const *
 
 /* ---- batched evaluation ------------------------------------------------ */
 
-/* Values of one process at the points events[0..count) of one flavour, at the runtime
- * helicities[point], natively batched over runs of equal alpha_s (or alpha_s NULL). */
+/* Values of one process at the points events[0..count), each through the permutation
+ * of its flavour, at the runtime helicities[point], natively batched over runs of equal
+ * alpha_s (or alpha_s NULL). */
 static UmamiStatus evaluate_points(Instance *instance, RusticolRuntimeHandle *runtime,
                                    ReweightProcess const *process,
-                                   ReweightFlavour const *entry, double const *momenta,
+                                   ReweightFlavour const *const *entries, double const *momenta,
                                    size_t stride, size_t const *events, size_t count,
                                    uint32_t const *helicities, double const *alpha_s,
                                    double *values) {
@@ -554,8 +548,8 @@ static UmamiStatus evaluate_points(Instance *instance, RusticolRuntimeHandle *ru
         for (size_t i = 0; i < size; ++i)
             for (size_t j = 0; j < n; ++j)
                 for (size_t k = 0; k < 4; ++k)
-                    instance->batch[4 * (n * i + j) + k] =
-                        momenta[events[start + i] + stride * (n * k + entry->permutation[j])];
+                    instance->batch[4 * (n * i + j) + k] = momenta[
+                        events[start + i] + stride * (n * k + entries[start + i]->permutation[j])];
         double previous_real = 0.0, previous_imaginary = 0.0;
         bool changed = false;
         UmamiStatus status;
@@ -584,34 +578,57 @@ static UmamiStatus evaluate_points(Instance *instance, RusticolRuntimeHandle *ru
     return UMAMI_SUCCESS;
 }
 
-/* One side (reference 0 or target 1) of the events of one flavour, absent helicities
- * give zero. */
-static UmamiStatus evaluate_side(Instance *instance, int side, ReweightFlavour const *entry,
-                                 void const *const *in, size_t stride,
-                                 size_t const *events, size_t count, double *result) {
+/* One side (reference 0 or target 1) of the pending events, grouped by its process;
+ * absent helicities give zero. */
+static UmamiStatus evaluate_side(Instance *instance, int side, void const *const *in,
+                                 size_t stride, size_t pending) {
     int const *labels = in[UMAMI_IN_HELICITY_INDEX];
-    int const *map = side == 0 ? entry->reference_helicity : entry->target_helicity;
-    size_t index = side == 0 ? entry->reference_process : entry->target_process;
-    size_t kept = 0;
-    for (size_t i = 0; i < count; ++i) {
+    size_t processes = side == 0 ? reweight_provider.reference_process_count
+                                 : reweight_provider.target_process_count;
+    double *result = instance->side_values[side];
+    size_t *starts = instance->starts;
+    for (size_t p = 0; p <= processes; ++p) starts[p] = 0;
+    for (size_t i = 0; i < pending; ++i) {
+        ReweightFlavour const *entry = instance->flavours[i];
+        ++starts[(side == 0 ? entry->reference_process : entry->target_process) + 1];
         result[i] = 0.0;
-        int helicity = map[labels[events[i]]];
-        if (helicity < 0) continue;
-        instance->picked[kept] = events[i];
-        instance->positions[kept] = i;
-        instance->helicities[kept++] = (uint32_t)helicity;
     }
-    if (kept == 0) return UMAMI_SUCCESS;
-    UmamiStatus status = ensure_loaded(instance, side, index);
-    if (status != UMAMI_SUCCESS) return status;
-    status = evaluate_points(
-        instance, side == 0 ? instance->reference[index] : instance->target[index],
-        side == 0 ? &reweight_provider.reference_processes[index]
-                  : &reweight_provider.target_processes[index],
-        entry, in[UMAMI_IN_MOMENTA], stride, instance->picked, kept, instance->helicities,
-        in[UMAMI_IN_ALPHA_S], instance->chunk_values);
-    if (status != UMAMI_SUCCESS) return status;
-    for (size_t i = 0; i < kept; ++i) result[instance->positions[i]] = instance->chunk_values[i];
+    for (size_t p = 0; p < processes; ++p) starts[p + 1] += starts[p];
+    for (size_t p = 0; p < processes; ++p) instance->cursor[p] = starts[p];
+    for (size_t i = 0; i < pending; ++i) {
+        ReweightFlavour const *entry = instance->flavours[i];
+        instance->sorted[instance->cursor[
+            side == 0 ? entry->reference_process : entry->target_process]++] = i;
+    }
+    for (size_t index = 0; index < processes; ++index)
+        for (size_t start = starts[index]; start < starts[index + 1]; start += UMAMI_CHUNK) {
+            size_t size = starts[index + 1] - start, kept = 0;
+            if (size > UMAMI_CHUNK) size = UMAMI_CHUNK;
+            for (size_t i = 0; i < size; ++i) {
+                size_t position = instance->sorted[start + i];
+                ReweightFlavour const *entry = instance->flavours[position];
+                size_t event = instance->order[position];
+                int const *map = side == 0 ? entry->reference_helicity : entry->target_helicity;
+                int helicity = map[labels[event]];
+                if (helicity < 0) continue;
+                instance->events[kept] = event;
+                instance->positions[kept] = position;
+                instance->entries[kept] = entry;
+                instance->helicities[kept++] = (uint32_t)helicity;
+            }
+            if (kept == 0) continue;
+            UmamiStatus status = ensure_loaded(instance, side, index);
+            if (status != UMAMI_SUCCESS) return status;
+            status = evaluate_points(
+                instance, side == 0 ? instance->reference[index] : instance->target[index],
+                side == 0 ? &reweight_provider.reference_processes[index]
+                          : &reweight_provider.target_processes[index],
+                instance->entries, in[UMAMI_IN_MOMENTA], stride, instance->events, kept,
+                instance->helicities, in[UMAMI_IN_ALPHA_S], instance->chunk_values);
+            if (status != UMAMI_SUCCESS) return status;
+            for (size_t i = 0; i < kept; ++i)
+                result[instance->positions[i]] = instance->chunk_values[i];
+        }
     return UMAMI_SUCCESS;
 }
 
@@ -653,13 +670,21 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
         UmamiStatus status = switch_totals(instance, count, stride, offset, momenta);
         if (status != UMAMI_SUCCESS) return status;
     }
+    if (count > instance->flavours_capacity) {
+        if (count > SIZE_MAX / sizeof(*instance->flavours)) return UMAMI_ERROR;
+        ReweightFlavour const **flavours =
+            realloc(instance->flavours, count * sizeof(*instance->flavours));
+        if (flavours == NULL) return UMAMI_ERROR;
+        instance->flavours = flavours;
+        instance->flavours_capacity = count;
+    }
     if (!reserve_indices(&instance->order, &instance->order_capacity, count) ||
-        !reserve_indices(&instance->keys, &instance->keys_capacity, count) ||
         !reserve_indices(&instance->sorted, &instance->sorted_capacity, count) ||
-        !reserve(&instance->enhancements, &instance->enhancements_capacity, count))
+        !reserve(&instance->enhancements, &instance->enhancements_capacity, count) ||
+        !reserve(&instance->side_values[0], &instance->side_capacity[0], count) ||
+        !reserve(&instance->side_values[1], &instance->side_capacity[1], count))
         return UMAMI_ERROR;
-    size_t *starts = instance->starts, pending = 0;
-    for (size_t s = 0; s <= instance->selection_count; ++s) starts[s] = 0;
+    size_t pending = 0;
     for (size_t event = offset; event < offset+count; ++event) {
         int switched_flavor = -1, switched_color = -1, switched_helicity = -1;
         double enhancement = 1.0;
@@ -726,44 +751,22 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
              (entry->target_helicity[helicity] >= 0 &&
               reweight_provider.target_processes[entry->target_process].alpha_s_name == NULL)))
             return UMAMI_ERROR_UNSUPPORTED_INPUT;
-        size_t key = instance->selection_offsets[channel] + (size_t)flavour;
-        instance->keys[pending] = key;
+        instance->flavours[pending] = entry;
         instance->order[pending] = event;
         instance->enhancements[pending++] = enhancement;
-        ++starts[key + 1];
     }
-    /* The unswitched events, sorted by channel and flavour, in batches. */
-    for (size_t s = 0; s < instance->selection_count; ++s) starts[s + 1] += starts[s];
-    for (size_t s = 0; s < instance->selection_count; ++s) instance->cursor[s] = starts[s];
-    for (size_t i = 0; i < pending; ++i) instance->sorted[instance->cursor[instance->keys[i]]++] = i;
-    for (size_t channel = 0; channel < reweight_provider.channel_count; ++channel) {
-        ReweightChannel const *description = &reweight_provider.channels[channel];
-        for (size_t flavour = 0; flavour < description->flavour_count; ++flavour) {
-            size_t key = instance->selection_offsets[channel] + flavour;
-            ReweightFlavour const *entry = &description->flavours[flavour];
-            for (size_t start = starts[key]; start < starts[key + 1]; start += UMAMI_CHUNK) {
-                size_t size = starts[key + 1] - start;
-                if (size > UMAMI_CHUNK) size = UMAMI_CHUNK;
-                size_t const *indices = &instance->sorted[start];
-                size_t *events = instance->events;
-                for (size_t i = 0; i < size; ++i) events[i] = instance->order[indices[i]];
-                UmamiStatus status = evaluate_side(instance, 0, entry, in, stride, events, size,
-                                                   instance->reference_values);
-                if (status == UMAMI_SUCCESS)
-                    status = evaluate_side(instance, 1, entry, in, stride, events, size,
-                                           instance->target_values);
-                if (status != UMAMI_SUCCESS) return status;
-                for (size_t i = 0; i < size; ++i) {
-                    double reference = instance->reference_values[i];
-                    double ratio = reference != 0.0 ?
-                        instance->enhancements[indices[i]] * instance->target_values[i] / reference
-                        : 0.0;
-                    if (!isfinite(ratio)) return UMAMI_ERROR;
-                    if (out[UMAMI_OUT_MATRIX_ELEMENT_RATIO])
-                        ((double *)out[UMAMI_OUT_MATRIX_ELEMENT_RATIO])[events[i]] = ratio;
-                }
-            }
-        }
+    /* The unswitched events, in batches by the process of each side. */
+    for (int side = 0; side < 2; ++side) {
+        UmamiStatus status = evaluate_side(instance, side, in, stride, pending);
+        if (status != UMAMI_SUCCESS) return status;
+    }
+    for (size_t i = 0; i < pending; ++i) {
+        double reference = instance->side_values[0][i];
+        double ratio = reference != 0.0 ?
+            instance->enhancements[i] * instance->side_values[1][i] / reference : 0.0;
+        if (!isfinite(ratio)) return UMAMI_ERROR;
+        if (out[UMAMI_OUT_MATRIX_ELEMENT_RATIO])
+            ((double *)out[UMAMI_OUT_MATRIX_ELEMENT_RATIO])[instance->order[i]] = ratio;
     }
     return UMAMI_SUCCESS;
 }
@@ -788,11 +791,11 @@ UmamiStatus umami_free(UmamiHandle handle) {
         free(instance->target_tables[i].helicities);
     free(instance->reference_tables); free(instance->target_tables);
     free(instance->values); free(instance->batch); free(instance->resolved);
-    free(instance->selection_offsets); free(instance->order); free(instance->keys);
-    free(instance->sorted); free(instance->enhancements); free(instance->starts);
-    free(instance->cursor); free(instance->chunk_values); free(instance->reference_values);
-    free(instance->target_values); free(instance->events); free(instance->picked);
-    free(instance->positions); free(instance->helicities);
+    free(instance->order); free(instance->sorted); free(instance->flavours);
+    free(instance->enhancements); free(instance->side_values[0]); free(instance->side_values[1]);
+    free(instance->starts); free(instance->cursor); free(instance->chunk_values);
+    free(instance->events); free(instance->positions); free(instance->entries);
+    free(instance->helicities);
     free(instance->overrides); free(instance->base);
     free(instance->reference); free(instance->target); free(instance->momenta); free(instance);
     return UMAMI_SUCCESS;
