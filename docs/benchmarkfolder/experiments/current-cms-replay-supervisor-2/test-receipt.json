@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "kind": "source-only-mock-and-temporary-fixture-tests",
+  "command": "source tools/tirust_env.sh; python -B -m unittest discover -s docs/benchmarkfolder/experiments/current-cms-replay-supervisor-2 -p 'test_*.py'",
+  "observed_terminal_exit_code": 0,
+  "tests_passed": 56,
+  "elapsed_seconds": 2.305,
+  "groups": {"link_closure": 26, "supervisor": 30},
+  "coverage": [
+    "All six common and two candidate external directory-handle shapes, nested aliases and absolute Collier rebasing",
+    "Complete membership, byte, mode, type, target, dangling, cycle and special-file refusals",
+    "Distinct private inodes, inherited hardlink refusals and exact private card/resource/filter/FIFO/Fortran write destinations",
+    "Read-only inheritance and exact failed-ancestor/build/preflight receipt identities without child launch",
+    "Effective request and writable environment relocation into successor2",
+    "Before/after inherited guards, including worker/copy/runtime/cleanup/timeout failure paths",
+    "Strict relocated runtime, unchanged bound/unknown ELF and non-ELF map policy",
+    "Exact six-request order, frozen points/cards/policy, 620-second request caps and lock acquisition before cap",
+    "Complete Worker success/refusal archive names and fixed file/directory types"
+  ],
+  "actual_successor_inherit_executed": false,
+  "actual_native_executed": false,
+  "actual_CLI_build_loader_mass_model_executed": false,
+  "log": "tests.log"
+}

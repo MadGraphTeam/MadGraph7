@@ -1,0 +1,53 @@
+{
+  "actual_inherit_executed": false,
+  "actual_native_executed": false,
+  "failed1_ancestor_index_sha256": "7ef5f6a3f7a88449d67d56cb21e80e5ad1e75433e8e066ab07e3abf2744237ed",
+  "files": {
+    "README.md": {
+      "sha256": "ea2342d18b96a61e9802564413cb5893cd4b622af32fbe57d2e6404b5a866b0b",
+      "size": 5332
+    },
+    "binding.json": {
+      "sha256": "ba222cad4d659b138fd4c79e4a2fb9a09a7454ef9a6b9a3f33b13e75b994c732",
+      "size": 1134
+    },
+    "dry-run.json": {
+      "sha256": "3e0e8b095c5e6c804304e9a750fc6a5a6ae039bff678b7a297c784726d6bcabe",
+      "size": 1052
+    },
+    "independent-review.json": {
+      "sha256": "6be1b49185f3f476fac2087584fd4bed7ae796212e3cca02bf1ddd7c2259de55",
+      "size": 1519
+    },
+    "link_closure.py": {
+      "sha256": "e6ac52e09b699e8929a567a9c963e7f8e52da6e18b0220f8ef8b1ec5a5ac92a7",
+      "size": 19108
+    },
+    "run.py": {
+      "sha256": "f07b91c279bf9730cf189b4d38d6e8ec03579d4b1daeca77b8e7d6a7ffac3b89",
+      "size": 20721
+    },
+    "test-receipt.json": {
+      "sha256": "0127dbdfe07b73812fc18ad228d6bb23ce7df59283a5e28b2d206332cad69559",
+      "size": 1475
+    },
+    "test_link_closure.py": {
+      "sha256": "a8961308792b1b2f6ea8016f54fcfcfb8718fc166812d89931f0a3b6dbe4d7e0",
+      "size": 25396
+    },
+    "test_supervisor.py": {
+      "sha256": "2d7a73388fd7e2253e9a574a028b6fc9e1c183ce86e4d96e9cb1d1cb50d2a232",
+      "size": 37675
+    },
+    "tests.log": {
+      "sha256": "087f2d110003510b7a833b0173cdc81c641b6ff042434f447d5b2b7bfe78f1fe",
+      "size": 155
+    }
+  },
+  "inheritance_proposal_index_sha256": "59370d67a1ef278fd9de76b660beeac065bea6ebbe05b7cc8619627a98b60068",
+  "schema_version": 1,
+  "scientific_policy_changed": false,
+  "scope": "Source-only CMS controller2, read-only inherited checkpoint and finite link closure; actual stages separately admitted",
+  "source1_index_sha256": "edf6d8cacfe1ad72cdb94584cb6d9a49e022e976c52d0668d670b702c28c84d6",
+  "tests_passed": 56
+}
