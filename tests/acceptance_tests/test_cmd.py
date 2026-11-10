@@ -279,6 +279,7 @@ class TestCmdShell1(unittest.TestCase):
                     'max_t_for_channel': 99,
                     'zerowidth_tchannel': True,
                     'auto_convert_model': True,
+                    'auto_gauge': True,
                     'nlo_mixed_expansion': True,
                     'acknowledged_v3.1_syntax': True,
                     'contur_path': './HEPTools/contur',
@@ -4727,6 +4728,9 @@ set boost_choice [6, -6] pt [0, 0]
         self.do('set apply_flavor_grouping False')
         self.do('import model sm')
         self.do('set group_subprocesses False')
+        # pin the gauge: the reference routines below are the unitary-gauge
+        # ones, while a purely electroweak process picks the FD gauge by default
+        self.do('set gauge unitary')
         self.do('generate e+ e- > e+ e-')
         self.do('output madevent %s ' % self.out_dir)
         # Check that the needed ALOHA subroutines are generated
