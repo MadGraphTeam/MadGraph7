@@ -22,9 +22,10 @@ Upstream `main` alone does not build the workspace: NinjaRS and
 complex-modulus fix, and NinjaRS's determinism test the deterministic factor
 signs; the Python Community modules (FeynKit, HepKit) need the `community`
 branch's `symbolica::utils::resources`. The pin moves to upstream once the PR
-is merged. NinjaRS (`71eddb15`: the box mu-expansion's conditioning bound on main
-`98e223da` = main `b3a29c85`, PR #14, its 0BSD relicence and the re-pins of its
-manifests on this revision and oneloopmaster `bd703d09`) pins the same
+is merged. NinjaRS (`1c47878f`: the lane conditioning estimate on main `5fe7f392`,
+which merged the box mu-expansion's conditioning bound on main `98e223da` = main
+`b3a29c85`, PR #14, its 0BSD relicence and the re-pins of its manifests on this
+revision and oneloopmaster `bd703d09`) pins the same
 revision, as does oneloopmaster (main `bd703d09`) in its own standalone `[patch]`,
 which only applies when it is the root workspace. There
 is no alphal00p Symbolica fork in the graph (`cargo tree -i symbolica` lists one
