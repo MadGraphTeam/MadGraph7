@@ -1,0 +1,276 @@
+{
+  "adapted_supervisor_sha256": "de540d200994ae98af8fa862c9a4ef9dac979afae3e10a634415aac5aaba5386",
+  "build_sha256": "f27a190f04804e8dc13a9d534e8558ac4eab95c2881cf97cf0aaaefb12260005",
+  "complete": true,
+  "cpu": 12,
+  "elapsed_seconds": 3.005805199034512,
+  "loader_cap_seconds": 30,
+  "results_sha256": "1db3228443e5bcc37d104541e608b62aba36b17000d1c8096bff6d838f6d644f",
+  "retained_files": {
+    "adaptive-console.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adaptive-loader.log": "caa150936b52a72b513749257e50ed64577145bfb1d9547a58643fd3d7aa0015",
+    "adaptive-maps.snapshots/complete.txt": "8b0f2c74088f489f53336cf6ab96962625db664e4354b6f37b859df56dbc2fb4",
+    "adaptive-maps.snapshots/first-nonempty.txt": "8b0f2c74088f489f53336cf6ab96962625db664e4354b6f37b859df56dbc2fb4",
+    "adaptive-maps.snapshots/first-read.txt": "8b0f2c74088f489f53336cf6ab96962625db664e4354b6f37b859df56dbc2fb4",
+    "adaptive-maps.snapshots/last-nonempty.txt": "8b0f2c74088f489f53336cf6ab96962625db664e4354b6f37b859df56dbc2fb4",
+    "adaptive-maps.snapshots/last-read.txt": "8b0f2c74088f489f53336cf6ab96962625db664e4354b6f37b859df56dbc2fb4",
+    "adaptive-maps.txt": "8b0f2c74088f489f53336cf6ab96962625db664e4354b6f37b859df56dbc2fb4",
+    "adaptive/group10-m.words": "3c8c4edfbf7bdfff2ab4ae356ccda925df2a705ea06fddfd5e087c73679529d3",
+    "adaptive/group10-p.words": "95c2738242e0d0a189829223540d5edec679c9e3bca4b7b9f189019b27559650",
+    "adaptive/group10-s.words": "7916fbc7f21ebb13efd34ee11ac57ba8d12d33ff3f362cdb8cfa437c66a59b02",
+    "adaptive/group10-scale.words": "979f8decf6eae4eeddfbadfc1c737416c2c51465e6825cc05eb5aef01fc78dff",
+    "adaptive/maps-ready": "4ea66428cafc53863a06e4169cc3a1bcc31701e2d1fa6449be113ac123013647",
+    "adaptive/observer.jsonl": "8a5cd46fc0f82c2ebb8cac1d52b20a299f90469c49905f6093125188d8c01159",
+    "adaptive/records.txt": "0c4cb9c365c2a7f7967d708f0ed8e86a3c5878b6fdf7d5f20fdd4a38d29b8a4c",
+    "adaptive/snapshots.jsonl": "5b7156760f74f0966e7eb75f29dbdc5e258da2506698de5ef2aa07a2e3d2ea3a",
+    "adaptive/telemetry.txt": "f637e9343ac00911cb18d145a24e4a60d9f17b2ff2cf58f970f463cbd17b1ec9",
+    "legacy-console.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "legacy-loader.log": "20c7748bfad7f17ddcd49e6b61f247d5a1657b5452f445f6b5fe5be2d64de7a7",
+    "legacy-maps.snapshots/complete.txt": "7ba68073117dc12657f33be9a2e851ba6b1bfc0205a6ef7f5d5052b3d2c5f2f2",
+    "legacy-maps.snapshots/first-nonempty.txt": "7ba68073117dc12657f33be9a2e851ba6b1bfc0205a6ef7f5d5052b3d2c5f2f2",
+    "legacy-maps.snapshots/first-read.txt": "7ba68073117dc12657f33be9a2e851ba6b1bfc0205a6ef7f5d5052b3d2c5f2f2",
+    "legacy-maps.snapshots/last-nonempty.txt": "7ba68073117dc12657f33be9a2e851ba6b1bfc0205a6ef7f5d5052b3d2c5f2f2",
+    "legacy-maps.snapshots/last-read.txt": "7ba68073117dc12657f33be9a2e851ba6b1bfc0205a6ef7f5d5052b3d2c5f2f2",
+    "legacy-maps.txt": "7ba68073117dc12657f33be9a2e851ba6b1bfc0205a6ef7f5d5052b3d2c5f2f2",
+    "legacy/group10-m.words": "3c8c4edfbf7bdfff2ab4ae356ccda925df2a705ea06fddfd5e087c73679529d3",
+    "legacy/group10-p.words": "95c2738242e0d0a189829223540d5edec679c9e3bca4b7b9f189019b27559650",
+    "legacy/group10-s.words": "7916fbc7f21ebb13efd34ee11ac57ba8d12d33ff3f362cdb8cfa437c66a59b02",
+    "legacy/group10-scale.words": "979f8decf6eae4eeddfbadfc1c737416c2c51465e6825cc05eb5aef01fc78dff",
+    "legacy/maps-ready": "4ea66428cafc53863a06e4169cc3a1bcc31701e2d1fa6449be113ac123013647",
+    "legacy/observer.jsonl": "ee282c7876b504be3079dc6f461e82d601c9f4ef08f196c55caedb32160d7718",
+    "legacy/records.txt": "ab050514df4ed8d1d7e0a5adf65f1bd917f7ab5502789194a396d005aad62c3c",
+    "legacy/snapshots.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "legacy/telemetry.txt": "e736918636210bfba4affc51c40284aa7ff8bd6bbcc0e2d6f21d4e24c0e5d87b",
+    "results.json": "1db3228443e5bcc37d104541e608b62aba36b17000d1c8096bff6d838f6d644f"
+  },
+  "rlimit_as": [
+    4294967296,
+    4294967296
+  ],
+  "scope": "tensor transport only, no physical amplitude or performance claim",
+  "source_index_sha256": "f85e28784762a70806398ab5b878f93f01c0a1ca51475d960c50036a9ad7995f",
+  "supervisor_sha256": "ed25a9fc96e2faf2b545a9bf70a91b34315c01e534a6ebe68d7520ec2171aa42",
+  "worker_cap_seconds": 180,
+  "workers": {
+    "adaptive": {
+      "argv": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/adaptive",
+        "adaptive"
+      ],
+      "environment": {
+        "HOME": "/home/external",
+        "LC_ALL": "C",
+        "LD_LIBRARY_PATH": "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib:/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "PATH": "/home/external/.codex/packages/app-server-daemon/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/external/.codex/tmp/arg0-linux/codex-arg0lRMkvY:/home/external/.codex/tmp/arg0-linux/codex-arg0Q3My4g:/nix/store/qswjy75ymf911zf9pjhqi4w6kmwm3v73-codex-0.163.0/codex-path:/run/wrappers/bin:/home/external/.nix-profile/bin:/nix/profile/bin:/home/external/.local/state/nix/profile/bin:/etc/profiles/per-user/external/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin:/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin:/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin:/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin:/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin:/nix/store/0g4agjda4ihmd291pamwahhy7praa4sn-gnum4-1.4.21/bin:/nix/store/1m0z4ixir10fg7ba7g131js04bxgv265-cmake-4.1.2/bin:/nix/store/0v0raqk1qw5g2a21km4xa1hwhaq4s976-pkg-config-wrapper-0.29.2/bin:/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin:/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin:/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin:/nix/store/8hz0qnr9z5j1w7rjl9qmsb34v2cb4akr-wget-1.25.0/bin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "RAYON_NUM_THREADS": "1"
+      },
+      "exit_code": 0,
+      "inputs": {
+        "group10-m.words": "3c8c4edfbf7bdfff2ab4ae356ccda925df2a705ea06fddfd5e087c73679529d3",
+        "group10-p.words": "95c2738242e0d0a189829223540d5edec679c9e3bca4b7b9f189019b27559650",
+        "group10-s.words": "7916fbc7f21ebb13efd34ee11ac57ba8d12d33ff3f362cdb8cfa437c66a59b02",
+        "group10-scale.words": "979f8decf6eae4eeddfbadfc1c737416c2c51465e6825cc05eb5aef01fc78dff"
+      },
+      "loader": {
+        "argv": [
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2",
+          "--list",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/adaptive"
+        ],
+        "exit_code": 0,
+        "progress": {
+          "exit_observed_unix": 1794292632.68162,
+          "pid": 14,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.01209343783557415,
+          "returncode": 0,
+          "spawn_unix": 1794292632.6713827
+        }
+      },
+      "mapping": {
+        "capture_unix": 1794292632.9355621,
+        "cpu_allowed_list": "12",
+        "executable": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/adaptive",
+        "expected_runtime_sha256": {
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2": "d39c9d47a695571b8dbc64594fad88bd8f9142f89f248973d34856251bf6b7c1",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6": "b9b56000f7f7c7bbc7d526788a2bf34f58175c025027be1e4174e35b57b7c8d6",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6": "d8d8b7cf31679f992089877911ff8bef66310a4c57e1bd380b4c4749d18e03d4",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+          "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7"
+        },
+        "mapped_elf_paths": [
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/adaptive",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so"
+        ],
+        "mapped_files_sha256_after_exit": {
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2": "d39c9d47a695571b8dbc64594fad88bd8f9142f89f248973d34856251bf6b7c1",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6": "b9b56000f7f7c7bbc7d526788a2bf34f58175c025027be1e4174e35b57b7c8d6",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6": "d8d8b7cf31679f992089877911ff8bef66310a4c57e1bd380b4c4749d18e03d4",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+          "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7"
+        },
+        "mapped_paths": [
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/adaptive",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so"
+        ],
+        "maps_sha256": "8b0f2c74088f489f53336cf6ab96962625db664e4354b6f37b859df56dbc2fb4",
+        "maps_text": "5b26c5bf5000-5b26c5bf7000 r--p 00000000 00:2c 209179529                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/adaptive\n5b26c5bf7000-5b26c5c03000 r-xp 00002000 00:2c 209179529                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/adaptive\n5b26c5c03000-5b26c5c09000 r--p 0000e000 00:2c 209179529                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/adaptive\n5b26c5c09000-5b26c5c0b000 rw-p 00013000 00:2c 209179529                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/adaptive\n5b26c5c0b000-5b26c5c11000 rw-p 00000000 00:00 0 \n781db1356000-781db1359000 rw-p 00000000 00:00 0 \n781db1359000-781db1381000 r--p 00000000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n781db1381000-781db1502000 r-xp 00028000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n781db1502000-781db1551000 r--p 001a9000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n781db1551000-781db1555000 r--p 001f7000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n781db1555000-781db1557000 rw-p 001fb000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n781db1557000-781db1566000 rw-p 00000000 00:00 0 \n781db1566000-781db156a000 r--p 00000000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n781db156a000-781db158d000 r-xp 00004000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n781db158d000-781db1591000 r--p 00027000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n781db1591000-781db1592000 r--p 0002b000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n781db1592000-781db1593000 rw-p 0002c000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n781db1593000-781db15a4000 r--p 00000000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n781db15a4000-781db1629000 r-xp 00011000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n781db1629000-781db1689000 r--p 00096000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n781db1689000-781db168a000 r--p 000f5000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n781db168a000-781db168b000 rw-p 000f6000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n781db168b000-781db16af000 r--p 00000000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n781db16af000-781db19a9000 r-xp 00024000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n781db19a9000-781db19e0000 r--p 0031e000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n781db19e0000-781db19e2000 r--p 00355000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n781db19e2000-781db19e3000 rw-p 00357000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n781db19e3000-781db1a45000 r--p 00000000 00:2c 77430314                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so\n781db1a45000-781db51f0000 r-xp 00062000 00:2c 77430314                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so\n781db51f0000-781db576d000 r--p 0380d000 00:2c 77430314                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so\n781db576d000-781db57bf000 rw-p 03d8a000 00:2c 77430314                   /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so\n781db57bf000-781db57c2000 rw-p 00000000 00:00 0 \n781db57c2000-781db57c6000 r--p 00000000 00:00 0                          [vvar]\n781db57c6000-781db57c8000 r--p 00000000 00:00 0                          [vvar_vclock]\n781db57c8000-781db57ca000 r-xp 00000000 00:00 0                          [vdso]\n781db57ca000-781db57cb000 r--p 00000000 00:21 3527884                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2\n781db57cb000-781db57f6000 r-xp 00001000 00:21 3527884                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2\n781db57f6000-781db5801000 r--p 0002c000 00:21 3527884                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2\n781db5801000-781db5804000 rw-p 00037000 00:21 3527884                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2\n781db5804000-781db5805000 rw-p 00000000 00:00 0 \n7ffc6707f000-7ffc670a0000 rw-p 00000000 00:00 0                          [stack]\nffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]\n",
+        "observation_scope": "One successful mapping and leader-affinity snapshot, not continuous monitoring.",
+        "pid": 16,
+        "process_exit_observed_unix": 1794292633.0090687,
+        "process_wall_seconds": 0.08234228007495403,
+        "selected_library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so"
+      },
+      "progress": {
+        "exit_observed_unix": 1794292633.0090687,
+        "mapping_capture": {
+          "complete_snapshot_sha256": "8b0f2c74088f489f53336cf6ab96962625db664e4354b6f37b859df56dbc2fb4",
+          "last_read_bytes": 6042,
+          "last_read_sha256": "8b0f2c74088f489f53336cf6ab96962625db664e4354b6f37b859df56dbc2fb4",
+          "last_read_unix": 1794292632.9298503,
+          "successful_reads": 1
+        },
+        "pid": 16,
+        "process_reaped": true,
+        "process_spawned": true,
+        "process_wall_seconds": 0.08234228007495403,
+        "returncode": 0,
+        "spawn_unix": 1794292632.9293804
+      },
+      "runtime_sha256": {
+        "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2": "d39c9d47a695571b8dbc64594fad88bd8f9142f89f248973d34856251bf6b7c1",
+        "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6": "b9b56000f7f7c7bbc7d526788a2bf34f58175c025027be1e4174e35b57b7c8d6",
+        "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6": "d8d8b7cf31679f992089877911ff8bef66310a4c57e1bd380b4c4749d18e03d4",
+        "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+        "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-rescue-release-build/attempt1/runtime/libmadloop_tirust_adaptive_private.so": "c5de24e6c41a90caf9e34684392d0193588522f26e6bbac646bdf74e5f151cb7"
+      }
+    },
+    "legacy": {
+      "argv": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/legacy",
+        "legacy"
+      ],
+      "environment": {
+        "HOME": "/home/external",
+        "LC_ALL": "C",
+        "LD_LIBRARY_PATH": "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib:/nix/store/chqq8mpmpyfi9kgsngya71akv5xicn03-gcc-15.2.0-lib/lib",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "PATH": "/home/external/.codex/packages/app-server-daemon/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/external/.codex/tmp/arg0-linux/codex-arg0lRMkvY:/home/external/.codex/tmp/arg0-linux/codex-arg0Q3My4g:/nix/store/qswjy75ymf911zf9pjhqi4w6kmwm3v73-codex-0.163.0/codex-path:/run/wrappers/bin:/home/external/.nix-profile/bin:/nix/profile/bin:/home/external/.local/state/nix/profile/bin:/etc/profiles/per-user/external/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/hjh2pcv59jhxwh6japwx1v437w4yrbp1-rustc-1.97.1/bin:/nix/store/cavxgwfb7l7akyvvqvnl39d6nw0wckgh-cargo-1.97.1/bin:/nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin:/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin:/nix/store/0xw6y53ijaqwfd9c99wyaqiinychzv1f-gnumake-4.4.1/bin:/nix/store/0g4agjda4ihmd291pamwahhy7praa4sn-gnum4-1.4.21/bin:/nix/store/1m0z4ixir10fg7ba7g131js04bxgv265-cmake-4.1.2/bin:/nix/store/0v0raqk1qw5g2a21km4xa1hwhaq4s976-pkg-config-wrapper-0.29.2/bin:/nix/store/4jddwqz8nx9v4p4wzvhz1kfg88gnjcv8-python3-3.13.12-env/bin:/nix/store/2szzba1xi60y8i3qcyxwvgq2i6w9iy5s-typst-0.15.1/bin:/nix/store/3klg4291n3flxaba710cidssppnjsagz-poppler-utils-25.10.0/bin:/nix/store/8hz0qnr9z5j1w7rjl9qmsb34v2cb4akr-wget-1.25.0/bin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "RAYON_NUM_THREADS": "1"
+      },
+      "exit_code": 0,
+      "inputs": {
+        "group10-m.words": "3c8c4edfbf7bdfff2ab4ae356ccda925df2a705ea06fddfd5e087c73679529d3",
+        "group10-p.words": "95c2738242e0d0a189829223540d5edec679c9e3bca4b7b9f189019b27559650",
+        "group10-s.words": "7916fbc7f21ebb13efd34ee11ac57ba8d12d33ff3f362cdb8cfa437c66a59b02",
+        "group10-scale.words": "979f8decf6eae4eeddfbadfc1c737416c2c51465e6825cc05eb5aef01fc78dff"
+      },
+      "loader": {
+        "argv": [
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2",
+          "--list",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/legacy"
+        ],
+        "exit_code": 0,
+        "progress": {
+          "exit_observed_unix": 1794292632.5736403,
+          "pid": 13,
+          "process_reaped": true,
+          "process_spawned": true,
+          "process_wall_seconds": 0.012553110718727112,
+          "returncode": 0,
+          "spawn_unix": 1794292632.5634599
+        }
+      },
+      "mapping": {
+        "capture_unix": 1794292632.7737308,
+        "cpu_allowed_list": "12",
+        "executable": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/legacy",
+        "expected_runtime_sha256": {
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2": "d39c9d47a695571b8dbc64594fad88bd8f9142f89f248973d34856251bf6b7c1",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6": "b9b56000f7f7c7bbc7d526788a2bf34f58175c025027be1e4174e35b57b7c8d6",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6": "d8d8b7cf31679f992089877911ff8bef66310a4c57e1bd380b4c4749d18e03d4",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+          "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        },
+        "mapped_elf_paths": [
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/legacy",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+        ],
+        "mapped_files_sha256_after_exit": {
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2": "d39c9d47a695571b8dbc64594fad88bd8f9142f89f248973d34856251bf6b7c1",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6": "b9b56000f7f7c7bbc7d526788a2bf34f58175c025027be1e4174e35b57b7c8d6",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6": "d8d8b7cf31679f992089877911ff8bef66310a4c57e1bd380b4c4749d18e03d4",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+          "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+        },
+        "mapped_paths": [
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6",
+          "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6",
+          "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0",
+          "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/legacy",
+          "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+        ],
+        "maps_sha256": "7ba68073117dc12657f33be9a2e851ba6b1bfc0205a6ef7f5d5052b3d2c5f2f2",
+        "maps_text": "58345e8c1000-58345e8c3000 r--p 00000000 00:2c 208979710                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/legacy\n58345e8c3000-58345e8cf000 r-xp 00002000 00:2c 208979710                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/legacy\n58345e8cf000-58345e8d5000 r--p 0000e000 00:2c 208979710                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/legacy\n58345e8d5000-58345e8d7000 rw-p 00013000 00:2c 208979710                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/adaptive-qp-release-fortran-qualification/build1/legacy\n58345e8d7000-58345e8dd000 rw-p 00000000 00:00 0 \n75934aa46000-75934aa49000 rw-p 00000000 00:00 0 \n75934aa49000-75934aa71000 r--p 00000000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n75934aa71000-75934abf2000 r-xp 00028000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n75934abf2000-75934ac41000 r--p 001a9000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n75934ac41000-75934ac45000 r--p 001f7000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n75934ac45000-75934ac47000 rw-p 001fb000 00:21 3527890                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6\n75934ac47000-75934ac56000 rw-p 00000000 00:00 0 \n75934ac56000-75934ac5a000 r--p 00000000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n75934ac5a000-75934ac7d000 r-xp 00004000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n75934ac7d000-75934ac81000 r--p 00027000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n75934ac81000-75934ac82000 r--p 0002b000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n75934ac82000-75934ac83000 rw-p 0002c000 00:21 3300135                    /nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1\n75934ac83000-75934ac94000 r--p 00000000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n75934ac94000-75934ad19000 r-xp 00011000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n75934ad19000-75934ad79000 r--p 00096000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n75934ad79000-75934ad7a000 r--p 000f5000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n75934ad7a000-75934ad7b000 rw-p 000f6000 00:21 3527897                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6\n75934ad7b000-75934ad9f000 r--p 00000000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n75934ad9f000-75934b099000 r-xp 00024000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n75934b099000-75934b0d0000 r--p 0031e000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n75934b0d0000-75934b0d2000 r--p 00355000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n75934b0d2000-75934b0d3000 rw-p 00357000 00:21 1448349                    /nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0\n75934b0d3000-75934b135000 r--p 00000000 00:2c 106160512                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so\n75934b135000-75934e8de000 r-xp 00062000 00:2c 106160512                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so\n75934e8de000-75934ee5c000 r--p 0380b000 00:2c 106160512                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so\n75934ee5c000-75934eeae000 rw-p 03d89000 00:2c 106160512                  /shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so\n75934eeae000-75934eeb1000 rw-p 00000000 00:00 0 \n75934eeb1000-75934eeb5000 r--p 00000000 00:00 0                          [vvar]\n75934eeb5000-75934eeb7000 r--p 00000000 00:00 0                          [vvar_vclock]\n75934eeb7000-75934eeb9000 r-xp 00000000 00:00 0                          [vdso]\n75934eeb9000-75934eeba000 r--p 00000000 00:21 3527884                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2\n75934eeba000-75934eee5000 r-xp 00001000 00:21 3527884                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2\n75934eee5000-75934eef0000 r--p 0002c000 00:21 3527884                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2\n75934eef0000-75934eef3000 rw-p 00037000 00:21 3527884                    /nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2\n75934eef3000-75934eef4000 rw-p 00000000 00:00 0 \n7ffda23a7000-7ffda23c8000 rw-p 00000000 00:00 0                          [stack]\nffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]\n",
+        "observation_scope": "One successful mapping and leader-affinity snapshot, not continuous monitoring.",
+        "pid": 15,
+        "process_exit_observed_unix": 1794292632.7969236,
+        "process_wall_seconds": 0.030974723864346743,
+        "selected_library": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so"
+      },
+      "progress": {
+        "exit_observed_unix": 1794292632.7969236,
+        "mapping_capture": {
+          "complete_snapshot_sha256": "7ba68073117dc12657f33be9a2e851ba6b1bfc0205a6ef7f5d5052b3d2c5f2f2",
+          "last_read_bytes": 5942,
+          "last_read_sha256": "7ba68073117dc12657f33be9a2e851ba6b1bfc0205a6ef7f5d5052b3d2c5f2f2",
+          "last_read_unix": 1794292632.7688425,
+          "successful_reads": 1
+        },
+        "pid": 15,
+        "process_reaped": true,
+        "process_spawned": true,
+        "process_wall_seconds": 0.030974723864346743,
+        "returncode": 0,
+        "spawn_unix": 1794292632.7683773
+      },
+      "runtime_sha256": {
+        "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/ld-linux-x86-64.so.2": "d39c9d47a695571b8dbc64594fad88bd8f9142f89f248973d34856251bf6b7c1",
+        "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libc.so.6": "b9b56000f7f7c7bbc7d526788a2bf34f58175c025027be1e4174e35b57b7c8d6",
+        "/nix/store/57iz36553175g3178pvxjij8z5rcsd4n-glibc-2.42-61/lib/libm.so.6": "d8d8b7cf31679f992089877911ff8bef66310a4c57e1bd380b4c4749d18e03d4",
+        "/nix/store/cb4kg08gc8kwa81rxclkn6qqc6hxwwp5-gfortran-15.2.0-lib/lib/libgfortran.so.5.0.0": "4df9140c6bdec52b09ffef7006577b350651b97f08ebd5b56038a4fbe24140ba",
+        "/nix/store/xyikkpwkyxx6syba3kfrr0h67ig5hwmn-gcc-15.2.0-libgcc/lib/libgcc_s.so.1": "ae044ece9877d38a4a4bcee7b9c15eed9b50d0dad24d41617eec8fff8bbd262d",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/qp-transport-install/mg/HEPTools/tirust/lib/libmadloop_tirust.so": "eb3d67fdc99b742b1c5d66101522c8b8fb97e74b0b71ac69fd4452fb60c42af9"
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "automatic_retry_count": 0,
+  "cache_occupancy_measured": false,
+  "complete": false,
+  "original_returncode": -9,
+  "original_stdout_bytes": 0,
+  "original_worker_reaped": true,
+  "parity_qualified": false,
+  "performance_eligible": false,
+  "protected_bindings_unchanged": true,
+  "reason": "TimeoutError('Private diagnostic deadline exhausted; no retry')",
+  "runtime_sha256": "6a8bbf965ca60e7901588a7d1a65a7c4f6f66355d6f218936e3796e190300139",
+  "schema": "cache-occupancy-native-attempt-v1",
+  "scope": "Original control reached its180second wall limit before READY or coefficient output; observation and cache-on/off arms never started. No retry and no numerical/cache/performance inference.",
+  "started_arms": [
+    "original"
+  ],
+  "state": "incomplete",
+  "unstarted_arms": [
+    "off",
+    "on"
+  ]
+}

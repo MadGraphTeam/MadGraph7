@@ -1,0 +1,86 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 747,
+      "sha256": "9b207fa3853e5a6b670c77ef1cffafac07b4cdf619f550d3e5218a6e683134c3"
+    },
+    "copies.json": {
+      "bytes": 4555,
+      "sha256": "f435c67e72feddf2afa2fe9a751b26588d41685f3dc90ce82291885895cf7790"
+    },
+    "raw/execution.json.gz": {
+      "bytes": 171155,
+      "sha256": "e1267ad794947702abb9fcb3c34edef83cf9d16ceaa149b41b17ffdce6130d1f"
+    },
+    "raw/original/Cards/MadLoopParams.dat.gz": {
+      "bytes": 4815,
+      "sha256": "7bda5d95a6f5cd757b58a30935c61d37a723d94e248075a79011ebef947999bc"
+    },
+    "raw/original/Cards/ident_card.dat.gz": {
+      "bytes": 185,
+      "sha256": "2159e4584a08b5ec3c8463dd98d6bb41a9dfbf7ec71207e4651fad124e47957b"
+    },
+    "raw/original/Cards/param_card.dat.gz": {
+      "bytes": 680,
+      "sha256": "ab063c9d8d903267f868095493dd33d542d70c74bbfb496d8b32c56da8f9e19c"
+    },
+    "raw/original/MadLoop5_resources/ML5_0_ColorDenomFactors.dat.gz": {
+      "bytes": 1102,
+      "sha256": "55d5fc47453c77263309861e2fe3fa8380ca857cbc4cb60da17bf4abff6c1661"
+    },
+    "raw/original/MadLoop5_resources/ML5_0_ColorNumFactors.dat.gz": {
+      "bytes": 2380,
+      "sha256": "8d63d775889d78129e41dd44efb7520a8a99fb80424582cf72ebfa68316225e0"
+    },
+    "raw/original/MadLoop5_resources/ML5_0_HelConfigs.dat.gz": {
+      "bytes": 321,
+      "sha256": "77bbbc556cd43a783dd496c3355ec063a5203a4a62a3ea3bdf937fe34ba72155"
+    },
+    "raw/original/MadLoop5_resources/MadLoopParams.dat.gz": {
+      "bytes": 4815,
+      "sha256": "7bda5d95a6f5cd757b58a30935c61d37a723d94e248075a79011ebef947999bc"
+    },
+    "raw/original/MadLoop5_resources/ident_card.dat.gz": {
+      "bytes": 185,
+      "sha256": "2159e4584a08b5ec3c8463dd98d6bb41a9dfbf7ec71207e4651fad124e47957b"
+    },
+    "raw/original/MadLoop5_resources/param_card.dat.gz": {
+      "bytes": 680,
+      "sha256": "ab063c9d8d903267f868095493dd33d542d70c74bbfb496d8b32c56da8f9e19c"
+    },
+    "raw/original/execution.json.gz": {
+      "bytes": 2509,
+      "sha256": "1cab8b3ccec43dc52a86bf4b981ecaa1a8b829fd70d8ad7761f81cfcfbbd054a"
+    },
+    "raw/original/param.log.gz": {
+      "bytes": 206,
+      "sha256": "107c1bfe0049bfc6ec235d98a4d1e15be08c9f5976b1134a476e899a4e38965f"
+    },
+    "raw/original/points.dat.gz": {
+      "bytes": 243,
+      "sha256": "b3d789d1d8341095919e0b6e7264e3828643a050e56df7274e80dfad5e2481a6"
+    },
+    "raw/original/process-maps-first.txt.gz": {
+      "bytes": 1512,
+      "sha256": "e984748e8224ececd23af347e78575b776e07acdcab0471c447c0a6cedb5e392"
+    },
+    "raw/original/process-maps-last.txt.gz": {
+      "bytes": 1512,
+      "sha256": "16df2d7bf9a394343889b483afcf7a79fe20a92420dd3cdd8d15723fd03bac43"
+    },
+    "raw/original/stdout.log.gz": {
+      "bytes": 20,
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    "summary.json": {
+      "bytes": 817,
+      "sha256": "4022845a872d2514fed0ed3771d313f5f9ada210259658d7b71abd550c29265d"
+    },
+    "verify.py": {
+      "bytes": 2098,
+      "sha256": "993295c7b49e7e4b3e837265d3faef5ebfa330213fc50f63e10414d1ea1bd015"
+    }
+  },
+  "schema": "madloop-tirust-cache-occupancy-incomplete-retention-v1",
+  "scope": "Offline retained incomplete native diagnostic; no successful occupancy/parity claim"
+}
