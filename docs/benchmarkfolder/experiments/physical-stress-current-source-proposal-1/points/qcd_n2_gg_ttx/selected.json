@@ -1,0 +1,113 @@
+{
+  "inputs": {
+    "count": 2,
+    "energy": 1000.0,
+    "incoming_masses": [
+      0.0,
+      0.0
+    ],
+    "masses": [
+      173.0,
+      173.0
+    ],
+    "seed": 20261110
+  },
+  "parents": [
+    {
+      "point_id": "ordinary-0000",
+      "role": "ordinary-control",
+      "sha256": "b7e7fadd4ff530582515636bd99dd235f3a1e013ff6184d76f2ded1447140445",
+      "source": "docs/benchmarkfolder/points/qcd_n2_gg_ttx.dat",
+      "source_point_index": 1
+    },
+    {
+      "point_id": "stress-threshold",
+      "role": "stress",
+      "sha256": "b27c7845d2e0bd445470e2389a68cd16938eed4cb5bc7229f0a2b48380907f4c",
+      "source": "docs/benchmarkfolder/points/qcd_n2_gg_ttx-stress.dat",
+      "source_point_index": 1
+    }
+  ],
+  "points": [
+    {
+      "id": "ordinary-0000",
+      "incoming_masses": [
+        0.0,
+        0.0
+      ],
+      "kind": "ordinary",
+      "masses": [
+        173.0,
+        173.0
+      ],
+      "momenta": [
+        [
+          500.0,
+          0.0,
+          0.0,
+          500.0
+        ],
+        [
+          500.0,
+          0.0,
+          0.0,
+          -500.0
+        ],
+        [
+          500.00000000000006,
+          317.5998704381017,
+          211.56004102661603,
+          -272.8436756432474
+        ],
+        [
+          500.00000000000006,
+          -317.5998704381017,
+          -211.56004102661603,
+          272.8436756432474
+        ]
+      ],
+      "sqrt_s": 1000.0
+    },
+    {
+      "id": "stress-threshold",
+      "incoming_masses": [
+        0.0,
+        0.0
+      ],
+      "kind": "threshold",
+      "masses": [
+        173.0,
+        173.0
+      ],
+      "momenta": [
+        [
+          173.0000173,
+          0.0,
+          0.0,
+          173.0000173
+        ],
+        [
+          173.0000173,
+          0.0,
+          0.0,
+          -173.0000173
+        ],
+        [
+          173.00001729999997,
+          0.05237933973897362,
+          0.03489099428421843,
+          -0.0449980397108924
+        ],
+        [
+          173.00001729999997,
+          -0.05237933973897362,
+          -0.03489099428421843,
+          0.0449980397108924
+        ]
+      ],
+      "sqrt_s": 346.0000346
+    }
+  ],
+  "scope": "Point1 is the ordinary initialization/control anchor; point2 is the sole selected stress point. Exact DAT rows are copied, not regenerated. Parent metadata count is the original generator setting; this derivative records its actual count.",
+  "sha256": "e1886222168de31e45945c7a479d1a970df4f53984155db849b91f9a22111cc7"
+}

@@ -1,0 +1,20 @@
+{
+  "gdb_on_inspection_PATH": null,
+  "patterns": {
+    "/bin/gdb": [],
+    "/home/external/.nix-profile/bin/gdb": [],
+    "/nix/store/*gdb*/bin/gdb": [
+      "/nix/store/2xrxnqpkwlr4smxwhg5x34s2nbs2rpi6-gdb-17.2/bin/gdb",
+      "/nix/store/7npv5s0lj8l1yhwn89qzqqwzcfjj5gxn-gdb-17.1/bin/gdb",
+      "/nix/store/97033wd7ak5am97yk1d2y85aai3yz4wh-gdb-16.3/bin/gdb",
+      "/nix/store/gkha6bbbxnp4mjnw8fmgdy7b1s6dykx1-gdb-17.2/bin/gdb",
+      "/nix/store/vj8m1cbj1xw2b3j55ppcby5mnchb9iml-gdb-17.1/bin/gdb"
+    ],
+    "/nix/store/*gdb*/bin/gdb-multiarch": [],
+    "/nix/store/*lldb*/bin/lldb": [],
+    "/usr/bin/gdb": [],
+    "/usr/local/bin/gdb": []
+  },
+  "scope": "Installed filesystem paths only; no install or download.",
+  "selected_explicit_path": "/nix/store/2xrxnqpkwlr4smxwhg5x34s2nbs2rpi6-gdb-17.2/bin/gdb"
+}

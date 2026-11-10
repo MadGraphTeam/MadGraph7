@@ -1,0 +1,23 @@
+{
+  "schema": "post-cayley-debugger-source-freeze-v1",
+  "sources": {
+    "README.md": "c6c6054b5b5eebda1a4e4b5b99aed8f173816fa4532fd499af2cfe458f5b0532",
+    "attach_wrapper.py": "a0c84965a9ec8f83fff0b03fb5cc730da03d504ad36c1d1e742d11578178fea4",
+    "capability/README.md": "e408dfe09daa27678613f693a526547ca6c599ee4bd1f98b487dcba680652080",
+    "capability/configuration.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "capability/configuration.stdout.log": "9ac045acd3966d586432bcd833b22444d764c2c81d2c923b3a72004361444e8f",
+    "capability/discovery.json": "d5084307eda3813ebf147f5f942031f5858725a4d408053de5b369c0f2ce689a",
+    "capability/execution.json": "ffe92b939e86991eada4d94bafbf2e979d53b04e723277a79cea3a1e95ba2ecf",
+    "capability/inspect.py": "53327c2b67e5b04e12bdfec045b9295e9e4f4ee14a05f0de62431d11d518f407",
+    "capability/source-index.json": "340a0e88caa48c0de4ee47ee052baa5ce6159a0b158d174d12d419f2657846ff",
+    "capability/target-free.gdb": "a74f6e7d012ec1122de4e5627a7f68dcb040e4947cfca7b8ddfcbf16d7cbed0f",
+    "capability/target-free.stderr.log": "b11cede79e3c179274640a73fee3a1370132352984fdf6ddd9227a0cc6541f57",
+    "capability/target-free.stdout.log": "428c0b5a2d9afbe1ab8cb1c5ecda9e42ab5634e4fb17419e1214fa1aca3a0655",
+    "capability/version.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "capability/version.stdout.log": "e161066baf24fcb255d732da65328d903afd2772925d60689296faaf6f4330b3",
+    "capture.py": "f1239935375eea2b8ab8c1825200a192fd7f9d2c2d844bafa278b2c738e1a908",
+    "controller.py": "0553179bf9f294fead491cc433de1c5cae9a3f3261174222fcf73ea19eaafd85",
+    "plan.json": "6553de97815f02a7c4d0ae2156a60be912b3627b1e1449e0ac0f22aeb66e1128",
+    "source-audit.json": "cdd0cfdb55090cb11587d885529be4fb6fea881e02faf66753edffe3e18432d9"
+  }
+}

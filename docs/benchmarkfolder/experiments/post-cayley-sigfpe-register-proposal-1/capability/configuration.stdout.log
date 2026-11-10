@@ -1,0 +1,32 @@
+This GDB was configured as follows:
+   configure --host=x86_64-unknown-linux-gnu --target=x86_64-unknown-linux-gnu
+	     --enable-targets=all
+	     --with-auto-load-dir=$debugdir:$datadir/auto-load
+	     --with-auto-load-safe-path=$debugdir:$datadir/auto-load:/nix/store/604gsr59rj7dzd0nrhp143rpvf7gyiaz-gcc-15.3.0-lib
+	     --with-expat
+	     --with-gdb-datadir=/nix/store/2xrxnqpkwlr4smxwhg5x34s2nbs2rpi6-gdb-17.2/share/gdb (relocatable)
+	     --with-jit-reader-dir=/nix/store/2xrxnqpkwlr4smxwhg5x34s2nbs2rpi6-gdb-17.2/lib/gdb (relocatable)
+	     --without-libunwind-ia64
+	     --with-lzma
+	     --without-babeltrace
+	     --with-intel-pt
+	     --with-xxhash
+	     --with-python=/nix/store/d64q19q1xjdwfhqx6czvrjgrhq0n3lcc-python3-3.14.7
+	     --with-python-libdir=/nix/store/d64q19q1xjdwfhqx6czvrjgrhq0n3lcc-python3-3.14.7/lib
+	     --with-debuginfod
+	     --with-curses
+	     --without-guile
+	     --without-amd-dbgapi
+	     --enable-source-highlight
+	     --enable-threading
+	     --enable-tui
+	     --with-system-readline
+	     --with-separate-debug-dir=/nix/store/2xrxnqpkwlr4smxwhg5x34s2nbs2rpi6-gdb-17.2/lib/debug (relocatable)
+	     --with-system-gdbinit=/etc/gdb/gdbinit
+	     --with-system-gdbinit-dir=/etc/gdb/gdbinit.d
+
+("Relocatable" means the directory can be moved with the GDB installation
+tree, and GDB will still find it.)
+
+GNU Readline library version: 8.3	(system)
+
