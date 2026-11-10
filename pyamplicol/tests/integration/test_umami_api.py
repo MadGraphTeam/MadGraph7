@@ -251,6 +251,11 @@ def providers(request, tmp_path_factory):
             process["alpha_s_parameter"] == "aS"
             for process in documents[0]["runtime_processes"]
         )
+        # proven from the model expressions, see the event-alpha_s test below
+        assert all(
+            process["alpha_s_power"] == 2
+            for process in documents[0]["runtime_processes"]
+        )
     if restricted:
         assert (
             documents[0]["runtime_processes"][0]["coverage"]["helicities"] == "selected"

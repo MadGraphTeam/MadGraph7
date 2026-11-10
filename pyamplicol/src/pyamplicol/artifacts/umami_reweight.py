@@ -24,7 +24,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .umami_c import _boolean, _string
+from .umami_c import _boolean, _power, _string
 
 _TEMPLATES = {
     "umami_reweight.c": "umami_reweight.c",
@@ -82,6 +82,7 @@ def _process_row(process: Mapping[str, Any], prefix: str, lines: list[str]) -> s
                 _string(process["id"]),
                 f"{prefix}_pdgs",
                 _string(process["alpha_s_parameter"]),
+                _power(process),
                 str(len(process["helicity_ids"])),
             )
         )

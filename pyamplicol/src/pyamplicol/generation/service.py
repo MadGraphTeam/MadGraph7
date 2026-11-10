@@ -76,6 +76,7 @@ from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from ..runtime.recurrence_exact._plan import _RecurrenceExactPlan
 from ..runtime.recurrence_exact._plan_v2 import DIRECT_NONE_U32, _parse_exact_sections
+from .alpha_s_power import alpha_s_power
 from .artifact_writer import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
     EAGER_PLAN_V3_ABI,
@@ -6151,6 +6152,14 @@ class GenerationBackend:
         physics["extensions"]["s_channel_resonances"] = s_channel_resonances(
             expanded.process_ir, model, self._coupling_order_limits or None
         )
+        power = alpha_s_power(
+            expanded.process_ir,
+            model,
+            prepared.complete_color_plan,
+            prepared.coupling_order_limits,
+        )
+        if power is not None:
+            physics["extensions"]["alpha_s_power"] = power
         profile["physics-metadata"] = time.perf_counter() - physics_started
         run = self._run_config
         assert run is not None
