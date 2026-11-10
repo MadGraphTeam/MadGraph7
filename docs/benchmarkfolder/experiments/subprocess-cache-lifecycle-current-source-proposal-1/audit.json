@@ -1,0 +1,15 @@
+{
+  "current_run_sha256": "28cb143179e17e01ce718d33cf1177aeceeec88dd6c78053eb4d9866c3f11aba",
+  "findings": [
+    "Stage query logs collided between processes; fixed by stage namespace.",
+    "Rendered Fortran drivers were excluded from generic inventory; fixed by explicit exact required rendered-source seals.",
+    "Deadlines/start attribution tightened: inclusive worker and stage caps, parent restoration, cleanup timeout retention, true start timestamp."
+  ],
+  "initial_run_sha256": "469c2e20cb5d495f5115bfec699898aa139db5369cebd1757316fe420c079ed6",
+  "later_change": "The same W03 conditional was extracted to require_complete_console() solely for focused testing; rejection semantics are unchanged.",
+  "mode": "read-only source review; no native/compiler execution",
+  "recheck": "No material blocker in changed scope. Copied protocol, card semantics, observer diff, deadline/cleanup, source/config seals, smoke prerequisites, PT_INTERP checks and parser injection reviewed.",
+  "rechecked_run_sha256": "1f4bc9f5e637077da66e6f5700919ea6494e07d6321e3187342b18f0c24d6962",
+  "reviewer": "/root/complex_stress/ct_qp_source_audit",
+  "schema": 1
+}

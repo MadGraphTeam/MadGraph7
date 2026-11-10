@@ -1,0 +1,86 @@
+{
+  "files": {
+    "README.md": {
+      "sha256": "895a55f1754b26541b0f4612cd7d42dc1b57790e9862dfcabfc300618b37f71d",
+      "size": 7448
+    },
+    "analyze.py": {
+      "sha256": "0014bbf833cce64344ffcf38e2cb8c9a92605eeeb697fcf260553a13e5d1d40b",
+      "size": 42482
+    },
+    "audit.json": {
+      "sha256": "13fcec2673db4577038fe4a8046c8e2b4bc593ba58756c5520fcb3b7c24f0d02",
+      "size": 1155
+    },
+    "campaign-manifest.json": {
+      "sha256": "ce49d147c1117875cd7e9692223bec546c100b3a4f0c3f89eef9206c323223d0",
+      "size": 397109
+    },
+    "card_smoke.f.in": {
+      "sha256": "ef4a4f6b23d647d1bc931c51fd33fa624e0db17136533431817490a70b671b1d",
+      "size": 3995
+    },
+    "driver.f.in": {
+      "sha256": "3cdc9d1780f92b8a8adeb18ba8b3ae3e70db685908eb5d8a7a923bfac298db84",
+      "size": 11765
+    },
+    "dry-run.json": {
+      "sha256": "dbf39dc91665e987f172d666fc30163445007f7fdbe0fa0b439e159ccbfb1fc9",
+      "size": 3025
+    },
+    "generate.mg5.in": {
+      "sha256": "89d2886b11336b4b060ff003035b3ca4abff04479c6dcf901b1a0aa275814023",
+      "size": 460
+    },
+    "legacy_qualify.py": {
+      "sha256": "a408dc73d880a9471defaf6cf4fa9b426e616780b4861c595d608826b6b0f89a",
+      "size": 31845
+    },
+    "lineage.json": {
+      "sha256": "e82271afc97cdfa651efdb45b5e2b81706866d15d398f2cd327fda5d36d31c52",
+      "size": 2792
+    },
+    "observer-maps.patch": {
+      "sha256": "e3d8efed3f152e048a7d580f2eb069eafdc2933fef443014e041bbf41b175341",
+      "size": 1269
+    },
+    "observer-original.c": {
+      "sha256": "ed5971b3e186d81df65395355f6a3aa9dfd34336802f4df688004948a973ae34",
+      "size": 18182
+    },
+    "observer.c": {
+      "sha256": "9f17df85f04efa2d181100bf4b7326fed6cdf5ef2e5e0c4b13cf773dd638dd3e",
+      "size": 18963
+    },
+    "process_cleanup.py": {
+      "sha256": "240d1067a7b7098f056f0f367097def8f374d7979c3001d249c8b1f7cb0bbd84",
+      "size": 5554
+    },
+    "run.py": {
+      "sha256": "28cb143179e17e01ce718d33cf1177aeceeec88dd6c78053eb4d9866c3f11aba",
+      "size": 31639
+    },
+    "smoke.py": {
+      "sha256": "a651c23461f27acb51e15b8b5fd5c46ab06199b2e76e8fef5aab5dbe047c56de",
+      "size": 2692
+    },
+    "source-test-receipt.json": {
+      "sha256": "0d265d9ce9cb15838d7019672552b3eed75dc04c5ad7965adb551071f63e5069",
+      "size": 4383
+    },
+    "source-tests.txt": {
+      "sha256": "301a13c21582c1e7fce9c05e8e3a5b14145e76f8201031626c4b8f4881670375",
+      "size": 5329
+    },
+    "test_analyze.py": {
+      "sha256": "68db1e6261b02bdfdfed5814a6015b9dfa67278c6a61c3b734178fcd77384613",
+      "size": 15838
+    },
+    "test_controller.py": {
+      "sha256": "c97e2f2e4e793f752b36c8542e12a61a9010fa30d864bc80c6054d092fb935c4",
+      "size": 11050
+    }
+  },
+  "schema": 1,
+  "scope": "source-only current lifecycle replay proposal; no generation/build/native execution"
+}
