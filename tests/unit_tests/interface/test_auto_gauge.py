@@ -68,27 +68,30 @@ class TestAutomaticGauge(unittest.TestCase):
     # the criterion
     # ------------------------------------------------------------------
     def test_criterion(self):
-        """fd_gauge_criterion on the diagrams of a few SM processes"""
+        """fd_gauge_criterion on the diagrams of SM processes: a massive
+        vector propagator with an end that is not a conserved current"""
 
         self.do('set auto_gauge False')   # the amplitudes as generated
-        # (electroweak_only, massive_vector); None: not evaluated past the
-        # first QCD vertex
         expected = [
-            ('p p > w+ w- j j QCD=0', (True, True)),      # VBS
-            ('p p > w+ w-', (True, True)),                # no QCD vertex at LO
-            ('p p > h j j', (True, True)),                # VBF/VH, no QCD at LO in the sm
-            ('e+ e- > mu+ mu-', (True, True)),            # Z exchange
-            ('p p > w+ w-, w+ > e+ ve', (True, True)),    # decay chain
-            ('a a > mu+ mu-', (True, False)),             # no massive vector
-            ('p p > t t~', (False, None)),                # QCD
-            ('p p > w+ j', (False, None)),                # one QCD vertex
+            ('p p > w+ w- j j QCD=0', True),      # VBS: VVV and HVV ends
+            ('p p > w+ w-', True),                # s-channel Z/a: WWV end
+            ('p p > h j j QCD=0', True),          # VBF: HVV end
+            ('e+ e- > z h', True),                # ZZH end
+            ('g b > t e- ve~', True),             # W between t-b and leptons
+            ('p p > t t~, (t > b w+, w+ > l+ vl)', True),  # decayed W: t-b end
+            ('p p > w+ w-, w+ > e+ ve', True),    # decay chain of the above
+            ('e+ e- > ta+ ta-', True),            # massive tau current
+            ('e+ e- > mu+ mu-', False),           # Z between massless currents
+            ('u d~ > e+ ve g', False),            # quark line + gluon: conserved
+            ('p p > z z', False),                 # external Z only
+            ('p p > w+ j', False),                # external W only
+            ('p p > t t~', False),                # no massive vector
+            ('a a > mu+ mu-', False),             # no massive vector
             ]
-        for line, (electroweak_only, massive_vector) in expected:
+        for line, result in expected:
             self.do('generate %s' % line)
-            result = mg_interface.fd_gauge_criterion(self.cmd._curr_amps)
-            self.assertEqual(result[0], electroweak_only, line)
-            if massive_vector is not None:
-                self.assertEqual(result[1], massive_vector, line)
+            self.assertEqual(
+                mg_interface.fd_gauge_criterion(self.cmd._curr_amps), result, line)
             self.assertGauge('unitary', automatic=False)
 
     def test_criterion_loop_amplitude(self):
@@ -96,8 +99,7 @@ class TestAutomaticGauge(unittest.TestCase):
 
         self.do('import model loop_sm')
         self.do('generate u u~ > w+ w- [virt=QCD]')
-        self.assertEqual(mg_interface.fd_gauge_criterion(self.cmd._curr_amps),
-                         (False, False))
+        self.assertFalse(mg_interface.fd_gauge_criterion(self.cmd._curr_amps))
         self.assertEqual(self.cmd.options['gauge'], 'unitary')
 
     # ------------------------------------------------------------------
@@ -124,23 +126,33 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertEqual(len(self.cmd._curr_amps), 2)
         self.assertEqual(self.gauge_lines(), ['generate p p > t t~'])
 
-    def test_add_process_reverts(self):
-        """adding a QCD process to an electroweak one brings the whole output
-        back to the unitary gauge, every process generated again"""
+    def test_add_process_keeps_fd(self):
+        """a process added to one that needs the FD gauge is generated in the
+        FD gauge too (correct for it as well); a polarised one brings the
+        whole output back to the unitary gauge, every process again"""
 
         self.do('generate p p > w+ w-')
         self.assertGauge('FD', automatic=True)
         self.do('add process p p > t t~')
-        self.assertGauge('unitary', automatic=False)
+        self.assertGauge('FD', automatic=True)
         self.assertEqual(len(self.cmd._curr_amps), 3)
         self.assertEqual([amp.get('process').get('id') for amp in self.cmd._curr_amps],
                          [1, 2, 2])
-        self.assertEqual(self.gauge_lines(),
-                         ['generate p p > w+ w-', 'add process p p > t t~'])
-        # and an electroweak one added to a QCD one changes nothing
-        self.do('add process p p > z z')
+        self.do('add process p p > w+{0} w-')
         self.assertGauge('unitary', automatic=False)
         self.assertEqual(len(self.cmd._curr_amps), 4)
+        self.assertEqual(self.gauge_lines(),
+                         ['generate p p > w+ w-', 'add process p p > t t~',
+                          'add process p p > w+{0} w-'])
+
+    def test_add_process_switches_to_fd(self):
+        """a process that needs the FD gauge added to one that does not"""
+
+        self.do('generate p p > t t~')
+        self.assertGauge('unitary', automatic=False)
+        self.do('add process p p > w+ w-')
+        self.assertGauge('FD', automatic=True)
+        self.assertEqual(len(self.cmd._curr_amps), 3)
 
     def test_decay_chain(self):
         """a decay chain is generated again as a decay chain"""
@@ -154,6 +166,15 @@ class TestAutomaticGauge(unittest.TestCase):
         """nothing to gain for a process without massive vector boson"""
 
         self.do('generate a a > mu+ mu-')
+        self.assertGauge('unitary', automatic=False)
+
+    def test_polarised_legs_keep_unitary(self):
+        """the split of a cross section into polarisations is gauge
+        dependent, defined in the unitary gauge"""
+
+        self.do('generate p p > w+{0} w-{T}')
+        self.assertGauge('unitary', automatic=False)
+        self.do('generate p p > w+ w-, w+ > e+{L} ve')
         self.assertGauge('unitary', automatic=False)
 
     def test_propagator_polarization(self):
@@ -172,7 +193,7 @@ class TestAutomaticGauge(unittest.TestCase):
         self.do('define V z|a')
         self.do('define VQ = z u')
         self.do('define p = p b b~')
-        self.do('generate e+ e- > V > e+ e-')
+        self.do('generate e+ e- > V > w+ w-')
         self.assertGauge('FD', True)
         self.assertEqual(self.cmd._multiparticles['v'], [[23], [22]])
         self.do('generate p p > t t~')
@@ -191,7 +212,7 @@ class TestAutomaticGauge(unittest.TestCase):
                                             'loop_smgrav'))
         self.do('generate u d~ > w+ y')
         self.assertGauge('unitary', False)
-        self.assertFalse(mg_interface.fd_gauge_criterion(self.cmd._curr_amps)[0])
+        self.assertFalse(mg_interface.fd_gauge_criterion(self.cmd._curr_amps))
 
     def test_auto_gauge_not_in_the_proc_card(self):
         """the default auto_gauge True is not dumped into the history (MadSpin
@@ -274,9 +295,8 @@ class TestAutomaticGauge(unittest.TestCase):
                                             'fourfermion_UFO'))
         self.assertEqual(self.cmd._curr_model.get('gauge'), [0])
         self.do('generate fa fa~ > fb fb~')
-        # V exchange, no QCD: the criterion holds, the model does not
-        self.assertEqual(mg_interface.fd_gauge_criterion(self.cmd._curr_amps),
-                         (True, True))
+        # V between massive fermions: the criterion holds, the model does not
+        self.assertTrue(mg_interface.fd_gauge_criterion(self.cmd._curr_amps))
         self.assertGauge('unitary', automatic=False)
 
     def test_unverified_model_is_given_up(self):
@@ -291,7 +311,7 @@ class TestAutomaticGauge(unittest.TestCase):
         self.assertNotIn('set gauge FD', self.cmd.history)
         # not tried again: no reload of the model this time
         model = self.cmd._curr_model
-        self.do('generate p p > z z')
+        self.do('generate p p > w+ w-')
         self.assertIs(self.cmd._curr_model, model)
         self.assertGauge('unitary', automatic=False)
 

@@ -213,71 +213,126 @@ def iter_tree_amplitudes(amplitudes):
 
 
 def fd_gauge_criterion(amplitudes):
-    """Whether generated amplitudes are of the kind the FD gauge is the better
-    default for.  Returns the pair (electroweak_only, massive_vector):
+    """Whether tree-level amplitudes are better computed in the FD gauge.
 
-      electroweak_only: no vertex of any diagram carries a QCD coupling order
-          (a VBF/VBS process at QCD=0, p p > w+ w-, Drell-Yan, e+ e- > ...;
-          not p p > t t~, nor p p > w+ j), and no particle of spin above one
-          takes part (the FD gauge is validated for the SM-like spin content:
-          p p > w+ y with a spin-2 y is wrong by orders of magnitude in it);
-      massive_vector: a massive spin-one particle is an external leg or an
-          internal propagator of at least one diagram.  Only meaningful when
-          electroweak_only holds (the scan stops at the first QCD vertex).
-
-    Both are False for a loop amplitude or a perturbed process: the FD gauge
-    is validated for tree-level amplitudes only.
-
-    The unitary gauge is unstable at high energy because of the q^mu q^nu/m^2
-    term of the massive vector propagator and of the longitudinal polarisation
-    vector, which grow with the energy: the diagrams exceed their sum by a
-    factor growing with the energy and digits are lost when they are summed.
-    In the FD gauge (arXiv:2203.10440, 2405.01256) the goldstone travels as
-    a fifth component of the vector and the cancellation happens diagram by
-    diagram, so the precision no longer depends on the energy.  massive_vector
-    says whether there is anything to gain; electroweak_only keeps the
-    automatic choice to the processes where only the matrix element changes
-    (the multi-channel integration of a QCD process is tuned for the unitary
-    gauge; a mixed process benefits as well and can ask for 'set gauge FD').
+    True when a massive vector propagator ends on a vertex that is not a
+    conserved current (rule of the PR #422 review): the q^mu q^nu/M^2 term of
+    the unitary-gauge propagator then grows with the energy and digits are
+    lost in the sum over diagrams, while the FD gauge (arXiv:2203.10440,
+    2405.01256) cancels it diagram by diagram.  A conserved end is a vertex
+    with two massless fermions (a quark line that also radiates gluons stays
+    conserved once the gluon insertions are summed); a massive fermion (t-b,
+    t-t, a massive b or tau) or a bosonic vertex (HVV, VVV, VVVV) is not.
+    External massive vectors are not looked at; a massive vector of a decay
+    chain is a propagator, ending on its production and its decay vertex.
+    False for loop amplitudes, perturbed processes and particles of spin
+    above one, for which the FD gauge is not validated (_fd_gauge_excluded).
     """
 
-    massive_vector = False
+    if _fd_gauge_excluded(amplitudes):
+        return False
+    return any(_fd_gauge_criterion_node(amp, decay=False) for amp in amplitudes)
+
+
+def _fd_gauge_excluded(amplitudes):
+    """Loop, perturbed or spin above one: the FD gauge is not validated."""
+
     for amp in iter_tree_amplitudes(amplitudes):
         if isinstance(amp, loop_diagram_generation.LoopAmplitude):
-            return False, False
+            return True
         process = amp.get('process')
         if process.get('perturbation_couplings'):
-            return False, False
+            return True
         model = process.get('model')
-
-        def is_massive_vector(pdg):
-            particle = model.get_particle(pdg)
-            return bool(particle) and particle.get('spin') == 3 and \
-                   particle.get('mass').lower() != 'zero'
-
-        def beyond_spin_one(pdg):
-            particle = model.get_particle(pdg)
-            return bool(particle) and particle.get('spin') > 3
-
-        legs = process.get('legs')
-        if any(beyond_spin_one(leg.get('id')) for leg in legs):
-            return False, massive_vector
-        if any(is_massive_vector(leg.get('id')) for leg in legs):
-            massive_vector = True
+        pdgs = set(leg.get('id') for leg in process.get('legs'))
         for diagram in amp.get('diagrams'):
             for vertex in diagram.get('vertices'):
-                interaction = model.get_interaction(vertex.get('id'))
-                if interaction is None:
-                    continue
-                if interaction.get('orders').get('QCD', 0):
-                    return False, massive_vector
-                if any(beyond_spin_one(leg.get('id'))
-                       for leg in vertex.get('legs')):
-                    return False, massive_vector
-                if not massive_vector and any(is_massive_vector(leg.get('id'))
-                                              for leg in vertex.get('legs')):
-                    massive_vector = True
-    return True, massive_vector
+                pdgs.update(leg.get('id') for leg in vertex.get('legs'))
+        for pdg in pdgs:
+            particle = model.get_particle(pdg)
+            if particle and particle.get('spin') > 3:
+                return True
+    return False
+
+
+def _fd_gauge_criterion_node(amp, decay):
+    """fd_gauge_criterion for an amplitude or a decay-chain node; `decay`
+    when its amplitudes are the 1 -> n decays of a particle of the chain."""
+
+    if not isinstance(amp, diagram_generation.DecayChainAmplitude):
+        return _fd_gauge_criterion_one(amp, set(), decay)
+    decayed = set()
+    for chain in amp.get('decay_chains'):
+        decayed.update(one.get('process').get('legs')[0].get('id')
+                       for one in chain.get('amplitudes'))
+    if any(_fd_gauge_criterion_one(core, decayed, decay)
+           for core in amp.get('amplitudes')):
+        return True
+    return any(_fd_gauge_criterion_node(chain, decay=True)
+               for chain in amp.get('decay_chains'))
+
+
+def _fd_gauge_criterion_one(amp, decayed, decay):
+    """fd_gauge_criterion for one Amplitude: its final-state legs with a pdg
+    code in `decayed` decay further, its initial leg is a decaying particle
+    of a chain when `decay`."""
+
+    model = amp.get('process').get('model')
+
+    def massive_vector(pdg):
+        particle = model.get_particle(pdg)
+        return bool(particle) and particle.get('spin') == 3 and \
+               particle.get('mass').lower() != 'zero'
+
+    def conserved(vertex, position):
+        """whether the leg at `position` couples to a conserved current"""
+        if model.get_interaction(vertex.get('id')) is None:
+            return True     # identity vertex: no vertex at this end
+        others = [leg for k, leg in enumerate(vertex.get('legs'))
+                  if k != position]
+        if len(others) != 2:
+            return False
+        for leg in others:
+            particle = model.get_particle(leg.get('id'))
+            if not particle or particle.get('spin') != 2 or \
+                                       particle.get('mass').lower() != 'zero':
+                return False
+        return True
+
+    def attached_end(vertices, number, start):
+        """the first vertex from `start` on taking the line `number` as an
+        input (a non-final vertex outputs its last leg), with its position"""
+        last = len(vertices) - 1
+        for k in range(start, last + 1):
+            legs = vertices[k].get('legs')
+            inputs = legs if k == last else legs[:-1]
+            for position, leg in enumerate(inputs):
+                if leg.get('number') == number:
+                    return vertices[k], position
+        return None, None
+
+    # the external legs that are propagators in a decay chain
+    external = [leg.get('number') for leg in amp.get('process').get('legs')
+                if massive_vector(leg.get('id')) and
+                ((leg.get('state') and leg.get('id') in decayed) or
+                 (not leg.get('state') and decay))]
+
+    for diagram in amp.get('diagrams'):
+        vertices = diagram.get('vertices')
+        for number in external:
+            vertex, position = attached_end(vertices, number, 0)
+            if vertex is not None and not conserved(vertex, position):
+                return True
+        for k, vertex in enumerate(vertices[:-1]):
+            line = vertex.get('legs')[-1]
+            if not massive_vector(line.get('id')):
+                continue
+            if not conserved(vertex, len(vertex.get('legs')) - 1):
+                return True
+            end, position = attached_end(vertices, line.get('number'), k + 1)
+            if end is not None and not conserved(end, position):
+                return True
+    return False
 
 
 def split_backend_line(line):
@@ -4655,11 +4710,8 @@ This implies that with decay chains:
                 % why)
 
     def processes_prefer_fd_gauge(self):
-        """True when every generated process is tree level, purely electroweak
-        and involves a massive vector boson (fd_gauge_criterion), and none is
-        a bound state, a colour-ordered [amplicol] amplitude or carries a
-        propagator-only polarisation ({G}, {H}, {Q}, {W}, {S}: pieces of the
-        unitary-gauge propagator)."""
+        """True when the generated processes pass fd_gauge_criterion and none
+        is a bound state, an [amplicol] process or has a polarised leg."""
 
         if not self._curr_amps or self._curr_amplicol_defs:
             return False
@@ -4667,10 +4719,11 @@ This implies that with decay chains:
             return False
         for amp in iter_tree_amplitudes(self._curr_amps):
             for leg in amp.get('process').get('legs'):
-                if any(abs(pol) > 1 for pol in leg.get('polarization')):
+                # a polarised leg: the split into polarisations is gauge
+                # dependent and defined in the unitary gauge
+                if leg.get('polarization'):
                     return False
-        electroweak_only, massive_vector = fd_gauge_criterion(self._curr_amps)
-        return electroweak_only and massive_vector
+        return fd_gauge_criterion(self._curr_amps)
 
     def fd_gauge_supported_by_model(self, model):
         """Whether import_ufo could check the goldstone content of the model
