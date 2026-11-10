@@ -1333,19 +1333,19 @@ class TestHelRecyclingFilter(unittest.TestCase):
         self.assertIsNone(write.call_args[0][2])
 
     def test_launch_param_cards(self):
-        try:
-            from madgraph.iolibs.template_files.mg7 import madtrex
-            from madgraph.iolibs.template_files.mg7 import param_reweight_card as card
-        except ImportError as error:
-            raise unittest.SkipTest('madtrex wrapper not importable: %s' % error)
+        # what mg7/madtrex.py hands update() for a MadtRex reweighting. Not
+        # through that module: it imports madspace, which must not be imported
+        # before the mg7 bootstrap has installed it (later tests need it)
+        class Launch(object):
+            def __init__(self, sets):
+                self.sets = sets
         base = os.path.join(self.tmp, 'param_card.dat')
         with open(base, 'w') as fsock:
             fsock.write('Block mass\n 6 1.73e2 # MT\nBlock yukawa\n 5 4.7 # ymb\n'
                         'DECAY 6 1.5 # WT\n')
-        launches = [card.LaunchBlock(name='a', sets=[('yukawa', '5', '0.0')]),
-                    card.LaunchBlock(name='b', sets=[('MASS', '6', '175'),
-                                                     ('DECAY', '6', '1.4')])]
-        paths = madtrex.launch_param_cards(base, launches, self.tmp)
+        launches = [Launch([('yukawa', '5', '0.0')]),
+                    Launch([('MASS', '6', '175'), ('DECAY', '6', '1.4')])]
+        paths = self.hrf.launch_param_cards(base, launches, self.tmp)
         from madgraph.models.check_param_card import ParamCard
         first, second = (ParamCard(path) for path in paths)
         self.assertEqual(first['yukawa'].get((5,)).value, 0.0)
@@ -1353,8 +1353,8 @@ class TestHelRecyclingFilter(unittest.TestCase):
         self.assertEqual(second['mass'].get((6,)).value, 175.0)
         self.assertEqual(second['decay'].get((6,)).value, 1.4)
         # not a param_card value: no card for it
-        self.assertIsNone(madtrex.launch_param_cards(
-            base, [card.LaunchBlock(name='c', sets=[('yukawa', '5', 'auto')])], self.tmp))
+        self.assertIsNone(self.hrf.launch_param_cards(
+            base, [Launch([('yukawa', '5', 'auto')])], self.tmp))
 
 
 class TestGoodHelIds(unittest.TestCase):

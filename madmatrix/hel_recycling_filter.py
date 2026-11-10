@@ -148,6 +148,26 @@ def write_state(pdir, state):
         json.dump(state, fsock, indent=1)
 
 
+def launch_param_cards(base_card, launches, out_dir):
+    """The param_card of each MadtRex launch (its "set BLOCK ID VALUE" entries
+    in `.sets`, names resolved and scans expanded): base_card with those values,
+    written into out_dir. None when one of them is no param_card value."""
+    from madgraph.models.check_param_card import ParamCard
+    paths = []
+    for index, launch in enumerate(launches):
+        card = ParamCard(base_card)
+        try:
+            for block, param_id, value in launch.sets:
+                lhacode = tuple(int(i) for i in str(param_id).split())
+                card[block.lower()].get(lhacode).value = float(value)
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return None
+        path = pjoin(out_dir, 'launch_%d_param_card.dat' % index)
+        card.write(path)
+        paths.append(path)
+    return paths
+
+
 # -- the probe ---------------------------------------------------------------
 
 class ProbeTree(object):
