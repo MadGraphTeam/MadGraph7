@@ -407,3 +407,111 @@ def test_the_tree_correlated_default_is_improved_at_16_digits(tree):
     assert runtime.evaluate_correlated([point], kinematics_improvement="off") == (
         runtime.evaluate_correlated([texts], kinematics_improvement="off")
     )
+
+
+# ------------------------------------------------------------ the loop SDK
+
+
+def _json_of(getter, result) -> dict:
+    import ctypes
+
+    needed = ctypes.c_size_t()
+    assert getter(result, None, ctypes.c_size_t(0), ctypes.byref(needed)) == 0
+    buffer = ctypes.create_string_buffer(needed.value)
+    assert getter(result, buffer, needed, ctypes.byref(needed)) == 0
+    return json.loads(buffer.value)
+
+
+@pytest.mark.loop_physics
+def test_the_loop_sdk_improves_like_the_python_api(gg):
+    """The C ABI (``rusticol_virtual_set_kinematics_improvement[_binary64]``,
+    additive, ABI version 2 kept) improves each call's points in its carrier
+    exactly as the Python API: in double-double the diagnostics record
+    (``"kinematics"``) names the producer and the decimal values equal the
+    Python API's on the same exact inputs; ``"off"`` records ``"off"``; a
+    binary64 call has no record unless the binary64 switch is on; another
+    value is refused typed with the one refusal text."""
+
+    import ctypes
+
+    from pyamplicol import Runtime
+
+    from .test_loop_v2_sdk_extras import (
+        _agree,
+        _error,
+        _laurent,
+        _open,
+        _Request,
+        _ResultShape,
+        _sdk,
+    )
+
+    sdk = _sdk()
+    point = _beam_point()
+    exact = [[str(Decimal(float(c))) for c in leg] for leg in point]
+    runtime = Runtime.load(gg, process="gg")
+    python = runtime.evaluate(
+        [exact], arithmetic="double-double", mu_r2=str(Decimal(8315.06)), poles="all"
+    )
+
+    def call(setting=None, binary64=None, arithmetic="double-double"):
+        handle = _open(sdk, gg, "gg")
+        try:
+            assert sdk.rusticol_virtual_set_arithmetic(
+                handle, arithmetic.encode(), ctypes.c_uint32(0)
+            ) == 0, _error(sdk)
+            if setting is not None:
+                status = sdk.rusticol_virtual_set_kinematics_improvement(
+                    handle, setting.encode()
+                )
+                if status != 0:
+                    return status, _error(sdk)
+            if binary64 is not None:
+                status = sdk.rusticol_virtual_set_kinematics_improvement_binary64(
+                    handle, ctypes.c_int(binary64)
+                )
+                if status != 0:
+                    return status, _error(sdk)
+            flat = [float(c) for leg in point for c in leg]
+            momenta = (ctypes.c_double * len(flat))(*flat)
+            mu = (ctypes.c_double * 1)(8315.06)
+            request = _Request(momenta, len(flat), 1, None, mu, 1)
+            result = ctypes.c_void_p()
+            status = sdk.rusticol_virtual_evaluate(
+                handle, ctypes.byref(request), ctypes.byref(result)
+            )
+            assert status == 0, _error(sdk)
+            try:
+                shape = _ResultShape()
+                assert sdk.rusticol_virtual_result_shape(result, ctypes.byref(shape)) == 0
+                diagnostics = _json_of(sdk.rusticol_virtual_result_diagnostics_json, result)
+                decimal = _json_of(sdk.rusticol_virtual_result_decimal_json, result)
+            finally:
+                sdk.rusticol_virtual_result_free(result)
+        finally:
+            sdk.rusticol_virtual_free(handle)
+        return diagnostics, decimal
+
+    diagnostics, decimal = call()
+    (record,) = diagnostics["kinematics"]
+    assert record["produced"] == "z-shift" and record["exactness"]["exact"], record
+    # The same improved point as the Python API's (its record, every
+    # exactness number included) and the same values.
+    mine = python.diagnostics[0].kinematics
+    assert (record["status"], record["produced"]) == (mine.status, mine.produced)
+    assert [tuple(a) for a in (
+        (attempt["step"], attempt["code"]) for attempt in record["attempts"]
+    )] == list(mine.attempts)
+    assert record["exactness"]["shell"] == mine.shell
+    assert record["exactness"]["conservation"] == mine.conservation
+    assert record["moved"] == mine.moved
+    want = [x for lc in python.values[0] for x in _laurent(lc)]
+    assert _agree(want, decimal["virtual"]), (want, decimal["virtual"])
+    diagnostics, _ = call("off")
+    assert diagnostics["kinematics"][0]["status"] == "off"
+    diagnostics, _ = call(arithmetic="double")
+    assert "kinematics" not in diagnostics
+    diagnostics, _ = call(binary64=1, arithmetic="double")
+    assert diagnostics["kinematics"][0]["status"] in ("improved", "exact")
+    status, message = call("orig")
+    assert status != 0 and kinematics.policy()["setting_refusal"] in message, message

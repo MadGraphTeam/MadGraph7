@@ -884,6 +884,21 @@ calibrated acceptance of TIRust's checked method choice, as the Python API's
 fallback guard's threshold, never below 1e-5; a value that is not a finite
 positive number is an
 invalid argument. The unchecked setting
+The kinematics improvement
+`rusticol_virtual_set_kinematics_improvement(handle, setting)` (C++ / Fortran /
+packaged Rust `set_kinematics_improvement`; `"z-shift"`, MadLoop's default and
+the default here, `"rescaling"`, `"projection"` or `"off"`, as the Python
+API's `kinematics_improvement=`) and
+`rusticol_virtual_set_kinematics_improvement_binary64(handle, on)` (0 by
+default, 1 on; `set_kinematics_improvement_binary64`) improve each point of a
+double-double or arbitrary-precision call (a binary64 one only with the
+switch) to exact conservation and on-shell externals in that carrier, from
+the caller's inputs in the caller's leg order, before anything is evaluated
+(the per-point fallback and the stability rotations act on that point);
+`diagnostics_json` records it per point (`"kinematics"`: the Python API's
+`VirtualKinematics` fields); another value is an invalid argument
+([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Additive symbols, ABI version 2 kept. The unchecked setting
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
 `set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,
 the packaged Rust wrapper's `set_reduction_unchecked(bool)`; 1 or 0, default

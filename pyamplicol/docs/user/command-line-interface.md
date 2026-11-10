@@ -464,6 +464,15 @@ conditioning bound, 71eddb15); an explicit backend that cannot serve the call is
 of each point's result, default 1e-5; it sets the calibrated acceptance of
 TIRust's checked method choice and, never below 1e-5, is the fallback
 guard's threshold).
+`--kinematics-improvement {z-shift,rescaling,projection,off}` (default
+`z-shift`, MadLoop's `ImprovePSPoint = 2` with its fallback to 1) and
+`--[no-]kinematics-improvement-binary64` (default off) set the improvement
+of the input points to exact conservation and on-shell externals before a
+double-double or arbitrary-precision evaluation (binary64 only with the
+switch); the JSON output's lane diagnostics carry the per-point record
+(`kinematics`; [Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Both are `evaluate` and `profile` flags and the run card's
+`[evaluation] kinematics_improvement` / `kinematics_improvement_binary64`.
 `--reduction-unchecked` (default off) reduces without the backends' own
 acceptance and refusal checks: TIRust's gates and method choice select the
 method without re-checking its values, plain Passarino-Veltman at gate 0

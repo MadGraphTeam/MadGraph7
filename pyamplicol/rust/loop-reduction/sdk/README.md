@@ -141,6 +141,16 @@ relative accuracy of each point's result) sets the calibrated acceptance of
 TIRust's checked method choice, as the Python API's `reduction_target=`, and
 in double-double and arbitrary precision is the fallback guard's threshold,
 never below 1e-5.
+`rusticol_virtual_set_kinematics_improvement(handle, setting)` (C++ / Fortran
+/ Rust `set_kinematics_improvement`; `"z-shift"` by default, MadLoop's
+default; `"rescaling"`, `"projection"`, `"off"`) and
+`rusticol_virtual_set_kinematics_improvement_binary64(handle, on)` (0 by
+default) improve each call's points to exact conservation and on-shell
+externals in the call's carrier above binary64 (binary64 only with the
+switch) before anything is evaluated, as the Python API's
+`kinematics_improvement=` / `kinematics_improvement_binary64=`; the
+diagnostics record it per point (`"kinematics"`); any other value is an
+invalid argument.
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++ / Fortran
 / Rust `set_reduction_unchecked`; 0 by default, 1 on) reduces without the
 backends' own acceptance and refusal checks, as the Python API's
