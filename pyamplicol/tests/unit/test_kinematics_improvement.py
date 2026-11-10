@@ -214,6 +214,17 @@ def test_the_summed_route_in_double_double_and_arbitrary_precision(gg):
         # move at that level.
         a, b = found.values[0][0].finite, off.values[0][0].finite
         assert abs(Decimal(a) - Decimal(b)) <= Decimal("1e-12") * abs(Decimal(b))
+    # The stability rotations act on the improved point (never re-improved):
+    # the checked call's values and estimates equal the pre-improved point's.
+    from pyamplicol.api import VirtualStabilityChecks
+
+    checks = VirtualStabilityChecks(("z:3/5:4/5",), True)
+    call = {**CALL, "arithmetic": "double-double", "stability_checks": checks}
+    found = runtime.evaluate([point], **call)
+    improved, _ = backend.improved_points([point], arithmetic="double-double", mu_r2=CALL["mu_r2"])
+    reference = runtime.evaluate(improved, kinematics_improvement="off", **call)
+    assert repr(found.values) == repr(reference.values)
+    assert repr(found.stability) == repr(reference.stability) and found.stability[0] is not None
     # Binary64: off by default (no record), bitwise the unimproved values.
     found = runtime.evaluate([point], arithmetic="double", **CALL)
     assert found.diagnostics[0].kinematics is None
