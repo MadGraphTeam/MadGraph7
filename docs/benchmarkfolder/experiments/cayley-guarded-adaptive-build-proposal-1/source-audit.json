@@ -1,0 +1,26 @@
+{
+  "schema": "guarded-adaptive-build-source-review-v1",
+  "read_only_independent_auditor": "/root/adaptive_physical_replay_design/cayley_zero_guard/guarded_build_source_audit",
+  "findings": [
+    "Preserving existing sibling names avoids every Cargo manifest or lock edit.",
+    "Materialize the original madloop-pole-kernels symlink into private regular files; preserve bytes and bind original target separately.",
+    "The lock closure has only the bridge, iregi-rust, iregi-masters and madloop-pole-kernels as local path packages; oneloopmaster is unchanged pinned Git.",
+    "Copy complete source trees to preserve workspace inheritance and dormant include/test closure; do not repair or repin unrelated archival manifests.",
+    "Exactly one Gram function source replacement is intended."
+  ],
+  "preparation_compile_link_loader_or_native_executed": false,
+  "ast_parse_only": [
+    {
+      "path": "build.py",
+      "sha256": "6cc12956e7da915b74c54f18a44a95814de108481ffdb454f0fbfc089f2928f9"
+    },
+    {
+      "path": "verify_source.py",
+      "sha256": "b9f59dfec5ea449f0c0d44f6be328ecf022c441e047b8449dbabf591ddd61bd2"
+    }
+  ],
+  "review_corrections_before_freeze": [
+    "Absolute ITIMER_REAL alarm now covers source preflight, cache copy, compilation, protected-file closure, and successful receipt publication. Failure-only administrative receipts are retained after reaping without acceptance.",
+    "Cache copy now carries the same 4GiB address-space and zero-core resource limits as Cargo descendants; execution label names copy/build processes."
+  ]
+}
