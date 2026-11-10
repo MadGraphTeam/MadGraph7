@@ -1,0 +1,44 @@
+{
+  "adapter_sha256": "ac51ba15844ffc4033e2597ea250e144bfde71c942fda6b7ee658afe2921b0cd",
+  "closed_capsule_index_sha256": "8f5f7110cc101dc79e8fe75d5dd1ef342e1e72797986a5a5026680e28d4496be",
+  "figures_index_sha256": "e23178bdedbdb6ea9ac2d177eba9a6dcc83c9df121800eb1f7406e979686a49b",
+  "negative_controls": [
+    {
+      "event": "open",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/stability_appendix_c/retrospective-main-closed11-1/adapter.py"
+    },
+    {
+      "event": "os.scandir",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/stability_appendix_c/retrospective-main-closed11-1"
+    },
+    {
+      "event": "Path.stat",
+      "target": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/stability_appendix_c/retrospective-main-closed11-1/adapter.py"
+    },
+    {
+      "event": "subprocess.Popen",
+      "target": "false"
+    },
+    {
+      "event": "ctypes.dlopen",
+      "target": "None"
+    }
+  ],
+  "negative_controls_passed": 5,
+  "new_native_evaluations": 0,
+  "passed": true,
+  "plotter_source_index_sha256": "fe16afaae081694af3eb3a7e7c8ec9b9d037933b1938e6afa6ba56522c507e41",
+  "relocated_directory": "/tmp/madloop-closed-main-plots-portable-t0o1ynki",
+  "relocated_file_count": 62,
+  "relocated_files_unchanged": true,
+  "schema": "madloop-stability-retrospective-main-portable-proof-v1",
+  "unexpected_original_or_native_accesses": 0,
+  "verification": {
+    "cases": 4,
+    "figures": 8,
+    "index_sha256": "e23178bdedbdb6ea9ac2d177eba9a6dcc83c9df121800eb1f7406e979686a49b",
+    "new_native_evaluations": 0,
+    "physical_points_per_case": 100,
+    "verified": true
+  }
+}
